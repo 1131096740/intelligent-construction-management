@@ -1,3 +1,4 @@
+import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -19,6 +20,8 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let baseUrl: string;
   let token: string;
   let reviewerToken: string;
+  let generalManagerToken: string;
+  let accountPassword: string;
   let browserSession: unknown;
   beforeAll(async () => {
     if (!enabled) return;
@@ -35,6 +38,7 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const db = app.get(PrismaService);
     const suffix = randomUUID();
     const password = randomUUID();
+    accountPassword = password;
     const actor = await db.user.create({ data: { name: "资金填写人", phone: suffix, passwordHash: await hash(password, 4), mustChangePassword: false } });
     const reviewer = await db.user.create({ data: { name: "核验人", phone: `reviewer-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
     const role = await db.position.upsert({ where: { key: "finance_staff" }, create: { key: "finance_staff", name: "财务人员" }, update: {} });
@@ -67,6 +71,17 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(reviewerLogin.status).toBe(201);
     const reviewerSession = await reviewerLogin.json();
     reviewerToken = (reviewerSession as { tokens: { accessToken: string } }).tokens.accessToken;
+    const generalManager = await db.user.create({ data: { name: "资金验收总经理", phone: `gm-${suffix}`, passwordHash: await hash(password, 4), mustChangePassword: false } });
+    const gmRole = await db.position.upsert({ where: { key: "general_manager" }, create: { key: "general_manager", name: "总经理" }, update: {} });
+    await db.userPosition.create({ data: { userId: generalManager.id, positionId: gmRole.id } });
+    const gmLogin = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: generalManager.phone, password }) });
+    expect(gmLogin.status).toBe(201);
+    generalManagerToken = ((await gmLogin.json()) as { tokens: { accessToken: string } }).tokens.accessToken;
+    for (const accessToken of [reviewerToken, generalManagerToken]) {
+      const form = new FormData();
+      form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-signature.png");
+      expect((await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${accessToken}` }, body: form })).status).toBe(201);
+    }
   }, 60_000);
   afterAll(async () => { if (app) await app.close(); });
   async function request<T>(path: string, method = "GET", body?: unknown, accessToken = token) {
@@ -99,6 +114,11 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(resubmitted.entrySnapshots).toHaveLength(2);
     expect(resubmitted.entrySnapshots[0]).toEqual(detail.entrySnapshots[0]);
     expect(resubmitted.entrySnapshots[1]).toMatchObject({ valuesSnapshot: { reason: "公司项目资金到账", amountCents: "12500", direction: "inflow" } });
+    for (const accessToken of [reviewerToken, generalManagerToken]) {
+      await request(`${path}/approval-actions`, "POST", { action: "approve", comment: "本地逐节点签批核验" }, accessToken);
+    }
+    await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token: reviewerToken, password: accountPassword,
+      businessType: "fund_execution_case", businessId: created.caseId, roles: ["finance_director", "general_manager"], label: "资金执行-退回重提总经理或签" });
   }, 60_000);
 
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机从真实详情回读冻结提交记录", async () => {

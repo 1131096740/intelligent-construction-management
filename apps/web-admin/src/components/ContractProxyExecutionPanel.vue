@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import {useRouter} from "vue-router";
 import { computed,onBeforeUnmount,ref,watch } from "vue";
 import { fetchContractProxyExecutions,prepareContractProxyExecution,decideContractProxyExecution,type ProxyData,type ProxyEntry } from "../api/contract-proxy-execution.api";
@@ -110,6 +111,7 @@ async function uploadPrivateFileWithCapability(arg0: Parameters<typeof uploadPri
           登记归还代付款
         </t-button>
       </template>
+      <ApprovalDocumentDownload business-type="contract_proxy_execution" :business-id="entry.id" :refresh-key="entry.status" />
     </article>
     <t-drawer
       v-model:visible="show"

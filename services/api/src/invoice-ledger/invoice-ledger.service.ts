@@ -1,3 +1,5 @@
+import { formatMoneyCentsAsYuan as approvalMoneyYuan } from "../money/decimal-money";
+import { invalidateIndependentApproval, recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
@@ -2717,6 +2719,25 @@ export class InvoiceLedgerService {
           throw new ConflictException(
             "票据确认状态已变化，请刷新后重试"
           );
+        }
+        if (operation === "reverse") {
+          await invalidateIndependentApproval(tx, {
+            businessType: kind === "no_invoice" ? "no_invoice_confirmation" : "invoice_exception_confirmation",
+            businessId: confirmation.id, actorUserId, reason: comment, invalidatedAt: now
+          });
+        }
+        if (operation === "confirm") {
+          const source = kind === "no_invoice"
+            ? await tx.noInvoiceConfirmation.findUniqueOrThrow({ where: { id: confirmation.id } })
+            : await tx.invoiceExceptionConfirmation.findUniqueOrThrow({ where: { id: confirmation.id } });
+          await recordIndependentApproval(tx, {
+            businessType: kind === "no_invoice" ? "no_invoice_confirmation" : "invoice_exception_confirmation",
+            businessId: confirmation.id, applicantUserId: source.submittedByUserId, actorUserId,
+            roleKey: "finance_director", nodeName: "财务主管", comment, signedAt: now,
+            form: { title: kind === "no_invoice" ? "无票确认审批单" : "发票例外审批单", code: context.procurement.code,
+              projectId: context.procurement.projectId, companyName: "",
+              summary: [{ label: "确认原因", value: source.reason }, { label: "确认金额（元）", value: approvalMoneyYuan(source.amountCents) }] }
+          });
         }
         await this.audit.record(tx, {
           actorUserId,

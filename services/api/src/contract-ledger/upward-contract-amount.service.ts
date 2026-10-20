@@ -1,3 +1,5 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
+import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -65,9 +67,12 @@ export class UpwardContractAmountService {
    const file=await tx.fileObject.findUnique({where:{id:row.evidenceFileId}});
    if(input.decision==="confirm"&&(file?.storageStatus!=="active"||file.contentSha256!==row.evidenceSha256))throw new ConflictException("依据文件已变化，请退回核对");
    if(input.decision==="confirm"){const latest=await tx.upwardContractAmountRevision.findFirst({where:{contractId:row.contractId,status:"confirmed"},orderBy:[{effectiveAt:"desc"},{confirmedAt:"desc"},{id:"desc"}]});if((latest?.id??null)!==row.supersedesId)throw new ConflictException("修订前序已经变化，请退回重新核对");}
+   const confirmedAt = new Date();
    const signature=input.decision==="confirm"?await snapshotApprovalSignature(tx,actor,{required:true}):null;
    const status=input.decision==="confirm"?"confirmed":"returned";
-   await tx.upwardContractAmountRevision.update({where:{id},data:{status,...(signature?{confirmedAt:new Date(),confirmedByUserId:actor,confirmationSignatureVersionId:signature.versionId}:{})}});
+   await tx.upwardContractAmountRevision.update({where:{id},data:{status,...(signature?{confirmedAt,confirmedByUserId:actor,confirmationSignatureVersionId:signature.versionId}:{})}});
+   if (signature) await recordIndependentApproval(tx, { businessType: "upward_contract_amount_revision", businessId: id, applicantUserId: row.recordedByUserId, actorUserId: actor,
+     roleKey: "contract_director", nodeName: "合同部主管", signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "upward_contract_amount_revision", id) });
    await this.audit.record(tx,{actorUserId:actor,action:`contract.upward_amount.${input.decision}`,businessType:"upward_contract_amount_revision",businessId:id,metadata:{projectId:row.projectId,contractId:row.contractId,amountCents:row.amountCents?.toString()??null,amountNature:row.amountNature}});
    return {id,status};
   });

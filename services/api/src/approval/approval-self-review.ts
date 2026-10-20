@@ -101,13 +101,13 @@ export async function confirmApprovalSelfReview(
 
 function isAllowedSelfReviewRole(
   roleKey: RoleKey,
-  allowContractDirectorSelfReview: boolean
+  _allowContractDirectorSelfReview: boolean
 ) {
-  return LEADER_SELF_REVIEW_BUSINESS_ROLES.has(roleKey) ||
-    (allowContractDirectorSelfReview && roleKey === "contract_director");
+  void _allowContractDirectorSelfReview;
+  return roleKey !== "super_admin";
 }
 
 function selfReviewRoleLabel(roleKey: RoleKey) {
   if (LEADER_SELF_REVIEW_BUSINESS_ROLES.has(roleKey)) return "董事长或总经理";
-  return "合同部主管";
+  return roleKey === "contract_director" ? "合同部主管" : "当前审批岗位";
 }

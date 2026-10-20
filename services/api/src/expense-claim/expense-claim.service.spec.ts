@@ -83,7 +83,8 @@ describe("ExpenseClaimService", () => {
     tx.project.findMany.mockResolvedValue([{ id: "project-1", code: "JGXM-001", name: "科技园项目" }]);
     tx.user.findMany.mockResolvedValue([{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }]);
     await expect(service.createOptions("user-a")).resolves.toEqual(expect.objectContaining({ companyEntities: [{ id: "company-1", name: "建工智管" }], projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }], canProxy: false, applicantUsers: [{ id: "user-a", name: "经办人" }], factWitnessUsers: [{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }], availableActions: ["create_expense_claim"] }));
-    expect(tx.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["project-1"] }, isActive: true } }));
+    expect(tx.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+ id: { in: ["project-1"] }, isActive: true } }));
   });
 
   it("derives exact claim actions from the authorized server detail", async () => {
@@ -344,7 +345,8 @@ describe("ExpenseClaimService", () => {
     expect(companyLockIndex).toBeGreaterThanOrEqual(0);
     expect(tx.$queryRaw.mock.invocationCallOrder[companyLockIndex]).toBeLessThan(tx.companyEntity.findFirst.mock.invocationCallOrder[0]);
     expect(tx.companyEntity.findFirst).toHaveBeenCalledWith({
-      where: { id: "company-pay", isActive: true, dataStatus: "complete" },
+      where: {
+ id: "company-pay", isActive: true, dataStatus: "complete" },
       select: { id: true, name: true }
     });
     expect(tx.expenseClaim.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -936,7 +938,7 @@ describe("ExpenseClaimService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([instance])
-      .mockResolvedValueOnce([{ id: "comp-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "comp-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
       .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }]);
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approval_pending" });
@@ -971,7 +973,7 @@ describe("ExpenseClaimService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([instance])
-      .mockResolvedValueOnce([{ id: "leader-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "leader-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
       .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }]);
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-1", status: "approved_pending_payment" });
@@ -980,7 +982,7 @@ describe("ExpenseClaimService", () => {
 
     expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "current-password");
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ metadata: { selfReview: true, selfReviewReason: "职责兼任" }, signatureFileIdSnapshot: "file-1", signatureVersionIdSnapshot: "signature-1" })
+      data: expect.objectContaining({ metadata: { selfReview: true, selfReviewReason: "职责兼任", approverName: "签批人甲" }, signatureFileIdSnapshot: "file-1", signatureVersionIdSnapshot: "signature-1" })
     });
   });
 
@@ -1021,7 +1023,7 @@ describe("ExpenseClaimService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([instance])
-      .mockResolvedValueOnce([{ id: "leader-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "leader-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([
         {
           id: "signature-1",
@@ -1300,7 +1302,7 @@ describe("ExpenseClaimService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([instance])
-      .mockResolvedValueOnce([{ id: "comp-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "comp-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([{ id: "signature-1", fileId: "file-1", contentSha256: "a".repeat(64) }])
       .mockResolvedValueOnce([{ id: "file-1", contentSha256: "a".repeat(64), storageStatus: "active" }])
       .mockResolvedValueOnce([{ id: "account-1", offsetAmountCents: 0n, reservedOffsetAmountCents: 3000n, balanceAmountCents: 3000n }])

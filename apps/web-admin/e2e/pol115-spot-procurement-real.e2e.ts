@@ -265,7 +265,7 @@ test("零采申请退回修订后完成两级审批，桌面与390窄屏回读�
   expect((await resubmission).status()).toBe(201);
   await expect(page.getByText("零星材料采购申请已提交审批。", { exact: true })).toBeVisible();
 
-  for (const [session, node] of [[director, "物资主管审批"], [manager, "项目经理审批"]] as const) {
+  for (const [session, node] of [[director, "物资部主管审批"], [manager, "项目经理审批"]] as const) {
     await useSession(page, session);
     await page.locator(".t-tabs").getByText("审批与动作", { exact: true }).click();
     await expect(page.locator(".business-detail-header__facts").getByText(node, { exact: true })).toBeVisible();

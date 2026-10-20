@@ -279,7 +279,7 @@
           >
             <t-alert
               theme="warning"
-              title="领导自审二次确认"
+              title="本人申请审批二次确认"
               message="当前单据由您本人发起，请说明独立复核依据；当前密码将在确认对话框中输入。"
             />
             <t-textarea
@@ -355,6 +355,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,
@@ -894,7 +895,7 @@ async function loadDetail(): Promise<boolean> {
     projectExpenseCapabilityGeneration += 1;
     projectExpenseWithdrawalCapability.value = null;
     detail.value = null;
-    errorMessage.value = error instanceof Error ? error.message : "项目支出审批详情读取失败";
+    errorMessage.value = formatUnknownApiError(error, "项目支出审批详情读取失败");
     return false;
   } finally {
     if (
@@ -1110,9 +1111,7 @@ function requestProjectExpenseExecution() {
   } catch (error) {
     actionTone.value = "error";
     actionMessage.value =
-      error instanceof Error
-        ? error.message
-        : "项目支出实付信息不完整";
+      formatUnknownApiError(error, "项目支出实付信息不完整");
   }
 }
 
@@ -1190,9 +1189,7 @@ function confirmProjectExpenseExecution(values: {
     .catch((error) => {
       if (projectExpenseExecutionSelectionIsCurrent(selection)) {
         const reason =
-          error instanceof Error
-            ? error.message
-            : "项目支出实付登记失败";
+          formatUnknownApiError(error, "项目支出实付登记失败");
         actionTone.value = "error";
         actionMessage.value =
           `操作未完成：${reason}。已保留当前凭证与幂等请求，可直接重试。`;
@@ -1347,9 +1344,7 @@ function requestProjectExpenseFinance() {
   } catch (error) {
     actionTone.value = "error";
     actionMessage.value =
-      error instanceof Error
-        ? error.message
-        : "项目支出财务入账信息不完整";
+      formatUnknownApiError(error, "项目支出财务入账信息不完整");
   }
 }
 
@@ -1425,9 +1420,7 @@ function confirmProjectExpenseFinance(values: {
     .catch(async (error) => {
       if (projectExpenseFinanceSelectionIsCurrent(selection)) {
         const reason =
-          error instanceof Error
-            ? error.message
-            : "项目支出财务入账失败";
+          formatUnknownApiError(error, "项目支出财务入账失败");
         const disposition =
           projectExpenseFinanceFailureDisposition(error);
         actionTone.value = "error";
@@ -1552,9 +1545,7 @@ function requestProjectExpenseReceiptConfirmation() {
   } catch (error) {
     actionTone.value = "error";
     actionMessage.value =
-      error instanceof Error
-        ? error.message
-        : "项目支出收货确认信息不完整";
+      formatUnknownApiError(error, "项目支出收货确认信息不完整");
   }
 }
 
@@ -1658,9 +1649,7 @@ function confirmProjectExpenseReceipt(values: {
     .catch(async (error) => {
       if (projectExpenseReceiptSelectionIsCurrent(selection)) {
         const reason =
-          error instanceof Error
-            ? error.message
-            : "项目支出收货确认失败";
+          formatUnknownApiError(error, "项目支出收货确认失败");
         const disposition =
           projectExpenseReceiptFailureDisposition(error);
         actionTone.value = "error";
@@ -1829,7 +1818,7 @@ function requestProjectExpenseReview(
   } catch (error) {
     actionTone.value = "error";
     actionMessage.value =
-      error instanceof Error ? error.message : "项目支出审批信息不完整";
+      formatUnknownApiError(error, "项目支出审批信息不完整");
     return;
   }
 
@@ -1999,7 +1988,7 @@ function captureProjectExpenseReviewContext(
     return context;
   } catch (error) {
     reviewConfirmation.error =
-      error instanceof Error ? error.message : "项目支出审批信息不完整";
+      formatUnknownApiError(error, "项目支出审批信息不完整");
     return null;
   }
 }
@@ -2064,7 +2053,7 @@ function failProjectExpenseReview(
 ) {
   if (!projectExpenseReviewContextIsCurrent(context)) return;
   const reason =
-    error instanceof Error ? error.message : "项目支出审批操作失败";
+    formatUnknownApiError(error, "项目支出审批操作失败");
   actionTone.value = "error";
   actionMessage.value = reason;
   reviewConfirmation.error = reason;
@@ -2310,7 +2299,7 @@ function failProjectExpenseWithdrawal(
 ) {
   if (!withdrawalContextIsCurrent(context)) return;
   const reason =
-    error instanceof Error ? error.message : "项目支出申请撤回失败";
+    formatUnknownApiError(error, "项目支出申请撤回失败");
   actionTone.value = "error";
   actionMessage.value = reason;
   withdrawalConfirmation.error = reason;

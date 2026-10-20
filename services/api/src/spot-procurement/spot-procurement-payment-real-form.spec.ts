@@ -899,7 +899,7 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
     await expect(
       service.review("payment-1", "comprehensive-1", { decision: "approve" })
-    ).rejects.toThrow("综合部主管审批通过前必须确定付款主体和至少一种拟付款方式");
+    ).rejects.toThrow("首个审批节点通过前必须确定付款主体和至少一种拟付款方式");
   });
 
   it("blocks comprehensive approval when a legacy payer still has no planned method", async () => {
@@ -936,6 +936,6 @@ describe("SpotProcurementPaymentService real-form draft", () => {
 
     await expect(
       service.review("payment-1", "comprehensive-1", { decision: "approve" })
-    ).rejects.toThrow("综合部主管审批通过前必须确定付款主体和至少一种拟付款方式");
+    ).rejects.toThrow("首个审批节点通过前必须确定付款主体和至少一种拟付款方式");
   });
 });

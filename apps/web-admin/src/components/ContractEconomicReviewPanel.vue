@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import { computed,onBeforeUnmount,ref,watch } from "vue";
 import { fetchEconomicReviews,prepareEconomicSettlement,prepareEconomicReview,decideEconomicReview,type EconomicReviewData } from "../api/contract-economic-review.api";
 import { formatUnknownApiError } from "../api/error-message";
@@ -128,6 +129,7 @@ async function prepareEconomicSettlementWithCapability(arg0: Parameters<typeof p
           退回补充
         </t-button>
       </template>
+      <ApprovalDocumentDownload business-type="contract_economic_review" :business-id="r.id" :refresh-key="r.status" />
     </article>
     <article
       v-for="pending in data?.pendingSettlements ?? []"

@@ -1,3 +1,4 @@
+import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 // 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
 jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), lockEconomicProject: jest.fn().mockResolvedValue(undefined), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import * as ExcelJS from "exceljs";
@@ -45,6 +46,7 @@ describe("SettlementService", () => {
       settlement: { create: jest.fn() },
       approvalInstance: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const service = new SettlementService({
       $transaction: jest.fn(async (callback) => callback(tx))
     } as never, audit as never);
@@ -91,7 +93,7 @@ describe("SettlementService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce(projectMembers)
         .mockResolvedValueOnce(globalRows)
-        .mockResolvedValueOnce([{ id: "owner-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "owner-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "signature-version-1", fileId: "signature-1", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "signature-1", storageStatus: "active", contentSha256: "a".repeat(64) }]),
       settlementDraft: { count: jest.fn().mockResolvedValue(0) },
@@ -402,69 +404,6 @@ describe("SettlementService", () => {
     };
   }
 
-  function approvalPdfRenderTx(
-    token: {
-      instanceId: string | null;
-      updatedAt: Date | null;
-      latestActionId: string | null;
-    } = {
-      instanceId: "approval-instance-1",
-      updatedAt: new Date("2026-07-11T08:00:00.000Z"),
-      latestActionId: "approval-action-1"
-    }
-  ) {
-    return {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          contractId: "contract-1",
-          code: "JS-2026-019",
-          periodLabel: "2026-06",
-          status: "approval_pending",
-          amountCents: 1_000_000n,
-          payableAmountCents: 800_000n,
-          paidAmountCents: 0n,
-          isFinal: false,
-          finalCumulativeAmountCents: null
-        }),
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      contract: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "contract-1",
-          code: "HT-2026-009",
-          name: "幕墙分包合同",
-          counterparty: "上海示例劳务有限公司",
-          companyEntityName: "建工智管工程有限公司"
-        })
-      },
-      project: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "project-1",
-          name: "总部综合楼"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(
-          token.instanceId
-            ? {
-                id: token.instanceId,
-                updatedAt: token.updatedAt,
-                frozenNodes: []
-              }
-            : null
-        )
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(
-          token.latestActionId ? { id: token.latestActionId } : null
-        ),
-        findMany: jest.fn().mockResolvedValue([])
-      }
-    };
-  }
-
   function approvalPdfTokenTables() {
     return {
       approvalInstance: {
@@ -634,6 +573,7 @@ describe("SettlementService", () => {
           : [{ id: "locked" }]
       )
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const settlementService = new SettlementService(prisma as never, audit as never);
 
@@ -677,6 +617,7 @@ describe("SettlementService", () => {
       approvalInstance: { create: jest.fn() },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }])
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const settlementService = new SettlementService(prisma as never, audit as never);
 
@@ -1499,6 +1440,7 @@ describe("SettlementService", () => {
       },
       ...settlementQuotaTables()
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -1770,6 +1712,7 @@ describe("SettlementService", () => {
       approvalInstance: { create: jest.fn() },
       ...settlementQuotaTables()
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -1851,6 +1794,7 @@ describe("SettlementService", () => {
       ...settlementQuotaTables(),
       $queryRaw: jest.fn().mockResolvedValue([])
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2241,6 +2185,7 @@ describe("SettlementService", () => {
         createMany: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2314,6 +2259,7 @@ describe("SettlementService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2394,6 +2340,7 @@ describe("SettlementService", () => {
       },
       ...settlementQuotaTables()
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2428,7 +2375,7 @@ describe("SettlementService", () => {
     });
   });
 
-  it("generates the initial formal approval PDF after a settlement is submitted for approval", async () => {
+  it("does not generate a formal PDF when settlement submission is still pending", async () => {
     const createTx = {
       contractVersion: {
         findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
@@ -2553,53 +2500,8 @@ describe("SettlementService", () => {
       "user-contract-staff"
     );
 
-    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        originalName: "JS-2026-019-结算审批最新.pdf",
-        uploadedByUserId: "user-contract-staff",
-        mimeType: "application/pdf"
-      })
-    );
-    expect(pdfTx.pdfDocument.create).toHaveBeenCalledWith({
-      data: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        fileId: "file-latest",
-        templateKey: "settlement_approval_latest"
-      }
-    });
-    expect(pdfTx.$queryRaw).toHaveBeenCalledTimes(1);
-    const lockQuery = pdfTx.$queryRaw.mock.calls[0]?.[0] as {
-      strings: string[];
-      values: unknown[];
-    };
-    expect(lockQuery.strings.join("?")).toContain(
-      'SELECT "id" FROM "Settlement" WHERE "id" = ? FOR UPDATE'
-    );
-    expect(lockQuery.values).toEqual(["settlement-1"]);
-    expect(pdfTx.pdfDocument.findFirst).toHaveBeenCalledWith({
-      where: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        templateKey: "settlement_approval_latest"
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-    });
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
-    expect(audit.record).toHaveBeenCalledWith(
-      pdfTx,
-      expect.objectContaining({
-        action: "settlement.approval_pdf.refresh",
-        metadata: {
-          pdfDocumentId: "pdf-latest",
-          fileId: "file-latest",
-          templateKey: "settlement_approval_latest",
-          newFileId: "file-latest",
-          oldFileId: null,
-          replacementKind: null
-        }
-      })
-    );
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(pdfTx.pdfDocument.create).not.toHaveBeenCalled();
   });
 
   it("freezes labor/professional settlement approval route from contract type", async () => {
@@ -2641,6 +2543,12 @@ describe("SettlementService", () => {
       },
       ...settlementQuotaTables()
     };
+    attachApprovalSignatureFixture(tx);
+    const query = tx.$queryRaw.getMockImplementation()!;
+    tx.$queryRaw.mockImplementation(async (sql: { strings: string[] }) =>
+      sql.strings.join("?").includes("WITH members AS MATERIALIZED")
+        ? [{ userId: "user-contract-staff", projectId: "project-1", roleKey: "engineering_tech", userIsActive: true }]
+        : query(sql));
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2708,6 +2616,12 @@ describe("SettlementService", () => {
       },
       ...settlementQuotaTables()
     };
+    attachApprovalSignatureFixture(tx);
+    const query = tx.$queryRaw.getMockImplementation()!;
+    tx.$queryRaw.mockImplementation(async (sql: { strings: string[] }) =>
+      sql.strings.join("?").includes("WITH members AS MATERIALIZED")
+        ? [{ userId: "user-contract-staff", projectId: "project-1", roleKey: "engineering_tech", userIsActive: true }]
+        : query(sql));
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -2979,7 +2893,7 @@ describe("SettlementService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "budget-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "budget-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-budget", fileId: "sig-budget", contentSha256: "b".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-budget", contentSha256: "b".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("budget_director")
@@ -3042,7 +2956,7 @@ describe("SettlementService", () => {
           nodeName: "预算部主管",
           roleKey: "budget_director",
           roleName: "预算部主管",
-          approverName: "张预算"
+          approverName: "签批人甲"
         }
       }
     });
@@ -3059,6 +2973,7 @@ describe("SettlementService", () => {
       }]
     };
     const tx = {
+user: { findMany: jest.fn(async ({where}: {where: {id: {in: string[]}}}) => where.id.in.map(id => ({id, name: "签批人甲"}))), findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -3077,6 +2992,7 @@ describe("SettlementService", () => {
       },
       approvalActionLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3101,7 +3017,7 @@ describe("SettlementService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("拒绝普通岗位申请人审批自己发起的结算", async () => {
+  it("普通岗位申请人审批本人发起的业务需要二次确认：结算", async () => {
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -3129,6 +3045,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("budget_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3138,7 +3055,7 @@ describe("SettlementService", () => {
       settlementService.reviewApproval("settlement-1", "budget-director-1", {
         decision: "approve"
       })
-    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    ).rejects.toThrow("自审原因");
     expect(tx.settlement.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
@@ -3177,6 +3094,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new SettlementService(prisma as never, audit as never, auth as never);
     return { service, tx };
@@ -3330,7 +3248,7 @@ describe("SettlementService", () => {
       }
     };
     const settlementService = new SettlementService();
-    const rows = await (
+    const result = (
       settlementService as unknown as {
         buildSettlementApprovalRows(
           tx: unknown,
@@ -3360,7 +3278,7 @@ describe("SettlementService", () => {
       ]
     );
 
-    expect(rows[0]).toMatchObject({ approverName: "审批人未读取" });
+    await expect(result).rejects.toThrow("审批记录与冻结节点不一致");
   });
 
   it("结算单不在审批中时不能处理审批", async () => {
@@ -3407,6 +3325,7 @@ describe("SettlementService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3439,6 +3358,7 @@ describe("SettlementService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3461,6 +3381,7 @@ describe("SettlementService", () => {
       }
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -3485,6 +3406,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("contract_director")
     };
+    attachApprovalSignatureFixture(tx);
     const renderTx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -3583,21 +3505,8 @@ describe("SettlementService", () => {
         status: "in_progress"
       }
     });
-    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        originalName: "JS-2026-019-结算审批最新.pdf",
-        uploadedByUserId: "contract-director-1",
-        mimeType: "application/pdf"
-      })
-    );
-    expect(pdfTx.pdfDocument.create).toHaveBeenCalledWith({
-      data: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        fileId: "file-latest",
-        templateKey: "settlement_approval_latest"
-      }
-    });
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(pdfTx.pdfDocument.create).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -3608,6 +3517,7 @@ describe("SettlementService", () => {
     "keeps approval successful when PDF refresh fails at $failurePoint and failure audit rejects=$failureAuditRejects",
     async ({ failurePoint, failureAuditRejects }) => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -3638,6 +3548,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("contract_director")
     };
+    attachApprovalSignatureFixture(tx);
     const renderTx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -3760,35 +3671,9 @@ describe("SettlementService", () => {
       id: "settlement-1",
       status: "approval_pending"
     });
-    expect(audit.record).toHaveBeenCalledWith(
-      failureAuditTx,
-      expect.objectContaining({
-        actorUserId: "contract-director-1",
-        action: "settlement.approval_pdf.refresh_failed",
-        businessType: "settlement",
-        businessId: "settlement-1",
-        metadata: {
-          templateKey: "settlement_approval_latest",
-          errorMessage:
-            failurePoint === "link" ? "replacement link failed" : "success audit failed"
-        }
-      })
-    );
-    if (failurePoint === "link") {
-      expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
-    } else {
-      expect(associationTx.pdfDocument.update).toHaveBeenCalledWith({
-        where: { id: "pdf-latest" },
-        data: { fileId: "file-latest" }
-      });
-    }
-    expect(associationTx.pdfDocument.create).not.toHaveBeenCalled();
-    if (failurePoint === "link") {
-      expect(audit.record).not.toHaveBeenCalledWith(
-        associationTx,
-        expect.objectContaining({ action: "settlement.approval_pdf.refresh" })
-      );
-    }
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalledWith(failureAuditTx, expect.objectContaining({ action: "settlement.approval_pdf.refresh_failed" }));
+    expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
   });
 
   it("completes a countersign settlement node after the remaining role approves", async () => {
@@ -3801,6 +3686,7 @@ describe("SettlementService", () => {
       }
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -3825,6 +3711,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("budget_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3900,6 +3787,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("project_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3961,6 +3849,7 @@ describe("SettlementService", () => {
 
   it("rejects returning to a previous node from the first settlement approval node", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -3982,6 +3871,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("material_staff")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4030,6 +3920,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("material_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4107,6 +3998,7 @@ describe("SettlementService", () => {
       candidateUserIds: ["material-director-1"]
     }];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -4127,6 +4019,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("material_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4215,6 +4108,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4241,6 +4135,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4268,6 +4163,7 @@ describe("SettlementService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4299,6 +4195,7 @@ describe("SettlementService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4332,6 +4229,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("employee")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4364,6 +4262,7 @@ describe("SettlementService", () => {
       }
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -4389,7 +4288,7 @@ describe("SettlementService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "delegate-user-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "delegate-user-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-delegate", fileId: "sig-delegate", contentSha256: "e".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-delegate", contentSha256: "e".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("employee")
@@ -4422,6 +4321,7 @@ describe("SettlementService", () => {
   it("lets a standing delegate approve as the delegator's node role", async () => {
     const frozenNodes = [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -4458,6 +4358,7 @@ describe("SettlementService", () => {
         )
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4501,6 +4402,7 @@ describe("SettlementService", () => {
       candidateUserIds: ["material-director-1"]
     }];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -4522,6 +4424,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("employee")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4543,6 +4446,7 @@ describe("SettlementService", () => {
 
   it("maps a duplicate concurrent approval from the same actor to a conflict", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -4568,6 +4472,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("employee")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4587,6 +4492,7 @@ describe("SettlementService", () => {
   it("delegates the current settlement approval node to a target user", async () => {
     const frozenNodes = [{ name: "项目经理", mode: "any", roleKeys: ["project_manager"] }];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -4610,6 +4516,7 @@ describe("SettlementService", () => {
       },
       ...approvalRoleTables("project_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5070,6 +4977,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5235,6 +5143,7 @@ describe("SettlementService", () => {
         ])
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5261,7 +5170,7 @@ describe("SettlementService", () => {
     expect(rows.flat()).not.toContain("contract-director-1");
   });
 
-  it("generates a settlement PDF file and records its archive", async () => {
+  it("refuses a historical archive without final approval evidence", async () => {
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -5306,6 +5215,7 @@ describe("SettlementService", () => {
         create: jest.fn().mockResolvedValue({ id: "archive-1" })
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5320,984 +5230,9 @@ describe("SettlementService", () => {
       files as never
     );
 
-    const result = await settlementService.generatePdfArchive("settlement-1", "contract-staff-1");
-
-    expect(result.pdfDocument.id).toBe("pdf-1");
-    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
-      originalName: "JS-2026-019-settlement_archive.pdf",
-      mimeType: "application/pdf",
-      sizeBytes: expect.any(Number),
-      uploadedByUserId: "contract-staff-1",
-      buffer: expect.any(Buffer)
-    });
-    const uploadedBuffer = files.uploadPrivateFile.mock.calls[0][0].buffer as Buffer;
-    expect(uploadedBuffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
-    expect(tx.pdfDocument.create).toHaveBeenCalledWith({
-      data: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        fileId: "file-generated",
-        templateKey: "settlement_archive"
-      }
-    });
-  });
-
-  it.each([
-    {
-      name: "no approval instance",
-      instance: null,
-      latestAction: null,
-      expected: {
-        approvalInstanceId: null,
-        approvalInstanceUpdatedAt: null,
-        latestActionLogId: null
-      }
-    },
-    {
-      name: "approval instance without actions",
-      instance: {
-        id: "approval-instance-1",
-        updatedAt: new Date("2026-07-11T08:00:00.000Z")
-      },
-      latestAction: null,
-      expected: {
-        approvalInstanceId: "approval-instance-1",
-        approvalInstanceUpdatedAt: "2026-07-11T08:00:00.000Z",
-        latestActionLogId: null
-      }
-    }
-  ])("builds a deterministic approval PDF snapshot token for $name", async (testCase) => {
-    const tx = {
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(testCase.instance)
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(testCase.latestAction)
-      }
-    };
-    const settlementService = new SettlementService();
-    const tokenReader = settlementService as unknown as {
-      loadSettlementApprovalPdfSnapshotToken(client: unknown, settlementId: string): Promise<{
-        approvalInstanceId: string | null;
-        approvalInstanceUpdatedAt: string | null;
-        latestActionLogId: string | null;
-      }>;
-    };
-
-    await expect(
-      tokenReader.loadSettlementApprovalPdfSnapshotToken(tx, "settlement-1")
-    ).resolves.toEqual(testCase.expected);
-    expect(tx.approvalInstance.findFirst).toHaveBeenCalledWith({
-      where: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        flowType: "settlement.approve"
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      select: { id: true, updatedAt: true }
-    });
-    if (testCase.instance) {
-      expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
-        where: { approvalInstanceId: "approval-instance-1" },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: { id: true }
-      });
-    } else {
-      expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
-    }
-  });
-
-  it.each([
-    {
-      name: "instance updatedAt changes",
-      latestToken: {
-        instanceId: "approval-instance-1",
-        updatedAt: new Date("2026-07-11T08:01:00.000Z"),
-        latestActionId: "approval-action-1"
-      }
-    },
-    {
-      name: "latest action changes",
-      latestToken: {
-        instanceId: "approval-instance-1",
-        updatedAt: new Date("2026-07-11T08:00:00.000Z"),
-        latestActionId: "approval-action-2"
-      }
-    }
-  ])("refuses PDF association when $name", async ({ latestToken }) => {
-    const initialToken = {
-      instanceId: "approval-instance-1",
-      updatedAt: new Date("2026-07-11T08:00:00.000Z"),
-      latestActionId: "approval-action-1"
-    };
-    const renderTx = approvalPdfRenderTx(initialToken);
-    const associationTx = {
-      ...approvalPdfRenderTx(latestToken),
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
-      pdfDocument: {
-        findFirst: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest
-        .fn()
-        .mockImplementationOnce(async (callback) => callback(renderTx))
-        .mockImplementationOnce(async (callback) => callback(associationTx))
-    };
-    const files = {
-      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-stale" }),
-      linkFileReplacement: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      undefined,
-      undefined,
-      files as never
-    );
-    const refresher = settlementService as unknown as {
-      refreshSettlementApprovalPdf(settlementId: string, actorUserId: string): Promise<void>;
-    };
-
-    await expect(
-      refresher.refreshSettlementApprovalPdf("settlement-1", "contract-staff-1")
-    ).rejects.toThrow("结算审批状态已变化，本次 PDF 不再关联，请重新生成");
-    expect(associationTx.pdfDocument.findFirst).not.toHaveBeenCalled();
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
-    expect(associationTx.pdfDocument.create).not.toHaveBeenCalled();
-    expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
-    expect(audit.record).not.toHaveBeenCalledWith(
-      associationTx,
-      expect.objectContaining({ action: "settlement.approval_pdf.refresh" })
-    );
-  });
-
-  it("does not let an older paused render overwrite a newer approval PDF", async () => {
-    let currentToken = {
-      instanceId: "approval-instance-1",
-      updatedAt: new Date("2026-07-11T08:00:00.000Z"),
-      latestActionId: "approval-action-old"
-    };
-    const renderTx = approvalPdfRenderTx();
-    renderTx.approvalInstance.findFirst.mockImplementation(async () => ({
-      id: currentToken.instanceId,
-      updatedAt: currentToken.updatedAt,
-      frozenNodes: []
-    }));
-    renderTx.approvalActionLog.findFirst.mockImplementation(async () => ({
-      id: currentToken.latestActionId
-    }));
-    let currentPdf: { id: string; fileId: string } | null = null;
-    const associationTx = {
-      ...renderTx,
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
-      pdfDocument: {
-        findFirst: jest.fn().mockImplementation(async () => currentPdf),
-        create: jest.fn().mockImplementation(async ({ data }) => {
-          currentPdf = { id: "pdf-latest", fileId: data.fileId };
-          return currentPdf;
-        }),
-        update: jest.fn().mockImplementation(async ({ data }) => {
-          currentPdf = { id: "pdf-latest", fileId: data.fileId };
-          return currentPdf;
-        })
-      }
-    };
-    let transactionIndex = 0;
-    const transactionClients = [renderTx, renderTx, associationTx, associationTx];
-    const prisma = {
-      $transaction: jest.fn(async (callback) =>
-        callback(transactionClients[transactionIndex++])
-      )
-    };
-    let signalOldUploadStarted: (() => void) | undefined;
-    const oldUploadStarted = new Promise<void>((resolve) => {
-      signalOldUploadStarted = resolve;
-    });
-    let resumeOldUpload: (() => void) | undefined;
-    const oldUploadResume = new Promise<void>((resolve) => {
-      resumeOldUpload = resolve;
-    });
-    const files = {
-      uploadPrivateFile: jest.fn().mockImplementation(async (input) => {
-        if (input.uploadedByUserId === "actor-old") {
-          signalOldUploadStarted?.();
-          await oldUploadResume;
-          return { id: "file-old-render" };
-        }
-        return { id: "file-new-render" };
-      }),
-      linkFileReplacement: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      undefined,
-      undefined,
-      files as never
-    );
-    const refresher = settlementService as unknown as {
-      refreshSettlementApprovalPdf(settlementId: string, actorUserId: string): Promise<void>;
-    };
-
-    const oldRefresh = refresher.refreshSettlementApprovalPdf("settlement-1", "actor-old");
-    const oldRefreshRejection = expect(oldRefresh).rejects.toThrow(
-      "结算审批状态已变化，本次 PDF 不再关联，请重新生成"
-    );
-    await oldUploadStarted;
-    currentToken = {
-      ...currentToken,
-      latestActionId: "approval-action-new"
-    };
-
-    await refresher.refreshSettlementApprovalPdf("settlement-1", "actor-new");
-    expect(currentPdf).toEqual({ id: "pdf-latest", fileId: "file-new-render" });
-    resumeOldUpload?.();
-    await oldRefreshRejection;
-
-    expect(currentPdf).toEqual({ id: "pdf-latest", fileId: "file-new-render" });
-    expect(associationTx.pdfDocument.findFirst).toHaveBeenCalledTimes(1);
-    expect(associationTx.pdfDocument.create).toHaveBeenCalledTimes(1);
-    expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
-    expect(audit.record).toHaveBeenCalledTimes(1);
-    expect(audit.record).toHaveBeenCalledWith(
-      associationTx,
-      expect.objectContaining({
-        action: "settlement.approval_pdf.refresh",
-        metadata: expect.objectContaining({ fileId: "file-new-render" })
-      })
-    );
-    expect(renderTx.approvalInstance.findFirst).toHaveBeenCalledWith({
-      where: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        flowType: "settlement.approve"
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
-    });
-    expect(renderTx.approvalActionLog.findMany).toHaveBeenCalledWith({
-      where: { approvalInstanceId: "approval-instance-1" },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
-    });
-  });
-
-  it("serializes first creation and the next refresh under the settlement row lock", async () => {
-    const events: string[] = [];
-    let currentPdf: { id: string; fileId: string } | null = null;
-    const renderTx = approvalPdfRenderTx();
-    const associationTx = {
-      ...renderTx,
-      $queryRaw: jest.fn().mockImplementation(async () => {
-        events.push("lock");
-        return [{ id: "settlement-1" }];
-      }),
-      pdfDocument: {
-        findFirst: jest.fn().mockImplementation(async () => {
-          events.push("find");
-          return currentPdf;
-        }),
-        create: jest.fn().mockImplementation(async ({ data }) => {
-          events.push("create");
-          currentPdf = { id: "pdf-latest", fileId: data.fileId };
-          return currentPdf;
-        }),
-        update: jest.fn().mockImplementation(async ({ data }) => {
-          events.push("update");
-          currentPdf = { id: "pdf-latest", fileId: data.fileId };
-          return currentPdf;
-        })
-      }
-    };
-    let transactionIndex = 0;
-    const prisma = {
-      $transaction: jest.fn(async (callback) =>
-        callback(transactionIndex++ % 2 === 0 ? renderTx : associationTx)
-      )
-    };
-    const files = {
-      uploadPrivateFile: jest
-        .fn()
-        .mockResolvedValueOnce({ id: "file-first" })
-        .mockResolvedValueOnce({ id: "file-second" }),
-      linkFileReplacement: jest.fn().mockImplementation(async () => {
-        events.push("link");
-      })
-    };
-    audit.record.mockImplementation(async (_tx, input: { action: string }) => {
-      if (input.action === "settlement.approval_pdf.refresh") events.push("audit");
-    });
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      undefined,
-      undefined,
-      files as never
-    );
-    const refresher = settlementService as unknown as {
-      refreshSettlementApprovalPdf(settlementId: string, actorUserId: string): Promise<void>;
-    };
-
-    await refresher.refreshSettlementApprovalPdf("settlement-1", "contract-staff-1");
-    await refresher.refreshSettlementApprovalPdf("settlement-1", "contract-staff-1");
-
-    expect(events).toEqual([
-      "lock",
-      "find",
-      "create",
-      "audit",
-      "lock",
-      "find",
-      "link",
-      "update",
-      "audit"
-    ]);
-    expect(associationTx.pdfDocument.create).toHaveBeenCalledTimes(1);
-    expect(associationTx.pdfDocument.update).toHaveBeenCalledWith({
-      where: { id: "pdf-latest" },
-      data: { fileId: "file-second" }
-    });
-    expect(files.linkFileReplacement).toHaveBeenCalledWith(associationTx, {
-      newFileId: "file-second",
-      oldFileId: "file-first",
-      actorUserId: "contract-staff-1"
-    });
-    expect(associationTx.pdfDocument.findFirst).toHaveBeenLastCalledWith({
-      where: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        templateKey: "settlement_approval_latest"
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-    });
-    const lockQuery = associationTx.$queryRaw.mock.calls[0]?.[0] as {
-      strings: string[];
-      values: unknown[];
-    };
-    expect(lockQuery.strings.join("?")).toContain(
-      'SELECT "id" FROM "Settlement" WHERE "id" = ? FOR UPDATE'
-    );
-    expect(lockQuery.values).toEqual(["settlement-1"]);
-    expect(audit.record).toHaveBeenNthCalledWith(
-      1,
-      associationTx,
-      expect.objectContaining({
-        metadata: {
-          pdfDocumentId: "pdf-latest",
-          fileId: "file-first",
-          templateKey: "settlement_approval_latest",
-          newFileId: "file-first",
-          oldFileId: null,
-          replacementKind: null
-        }
-      })
-    );
-    expect(audit.record).toHaveBeenNthCalledWith(
-      2,
-      associationTx,
-      expect.objectContaining({
-        metadata: {
-          pdfDocumentId: "pdf-latest",
-          fileId: "file-second",
-          templateKey: "settlement_approval_latest",
-          newFileId: "file-second",
-          oldFileId: "file-first",
-          replacementKind: "settlement_approval_pdf_refresh"
-        }
-      })
-    );
-  });
-
-  it("fails safely when the settlement row cannot be locked for PDF association", async () => {
-    const renderTx = approvalPdfRenderTx();
-    const associationTx = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
-      pdfDocument: {
-        findFirst: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest
-        .fn()
-        .mockImplementationOnce(async (callback) => callback(renderTx))
-        .mockImplementationOnce(async (callback) => callback(associationTx))
-    };
-    const files = {
-      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" }),
-      linkFileReplacement: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      undefined,
-      undefined,
-      files as never
-    );
-    const refresher = settlementService as unknown as {
-      refreshSettlementApprovalPdf(settlementId: string, actorUserId: string): Promise<void>;
-    };
-
-    await expect(
-      refresher.refreshSettlementApprovalPdf("settlement-1", "contract-staff-1")
-    ).rejects.toThrow("未找到结算单，无法关联结算审批 PDF");
-    expect(associationTx.pdfDocument.findFirst).not.toHaveBeenCalled();
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
-    expect(audit.record).not.toHaveBeenCalledWith(
-      associationTx,
-      expect.objectContaining({ action: "settlement.approval_pdf.refresh" })
-    );
-  });
-
-  it("downloads the latest in-progress settlement approval PDF", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "pdf-latest",
-          fileId: "file-latest"
-        })
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const files = {
-      assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined),
-      getFileBuffer: jest.fn().mockResolvedValue({ buffer: Buffer.from("%PDF-latest") }),
-      uploadPrivateFile: jest.fn(),
-      linkFileReplacement: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      undefined,
-      files as never
-    );
-
-    const result = await settlementService.downloadLatestApprovalPdf(
-      "settlement-1",
-      "approver-1",
-      "current-password",
-      "结算审批复核"
-    );
-
-    expect(auth.confirmPassword).toHaveBeenCalledWith("approver-1", "current-password");
-    expect(tx.pdfDocument.findFirst).toHaveBeenCalledWith({
-      where: {
-        businessType: "settlement",
-        businessId: "settlement-1",
-        templateKey: "settlement_approval_latest"
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-    });
+    await expect(settlementService.generatePdfArchive("settlement-1", "contract-staff-1")).rejects.toThrow("仅最终审批通过");
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
-    expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-latest", "approver-1");
-    expect(audit.record).toHaveBeenCalledWith(
-      prisma,
-      expect.objectContaining({
-        action: "settlement.approval_pdf.download",
-        actorUserId: "approver-1",
-        metadata: expect.objectContaining({ downloadReason: "结算审批复核" })
-      })
-    );
-    expect(result.fileName).toBe("JS-2026-019-结算审批最新.pdf");
-    expect(result.buffer).toEqual(Buffer.from("%PDF-latest"));
-  });
-
-  it("does not audit or return a settlement approval PDF when file integrity validation fails", async () => {
-    const integrityError = new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "pdf-latest",
-          fileId: "file-latest"
-        })
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const files = {
-      assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined),
-      getFileBuffer: jest.fn().mockRejectedValue(integrityError),
-      uploadPrivateFile: jest.fn(),
-      linkFileReplacement: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      undefined,
-      files as never
-    );
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-1",
-        "approver-1",
-        "current-password",
-        "结算审批复核"
-      )
-    ).rejects.toBe(integrityError);
-
-    expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-latest", "approver-1");
-    expect(files.getFileBuffer).toHaveBeenCalledWith("file-latest");
-    expect(audit.record).not.toHaveBeenCalled();
-  });
-
-  it("rejects settlement approval PDF download without a download reason", async () => {
-    const settlementService = new SettlementService(
-      {} as never,
-      audit as never,
-      auth as never,
-      undefined,
-      {} as never
-    );
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-1",
-        "approver-1",
-        "current-password",
-        ""
-      )
-    ).rejects.toThrow("结算审批单下载原因必填");
-    expect(auth.confirmPassword).not.toHaveBeenCalled();
-  });
-
-  it("结算审批单下载找不到结算单时给出中文业务提示", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue(null)
-      },
-      pdfDocument: {
-        findFirst: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const files = {
-      assertCanDownloadFileById: jest.fn(),
-      getFileBuffer: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      undefined,
-      files as never
-    );
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-missing",
-        "approver-1",
-        "current-password",
-        "结算审批复核"
-      )
-    ).rejects.toThrow("未找到该结算单，请刷新结算台账后重试");
-    expect(tx.pdfDocument.findFirst).not.toHaveBeenCalled();
-    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
-  });
-
-  it("结算审批单下载服务不可用时给出中文业务提示", async () => {
-    const settlementService = new SettlementService(undefined as never, audit as never, auth as never);
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-1",
-        "approver-1",
-        "current-password",
-        "结算审批复核"
-      )
-    ).rejects.toThrow("结算审批单下载服务暂不可用，请稍后重试或联系管理员");
-    expect(auth.confirmPassword).not.toHaveBeenCalled();
-  });
-
-  it("结算审批单下载密码服务不可用时给出中文业务提示", async () => {
-    const prisma = {
-      $transaction: jest.fn()
-    };
-    const files = {
-      assertCanDownloadFileById: jest.fn(),
-      getFileBuffer: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      undefined,
-      undefined,
-      files as never
-    );
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-1",
-        "approver-1",
-        "current-password",
-        "结算审批复核"
-      )
-    ).rejects.toThrow("当前密码校验服务暂不可用，请稍后重试或联系管理员");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
-  });
-
-  it("regenerates the latest settlement approval PDF during download when it is missing", async () => {
-    const firstSourceTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
-    };
-    const authTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          applicantUserId: "applicant-1",
-          frozenNodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }]
-        })
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
-      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_director" }]) }
-    };
-    const renderTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          contractId: "contract-1",
-          code: "JS-2026-019",
-          periodLabel: "2026-06",
-          status: "approval_pending",
-          amountCents: 1_000_000n,
-          payableAmountCents: 800_000n,
-          paidAmountCents: 0n,
-          isFinal: false,
-          finalCumulativeAmountCents: null
-        }),
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      contract: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "contract-1",
-          code: "HT-2026-009",
-          name: "幕墙分包合同",
-          counterparty: "上海示例劳务有限公司",
-          companyEntityName: "建工智管工程有限公司"
-        })
-      },
-      project: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "project-1",
-          name: "总部综合楼"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          frozenNodes: []
-        })
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        findMany: jest.fn().mockResolvedValue([])
-      }
-    };
-    const pdfTx = {
-      ...approvalPdfTokenTables(),
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({
-          id: "pdf-latest",
-          fileId: "file-generated"
-        })
-      }
-    };
-    const finalSourceTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "pdf-latest",
-          fileId: "file-generated"
-        })
-      }
-    };
-    const prisma = {
-      $transaction: jest
-        .fn()
-        .mockImplementationOnce(async (callback) => callback(firstSourceTx))
-        .mockImplementationOnce(async (callback) => callback(authTx))
-        .mockImplementationOnce(async (callback) => callback(renderTx))
-        .mockImplementationOnce(async (callback) => callback(pdfTx))
-        .mockImplementationOnce(async (callback) => callback(finalSourceTx))
-    };
-    const files = {
-      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" }),
-      linkFileReplacement: jest.fn(),
-      assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined),
-      getFileBuffer: jest.fn().mockResolvedValue({ buffer: Buffer.from("%PDF-regenerated") })
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      undefined,
-      files as never
-    );
-
-    const result = await settlementService.downloadLatestApprovalPdf(
-      "settlement-1",
-      "approver-1",
-      "current-password",
-      "结算审批复核"
-    );
-
-    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        originalName: "JS-2026-019-结算审批最新.pdf",
-        uploadedByUserId: "approver-1"
-      })
-    );
-    expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-generated", "approver-1");
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
-    expect(result.buffer).toEqual(Buffer.from("%PDF-regenerated"));
-  });
-
-  it("does not regenerate a missing latest settlement approval PDF for an unauthorized actor", async () => {
-    const firstSourceTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
-    };
-    const authTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          applicantUserId: "applicant-1",
-          frozenNodes: [{ name: "物资员", mode: "any", roleKeys: ["material_staff"] }]
-        })
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
-      projectMember: {
-        findMany: jest.fn().mockResolvedValue([{ positionKey: "engineering_tech" }])
-      }
-    };
-    const prisma = {
-      $transaction: jest
-        .fn()
-        .mockImplementationOnce(async (callback) => callback(firstSourceTx))
-        .mockImplementationOnce(async (callback) => callback(authTx))
-    };
-    const files = {
-      uploadPrivateFile: jest.fn(),
-      assertCanDownloadFileById: jest.fn(),
-      getFileBuffer: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      undefined,
-      files as never
-    );
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-1",
-        "engineering-user-1",
-        "current-password",
-        "结算审批复核"
-      )
-    ).rejects.toThrow("当前账号无权下载该结算审批单");
-    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
-    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
-  });
-
-  it("结算审批单刷新后仍缺失时提示稍后重试", async () => {
-    const firstSourceTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
-    };
-    const authTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          applicantUserId: "applicant-1",
-          frozenNodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }]
-        })
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
-      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_director" }]) }
-    };
-    const renderTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          contractId: "contract-1",
-          code: "JS-2026-019",
-          periodLabel: "2026-06",
-          status: "approval_pending",
-          amountCents: 1_000_000n,
-          payableAmountCents: 800_000n,
-          paidAmountCents: 0n,
-          isFinal: false,
-          finalCumulativeAmountCents: null
-        }),
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      contract: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "contract-1",
-          code: "HT-2026-009",
-          name: "幕墙分包合同",
-          counterparty: "上海示例劳务有限公司",
-          companyEntityName: "建工智管工程有限公司"
-        })
-      },
-      project: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "project-1",
-          name: "总部综合楼"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          frozenNodes: []
-        })
-      },
-      approvalActionLog: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        findMany: jest.fn().mockResolvedValue([])
-      }
-    };
-    const pdfTx = {
-      ...approvalPdfTokenTables(),
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({
-          id: "pdf-latest",
-          fileId: "file-generated"
-        })
-      }
-    };
-    const finalSourceTx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          code: "JS-2026-019"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
-    };
-    const prisma = {
-      $transaction: jest
-        .fn()
-        .mockImplementationOnce(async (callback) => callback(firstSourceTx))
-        .mockImplementationOnce(async (callback) => callback(authTx))
-        .mockImplementationOnce(async (callback) => callback(renderTx))
-        .mockImplementationOnce(async (callback) => callback(pdfTx))
-        .mockImplementationOnce(async (callback) => callback(finalSourceTx))
-    };
-    const files = {
-      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" }),
-      assertCanDownloadFileById: jest.fn(),
-      getFileBuffer: jest.fn()
-    };
-    const settlementService = new SettlementService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      undefined,
-      files as never
-    );
-
-    await expect(
-      settlementService.downloadLatestApprovalPdf(
-        "settlement-1",
-        "approver-1",
-        "current-password",
-        "结算审批复核"
-      )
-    ).rejects.toThrow("结算审批单暂不可下载，请稍后刷新后重试");
-    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
-    expect(files.getFileBuffer).not.toHaveBeenCalled();
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
   });
 
   it("rejects settlement PDF generation when the archive already exists", async () => {
@@ -6431,6 +5366,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6504,6 +5440,7 @@ describe("SettlementService", () => {
     const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
     const now = new Date("2026-06-25T00:00:00.000Z"); // +48h, hits the default SLA
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -6529,6 +5466,7 @@ describe("SettlementService", () => {
         create: jest.fn().mockResolvedValue({ id: "action-log-1", action: "remind" })
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6562,6 +5500,7 @@ describe("SettlementService", () => {
     const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
     const now = new Date("2026-06-24T00:00:00.000Z"); // +24h, under the default 48h SLA
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -6584,6 +5523,7 @@ describe("SettlementService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6605,6 +5545,7 @@ describe("SettlementService", () => {
 
   it("结算单不存在时不能发起催办", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue(null)
       },
@@ -6615,6 +5556,7 @@ describe("SettlementService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6633,6 +5575,7 @@ describe("SettlementService", () => {
 
   it("结算单不在审批中时不能发起催办", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -6647,6 +5590,7 @@ describe("SettlementService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6665,6 +5609,7 @@ describe("SettlementService", () => {
 
   it("缺少进行中的结算审批流程时不能发起催办", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -6679,6 +5624,7 @@ describe("SettlementService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6696,6 +5642,7 @@ describe("SettlementService", () => {
 
   it("rejects a settlement approval reminder from a non-applicant", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -6718,6 +5665,7 @@ describe("SettlementService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };

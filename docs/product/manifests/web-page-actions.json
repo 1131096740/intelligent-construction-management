@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 391,
+    "registeredActionCount": 392,
     "pageActionCount": 56,
-    "backgroundActionCount": 335,
-    "reachableVueFileCount": 189,
-    "routeRootCount": 68,
-    "totalVueFileCount": 203,
-    "parsedVueFileCount": 203,
-    "reachableProductionModuleCount": 330,
-    "templateEventDirectiveCount": 1175,
+    "backgroundActionCount": 336,
+    "reachableVueFileCount": 191,
+    "routeRootCount": 69,
+    "totalVueFileCount": 205,
+    "parsedVueFileCount": 205,
+    "reachableProductionModuleCount": 333,
+    "templateEventDirectiveCount": 1182,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 380,
-    "candidateProductionMutationConsumerCount": 380,
-    "acceptedProductionMutationConsumerCount": 380,
-    "productionMutationConsumerPairCount": 380,
+    "coveredProductionMutationConsumerCount": 382,
+    "candidateProductionMutationConsumerCount": 382,
+    "acceptedProductionMutationConsumerCount": 382,
+    "productionMutationConsumerPairCount": 382,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 351,
-    "reachableProductionModuleCount": 330,
-    "totalVueFileCount": 203,
-    "parsedVueFileCount": 203
+    "totalProductionModuleCount": 354,
+    "reachableProductionModuleCount": 333,
+    "totalVueFileCount": 205,
+    "parsedVueFileCount": 205
   },
   "actions": [
     {
@@ -206,6 +206,70 @@
             "localCallChain": [
               "submitRecord",
               "recordProjectAffiliateCompanyContractWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "approval-documents.download-form",
+      "usage": "background",
+      "routePaths": [
+        "/审批单留存"
+      ],
+      "ownerRoutePaths": [
+        "/审批单留存"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadRetainedApprovalFormWithCapability",
+        "kind": "background_call",
+        "sourceLine": 126,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.available",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "method": "POST",
+          "path": "/approval-forms/:param/:param/download",
+          "normalizedKey": "POST /approval-forms/:param/:param/download",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/approval-forms/:businessType/:businessId/download",
+            "normalizedKey": "POST /approval-forms/:param/:param/download",
+            "controller": "ApprovalFormController",
+            "handler": "download",
+            "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadRetainedApprovalFormWithCapability",
+              "downloadApprovalForm"
             ]
           },
           "ticketFollowups": []
@@ -1390,7 +1454,7 @@
         "event": "call",
         "handler": "createCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 27,
+        "sourceLine": 28,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1454,7 +1518,7 @@
         "event": "call",
         "handler": "decideCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 33,
+        "sourceLine": 34,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1518,7 +1582,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 51,
+        "sourceLine": 52,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1568,7 +1632,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1614,7 +1678,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1638,7 +1702,7 @@
         "event": "call",
         "handler": "executeCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 39,
+        "sourceLine": 40,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1702,7 +1766,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 45,
+        "sourceLine": 46,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1773,7 +1837,7 @@
         "event": "call",
         "handler": "delegateContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1384,
+        "sourceLine": 1386,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1838,7 +1902,7 @@
         "event": "call",
         "handler": "downloadContractApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1340,
+        "sourceLine": 1342,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1872,9 +1936,11 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "causalVerified": true,
@@ -1903,7 +1969,7 @@
         "event": "call",
         "handler": "remindContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1355,
+        "sourceLine": 1357,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1968,7 +2034,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewApprove",
         "kind": "event",
-        "sourceLine": 999,
+        "sourceLine": 1000,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2034,7 +2100,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewReject",
         "kind": "event",
-        "sourceLine": 1012,
+        "sourceLine": 1013,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2100,7 +2166,7 @@
         "event": "call",
         "handler": "transferContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1369,
+        "sourceLine": 1371,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2165,7 +2231,7 @@
         "event": "confirm",
         "handler": "confirmContractWithdrawal",
         "kind": "event",
-        "sourceLine": 1024,
+        "sourceLine": 1025,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2230,7 +2296,7 @@
         "event": "call",
         "handler": "associateContractArchiveFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1459,
+        "sourceLine": 1461,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2295,7 +2361,7 @@
         "event": "call",
         "handler": "confirmContractArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1474,
+        "sourceLine": 1476,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2360,7 +2426,7 @@
         "event": "call",
         "handler": "generateContractPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1489,
+        "sourceLine": 1491,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2425,7 +2491,7 @@
         "event": "call",
         "handler": "uploadContractArchivePrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1443,
+        "sourceLine": 1445,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2635,7 +2701,7 @@
         "event": "call",
         "handler": "decideBankVerificationWithCapability",
         "kind": "background_call",
-        "sourceLine": 29,
+        "sourceLine": 30,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2707,7 +2773,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 41,
+        "sourceLine": 42,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2755,7 +2821,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2799,7 +2865,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2831,7 +2897,7 @@
         "event": "call",
         "handler": "prepareBankVerificationWithCapability",
         "kind": "background_call",
-        "sourceLine": 23,
+        "sourceLine": 24,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2903,7 +2969,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 35,
+        "sourceLine": 36,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3405,7 +3471,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1596,
+        "sourceLine": 1598,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4755,7 +4821,7 @@
         "event": "call",
         "handler": "decideEconomicReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 42,
+        "sourceLine": 43,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4826,7 +4892,7 @@
         "event": "call",
         "handler": "prepareEconomicReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 36,
+        "sourceLine": 37,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4897,7 +4963,7 @@
         "event": "call",
         "handler": "prepareEconomicSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 48,
+        "sourceLine": 49,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5093,7 +5159,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1629,
+        "sourceLine": 1631,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5142,7 +5208,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5186,7 +5252,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5210,7 +5276,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1617,
+        "sourceLine": 1619,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5275,7 +5341,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1531,
+        "sourceLine": 1533,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5340,7 +5406,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1580,
+        "sourceLine": 1582,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5405,7 +5471,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1565,
+        "sourceLine": 1567,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5470,7 +5536,7 @@
         "event": "call",
         "handler": "uploadContractFinalPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1503,
+        "sourceLine": 1505,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5613,7 +5679,7 @@
         "event": "call",
         "handler": "decideContractProxyExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 43,
+        "sourceLine": 44,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5684,7 +5750,7 @@
         "event": "call",
         "handler": "prepareContractProxyExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 37,
+        "sourceLine": 38,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5755,7 +5821,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 49,
+        "sourceLine": 50,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5824,7 +5890,7 @@
         "event": "call",
         "handler": "approveGovernedContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1413,
+        "sourceLine": 1415,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5889,7 +5955,7 @@
         "event": "call",
         "handler": "approveLegacyContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1399,
+        "sourceLine": 1401,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5954,7 +6020,7 @@
         "event": "call",
         "handler": "completeContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1428,
+        "sourceLine": 1430,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6019,7 +6085,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2059,
+        "sourceLine": 2062,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6084,7 +6150,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2017,
+        "sourceLine": 2020,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6149,7 +6215,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1978,
+        "sourceLine": 1981,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6214,7 +6280,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2110,
+        "sourceLine": 2113,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6279,7 +6345,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2123,
+        "sourceLine": 2126,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6344,7 +6410,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2097,
+        "sourceLine": 2100,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6409,7 +6475,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2162,
+        "sourceLine": 2165,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6474,7 +6540,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2175,
+        "sourceLine": 2178,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6539,7 +6605,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1930,
+        "sourceLine": 1933,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6604,7 +6670,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1954,
+        "sourceLine": 1957,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6669,7 +6735,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2281,
+        "sourceLine": 2284,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6734,7 +6800,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1942,
+        "sourceLine": 1945,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6799,7 +6865,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2003,
+        "sourceLine": 2006,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6864,7 +6930,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1966,
+        "sourceLine": 1969,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6929,7 +6995,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2084,
+        "sourceLine": 2087,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6994,7 +7060,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2260,
+        "sourceLine": 2263,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7059,7 +7125,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2231,
+        "sourceLine": 2234,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7124,7 +7190,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 1990,
+        "sourceLine": 1993,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7189,7 +7255,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2136,
+        "sourceLine": 2139,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7254,7 +7320,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2149,
+        "sourceLine": 2152,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7319,7 +7385,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2245,
+        "sourceLine": 2248,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7384,7 +7450,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2218,
+        "sourceLine": 2221,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7449,7 +7515,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2072,
+        "sourceLine": 2075,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7514,7 +7580,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2046,
+        "sourceLine": 2049,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7579,7 +7645,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2032,
+        "sourceLine": 2035,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7646,7 +7712,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2188,
+        "sourceLine": 2191,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7711,7 +7777,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2203,
+        "sourceLine": 2206,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7776,7 +7842,7 @@
         "event": "call",
         "handler": "abandonContractTaxFactRevisionWithCapability",
         "kind": "background_call",
-        "sourceLine": 129,
+        "sourceLine": 131,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7841,7 +7907,7 @@
         "event": "call",
         "handler": "confirmContractTaxFactRevisionWithCapability",
         "kind": "background_call",
-        "sourceLine": 115,
+        "sourceLine": 117,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7906,7 +7972,7 @@
         "event": "call",
         "handler": "createContractTaxFactRevisionWithCapability",
         "kind": "background_call",
-        "sourceLine": 59,
+        "sourceLine": 61,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7971,7 +8037,7 @@
         "event": "call",
         "handler": "reviewContractTaxFactRevisionByFinanceWithCapability",
         "kind": "background_call",
-        "sourceLine": 101,
+        "sourceLine": 103,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8036,7 +8102,7 @@
         "event": "call",
         "handler": "submitContractTaxFactRevisionForFinanceReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 86,
+        "sourceLine": 88,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8101,7 +8167,7 @@
         "event": "call",
         "handler": "updateContractTaxFactRevisionWithCapability",
         "kind": "background_call",
-        "sourceLine": 72,
+        "sourceLine": 74,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8166,7 +8232,7 @@
         "event": "call",
         "handler": "uploadContractTaxFactEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 143,
+        "sourceLine": 145,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8562,7 +8628,7 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1168,
+        "sourceLine": 1169,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -9225,7 +9291,7 @@
         "event": "call",
         "handler": "reviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 227,
+        "sourceLine": 229,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9424,7 +9490,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 140,
+        "sourceLine": 141,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9489,7 +9555,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 264,
+        "sourceLine": 265,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9554,7 +9620,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 129,
+        "sourceLine": 130,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9619,7 +9685,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 256,
+        "sourceLine": 257,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9684,7 +9750,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 151,
+        "sourceLine": 152,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9814,7 +9880,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 296,
+        "sourceLine": 297,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9915,7 +9981,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 188,
+        "sourceLine": 189,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9980,7 +10046,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 280,
+        "sourceLine": 281,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10045,7 +10111,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 196,
+        "sourceLine": 197,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10110,7 +10176,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 207,
+        "sourceLine": 208,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10175,7 +10241,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 288,
+        "sourceLine": 289,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10240,7 +10306,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 226,
+        "sourceLine": 227,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10305,7 +10371,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 215,
+        "sourceLine": 216,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10370,7 +10436,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 241,
+        "sourceLine": 242,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10435,7 +10501,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 166,
+        "sourceLine": 167,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10504,7 +10570,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 272,
+        "sourceLine": 273,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10569,7 +10635,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 177,
+        "sourceLine": 178,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10634,7 +10700,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 118,
+        "sourceLine": 119,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10699,7 +10765,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 110,
+        "sourceLine": 111,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10764,7 +10830,7 @@
         "event": "call",
         "handler": "confirmFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 456,
+        "sourceLine": 457,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10831,7 +10897,7 @@
         "event": "call",
         "handler": "createFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 390,
+        "sourceLine": 391,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10898,7 +10964,7 @@
         "event": "call",
         "handler": "returnFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 444,
+        "sourceLine": 445,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10963,7 +11029,7 @@
         "event": "call",
         "handler": "approveFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 468,
+        "sourceLine": 469,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11029,7 +11095,7 @@
         "event": "call",
         "handler": "returnFundExecutionApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 480,
+        "sourceLine": 481,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11095,7 +11161,7 @@
         "event": "call",
         "handler": "submitFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 432,
+        "sourceLine": 433,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11163,7 +11229,7 @@
         "event": "call",
         "handler": "updateFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 408,
+        "sourceLine": 409,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11231,7 +11297,7 @@
         "event": "call",
         "handler": "createFundExecutionReversalWithCapability",
         "kind": "background_call",
-        "sourceLine": 399,
+        "sourceLine": 400,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11298,7 +11364,7 @@
         "event": "call",
         "handler": "updateFundExecutionReversalReasonWithCapability",
         "kind": "background_call",
-        "sourceLine": 420,
+        "sourceLine": 421,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11366,7 +11432,7 @@
         "event": "call",
         "handler": "archiveProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 108,
+        "sourceLine": 109,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11466,7 +11532,7 @@
         "event": "call",
         "handler": "cancelProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 120,
+        "sourceLine": 121,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11566,7 +11632,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 126,
+        "sourceLine": 127,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11732,7 +11798,7 @@
         "event": "call",
         "handler": "deleteProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 38,
+        "sourceLine": 39,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11832,7 +11898,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 132,
+        "sourceLine": 133,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11881,7 +11947,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11925,7 +11991,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11949,7 +12015,7 @@
         "event": "call",
         "handler": "reviewProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 96,
+        "sourceLine": 97,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12049,7 +12115,7 @@
         "event": "call",
         "handler": "submitProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 90,
+        "sourceLine": 91,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12251,7 +12317,7 @@
         "event": "call",
         "handler": "uploadProcurementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 114,
+        "sourceLine": 115,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12351,7 +12417,7 @@
         "event": "call",
         "handler": "withdrawProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 102,
+        "sourceLine": 103,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13032,7 +13098,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -13076,7 +13142,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5455,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16860,7 +16926,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2700,
+        "sourceLine": 2699,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17654,7 +17720,7 @@
         "event": "call",
         "handler": "voidProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2360,
+        "sourceLine": 2349,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17784,7 +17850,7 @@
         "event": "confirm",
         "handler": "submitRequest",
         "kind": "event",
-        "sourceLine": 267,
+        "sourceLine": 268,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -17932,7 +17998,7 @@
         "event": "click",
         "handler": "submitApproveReview",
         "kind": "event",
-        "sourceLine": 386,
+        "sourceLine": 387,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -18083,7 +18149,7 @@
         "event": "click",
         "handler": "submitRejectReview",
         "kind": "event",
-        "sourceLine": 395,
+        "sourceLine": 396,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -18234,7 +18300,7 @@
         "event": "click",
         "handler": "submitTermination",
         "kind": "event",
-        "sourceLine": 466,
+        "sourceLine": 467,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -24226,7 +24292,7 @@
         "event": "call",
         "handler": "createSpotProcurementReceiptDelegationWithCapability",
         "kind": "background_call",
-        "sourceLine": 504,
+        "sourceLine": 505,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24291,7 +24357,7 @@
         "event": "call",
         "handler": "confirmSpotProcurementDiscrepancyWithCapability",
         "kind": "background_call",
-        "sourceLine": 606,
+        "sourceLine": 607,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24356,7 +24422,7 @@
         "event": "call",
         "handler": "initiateSpotProcurementDiscrepancyWithCapability",
         "kind": "background_call",
-        "sourceLine": 588,
+        "sourceLine": 589,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24421,7 +24487,7 @@
         "event": "call",
         "handler": "resetSpotProcurementReceiptDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 521,
+        "sourceLine": 522,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24486,7 +24552,7 @@
         "event": "call",
         "handler": "updateSpotProcurementReceiptDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 460,
+        "sourceLine": 461,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24551,7 +24617,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementInvoiceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 675,
+        "sourceLine": 676,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24616,7 +24682,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementReceiptPhotoWithCapability",
         "kind": "background_call",
-        "sourceLine": 638,
+        "sourceLine": 639,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24681,7 +24747,7 @@
         "event": "call",
         "handler": "attachSpotProcurementReceiptPhotoWithCapability",
         "kind": "background_call",
-        "sourceLine": 474,
+        "sourceLine": 475,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24746,7 +24812,7 @@
         "event": "call",
         "handler": "deleteSpotProcurementReceiptPhotoWithCapability",
         "kind": "background_call",
-        "sourceLine": 488,
+        "sourceLine": 489,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24811,7 +24877,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementRefundVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 656,
+        "sourceLine": 657,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24876,7 +24942,7 @@
         "event": "call",
         "handler": "recordSpotProcurementRefundWithCapability",
         "kind": "background_call",
-        "sourceLine": 624,
+        "sourceLine": 625,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24941,7 +25007,7 @@
         "event": "call",
         "handler": "reviewSpotProcurementReceiptWithCapability",
         "kind": "background_call",
-        "sourceLine": 538,
+        "sourceLine": 539,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25006,7 +25072,7 @@
         "event": "call",
         "handler": "revokeSpotProcurementReceiptReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 552,
+        "sourceLine": 553,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25071,7 +25137,7 @@
         "event": "call",
         "handler": "submitSpotProcurementReceiptWithCapability",
         "kind": "background_call",
-        "sourceLine": 566,
+        "sourceLine": 567,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25723,7 +25789,7 @@
         "event": "click",
         "handler": "appendInvoice",
         "kind": "event",
-        "sourceLine": 1457,
+        "sourceLine": 1459,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -25860,7 +25926,7 @@
         "event": "confirm",
         "handler": "invalidateInvoice",
         "kind": "event",
-        "sourceLine": 1491,
+        "sourceLine": 1493,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -25990,7 +26056,7 @@
         "event": "confirm",
         "handler": "refreshReceiptPdf",
         "kind": "event",
-        "sourceLine": 1399,
+        "sourceLine": 1401,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -27496,7 +27562,7 @@
         "event": "call",
         "handler": "decideUpwardAmountWithCapability",
         "kind": "background_call",
-        "sourceLine": 36,
+        "sourceLine": 37,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27567,7 +27633,7 @@
         "event": "call",
         "handler": "prepareUpwardAmountWithCapability",
         "kind": "background_call",
-        "sourceLine": 30,
+        "sourceLine": 31,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27638,7 +27704,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 42,
+        "sourceLine": 43,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27714,7 +27780,7 @@
         "event": "call",
         "handler": "decideReceiptMatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 24,
+        "sourceLine": 25,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27785,7 +27851,7 @@
         "event": "call",
         "handler": "prepareReceiptMatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 18,
+        "sourceLine": 19,
         "sourceColumn": 0
       },
       "semantic": "business_write",

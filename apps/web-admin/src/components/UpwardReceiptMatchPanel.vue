@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import {computed,onBeforeUnmount,reactive,ref,watch} from "vue";
 import {useRouter} from "vue-router";
 import {fetchReceiptMatches,prepareReceiptMatch,decideReceiptMatch,type ReceiptMatchData} from "../api/upward-receipt-match.api";
@@ -133,6 +134,7 @@ async function decideReceiptMatchWithCapability(arg0: Parameters<typeof decideRe
       >
         追加解除匹配
       </t-button>
+      <ApprovalDocumentDownload business-type="upward_receipt_match" :business-id="row.id" :refresh-key="row.status" />
     </article>
   </section>
 </template>

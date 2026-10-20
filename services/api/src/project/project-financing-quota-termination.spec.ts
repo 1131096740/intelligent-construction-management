@@ -160,7 +160,7 @@ function makeHarness(input: HarnessInput = {}) {
         return input.approvals ?? [approval];
       }
       if (text.includes('FROM "User"')) {
-        return [{ id: "finance-director-1", isActive: true }];
+        return [{ id: "finance-director-1", isActive: true, name: "签批人甲" }];
       }
       if (text.includes('FROM "HandwrittenSignatureVersion"')) {
         if (input.signatureVersion === null) return [];

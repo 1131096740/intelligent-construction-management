@@ -25,7 +25,7 @@ onMounted(() => load());
 <template>
   <JgWorkbenchShell
     title="综合采购申请"
-    description="办公用品、施工工具、后勤及服务费用；综合部 → 项目经理 → 董事长 → 综合部归档后请款。"
+    description="任何启用角色均可为本人申请办公用品、施工工具、后勤及服务费用；综合部主管 → 项目经理 → 董事长/总经理或签 → 综合部归档后请款。"
   >
     <template #actions>
       <t-button

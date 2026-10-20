@@ -1,3 +1,5 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
+import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {businessDay} from "./contract-proxy-bank";
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from "@nestjs/common";
 import {Prisma} from "@prisma/client";
@@ -78,10 +80,13 @@ export class UpwardReceiptMatchService {
    if(row.status==="confirmed"&&row.confirmedByUserId===actor&&input.decision==="confirm")return {id,status:row.status};
    if(row.status!=="pending_confirm"||row.recordedByUserId===actor)throw new ConflictException("核销已处理或经办人与确认人未分离");
    if(input.decision==="confirm")await this.context(tx,{...row,originalId:row.originalId??undefined,amountCents:row.amountCents.toString(),occurredAt:row.occurredAt.toISOString(),confirmationPassword:""},row.amountCents,row.id);
+   const confirmedAt = new Date();
    const signature=input.decision==="confirm"?await snapshotApprovalSignature(tx,actor,{required:true}):null;
    const status=input.decision==="confirm"?"confirmed":"returned";
-   await tx.upwardReceiptMatch.update({where:{id},data:{status,...(signature?{confirmedByUserId:actor,confirmedAt:new Date(),confirmationSignatureVersionId:signature.versionId}:{})}});
+   await tx.upwardReceiptMatch.update({where:{id},data:{status,...(signature?{confirmedByUserId:actor,confirmedAt,confirmationSignatureVersionId:signature.versionId}:{})}});
    if(signature)await this.sources.appendConfirmedSourceIfEnabledInTransaction(tx,{projectId:row.projectId,sourceType:"upward_receipt_match",sourceBusinessId:id},actor);
+   if (signature) await recordIndependentApproval(tx, { businessType: "upward_receipt_match", businessId: id, applicantUserId: row.recordedByUserId, actorUserId: actor,
+     roleKey: "finance_director", nodeName: "财务主管", signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "upward_receipt_match", id) });
    await this.audit.record(tx,{actorUserId:actor,action:`contract.receipt_match.${input.decision}`,businessType:"upward_receipt_match",businessId:id,metadata:{projectId:row.projectId}});return {id,status};
   },{timeout:30000});
  }

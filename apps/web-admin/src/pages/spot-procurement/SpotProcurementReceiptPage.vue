@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
@@ -1133,6 +1134,7 @@ onBeforeUnmount(() => {
       @action="load"
     />
     <template v-else-if="receipt && detail">
+<ApprovalDocumentDownload v-if="latestApprovedReview" business-type="spot_procurement_receipt" :business-id="latestApprovedReview.id" :refresh-key="receipt" />
       <BusinessDetailHeader
         :business-code="receipt.receipt.procurementCode"
         :title="`${detail.procurement.project.name} · 最终收货`"

@@ -12,6 +12,11 @@ import { ROLE_KEYS, type RoleKey } from "./roles";
 import type { BusinessAction } from "./permissions";
 
 describe("permission policy table", () => {
+  it("keeps self-service expense creation and submission available to every role", () => {
+    expect(ACTION_REQUIRED_ROLES["expense_claim.create"]).toEqual(ROLE_KEYS);
+    expect(ACTION_REQUIRED_ROLES["expense_claim.submit"]).toEqual(ROLE_KEYS);
+  });
+
   it("limits business-party creation to the approved company roles", () => {
     const action = "business_party.create" as BusinessAction;
     const expectedRoles = [
@@ -137,8 +142,12 @@ describe("permission policy table", () => {
     }
   });
 
-  it("never grants any business action to super_admin", () => {
+  it("only allows super_admin to initiate their own expense claim, never approve business", () => {
     for (const action of BUSINESS_ACTIONS) {
+      if (action === "expense_claim.create" || action === "expense_claim.submit") {
+        expect(canPerform(action, ["super_admin"])).toBe(true);
+        continue;
+      }
       expect(ACTION_REQUIRED_ROLES[action]).not.toContain("super_admin");
       expect(canPerform(action, ["super_admin"])).toBe(false);
     }
@@ -148,7 +157,7 @@ describe("permission policy table", () => {
     const expectedRoles = [
       [
         "spot_procurement.create",
-        ["material_staff", "material_director"]
+        ["material_staff"]
       ],
       [
         "spot_procurement.approve",
@@ -161,6 +170,7 @@ describe("permission policy table", () => {
       [
         "spot_procurement.payment.approve",
         [
+          "material_director",
           "comprehensive_director",
           "project_manager",
           "finance_director",
@@ -609,7 +619,7 @@ describe("role-specific gates", () => {
   it("routes new expense claims through the real applicant, comprehensive office and frozen approval roles", () => {
     expect(canPerform("expense_claim.create", ["employee"])).toBe(true);
     expect(canPerform("expense_claim.create", ["comprehensive_director"])).toBe(true);
-    expect(canPerform("expense_claim.create", ["finance_staff"])).toBe(false);
+    expect(canPerform("expense_claim.create", ["finance_staff"])).toBe(true);
     expect(canPerform("expense_claim.submit", ["employee"])).toBe(true);
     expect(canPerform("expense_claim.approve", ["comprehensive_director"])).toBe(true);
     expect(canPerform("expense_claim.approve", ["project_manager"])).toBe(true);

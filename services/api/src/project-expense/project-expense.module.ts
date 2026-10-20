@@ -1,3 +1,4 @@
+import { ApprovalModule } from "../approval/approval.module";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
@@ -7,7 +8,7 @@ import { ProjectExpenseController } from "./project-expense.controller";
 import { ProjectExpenseService } from "./project-expense.service";
 
 @Module({
-  imports: [AuditModule, AuthModule, FileModule, ProjectFundingModule],
+  imports: [ApprovalModule, AuditModule, AuthModule, FileModule, ProjectFundingModule],
   controllers: [ProjectExpenseController],
   providers: [ProjectExpenseService],
   exports: [ProjectExpenseService]

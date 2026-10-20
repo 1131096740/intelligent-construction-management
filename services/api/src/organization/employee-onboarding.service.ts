@@ -1,3 +1,4 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { Prisma, type EmployeeRegistration } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
@@ -172,6 +173,16 @@ export class EmployeeOnboardingService {
           ...(input.decision !== "return" ? { departmentId: input.departmentId, proposedRoles: roles.map((role) => ({ ...role })) } : {}),
           ...(userId ? { userId } : {})
         } });
+        if (status === "approved" && userId) {
+          const chairmanRequired = row.status === "chairman_review" || roles.some(role => IMPORTANT_EMPLOYEE_ROLES.includes(role.roleKey));
+          const roleKey = chairmanRequired || !actorRoles.includes("comprehensive_director") ? "chairman" : "comprehensive_director";
+          await recordIndependentApproval(tx, {
+            businessType: "employee_registration", businessId: id, applicantUserId: userId, actorUserId: actorId,
+            roleKey, nodeName: roleKey === "chairman" ? "董事长" : "综合部主管", comment: reason, signedAt: updated.reviewedAt,
+            form: { title: "员工入职审批单", code: row.name, projectId: null, companyName: "",
+              summary: [{ label: "入职员工", value: row.name }, { label: "联系电话", value: row.phone }] }
+          });
+        }
         await this.audit.record(tx, { actorUserId: actorId, action: `employee.registration.${input.decision}`,
           businessType: "employee_registration", businessId: id,
           metadata: { revision: updated.revision, reason, status, ...(userId ? { userId } : {}) } });

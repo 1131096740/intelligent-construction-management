@@ -1,3 +1,4 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import {
   BadRequestException,
   ConflictException,
@@ -281,11 +282,6 @@ export class ContractTakeoverCorrectionService {
               "历史更正已被其他复核动作处理"
             );
           }
-          if (correction.createdByUserId === actorUserId) {
-            throw new ForbiddenException(
-              "历史更正提交人不能复核本人提交的记录"
-            );
-          }
           const scope = this.parseScope(correction.correctionScope);
           await this.assertSideRole(
             tx,
@@ -365,6 +361,16 @@ export class ContractTakeoverCorrectionService {
               "历史更正已被其他复核动作处理"
             );
           }
+          const finance = this.sideForScope(scope) === "finance";
+          const contract = await tx.contract.findUniqueOrThrow({ where: { id: takeover.contractId } });
+          await recordIndependentApproval(tx, {
+            businessType: "contract_takeover_correction", businessId: correction.id,
+            applicantUserId: correction.createdByUserId, actorUserId,
+            roleKey: finance ? "finance_director" : "contract_director",
+            nodeName: finance ? "财务主管" : "合同部主管", comment: reviewComment, signedAt: now,
+            form: { title: "历史承接更正审批单", code: `${contract.code ?? contract.name}更正-${correction.targetRevision ?? 1}`, projectId, companyName: contract.companyEntityName ?? "",
+              summary: [{ label: "更正原因", value: correction.reason }, { label: "更正范围", value: finance ? "财务侧" : "合同侧" }] }
+          });
           await this.audit.record(tx, {
             actorUserId,
             action: "contract_takeover.correction.apply",

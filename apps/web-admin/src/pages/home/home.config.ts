@@ -262,8 +262,12 @@ function workItemBusinessTypeLabel(item: WorkItemReadModel) {
   const labels: Record<string, string> = {
     contract_takeover: "历史接管",
     archive: "归档确认",
-    approval: "付款审批",
+    approval: "审批待办",
     payment: "付款审批",
+    payment_request: "付款审批",
+    contract_version: "合同审批",
+    general_procurement: "综合采购审批",
+    expense_claim: "费用申请审批",
     payment_execution: "付款实付",
     blocker: "阻塞事项",
     contract: "合同",

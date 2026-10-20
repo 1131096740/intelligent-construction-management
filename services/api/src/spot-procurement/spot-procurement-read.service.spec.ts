@@ -509,7 +509,7 @@ describe("SpotProcurementReadService", () => {
     expect(JSON.stringify(detail.entrySnapshots)).not.toContain("snapshot-1");
   });
 
-  it("exposes frozen review coordinates only to the legal non-applicant reviewer", async () => {
+  it("exposes frozen review coordinates to the actual reviewer including direct applicant self-review", async () => {
     const fixture = buildFixture();
     fixture.prisma.spotProcurement.findUnique.mockResolvedValue(
       procurementRow({
@@ -600,7 +600,7 @@ describe("SpotProcurementReadService", () => {
       "procurement-1",
       "applicant-1"
     );
-    expect(applicant.reviewApprovalContext).toBeNull();
+    expect(applicant.reviewApprovalContext).toEqual({ expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0 });
     expect(applicant.withdrawApprovalContext).toEqual({
       expectedVersionId: "version-1",
       expectedApprovalInstanceId: "approval-1",
@@ -2297,7 +2297,7 @@ describe("SpotProcurementReadService", () => {
       canCreate: false,
       canExecutePayment: false,
       availableActions: [],
-      unavailableReason: "当前账号不是本项目物资员或物资主管",
+      unavailableReason: "当前账号不是本项目物资员",
       handlerOptions: []
     });
   });
@@ -2320,65 +2320,11 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
-  it("filters handler options to active material staff and directors on the project", async () => {
+  it("does not give a director-only account procurement initiation or handler options", async () => {
     const fixture = buildFixture();
-    fixture.visibility.effectiveRoleKeys.mockResolvedValue([
-      "material_director"
-    ]);
-    fixture.prisma.position.findMany = jest.fn().mockResolvedValue([
-      { id: "position-material-staff", key: "material_staff" },
-      { id: "position-material-director", key: "material_director" }
-    ]);
-    fixture.prisma.userPosition.findMany.mockResolvedValue([
-      {
-        userId: "handler-1",
-        positionId: "position-material-staff",
-        projectId: "project-1"
-      },
-      {
-        userId: "global-staff-1",
-        positionId: "position-material-staff",
-        projectId: null
-      }
-    ]);
-    fixture.prisma.projectMember.findMany.mockResolvedValue([
-      {
-        userId: "director-1",
-        positionKey: "material_director"
-      }
-    ]);
-    fixture.prisma.user.findMany.mockResolvedValue([
-      { id: "handler-1", name: "物资员甲" },
-      { id: "director-1", name: "物资主管乙" }
-    ]);
-    const service = new SpotProcurementReadService(
-      fixture.prisma as never,
-      fixture.visibility as never,
-      fixture.access as never,
-      fixture.pilot as never
-    );
-
-    const result = await service.capabilities("director-1", "project-1");
-
-    expect(result.handlerOptions).toEqual([
-      {
-        id: "handler-1",
-        name: "物资员甲",
-        roleKeys: ["material_staff"]
-      },
-      {
-        id: "director-1",
-        name: "物资主管乙",
-        roleKeys: ["material_director"]
-      }
-    ]);
-    expect(fixture.prisma.user.findMany).toHaveBeenCalledWith({
-      where: {
-        id: { in: ["handler-1", "director-1"] },
-        isActive: true
-      },
-      select: { id: true, name: true }
-    });
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_director"]);
+    const service = new SpotProcurementReadService(fixture.prisma as never, fixture.visibility as never, fixture.access as never, fixture.pilot as never);
+    await expect(service.capabilities("director-1", "project-1")).resolves.toMatchObject({ canCreate: false, handlerOptions: [] });
   });
 
   it("continues scanning after a full unauthorized batch before deciding the visible list", async () => {

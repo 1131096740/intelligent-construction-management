@@ -139,7 +139,7 @@
       class="settings-card approval-settings-card"
     >
       <p class="hint">
-        当前生产审批路线由后端冻结到审批实例。此处展示核心流程，不开放在线编辑。
+        此处展示新提交单据的核心审批规则；已有单据以提交时冻结的实际流程和审批人为准，不开放在线编辑。发起人兼任审批岗位或一人兼任多岗时，均须本人逐节点审批并签名，不跳过节点。正式审批单仅在最终通过后生成，签名取自对应实际审批记录。
       </p>
       <div class="approval-flow-grid">
         <article
@@ -162,7 +162,7 @@
               <span class="node-index">{{ rule.nodes.indexOf(node) + 1 }}</span>
               <div>
                 <strong>{{ node.name }}</strong>
-                <p>{{ modeLabel(node.mode) }} · {{ roleNames(node.roleKeys) }}</p>
+                <p>{{ modeLabel(node.mode) }} · {{ node.participantLabel || roleNames(node.roleKeys) }}</p>
               </div>
             </li>
           </ol>

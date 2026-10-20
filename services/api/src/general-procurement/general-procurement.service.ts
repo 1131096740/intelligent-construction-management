@@ -4,7 +4,7 @@ import { Prisma, type GeneralProcurement } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { AuthService } from "../auth/auth.service";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { FileService } from "../file/file.service";
 import { createHash } from "node:crypto";
 import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_STATUS_LABELS } from "@jiangkong/shared-domain";
@@ -23,14 +23,14 @@ export class GeneralProcurementService {
     private readonly numbering: BusinessNumberingService, private readonly audit: AuditService, private readonly auth: AuthService, private readonly files: FileService) {}
 
   async options(actorUserId: string) {
-    const roles = await this.listRoles(actorUserId);
+    await this.listRoles(actorUserId);
     const visible = await this.visibility.visibleProjectIds(actorUserId);
     const [projects, companies] = await Promise.all([
       this.prisma.project.findMany({ where: { id: { in: visible }, isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
       this.prisma.companyEntity.findMany({ where: { isActive: true, dataStatus: "complete" }, select: { id: true, name: true }, orderBy: { name: "asc" } })
     ]);
     return { entryDefinition: GENERAL_PROCUREMENT_ENTRY_DEFINITION, projects, companies, categories: GENERAL_PROCUREMENT_CATEGORIES,
-      canCreate: roles.some((role) => role.key !== "super_admin") && projects.length > 0 && companies.length > 0 };
+      canCreate: projects.length > 0 && companies.length > 0 };
   }
 
   private async listRoles(actorUserId: string) {
@@ -47,7 +47,7 @@ export class GeneralProcurementService {
 
   async list(actorUserId: string, query: ListGeneralProcurementDto) {
     const roles = await this.listRoles(actorUserId);
-    const all = roles.some((role) => !role.projectId && ["chairman", "comprehensive_director"].includes(role.key));
+    const all = roles.some((role) => !role.projectId && ["chairman", "general_manager", "comprehensive_director"].includes(role.key));
     const financeGlobal = roles.some((role) => !role.projectId && ["general_manager", "finance_director", "finance_staff"].includes(role.key));
     const managedProjects = roles.filter((role) => role.key === "project_manager" && role.projectId).map((role) => role.projectId!);
     const financeProjects = roles.filter((role) => ["finance_director", "finance_staff"].includes(role.key) && role.projectId).map((role) => role.projectId!);
@@ -171,10 +171,10 @@ export class GeneralProcurementService {
       const completed = index === nodes.length;
       nodes[instance.currentNodeIndex] = { ...node, approvedRoleKeys: [identity.approvedRoleKey] };
       await tx.approvalInstance.update({ where: { id: instance.id }, data: { currentNodeIndex: index, status: completed ? "approved" : "in_progress", frozenNodes: nodes as unknown as Prisma.InputJsonValue } });
-      await tx.approvalActionLog.create({ data: { approvalInstanceId: instance.id, action: "approve", actorUserId, approvedRoleKey: identity.approvedRoleKey,
+      await tx.approvalActionLog.create({ data: await withApprovalIdentity(tx, { approvalInstanceId: instance.id, action: "approve", actorUserId, approvedRoleKey: identity.approvedRoleKey,
         representedUserId: actorUserId, comment: input.comment?.trim() || null,
         signatureFileIdSnapshot: signature.fileId, signatureSha256Snapshot: signature.sha256, signatureVersionIdSnapshot: signature.versionId,
-        metadata: { nodeName: node.name, selfReview, ...(selfReview ? { selfReviewReason: input.selfReviewReason!.trim() } : {}) } } });
+        metadata: { nodeName: node.name, selfReview, ...(selfReview ? { selfReviewReason: input.selfReviewReason!.trim() } : {}) } }, signature) });
       const updated = await tx.generalProcurement.update({ where: { id }, data: { status: completed ? "approved_pending_archive" : "approval_pending", revision: { increment: 1 } } });
       await this.audit.record(tx, { actorUserId, action: "general_procurement.approve", businessType: "general_procurement", businessId: id, metadata: { nodeName: node.name, completed, revision: updated.revision } });
       return { id, status: updated.status, revision: updated.revision };
@@ -221,7 +221,7 @@ export class GeneralProcurementService {
       const row = await this.lock(tx, id, input.revision);
       const actor = await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
       if (!actor.globalRoleKeys.includes("comprehensive_director")) throw new ForbiddenException("只有综合部主管可以归档采购申请");
-      if (row.status !== "approved_pending_archive") throw new ConflictException("请先完成综合部、项目经理和董事长审批");
+      if (row.status !== "approved_pending_archive") throw new ConflictException("请先完成综合部主管、项目经理、董事长/总经理或签审批");
       const file = await this.files.assertFileHasNoBusinessBinding(tx, input.fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("请使用本人上传的归档依据");
       const updated = await tx.generalProcurement.update({ where: { id }, data: { status: "archived", archiveFileId: file.id, archivedAt: new Date(),
@@ -256,21 +256,25 @@ export class GeneralProcurementService {
   }
 
   private async freezeNodes(tx: Prisma.TransactionClient, projectId: string): Promise<ProcurementNode[]> {
-    const definitions: Array<{ name: string; role: RoleKey; scope: "global" | "project" }> = [
-      { name: "综合部主管", role: "comprehensive_director", scope: "global" },
-      { name: "项目经理", role: "project_manager", scope: "project" },
-      { name: "董事长", role: "chairman", scope: "global" }
+    const definitions: Array<{ name: string; roles: RoleKey[]; scope: "global" | "project" }> = [
+      { name: "综合部主管", roles: ["comprehensive_director"], scope: "global" },
+      { name: "项目经理", roles: ["project_manager"], scope: "project" },
+      { name: "董事长/总经理", roles: ["chairman", "general_manager"], scope: "global" }
     ];
     const nodes: ProcurementNode[] = [];
     for (const definition of definitions) {
-      const position = await tx.position.findUnique({ where: { key: definition.role }, select: { id: true } });
-      const assignments = position ? await tx.userPosition.findMany({ where: { positionId: position.id, projectId: definition.scope === "global" ? null : projectId }, select: { userId: true } }) : [];
-      const members = definition.scope === "project" ? await tx.projectMember.findMany({ where: { projectId, positionKey: definition.role }, select: { userId: true } }) : [];
-      const users = await tx.user.findMany({ where: { id: { in: [...assignments, ...members].map((item) => item.userId) }, isActive: true }, select: { id: true } });
-      const ids = users.map((user) => user.id).sort();
+      const candidateUserIdsByRole: Partial<Record<RoleKey, string[]>> = {};
+      for (const role of definition.roles) {
+        const position = await tx.position.findUnique({ where: { key: role }, select: { id: true } });
+        const assignments = position ? await tx.userPosition.findMany({ where: { positionId: position.id, projectId: definition.scope === "global" ? null : projectId }, select: { userId: true } }) : [];
+        const members = definition.scope === "project" ? await tx.projectMember.findMany({ where: { projectId, positionKey: role }, select: { userId: true } }) : [];
+        const users = await tx.user.findMany({ where: { id: { in: [...assignments, ...members].map(item => item.userId) }, isActive: true }, select: { id: true } });
+        candidateUserIdsByRole[role] = users.map(user => user.id).sort();
+      }
+      const ids = [...new Set(Object.values(candidateUserIdsByRole).flat())].sort();
       if (!ids.length) throw new BadRequestException(`尚未配置有效${definition.name}，请先在组织管理中设置岗位`);
-      nodes.push({ name: definition.name, mode: "any", roleKeys: [definition.role], candidateUserIds: ids,
-        candidateUserIdsByRole: { [definition.role]: ids }, roleScopesByRole: { [definition.role]: definition.scope } });
+      nodes.push({ name: definition.name, mode: "any", roleKeys: definition.roles, candidateUserIds: ids,
+        candidateUserIdsByRole, roleScopesByRole: Object.fromEntries(definition.roles.map(role => [role, definition.scope])) });
     }
     return nodes;
   }

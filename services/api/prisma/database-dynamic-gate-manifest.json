@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 192,
-    "terminalMigration": "20261020150000_contract_finance_runtime_boundary",
-    "terminalMigrationChecksum": "f165b9785ee308562cfeb3027c5cb80a5133d4481a863d71ec9a5490cdc14289",
+    "expectedDirectoryCount": 195,
+    "terminalMigration": "20261020160000_approval_fund_identity_metadata",
+    "terminalMigrationChecksum": "462ec8eb021f7287043742e97a437b6d9b88cbed8373307ff1176a0708d740c6",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 70,
-    "fullyPendingSuites": 59,
+    "pendingFiles": 72,
+    "fullyPendingSuites": 61,
     "partiallyPendingSuites": 11,
-    "pendingTests": 452,
-    "coveredFiles": 70,
-    "coveredTests": 452,
+    "pendingTests": 470,
+    "coveredFiles": 72,
+    "coveredTests": 470,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 154,
+      "pendingTests": 169,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -346,17 +346,17 @@
         },
         {
           "path": "services/api/src/database/contract-business-entry-http.spec.ts",
-          "pendingTests": 4,
+          "pendingTests": 8,
           "suiteStatus": "fully_pending"
         },
         {
           "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-          "pendingTests": 53,
+          "pendingTests": 56,
           "suiteStatus": "fully_pending"
         },
         {
           "path": "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
-          "pendingTests": 3,
+          "pendingTests": 2,
           "suiteStatus": "fully_pending"
         },
         {
@@ -377,6 +377,11 @@
         {
           "path": "services/api/src/database/draft-deletion-numbering.pg.spec.ts",
           "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/approval-v6-independent-http-postgres.spec.ts",
+          "pendingTests": 9,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -585,7 +590,7 @@
     },
     {
       "id": "employee_onboarding",
-      "pendingTests": 21,
+      "pendingTests": 22,
       "testFiles": [
         {
           "path": "services/api/src/database/employee-onboarding-http-postgres.spec.ts",
@@ -594,7 +599,7 @@
         },
         {
           "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
-          "pendingTests": 9,
+          "pendingTests": 10,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -606,16 +611,21 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 22,
+      "pendingTests": 24,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
-          "pendingTests": 11,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         },
         {
           "path": "services/api/src/database/project-business-scope-http-postgres.spec.ts",
           "pendingTests": 11,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/approval-v6-migration-postgres.spec.ts",
+          "pendingTests": 1,
           "suiteStatus": "fully_pending"
         }
       ],

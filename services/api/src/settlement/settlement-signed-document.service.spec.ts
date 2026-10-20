@@ -14,6 +14,16 @@ async function landscapePdf(pageCount: number) {
 }
 
 describe("SettlementSignedDocumentService", () => {
+  it("keeps long approver names in the final signature board and refuses unreadable overflow", async () => {
+    const original = await landscapePdf(3);
+    const signature = { roleKey: "engineering_director", name: "合成审批岗位 engineering_director", fileId: "signature-file", sha256: createHash("sha256").update(PNG).digest("hex"), signedAt: new Date(), image: PNG };
+    const signatures = ["preparer", "engineering_foreman", "engineering_director", "contract_director", "project_manager", "finance_director"].map(roleKey => ({ ...signature, roleKey }));
+    const result = await overlayFrozenSettlementSignatures(original, signatures);
+    expect((await PDFDocument.load(result)).getPageCount()).toBe(3);
+    await expect(overlayFrozenSettlementSignatures(original, [{ ...signature, name: "长姓名".repeat(100) }]))
+      .rejects.toThrow("无法完整显示");
+  });
+
   const facts = {
     settlementId: "settlement-1", sourceRevision: 3, originalDocumentId: "original-1",
     originalFileId: "original-file-1", originalPageCount: 1, originalContentSha256: "a".repeat(64),
@@ -242,20 +252,26 @@ describe("SettlementSignedDocumentService", () => {
     );
   });
 
-  it("overlays frozen signature images on every page without rewriting the original bytes", async () => {
+  const materialSignatures = () => ["preparer", "material_staff", "material_director", "contract_director", "project_manager", "finance_director"].map((roleKey, index) => ({
+    roleKey, name: `签批人${index + 1}`, fileId: `signature-${index}`, sha256: createHash("sha256").update(PNG).digest("hex"),
+    signedAt: new Date("2026-07-18T02:03:04.000Z"), image: PNG
+  }));
+
+  it("overlays all six actual signatures only on the last page and preserves original bytes", async () => {
     const original = await landscapePdf(3);
     const originalHash = createHash("sha256").update(original).digest("hex");
-    const result = await overlayFrozenSettlementSignatures(original, [{
-      roleKey: "preparer",
-      fileId: "signature-at-submission",
-      sha256: createHash("sha256").update(PNG).digest("hex"),
-      signedAt: new Date("2026-07-18T02:03:04.000Z"),
-      image: PNG
-    }]);
-
+    const result = await overlayFrozenSettlementSignatures(original, materialSignatures());
     expect(createHash("sha256").update(original).digest("hex")).toBe(originalHash);
-    expect(result.equals(original)).toBe(false);
-    expect((await PDFDocument.load(result)).getPageCount()).toBe(3);
+    const output = await PDFDocument.load(result);
+    expect(output.getPageCount()).toBe(3);
+    expect(output.getPage(0).node.Contents()).toBeUndefined();
+    expect(output.getPage(1).node.Contents()).toBeUndefined();
+    expect(output.getPage(2).node.Contents()).toBeDefined();
+  });
+
+  it("refuses a missing final signature instead of emitting a partially signed document", async () => {
+    await expect(overlayFrozenSettlementSignatures(await landscapePdf(1), materialSignatures().slice(0, 5)))
+      .rejects.toThrow("签名不完整");
   });
 
   it("refuses a portrait original instead of guessing unsafe signature coordinates", async () => {
@@ -274,17 +290,14 @@ describe("SettlementSignedDocumentService", () => {
     page.setRotation(degrees(90));
     const original = Buffer.from(await pdf.save({ useObjectStreams: false }));
 
-    await expect(overlayFrozenSettlementSignatures(original, [{
-      roleKey: "finance_director", fileId: "frozen-signature", sha256: "a".repeat(64),
-      signedAt: new Date("2026-07-18T00:00:00Z"), image: PNG
-    }])).resolves.toEqual(expect.any(Buffer));
+    await expect(overlayFrozenSettlementSignatures(original, materialSignatures())).resolves.toEqual(expect.any(Buffer));
   });
 
   it("fails closed when two frozen approvals target the same seven-cell role slot", async () => {
     const original = await landscapePdf(1);
     await expect(overlayFrozenSettlementSignatures(original, [
-      { roleKey: "engineering_foreman", fileId: "sig-1", sha256: "a".repeat(64), signedAt: new Date(), image: PNG },
-      { roleKey: "engineering_tech", fileId: "sig-2", sha256: "b".repeat(64), signedAt: new Date(), image: PNG }
+      { roleKey: "engineering_foreman", name: "工长甲", fileId: "sig-1", sha256: "a".repeat(64), signedAt: new Date(), image: PNG },
+      { roleKey: "engineering_tech", name: "施工员乙", fileId: "sig-2", sha256: "b".repeat(64), signedAt: new Date(), image: PNG }
     ])).rejects.toThrow("同一结算签名岗位存在多个有效签名快照");
   });
 });

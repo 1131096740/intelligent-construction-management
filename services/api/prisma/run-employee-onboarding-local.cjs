@@ -3,6 +3,9 @@
 const { randomUUID } = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
+const { mkdtempSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const storageRoot = mkdtempSync(path.join(tmpdir(), "approval-v6-onboarding-files-"));
 
 const root = path.resolve(__dirname, "../../..");
 const password = randomUUID();
@@ -32,7 +35,7 @@ try {
   const port = /^127\.0\.0\.1:(\d+)$/.exec(binding)?.[1];
   if (!port) throw new Error("数据库必须仅监听本机回环地址");
   docker(["exec", containerId, "sh", "-c", "for attempt in $(seq 1 150); do pg_isready -h 127.0.0.1 -U jiangkong -d onboarding && exit 0; sleep 0.2; done; exit 1"], process.env, true);
-  const env = { ...process.env, NODE_ENV: "test", RUN_EMPLOYEE_ONBOARDING_PG16: "1",
+  const env = { ...process.env, NODE_ENV: "test", RUN_EMPLOYEE_ONBOARDING_PG16: "1", FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: storageRoot,
     INITIAL_USER_TEMPORARY_PASSWORD: "Local-Initial-Only-01", SMS_ENABLED: "false",
     DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/onboarding` };
   console.log(`EMPLOYEE_ONBOARDING 一次性容器：${name}`);
@@ -48,6 +51,7 @@ try {
       public."Project", public."ProjectMember", public."ProjectRosterMember", public."RefreshToken", public."AuditLog",
       public."ApprovalInstance", public."ProjectExpenseRequest", public."Contract", public."ContractVersion", public."ApprovalDelegation" TO ${runtime};
     GRANT INSERT ON TABLE public."ApprovalActionLog" TO ${runtime};
+    GRANT INSERT, UPDATE ON TABLE public."FileObject", public."HandwrittenSignatureVersion", public."PdfDocument", public."ApprovalFormGenerationClaim" TO ${runtime};
     GRANT INSERT ON TABLE public."ExpenseClaimEntrySnapshot" TO ${runtime};
     GRANT INSERT, UPDATE ON TABLE public."CompanyEntity", public."ExpenseClaim", public."BusinessDailySequence" TO ${runtime};
     GRANT UPDATE ON TABLE public."ExpenseClaimAttachment" TO ${runtime};
@@ -64,6 +68,7 @@ try {
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/onboarding`;
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts"], env);
 } finally {
+  rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
     docker(["rm", "--force", containerId], process.env, true);
     console.log(`EMPLOYEE_ONBOARDING 已清理自身容器：${name}`);

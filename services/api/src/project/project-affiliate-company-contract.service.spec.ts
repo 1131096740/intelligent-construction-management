@@ -267,7 +267,7 @@ function confirmHarness(
     $queryRaw: jest
       .fn()
       .mockResolvedValueOnce([{ id: contract.id }])
-      .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce(signatureRows)
       .mockResolvedValueOnce([
         {
@@ -604,7 +604,7 @@ describe("ProjectAffiliateCompanyContractService", () => {
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([{ id: fact.id }])
-        .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([
           {
             id: "signature-version-1",

@@ -13,18 +13,18 @@ describe("snapshotApprovalSignature", () => {
   it("locks the user, active canvas version, then file and freezes the active signature fact", async () => {
     const queryRaw = jest
       .fn()
-      .mockResolvedValueOnce([{ id: "user-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "user-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([{ id: "version-1", fileId: "sig-1", contentSha256: "a".repeat(64) }])
       .mockResolvedValueOnce([{ id: "sig-1", contentSha256: "a".repeat(64), storageStatus: "active" }]);
     await expect(snapshotApprovalSignature({ $queryRaw: queryRaw } as never, "user-1", {
       required: true
-    })).resolves.toEqual({ fileId: "sig-1", sha256: "a".repeat(64), versionId: "version-1" });
+    })).resolves.toEqual({ fileId: "sig-1", sha256: "a".repeat(64), versionId: "version-1", actorName: "签批人甲" });
     expect(queryRaw).toHaveBeenCalledTimes(3);
   });
 
   it.each([
     [[], "当前审批账号已停用"],
-    [[{ id: "user-1", isActive: true }], "审批手写签名未配置"]
+    [[{ id: "user-1", isActive: true, name: "签批人甲" }], "审批手写签名未配置"]
   ])("rejects a governed approval without an active account and canvas signature", async (userRows, message) => {
     const queryRaw = jest.fn().mockResolvedValueOnce(userRows).mockResolvedValueOnce([]);
     const tx = { $queryRaw: queryRaw };
@@ -35,7 +35,7 @@ describe("snapshotApprovalSignature", () => {
   it("rejects a malformed sha256 snapshot", async () => {
     const tx = {
       $queryRaw: jest.fn()
-        .mockResolvedValueOnce([{ id: "user-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "user-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "version-1", fileId: "sig-1", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-1", contentSha256: "bad", storageStatus: "active" }])
     };
@@ -46,7 +46,7 @@ describe("snapshotApprovalSignature", () => {
   it("allows a legacy non-required action without a signature", async () => {
     const tx = { $queryRaw: jest.fn().mockResolvedValue([]) };
     await expect(snapshotApprovalSignature(tx as never, "user-1", { required: false }))
-      .resolves.toEqual({ fileId: null, sha256: null, versionId: null });
+      .resolves.toEqual({ fileId: null, sha256: null, versionId: null, actorName: null });
     expect(tx.$queryRaw).not.toHaveBeenCalled();
   });
 

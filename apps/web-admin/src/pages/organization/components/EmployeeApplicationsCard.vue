@@ -33,6 +33,7 @@
             {{ row.phoneVerified ? '已通过短信验证' : '请核对本人手机号' }}
           </template>
           <template #operation="{ row }">
+<ApprovalDocumentDownload  business-type="employee_registration" :business-id="row.id" :refresh-key="row.status" />
             <div class="application-actions">
               <t-button
                 v-if="canProcess(row) && ['pending', 'chairman_review'].includes(row.status)"
@@ -174,6 +175,7 @@
   </t-card>
 </template>
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocumentDownload.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { ORGANIZATION_USER_ENTRY_DEFINITION, type BusinessEntryDraftPayload, type RoleKey } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";

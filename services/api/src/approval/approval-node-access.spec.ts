@@ -62,7 +62,7 @@ describe("approvalReviewAccessOnFrozenNode", () => {
     });
   });
 
-  it("keeps transfer/delegation access but blocks ordinary applicant review", () => {
+  it("requires confirmation for a direct ordinary applicant review", () => {
     expect(
       approvalReviewAccessOnFrozenNode(
         [{ roleKeys: ["budget_director"] }],
@@ -74,12 +74,12 @@ describe("approvalReviewAccessOnFrozenNode", () => {
       )
     ).toEqual({
       canAct: true,
-      canReview: false,
-      requiresSelfReviewConfirmation: false
+      canReview: true,
+      requiresSelfReviewConfirmation: true
     });
   });
 
-  it("按节点顺序解析实际直接岗位，不得因后续领导岗位误放行", () => {
+  it("按节点顺序解析兼岗审批人并要求本人确认", () => {
     expect(
       approvalReviewAccessOnFrozenNode(
         [{ roleKeys: ["budget_director", "chairman"] }],
@@ -91,8 +91,8 @@ describe("approvalReviewAccessOnFrozenNode", () => {
       )
     ).toEqual({
       canAct: true,
-      canReview: false,
-      requiresSelfReviewConfirmation: false
+      canReview: true,
+      requiresSelfReviewConfirmation: true
     });
   });
 
