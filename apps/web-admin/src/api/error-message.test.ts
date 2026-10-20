@@ -44,3 +44,10 @@ describe("upload validation messages", () => {
     expect(formatApiErrorMessage(`${message} internalObjectId=123`, 400, "上传失败")).toBe("上传失败：400");
   });
 });
+
+
+describe("multipart upload limits", () => {
+  it("explains the actual multipart 413 response without raw framework English", () => {
+    expect(formatApiErrorMessage("File too large", 413, "上传失败")).toBe("文件超过上传大小限制，请压缩或分拆后重新选择文件。");
+  });
+});

@@ -91,6 +91,9 @@ function statusText(status: number, fallback: string): string {
   if (status === 0) {
     return fallback;
   }
+  if (status === 413) {
+    return "文件超过上传大小限制，请压缩或分拆后重新选择文件。";
+  }
   if (status === 401) {
     return "登录已失效，请重新登录。";
   }

@@ -2,7 +2,6 @@ import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PDFDocument } from "pdf-lib";
-import { ContractTakeoverController } from "../contract-takeover/contract-takeover.controller";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -19,6 +18,8 @@ describe("private upload validation through historical takeover HTTP", () => {
   const priorLimit = process.env.FILE_UPLOAD_MAX_BYTES;
 
   beforeAll(async () => {
+    process.env.FILE_UPLOAD_MAX_BYTES = "1024";
+    const { ContractTakeoverController } = await import("../contract-takeover/contract-takeover.controller");
     const document = await PDFDocument.create();
     document.addPage();
     pdf = new Uint8Array(await document.save());
@@ -68,6 +69,13 @@ describe("private upload validation through historical takeover HTTP", () => {
     expect(await upload(bytes, filename)).toMatchObject({ status: 400, body: { message } });
     expect(storage.write).not.toHaveBeenCalled();
     expect(storage.delete).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it("preserves the actual multipart size limit before the file service runs", async () => {
+    expect(await upload(new Uint8Array(1025))).toMatchObject({ status: 413 });
+    expect(storage.write).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
   });
