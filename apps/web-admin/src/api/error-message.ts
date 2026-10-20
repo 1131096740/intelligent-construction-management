@@ -68,6 +68,11 @@ export function formatApiErrorMessage(message: string, status: number, fallback:
     return statusText(status, fallback);
   }
 
+  // This fixed business message contains familiar file format names, not server details.
+  if (text === "文件格式不支持，请上传 PDF、Word、Excel 或图片资料") {
+    return text;
+  }
+
   if (/[A-Za-z_][A-Za-z0-9_]*/.test(text)) {
     return statusText(status, fallback);
   }
@@ -85,6 +90,9 @@ export function formatUnknownApiError(error: unknown, fallback: string): string 
 function statusText(status: number, fallback: string): string {
   if (status === 0) {
     return fallback;
+  }
+  if (status === 413) {
+    return "文件超过上传大小限制，请压缩或分拆后重新选择文件。";
   }
   if (status === 401) {
     return "登录已失效，请重新登录。";
