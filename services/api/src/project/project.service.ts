@@ -598,18 +598,15 @@ export class ProjectService {
             "项目已有正式经营事实，施工企业已经锁定，不能普通设置或更换"
           );
         }
+        if (currentAssignment) {
+          throw new BadRequestException("项目已绑定唯一施工企业，不能更换或重新绑定");
+        }
         if (
           project.operatingLedgerEffectiveDate &&
           effectiveFrom.toISOString().slice(0, 10) >
             project.operatingLedgerEffectiveDate.toISOString().slice(0, 10)
         ) {
           throw new BadRequestException("施工企业生效日不得晚于经营账生效日");
-        }
-        if (
-          currentAssignment?.effectiveFrom &&
-          effectiveFrom.getTime() < currentAssignment.effectiveFrom.getTime()
-        ) {
-          throw new BadRequestException("新施工企业生效时间不能早于当前施工企业生效时间");
         }
 
         const version = await tx.businessPartyVersion.findUnique({
@@ -640,12 +637,6 @@ export class ProjectService {
             ? snapshot.unifiedSocialCreditCode.trim() || null
             : null;
 
-        if (currentAssignment) {
-          await tx.projectAffiliateAssignment.updateMany({
-            where: { projectId, endedAt: null },
-            data: { endedAt: effectiveFrom, endedByUserId: actorUserId }
-          });
-        }
         const assignment = await tx.projectAffiliateAssignment.create({
           data: {
             projectId,
@@ -660,16 +651,13 @@ export class ProjectService {
         });
         await this.audit.record(tx, {
           actorUserId,
-          action: currentAssignment
-            ? "project.affiliate_assignment.change"
-            : "project.affiliate_assignment.create",
+          action: "project.affiliate_assignment.create",
           businessType: "project_affiliate_assignment",
           businessId: assignment.id,
           metadata: {
             projectId,
-            previousAssignmentId: currentAssignment?.id ?? null,
-            previousBusinessPartyVersionId:
-              currentAssignment?.businessPartyVersionId ?? null,
+            previousAssignmentId: null,
+            previousBusinessPartyVersionId: null,
             businessPartyId: version.businessPartyId,
             businessPartyVersionId: version.id,
             affiliateNameSnapshot,

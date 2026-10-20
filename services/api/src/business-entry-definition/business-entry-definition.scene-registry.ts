@@ -305,7 +305,7 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
   globalDefinition("project_construction_enterprise", "project", "项目施工企业", [
     textField("businessPartyVersionId", "施工企业", projectMaintenanceRoles, { type: "counterparty", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
     textField("effectiveFrom", "生效日", projectMaintenanceRoles, { type: "date", example: "2026-01-01", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),
-    textField("changeReason", "设置/变更原因", projectMaintenanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
+    textField("changeReason", "绑定依据及原因", projectMaintenanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
   ]),
   globalDefinition("project_participating_company_add", "project", "新增参与公司", [
     textField("companyEntityId", "参与公司", projectMaintenanceRoles, { type: "company", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } }),

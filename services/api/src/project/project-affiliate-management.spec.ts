@@ -89,18 +89,29 @@ describe("ProjectService affiliate mapping", () => {
     });
   });
 
-  it("ends the old mapping and appends a new frozen business-party version snapshot", async () => {
+  it.each(["party-version-new", "party-version-current"])("rejects replacing an initial binding before any formal fact (%s)", async (versionId) => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true, constructionEnterpriseLockedAt: null }])
+        .mockResolvedValueOnce([{ id: "assignment-current", businessPartyId: "party-current", businessPartyVersionId: "party-version-current" }]),
+      projectAffiliateAssignment: { create: jest.fn(), updateMany: jest.fn() }
+    };
+    const service = new ProjectService(transactionPrisma(tx) as never);
+    await expect(service.assignAffiliate("project-1", "chairman-1", {
+      businessPartyVersionId: versionId,
+      effectiveFrom: "2026-07-28T00:00:00.000Z",
+      changeReason: "重复绑定"
+    })).rejects.toThrow("项目已绑定唯一施工企业，不能更换或重新绑定");
+    expect(tx.projectAffiliateAssignment.create).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateAssignment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("creates the first binding with a frozen business-party version snapshot", async () => {
     const effectiveFrom = new Date("2026-07-28T00:00:00.000Z");
     const tx = {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
-        .mockResolvedValueOnce([
-          {
-            id: "assignment-old",
-            businessPartyId: "party-old",
-            businessPartyVersionId: "party-version-old"
-          }
-        ]),
+.mockResolvedValueOnce([]),
       businessPartyVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "party-version-new",
@@ -156,10 +167,7 @@ describe("ProjectService affiliate mapping", () => {
     const partyLockIndex = tx.$queryRaw.mock.calls.findIndex(([sql]) => sql.strings.join("").includes('FROM "BusinessParty"'));
     expect(partyLockIndex).toBeGreaterThanOrEqual(0);
     expect(tx.$queryRaw.mock.invocationCallOrder[partyLockIndex]).toBeLessThan(tx.businessParty.findUnique.mock.invocationCallOrder[0]);
-    expect(tx.projectAffiliateAssignment.updateMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", endedAt: null },
-      data: { endedAt: effectiveFrom, endedByUserId: "chairman-1" }
-    });
+    expect(tx.projectAffiliateAssignment.updateMany).not.toHaveBeenCalled();
     expect(tx.projectAffiliateAssignment.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",

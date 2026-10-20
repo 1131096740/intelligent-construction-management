@@ -231,10 +231,9 @@ test("综合部主管统一填写施工企业版本日期原因，预检失败�
   await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
-  await page.goto("/项目经营");
-  await page.locator(".project-picker input").click();
-  await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
-  await openProjectSettings(page);
+  await page.goto(`/项目经营?projectId=${encodeURIComponent(projectId)}&tab=settings`);
+  await expect(page.locator(".project-picker input")).toHaveValue(`${isolated.code} · ${isolated.name}`);
+  await expect(page.getByRole("button", { name: "施工企业与参与公司", exact: true })).toBeVisible();
   const form = page.getByRole("region", { name: "项目施工企业单条业务表单" });
   await expect(form).toBeVisible();
   await form.locator('[data-field="businessPartyVersionId"]').click();
@@ -265,11 +264,11 @@ test("综合部主管统一填写施工企业版本日期原因，预检失败�
   await reason.fill(" ");
   let writes = 0;
   page.on("request", (req) => { if (req.url().endsWith(path) && req.method() === "POST") writes += 1; });
-  const save = page.getByRole("button", { name: /^(设置|变更)施工企业$/ });
+  const save = page.getByRole("button", { name: "绑定唯一施工企业", exact: true });
   const invalid = page.waitForResponse((response) => response.url().includes("/project_construction_enterprise/validate"));
   await save.click();
   expect((await invalid).ok()).toBe(true);
-  await expect(form).toContainText("请填写设置/变更原因");
+  await expect(form).toContainText("请填写绑定依据及原因");
   await expect(reason).toHaveValue(" ");
   expect(writes).toBe(0);
   await reason.fill("浏览器首次配置验收");
@@ -279,8 +278,14 @@ test("综合部主管统一填写施工企业版本日期原因，预检失败�
   await expect(page.getByText("施工企业已保存", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
   const profile = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
-  expect((await profile.json()).constructionEnterprise).toMatchObject({ businessPartyVersionId: enterprise.id, effectiveFrom, isLocked: false });
-  expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect((await profile.json()).constructionEnterprise).toMatchObject({ businessPartyVersionId: enterprise.id, effectiveFrom, isLocked: true });
+  await expect(form).toHaveCount(0);
+  await expect(page.getByText("绑定后固定，不提供更换", { exact: true })).toBeVisible();
+  await expect(save).toHaveCount(0);
+  await page.goto("/项目经营?projectId=unavailable-project&tab=settings");
+  await expect(page.getByText("指定项目已停用或无权查看，请重新选择项目", { exact: true })).toBeVisible();
+  await expect(page.locator(".project-picker input")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "绑定唯一施工企业", exact: true })).toHaveCount(0);
 });
 
 test("项目创建使用服务端定义预检，原创建响应冻结真实项目且手机无溢出", async ({ page }) => {
@@ -474,4 +479,43 @@ test("综合部可从项目维护停用并恢复空项目，手机也能办理",
     await expect(row).toContainText(action === "停用空项目" ? "已停用" : "启用中");
   }
   expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+
+test("合同岗位新办与历史接管选择三类关系并进入同一项目专属办理", async ({ page }) => {
+  const session = JSON.parse(process.env.POL113_CONTRACT_SESSION!);
+  const projectId = process.env.POL113_PROJECT_ID!;
+  await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+    user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
+  });
+  for (const mode of ["new", "takeover"]) {
+    for (const [relationship, label, heading] of [
+      ["outside", "表外（施工企业签约）", "表外"],
+      ["upward", "对上（施工企业—我方）", "对上"]
+    ]) {
+      await page.goto(mode === "new" ? `/合同工作台/新建?projectId=${projectId}` : "/历史合同接管");
+      if (mode === "takeover") await page.locator(".project-picker select").selectOption(projectId);
+      const choice = page.locator(".contract-entry-choice");
+      await expect(choice).toBeVisible();
+      await expect(choice.getByText("表内（我方签约）", { exact: true })).toBeVisible();
+      await choice.getByText(label, { exact: true }).click();
+      if (mode === "takeover") {
+        await expect(page.getByRole("button", { name: "导入预检", exact: true })).toHaveCount(0);
+        await expect(page.locator(".operation-section-nav")).toHaveCount(0);
+      }
+      await expect(page.getByRole("button", { name: "创建草稿", exact: true })).toHaveCount(0);
+      await choice.getByRole("button", { name: mode === "new" ? "登记所选类别合同" : "办理所选类别历史接管", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`contractHandling=${relationship}`));
+      await expect(page).toHaveURL(new RegExp(`projectId=${projectId}`));
+      await expect(page.locator(".t-drawer:visible").getByText(`${heading}${mode === "takeover" ? "合同历史接管" : "业务办理"}`, { exact: true })).toBeVisible();
+    }
+  }
+  await page.goto(`/合同工作台/新建?projectId=${projectId}`);
+  await expect(page.locator(".contract-entry-choice")).toBeVisible();
+  await expect(page.getByRole("button", { name: "查看项目施工企业与参与公司", exact: true })).toHaveCount(0);
+  await expect(page.locator(".contract-entry-choice")).toContainText("董事长或公司级综合部主管办理");
+  await page.goto("/合同工作台/新建?projectId=unavailable-project");
+  await expect(page.getByText("指定项目已停用或无权办理，请重新选择项目", { exact: true })).toBeVisible();
+  await page.locator(".contract-entry-choice").getByText("表外（施工企业签约）", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "登记所选类别合同", exact: true })).toBeDisabled();
 });

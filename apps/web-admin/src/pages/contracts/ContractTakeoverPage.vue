@@ -22,7 +22,7 @@
           导出接管台账
         </t-button>
         <t-button
-          v-if="canManageTakeovers"
+          v-if="canManageTakeovers && entryRelationship === 'inside'"
           @click="showPrecheckPanel = !showPrecheckPanel"
         >
           导入预检
@@ -64,6 +64,12 @@
       </div>
     </div>
 
+    <ContractEntryChoice
+      v-if="canManageTakeovers && !editingTakeoverId"
+      v-model="entryRelationship"
+      :project-id="selectedProjectId"
+      mode="takeover"
+    />
     <div
       v-if="message"
       :class="['list-message', messageTone]"
@@ -97,7 +103,7 @@
         </div>
       </div>
       <div
-        v-if="canManageTakeovers"
+        v-if="canManageTakeovers && entryRelationship === 'inside'"
         class="operation-section-nav"
       >
         <a
@@ -114,7 +120,7 @@
     </div>
 
     <t-card
-      v-if="canManageTakeovers && showPrecheckPanel"
+      v-if="canManageTakeovers && showPrecheckPanel && entryRelationship === 'inside'"
       id="takeover-step-precheck"
       class="panel import-panel jg-table-region jg-table-region--wide"
       :bordered="true"
@@ -380,7 +386,7 @@
     </t-card>
 
     <t-card
-      v-if="canManageTakeovers && showCreateForm"
+      v-if="canManageTakeovers && showCreateForm && entryRelationship === 'inside'"
       id="takeover-step-evidence-draft"
       class="panel"
       :bordered="true"
@@ -1776,6 +1782,8 @@
 </template>
 
 <script setup lang="ts">
+import ContractEntryChoice from "../../components/ContractEntryChoice.vue";
+
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import { useTakeoverEvidenceUpload } from "./use-takeover-evidence-upload";
 import type { UploadFile } from "tdesign-vue-next";
@@ -2449,6 +2457,7 @@ const companyEntityCorrectionReviewVisible = ref(false);
 const companyEntityCorrectionReviewDecision = ref<"approve" | "reject">("approve");
 const companyEntityCorrectionReviewTargetId = ref("");
 const companyEntityCorrectionReviewError = ref("");
+const entryRelationship = ref<"inside" | "outside" | "upward">("inside");
 const showCreateForm = ref(false);
 const createFormBaseline = ref("");
 const taxFactDirty = ref(false);
@@ -3173,6 +3182,7 @@ const takeoverEmptyText = computed(() =>
 );
 
 async function focusTakeoverSection(sectionId: string) {
+  if (entryRelationship.value !== "inside") return;
   if (sectionId === "takeover-step-precheck") {
     showPrecheckPanel.value = true;
   }
@@ -4223,6 +4233,10 @@ async function submitCreate() {
 
 function startCreate() {
   if (!canManageTakeovers.value) return;
+  if (entryRelationship.value !== "inside") {
+    if (selectedProjectId.value) void router.push({ path: "/合同工作台", query: { projectId: selectedProjectId.value, ledgerSection: "contracts", contractHandling: entryRelationship.value, entryMode: "takeover" } });
+    return;
+  }
   editingTakeoverId.value = "";
   resetCreateForm();
   syncCreateFormBaseline();
@@ -4247,6 +4261,7 @@ function startEdit(takeover: ContractTakeoverReadModel) {
     return;
   }
 
+  entryRelationship.value = "inside";
   editingTakeoverId.value = takeover.id;
   Object.assign(createForm, formFromTakeover(takeover));
   syncCreateFormBaseline();

@@ -29,52 +29,185 @@
             @change="onProjectChange"
           />
         </label>
-        <label
-          v-if="!directTemplateFallback"
-          class="field"
-        >
-          <span class="field-label">业务场景</span>
-          <t-select
-            :value="initializeDraft.businessScenarioId.value"
-            :options="scenarioOptions"
-            :loading="scenarioLoading"
-            :disabled="!initializeDraft.projectId.value || scenarioLoading"
-            placeholder="选择本次签约场景"
-            @change="onScenarioChange"
-          />
-        </label>
-        <label class="field">
-          <span class="field-label">合同类型</span>
-          <t-select
-            :value="initializeDraft.contractTypeKey.value"
-            :options="contractTypeOptions"
-            placeholder="选择合同类型"
-            @change="onContractTypeChange"
-          />
-        </label>
-        <label class="field">
-          <span class="field-label">合同金额上限</span>
-          <t-select
-            :value="initializeDraft.amountLimitType.value"
-            :options="amountLimitTypeOptions"
-            @change="onAmountLimitTypeChange"
-          />
-          <small class="field-hint">无限额框架合同不以预计金额作为硬上限；后续变更仍需按合同变更流程审批。</small>
-        </label>
-        <label
-          v-if="directTemplateFallback"
-          class="field"
-        >
-          <span class="field-label">业务模板</span>
-          <div class="template-choice">
+      </div>
+      <ContractEntryChoice
+        v-model="entryRelationship"
+        :project-id="initializeDraft.projectId.value"
+        mode="new"
+      />
+      <template v-if="entryRelationship === 'inside'">
+        <div class="create-fields">
+          <label
+            v-if="!directTemplateFallback"
+            class="field"
+          >
+            <span class="field-label">业务场景</span>
             <t-select
-              :value="initializeDraft.businessTemplateVersionId.value"
-              :options="templateOptions"
-              :disabled="!initializeDraft.contractTypeKey.value"
-              placeholder="从模板库选择已发布模板"
-              @change="onNewTemplateChange"
+              :value="initializeDraft.businessScenarioId.value"
+              :options="scenarioOptions"
+              :loading="scenarioLoading"
+              :disabled="!initializeDraft.projectId.value || scenarioLoading"
+              placeholder="选择本次签约场景"
+              @change="onScenarioChange"
             />
+          </label>
+          <label class="field">
+            <span class="field-label">合同类型</span>
+            <t-select
+              :value="initializeDraft.contractTypeKey.value"
+              :options="contractTypeOptions"
+              placeholder="选择合同类型"
+              @change="onContractTypeChange"
+            />
+          </label>
+          <label class="field">
+            <span class="field-label">合同金额上限</span>
+            <t-select
+              :value="initializeDraft.amountLimitType.value"
+              :options="amountLimitTypeOptions"
+              @change="onAmountLimitTypeChange"
+            />
+            <small class="field-hint">无限额框架合同不以预计金额作为硬上限；后续变更仍需按合同变更流程审批。</small>
+          </label>
+          <label
+            v-if="directTemplateFallback"
+            class="field"
+          >
+            <span class="field-label">业务模板</span>
+            <div class="template-choice">
+              <t-select
+                :value="initializeDraft.businessTemplateVersionId.value"
+                :options="templateOptions"
+                :disabled="!initializeDraft.contractTypeKey.value"
+                placeholder="从模板库选择已发布模板"
+                @change="onNewTemplateChange"
+              />
+              <t-button
+                variant="outline"
+                :disabled="!selectedTemplate"
+                @click="templatePreviewVisible = true"
+              >
+                预览所选模板
+              </t-button>
+            </div>
+          </label>
+        </div>
+
+        <t-alert
+          v-if="directTemplateFallback"
+          theme="info"
+          class="scenario-alert"
+        >
+          <template #message>
+            <div class="alert-action-row">
+              <span>当前使用模板库直接选择，合同草稿不冻结业务场景映射。</span>
+              <t-button
+                size="small"
+                variant="text"
+                @click="returnToScenarioRecommendation"
+              >
+                返回场景推荐
+              </t-button>
+            </div>
+          </template>
+        </t-alert>
+
+        <template v-else>
+          <t-alert
+            v-if="scenarioOptionsLoaded && initializeDraft.projectId.value && !scenarioOptions.length"
+            theme="warning"
+            class="scenario-alert"
+          >
+            <template #message>
+              <div class="alert-action-row">
+                <span>当前尚未配置可用业务场景，可先从模板库直接选择。</span>
+                <t-button
+                  size="small"
+                  variant="text"
+                  @click="useDirectTemplateFallback"
+                >
+                  从模板库直接选择
+                </t-button>
+              </div>
+            </template>
+          </t-alert>
+
+          <t-loading
+            v-if="recommendationLoading"
+            text="正在读取场景推荐……"
+          />
+          <t-alert
+            v-else-if="scenarioRecommendation?.selectionMode === 'unavailable'"
+            theme="warning"
+            class="scenario-alert"
+          >
+            <template #message>
+              <div class="alert-action-row">
+                <span>该场景和合同类型暂无可用推荐模板。</span>
+                <t-button
+                  size="small"
+                  variant="text"
+                  @click="useDirectTemplateFallback"
+                >
+                  从模板库直接选择
+                </t-button>
+              </div>
+            </template>
+          </t-alert>
+
+          <div
+            v-else-if="scenarioRecommendation?.selectionMode === 'automatic'"
+            class="recommendation-panel"
+          >
+            <div class="recommendation-head">
+              <strong>已自动选择场景模板</strong>
+              <t-tag
+                theme="success"
+                variant="light"
+              >
+                唯一匹配
+              </t-tag>
+            </div>
+            <div class="recommendation-choice selected">
+              <span>{{ scenarioRecommendation.recommendations[0].template.name }}</span>
+              <small>{{ scenarioRecommendation.recommendations[0].reason }}</small>
+            </div>
             <t-button
+              size="small"
+              variant="outline"
+              @click="templatePreviewVisible = true"
+            >
+              预览推荐模板
+            </t-button>
+          </div>
+
+          <div
+            v-else-if="scenarioRecommendation?.selectionMode === 'choice_required'"
+            class="recommendation-panel"
+          >
+            <div class="recommendation-head">
+              <strong>请明确选择一个推荐模板</strong>
+              <span>{{ scenarioRecommendation.recommendations.length }} 个精确匹配</span>
+            </div>
+            <t-radio-group
+              :value="initializeDraft.businessTemplateVersionId.value"
+              class="recommendation-list"
+              @change="onRecommendedTemplateChange"
+            >
+              <t-radio
+                v-for="choice in scenarioRecommendation.recommendations"
+                :key="choice.mappingId"
+                :value="choice.template.versionId"
+                class="recommendation-choice"
+              >
+                <span class="recommendation-copy">
+                  <strong>{{ choice.template.name }}</strong>
+                  <small>{{ choice.reason }}</small>
+                </span>
+              </t-radio>
+            </t-radio-group>
+            <t-button
+              size="small"
               variant="outline"
               :disabled="!selectedTemplate"
               @click="templatePreviewVisible = true"
@@ -82,163 +215,39 @@
               预览所选模板
             </t-button>
           </div>
-        </label>
-      </div>
 
-      <t-alert
-        v-if="directTemplateFallback"
-        theme="info"
-        class="scenario-alert"
-      >
-        <template #message>
-          <div class="alert-action-row">
-            <span>当前使用模板库直接选择，合同草稿不冻结业务场景映射。</span>
+          <div
+            v-if="scenarioOptions.length && !scenarioRecommendation && !recommendationLoading"
+            class="direct-fallback-entry"
+          >
             <t-button
               size="small"
               variant="text"
-              @click="returnToScenarioRecommendation"
+              @click="useDirectTemplateFallback"
             >
-              返回场景推荐
+              从模板库直接选择
             </t-button>
           </div>
         </template>
-      </t-alert>
 
-      <template v-else>
-        <t-alert
-          v-if="scenarioOptionsLoaded && initializeDraft.projectId.value && !scenarioOptions.length"
-          theme="warning"
-          class="scenario-alert"
-        >
-          <template #message>
-            <div class="alert-action-row">
-              <span>当前尚未配置可用业务场景，可先从模板库直接选择。</span>
-              <t-button
-                size="small"
-                variant="text"
-                @click="useDirectTemplateFallback"
-              >
-                从模板库直接选择
-              </t-button>
-            </div>
-          </template>
-        </t-alert>
-
-        <t-loading
-          v-if="recommendationLoading"
-          text="正在读取场景推荐……"
-        />
-        <t-alert
-          v-else-if="scenarioRecommendation?.selectionMode === 'unavailable'"
-          theme="warning"
-          class="scenario-alert"
-        >
-          <template #message>
-            <div class="alert-action-row">
-              <span>该场景和合同类型暂无可用推荐模板。</span>
-              <t-button
-                size="small"
-                variant="text"
-                @click="useDirectTemplateFallback"
-              >
-                从模板库直接选择
-              </t-button>
-            </div>
-          </template>
-        </t-alert>
-
-        <div
-          v-else-if="scenarioRecommendation?.selectionMode === 'automatic'"
-          class="recommendation-panel"
-        >
-          <div class="recommendation-head">
-            <strong>已自动选择场景模板</strong>
-            <t-tag
-              theme="success"
-              variant="light"
-            >
-              唯一匹配
-            </t-tag>
-          </div>
-          <div class="recommendation-choice selected">
-            <span>{{ scenarioRecommendation.recommendations[0].template.name }}</span>
-            <small>{{ scenarioRecommendation.recommendations[0].reason }}</small>
-          </div>
+        <div class="create-actions">
           <t-button
-            size="small"
-            variant="outline"
-            @click="templatePreviewVisible = true"
+            theme="primary"
+            :loading="creating"
+            :disabled="!initializeDraft.canCreate.value || !selectedTemplate"
+            @click="onCreateDraft"
           >
-            预览推荐模板
+            创建草稿
           </t-button>
         </div>
 
-        <div
-          v-else-if="scenarioRecommendation?.selectionMode === 'choice_required'"
-          class="recommendation-panel"
+        <p
+          v-if="errorMessage"
+          class="error-text"
         >
-          <div class="recommendation-head">
-            <strong>请明确选择一个推荐模板</strong>
-            <span>{{ scenarioRecommendation.recommendations.length }} 个精确匹配</span>
-          </div>
-          <t-radio-group
-            :value="initializeDraft.businessTemplateVersionId.value"
-            class="recommendation-list"
-            @change="onRecommendedTemplateChange"
-          >
-            <t-radio
-              v-for="choice in scenarioRecommendation.recommendations"
-              :key="choice.mappingId"
-              :value="choice.template.versionId"
-              class="recommendation-choice"
-            >
-              <span class="recommendation-copy">
-                <strong>{{ choice.template.name }}</strong>
-                <small>{{ choice.reason }}</small>
-              </span>
-            </t-radio>
-          </t-radio-group>
-          <t-button
-            size="small"
-            variant="outline"
-            :disabled="!selectedTemplate"
-            @click="templatePreviewVisible = true"
-          >
-            预览所选模板
-          </t-button>
-        </div>
-
-        <div
-          v-if="scenarioOptions.length && !scenarioRecommendation && !recommendationLoading"
-          class="direct-fallback-entry"
-        >
-          <t-button
-            size="small"
-            variant="text"
-            @click="useDirectTemplateFallback"
-          >
-            从模板库直接选择
-          </t-button>
-        </div>
+          {{ errorMessage }}
+        </p>
       </template>
-
-      <div class="create-actions">
-        <t-button
-          theme="primary"
-          :loading="creating"
-          :disabled="!initializeDraft.canCreate.value || !selectedTemplate"
-          @click="onCreateDraft"
-        >
-          创建草稿
-        </t-button>
-      </div>
-
-      <p
-        v-if="errorMessage"
-        class="error-text"
-      >
-        {{ errorMessage }}
-      </p>
     </div>
 
     <!-- Workbench shell for an existing contract ----------------------------->
@@ -1033,6 +1042,7 @@
 </template>
 
 <script setup lang="ts">
+import ContractEntryChoice from "../../components/ContractEntryChoice.vue";
 import type {
   ContractReadinessResult,
   ContractSettlementMode,
@@ -1603,6 +1613,7 @@ const contractId = computed(() => {
   const value = route.params.contractId;
   return typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
 });
+const entryRelationship = ref<"inside" | "outside" | "upward">("inside");
 const isNewDraft = computed(() => !contractId.value);
 const selectedTemplate = computed(() =>
   publishedTemplateForSelection(
@@ -2098,13 +2109,14 @@ async function loadProjectOptions() {
       label: `${project.name}（${project.code}）`,
       value: project.id
     }));
-    const selectedProjectId = initializeDraft.projectId.value;
+    const selectedProjectId = initializeDraft.projectId.value || (typeof route.query.projectId === "string" ? route.query.projectId : "");
     const nextProjectId = projectOptions.value.some((option) => option.value === selectedProjectId)
       ? selectedProjectId
-      : projectOptions.value.length === 1
+      : !selectedProjectId && projectOptions.value.length === 1
         ? projectOptions.value[0].value
         : "";
     initializeDraft.setProjectId(nextProjectId);
+    if (selectedProjectId && !nextProjectId) errorMessage.value = "指定项目已停用或无权办理，请重新选择项目";
     await loadScenariosForProject(nextProjectId);
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "项目加载失败");

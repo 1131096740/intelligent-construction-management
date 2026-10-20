@@ -17,6 +17,13 @@
             @change="handleProjectChange"
           />
         </div>
+        <t-button
+          v-if="canManageProjects && selectedProjectId"
+          variant="outline"
+          @click="activeTab = 'settings'"
+        >
+          施工企业与参与公司
+        </t-button>
         <t-collapse
           v-if="canManageProjects"
           class="project-maintenance"
@@ -891,7 +898,7 @@
 import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   confirmProjectUpstreamFundFact,
   createProject,
@@ -1037,6 +1044,7 @@ interface ProjectExpenseActionFormState {
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const projectSelectPopupProps = {
   overlayInnerStyle: (trigger: HTMLElement) => ({
     width: `${trigger.offsetWidth}px`
@@ -1318,7 +1326,7 @@ const visibleExpenseTypeOptions = computed(() =>
 );
 
 const canManageProjects = computed(
-  () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false
+  () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false
 );
 
 const canViewExecutiveOverview = computed(
@@ -1480,18 +1488,22 @@ async function loadProjects() {
   message.value = "";
   try {
     projects.value = await fetchProjects();
-    selectedProjectId.value = projects.value[0]?.id ?? "";
+    const requestedProject = typeof route.query.projectId === "string" ? route.query.projectId : "";
+    selectedProjectId.value = requestedProject
+      ? projects.value.find(project => project.id === requestedProject)?.id ?? ""
+      : projects.value[0]?.id ?? "";
+    if (route.query.tab === "settings") activeTab.value = "settings";
     loadedProjectId.value = selectedProjectId.value;
     if (!canReadProjectOverview.value && canCreateProjectExpense.value) {
       activeTab.value = "operations";
     }
-    if (!selectedProjectId.value) projectMaintenanceMode.value = "create";
+    if (!selectedProjectId.value && !requestedProject) projectMaintenanceMode.value = "create";
     syncSelectedProjectName();
     await loadExecutiveOverview();
     if (selectedProjectId.value) {
       await loadOverview();
     } else {
-      message.value = "暂无可用项目";
+      message.value = requestedProject ? "指定项目已停用或无权查看，请重新选择项目" : "暂无可用项目";
     }
   } catch (error) {
     message.value = formatUnknownApiError(error, "加载项目失败");
