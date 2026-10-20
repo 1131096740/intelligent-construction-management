@@ -36,6 +36,10 @@
       </t-form>
     </t-card>
     <t-card title="唯一施工企业">
+      <t-alert
+        theme="info"
+        message="每个项目绑定一家施工企业，首次绑定后固定。由董事长或公司级综合部主管核对企业及真实生效日后维护；未绑定项目不能办理正式经营业务。"
+      />
       <template v-if="profile?.constructionEnterprise">
         <t-descriptions
           :column="2"
@@ -51,12 +55,12 @@
             {{ profile.constructionEnterprise.effectiveFrom }}
           </t-descriptions-item>
           <t-descriptions-item label="锁定状态">
-            {{ profile.constructionEnterprise.isLocked ? "首笔正式事实已锁定" : "尚未锁定" }}
+            绑定后固定，不提供更换
           </t-descriptions-item>
         </t-descriptions>
       </template>
       <t-form
-        v-if="profile?.canManageMasterData && !profile.constructionEnterprise?.isLocked"
+        v-if="profile?.canManageMasterData && !profile.constructionEnterprise"
         label-align="top"
         class="construction-form"
         @submit="saveConstructionEnterprise"
@@ -74,7 +78,7 @@
           :loading="savingConstruction"
           :disabled="constructionDefinition?.key !== 'project_construction_enterprise'"
         >
-          {{ profile.constructionEnterprise ? "变更施工企业" : "设置施工企业" }}
+          绑定唯一施工企业
         </t-button>
       </t-form>
     </t-card>

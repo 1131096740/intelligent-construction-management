@@ -85,7 +85,10 @@ function handle(type: "outside" | "upward" | "upward_settlement") { handling.val
 watch(() => props.projectId, (id) => { selectedProject.value = id; showHandling.value = false; });
 watch([selectedProject, section, relationship, selectedCompany, asOf], () => { inspection++; checking.value=false; preflight.value=null; showHandling.value = false; void load(); });
 onMounted(async () => {
-  void load();
+  await load();
+  if (selectedProject.value && (route.query.contractHandling === "outside" || route.query.contractHandling === "upward")) {
+    handle(route.query.contractHandling);
+  }
   if (!props.projectId) try {
     const result = await fetchProjects();
     if (alive) projects.value = result.map((p) => ({ label: p.name, value: p.id }));
@@ -307,7 +310,7 @@ onBeforeUnmount(() => { alive = false; generation += 1; });
     </template>
     <t-drawer
       v-model:visible="showHandling"
-      header="分类业务办理"
+      :header="`${handling === 'outside' ? '表外' : '对上'}${route.query.entryMode === 'takeover' ? '合同历史接管' : '业务办理'}`"
       size="90%"
       :footer="false"
     >

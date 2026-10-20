@@ -392,10 +392,12 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       const master = await actor("comprehensive_director");
       const enterpriseIntent = await partyIntent(master, "浏览器施工企业验收");
       expect((await request("/business-parties", "POST", enterpriseIntent.body, master)).status).toBe(201);
+      const contractSession = await actor("contract_staff");
       try {
         await new Promise<void>((done, reject) => {
           const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
           delete browserEnv.JEST_WORKER_ID;
+          browserEnv.POL113_CONTRACT_SESSION = JSON.stringify(sessions.get(contractSession));
           browserEnv.POL113_MASTER_DATA_SESSION = JSON.stringify(sessions.get(master));
           browserEnv.POL113_PARTY_SESSION = JSON.stringify(sessions.get(master));
           browserEnv.POL113_WITHDRAWAL_SESSION = JSON.stringify(sessions.get(withdrawalFinance));
@@ -472,7 +474,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const payload = { definitionVersion: definition.body.version, target, operation: "edit", values };
     const validatePath = `/business-entry-definitions/project_construction_enterprise/validate?projectId=${projectId}`;
     const globalFinance = await actor("finance_director");
-    for (const denied of [await actor("finance_staff", projectId), globalFinance]) {
+    for (const denied of [await actor("finance_staff", projectId), globalFinance, await actor("general_manager"), await actor("super_admin"), await actor("comprehensive_director", projectId)]) {
       expect((await request(validatePath, "POST", payload, denied)).status).toBe(403);
       expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", values, denied)).status).toBe(403);
     }
@@ -482,7 +484,28 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const valid = await request(validatePath, "POST", payload, master);
     expect(valid.body.valid).toBe(true);
     expect((await request(`/projects/${projectId}/construction-enterprise`, "POST", { ...valid.body.values, effectiveFrom: `${values.effectiveFrom}T00:00:00.000Z` }, master)).status).toBe(201);
-    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: false });
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: true });
+    // Even before a formal fact, repeated or different bindings cannot replace the original.
+    const replacementIntent = await partyIntent(chairman, `另一施工企业${randomUUID()}`);
+    const replacement = await request("/business-parties", "POST", replacementIntent.body, chairman);
+    expect(replacement.status).toBe(201);
+    for (const allowed of [chairman, master]) {
+      for (const versionId of [party.body.version.id, replacement.body.version.id]) {
+        const denied = await request(`/projects/${projectId}/construction-enterprise`, "POST", { ...values, businessPartyVersionId: versionId }, allowed);
+        expect(denied.status).toBe(400);
+        expect(denied.body.message).toContain("不能更换或重新绑定");
+      }
+    }
+    expect((await request(`/projects/${projectId}/operating-profile`, "GET", undefined, master)).body.constructionEnterprise).toMatchObject({ businessPartyVersionId: party.body.version.id, effectiveFrom: "2026-01-01", isLocked: true });
+    const concurrentProject = await request("/projects", "POST", { code: `P113-${randomUUID()}`, name: "并发首次绑定合成项目" }, chairman);
+    expect(concurrentProject.status).toBe(201);
+    const competing = await Promise.all([
+      request(`/projects/${concurrentProject.body.id}/construction-enterprise`, "POST", values, chairman),
+      request(`/projects/${concurrentProject.body.id}/construction-enterprise`, "POST", { ...values, businessPartyVersionId: replacement.body.version.id }, master)
+    ]);
+    expect(competing.map(result => result.status).sort()).toEqual([201, 400]);
+    const winner = competing.find(result => result.status === 201)!;
+    expect((await request(`/projects/${concurrentProject.body.id}/operating-profile`, "GET", undefined, master)).body.constructionEnterprise.businessPartyVersionId).toBe(winner.body.businessPartyVersionId);
   });
 
   it("综合部主管通过统一字段加入完整公司，空白原因不新增并按原关系回读", async () => {

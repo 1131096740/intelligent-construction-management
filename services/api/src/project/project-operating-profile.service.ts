@@ -175,7 +175,7 @@ export class ProjectOperatingProfileService {
             creditCode: constructionEnterprise.affiliateCreditCodeSnapshot,
             effectiveFrom: dateOnly(constructionEnterprise.effectiveFrom),
             lockedAt: project.constructionEnterpriseLockedAt?.toISOString() ?? null,
-            isLocked: Boolean(project.constructionEnterpriseLockedAt)
+            isLocked: true
           }
         : null,
       participatingCompanies: participatingCompanies.map(toParticipatingCompanyReadModel)
