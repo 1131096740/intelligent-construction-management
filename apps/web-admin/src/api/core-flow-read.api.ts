@@ -5433,6 +5433,19 @@ export function createPrivateFileDownloadTicket(
   return postJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`, body);
 }
 
+/** 版式样张经统一 API 前缀读取；票据 URL 不直接作为页面导航地址。 */
+export async function readPrivatePdfTicket(ticket: PrivateFileDownloadTicketReadModel) {
+  if (!/^\/files\/[^/?#]+\/download\?/.test(ticket.downloadUrl) || ticket.downloadUrl.includes("\\")) {
+    throw new Error("版式样张访问地址不正确，请重新申请");
+  }
+  const response = await apiFetch(ticket.downloadUrl);
+  await ensureOk(response, "读取版式样张失败");
+  if (!/^application\/pdf(?:;|$)/i.test(response.headers.get("content-type") ?? "")) {
+    throw new Error("版式样张格式不正确，请联系合同部核对");
+  }
+  return response.blob();
+}
+
 /**
  * 为私有文件创建短时下载票据并受控下载（blob）。
  * 内部完成能力检查、票据创建与下载，页面无需直接导航原始下载端点。

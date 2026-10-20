@@ -1,3 +1,4 @@
+import { verifyLayoutPreviewHttp } from "./layout-preview-http.acceptance";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
@@ -121,6 +122,10 @@ if (enabled) {
       await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id } });
     }
   });
+
+  it("四类版式真实样张、V1保持与资源授权公开HTTP及浏览器", async () => {
+    await verifyLayoutPreviewHttp(app, baseUrl, { id: actorUserId, phone: actorPhone, password: actorPassword });
+  }, 180_000);
 
   afterAll(async () => { await app?.close(); });
 

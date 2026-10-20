@@ -1,3 +1,4 @@
+import { LAYOUT_TEMPLATE_READ_ROLES } from "./layout-template-file-access";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { DetailActionReadModel } from "@jiangkong/shared-domain";
@@ -127,7 +128,7 @@ export class LayoutTemplateService {
       const roleKeys = await this.assertAnyGlobalRole(
         tx,
         actorUserId,
-        ["contract_staff", "contract_director"]
+        LAYOUT_TEMPLATE_READ_ROLES
       );
       const template = await tx.contractLayoutTemplate.findUnique({ where: { id: templateId } });
       if (!template) throw new NotFoundException("未找到合同版式模板，请刷新后重试");
@@ -787,7 +788,7 @@ export class LayoutTemplateService {
   private async assertAnyGlobalRole(
     tx: RoleClient,
     actorUserId: string,
-    roleKeys: Array<"contract_staff" | "contract_director">
+    roleKeys: readonly ("contract_staff" | "contract_director")[]
   ) {
     const assignments = await tx.userPosition.findMany({
       where: { userId: actorUserId, projectId: null }
@@ -804,7 +805,7 @@ export class LayoutTemplateService {
   }
 
   private assertTemplateMaintenanceRole(tx: RoleClient, actorUserId: string) {
-    return this.assertAnyGlobalRole(tx, actorUserId, ["contract_staff", "contract_director"]);
+    return this.assertAnyGlobalRole(tx, actorUserId, LAYOUT_TEMPLATE_READ_ROLES);
   }
 
   private async assertGlobalRole(

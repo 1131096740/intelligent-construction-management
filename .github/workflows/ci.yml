@@ -249,6 +249,13 @@ jobs:
           pnpm --dir "$legacy_root" fetch --ignore-scripts
           test "$(sha256sum "$legacy_root/pnpm-lock.yaml" | cut -d ' ' -f 1)" = "$lock_sha"
 
+      - name: Install seed layout PDF runtime
+        if: ${{ matrix.group != 'pol113_pol115_business_entries' && matrix.group != 'contract_finance_acceptance' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer fonts-noto-cjk
+          command -v soffice
+
       - name: Install POL-113/POL-115 browser and document runtimes
         if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
         run: |
@@ -266,7 +273,7 @@ jobs:
                   mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
           PY
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk
           command -v soffice
           browser_path="$RUNNER_TEMP/pol113-pol115-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
@@ -290,7 +297,7 @@ jobs:
                   mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
           PY
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk
           command -v soffice
           browser_path="$RUNNER_TEMP/contract-finance-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"

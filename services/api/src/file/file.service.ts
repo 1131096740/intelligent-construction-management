@@ -1,3 +1,4 @@
+import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
 import {companyTransferRoles} from "../company-transfer/company-transfer.access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { canReadGeneralProcurement, generalProcurementActor } from "../general-procurement/general-procurement-access";
@@ -1208,7 +1209,7 @@ export class FileService {
   }
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
-    if (!input.actorUserId.trim()) {
+    if (typeof input.actorUserId !== "string" || !input.actorUserId.trim()) {
       throw new BadRequestException("下载人信息缺失，请重新登录后再下载资料");
     }
 
@@ -2464,6 +2465,12 @@ export class FileService {
         return;
       }
       throw new ForbiddenException("当前账号无权下载该一般争议资金依据");
+    }
+
+    const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);
+    if (layoutAccess !== null) {
+      if (layoutAccess) return;
+      throw new ForbiddenException("当前账号无权查看该合同版式资料");
     }
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {

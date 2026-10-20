@@ -2,6 +2,8 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchContractDetail,
+  readPrivatePdfTicket,
+  type PrivateFileDownloadTicketReadModel,
   fetchContractChangeEligibility,
   fetchContractLedger,
   fetchContractLifecycleLedger,
@@ -4101,6 +4103,21 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/projects/project-1/affiliate-company-contracts/file-uploads"
     ]);
+  });
+
+  it("样张经 API 前缀读取 PDF，拒绝网页或外部地址", async () => {
+    const blob = new Blob(["%PDF-sample"], { type: "application/pdf" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(blob, {
+      status: 200, headers: { "content-type": "application/pdf" }
+    }));
+    const ticket = { downloadUrl: "/files/sample/download?token=synthetic" } as PrivateFileDownloadTicketReadModel;
+    expect(await readPrivatePdfTicket(ticket)).toBeInstanceOf(Blob);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/files/sample/download?token=synthetic");
+    fetchMock.mockResolvedValue(new Response("<html>page</html>", { headers: { "content-type": "text/html" } }));
+    await expect(readPrivatePdfTicket(ticket)).rejects.toThrow("版式样张格式不正确");
+    await expect(readPrivatePdfTicket({ ...ticket, downloadUrl: "https://example.invalid/private.pdf" }))
+      .rejects.toThrow("版式样张访问地址不正确");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("requests private file download tickets through the backend", async () => {

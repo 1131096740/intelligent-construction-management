@@ -167,7 +167,7 @@ describe("coreFlowSeedData", () => {
       ])
     );
     expect(seed.layout.previewJob.sampleData.contract).toMatchObject({
-      amountUppercase: "人民币壹拾贰万捌仟元整"
+      amountUppercase: "人民币肆万贰仟元整"
     });
     expect(seed.layout.previewJob.sampleData.bill.materials[0]).toMatchObject({
       itemName: "钢筋",

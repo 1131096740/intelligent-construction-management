@@ -13,7 +13,7 @@
     <t-alert
       theme="info"
       title="上线准备期间暂为只读"
-      message="仅展示已发布版式；源文件上传、编辑、检查、样张生成、提交、发布、克隆和停用入口暂不开放。"
+      message="仅展示已发布版式及其历史样张；源文件上传、编辑、检查、样张生成、提交、发布、克隆和停用入口暂不开放。"
       class="panel"
     />
     <t-alert
@@ -23,11 +23,15 @@
       class="panel"
     />
 
+    <t-checkbox v-model="showHistory">
+      显示历史已发布版本
+    </t-checkbox>
+
     <div class="jg-table-region jg-table-region--standard">
       <t-table
         row-key="id"
         :columns="columns"
-        :data="publishedVersions"
+        :data="visibleVersions"
         :loading="loading"
         :horizontal-scroll-affixed-bottom="true"
         empty="暂无已发布版式"
@@ -35,19 +39,23 @@
         <template #versionNo="{ row }">
           V{{ row.versionNo }}
         </template>
-        <template #status>
+        <template #status="{ row }">
           <t-tag
             theme="success"
             variant="light"
           >
-            已发布
+            {{ ({ published: "已发布", stopped: "已停用", revoked: "已撤销" } as Record<string, string>)[row.status] }}
           </t-tag>
         </template>
         <template #inspection="{ row }">
           {{ row.inspectionReport ? "已留存检查结果" : "未留存检查结果" }}
         </template>
         <template #preview="{ row }">
-          {{ row.previewPdfFileId ? "已留存样张" : "无样张" }}
+          <PrivatePdfActions
+            v-if="row.previewPdfFileId"
+            :file-id="row.previewPdfFileId"
+          />
+          <span v-else>无样张</span>
         </template>
         <template #updatedAt="{ row }">
           {{ formatDateTime(row.updatedAt) }}
@@ -64,14 +72,17 @@ import {
   getLayoutTemplate,
   type LayoutTemplateDetailReadModel
 } from "../../api/contract-workbench.api";
+import PrivatePdfActions from "../../components/files/PrivatePdfActions.vue";
 import { contractTypeLabel } from "../contracts/contract-labels";
 
 const route = useRoute();
 const detail = ref<LayoutTemplateDetailReadModel | null>(null);
 const loading = ref(false);
 const message = ref("");
-const publishedVersions = computed(() =>
-  (detail.value?.versions ?? []).filter((version) => version.status === "published")
+const showHistory = ref(false);
+const visibleVersions = computed(() =>
+  (detail.value?.versions ?? []).filter((version) => version.status === "published" ||
+    (showHistory.value && ["stopped", "revoked"].includes(version.status)))
 );
 const columns = [
   { colKey: "versionNo", title: "版本", width: 90 },

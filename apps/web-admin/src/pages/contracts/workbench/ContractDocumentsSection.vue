@@ -40,15 +40,10 @@
         alt="版式缩略图"
       >
       <span>版式版本 {{ selectedLayout.versionNo ?? "-" }}</span>
-      <button
+      <PrivatePdfActions
         v-if="selectedLayout.previewPdfFileId"
-        type="button"
-        class="link-button"
-        :disabled="busy"
-        @click="openFile(String(selectedLayout.previewPdfFileId))"
-      >
-        预览文件
-      </button>
+        :file-id="String(selectedLayout.previewPdfFileId)"
+      />
     </div>
 
     <div class="attachments">
@@ -216,6 +211,7 @@
 </template>
 
 <script setup lang="ts">
+import PrivatePdfActions from "../../../components/files/PrivatePdfActions.vue";
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import {

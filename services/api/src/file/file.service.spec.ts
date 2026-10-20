@@ -964,6 +964,38 @@ describe("FileService", () => {
     expect(privateStorage.read).not.toHaveBeenCalled();
   });
 
+  it("公开票据读取缺少下载人时明确拒绝，不读私有正文", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+    await expect(service.readPrivateFile("file", {} as never)).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it("按已发布版式样张资源授权非上传人，不开放无关文件", async () => {
+    const file = { id: "layout-preview", uploadedByUserId: "uploader", mimeType: "application/pdf" };
+    const tx = {
+      contractLayoutTemplate: { findMany: jest.fn().mockResolvedValue([{ id: "layout" }]) },
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      contractLayoutTemplateVersion: { findMany: jest.fn().mockResolvedValue([
+        { id: "layout-v1", layoutTemplateId: "layout", status: "published", docxFileId: "source", previewPdfFileId: file.id }
+      ]) },
+      contractLayoutPreviewJob: { findMany: jest.fn().mockResolvedValue([]) },
+      projectOwnerContract: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+    await expect(service.assertCanDownloadFile(tx as never, file.id, "reader"))
+      .resolves.toEqual(file);
+    tx.contractLayoutTemplateVersion.findMany.mockResolvedValue([]);
+    await expect(service.assertCanDownloadFile(tx as never, file.id, "reader"))
+      .rejects.toThrow("当前账号无权下载该资料");
+  });
+
   it("拒绝全局岗位下载无关私有文件", async () => {
     const service = new FileService(
       {} as PrismaService,
