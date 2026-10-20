@@ -119,6 +119,13 @@ test("真实 API/PG16 技术管理员只能回看且不能执行收口命令", a
 });
 
 test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", async ({ page }) => {
+  const unscopedBalanceReads: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/operating-projections/as-of" && url.searchParams.has("asOf")) {
+      unscopedBalanceReads.push(url.pathname);
+    }
+  });
   await login(page, "13800001004");
   await openCloseProfit(page);
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
@@ -129,6 +136,7 @@ test("真实 API/PG16 页面完成财务提交到高管确认的重确认链", a
   await page.evaluate(() => localStorage.removeItem("jiangkong-web-admin-auth"));
   await login(page, "13800001007");
   await openCloseProfit(page);
+  expect(unscopedBalanceReads, "项目内分类余额不得在项目就绪前读取全部项目").toEqual([]);
   await page.getByPlaceholder("请说明核对范围、依据和结论；系统会与本次经营快照一起冻结")
     .fill("浏览器验收：财务专业重新确认成本");
   await page.getByRole("button", { name: "确认财务成本" }).click();
