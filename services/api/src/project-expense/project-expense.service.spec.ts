@@ -1,3 +1,4 @@
+import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 import { BadRequestException } from "@nestjs/common";
 import { ProjectExpenseService } from "./project-expense.service";
 
@@ -1356,59 +1357,13 @@ describe("ProjectExpenseService", () => {
     expect(files.createDownloadTicket).not.toHaveBeenCalled();
   });
 
-  it("creates an approval PDF download ticket after password confirmation", async () => {
-    const prisma = {
-      projectExpenseRequest: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "expense-1",
-          projectId: "project-1",
-          applicantUserId: "handler-1"
-        })
-      },
-      pdfDocument: {
-        findFirst: jest.fn().mockResolvedValue({ fileId: "file-pdf-1" })
-      },
-      ...roleTables("finance_staff")
-    };
-    const files = {
-      createDownloadTicket: jest.fn().mockResolvedValue({
-        fileId: "file-pdf-1",
-        downloadUrl: "/files/file-pdf-1/download"
-      })
-    };
-    const service = new ProjectExpenseService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      files as never
-    );
-
-    const ticket = await service.createApprovalPdfDownloadTicket(
-      "project-1",
-      "expense-1",
-      "finance-1",
-      "current-password",
-      "审批单复核"
-    );
-
-    expect(ticket.downloadUrl).toBe("/files/file-pdf-1/download");
-    expect(prisma.projectExpenseRequest.findFirst).toHaveBeenCalledWith({
-      where: { projectId: "project-1", voidedAt: null, OR: [{ id: "expense-1" }, { code: "expense-1" }] },
-      select: { id: true, projectId: true, applicantUserId: true }
-    });
-    expect(prisma.pdfDocument.findFirst).toHaveBeenCalledWith({
-      where: {
-        businessType: "project_expense_request",
-        businessId: "expense-1",
-        templateKey: "approval_form"
-      },
-      select: { fileId: true }
-    });
-    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
-    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-pdf-1", {
-      actorUserId: "finance-1",
-      downloadReason: "审批单复核"
-    });
+  it("routes the project detail download through the same signed approval service", async () => {
+    const prisma = { projectExpenseRequest: { findFirst: jest.fn().mockResolvedValue({ id: "expense-1", projectId: "project-1", applicantUserId: "handler-1" }) }, ...roleTables("finance_staff") };
+    const result = { buffer: Buffer.from("signed-pdf"), fileName: "审批单.pdf" };
+    const approvalForms = { renderForDownload: jest.fn().mockResolvedValue(result) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never, {} as never, undefined, approvalForms as never);
+    await expect(service.createApprovalPdfDownloadTicket("project-1", "expense-1", "finance-1", "current-password", "审批单复核")).resolves.toBe(result);
+    expect(approvalForms.renderForDownload).toHaveBeenCalledWith("project_expense_request", "expense-1", "finance-1", "current-password", "审批单复核");
   });
 
   it("rejects approval PDF download ticket creation without a download reason", async () => {
@@ -1500,6 +1455,7 @@ describe("ProjectExpenseService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
@@ -1598,6 +1554,7 @@ describe("ProjectExpenseService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
@@ -1635,6 +1592,7 @@ describe("ProjectExpenseService", () => {
       },
       approvalInstance: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
@@ -1673,6 +1631,7 @@ describe("ProjectExpenseService", () => {
       approvalInstance: { create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
@@ -1738,6 +1697,7 @@ describe("ProjectExpenseService", () => {
       auditLog: { create: jest.fn() },
       ...roleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
@@ -1754,7 +1714,7 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("拒绝普通岗位申请人审批自己发起的项目支出", async () => {
+  it("普通岗位申请人自审仍须原因及密码确认", async () => {
     const tx = {
       $queryRaw: jest
         .fn()
@@ -1808,6 +1768,7 @@ describe("ProjectExpenseService", () => {
       auditLog: { create: jest.fn() },
       ...roleTables("comprehensive_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never);
 
@@ -1816,7 +1777,7 @@ describe("ProjectExpenseService", () => {
         decision: "approve",
         ...reviewCoordinates(0)
       })
-    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    ).rejects.toThrow("当前审批岗位审批自己发起的业务时，请填写自审原因");
     expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
@@ -1867,6 +1828,7 @@ describe("ProjectExpenseService", () => {
       projectExpenseFinancingQuotaUsage: { findMany: jest.fn().mockResolvedValue([]) },
       ...roleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
     return { service, tx };
@@ -1928,7 +1890,7 @@ describe("ProjectExpenseService", () => {
     expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "top-secret");
     const actionMetadata = tx.approvalActionLog.create.mock.calls[0]?.[0].data.metadata;
     const auditMetadata = audit.record.mock.calls[0]?.[1].metadata;
-    expect(actionMetadata).toEqual({ selfReview: true, selfReviewReason: "业务紧急且由本人发起" });
+    expect(actionMetadata).toEqual({ approverName: "签批人甲", selfReview: true, selfReviewReason: "业务紧急且由本人发起" });
     expect(auditMetadata).toEqual(expect.objectContaining({
       selfReview: true,
       selfReviewReason: "业务紧急且由本人发起"
@@ -1939,7 +1901,7 @@ describe("ProjectExpenseService", () => {
     expect(JSON.stringify(auditMetadata)).not.toContain("top-secret");
   });
 
-  it("generates and archives a reimbursement approval PDF after final approval", async () => {
+  it("does not create a separate unsigned reimbursement PDF after approval", async () => {
     const reviewTx = {
       $queryRaw: jest
         .fn()
@@ -1984,6 +1946,7 @@ describe("ProjectExpenseService", () => {
       auditLog: { create: jest.fn() },
       ...roleTables("chairman")
     };
+    attachApprovalSignatureFixture(reviewTx);
     const archiveTx = {
       pdfDocument: {
         create: jest.fn().mockResolvedValue({ id: "pdf-1" })
@@ -2046,35 +2009,8 @@ describe("ProjectExpenseService", () => {
       approvedAmountCents: "45000"
     });
 
-    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
-      originalName: "BX-2026-002-approval_form.pdf",
-      mimeType: "application/pdf",
-      sizeBytes: expect.any(Number),
-      uploadedByUserId: "chairman-1",
-      buffer: expect.any(Buffer)
-    });
-    const approvalPdfText = files.uploadPrivateFile.mock.calls[0][0].buffer.toString("ascii");
-    expect(approvalPdfText).toContain(pdfHexText("报销审批单"));
-    expect(approvalPdfText).toContain(pdfHexText("支出类型：报销"));
-    expect(approvalPdfText).toContain(pdfHexText("附件状态：已上传"));
-    expect(approvalPdfText).not.toContain("Applicant User ID");
-    expect(approvalPdfText).not.toContain("Requested Amount");
-    expect(archiveTx.pdfDocument.create).toHaveBeenCalledWith({
-      data: {
-        businessType: "project_expense_request",
-        businessId: "expense-1",
-        fileId: "file-pdf-1",
-        templateKey: "approval_form"
-      }
-    });
-    expect(archiveTx.archiveRecord.create).toHaveBeenCalledWith({
-      data: {
-        businessType: "project_expense_request",
-        businessId: "expense-1",
-        fileId: "file-pdf-1",
-        departmentScope: "finance"
-      }
-    });
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(archiveTx.pdfDocument.create).not.toHaveBeenCalled();
   });
 
   it("keeps final approval successful when approval PDF generation fails", async () => {
@@ -2122,6 +2058,7 @@ describe("ProjectExpenseService", () => {
       auditLog: { create: jest.fn() },
       ...roleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx)),
       projectExpenseRequest: {
@@ -2144,11 +2081,13 @@ describe("ProjectExpenseService", () => {
     const files = {
       uploadPrivateFile: jest.fn().mockRejectedValue(new Error("storage unavailable"))
     };
+    const approvalForms = { generateForInstance: jest.fn().mockRejectedValue(new Error("storage unavailable")) };
+    Object.assign(prisma, { approvalInstance: { findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1", status: "approved" }) } });
     const service = new ProjectExpenseService(
       prisma as never,
       audit as never,
       auth as never,
-      files as never
+      files as never, undefined, approvalForms as never
     );
 
     const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
@@ -2158,7 +2097,7 @@ describe("ProjectExpenseService", () => {
     });
 
     expect(approved.status).toBe("approved_pending_payment");
-    expect(files.uploadPrivateFile).toHaveBeenCalled();
+    expect(approvalForms.generateForInstance).toHaveBeenCalledWith("approval-instance-1", "chairman-1");
   });
 
   it("voids a pending project expense and closes the approval instance", async () => {
@@ -2201,6 +2140,7 @@ describe("ProjectExpenseService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 

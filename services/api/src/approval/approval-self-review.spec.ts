@@ -31,13 +31,6 @@ describe("requiresApprovalSelfReviewConfirmation", () => {
 
   it.each([
     {
-      name: "mixed leader and ordinary roles at an ordinary node",
-      applicantUserId: "leader-1",
-      actorUserId: "leader-1",
-      actorRoleKeys: ["chairman", "budget_director"],
-      nodeRoleKeys: ["budget_director"]
-    },
-    {
       name: "ordinary delegate at a leader node",
       applicantUserId: "delegate-1",
       actorUserId: "delegate-1",
@@ -57,7 +50,7 @@ describe("requiresApprovalSelfReviewConfirmation", () => {
 });
 
 describe("assertOrdinaryApplicantCannotReview", () => {
-  it("拒绝普通岗位申请人审批自己发起的业务", () => {
+  it("允许直接兼任当前审批岗位的申请人逐节点签批", () => {
     expect(() =>
       assertOrdinaryApplicantCannotReview({
         applicantUserId: "user-1",
@@ -65,7 +58,7 @@ describe("assertOrdinaryApplicantCannotReview", () => {
         actorRoleKeys: ["project_manager", "super_admin"],
         approvedRoleKey: "project_manager"
       })
-    ).toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    ).not.toThrow();
   });
 
   it.each(["chairman", "general_manager"] as const)("仅允许 %s 以同一领导岗位终审自审", (role) => {
@@ -135,13 +128,13 @@ describe("confirmApprovalSelfReview", () => {
     expect(confirmPassword).toHaveBeenCalledWith("current-password");
   });
 
-  it("does not expand the contract-director self-review exception to other flows", () => {
+  it("allows direct contract-director self-review across flows", () => {
     expect(() => assertOrdinaryApplicantCannotReview({
       applicantUserId: "contract-director-1",
       actorUserId: "contract-director-1",
       actorRoleKeys: ["contract_director"],
       approvedRoleKey: "contract_director"
-    })).toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    })).not.toThrow();
   });
 
   it("董事长自审缺少原因时拒绝且不校验密码", async () => {
@@ -231,7 +224,7 @@ describe("confirmApprovalSelfReview", () => {
     expect(confirmPassword).not.toHaveBeenCalled();
   });
 
-  it("普通角色同人自审仍优先返回禁止自审", async () => {
+  it("普通岗位兼岗自审执行密码确认并记录原因", async () => {
     const confirmPassword = jest.fn();
 
     await expect(
@@ -244,8 +237,8 @@ describe("confirmApprovalSelfReview", () => {
         confirmationPassword: "top-secret",
         confirmPassword
       })
-    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
-    expect(confirmPassword).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ isSelfReview: true, metadata: { selfReviewReason: "业务紧急" } });
+    expect(confirmPassword).toHaveBeenCalledWith("top-secret");
   });
 
   it("领导自审缺少密码服务时返回服务不可用", async () => {
@@ -261,7 +254,7 @@ describe("confirmApprovalSelfReview", () => {
     ).rejects.toThrow("审批身份确认服务暂不可用，请稍后重试");
   });
 
-  it("混合岗位领导在普通节点审批本人业务时仍返回禁止自审", async () => {
+  it("混合岗位领导按当前普通岗位完成自审确认", async () => {
     const confirmPassword = jest.fn();
 
     await expect(
@@ -274,8 +267,8 @@ describe("confirmApprovalSelfReview", () => {
         confirmationPassword: "top-secret",
         confirmPassword
       })
-    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
-    expect(confirmPassword).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ isSelfReview: true, metadata: { selfReviewReason: "业务紧急" } });
+    expect(confirmPassword).toHaveBeenCalledWith("top-secret");
   });
 
   it("普通受托人在领导节点审批本人业务时仍返回禁止自审", async () => {

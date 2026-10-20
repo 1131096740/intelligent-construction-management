@@ -1,3 +1,4 @@
+import { invalidateIndependentApproval, recordIndependentApproval } from "../approval/independent-approval-evidence";
 import {
   BadRequestException,
   ConflictException,
@@ -2247,6 +2248,13 @@ export class SpotProcurementReceiptService {
               "returned"
             );
         }
+        if (input.decision === "approved") await recordIndependentApproval(tx, {
+          businessType: "spot_procurement_receipt", businessId: review.id,
+          applicantUserId: context.receipt.submittedByUserId ?? context.receipt.handlerUserId,
+          actorUserId, roleKey: "material_director", nodeName: "物资部主管", comment, signedAt: review.createdAt,
+          form: { title: "零星材料到货审批单", code: context.procurement.code, projectId: context.receipt.projectId, companyName: "",
+            summary: [{ label: "到货说明", value: context.receipt.note ?? "" }, { label: "收货修订", value: String(context.receipt.currentRevisionNo) }] }
+        });
         await this.audit.record(tx, {
           actorUserId,
           action: `spot_procurement.receipt.review.${input.decision}`,
@@ -2477,6 +2485,10 @@ export class SpotProcurementReceiptService {
               targetReviewId: latestReview.id
             }
           });
+        await invalidateIndependentApproval(tx, {
+          businessType: "spot_procurement_receipt", businessId: latestReview.id,
+          actorUserId, reason, invalidatedAt: review.createdAt
+        });
         const currentRevisionNo =
           await this.advanceReceiptCorrectionRevision(
             tx,

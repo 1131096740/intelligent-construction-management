@@ -1,3 +1,4 @@
+import { invalidateIndependentApproval, recordIndependentApproval } from "../approval/independent-approval-evidence";
 import {
   BadRequestException,
   ConflictException,
@@ -151,6 +152,16 @@ export class ContractSealService {
       if (taskResult.count !== 1 || versionResult.count !== 1) {
         throw new BadRequestException("用章任务已被其他人处理，请刷新后重试");
       }
+      const contract = await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
+      await recordIndependentApproval(tx, {
+        businessType: "contract_seal", businessId: task.id, applicantUserId: task.handlerUserId,
+        actorUserId, roleKey: "comprehensive_director", nodeName: "综合部主管", signedAt: approvedAt,
+        form: { title: "用章审批单", code: contract.code ?? version.id, projectId: contract.projectId,
+          companyName: contract.companyEntityName ?? "", summary: [
+            { label: "合同名称", value: contract.name }, { label: "对方单位", value: contract.counterparty },
+            { label: "用章事项", value: "合同用章" }
+          ] }
+      });
       await this.audit?.record(tx, {
         actorUserId,
         action: "contract.seal.approve",
@@ -718,6 +729,10 @@ export class ContractSealService {
       ) {
         throw new BadRequestException("合同签署状态已变化，请刷新后重新申报");
       }
+      await invalidateIndependentApproval(tx, {
+        businessType: "contract_seal", businessId: task.id, actorUserId,
+        reason: input.reason.trim(), invalidatedAt: now
+      });
       await audit.record(tx, {
         actorUserId,
         action: "contract.signing.material_change",

@@ -1,3 +1,4 @@
+import { verifyApprovedPdf } from "./approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -38,12 +39,65 @@ const user = await db.user.create({ data: { name: `验收${role}`, phone: `139${
   afterAll(async () => { await app?.close(); });
   it("真实登录与文件上传后，互转审批、两侧资金核对及各岗位余额回读", async () => {
     const bank = async (companyEntityId: string, direction: "inflow" | "outflow", amountCents: string) => { const accountNumber = companyEntityId === f.companyId ? "6222000011111111" : "6222000022222222"; const r = await call("/contract-bank-verifications", "finance_staff", { projectId: f.projectId, companyEntityId, accountNumber, bankReference: randomUUID(), direction, amountCents, occurredAt: "2026-08-20", evidenceFileId: await upload("finance_staff"), reason: "四岗位银行依据核验", idempotencyKey: randomUUID(), confirmationPassword: password }); await call(`/contract-bank-verifications/${r.id}/decision`, "finance_director", { decision: "confirm", accountNumber, holderEvidenceFileId: await upload("finance_director"), confirmationPassword: password }); return (await db.contractBankVerificationRequest.findUniqueOrThrow({ where: { id: r.id } })).observationId!; };
-    await acceptContractChain({ db, f, password, actors, call, upload, bank });
+    const chain = await acceptContractChain({ db, f, password, actors, call, upload, bank });
     for (const amount of ["10000", "20000"]) { await bank(f.companyId, "outflow", amount); await bank(b.companyId, "inflow", amount); }
     for (const amount of ["3000", "6000"]) { await bank(b.companyId, "outflow", amount); await bank(f.companyId, "inflow", amount); }
     await new Promise<void>((done, reject) => { const env: NodeJS.ProcessEnv = { ...process.env, COMPANY_TRANSFER_API: base, COMPANY_TRANSFER_FIXTURE: JSON.stringify({ projectId: f.projectId, sourceCompanyId: f.companyId, destinationCompanyId: b.companyId, password, actors, sessions }) }; delete env.JEST_WORKER_ID; const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.company-transfer-real.config.ts"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" }); child.on("error", reject); child.on("exit", code => code === 0 ? done() : reject(new Error("公司互转真实浏览器岗位验收失败"))); });
     const view = await call(`/company-transfers?projectId=${f.projectId}`, "finance_staff"); expect(view.rows.length).toBe(4); expect(view.balances.every((r: { inTransitCents: string }) => r.inTransitCents === "0")).toBe(true);
     expect(view.balances.find((b: {companyId:string}) => b.companyId === f.companyId).receivableCents).toBe("21000");
     const finance = await call(`/operating-projections/project/${f.projectId}`, "finance_staff"), manager = await call(`/operating-projections/project/${f.projectId}`, "project_manager"); expect(finance.operating.confirmedCostCents).toBe("95000"); expect(finance.operating.payableCents).toBe("36000"); expect(finance.relationshipTotals).toEqual(expect.arrayContaining([expect.objectContaining({relationship:"upward",receivableCents:"38300"})])); expect(finance.companyTransferBalances).toEqual(manager.companyTransferBalances); expect(finance.companyTransferBalances).toEqual(view.balances);
+    const storage = await call("/company-transfers", "finance_staff", {
+      kind: "storage", sourceCompanyId: f.companyId, destinationCompanyId: b.companyId,
+      sourceProjectId: f.projectId, destinationProjectId: f.projectId, sourceAccount: "6222000011111111", destinationAccount: "6222000022222222",
+      amountCents: "1000", reason: "合成转存审批单留存", evidenceFileId: await upload("finance_staff"), confirmationPassword: password, idempotencyKey: randomUUID()
+    });
+    await call(`/company-transfers/${storage.id}/decision`, "general_manager", { action: "approve", confirmationPassword: password });
+    const revision = await call("/upward-contract-amount-revisions", "contract_staff", {
+      projectId: f.projectId, contractId: chain.upper.id, amountNature: "fixed", amountCents: "700000", effectiveAt: "2026-09-01",
+      reason: "合成对上金额修订留存验收", evidenceFileId: await upload("contract_staff"), confirmationPassword: password, idempotencyKey: randomUUID()
+    });
+    await call(`/upward-contract-amount-revisions/${revision.id}/decision`, "contract_director", { decision: "confirm", confirmationPassword: password });
+    const inside = await db.contract.findFirstOrThrow({ where: { projectId: f.projectId } });
+    const economic = await call("/contract-economic-reviews", "contract_staff", {
+      projectId: f.projectId, leftSourceRef: `contract:${inside.id}`, rightSourceRef: `affiliate:${chain.outside.ledgerId}`,
+      relation: "independent", coverage: [], reason: "合成独立履约范围确认及PDF留存", confirmationPassword: password, idempotencyKey: randomUUID()
+    });
+    await call(`/contract-economic-reviews/${economic.id}/decision`, "contract_director", { revision: 1, decision: "confirm", confirmationPassword: password });
+    const originalProxy = await db.contractProxyExecution.findFirstOrThrow({ where: { projectId: f.projectId, status: "confirmed", entryKind: "payment" } });
+    for (const entryKind of ["refund", "repayment"] as const) {
+      const returned = await call("/contract-proxy-executions", "finance_staff", {
+        projectId: f.projectId, sourceRef: originalProxy.sourceRef, originalId: originalProxy.id, entryKind,
+        amountCents: "1000", occurredAt: "2026-08-20", actualPayerKey: originalProxy.actualPayerKey,
+        bankObservationId: await bank(f.companyId, "inflow", "1000"), bankReference: `往来回单-${entryKind}`,
+        evidenceFileId: await upload("finance_staff"), reason: "合成退款归还实际方向及PDF留存", confirmationPassword: password, idempotencyKey: randomUUID()
+      });
+      await call(`/contract-proxy-executions/${returned.id}/decision`, "finance_director", { decision: "confirm", confirmationPassword: password });
+    }
+    expect(new Set((await db.contractProxyExecution.findMany({ where: { projectId: f.projectId, status: "confirmed" } })).map(row => row.entryKind))).toEqual(new Set(["payment", "refund", "repayment"]));
+    const types = ["company_transfer", "contract_economic_review", "contract_bank_verification", "contract_proxy_execution", "upward_contract_amount_revision", "upward_receipt_match"];
+    const instances = await db.approvalInstance.findMany({ where: { status: "approved", businessType: { in: types } } });
+    expect(new Set(instances.map(row => row.businessType))).toEqual(new Set(types));
+    for (const instance of instances) {
+      const actions = await db.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id, action: "approve" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+      const source = instance.businessType === "company_transfer" ? await db.companyTransfer.findUniqueOrThrow({ where: { id: instance.businessId } })
+        : instance.businessType === "contract_economic_review" ? await db.contractEconomicReview.findUniqueOrThrow({ where: { id: instance.businessId } })
+        : instance.businessType === "contract_bank_verification" ? await db.contractBankVerificationRequest.findUniqueOrThrow({ where: { id: instance.businessId } })
+        : instance.businessType === "contract_proxy_execution" ? await db.contractProxyExecution.findUniqueOrThrow({ where: { id: instance.businessId } })
+        : instance.businessType === "upward_contract_amount_revision" ? await db.upwardContractAmountRevision.findUniqueOrThrow({ where: { id: instance.businessId } })
+        : await db.upwardReceiptMatch.findUniqueOrThrow({ where: { id: instance.businessId } });
+      expect(actions.at(-1)?.createdAt).toEqual("approvedAt" in source ? source.approvedAt : source.confirmedAt);
+      await verifyApprovedPdf({ db, baseUrl: base, token: actors.finance_staff.token, password, businessType: instance.businessType, businessId: instance.businessId,
+        roles: actions.map(action => action.approvedRoleKey!), label: `新主线-${instance.businessType}` });
+      // A project manager's ledger summary does not grant access to complete private bank/transfer paperwork.
+      if (["company_transfer", "contract_bank_verification", "contract_proxy_execution", "upward_receipt_match"].includes(instance.businessType)) {
+        const response = await fetch(`${base}/approval-forms/${instance.businessType}/${instance.businessId}/download`, {
+          method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${actors.project_manager.token}` },
+          body: JSON.stringify({ confirmationPassword: password, downloadReason: "越权拒绝验收" })
+        });
+        expect(response.status).toBe(403);
+      }
+    }
+    expect(new Set((await db.companyTransfer.findMany({ where: { status: "approved" } })).map(row => row.kind))).toEqual(new Set(["storage", "loan", "repayment"]));
+
   });
 });

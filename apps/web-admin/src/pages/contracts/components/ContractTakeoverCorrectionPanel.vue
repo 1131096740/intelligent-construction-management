@@ -22,6 +22,7 @@
         class="correction-item"
       >
         <div class="correction-title">
+<ApprovalDocumentDownload  business-type="contract_takeover_correction" :business-id="correction.id" :refresh-key="correction.status" />
           <strong>{{ scopeLabel(correction.correctionScope) }} · {{ operationLabel(correction.correctionOperation) }}</strong>
           <t-tag :theme="correction.status === 'applied' ? 'success' : correction.status === 'rejected' ? 'danger' : 'warning'">
             {{ statusLabel(correction.status) }}
@@ -180,6 +181,7 @@
 </template>
 
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocumentDownload.vue";
 import YuanMoneyInput from "../../../components/YuanMoneyInput.vue";
 import { centsTextToYuanText } from "../../../lib/money";
 import type { UploadFile } from "tdesign-vue-next";

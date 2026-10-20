@@ -1,3 +1,5 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
+import { attachApprovalEvidenceFixture } from "../approval/approval-evidence-test-fixture";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ContractTaxFactsService } from "./contract-tax-facts.service";
@@ -139,6 +141,7 @@ function createPrisma(overrides: Record<string, unknown> = {}) {
     auditLog: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     ...overrides
   };
+    attachApprovalEvidenceFixture(tx);
   return {
     tx,
     prisma: {
@@ -345,7 +348,8 @@ describe("ContractTaxFactsService", () => {
     tx.contractTaxFactRevision.update.mockResolvedValue(
       revision({
         status: "pending_contract_confirmation",
-        financeReviewedByUserId: "finance-director-1"
+        financeReviewedByUserId: "finance-director-1",
+        financeReviewedAt: new Date("2026-10-20T01:00:00Z")
       })
     );
     const service = new ContractTaxFactsService(prisma as never);
@@ -362,7 +366,8 @@ describe("ContractTaxFactsService", () => {
       where: { id: "revision-1" },
       data: expect.objectContaining({
         status: "pending_contract_confirmation",
-        financeReviewedByUserId: "finance-director-1"
+        financeReviewedByUserId: "finance-director-1",
+        financeReviewedAt: expect.any(Date)
       })
     });
     expect(tx.contractBillRow.update).not.toHaveBeenCalled();
@@ -401,6 +406,13 @@ describe("ContractTaxFactsService", () => {
       ]);
     const service = new ContractTaxFactsService(prisma as never);
 
+    await recordIndependentApproval(tx as never, {
+      businessType: "contract_tax_fact_revision", businessId: "revision-1", applicantUserId: "contract-staff-1",
+      actorUserId: "finance-director-1", roleKey: "finance_director", nodeName: "财务主管", signedAt: new Date("2026-10-20T01:00:00Z"),
+      nodes: [{ name: "财务主管", mode: "any", roleKeys: ["finance_director"] }, { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }],
+      form: { title: "历史税务事实审批单", code: "税务修订 1", projectId: "project-1", companyName: "", summary: [] }
+    });
+    tx.$queryRaw.mockClear();
     await service.contractConfirmation(
       "project-1",
       "takeover-1",
@@ -409,7 +421,7 @@ describe("ContractTaxFactsService", () => {
       "contract-director-1"
     );
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(tx.$queryRaw.mock.calls.filter(([sql]) => !/FROM "(User|HandwrittenSignatureVersion|FileObject)"/.test(sql.strings.join("?")))).toHaveLength(4);
     expect(tx.contractBillRow.update).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

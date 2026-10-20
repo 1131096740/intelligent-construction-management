@@ -56,7 +56,7 @@ try {
   const grants = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "general_procurement", "-Atc", `SELECT has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'INSERT'), has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'DELETE');`], process.env, true);
   if (grants !== "t|f") throw new Error("新表运行权限必须可写、不可删除");
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/general_procurement`;
-  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/general-procurement-http-postgres.spec.ts"], env, false, 300_000);
+  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/general-procurement-http-postgres.spec.ts", "src/database/approval-v6-migration-postgres.spec.ts"], env, false, 300_000);
 } finally {
   rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {

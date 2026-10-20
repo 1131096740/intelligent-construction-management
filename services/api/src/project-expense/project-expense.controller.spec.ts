@@ -715,14 +715,15 @@ describe("ProjectExpenseController authorization wiring", () => {
   });
 
   it("forwards approval PDF download ticket requests with the authenticated user id", async () => {
-    const expenses = { createApprovalPdfDownloadTicket: jest.fn() };
+    const expenses = { createApprovalPdfDownloadTicket: jest.fn().mockResolvedValue({ buffer: Buffer.from("pdf"), fileName: "审批单.pdf" }) };
     const controller = new ProjectExpenseController(expenses as never);
 
     await controller.createApprovalPdfDownloadTicket(
       "project-1",
       "expense-1",
       { id: "user-1" } as never,
-      { confirmationPassword: "current-password", downloadReason: "审批单复核" }
+      { confirmationPassword: "current-password", downloadReason: "审批单复核" },
+      { set: jest.fn() }
     );
 
     expect(expenses.createApprovalPdfDownloadTicket).toHaveBeenCalledWith(

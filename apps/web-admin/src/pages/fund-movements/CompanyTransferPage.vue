@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import {computed,onBeforeUnmount,reactive,ref,watch} from "vue";
 import {useRoute} from "vue-router";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
@@ -80,6 +81,7 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
       <p>申请 {{ money(r.amountCents) }} · 已出款 {{ money(r.sentCents) }} · 已到账 {{ money(r.receivedCents) }} · 已退回 {{ money(r.returnedCents) }} · 在途 {{ money(r.inTransitCents) }} 元</p>
       <p>{{ r.reason }}</p><p v-if="r.originalReference">归还原往来：{{ r.originalReference }}</p>
       <p v-for="(a,i) in r.approvalActions" :key="i">{{ a.actorName }} · {{ a.action==='approve'?'终审通过':a.action==='withdraw'?'撤回':'退回' }} · {{ new Date(a.at).toLocaleString('zh-CN') }} · {{ a.signed?'已签署':'' }} {{ a.comment }}</p>
+      <ApprovalDocumentDownload business-type="company_transfer" :business-id="r.id" :refresh-key="r.status" />
       <t-button v-if="r.evidenceFileId" variant="text" @click="start('evidence',r)">查看申请依据</t-button>
       <t-button v-if="r.canApprove" @click="start('approve',r)">终审通过</t-button><t-button v-if="r.canApprove" variant="outline" @click="start('reject',r)">退回申请</t-button><t-button v-if="r.canWithdraw" variant="outline" @click="start('withdraw',r)">撤回申请</t-button>
       <template v-if="r.canExecute"><t-button v-if="BigInt(r.sentCents)<BigInt(r.amountCents)" @click="start('outgoing',r)">登记实际出款</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" @click="start('incoming',r)">独立确认到账</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" variant="outline" @click="start('returned',r)">登记未到账退回</t-button></template>

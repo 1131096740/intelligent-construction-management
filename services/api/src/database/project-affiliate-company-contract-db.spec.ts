@@ -431,6 +431,8 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
     const a=await business.recordContractFact(f.projectId,f.recorderId,{...base,externalContractReference:randomUUID(),idempotencyKey:randomUUID()});
     const b=await business.recordContractFact(f.projectId,f.recorderId,{...base,externalContractReference:randomUUID(),idempotencyKey:randomUUID()});
     const finance=randomUUID();await prisma.user.create({data:{id:finance,name:"经济复核独立财务",isActive:true}});
+    const financeFile=randomUUID();await prisma.fileObject.create({data:{id:financeFile,bucket:"private-local",objectKey:`tests/${financeFile}.png`,originalName:"独立财务签名.png",mimeType:"image/png",sizeBytes:100,uploadedByUserId:finance,contentSha256:"f".repeat(64),storageStatus:"active"}});
+    await prisma.handwrittenSignatureVersion.create({data:{userId:finance,fileId:financeFile,contentSha256:"f".repeat(64),source:"canvas"}});
     const visibility={visibleProjectIdsInTransaction:async()=>[f.projectId],effectiveRoleKeysByProjectInTransaction:async(_tx:unknown,actor:string)=>new Map([[f.projectId,actor===finance?["finance_director"]:actor===f.directorId?["contract_director"]:["contract_staff"]]])};
     const reviews=new ContractEconomicReviewService(prisma as never,visibility as never,auth as never,audit,replay);
     const refs=[`affiliate:${a.ledgerId}`,`affiliate:${b.ledgerId}`].sort();

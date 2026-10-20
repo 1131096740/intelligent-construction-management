@@ -324,6 +324,7 @@
         horizontal-scroll-affixed-bottom
       >
         <template #operation="{ row }">
+<ApprovalDocumentDownload  business-type="contract_takeover_batch" :business-id="row.id" :refresh-key="row.status" />
           <t-space
             v-if="canConfirmTakeovers || canManageTakeovers"
             size="small"
@@ -1376,6 +1377,7 @@
                 class="correction-history-item"
               >
                 <strong>{{ correction.correctionTypeLabel }} · {{ correction.statusLabel }}</strong>
+<ApprovalDocumentDownload  business-type="contract_company_correction" :business-id="correction.id" :refresh-key="correction.statusLabel" />
                 <p>{{ correction.beforeSummary }}</p>
                 <p>拟更正为：{{ correction.afterSummary }}</p>
                 <p>更正原因：{{ correction.reason }}</p>
@@ -1781,6 +1783,8 @@
 
 <script setup lang="ts">
 import ContractEntryChoice from "../../components/ContractEntryChoice.vue";
+
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import { useTakeoverEvidenceUpload } from "./use-takeover-evidence-upload";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";

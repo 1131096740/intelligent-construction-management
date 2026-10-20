@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `ced43b41df9f4eea1b0e2a50ba1d6879d278587f2b2af3372b3570c5cab2637c` |
-| webApiWrappers | ready | `b5eb53aab590675448377525a65be9f0d31af910b908127be94579bdc241e05b` |
-| webPageActions | ready | `f2dd91506bef2fa72d5ed1d52d8ffc67618ba715976ffe380c589279b9cea246` |
-| routeUsage | ready | `9c7219c3bf721042b86d61631317bc4d92947e447843c44866ee4cf8b25dd040` |
+| nestRoutes | ready | `52c5236f75207c4dd5bd373427e70ae4b76813d9af2d58ab63dbf43aa37fe4e8` |
+| webApiWrappers | ready | `06e35dc436bc3c6db8392b0ccb8142562bd19c67fc58324ac322cdf3b0d20c43` |
+| webPageActions | ready | `d4528790acb8b70bdc49dc4589e366178cb53b087fa78015283a50fb0f834cad` |
+| routeUsage | ready | `4a3a81e98d1f226e2012cf04ca40df660eb9a70f79aec49563397e18c46e62a6` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 686 |
-| pageRouteCount | 483 |
+| routeCount | 688 |
+| pageRouteCount | 485 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 96 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 679 |
+| mainRequestBindingCount | 681 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 391 |
-| actionBindingCount | 451 |
-| acceptedActionBindingCount | 414 |
+| registeredActionCount | 392 |
+| actionBindingCount | 452 |
+| acceptedActionBindingCount | 415 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 380 |
-| coveredProductionMutationConsumerPairCount | 380 |
+| productionMutationConsumerPairCount | 382 |
+| coveredProductionMutationConsumerPairCount | 382 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -52,6 +52,8 @@
 | GET | /affiliate-clearing-authorities/options | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchAffiliateClearingAuthorityOptions | — | not_applicable | — |
 | GET | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listApprovalDelegations | — | not_applicable | — |
 | GET | /approval-delegations/user-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationUserOptions | — | not_applicable | — |
+| GET | /approval-forms/:businessType/:businessId/capability | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#approvalDocumentCapability | — | not_applicable | — |
+| GET | /approval-forms | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#listApprovalDocuments | — | not_applicable | — |
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
@@ -300,7 +302,7 @@
 | POST | /affiliate-clearing-authorities/:authorityId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /approval-delegations | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | not_applicable | — |
-| POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
+| POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | approval-documents.download-form<br>contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/login | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |

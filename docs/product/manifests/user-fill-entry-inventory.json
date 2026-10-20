@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 382,
+    "activeBusinessActionCount": 383,
     "technicalActionCount": 9,
-    "activeBindingCount": 441,
+    "activeBindingCount": 442,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -48,6 +48,22 @@
         "POST /projects/:param/affiliate-company-contracts/file-uploads"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-documents.download-form",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/审批单留存"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /approval-forms/:param/:param/download"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -420,7 +436,7 @@
         "POST /approval-forms/:param/:param/download"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {

@@ -260,6 +260,16 @@ async function seedCorrectionFacts(
       { id: ids.reviewer, name: "历史更正财务主管" }
     ]
   });
+  const signatureFileId = randomUUID();
+  const signatureSha256 = "a".repeat(64);
+  await client.fileObject.create({ data: {
+    id: signatureFileId, bucket: "local-test", objectKey: `correction-signature/${suffix}`,
+    originalName: "合成财务主管签名.png", mimeType: "image/png", sizeBytes: 1,
+    uploadedByUserId: ids.reviewer, contentSha256: signatureSha256, storageStatus: "active"
+  } });
+  await client.handwrittenSignatureVersion.create({ data: {
+    userId: ids.reviewer, fileId: signatureFileId, contentSha256: signatureSha256, source: "canvas"
+  } });
   await client.project.create({
     data: {
       id: ids.project,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onMounted, reactive, ref } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
@@ -599,6 +600,7 @@ function statusTone(row: FundExecutionCaseListItem) {
     <ContractRelationshipLedger initial-section="payments" />
 
     <template #actions>
+<ApprovalDocumentDownload v-if="selectedCase" business-type="fund_execution_case" :business-id="selectedCase.caseRef" :refresh-key="selectedCase.approvalStatusLabel" />
       <t-button
         variant="outline"
         :loading="loading"

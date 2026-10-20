@@ -26,6 +26,7 @@ const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
 const { command } = commandRuntime;
+const { waitForLocalTcpReady } = require("./wait-for-local-tcp-ready.cjs");
 
 function fail(message) {
   throw new Error(`POL-109 PostgreSQL 16 动态验收失败：${message}`);
@@ -85,7 +86,7 @@ async function assertLocalDocker() {
 async function waitForPostgres(containerName) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await command(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", DATABASE_NAME]);
+      await command(docker, ["exec", containerName, "pg_isready", "-h", "127.0.0.1", "-U", "jiangkong", "-d", DATABASE_NAME]);
       return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -172,6 +173,7 @@ async function main() {
       "--publish", `127.0.0.1:${port}:5432`, IMAGE
     ], { env: { ...process.env, POSTGRES_PASSWORD: password }, forwardOutput: true, timeoutMs: 60_000 });
     await waitForPostgres(containerName);
+    await waitForLocalTcpReady({ host: "127.0.0.1", port });
     const schemaPath = path.join(root, "services/api/prisma/schema.prisma");
     for (let pass = 0; pass < 2; pass += 1) {
       await command(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {

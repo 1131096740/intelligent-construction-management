@@ -96,7 +96,7 @@ describe("ProjectService upstream settlement external facts", () => {
     const tx = {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "upstream-1" }])
-        .mockResolvedValueOnce([{ id: "signature-user", isActive: true }])
+        .mockResolvedValueOnce([{ id: "signature-user", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([
           {
             id: "signature-version-1",

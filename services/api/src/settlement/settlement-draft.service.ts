@@ -1,3 +1,4 @@
+import { assertSettlementApplicant } from "./settlement-applicant";
 import {
   BadRequestException,
   ConflictException,
@@ -60,6 +61,7 @@ export class SettlementDraftService {
         projectId,
         input.contractVersionId
       );
+      await assertSettlementApplicant(tx, context.contract, actorUserId);
       await this.assertNoActiveSettlement(tx, context.contract.id);
       await this.assertFormalSettlementCodeAvailable(tx, input.code);
       const process = await this.processes?.createOpen(tx, {
@@ -161,6 +163,7 @@ export class SettlementDraftService {
         throw new ConflictException("来源结算草稿已变化，请刷新台账后重试");
       }
       const context = await this.contractContext(tx, projectId, source!.contractVersionId);
+      await assertSettlementApplicant(tx, context.contract, actorUserId);
       await this.assertNoActiveSettlement(tx, context.contract.id);
       const process = await this.processes?.createOpen(tx, {
         contractId: context.contract.id,

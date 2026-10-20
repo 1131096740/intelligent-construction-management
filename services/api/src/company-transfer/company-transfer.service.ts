@@ -6,7 +6,8 @@ import { PrismaService } from "../database/prisma.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { AuditService } from "../audit/audit.service";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
+import { snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { resolveApprovalReviewIdentity } from "../approval/approval-review-identity";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { acquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
@@ -84,11 +85,12 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       else if (row.applicantUserId === actor || !identity) throw new ForbiddenException("须由独立的董事长或总经理终审");
       if (input.action !== "approve" && !input.comment?.trim()) throw new BadRequestException("请说明退回或撤回原因");
       const evidence = await tx.fileObject.findUnique({ where: { id: row.evidenceFileId } }); if (input.action === "approve" && (evidence?.storageStatus !== "active" || evidence.contentSha256 !== row.evidenceSha256)) throw new ConflictException("申请依据已变化，请退回重新申请");
+      const confirmedAt = new Date();
       const signature = await snapshotApprovalSignature(tx, actor, { required: input.action === "approve" });
-      const action = input.action === "reject" ? "return_to_applicant" : input.action; await tx.approvalActionLog.create({ data: { approvalInstanceId: approval.id, action, actorUserId: actor, approvedRoleKey: identity?.approvedRoleKey, comment: input.comment, signatureFileIdSnapshot: signature.fileId, signatureSha256Snapshot: signature.sha256, signatureVersionIdSnapshot: signature.versionId } });
+      const action = input.action === "reject" ? "return_to_applicant" : input.action; await tx.approvalActionLog.create({ data: await withApprovalIdentity(tx, { approvalInstanceId: approval.id, action, actorUserId: actor, createdAt: confirmedAt, approvedRoleKey: identity?.approvedRoleKey, comment: input.comment, signatureFileIdSnapshot: signature.fileId, signatureSha256Snapshot: signature.sha256, signatureVersionIdSnapshot: signature.versionId, ...(input.action === "approve" ? { metadata: { form: { ...await ledgerApprovalFacts(tx, "company_transfer", id), applicantName: (await tx.user.findUniqueOrThrow({ where: { id: row.applicantUserId }, select: { name: true } })).name } } } : {}) }, signature) });
       const status = input.action === "approve" ? "approved" : input.action === "reject" ? "rejected" : "withdrawn";
       await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: input.action === "reject" ? "returned_to_applicant" : status, currentNodeIndex: input.action === "approve" ? 1 : 0 } });
-      await tx.companyTransfer.update({ where: { id }, data: { status, ...(input.action === "approve" ? { approvedByUserId: actor, approvedAt: new Date() } : {}) } });
+      await tx.companyTransfer.update({ where: { id }, data: { status, ...(input.action === "approve" ? { approvedByUserId: actor, approvedAt: confirmedAt } : {}) } });
       await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${action}`, businessType: "company_transfer", businessId: id, metadata: { status } }); return { id, status };
     });
   }

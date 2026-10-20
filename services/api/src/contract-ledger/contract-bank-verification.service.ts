@@ -1,3 +1,5 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
+import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {requireCompanyFinance} from "../company-transfer/company-transfer.access";
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from "@nestjs/common";
 import type {Prisma} from "@prisma/client";
@@ -65,10 +67,13 @@ export class ContractBankVerificationService{
    const holderFile=await tx.fileObject.findUnique({where:{id:input.holderEvidenceFileId}});
    if(!holderFile||holderFile.id===row.evidenceFileId||holderFile.uploadedByUserId!==actor||holderFile.storageStatus!=="active"||!holderFile.contentSha256)throw new BadRequestException("请使用本人上传、独立核对的账户证明");
    const file=await tx.fileObject.findUnique({where:{id:row.evidenceFileId}});if(file?.storageStatus!=="active"||file.contentSha256!==row.evidenceSha256)throw new ConflictException("原银行交易依据已变化，请退回重新核验");
+   const confirmedAt = new Date();
    const signature=await snapshotApprovalSignature(tx,actor,{required:true}),secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET?.trim();if(!secret)throw new ForbiddenException("资金核验写入密钥未配置");
    const [issued]=await tx.$queryRaw<Array<{id:string}>>`SELECT public.issue_contract_bank_holder(${id},${actor},${input.holderEvidenceFileId},${signature.versionId},${row.accountHash},${secret}) AS id`;
    const observation=await new VerifiedBankTransactionObservationService(this.prisma).recordInTransaction(tx,{reference:`contract-bank:${row.id}`,payerVerificationId:issued.id,transactionSourceType:"contract_bank_verification",transactionSourceId:row.id,transactionSourceIdentity:row.bankIdentity,transactionEvidenceFileId:row.evidenceFileId,transactionExecutedByUserId:row.recordedByUserId,amountCents:row.amountCents,currencyCode:"CNY",direction:row.direction as "inflow"|"outflow",occurredAt:row.occurredAt,createdByUserId:actor,auditRequestId:randomUUID()});
-   await tx.contractBankVerificationRequest.update({where:{id},data:{status:"confirmed",confirmedByUserId:actor,confirmedAt:new Date(),signatureVersionId:signature.versionId,holderEvidenceFileId:input.holderEvidenceFileId,payerVerificationId:issued.id,observationId:observation.id}});
+   await tx.contractBankVerificationRequest.update({where:{id},data:{status:"confirmed",confirmedByUserId:actor,confirmedAt,signatureVersionId:signature.versionId,holderEvidenceFileId:input.holderEvidenceFileId,payerVerificationId:issued.id,observationId:observation.id}});
+   if (signature) await recordIndependentApproval(tx, { businessType: "contract_bank_verification", businessId: id, applicantUserId: row.recordedByUserId, actorUserId: actor,
+     roleKey: "finance_director", nodeName: "财务主管", signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "contract_bank_verification", id) });
    await this.audit.record(tx,{actorUserId:actor,action:"contract.bank_verification.confirm",businessType:"contract_bank_verification",businessId:id,metadata:{projectId:row.projectId,observationId:observation.id}});return {id,status:"confirmed"};
   },{timeout:30000});
  }

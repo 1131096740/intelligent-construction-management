@@ -1,3 +1,5 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
+import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {companyTransferReservedProxy} from "../company-transfer/company-transfer.balance";
 import {contractBankProjectWhere} from "./contract-bank-project";
 import {validateProxyBank,validateProxyReceivingBank,businessDay} from "./contract-proxy-bank";
@@ -158,6 +160,7 @@ export class ContractProxyExecutionService {
    const receivingObservation=await validateProxyReceivingBank(tx,source,row.entryKind,row.amountCents,row.occurredAt,row.receivingBankObservationId,row.projectId);
    if(receivingObservation)await tx.contractProxyBankClaim.create({data:{observationId:receivingObservation.id,proxyExecutionId:row.id}});
    if(observation)await tx.contractProxyBankClaim.create({data:{observationId:observation.id,proxyExecutionId:row.id}});
+   const confirmedAt = new Date();
    const signature=await snapshotApprovalSignature(tx,actor,{required:true});
    if(row.paymentRequestId&&row.entryKind!=="repayment"){
     const request=await tx.paymentRequest.findUniqueOrThrow({where:{id:row.paymentRequestId}});
@@ -169,8 +172,10 @@ export class ContractProxyExecutionService {
    if(row.entryKind==="payment"&&source.actualPayer.kind==="participating_company")await this.funding.allocateExecution(tx,{projectId:row.projectId,executionType:"contract_proxy_execution",executionId:row.id,businessType:"contract_proxy_execution",businessId:row.id,amountCents:row.amountCents,occurredAt:row.occurredAt,actorUserId:actor});
    if(row.entryKind==="repayment"&&source.debtor.kind==="participating_company"&&source.actualPayer.kind==="construction_enterprise")await this.funding.allocateExecution(tx,{projectId:row.projectId,executionType:"contract_proxy_execution",executionId:row.id,businessType:"contract_proxy_execution",businessId:row.id,amountCents:row.amountCents,occurredAt:row.occurredAt,actorUserId:actor});
    if(row.entryKind==="refund"&&source.actualPayer.kind==="participating_company")await this.funding.reverseExecution(tx,{projectId:row.projectId,executionType:"contract_proxy_execution",executionId:row.originalId!,amountCents:row.amountCents,occurredAt:row.occurredAt,reversalKey:row.id,reason:row.reason,actorUserId:actor});
-   const confirmed=await tx.contractProxyExecution.update({where:{id},data:{status:"confirmed",confirmedByUserId:actor,confirmedAt:new Date(),confirmationSignatureVersionId:signature.versionId}});
+   const confirmed=await tx.contractProxyExecution.update({where:{id},data:{status:"confirmed",confirmedByUserId:actor,confirmedAt,confirmationSignatureVersionId:signature.versionId}});
    await this.sources.appendConfirmedSourceIfEnabledInTransaction(tx,{projectId:row.projectId,sourceType:"contract_proxy_execution",sourceBusinessId:row.id},actor);
+   if (signature) await recordIndependentApproval(tx, { businessType: "contract_proxy_execution", businessId: id, applicantUserId: row.recordedByUserId, actorUserId: actor,
+     roleKey: "finance_director", nodeName: "财务主管", signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "contract_proxy_execution", id) });
    await this.audit.record(tx,{actorUserId:actor,action:"contract.proxy_execution.confirm",businessType:"contract_proxy_execution",businessId:id,metadata:{projectId:row.projectId,entryKind:row.entryKind,amountCents:row.amountCents.toString()}});
    return {id,status:confirmed.status};
   },{timeout:30000});

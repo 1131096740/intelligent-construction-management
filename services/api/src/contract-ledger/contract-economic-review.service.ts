@@ -1,3 +1,5 @@
+import { recordIndependentApproval, invalidateIndependentApproval } from "../approval/independent-approval-evidence";
+import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import { normalizeEconomicScope } from "./contract-economic-scope";
 import { assertSettledScopesPreserved, economicScopeOptions, normalizeSettlementAllocations } from "./contract-economic-settlement";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
@@ -138,6 +140,7 @@ export class ContractEconomicReviewService {
      if(input.decision==="return"){
        if(!input.reason?.trim())throw new BadRequestException("请填写退回原因");
        const returned=await tx.contractEconomicReview.update({where:{id},data:{status:"returned",returnedAt:new Date(),returnReason:input.reason.trim(),revision:{increment:1}}});
+       await invalidateIndependentApproval(tx, { businessType: "contract_economic_review", businessId: id, actorUserId: actor, reason: input.reason.trim(), invalidatedAt: new Date() });
        await this.audit.record(tx,{actorUserId:actor,action:"contract.economic_review.return",businessType:"contract_economic_review",businessId:id,metadata:{projectId:row.projectId,reason:input.reason.trim()}});
        return returned;
      }
@@ -175,9 +178,16 @@ export class ContractEconomicReviewService {
        }
        frozenSources.push({...d,excludedDeltaCents:delta.toString(),operatingBaseline:baseline});
      }
+     const confirmedAt = new Date();
      const updated=await tx.contractEconomicReview.update({where:{id},data:{financeRequired,revision:{increment:1},status:finish?"confirmed":"pending_finance",
        ...(row.status==="pending_review"?{contractReviewedById:actor}:{financeReviewedById:actor}),
-       ...(finish?{confirmedAt:new Date(),frozenSources:JSON.parse(JSON.stringify(frozenSources,(_key,value)=>typeof value==="bigint"?value.toString():value))}:{} )}});
+       ...(finish?{confirmedAt,frozenSources:JSON.parse(JSON.stringify(frozenSources,(_key,value)=>typeof value==="bigint"?value.toString():value))}:{} )}});
+     await recordIndependentApproval(tx, { businessType: "contract_economic_review", businessId: id, applicantUserId: row.preparedByUserId, actorUserId: actor,
+       roleKey: row.status === "pending_review" ? "contract_director" : "finance_director", nodeName: row.status === "pending_review" ? "合同部主管" : "财务主管",
+       stageIndex: row.status === "pending_review" ? 0 : 1,
+       preserveHistoricalContinuation: row.status === "pending_finance",
+       nodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }, ...(financeRequired ? [{ name: "财务主管", mode: "any" as const, roleKeys: ["finance_director"] }] : [])],
+       signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "contract_economic_review", id) });
      if(finish) for(const d of frozenSources) if(d.formal&&d.operatingBaseline&&d.excludedDeltaCents!=="0") await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx,{projectId:row.projectId,sourceType:"contract_economic_review",sourceBusinessId:`${row.id}:${d.ref}`},actor);
      await this.audit.record(tx,{actorUserId:actor,action:"contract.economic_review.review",businessType:"contract_economic_review",businessId:id,metadata:{projectId:row.projectId,status:updated.status}});
      return updated;

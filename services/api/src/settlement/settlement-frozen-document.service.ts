@@ -1,3 +1,4 @@
+import { downstreamContractRelationship, contractRelationshipLabel } from "@jiangkong/shared-domain";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, type SettlementDraft } from "@prisma/client";
 import { PDFDocument } from "pdf-lib";
@@ -273,6 +274,8 @@ export class SettlementFrozenDocumentService {
         governanceVersion: 1,
         fieldReviewerUserId: draft.fieldReviewerUserId,
         fieldReviewerRoleKey: draft.fieldReviewerRoleKey,
+        finalDeclarationVersion: draft.finalDeclarationVersion,
+        finalDeclarationSnapshot: draft.finalDeclarationSnapshot,
         finalConfirmations: {
           finalScopeCompleted: draft.finalScopeCompleted,
           finalPriorSettlementsIncluded: draft.finalPriorSettlementsIncluded,
@@ -310,6 +313,16 @@ export class SettlementFrozenDocumentService {
         "结算现场复核岗位与合同类型不一致，不能生成冻结版"
       );
     }
+    const draftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData)
+      ? version.draftData : {};
+    const parties = await tx.contractPartySnapshot.findMany({
+      where: { contractVersionId: version.id, roleKey: "party_b" }, orderBy: { displayOrder: "asc" }
+    });
+    const counterpartyNames = parties.map(party => {
+      const snapshot = party.snapshot;
+      return snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) && typeof snapshot.name === "string"
+        ? snapshot.name.trim() : "";
+    }).filter(Boolean);
     const snapshot: FrozenDraftBusinessSnapshot = {
       draftId: draft.id,
       revision: draft.revision,
@@ -321,13 +334,15 @@ export class SettlementFrozenDocumentService {
       paymentTermsVersionId: draft.paymentTermsVersionId,
       projectName: project.name,
       contractCode: contract.code ?? contract.id,
-      contractName: contract.name,
+      contractName: typeof draftData.contractName === "string" && draftData.contractName.trim()
+        ? draftData.contractName.trim() : contract.name,
       contractTypeKey: contract.contractTypeKey,
-      counterparty: contract.counterparty,
-      companyEntityName:
-        version.companyEntityNameSnapshot ??
-        contract.companyEntityName ??
-        "我方主体",
+      counterparty: counterpartyNames.length ? counterpartyNames.join("、") : contract.counterparty,
+      contractRelationshipLabel: contractRelationshipLabel(downstreamContractRelationship(version)),
+      signingSubjectType: version.signingSubjectType,
+      companyEntityName: version.signingSubjectType === "affiliate"
+        ? version.affiliateNameSnapshot?.trim() || "原施工企业签约主体未提供"
+        : version.companyEntityNameSnapshot ?? contract.companyEntityName ?? "我方主体",
       taxFactRevision: taxFacts.taxFactRevision,
       invoiceType: taxFacts.invoiceType,
       taxMode: taxFacts.taxMode!,

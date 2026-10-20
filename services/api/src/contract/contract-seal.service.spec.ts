@@ -1,3 +1,4 @@
+import { attachApprovalEvidenceFixture } from "../approval/approval-evidence-test-fixture";
 import "reflect-metadata";
 import { PrismaService } from "../database/prisma.service";
 import { ContractSealService } from "./contract-seal.service";
@@ -41,7 +42,7 @@ function harness() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockImplementation(({ data }) => ({ ...task, ...data }))
     },
-    contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+    contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }), findUniqueOrThrow: jest.fn().mockResolvedValue({ projectId: "project-1", code: "HT-01", name: "材料合同", counterparty: "供应商", companyEntityName: "施工公司" }) },
     contractFormalFile: {
       findMany: jest.fn().mockResolvedValue([
         { id: "approval-original-1" },
@@ -55,13 +56,14 @@ function harness() {
     },
     position: { findUnique: jest.fn().mockResolvedValue({ id: "position-1" }) },
     user: {
-      findUnique: jest.fn().mockResolvedValue({ id: "director-1", isActive: true }),
+      findUnique: jest.fn().mockResolvedValue({ id: "director-1", name: "签批人甲", isActive: true }),
       findMany: jest.fn().mockResolvedValue([{ id: "handler-1" }])
     },
     projectMember: { findFirst: jest.fn().mockResolvedValue({ id: "member-1" }) },
     fileObject: { findUnique: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
   };
+  const evidence = attachApprovalEvidenceFixture(tx);
   const prisma = {
     $transaction: jest.fn((fn) => fn(tx)),
     get contractVersion() { return tx.contractVersion; },
@@ -73,7 +75,7 @@ function harness() {
     get userPosition() { return tx.userPosition; },
     get projectMember() { return tx.projectMember; }
   };
-  return { version, task, tx, prisma };
+  return { version, task, tx, prisma, evidence };
 }
 
 function materialChangeInput(overrides: Partial<{
@@ -139,6 +141,19 @@ describe("ContractSealService", () => {
       }
     });
     expect(tx.contractSealTask.update).not.toHaveBeenCalled();
+  });
+
+  it("cancels signed evidence in the same material-change transaction", async () => {
+    const { tx, prisma, version, task, evidence } = harness();
+    version.status = "in_seal"; task.status = "in_seal";
+    evidence.seedInstance({ id: "seal-evidence", status: "approved" });
+    const audit = { record: jest.fn() };
+    await new ContractSealService(prisma as never, audit as never).invalidateForMaterialChange(
+      "version-1", "handler-1", materialChangeInput({ expectedStatus: "in_seal" })
+    );
+    expect(evidence.delegates.approvalInstance.update).toHaveBeenCalledWith({ where: { id: "seal-evidence" }, data: { status: "terminated" } });
+    expect(evidence.actions).toEqual([expect.objectContaining({ action: "void", actorUserId: "handler-1" })]);
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "contract.signing.material_change" }));
   });
 
   it.each([
@@ -397,7 +412,7 @@ describe("ContractSealService", () => {
     tx.contractSealTask.findFirst.mockResolvedValue(task);
     tx.contractVersion.updateMany.mockResolvedValue({ count: 1 });
     Object.assign(tx, {
-      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }), findUniqueOrThrow: jest.fn().mockResolvedValue({ projectId: "project-1", code: "HT-01", name: "材料合同", counterparty: "供应商", companyEntityName: "施工公司" }) },
       contractFormalFile: {
         findFirst: jest.fn()
           .mockResolvedValueOnce(null)
@@ -486,7 +501,7 @@ describe("ContractSealService", () => {
     task.status = "completed";
     tx.contractSealTask.findFirst.mockResolvedValue(task);
     Object.assign(tx, {
-      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }), findUniqueOrThrow: jest.fn().mockResolvedValue({ projectId: "project-1", code: "HT-01", name: "材料合同", counterparty: "供应商", companyEntityName: "施工公司" }) },
       contractFormalFile: {
         findFirst: jest.fn()
           .mockResolvedValueOnce(null)
@@ -716,7 +731,7 @@ describe("ContractSealService", () => {
     task.handlerUserId = "handler-1";
     tx.contractSealTask.findFirst.mockResolvedValue(task);
     Object.assign(tx, {
-      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }), findUniqueOrThrow: jest.fn().mockResolvedValue({ projectId: "project-1", code: "HT-01", name: "材料合同", counterparty: "供应商", companyEntityName: "施工公司" }) },
       contractFormalFile: {
         findFirst: jest.fn()
           .mockResolvedValueOnce({ id: "approval-original-1", pageCount: 2 })
@@ -783,6 +798,7 @@ describe("ContractSealService", () => {
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
       paymentTermsStage: { findMany: stage }
     };
+  attachApprovalEvidenceFixture(tx);
     const service = new ContractSealService({} as never);
 
     await expect((service as unknown as {
@@ -821,6 +837,7 @@ describe("ContractSealService", () => {
         ])
       }
     };
+  attachApprovalEvidenceFixture(tx);
     const service = new ContractSealService({} as never);
 
     await expect((service as unknown as {
@@ -836,6 +853,7 @@ describe("ContractSealService", () => {
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
       paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
     };
+  attachApprovalEvidenceFixture(tx);
     const service = new ContractSealService({} as never);
 
     await expect((service as unknown as {
@@ -865,6 +883,7 @@ describe("ContractSealService", () => {
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
       paymentTermsStage: { findMany: stage }
     };
+  attachApprovalEvidenceFixture(tx);
     const service = new ContractSealService({} as never);
 
     await expect((service as unknown as {
@@ -884,6 +903,7 @@ describe("ContractSealService", () => {
         paymentTermsVersion: { findFirst: jest.fn() },
         paymentTermsStage: { findMany: jest.fn() }
       };
+  attachApprovalEvidenceFixture(tx);
       const service = new ContractSealService({} as never);
 
       await expect((service as unknown as {
@@ -901,7 +921,7 @@ describe("ContractSealService", () => {
     task.status = "completed";
     tx.contractSealTask.findFirst.mockResolvedValue(task);
     Object.assign(tx, {
-      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) }
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }), findUniqueOrThrow: jest.fn().mockResolvedValue({ projectId: "project-1", code: "HT-01", name: "材料合同", counterparty: "供应商", companyEntityName: "施工公司" }) }
     });
     tx.position.findUnique.mockResolvedValue(null);
     const formalFiles = { inspectOwnedStoredFinalArchive: jest.fn() };

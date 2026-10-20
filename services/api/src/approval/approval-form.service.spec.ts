@@ -1,3 +1,5 @@
+import { PDFDocument } from "pdf-lib";
+import { markFormalApprovalPdf } from "./approval-pdf-watermark";
 import {
   ApprovalFormService,
   buildProjectPaymentApprovalRows
@@ -12,8 +14,10 @@ const PNG_1X1 = Buffer.from(
 );
 
 // 构造一个「付款审批已通过」的最小 prisma 桩，覆盖 generateForInstance 用到的查询。
+async function fixturePdf() { const pdf = await PDFDocument.create(); pdf.addPage(); return markFormalApprovalPdf(Buffer.from(await pdf.save())); }
+
 function buildPrisma(overrides: Record<string, unknown> = {}) {
-  const created = { id: "pdf-1", fileId: "file-1", templateKey: "approval_form" };
+  const created = { id: "pdf-1", fileId: "file-1", templateKey: "approval_form", approvalInstanceId: "inst-1" };
   let generationClaim: Record<string, unknown> | null = null;
   const approvalFormGenerationClaim = {
     findUnique: jest.fn().mockImplementation(() => Promise.resolve(generationClaim)),
@@ -55,6 +59,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     created,
     approvalInstance: {
       findUnique: jest.fn().mockResolvedValue({
+updatedAt: new Date("2026-06-24T08:30:00Z"),
         id: "inst-1",
         businessType: "payment_request",
         businessId: "pay-1",
@@ -63,6 +68,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
         frozenNodes: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }]
       }),
       findFirst: jest.fn().mockResolvedValue({
+updatedAt: new Date("2026-06-24T08:30:00Z"),
         id: "inst-1",
         businessType: "payment_request",
         businessId: "pay-1",
@@ -76,8 +82,15 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
       create: jest.fn().mockResolvedValue(created)
     },
     approvalActionLog: {
+      findFirst: jest.fn().mockResolvedValue({ id: "log-1" }),
       findMany: jest.fn().mockResolvedValue([
         {
+id: "log-1",
+approvedRoleKey: "chairman",
+signatureFileIdSnapshot: "sig-1",
+signatureVersionIdSnapshot: "signature-version-1",
+signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"),
+metadata: { approverName: "董事长乙" },
           actorUserId: "user-chair",
           action: "approve",
           comment: "同意付款，注意分期",
@@ -208,15 +221,14 @@ describe("ApprovalFormService", () => {
             createdAt: new Date("2026-07-18T09:00:00.000Z")
           },
           {
+signatureVersionIdSnapshot: "signature-version-1",
             id: "log-approve",
             actorUserId: "user-agent-b",
             action: "approve",
             comment: "同意",
-            metadata: null,
-            approvedRoleKey: "chairman",
-            representedUserId: "user-chair",
-            signatureFileIdSnapshot: null,
-            signatureSha256Snapshot: null,
+            metadata: { approverName: "受托人丁", representedName: "董事长乙" },
+            approvedRoleKey: "chairman", representedUserId: "user-chair",
+            signatureFileIdSnapshot: "sig-1", signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"),
             createdAt: new Date("2026-07-18T10:00:00.000Z")
           }
         ])
@@ -231,36 +243,23 @@ describe("ApprovalFormService", () => {
         findUnique: jest.fn()
       }
     });
-    const service = new ApprovalFormService(prisma as never) as unknown as {
+    const service = new ApprovalFormService(prisma as never, { getFileBuffer: jest.fn().mockResolvedValue({ buffer: PNG_1X1 }) } as never) as unknown as {
       buildRenderInput(instance: unknown): Promise<{
         logs: Array<{ action: string; name: string; relationship: string }>;
       }>;
     };
 
     const rendered = await service.buildRenderInput({
+status: "approved",
+updatedAt: new Date("2026-06-24T08:30:00Z"),
       id: "inst-1",
       businessType: "payment_request",
       businessId: "pay-1",
       applicantUserId: "user-applicant",
-      frozenNodes: []
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }]
     });
 
     expect(rendered.logs).toEqual([
-      expect.objectContaining({
-        action: "转交",
-        name: "董事长乙",
-        relationship: "转交关系：董事长乙 → 受托人丙（董事长）"
-      }),
-      expect.objectContaining({
-        action: "转交",
-        name: "董事长乙",
-        relationship: "转交关系：董事长乙 → 受托人丁（董事长）"
-      }),
-      expect.objectContaining({
-        action: "委托",
-        name: "受托人丙",
-        relationship: "委托关系：董事长乙 → 受托人丁（董事长）"
-      }),
       expect.objectContaining({
         action: "通过",
         name: "受托人丁",
@@ -297,15 +296,7 @@ describe("ApprovalFormService", () => {
       }>;
     };
 
-    const rendered = await service.buildRenderInput({
-      id: "inst-1",
-      businessType: "payment_request",
-      businessId: "pay-1",
-      applicantUserId: "user-applicant",
-      frozenNodes: []
-    });
-
-    expect(rendered.logs[0]?.relationship).toBe("历史记录未冻结委托/转交双方关系");
+    await expect(service.buildRenderInput(await prisma.approvalInstance.findUnique())).rejects.toThrow("有效审批记录不完整");
   });
 
   it("builds the real company project payment approval form rows", () => {
@@ -411,10 +402,29 @@ describe("ApprovalFormService", () => {
     expect(rows.some((row) => row.label === "累计生效结算金额")).toBe(false);
   });
 
+  it.each(["terminated", "new_instance", "changed_signature"])("refuses formal activation when %s arrives during upload", async change => {
+    const prisma = buildPrisma();
+    const files = {
+      getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
+      uploadPrivateFile: jest.fn(async () => {
+        if (change === "terminated") prisma.approvalInstance.findUnique.mockResolvedValue({ id: "inst-1", status: "terminated" });
+        if (change === "new_instance") prisma.approvalInstance.findFirst.mockResolvedValue({ id: "new-instance", status: "in_progress" });
+        if (change === "changed_signature") prisma.approvalActionLog.findMany.mockResolvedValue([]);
+        return { id: "orphan-file" };
+      })
+    };
+    const audit = { record: jest.fn() };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    await expect(service.generateForInstance("inst-1", "user-chair")).rejects.toThrow("审批状态或签批证据已变化");
+    expect(prisma.pdfDocument.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("renders an approval-form PDF and archives it as a PdfDocument", async () => {
     const prisma = buildPrisma();
     let uploaded: { buffer: Buffer; sizeBytes: number; originalName: string } | undefined;
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockImplementation((input) => {
         uploaded = input;
         return Promise.resolve({ id: "file-1" });
@@ -444,7 +454,7 @@ describe("ApprovalFormService", () => {
     expect(audit.record).toHaveBeenCalled();
   });
 
-  it("renders a payment void action with a Chinese approval label", async () => {
+  it("refuses a void-only history without a complete approved chain", async () => {
     const prisma = buildPrisma({
       approvalActionLog: {
         findMany: jest.fn().mockResolvedValue([
@@ -458,6 +468,7 @@ describe("ApprovalFormService", () => {
       }
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const service = new ApprovalFormService(
@@ -465,20 +476,11 @@ describe("ApprovalFormService", () => {
       files as never,
       { record: jest.fn() } as never
     );
-    const renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-test"));
+    const renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
     (service as unknown as { renderPdf: typeof renderPdf }).renderPdf = renderPdf;
 
-    await service.generateForInstance("inst-1", "user-chair");
-
-    expect(renderPdf).toHaveBeenCalledWith(
-      expect.objectContaining({
-        logs: [
-          expect.objectContaining({
-            action: "作废"
-          })
-        ]
-      })
-    );
+    await expect(service.generateForInstance("inst-1", "user-chair")).rejects.toThrow("有效审批记录不完整");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
   it("is idempotent: returns the existing form without re-uploading", async () => {
@@ -488,7 +490,8 @@ describe("ApprovalFormService", () => {
         create: jest.fn()
       }
     });
-    const files = { uploadPrivateFile: jest.fn() };
+    const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })), uploadPrivateFile: jest.fn() };
     const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
 
     const result = await service.generateForInstance("inst-1", "user-chair");
@@ -523,6 +526,7 @@ describe("ApprovalFormService", () => {
       }
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-winner" })
     };
     const service = new ApprovalFormService(
@@ -570,7 +574,8 @@ describe("ApprovalFormService", () => {
       })
     };
     const prisma = buildPrisma({ approvalFormGenerationClaim: claimStore });
-    const files = { uploadPrivateFile: jest.fn() };
+    const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })), uploadPrivateFile: jest.fn() };
     const service = new ApprovalFormService(
       prisma as never,
       files as never,
@@ -615,7 +620,8 @@ describe("ApprovalFormService", () => {
       })
     };
     const prisma = buildPrisma({ approvalFormGenerationClaim: claimStore });
-    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-new" }) };
+    const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })), uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-new" }) };
     const service = new ApprovalFormService(
       prisma as never,
       files as never,
@@ -634,6 +640,8 @@ describe("ApprovalFormService", () => {
     const prisma = buildPrisma({
       approvalActionLog: {
         findMany: jest.fn().mockResolvedValue([{
+signatureVersionIdSnapshot: "signature-version-1",
+metadata: { approverName: "董事长乙" },
           id: "log-1",
           actorUserId: "user-chair",
           action: "approve",
@@ -675,6 +683,8 @@ describe("ApprovalFormService", () => {
     const prisma = buildPrisma({
       approvalActionLog: {
         findMany: jest.fn().mockResolvedValue([{
+signatureVersionIdSnapshot: "signature-version-1",
+metadata: { approverName: "董事长乙" },
           id: "log-1",
           actorUserId: "user-chair",
           action: "approve",
@@ -727,7 +737,8 @@ describe("ApprovalFormService", () => {
     };
     const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
 
-    await service.generateForInstance("inst-1", "user-chair");
+    await expect(service.generateForInstance("inst-1", "user-chair")).rejects.toThrow("审批记录与冻结节点不一致");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
 
     expect(files.getFileBuffer).not.toHaveBeenCalled();
   });
@@ -766,6 +777,7 @@ describe("ApprovalFormService", () => {
       }
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
@@ -785,7 +797,7 @@ describe("ApprovalFormService", () => {
     });
     const files = {
       uploadPrivateFile: jest.fn(),
-      getFileBuffer: jest.fn().mockRejectedValue(new Error("Private file not found")),
+      getFileBuffer: jest.fn(async (id: string) => ({ file: {id}, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       assertCanDownloadApprovalFormByBusiness: jest.fn().mockResolvedValue(undefined),
       assertApprovalFormArchiveAnchor: jest.fn().mockResolvedValue(undefined)
     };
@@ -834,6 +846,7 @@ describe("ApprovalFormService", () => {
       }
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       assertCanDownloadContractApprovalForm: jest.fn()
         .mockRejectedValue(new Error("当前账号无权下载该合同审批单")),
       assertApprovalFormArchiveAnchor: jest.fn(),
@@ -865,7 +878,7 @@ describe("ApprovalFormService", () => {
   });
 
   it("合同审批单专用端点通过业务 ACL 与归档锚点后仍返回动态水印文件", async () => {
-    const archivedBuffer = Buffer.from("%PDF-archived-contract-approval-form");
+    const archivedBuffer = await fixturePdf();
     const approvedAt = new Date("2026-08-01T08:00:00.000Z");
     const versionUpdatedAt = new Date("2026-08-01T08:01:00.000Z");
     const latestApproval = {
@@ -874,10 +887,11 @@ describe("ApprovalFormService", () => {
       businessId: "version-1",
       status: "approved",
       applicantUserId: "contract-owner-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt: approvedAt
     };
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue(latestApproval),
         findUnique: jest.fn().mockResolvedValue(latestApproval)
@@ -947,7 +961,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-watermarked"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     const result = await service.renderForDownload(
       "contract_version",
@@ -957,7 +971,7 @@ describe("ApprovalFormService", () => {
       "合同审批复核"
     );
 
-    expect(result.buffer.toString()).toBe("%PDF-watermarked");
+    expect((await PDFDocument.load(result.buffer)).getPageCount()).toBeGreaterThan(0);
     expect(archiveAnchor).toHaveBeenCalledWith({
       pdfDocumentId: "pdf-current",
       fileId: "file-current",
@@ -985,10 +999,11 @@ describe("ApprovalFormService", () => {
       businessId: "version-1",
       status: "approved",
       applicantUserId: "contract-owner-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt: approvedAt
     };
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue(latestApproval),
         findUnique: jest.fn().mockResolvedValue(latestApproval)
@@ -1011,6 +1026,7 @@ describe("ApprovalFormService", () => {
       }
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       assertCanDownloadContractApprovalForm: jest.fn().mockResolvedValue(undefined),
       assertApprovalFormArchiveAnchor: jest.fn().mockResolvedValue(undefined)
     };
@@ -1039,7 +1055,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-old-approved"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await expect(service.renderForDownload(
       "contract_version",
@@ -1049,7 +1065,7 @@ describe("ApprovalFormService", () => {
       "合同审批复核"
     )).rejects.toThrow("合同审批状态已变化，请刷新后重新下载");
 
-    expect(internal.renderPdf).toHaveBeenCalledTimes(1);
+    expect(internal.renderPdf).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -1060,10 +1076,11 @@ describe("ApprovalFormService", () => {
       businessId: "version-1",
       status: "approved",
       applicantUserId: "contract-owner-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt: new Date("2026-08-01T08:03:00.000Z")
     };
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue(latestApproval),
         findUnique: jest.fn().mockResolvedValue({
@@ -1081,6 +1098,7 @@ describe("ApprovalFormService", () => {
       user: { findUnique: jest.fn() }
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       assertCanDownloadContractApprovalForm: jest.fn().mockResolvedValue(undefined),
       assertApprovalFormArchiveAnchor: jest.fn().mockResolvedValue(undefined)
     };
@@ -1121,7 +1139,7 @@ describe("ApprovalFormService", () => {
       businessId: "version-1",
       status: "approved",
       applicantUserId: "contract-owner-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt: approvedAt
     };
     const pdfDocument = {
@@ -1149,6 +1167,7 @@ describe("ApprovalFormService", () => {
       pdfDocument
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "uploaded-unassociated" })
     };
     const audit = { record: jest.fn() };
@@ -1170,7 +1189,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-old-approved"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await expect(service.generateForInstance(
       "approval-current",
@@ -1190,6 +1209,7 @@ describe("ApprovalFormService", () => {
       }
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       assertCanDownloadApprovalFormByBusiness: jest.fn()
         .mockRejectedValue(new Error("当前账号无权下载该审批单")),
       assertApprovalFormArchiveAnchor: jest.fn(),
@@ -1224,6 +1244,7 @@ describe("ApprovalFormService", () => {
   it("authorizes a Spot business before attempting any PDF repair write", async () => {
     const prisma = buildPrisma();
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn(),
       assertApprovalFormArchiveAnchor: jest.fn()
     };
@@ -1270,15 +1291,17 @@ describe("ApprovalFormService", () => {
   ])("零采审批单专用端点通过 %s 真实归档锚点后返回动态水印文件", async (
     templateKey
   ) => {
-    const archivedBuffer = Buffer.from("%PDF-archived-spot-approval-form");
+    const archivedBuffer = await fixturePdf();
     const approvalInstance = {
       id: "spot-approval-1",
       businessType: "spot_procurement_version",
       businessId: "spot-version-1",
+      updatedAt: new Date("2026-06-24T08:30:00Z"),
       status: "approved"
     };
     const generationClaimLookup = jest.fn();
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       pdfDocument: {
         findUnique: jest.fn().mockResolvedValue({
           id: "spot-pdf-1",
@@ -1328,6 +1351,9 @@ describe("ApprovalFormService", () => {
       fileId: "spot-file-1",
       approvalInstanceId: null
     } as never);
+    (service as unknown as { buildRenderInput: jest.Mock }).buildRenderInput = jest.fn().mockResolvedValue({
+      businessType: "spot_procurement_version", title: "零星材料采购申请单", businessCode: "LXCG-2026-001", logs: []
+    });
     (service as unknown as {
       buildSpotProcurementApprovalFormInput: jest.Mock;
     }).buildSpotProcurementApprovalFormInput = jest.fn().mockResolvedValue({
@@ -1388,6 +1414,7 @@ describe("ApprovalFormService", () => {
       }
     });
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn(),
       assertCanDownloadApprovalFormByBusiness: jest.fn().mockResolvedValue(undefined),
       assertApprovalFormArchiveAnchor: jest.fn().mockResolvedValue(undefined)
@@ -1400,7 +1427,7 @@ describe("ApprovalFormService", () => {
       audit as never,
       auth as never
     );
-    const renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-test"));
+    const renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
     (service as unknown as { renderPdf: typeof renderPdf }).renderPdf = renderPdf;
 
     await service.renderForDownload(
@@ -1411,17 +1438,8 @@ describe("ApprovalFormService", () => {
       "付款审批复核"
     );
 
-    expect(renderPdf).toHaveBeenCalledWith(
-      expect.objectContaining({
-        applicantName: "申请人未读取",
-        watermark: expect.arrayContaining(["下载人：下载人未读取"]),
-        logs: [
-          expect.objectContaining({
-            name: "处理人未读取"
-          })
-        ]
-      })
-    );
+    expect(renderPdf).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(prisma, expect.objectContaining({ action: "approval.form.download" }));
   });
 
   it("rejects approval-form downloads without current password confirmation", async () => {
@@ -1509,7 +1527,8 @@ describe("ApprovalFormService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "inst-1", status: "in_progress" })
       }
     });
-    const files = { uploadPrivateFile: jest.fn() };
+    const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })), uploadPrivateFile: jest.fn() };
     const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
 
     const result = await service.generateForInstance("inst-1", "user-chair");
@@ -1799,11 +1818,13 @@ describe("ApprovalFormService", () => {
     });
 
     const result = await internal.buildSpotProcurementApprovalFormInput({
+status: "approved",
+updatedAt: new Date("2026-06-24T08:30:00Z"),
       id: "approval-1",
       businessType: "spot_procurement_payment",
       businessId: "payment-1",
       applicantUserId: "material-1",
-      frozenNodes: []
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }]
     });
 
     expect(result.signatures.comprehensiveDirector?.name).toBe("新综合部主管");
@@ -2040,7 +2061,7 @@ describe("ApprovalFormService", () => {
           businessId: "version-spot-1",
           status: "approval_pending",
           applicantUserId: "material-1",
-          frozenNodes: [],
+          frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
           updatedAt: new Date("2026-07-17T08:00:00.000Z")
         })
       },
@@ -2070,6 +2091,7 @@ describe("ApprovalFormService", () => {
     prisma.$transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma));
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockRejectedValue(new Error("cos://private/secret-token"))
     };
     const service = new ApprovalFormService(prisma as never, files as never, audit as never);
@@ -2257,6 +2279,7 @@ describe("ApprovalFormService", () => {
 
   it("零星采购审批未完成时即使已有内部 PDF 也不开放正式下载", async () => {
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({ id: "approval-1", status: "approval_pending" })
       },
@@ -2285,6 +2308,7 @@ describe("ApprovalFormService", () => {
     latestApprovalStatus
   ) => {
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "latest-approval",
@@ -2317,6 +2341,7 @@ describe("ApprovalFormService", () => {
       approvalInstanceId: "new-approved"
     };
     const prisma = {
+ approvalActionLog: { findFirst: jest.fn().mockResolvedValue({id: "log-1"}) },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "new-approved",
@@ -2349,12 +2374,13 @@ describe("ApprovalFormService", () => {
   it("审批通过后只创建一次零星采购原始审批单，后续付款触发不会替换它", async () => {
     const updatedAt = new Date("2026-07-18T08:00:00.000Z");
     const instance = {
+
       id: "approval-1",
       businessType: "spot_procurement_version",
       businessId: "version-1",
       status: "approved",
       applicantUserId: "material-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt
     };
     const sourceTx = {
@@ -2379,6 +2405,7 @@ describe("ApprovalFormService", () => {
         .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(associationTx))
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }),
       linkFileReplacement: jest.fn()
     };
@@ -2389,6 +2416,7 @@ describe("ApprovalFormService", () => {
     };
     internal.buildSpotProcurementApprovalFormInput = jest.fn().mockResolvedValue({
       kind: "application",
+      approvals: [{ position: "物资部主管", name: "签批人", signedAt: "2026-07-18 09:00", comment: "同意", relationship: "", signature: PNG_1X1 }],
       projectName: "一号项目",
       procurementCode: "LXCG-001",
       applicationDepartment: "工程部",
@@ -2434,7 +2462,7 @@ describe("ApprovalFormService", () => {
       businessId: "payment-1",
       status: "approved",
       applicantUserId: "handler-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt: new Date("2026-07-18T08:00:00.000Z")
     };
     const currentPdf = { id: "pdf-original", fileId: "file-original" };
@@ -2445,7 +2473,8 @@ describe("ApprovalFormService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: unknown) => unknown) => callback(tx))
     };
-    const files = { uploadPrivateFile: jest.fn(), linkFileReplacement: jest.fn() };
+    const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })), uploadPrivateFile: jest.fn(), linkFileReplacement: jest.fn() };
     const service = new ApprovalFormService(
       prisma as never,
       files as never,
@@ -2468,12 +2497,13 @@ describe("ApprovalFormService", () => {
   it.skip("旧版：在业务行锁后切换最新 PDF 指针并保留文件替换链", async () => {
     const updatedAt = new Date("2026-07-17T08:00:00.000Z");
     const instance = {
+
       id: "approval-1",
       businessType: "spot_procurement_version",
       businessId: "version-1",
       status: "approved",
       applicantUserId: "material-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt
     };
     const sourceTx = {
@@ -2502,6 +2532,7 @@ describe("ApprovalFormService", () => {
         .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(associationTx))
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "new-file" }),
       linkFileReplacement: jest.fn().mockResolvedValue(undefined)
     };
@@ -2520,7 +2551,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-test"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await service.refreshLatestForBusiness(
       "spot_procurement_version",
@@ -2564,12 +2595,13 @@ describe("ApprovalFormService", () => {
   it.skip("旧版：实付并发变化时旧快照 PDF 不能覆盖新付款事实", async () => {
     const updatedAt = new Date("2026-07-17T08:00:00.000Z");
     const instance = {
+
       id: "approval-payment-1",
       businessType: "spot_procurement_payment",
       businessId: "payment-1",
       status: "approved",
       applicantUserId: "material-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt
     };
     const sourceTx = {
@@ -2625,6 +2657,7 @@ describe("ApprovalFormService", () => {
         .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "stale-file" }),
       linkFileReplacement: jest.fn()
     };
@@ -2643,7 +2676,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-stale"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await expect(
       service.refreshLatestForBusiness(
@@ -2811,12 +2844,13 @@ describe("ApprovalFormService", () => {
       activeExecutionFingerprint: null
     };
     const instance = {
+
       id: "approval-1",
       businessType: "spot_procurement_version",
       businessId: "version-1",
       status: "approved",
       applicantUserId: "material-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt
     };
     const sourceTx = {
@@ -2860,6 +2894,7 @@ describe("ApprovalFormService", () => {
         .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-orphan" }),
       linkFileReplacement: jest.fn()
     };
@@ -2875,7 +2910,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-orphan"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await expect(
       service.refreshLatestForBusiness(
@@ -2904,11 +2939,13 @@ describe("ApprovalFormService", () => {
   it.skip("旧版：关联事务失败时隔离确认未绑定的派生 PDF 并保留原异常", async () => {
     const updatedAt = new Date("2026-07-17T08:00:00.000Z");
     const instance = {
+status: "approved",
+
       id: "approval-1",
       businessType: "spot_procurement_version",
       businessId: "version-1",
       applicantUserId: "material-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt
     };
     const sourceTx = {
@@ -2938,6 +2975,7 @@ describe("ApprovalFormService", () => {
         .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-orphan" }),
       linkFileReplacement: jest.fn()
     };
@@ -2953,7 +2991,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-orphan"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await expect(
       service.refreshLatestForBusiness(
@@ -2980,11 +3018,13 @@ describe("ApprovalFormService", () => {
   it.skip("旧版：关联提交结果不明时若 PDF 已绑定则绝不隔离当前文件", async () => {
     const updatedAt = new Date("2026-07-17T08:00:00.000Z");
     const instance = {
+status: "approved",
+
       id: "approval-1",
       businessType: "spot_procurement_version",
       businessId: "version-1",
       applicantUserId: "material-1",
-      frozenNodes: [],
+      frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }],
       updatedAt
     };
     const sourceTx = {
@@ -3014,6 +3054,7 @@ describe("ApprovalFormService", () => {
         .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
     };
     const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-maybe-current" }),
       linkFileReplacement: jest.fn()
     };
@@ -3029,7 +3070,7 @@ describe("ApprovalFormService", () => {
       nodes: [],
       logs: []
     });
-    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-current"));
+    internal.renderPdf = jest.fn().mockResolvedValue(await fixturePdf());
 
     await expect(
       service.refreshLatestForBusiness(
@@ -3191,7 +3232,8 @@ describe("ApprovalFormService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: unknown) => unknown) => callback(tx))
     };
-    const files = { uploadPrivateFile: jest.fn(), linkFileReplacement: jest.fn() };
+    const files = {
+getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.includes("sig") ? PNG_1X1 : await fixturePdf() })), uploadPrivateFile: jest.fn(), linkFileReplacement: jest.fn() };
     const service = new ApprovalFormService(
       prisma as never,
       files as never,

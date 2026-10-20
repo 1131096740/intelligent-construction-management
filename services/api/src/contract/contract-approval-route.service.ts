@@ -67,36 +67,36 @@ const OR_GLOBAL = (name: string, ...roleKeys: RoleKey[]): RouteNodeDefinition =>
 
 const NEW_CONTRACT_ROUTE: Record<NewContractTypeKey, RouteNodeDefinition[]> = {
   material_purchase: [
-    GLOBAL("合同部主管", "contract_director"),
     GLOBAL("物资主管", "material_director"),
+    GLOBAL("合同部主管", "contract_director"),
     PROJECT("项目经理", "project_manager"),
     GLOBAL("财务主管", "finance_director"),
     OR_GLOBAL("董事长/总经理", "chairman", "general_manager")
   ],
   equipment_rental: [
-    GLOBAL("合同部主管", "contract_director"),
     GLOBAL("物资主管", "material_director"),
+    GLOBAL("合同部主管", "contract_director"),
     PROJECT("项目经理", "project_manager"),
     GLOBAL("财务主管", "finance_director"),
     OR_GLOBAL("董事长/总经理", "chairman", "general_manager")
   ],
   labor_subcontract: [
-    GLOBAL("合同部主管", "contract_director"),
     UNIQUE_PROJECT("所属项目总工", "engineering_director"),
+    GLOBAL("合同部主管", "contract_director"),
     PROJECT("项目经理", "project_manager"),
     GLOBAL("财务主管", "finance_director"),
     OR_GLOBAL("董事长/总经理", "chairman", "general_manager")
   ],
   professional_subcontract: [
-    GLOBAL("合同部主管", "contract_director"),
     UNIQUE_PROJECT("所属项目总工", "engineering_director"),
+    GLOBAL("合同部主管", "contract_director"),
     PROJECT("项目经理", "project_manager"),
     GLOBAL("财务主管", "finance_director"),
     OR_GLOBAL("董事长/总经理", "chairman", "general_manager")
   ],
   generic_contract: [
-    GLOBAL("合同部主管", "contract_director"),
     GLOBAL("综合部主管", "comprehensive_director"),
+    GLOBAL("合同部主管", "contract_director"),
     PROJECT("项目经理", "project_manager"),
     GLOBAL("财务主管", "finance_director"),
     OR_GLOBAL("董事长/总经理", "chairman", "general_manager")
@@ -124,14 +124,14 @@ function frozenRoleScopes(definition: RouteNodeDefinition) {
 function roleCandidates(
   rows: CandidateRow[],
   roleKey: RoleKey,
-  applicantUserId: string,
-  allowApplicant = false
+  _applicantUserId: string,
+  _allowApplicant = false
 ): string[] {
+  void _allowApplicant;
   return stableUnique(
     rows
       .filter((row) =>
-        row.roleKey === roleKey &&
-        (allowApplicant || row.userId !== applicantUserId)
+        row.roleKey === roleKey
       )
       .map((row) => row.userId)
   );
@@ -280,9 +280,6 @@ export class ContractApprovalRouteService {
         );
         if (allActiveCandidates.length !== 1) {
           throw new BadRequestException("所属项目的项目总工配置缺失或冲突");
-        }
-        if (allActiveCandidates[0] === applicantUserId) {
-          throw new BadRequestException("所属项目的项目总工不能审批本人发起的合同，请先配置其他审批人");
         }
       }
 

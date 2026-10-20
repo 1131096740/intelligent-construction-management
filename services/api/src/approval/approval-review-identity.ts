@@ -94,7 +94,7 @@ export function resolveApprovalReviewIdentity(input: {
   for (const delegator of input.activeDelegators ?? []) {
     const delegatorUserId = delegator.userId;
     const delegatedRole = isGovernedFrozenApprovalNode(input.node)
-      ? uniqueFrozenRole(input.node, delegatorUserId, pendingRoles)
+      ? uniqueFrozenRole(input.node, delegatorUserId, Object.prototype.hasOwnProperty.call(input.node, "candidateUserIdsByRole") ? pendingRoles.filter(role => hasRoleAtFrozenScope(input.node, role, delegator.roleKeys, delegator.roleScopes, input.legacyContractRoute)) : pendingRoles)
       : pendingRoles.find((role) => delegator.roleKeys.includes(role));
     if (delegatedRole && hasRoleAtFrozenScope(
       input.node,
@@ -146,7 +146,7 @@ function directFrozenRole(
   if (Object.prototype.hasOwnProperty.call(node, "selectedUserId") && node.selectedUserId !== userId) {
     return null;
   }
-  const role = uniqueFrozenRole(node, userId, pendingRoles);
+  const role = uniqueFrozenRole(node, userId, Object.prototype.hasOwnProperty.call(node, "candidateUserIdsByRole") ? pendingRoles.filter(candidate => hasRoleAtFrozenScope(node, candidate, actorRoleKeys, actorRoleScopes, legacyContractRoute)) : pendingRoles);
   return role && hasRoleAtFrozenScope(
     node,
     role,
@@ -165,7 +165,11 @@ function uniqueFrozenRole(
   if (mapPresent) {
     const byRole = candidateMap(node.candidateUserIdsByRole);
     const matches = pendingRoles.filter((role) => byRole[role]?.includes(userId));
-    return matches.length === 1 ? matches[0] : null;
+    // A single executive OR node needs one actual held role even when one person holds both.
+    // The frozen role order is the deterministic signing-role priority; other ambiguous nodes stay closed.
+    const executiveOr = node.mode === "any" && Array.isArray(node.roleKeys) && node.roleKeys.length === 2 &&
+      node.roleKeys.includes("chairman") && node.roleKeys.includes("general_manager");
+    return matches.length === 1 || (executiveOr && matches.length > 0) ? matches[0] : null;
   }
   const unionPresent = Object.prototype.hasOwnProperty.call(node, "candidateUserIds");
   if (unionPresent && stringArray(node.candidateUserIds).includes(userId) && pendingRoles.length === 1) {

@@ -8,7 +8,7 @@ const FILE_DOWNLOAD_AUDIT_ACTION_LABELS = {
   "file.download.ticket": "生成下载票据",
   "file.download": "实际下载",
   "approval.form.download": "审批单下载",
-  "settlement.approval_pdf.download": "结算审批单下载"
+  "settlement.approval_pdf.download": "结算单下载"
 } as const;
 
 const DRAFT_DELETION_ACTION_LABELS: Record<string, string> = {

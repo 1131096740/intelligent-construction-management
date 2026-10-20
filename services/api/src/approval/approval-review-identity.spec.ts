@@ -283,3 +283,21 @@ describe("resolveApprovalReviewIdentity", () => {
       .rejects.toThrow("审批接收人不存在或已停用");
   });
 });
+
+describe("executive OR dual-role identity", () => {
+  const node = { mode: "any", roleKeys: ["chairman", "general_manager"],
+    candidateUserIdsByRole: { chairman: ["leader"], general_manager: ["leader"] },
+    roleScopesByRole: { chairman: "global", general_manager: "global" } };
+  it("uses the first frozen role that the direct signer still holds, once within an OR node", () => {
+    expect(resolveApprovalReviewIdentity({ node, actorUserId: "leader", actorRoleKeys: ["chairman", "general_manager"],
+      actorRoleScopes: { globalRoleKeys: ["chairman", "general_manager"], projectRoleKeys: [] } }))
+      .toMatchObject({ approvedRoleKey: "chairman", representedUserId: "leader" });
+    expect(resolveApprovalReviewIdentity({ node, actorUserId: "leader", actorRoleKeys: ["general_manager"],
+      actorRoleScopes: { globalRoleKeys: ["general_manager"], projectRoleKeys: [] } }))
+      .toMatchObject({ approvedRoleKey: "general_manager", representedUserId: "leader" });
+  });
+  it("does not resolve an ambiguous all-sign node or removed positions", () => {
+    expect(resolveApprovalReviewIdentity({ node: { ...node, mode: "all" }, actorUserId: "leader", actorRoleKeys: ["chairman", "general_manager"] })).toBeNull();
+    expect(resolveApprovalReviewIdentity({ node, actorUserId: "leader", actorRoleKeys: [] })).toBeNull();
+  });
+});

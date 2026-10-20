@@ -27,7 +27,7 @@
             theme="warning"
             variant="light"
           >
-            领导自审
+            本人申请审批
           </t-tag>
         </div>
         <p
