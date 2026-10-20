@@ -1,4 +1,5 @@
 const { initializeSeedLayout } = require("./seed-layout-preview.cjs");
+const { seedAttachmentPdf } = require("./seed-attachment-pdf.cjs");
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 const { createHash } = require("crypto");
@@ -780,7 +781,7 @@ async function main() {
 
   const ownerContractFileMetadata = await writePrivateSeedFile(
     seed.ownerContractFile,
-    minimalPreviewPdf()
+    await seedAttachmentPdf()
   );
   await upsertSeedFile(
     seed.ownerContractFile,
@@ -835,7 +836,7 @@ async function main() {
 
   const upstreamSettlementFileMetadata = await writePrivateSeedFile(
     seed.upstreamSettlementFile,
-    minimalPreviewPdf()
+    await seedAttachmentPdf()
   );
   await upsertSeedFile(
     seed.upstreamSettlementFile,
@@ -887,7 +888,7 @@ async function main() {
 
   const projectReceiptFileMetadata = await writePrivateSeedFile(
     seed.projectReceiptFile,
-    minimalPreviewPdf()
+    await seedAttachmentPdf()
   );
   await upsertSeedFile(seed.projectReceiptFile, seed.users.cashier.id, projectReceiptFileMetadata);
   await prisma.projectReceipt.upsert({
