@@ -6,7 +6,6 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
-import { mkdir, writeFile } from "node:fs/promises";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
@@ -90,29 +89,31 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
       const position = await db.position.upsert({ where: { key: role }, update: {}, create: { key: role, name: "测试兼岗" } });
       await db.userPosition.create({ data: { userId: applicant.id, positionId: position.id, projectId: role === "project_manager" ? projectId : null } });
     }
-    await sign(applicant.token);
-    const created = await request("/general-procurements", "POST", { requestKey: randomUUID(), projectId, companyEntityId, category: "office_supplies", reason: "兼岗逐节点签批验证", requestedAmountCents: "10000" }, applicant.token);
-    expect(created.status).toBe(201);
-    const path = `/general-procurements/${created.body.id}`;
-    expect((await request(`${path}/submission`, "POST", { revision: 1 }, applicant.token)).status).toBe(201);
-    expect((await request(`${path}/review`, "POST", { revision: 2, decision: "approve" }, applicant.token)).status).toBe(400);
-    for (const revision of [2, 3, 4]) {
-      expect(await request(`${path}/review`, "POST", { revision, decision: "approve", selfReviewReason: "本人兼任当前审批岗位，已逐项核验", confirmationPassword: password }, applicant.token))
-        .toMatchObject({ status: 201, body: { revision: revision + 1 } });
+    try {
+      await sign(applicant.token);
+      const created = await request("/general-procurements", "POST", { requestKey: randomUUID(), projectId, companyEntityId, category: "office_supplies", reason: "兼岗逐节点签批验证", requestedAmountCents: "10000" }, applicant.token);
+      expect(created.status).toBe(201);
+      const path = `/general-procurements/${created.body.id}`;
+      expect((await request(`${path}/submission`, "POST", { revision: 1 }, applicant.token)).status).toBe(201);
+      expect((await request(`${path}/review`, "POST", { revision: 2, decision: "approve" }, applicant.token)).status).toBe(400);
+      for (const revision of [2, 3, 4]) {
+        expect(await request(`${path}/review`, "POST", { revision, decision: "approve", selfReviewReason: "本人兼任当前审批岗位，已逐项核验", confirmationPassword: password }, applicant.token))
+          .toMatchObject({ status: 201, body: { revision: revision + 1 } });
+      }
+      const instance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "general_procurement", businessId: created.body.id } });
+      const actions = await db.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: { createdAt: "asc" } });
+      expect(actions.map(action => action.action)).toEqual(["approve", "approve", "approve"]);
+      expect(actions.map(action => action.approvedRoleKey)).toEqual(["comprehensive_director", "project_manager", "chairman"]);
+      expect(actions.every(action => action.actorUserId === applicant.id && action.signatureVersionIdSnapshot)).toBe(true);
+      await verifyApprovedPdf({ db, baseUrl: base, token: applicant.token, password,
+        businessType: "general_procurement", businessId: created.body.id,
+        roles: ["comprehensive_director", "project_manager", "chairman"], label: "综合采购-同人三节点" });
+      const response = await fetch(`${base}/approval-forms/general_procurement/${created.body.id}/download`, { method: "POST", headers: { authorization: `Bearer ${applicant.token}`, "content-type": "application/json" }, body: JSON.stringify({ confirmationPassword: password, downloadReason: "兼岗签批本地验收" }) });
+      expect(response.status).toBe(201);
+      expect((await PDFDocument.load(await response.arrayBuffer())).getPageCount()).toBeGreaterThan(0);
+    } finally {
+      await db.userPosition.deleteMany({ where: { userId: applicant.id } });
     }
-    const instance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "general_procurement", businessId: created.body.id } });
-    const actions = await db.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: { createdAt: "asc" } });
-    expect(actions.map(action => action.action)).toEqual(["approve", "approve", "approve"]);
-    expect(actions.map(action => action.approvedRoleKey)).toEqual(["comprehensive_director", "project_manager", "chairman"]);
-    expect(actions.every(action => action.actorUserId === applicant.id && action.signatureVersionIdSnapshot)).toBe(true);
-    await verifyApprovedPdf({ db, baseUrl: base, token: applicant.token, password,
-      businessType: "general_procurement", businessId: created.body.id,
-      roles: ["comprehensive_director", "project_manager", "chairman"], label: "综合采购-同人三节点" });
-    const response = await fetch(`${base}/approval-forms/general_procurement/${created.body.id}/download`, { method: "POST", headers: { authorization: `Bearer ${applicant.token}`, "content-type": "application/json" }, body: JSON.stringify({ confirmationPassword: password, downloadReason: "兼岗签批本地验收" }) });
-    expect(response.status).toBe(201);
-    await mkdir("/private/tmp/approval-v6-acceptance", { recursive: true });
-    await writeFile("/private/tmp/approval-v6-acceptance/综合采购申请-同人三节点实际HTTP审批.pdf", Buffer.from(await response.arrayBuffer()));
-    await db.userPosition.deleteMany({ where: { userId: applicant.id } });
   });
 
   it("普通员工可以建立综合采购草稿并从公开详情读回元金额对应的分值", async () => {
@@ -189,8 +190,6 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     const pdf = Buffer.from(await response.arrayBuffer());
     expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
     expect((await db.approvalActionLog.findUniqueOrThrow({ where: { id: logs[2].id } })).metadata).toEqual(oldMetadata);
-    await mkdir("/private/tmp/approval-v6-acceptance", { recursive: true });
-    await writeFile("/private/tmp/approval-v6-acceptance/综合采购申请-实际HTTP审批.pdf", pdf);
 
   });
 

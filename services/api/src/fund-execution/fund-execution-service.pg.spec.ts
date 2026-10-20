@@ -1771,6 +1771,14 @@ async function seedExternalDomainFixtures(prisma: PrismaClient) {
       source: "canvas"
     }
   });
+  // Every actual approval actor needs their own saved signature, including delegates.
+  for (const userId of [REVIEWER_USER_ID, REVIEWER_DELEGATE_USER_ID, BOUNDARY_ACTIVE_DELEGATE_USER_ID]) {
+    const fileId = randomUUID();
+    await prisma.fileObject.create({ data: fileFixture(fileId, `${userId}-signature.png`, userId) });
+    await prisma.handwrittenSignatureVersion.create({ data: {
+      id: randomUUID(), userId, fileId, contentSha256: SHA256, source: "canvas"
+    } });
+  }
   await prisma.$executeRaw`
     INSERT INTO "OperatingLedgerWriteSecret"("id", "secretHash")
     VALUES (1, crypt(${WRITE_SECRET}, gen_salt('bf')))

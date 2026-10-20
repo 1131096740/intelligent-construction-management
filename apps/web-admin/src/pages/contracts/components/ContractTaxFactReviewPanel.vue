@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocumentDownload.vue";
 import type {
   ContractInvoiceType,
@@ -285,7 +286,7 @@ async function load() {
     }
   } catch (error) {
     setMessage(
-      error instanceof Error ? `${error.message}。当前事实仍可查看，请稍后重试。` : "读取修订记录失败，请稍后重试。",
+      `${formatUnknownApiError(error, "读取修订记录失败")}。当前事实仍可查看，请稍后重试。`,
       "error"
     );
   } finally {
@@ -473,9 +474,7 @@ async function runAction<T>(key: string, action: () => Promise<T>): Promise<T | 
     return await action();
   } catch (error) {
     setMessage(
-      error instanceof Error
-        ? `${error.message}。已保留当前填写内容，请核对后重试。`
-        : "操作未完成，已保留当前填写内容，请稍后重试。",
+      `${formatUnknownApiError(error, "操作未完成")}。已保留当前填写内容，请核对后重试。`,
       "error"
     );
     return undefined;

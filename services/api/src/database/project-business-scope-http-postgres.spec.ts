@@ -26,6 +26,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
   let companyContract: Actor;
   let projectContract: Actor;
   let materialDirector: Actor;
+  let materialStaff: Actor;
   let firstManager: Actor;
   let secondManager: Actor;
   let director: Actor;
@@ -87,6 +88,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     companyContract = await person("contract_staff", [null]);
     projectContract = await person("contract_staff", [first]);
     materialDirector = await person("material_director", [null]);
+    materialStaff = await person("material_staff", [first, second]);
     firstManager = await person("project_manager", [first]);
     secondManager = await person("project_manager", [second]);
     director = await person("comprehensive_director", [null]);
@@ -100,7 +102,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     for (const projectId of [first, second]) {
       await db.projectAffiliateAssignment.create({ data: { projectId, businessPartyId: affiliate.id, businessPartyVersionId: affiliateVersion.id, affiliateNameSnapshot: affiliate.name, affiliateCreditCodeSnapshot: affiliate.unifiedSocialCreditCode, effectiveFrom: new Date("2026-01-01"), changeReason: "本机合成项目建账", assignedByUserId: director.id } });
     }
-    for (const reviewer of [firstManager, secondManager, director, chairman, companyContract, materialDirector, financeDirector]) {
+    for (const reviewer of [firstManager, secondManager, director, chairman, companyContract, materialDirector, financeDirector, employee]) {
       const form = new FormData();
       form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成签名.png");
       expect((await fetch(`${base}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${reviewer.token}` }, body: form })).status).toBe(201);
@@ -145,7 +147,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(await db.paymentRequest.findUnique({ where: { id: payment.body.id } })).toMatchObject({ projectId: second, status: "approved_pending_payment", approvedAmountCents: 1000n });
   });
 
-  it("普通付款和本人费用不能把错误全局经理当作缺失项目经理的替代人", async () => {
+  it("缺项目经理不能用全局经理替代，兼岗本人及有效委托仍可逐节点签批", async () => {
     const db = app.get(PrismaService);
     const input = await advanceInput();
     await db.user.update({ where: { id: secondManager.id }, data: { isActive: false } });
@@ -158,22 +160,33 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       const position = await db.position.findUniqueOrThrow({ where: { key: "project_manager" } });
       const selfManager = await db.userPosition.create({ data: { userId: companyContract.id, positionId: position.id, projectId: second } });
       try {
-        expect(await request("/payments", companyContract, input)).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
-        expect(await db.paymentRequest.count({ where: { code: input.code } })).toBe(0);
+        const selfPayment = await request("/payments", companyContract, input);
+        expectStatus(selfPayment, 201);
+        const selfRoute = `/payments/${selfPayment.body.id}`;
+        const directorView = await request(selfRoute, director);
+        expectStatus(await request(`${selfRoute}/approval`, director, { decision: "approve", ...directorView.body.reviewApprovalContext }), 201);
+        const selfView = await request(selfRoute, companyContract);
+        expectStatus(await request(`${selfRoute}/approval`, companyContract, { decision: "approve", ...selfView.body.reviewApprovalContext }), 400);
+        expectStatus(await request(`${selfRoute}/approval`, companyContract, { decision: "approve", ...selfView.body.reviewApprovalContext,
+          selfReviewReason: "本人兼任本项目经理，逐节点核验", confirmationPassword: password }), 201);
+        const selfInstance = await db.approvalInstance.findFirstOrThrow({ where: { businessType: "payment_request", businessId: selfPayment.body.id } });
+        expect(await db.approvalActionLog.findFirst({ where: { approvalInstanceId: selfInstance.id, approvedRoleKey: "project_manager" } }))
+          .toMatchObject({ actorUserId: companyContract.id, signatureVersionIdSnapshot: expect.any(String) });
+        const delegatedPayment = await request("/payments", companyContract, { ...input, code: randomUUID() });
+        expectStatus(delegatedPayment, 201);
+        const route = `/payments/${delegatedPayment.body.id}`;
+        const firstView = await request(route, director);
+        expectStatus(await request(`${route}/approval`, director, { decision: "approve", ...firstView.body.reviewApprovalContext }), 201);
+        const pendingView = await request(route, companyContract);
         const delegation = await db.approvalDelegation.create({ data: {
           fromUserId: companyContract.id, toUserId: employee.id,
           startsAt: new Date(Date.now() - 60_000), endsAt: new Date(Date.now() - 1_000)
         } });
         try {
-          expectStatus(await request("/payments", companyContract, input), 400);
+          expectStatus(await request(`${route}/approval`, employee, { decision: "approve", ...pendingView.body.reviewApprovalContext }), 403);
           await db.approvalDelegation.update({ where: { id: delegation.id }, data: { endsAt: new Date(Date.now() + 60_000), enabled: false } });
-          expectStatus(await request("/payments", companyContract, input), 400);
+          expectStatus(await request(`${route}/approval`, employee, { decision: "approve", ...pendingView.body.reviewApprovalContext }), 403);
           await db.approvalDelegation.update({ where: { id: delegation.id }, data: { enabled: true } });
-          const delegatedPayment = await request("/payments", companyContract, input);
-          expectStatus(delegatedPayment, 201);
-          const route = `/payments/${delegatedPayment.body.id}`;
-          const firstView = await request(route, director);
-          expectStatus(await request(`${route}/approval`, director, { decision: "approve", ...firstView.body.reviewApprovalContext }), 201);
           const delegatedView = await request(route, employee);
           expectStatus(delegatedView, 200);
           expectStatus(await request(`${route}/approval`, employee, { decision: "approve", ...delegatedView.body.reviewApprovalContext }), 201);
@@ -198,10 +211,11 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/projects/${second}/operating-funds-overview`, companyContract)).status).toBe(403);
   });
 
-  it("零星采购对所有启用项目开放，但仍要求对应项目的材料岗位", async () => {
+  it("零星采购仅同项目物资员发起，物资主管只审批", async () => {
     const global = await request("/spot-procurements/create-project-options", materialDirector);
     expect(global.status).toBe(200);
-    expect(ids(global.body)).toEqual([first, second].sort());
+    expect(ids(global.body)).toEqual([]);
+    expect(ids((await request("/spot-procurements/create-project-options", materialStaff)).body)).toEqual([first, second].sort());
     const local = await person("material_staff", [first]);
     expect(ids((await request("/spot-procurements/create-project-options", local)).body)).toEqual([first]);
     expect((await request(`/spot-procurements/capabilities?projectId=${second}`, local)).status).toBe(403);
@@ -261,7 +275,8 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     const contract = await db.contract.create({ data: { code: randomUUID(), name: "合成乙项目材料合同", counterparty: "合成供应商", projectId: second, contractTypeKey: "material_purchase", ownerUserId: companyContract.id } });
     const version = await db.contractVersion.create({ data: { contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: [] } });
     const options = await request(`/settlement-workbench/contract-versions/${version.id}/participant-options`, companyContract);
-    expect(options).toMatchObject({ status: 200, body: { options: [expect.objectContaining({ userId: ownMaterial.id })] } });
+    expectStatus(options, 200);
+    expect(options.body.options.map((row: { userId: string }) => row.userId).sort()).toEqual([ownMaterial.id, materialStaff.id].sort());
     const service = app.get(SettlementService);
     const nodes = await db.$transaction((tx) => service.freezeGovernedSettlementFacts(tx, contract, false, companyContract.id, {
       draftId: randomUUID(), governanceVersion: 1, fieldReviewerUserId: ownMaterial.id, fieldReviewerRoleKey: "material_staff",
@@ -318,7 +333,8 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(await request(`${paymentRoute}/submission`, applicant, {})).toMatchObject({ status: 201 });
     const projectFinance = await person("finance_staff", [second]);
     expect(await request(`${paymentRoute}/payer`, projectFinance, { companyEntityId: company, paymentMethods: ["bank_transfer"] }, "PATCH")).toMatchObject({ status: 200 });
-    expect(await request(`${paymentRoute}/approval`, director, { decision: "approve" })).toMatchObject({ status: 201 });
+    expect((await request(`${paymentRoute}/approval`, director, { decision: "approve" })).status).toBe(403);
+    expect(await request(`${paymentRoute}/approval`, materialDirector, { decision: "approve" })).toMatchObject({ status: 201 });
     expect((await request(`${paymentRoute}/approval`, firstManager, { decision: "approve" })).status).toBe(403);
     for (const reviewer of [secondManager, financeDirector, chairman]) {
       expectStatus(await request(`${paymentRoute}/approval`, reviewer, { decision: "approve" }), 201);
@@ -331,7 +347,11 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(ids((await request("/projects", multi)).body)).toEqual([first, second].sort());
     const created = await app.get(PrismaService).project.create({ data: { code: randomUUID(), name: "合成后建项目" } });
     expect(ids((await request("/projects", companyContract)).body)).toContain(created.id);
-    expect(ids((await request("/spot-procurements/create-project-options", materialDirector)).body)).toContain(created.id);
+    expect(ids((await request("/spot-procurements/create-project-options", materialDirector)).body)).not.toContain(created.id);
+    expect(ids((await request("/spot-procurements/create-project-options", materialStaff)).body)).not.toContain(created.id);
+    const materialPosition = await app.get(PrismaService).position.findUniqueOrThrow({ where: { key: "material_staff" } });
+    await app.get(PrismaService).userPosition.create({ data: { userId: materialStaff.id, positionId: materialPosition.id, projectId: created.id } });
+    expect(ids((await request("/spot-procurements/create-project-options", materialStaff)).body)).toContain(created.id);
     expect(ids((await request("/projects", multi)).body)).not.toContain(created.id);
     const rosterOnly = await person("employee", []);
     await app.get(PrismaService).projectRosterMember.create({ data: { projectId: second, userId: rosterOnly.id } });
@@ -381,7 +401,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
   (process.env.RUN_PROJECT_BUSINESS_SCOPE_BROWSER === "1" ? it : it.skip)("电脑和手机真实页面的项目下拉与岗位权限一致", async () => {
     await new Promise<void>((done, reject) => {
       const env: NodeJS.ProcessEnv = { ...process.env, PROJECT_SCOPE_API: base,
-        PROJECT_SCOPE_SESSIONS: JSON.stringify({ chairman: sessions.get(chairman.id), employee: sessions.get(employee.id), materialDirector: sessions.get(materialDirector.id) }) };
+        PROJECT_SCOPE_SESSIONS: JSON.stringify({ chairman: sessions.get(chairman.id), employee: sessions.get(employee.id), materialStaff: sessions.get(materialStaff.id) }) };
       delete env.JEST_WORKER_ID;
       const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.project-business-scope.config.ts"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
       child.on("error", reject);

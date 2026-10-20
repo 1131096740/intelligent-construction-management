@@ -475,6 +475,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocumentDownload.vue";
 import {
   computed,
@@ -1489,7 +1490,7 @@ function createTerminationForm() {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  return formatUnknownApiError(error, fallback);
 }
 
 function formatMoney(value: string): string {

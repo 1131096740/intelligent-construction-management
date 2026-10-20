@@ -17,7 +17,7 @@ test("董事长的零采台账可筛选各项目，材料岗位的新建项目�
     await expect(page.locator(".t-select-option:visible").filter({ hasText: name })).toBeVisible();
   }
   await page.locator(".t-select-option:visible").filter({ hasText: "合成乙项目" }).click();
-  await login(page, "materialDirector");
+  await login(page, "materialStaff");
   await page.goto("/零星采购工作台");
   await page.getByRole("button", { name: "新建采购申请", exact: true }).click();
   const drawer = page.locator(".t-dialog:visible");
