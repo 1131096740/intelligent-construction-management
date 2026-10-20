@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, access, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runtimeDigest, exchangeRuntimes, restoreRuntimes } from './controlled-runtime-exchange.mjs';
 import { createHash } from 'node:crypto';
 async function rollbackIdentity(f) {
@@ -70,9 +71,13 @@ test('an existing run is never overwritten or reused', async t => {
   assert.equal(await readFile(join(f.run, 'evidence'), 'utf8'), 'keep');
 });
 
-test('root CLI verifies the Ubuntu candidate through the shared canonical Git guard before runtime moves', async () => {
+test('root CLI verifies the Ubuntu candidate through the shared canonical Git guard before runtime moves', async t => {
   const {execFileSync}=await import('node:child_process');
-  const script=new URL('./controlled-runtime-exchange.mjs',import.meta.url).pathname;
+  const sourceUrl = new URL('./controlled-runtime-exchange.mjs', import.meta.url);
+  const directory = await mkdtemp(join(tmpdir(), 'runtime-中文 % #-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const copiedScript = join(directory, '运行文件.mjs');
+  await writeFile(copiedScript, await readFile(sourceUrl));
   const probe=String.raw`
 import {SourceTextModule,SyntheticModule,createContext} from 'node:vm';
 import {readFileSync} from 'node:fs';
@@ -87,6 +92,9 @@ const modules={'node:crypto':crypto,'node:child_process':child,'node:fs/promises
 const mod=new SourceTextModule(readFileSync(process.argv[1],'utf8'),{context,initializeImportMeta:m=>{m.url='file:///fixture/runtime.mjs';}});
 await mod.link(name=>{const object=modules[name];if(!object)throw Error('unexpected import');return new SyntheticModule(Object.keys(object),function(){for(const [key,value]of Object.entries(object))this.setExport(key,value);},{context});});
 await mod.evaluate();await new Promise(resolve=>setImmediate(resolve));console.log(JSON.stringify(calls));`;
-  const output=execFileSync(process.execPath,['--experimental-vm-modules','--input-type=module','-e',probe,script],{encoding:'utf8',timeout:5000,stdio:['ignore','pipe','ignore']});
-  const calls=JSON.parse(output);assert.deepEqual(calls.guard,[['/srv/jiangkong/releases/'+'a'.repeat(40),'a'.repeat(40),'scripts/ops/controlled-runtime-exchange.mjs']]);assert.deepEqual(calls.rawGit,[]);assert.equal(calls.moves,0);
+  for (const scriptUrl of [sourceUrl, pathToFileURL(copiedScript)]) {
+    const script = fileURLToPath(scriptUrl);
+    const output=execFileSync(process.execPath,['--experimental-vm-modules','--input-type=module','-e',probe,script],{encoding:'utf8',timeout:5000,stdio:['ignore','pipe','ignore']});
+    const calls=JSON.parse(output);assert.deepEqual(calls.guard,[['/srv/jiangkong/releases/'+'a'.repeat(40),'a'.repeat(40),'scripts/ops/controlled-runtime-exchange.mjs']]);assert.deepEqual(calls.rawGit,[]);assert.equal(calls.moves,0);
+  }
 });
