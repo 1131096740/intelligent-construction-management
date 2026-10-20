@@ -130,10 +130,10 @@ async function showPage(number: number) {
     target.height = Math.ceil(viewport.height * ratio);
     target.style.width = `${Math.ceil(viewport.width)}px`;
     target.style.height = `${Math.ceil(viewport.height)}px`;
-    renderTask = page.render({ canvas: target, canvasContext: context, viewport,
+    const task = page.render({ canvas: target, canvasContext: context, viewport,
       transform: [ratio, 0, 0, ratio, 0, 0] });
-    const text = await page.getTextContent();
-    await renderTask.promise;
+    renderTask = task;
+    const [, text] = await Promise.all([task.promise, page.getTextContent()]);
     if (current !== renderGeneration || pdf !== document) return;
     pageText.value = text.items.flatMap((item) => "str" in item ? [item.str] : []).join(" ");
     pageNumber.value = number;
