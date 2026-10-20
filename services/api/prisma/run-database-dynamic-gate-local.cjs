@@ -418,6 +418,10 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
   if (playwrightBrowsersPath && !path.isAbsolute(playwrightBrowsersPath)) {
     fail("PLAYWRIGHT_BROWSERS_PATH 必须是绝对路径");
   }
+  const fontConfigFile = String(sourceEnv.FONTCONFIG_FILE ?? "").trim();
+  if (fontConfigFile && !path.isAbsolute(fontConfigFile)) {
+    fail("FONTCONFIG_FILE 必须是绝对路径");
+  }
   const prismaEngineEnvironment = {};
   for (const key of [
     "PRISMA_QUERY_ENGINE_LIBRARY",
@@ -440,6 +444,7 @@ function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
     ...(playwrightBrowsersPath
       ? { PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath }
       : {}),
+    ...(fontConfigFile ? { FONTCONFIG_FILE: fontConfigFile } : {}),
     ...prismaEngineEnvironment,
     ...(corepackHome ? { COREPACK_HOME: corepackHome } : {})
   };
