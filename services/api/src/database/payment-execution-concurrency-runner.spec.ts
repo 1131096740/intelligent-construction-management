@@ -98,7 +98,9 @@ describe("payment execution PostgreSQL concurrency runner", () => {
     expect(runner).toContain('"postgres:16"');
     expect(runner).toMatch(/"migrate",\s*"deploy"/u);
     expect(runner).toMatch(/"migrate",\s*"status"/u);
-    expect(runner).toMatch(/process\.execPath,\s*\[path\.join\(__dirname, "seed\.cjs"\)\],\s*\{\s*cwd: temporaryRoot/u);
+    expect(runner).toMatch(
+      /process\.execPath,\s*\[path\.join\(__dirname, "seed\.cjs"\)\],\s*\{\s*cwd: temporaryRoot/u
+    );
     expect(runner).toContain('FILE_STORAGE_DRIVER: "local"');
     expect(runner).toContain('FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private")');
     expect(runner).toContain("assertSeedPaymentExecutionClosedLoop");

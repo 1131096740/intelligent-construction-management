@@ -391,7 +391,7 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
       prisma.guaranteeObligationVersion.create({
         data: {
           id: `pol214-guarantee-overlap-${randomUUID()}`,
-          authorityVersionId: fixture.authorityId,
+          authorityVersionId: adjacentAuthority.id,
           projectId: fixture.projectId,
           constructionEnterpriseAssignmentId: fixture.assignmentId,
           affiliateCompanyContractId: fixture.contractId,
@@ -509,7 +509,7 @@ async function expectReject(promise, label, expectedError) {
     if (expectedError && !expectedError.test(String(error?.message ?? error))) {
       fail(`${label}未命中预期约束`);
     }
-    return;
+    return error;
   }
   fail(`${label}未拒绝`);
 }

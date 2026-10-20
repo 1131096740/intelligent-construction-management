@@ -1142,84 +1142,71 @@ module.exports.captureSeedStorage = async () => {
   }
 });
 
-for (const [runner, seedCount] of [
-  ["run-payment-execution-concurrency-local.cjs", 2],
-  ["run-pol214-authority-concurrency-local.cjs", 1],
-  ["run-draft-lifecycle-local.cjs", 1]
+for (const [name, bypassDatabase] of [
+  ['run-payment-execution-concurrency-local.cjs', 'verifyRetainedMigration = async () => {}; runPrismaMigrate = async () => {}; assertSeedPaymentExecutionClosedLoop = async () => {};'],
+  ['run-pol214-authority-concurrency-local.cjs', 'createFixture = async () => ({}); runAuthorityAssertions = async () => {};'],
+  ['run-draft-lifecycle-local.cjs', ''],
 ]) {
-  test(`seed filesystem isolation follows the actual main call site: ${runner}`, async () => {
-    const Module = require("node:module");
-    const { mkdir, mkdtemp, readFile, rm, stat, writeFile } = require("node:fs/promises");
-    const filename = path.join(__dirname, runner);
-    const existingRoot = await mkdtemp(path.join(require("node:os").tmpdir(), "seed-existing-private-"));
-    const existingFile = path.join(existingRoot, "synthetic-existing-file");
-    await writeFile(existingFile, "external file remains unchanged");
-    const previous = { storage: process.env.FILE_STORAGE_ROOT, driver: process.env.FILE_STORAGE_DRIVER };
-    process.env.FILE_STORAGE_ROOT = existingRoot;
-    process.env.FILE_STORAGE_DRIVER = "cos";
+  test(`${name} keeps both seed runs inside owned storage and preserves external files`, async () => {
+    const Module = require('node:module');
+    const { mkdtemp, mkdir, readFile, rm, stat, writeFile } = require('node:fs/promises');
+    const filename = path.join(__dirname, name);
+    const externalRoot = await mkdtemp(path.join(require('node:os').tmpdir(), 'seed-storage-external-'));
+    const externalFile = path.join(externalRoot, 'preserve-sentinel');
+    await writeFile(externalFile, 'external bytes unchanged');
+    const previous = { driver: process.env.FILE_STORAGE_DRIVER, root: process.env.FILE_STORAGE_ROOT };
+    process.env.FILE_STORAGE_DRIVER = 'cos';
+    process.env.FILE_STORAGE_ROOT = externalRoot;
+    const roots = [];
     try {
-      const roots = [];
-      for (let pass = 0; pass < 2; pass += 1) {
+      for (let iteration = 0; iteration < 2; iteration += 1) {
         const calls = [];
         const fixture = new Module(filename, module);
         fixture.filename = filename;
         fixture.paths = Module._nodeModulePaths(__dirname);
-        fixture.require = function (request) {
-          const original = Module.prototype.require.call(this, request);
-          if (request === "@prisma/client") {
-            return { ...original, PrismaClient: class { async $disconnect() {} } };
-          }
-          if (request !== "./money-bigint-runner-runtime.cjs") return original;
-          return {
-            ...original,
-            createCommandRuntime: () => ({
-              stopAll: async () => {},
-              command: async (_bin, args, options = {}) => {
-                const seed = args.includes("seed") || args.some(arg => arg.endsWith("seed.cjs"));
-                if (options.env?.DATABASE_URL) calls.push({ seed, args, ...options });
-                // Seed resolves files from cwd; never write into an existing checkout in this probe.
-                if (seed && options.cwd && path.basename(options.cwd).startsWith("jiangkong-")) {
-                  const storage = path.join(options.cwd, "storage", "private");
-                  await mkdir(storage, { recursive: true });
-                  await writeFile(path.join(storage, "synthetic-seed-file"), "this run only");
-                }
-                return { stdout: args.includes("context") ? '"unix:///fixture"' : "", stderr: "" };
+        const originalRequire = fixture.require.bind(fixture);
+        fixture.require = id => {
+          if (id === '@prisma/client') return { PrismaClient: class { async $disconnect() {} }, Prisma: {} };
+          if (id !== './money-bigint-runner-runtime.cjs') return originalRequire(id);
+          const runtime = originalRequire(id);
+          return { ...runtime, createCommandRuntime: ({ defaultCwd }) => ({
+            stopAll: async () => {},
+            command: async (_bin, args, options = {}) => {
+              if (options.env?.DATABASE_URL) calls.push({ args, cwd: options.cwd ?? defaultCwd, env: options.env });
+              if (args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs'))) {
+                const storage = options.env.FILE_STORAGE_ROOT;
+                assert.equal(options.env.FILE_STORAGE_DRIVER, 'local');
+                assert.ok(path.isAbsolute(storage));
+                assert.notEqual(storage, externalRoot);
+                assert.equal(path.basename(storage), 'private');
+                assert.equal(path.basename(path.dirname(storage)), 'storage');
+                assert.equal(options.cwd ?? defaultCwd, path.dirname(path.dirname(storage)), 'real seed resolves files from its working directory');
+                await mkdir(storage, { recursive: true });
+                await writeFile(path.join(storage, 'synthetic-seed-output'), 'this run only');
               }
-            })
-          };
+              return { stdout: '"unix:///fixture"', stderr: '', code: 0 };
+            },
+          }) };
         };
-        fixture._compile(readFileSync(filename, "utf8").replace(/^#!.*\n/u, "") + `
-module.exports.captureMain = async () => {
-  freePort = async () => 1234;
-  waitForPostgres = async () => {};
-  if (typeof verifyRetainedMigration === "function") verifyRetainedMigration = async () => {};
-  if (typeof runPrismaMigrate === "function") runPrismaMigrate = async () => {};
-  if (typeof assertSeedPaymentExecutionClosedLoop === "function") assertSeedPaymentExecutionClosedLoop = async () => {};
-  if (typeof createFixture === "function") createFixture = async () => ({});
-  if (typeof runAuthorityAssertions === "function") runAuthorityAssertions = async () => {};
-  await main();
-};`, filename);
-        await fixture.exports.captureMain();
-        const seeds = calls.filter(call => call.seed);
-        assert.equal(seeds.length, seedCount);
-        const cwd = seeds[0].cwd;
-        assert.ok(cwd && path.basename(cwd).startsWith("jiangkong-"), "seed must use this run's temporary cwd");
-        const storage = path.join(cwd, "storage", "private");
+        fixture._compile(readFileSync(filename, 'utf8').replace(/^#!.*\n/u, '') + `\nfreePort = async () => 1234; waitForPostgres = async () => {}; ${bypassDatabase} module.exports.captureStorage = main;\n`, filename);
+        await fixture.exports.captureStorage();
+        const seeds = calls.filter(({ args }) => args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs')));
+        assert.equal(seeds.length, name.startsWith('run-payment-') ? 2 : 1);
+        const storage = seeds[0].env.FILE_STORAGE_ROOT;
         for (const call of calls) {
           assert.equal(call.env.FILE_STORAGE_DRIVER, "local");
           assert.equal(call.env.FILE_STORAGE_ROOT, storage);
         }
-        for (const call of seeds) assert.equal(call.cwd, cwd);
-        await assert.rejects(stat(cwd), { code: "ENOENT" });
-        assert.equal(await readFile(existingFile, "utf8"), "external file remains unchanged");
-        roots.push(cwd);
+        await assert.rejects(stat(path.dirname(path.dirname(storage))), { code: 'ENOENT' });
+        assert.equal(await readFile(externalFile, 'utf8'), 'external bytes unchanged');
+        roots.push(storage);
       }
       assert.notEqual(roots[0], roots[1]);
     } finally {
-      for (const [name, value] of [["FILE_STORAGE_ROOT", previous.storage], ["FILE_STORAGE_DRIVER", previous.driver]]) {
-        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      for (const [key, value] of [['FILE_STORAGE_DRIVER', previous.driver], ['FILE_STORAGE_ROOT', previous.root]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
       }
-      await rm(existingRoot, { recursive: true, force: true });
+      await rm(externalRoot, { recursive: true, force: true });
     }
   });
 }
@@ -1267,7 +1254,8 @@ module.exports.useSyntheticSnapshot = () => {
         assert.equal(data.status, "draft");
         assert.equal(data.paidAmountCents, 0n);
         assert.equal(data.approvedAmountCents, null);
-        draft = { ...data };
+        assert.equal(data.requestedAmountCents, 1n);
+        draft = { id: "new-unpaid-probe", ...data };
         return draft;
       },
       update: async ({ where, data }) => {

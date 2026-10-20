@@ -262,38 +262,40 @@ async function verifyRollbackProbe(client) {
   const rollbackSignal = new Error("ROLLBACK_DRAFT_LIFECYCLE_PROBE");
   try {
     await client.$transaction(async (tx) => {
-      const [contract, payment, template] = await Promise.all([
+      const [contract, sourcePayment, template] = await Promise.all([
         tx.contractVersion.findUnique({ where: { id: probeFactsBefore.contract.id } }),
         tx.paymentRequest.findUnique({ where: { id: probeFactsBefore.payment.id } }),
         tx.contractBusinessTemplateVersion.findUnique({
           where: { id: probeFactsBefore.template.id }
         })
       ]);
-      assert(contract && payment && template, "回滚探针目标在事务开始前发生变化");
-      const contractAmount = contract.amountCents;
-      const now = new Date();
-      // Seed payments may already have executions; test abandonment on a new unpaid draft.
-      // The clone is inside this forced-rollback transaction and never persists.
-      const probePayment = await tx.paymentRequest.create({
+      assert(contract && sourcePayment && template, "回滚探针目标在事务开始前发生变化");
+      // The seeded payment already has formal execution facts. Probe only a new,
+      // unfunded draft inside this transaction; the forced rollback removes it.
+      const payment = await tx.paymentRequest.create({
         data: {
-          ...payment,
-          id: randomUUID(),
-          code: `ROLLBACK-PROBE-${randomUUID()}`,
+          projectId: sourcePayment.projectId,
+          settlementId: sourcePayment.settlementId,
+          sourceType: sourcePayment.sourceType,
+          contractId: sourcePayment.contractId,
+          contractVersionId: sourcePayment.contractVersionId,
+          paymentTermsVersionId: sourcePayment.paymentTermsVersionId,
+          paymentTermsStageId: sourcePayment.paymentTermsStageId,
+          paymentSubjectType: sourcePayment.paymentSubjectType,
+          code: `LOCAL-DRAFT-ROLLBACK-${randomUUID()}`,
           status: "draft",
+          requestedAmountCents: 1n,
           approvedAmountCents: null,
-          paidAmountCents: 0n,
-          abandonedAt: null,
-          abandonedByUserId: null,
-          abandonReason: null,
-          createdAt: now,
-          updatedAt: now
+          paidAmountCents: 0n
         }
       });
+      const contractAmount = contract.amountCents;
       const paymentAmounts = [
-        probePayment.requestedAmountCents,
-        probePayment.approvedAmountCents,
-        probePayment.paidAmountCents
+        payment.requestedAmountCents,
+        payment.approvedAmountCents,
+        payment.paidAmountCents
       ];
+      const now = new Date();
       const actor = "seed-user-contract-staff";
 
       const changedContract = await tx.contractVersion.update({
@@ -306,7 +308,7 @@ async function verifyRollbackProbe(client) {
         }
       });
       const changedPayment = await tx.paymentRequest.update({
-        where: { id: probePayment.id },
+        where: { id: payment.id },
         data: {
           status: "abandoned",
           abandonedAt: now,
