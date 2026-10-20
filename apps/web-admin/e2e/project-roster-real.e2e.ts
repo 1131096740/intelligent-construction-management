@@ -44,8 +44,10 @@ test("按项目调入和调出普通员工", async ({ page }, testInfo) => {
     await page.goto("/login");
     await page.getByPlaceholder("请输入手机号").fill(process.env.ROSTER_MANAGER_PHONE!);
     await page.getByPlaceholder("请输入密码").fill(password);
+    record({ event: "phase", phase: "login-click-start" });
     await page.getByRole("button", { name: "登录", exact: true }).click();
     await expect(page).not.toHaveURL(/login/);
+    record({ event: "phase", phase: "login-ready" });
     await page.goto("/项目花名册");
     await page.getByPlaceholder("全部可见项目").click();
     await page.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: process.env.ROSTER_PROJECT_NAME! }).click();
@@ -58,16 +60,22 @@ test("按项目调入和调出普通员工", async ({ page }, testInfo) => {
     await drawer.getByRole("button", { name: "预览调整", exact: true }).click();
     await drawer.getByPlaceholder("请输入本人当前登录密码").fill(password);
     await expectNoDocumentHorizontalOverflow(page);
+    record({ event: "phase", phase: "join-confirm-click-start" });
     await drawer.getByRole("button", { name: "确认调入项目", exact: true }).click();
+    record({ event: "phase", phase: "join-confirm-click-returned" });
     await expect(drawer).toHaveCount(0);
+    record({ event: "phase", phase: "join-drawer-closed" });
     const row = page.getByRole("row").filter({ hasText: process.env.ROSTER_EMPLOYEE_PHONE! });
     await expect(row).toHaveCount(1);
     await row.getByRole("button", { name: "调出项目", exact: true }).click();
     await drawer.locator('[data-field="reason"] input').fill("合成验收调出");
     await drawer.getByRole("button", { name: "预览调整", exact: true }).click();
     await drawer.getByPlaceholder("请输入本人当前登录密码").fill(password);
+    record({ event: "phase", phase: "leave-confirm-click-start" });
     await drawer.getByRole("button", { name: "确认调出项目", exact: true }).click();
+    record({ event: "phase", phase: "leave-confirm-click-returned" });
     await expect(drawer).toHaveCount(0);
+    record({ event: "phase", phase: "leave-drawer-closed" });
     await expect(row).toHaveCount(0);
     await expectNoDocumentHorizontalOverflow(page);
   } finally {
