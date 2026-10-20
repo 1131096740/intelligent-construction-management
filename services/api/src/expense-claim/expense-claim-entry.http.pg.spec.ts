@@ -156,6 +156,10 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(result).toMatchObject({ status: 201, body: { id: row.id } });
     expect(await prisma.expenseClaim.findUnique({ where: { id: row.id } })).toBeNull();
     expect(await prisma.expenseClaimLine.count({ where: { expenseClaimId: row.id } })).toBe(0);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { businessId: row.id, action: "expense_claim.draft.delete" } });
+    expect(audit).toMatchObject({ actorUserId: applicantUserId, businessType: "expense_claim" });
+    expect(audit.metadata).toMatchObject({ code: row.code, claimType, projectId, companyEntityId, requestedAmountCents: "1", previousStatus: "draft", applicantUserId, handledByUserId: applicantUserId });
+    expect(await prisma.auditLog.count({ where: { businessId: row.id, action: claimType === "incidental_expense" ? "incidental_expense.draft.create" : "expense_claim.draft.create" } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { businessId: row.id, action: "expense_claim.draft.delete" } })).toBe(1);
     expect((await request(`/expense-claims/${row.id}`)).status).toBe(404);
   });
@@ -182,6 +186,10 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect((await request(`/general-procurements/${created.body.id}/draft-deletion`, { revision: 1 })).status).toBe(201);
     expect(await prisma.generalProcurement.findUnique({ where: { id: created.body.id } })).toBeNull();
     expect((await request("/general-procurements", body)).status).toBe(409);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { businessId: created.body.id, action: "general_procurement.draft.delete" } });
+    expect(audit).toMatchObject({ actorUserId: applicantUserId, businessType: "general_procurement" });
+    expect(audit.metadata).toMatchObject({ requestKey: body.requestKey, revision: 1, projectId, companyEntityId, applicantUserId, previousStatus: "draft", category: body.category, requestedAmountCents: "100" });
+    expect(await prisma.auditLog.count({ where: { businessId: created.body.id, action: "general_procurement.create" } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { businessId: created.body.id, action: "general_procurement.draft.delete" } })).toBe(1);
   });
 
@@ -197,7 +205,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
   (enabled ? it : it.skip)("删除未提交草稿：附件关联删除，文件保留既有私有回收边界", async () => {
     const prisma = app.get(PrismaService);
-    const created = await request("/expense-claims", selfInput(applicantUserId));
+    for (const claimType of ["loan", "incidental_expense"] as const) {
+    const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
     const form = new FormData();
     form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成凭证.png");
     const uploaded = await fetch(`${baseUrl}/expense-claims/${created.body.id}/draft-attachment-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form });
@@ -208,6 +217,11 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect((await request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: row.updatedAt.toISOString() })).status).toBe(201);
     expect(await prisma.expenseClaimAttachment.count({ where: { expenseClaimId: row.id } })).toBe(0);
     expect(await prisma.fileObject.count({ where: { id: file.id } })).toBe(1);
+    const stored = await prisma.fileObject.findUniqueOrThrow({ where: { id: file.id } });
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { businessId: row.id, action: "expense_claim.draft.delete" } });
+    expect(audit.metadata).toMatchObject({ files: [{ id: file.id, name: stored.originalName, contentSha256: stored.contentSha256, sizeBytes: stored.sizeBytes }] });
+    expect(JSON.stringify(audit.metadata)).not.toContain(stored.objectKey);
+    }
   });
 
   (enabled ? it : it.skip)("删除未提交草稿：费用和采购的提交删除并发只能一个成功", async () => {
@@ -563,12 +577,53 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect((await request(`/approval-forms/expense_claim/${created.body.id}/download`, { confirmationPassword: accountPassword, downloadReason: "无关人员边界" }, strangerToken)).status).toBe(403);
   }, 60_000);
 
+  async function prepareBrowserDeletionFixtures() {
+    const prisma = app.get(PrismaService);
+    const contractSession = await selfAccount("contract_director");
+    const fixtures = [];
+    for (const viewport of ["desktop", "mobile"]) {
+      for (const kind of ["incidental_expense", "general_procurement", "contract_takeover"] as const) {
+        const session = kind === "contract_takeover" ? contractSession : browserSession;
+        const reason = `本地草稿删除验收-${viewport}-${kind}-${randomUUID()}`;
+        const rootPath = kind === "contract_takeover" ? `/projects/${projectId}/contract-takeovers` : kind === "general_procurement" ? "/general-procurements" : "/expense-claims";
+        const input = kind === "contract_takeover"
+          ? { code: `YS-${randomUUID()}`, name: reason, counterparty: "合成相对方", contractTypeKey: "material_purchase", companyEntityId, amountCents: "100", signedAt: "2026-10-20", takeoverLevel: "B", takeoverLevelAdjustmentReason: "仅本机删除验收", lifecycleStatus: "in_progress", takeoverCutoffDate: "2026-10-20", responsibleUserId: session.user.id }
+          : kind === "general_procurement"
+            ? { projectId, companyEntityId, reason, category: "office_supplies", requestedAmountCents: "100", requestKey: randomUUID() }
+            : { ...selfInput(applicantUserId, "incidental_expense"), reason };
+        const created = await request(rootPath, input, session.tokens.accessToken);
+        expect(created.status).toBe(201);
+        const id = created.body.id;
+        let fileId: string | null = null;
+        if (kind !== "general_procurement") {
+          const form = new FormData();
+          form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "本地合成删除凭证.png");
+          const upload = await fetch(`${baseUrl}${kind === "contract_takeover" ? `${rootPath}/files` : `${rootPath}/${id}/draft-attachment-file-uploads`}`, { method: "POST", headers: { authorization: `Bearer ${session.tokens.accessToken}` }, body: form });
+          expect(upload.status).toBe(201);
+          fileId = ((await upload.json()) as { id: string }).id;
+          expect((await request(`${rootPath}/${id}/${kind === "contract_takeover" ? "evidence-files" : "attachments"}`, kind === "contract_takeover" ? { fileId, purpose: "historical_contract_scan" } : { fileId, category: "other" }, session.tokens.accessToken)).status).toBe(201);
+        }
+        const beforeAudits = await prisma.auditLog.findMany({ where: { businessId: id }, orderBy: { id: "asc" } });
+        expect(beforeAudits.length).toBeGreaterThan(0);
+        const history = kind === "contract_takeover" ? await prisma.contractTakeover.findUniqueOrThrow({ where: { id } }) : null;
+        const path = kind === "contract_takeover" ? `/历史合同接管?projectId=${projectId}&takeoverId=${id}` : kind === "general_procurement" ? `/综合采购申请/${id}` : `/费用与报销/${id}`;
+        fixtures.push({ viewport, kind, id, path, rootPath, session, fileId, history, beforeAudits });
+      }
+    }
+    return fixtures;
+  }
+
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机通过真实页面创建费用草稿而不自动提交", async () => {
     await app.get(PrismaService).projectRosterMember.upsert({ where: { projectId_userId: { projectId, userId: financeSession.user.id } }, create: { projectId, userId: financeSession.user.id }, update: {} });
+    const deletionTitle = "本地三类草稿删除：取消保留、确认彻底删除且审计留存";
+    const deletionSelected = (!process.env.POL115_BROWSER_SPEC || process.env.POL115_BROWSER_SPEC === "draft-deletion-real.e2e.ts")
+      && (!process.env.POL115_BROWSER_GREP?.trim() || new RegExp(process.env.POL115_BROWSER_GREP.trim()).test(deletionTitle));
+    const deletionFixtures = deletionSelected ? await prepareBrowserDeletionFixtures() : [];
     await new Promise<void>((done, reject) => {
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         POL115_API_URL: baseUrl,
+        POL115_DELETION_FIXTURES: JSON.stringify(deletionFixtures.map(({ viewport, kind, id, path, rootPath, session }) => ({ viewport, kind, id, path, rootPath, session }))),
         POL115_BROWSER_SESSION: JSON.stringify(browserSession),
         POL115_FINANCE_SESSION: JSON.stringify(financeSession),
         POL115_PROXY_SESSION: JSON.stringify(proxySession),
@@ -589,6 +644,39 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       child.on("error", reject);
       child.on("exit", (code) => code === 0 ? done() : reject(new Error("费用真实浏览器验证失败")));
     });
+    if (deletionSelected) {
+      const prisma = app.get(PrismaService);
+      for (const fixture of deletionFixtures) {
+        const { id, kind, history, session, fileId, beforeAudits } = fixture;
+        const businessType = kind === "incidental_expense" ? "expense_claim" : kind;
+        const audit = await prisma.auditLog.findMany({ where: { businessId: id, action: `${businessType}.draft.delete` } });
+        expect(audit).toHaveLength(1);
+        expect(audit[0]).toMatchObject({ actorUserId: session.user.id, businessType });
+        expect(audit[0]!.metadata).toMatchObject({ projectId, previousStatus: "draft" });
+        expect(await prisma.auditLog.findMany({ where: { id: { in: beforeAudits.map(row => row.id) } }, orderBy: { id: "asc" } })).toEqual(beforeAudits);
+        expect(await prisma.approvalInstance.count({ where: { businessId: id } })).toBe(0);
+        if (kind === "incidental_expense") {
+          expect(await prisma.expenseClaim.count({ where: { id } })).toBe(0);
+          expect(await prisma.expenseClaimAttachment.count({ where: { expenseClaimId: id } })).toBe(0);
+          expect(audit[0]!.metadata).toMatchObject({ companyEntityId, claimType: kind, requestedAmountCents: "1", handledByUserId: session.user.id });
+        } else if (history) {
+          expect(await prisma.contractTakeover.count({ where: { id } })).toBe(0);
+          expect(await prisma.contract.count({ where: { id: history.contractId } })).toBe(0);
+          expect(await prisma.contractVersion.count({ where: { id: history.contractVersionId } })).toBe(0);
+          expect(await prisma.paymentTermsVersion.count({ where: { id: history.paymentTermsVersionId } })).toBe(0);
+          expect(await prisma.archiveRecord.count({ where: { businessId: id } })).toBe(0);
+          expect(audit[0]!.metadata).toMatchObject({ contractId: history.contractId, contractVersionId: history.contractVersionId });
+        } else {
+          expect(await prisma.generalProcurement.count({ where: { id } })).toBe(0);
+          expect(audit[0]!.metadata).toMatchObject({ companyEntityId, requestedAmountCents: "100", revision: 1, applicantUserId: session.user.id });
+        }
+        if (fileId) {
+          const file = await prisma.fileObject.findUniqueOrThrow({ where: { id: fileId } });
+          expect(audit[0]!.metadata).toMatchObject({ files: [{ id: fileId, contentSha256: file.contentSha256, sizeBytes: file.sizeBytes, name: file.originalName }] });
+          expect(JSON.stringify(audit[0]!.metadata)).not.toContain(file.objectKey);
+        }
+      }
+    }
   }, 180_000);
 
   (enabled ? it : it.skip)("项目借款明确提交后按原授权回读当时字段与金额，重复提交不增加快照", async () => {

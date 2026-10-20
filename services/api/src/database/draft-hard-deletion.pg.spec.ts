@@ -136,6 +136,12 @@ describe.each(["UTC", "Asia/Shanghai", "America/New_York"])("未提交草稿实�
   }
   run("历史合同接管草稿和生成合同、附件关联彻底删除但保留审计", async () => {
     const { c, v, terms, row } = await takeover(); const f = await file();
+    const retained = await takeover();
+    const shared = await db.archiveRecord.create({ data: { businessType: "contract_takeover", businessId: retained.row.id, fileId: f.id, departmentScope: "historical_contract" } });
+    const creationAudit = await db.auditLog.create({ data: { actorUserId: actor, action: "contract_takeover.create", businessType: "contract_takeover", businessId: row.id, metadata: { code: c.code } } });
+    await expect(takeovers.abandonDraft(project, row.id, { expectedUpdatedAt: row.updatedAt.toISOString(), action: "delete_pristine_draft" }, other)).rejects.toThrow();
+    await expect(takeovers.abandonDraft(project, row.id, { expectedUpdatedAt: new Date(row.updatedAt.getTime() - 1).toISOString(), action: "delete_pristine_draft" }, actor)).rejects.toThrow();
+    expect(await db.auditLog.count({ where: { businessId: row.id, action: "contract_takeover.draft.delete" } })).toBe(0);
     await db.archiveRecord.create({ data: { businessType: "contract_takeover", businessId: row.id, fileId: f.id, departmentScope: "historical_contract" } });
     expect(await takeovers.abandonDraft(project, row.id, { expectedUpdatedAt: row.updatedAt.toISOString(), action: "delete_pristine_draft" }, actor)).toMatchObject({ status: "deleted" });
     expect(await db.contractTakeover.findUnique({ where: { id: row.id } })).toBeNull();
@@ -145,6 +151,15 @@ describe.each(["UTC", "Asia/Shanghai", "America/New_York"])("未提交草稿实�
     expect(await db.archiveRecord.count({ where: { businessId: row.id } })).toBe(0);
     expect(await db.auditLog.count({ where: { businessId: row.id, action: "contract_takeover.draft.delete" } })).toBe(1);
     expect(await db.contractNumberTombstone.count({ where: { formalCode: c.code! } })).toBe(1);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { businessId: row.id, action: "contract_takeover.draft.delete" } });
+    expect(audit).toMatchObject({ actorUserId: actor, businessType: "contract_takeover" });
+    expect(audit.metadata).toMatchObject({ code: c.code, projectId: project, contractId: c.id, contractVersionId: v.id, previousStatus: "draft", deletedReferences: { historicalPaymentIds: [], taxRevisionIds: [], billIds: [] }, files: [{ id: f.id, name: f.originalName, sizeBytes: f.sizeBytes, contentSha256: f.contentSha256 }] });
+    expect(JSON.stringify(audit.metadata)).not.toContain(f.objectKey);
+    expect(await db.auditLog.findUnique({ where: { id: creationAudit.id } })).toEqual(creationAudit);
+    expect(await db.contractTakeover.findUnique({ where: { id: retained.row.id } })).toEqual(retained.row);
+    expect(await db.contract.findUnique({ where: { id: retained.c.id } })).toEqual(retained.c);
+    expect(await db.archiveRecord.findUnique({ where: { id: shared.id } })).toEqual(shared);
+    expect(await db.fileObject.findUnique({ where: { id: f.id } })).toEqual(f);
   });
   run("历史接管已确认或已激活，即使状态异常回到草稿也禁止删除", async () => {
     const { row } = await takeover();
@@ -297,20 +312,32 @@ describe.each(["UTC", "Asia/Shanghai", "America/New_York"])("未提交草稿实�
     await expect(service.deleteDraft(project, created.id, other, created.revision)).rejects.toThrow();
     expect(await service.deleteDraft(project, created.id, actor, created.revision)).toEqual({ id: created.id, deleted: true });
     expect(await db.operatingTakeoverBatch.count({ where: { id: created.id } })).toBe(0);
+    const deletion = await db.auditLog.findFirstOrThrow({ where: { businessId: created.id, action: "operating_takeover.draft.delete" } });
+    expect(deletion).toMatchObject({ actorUserId: actor, businessType: "operating_takeover_batch" });
+    expect(deletion.metadata).toMatchObject({ projectId: project, revision: created.revision, previousStatus: "under_review" });
+    expect(await db.auditLog.count({ where: { businessId: created.id, action: "operating_takeover.batch.create" } })).toBe(1);
   });
   run("经营接管批次连同明细问题和附件关联删除；确认后拒绝删除", async () => {
     const batch = await db.operatingTakeoverBatch.create({ data: { projectId: project, batchNo: randomUUID(), sceneKeys: ["historical_expense"], importFingerprint: randomUUID(), createdByUserId: actor } });
     const row = await db.operatingTakeoverRow.create({ data: { batchId: batch.id, rowNo: 1, sceneKey: "historical_expense", definitionVersion: 1, valuesSnapshot: {}, evidenceLevel: "A" } });
-    await db.operatingTakeoverIssue.create({ data: { batchId: batch.id, rowId: row.id, code: "test", severity: "warning", message: "合成问题" } });
+    const issue = await db.operatingTakeoverIssue.create({ data: { batchId: batch.id, rowId: row.id, code: "test", severity: "warning", message: "合成问题" } });
     const group = await db.operatingTakeoverAttachmentGroup.create({ data: { batchId: batch.id, rowId: row.id, purpose: "合成附件", createdByUserId: actor } });
     const f = await file();
     await db.operatingTakeoverAttachmentLink.create({ data: { groupId: group.id, fileId: f.id } });
     expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_operating_batch(${batch.id},${other},${project},1::integer) AS deleted`)).toEqual([{ deleted: false }]);
+    expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_operating_batch(${batch.id},${actor},${project},2::integer) AS deleted`)).toEqual([{ deleted: false }]);
+    expect(await db.auditLog.count({ where: { businessId: batch.id, action: "operating_takeover.draft.delete" } })).toBe(0);
     expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_operating_batch(${batch.id},${actor},${project},1::integer) AS deleted`)).toEqual([{ deleted: true }]);
     expect(await db.operatingTakeoverBatch.count({ where: { id: batch.id } })).toBe(0);
     expect(await db.operatingTakeoverRow.count({ where: { batchId: batch.id } })).toBe(0);
     expect(await db.operatingTakeoverAttachmentLink.count({ where: { groupId: group.id } })).toBe(0);
     expect(await db.auditLog.count({ where: { businessId: batch.id, action: "operating_takeover.draft.delete" } })).toBe(1);
+    expect(await db.operatingTakeoverIssue.count({ where: { batchId: batch.id } })).toBe(0);
+    expect(await db.operatingTakeoverAttachmentGroup.count({ where: { batchId: batch.id } })).toBe(0);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { businessId: batch.id, action: "operating_takeover.draft.delete" } });
+    expect(audit).toMatchObject({ actorUserId: actor, businessType: "operating_takeover_batch" });
+    expect(audit.metadata).toMatchObject({ projectId: project, batchNo: batch.batchNo, revision: 1, deletedReferences: { rowIds: [row.id], issueIds: [issue.id], attachmentGroupIds: [group.id] }, files: [{ id: f.id, contentSha256: f.contentSha256, sizeBytes: f.sizeBytes, name: f.originalName }] });
+    expect(await db.fileObject.findUnique({ where: { id: f.id } })).toEqual(f);
     const confirmed = await db.operatingTakeoverBatch.create({ data: { projectId: project, batchNo: randomUUID(), sceneKeys: [], importFingerprint: randomUUID(), createdByUserId: actor } });
     await db.operatingTakeoverConfirmation.create({ data: { batchId: confirmed.id, idempotencyKey: randomUUID(), profession: "finance", revision: 1, snapshot: {}, confirmedByUserId: actor } });
     expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_operating_batch(${confirmed.id},${actor},${project},1::integer) AS deleted`)).toEqual([{ deleted: false }]);

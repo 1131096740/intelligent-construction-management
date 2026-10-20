@@ -272,12 +272,41 @@ test("零星费用选择既有分类后保存并明确提交，桌面和手机�
   await form.locator('[data-field="requestedAmountYuan"] input').fill("0.01");
   await drawer.getByRole("button", { name: "下一步", exact: true }).click();
   const payeeForm = page.getByRole("region", { name: "费用收款单条业务表单" });
+  const creates: string[] = [];
+  page.on("request", request => {
+    if (request.method() === "POST" && request.url().endsWith("/expense-claims")) creates.push(request.url());
+  });
+  await expect(payeeForm.locator(".business-entry-field__label").filter({ hasText: "收款对象" })).toContainText("收款对象 *");
+  for (const blank of ["", "   "]) {
+    await payeeForm.locator('[data-field="payeeName"] input').fill(blank);
+    await drawer.getByRole("button", { name: "下一步", exact: true }).click();
+    await expect(payeeForm).toBeVisible();
+    await expect(payeeForm.getByText("零星费用收款对象必填", { exact: true })).toBeVisible();
+    expect(creates).toHaveLength(0);
+  }
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(key => key.startsWith("jg:business-form:v1:") && key.endsWith(":expense-create"));
+    if (!key) throw new Error("合成本机草稿未保存");
+    const saved = JSON.parse(localStorage.getItem(key)!);
+    saved.value.step = 3;
+    saved.value.form.payeeName = "   ";
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  await expect(drawer.getByRole("button", { name: "保存草稿", exact: true })).toBeVisible();
+  await drawer.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(payeeForm).toBeVisible();
+  await expect(payeeForm.getByText("零星费用收款对象必填", { exact: true })).toBeVisible();
+  expect(creates).toHaveLength(0);
   await payeeForm.locator('[data-field="payeeName"] input').fill("合成零星服务收款人");
   await drawer.getByRole("button", { name: "下一步", exact: true }).click();
   const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
   await drawer.getByRole("button", { name: "保存草稿", exact: true }).click();
   const saveResponse = await saved;
   expect(saveResponse.status(), await saveResponse.text()).toBe(201);
+  expect(creates).toHaveLength(1);
   const claim = await saveResponse.json() as { id: string };
   const draftResponse = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect(draftResponse.ok(), await draftResponse.text()).toBe(true);

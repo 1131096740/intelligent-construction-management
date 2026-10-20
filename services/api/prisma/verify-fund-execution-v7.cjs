@@ -1,5 +1,6 @@
 const { randomUUID } = require("node:crypto");
-const { readFileSync, readdirSync } = require("node:fs");
+const { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -54,27 +55,23 @@ function assertLocalDockerEndpoint() {
   );
 }
 
-function psql(containerName, sql) {
-  return command(
-    docker,
-    [
-      "exec",
-      "--interactive",
-      containerName,
-      "psql",
-      "--username",
-      databaseUser,
-      "--dbname",
-      databaseName,
-      "--set",
-      "ON_ERROR_STOP=1",
-      "--no-psqlrc",
-      "--tuples-only",
-      "--no-align",
-      "--quiet"
-    ],
-    { input: sql }
-  );
+function psql(containerName, sql, invoke = command) {
+  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "jgzg-fund-sql-"));
+  const localFile = path.join(temporaryDirectory, "statement.sql");
+  const containerFile = `/tmp/jgzg-fund-sql-${randomUUID()}.sql`;
+  try {
+    writeFileSync(localFile, sql, { encoding: "utf8", mode: 0o600 });
+    // A regular file reaches EOF independently of Docker's interactive input stream.
+    // Keep the original SQL and psql transaction/error behavior unchanged.
+    invoke(docker, ["cp", localFile, `${containerName}:${containerFile}`], { timeout: 180_000 });
+    return invoke(docker, [
+      "exec", containerName, "psql", "--username", databaseUser,
+      "--dbname", databaseName, "--set", "ON_ERROR_STOP=1", "--no-psqlrc",
+      "--tuples-only", "--no-align", "--quiet", "--file", containerFile
+    ], { timeout: 180_000 });
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 }
 
 function probePostgresReady(containerName, spawn = spawnSync) {
@@ -238,5 +235,6 @@ module.exports = {
   main,
   migrationDirectories,
   probePostgresReady,
+  psql,
   runServicePostgresSpec
 };

@@ -96,6 +96,7 @@ const applicantOptions = computed(() => options.value?.applicantUsers.map((item)
 const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const isProject = computed(() => Boolean(form.projectId));
 const needsWitness = computed(() => form.claimType === "reimbursement" && !isProject.value);
+const payeeNameError = computed(() => incidentalPayeeError() && error.value === incidentalPayeeError() ? error.value : "");
 const lineTotalCents = computed(() => {
   try {
     return form.lines.reduce((total, line) => total + BigInt(yuanTextToCentsText(line.amountYuan.trim() || "0")), 0n).toString();
@@ -169,6 +170,10 @@ watch(availableProjects, (projects) => {
 });
 watch(() => form.projectId, (projectId) => { if (projectId) form.factWitnessUserId = ""; });
 
+function incidentalPayeeError(): string {
+  return form.claimType === "incidental_expense" && !form.payeeName.trim() ? "零星费用收款对象必填" : "";
+}
+
 function validateCurrentStep(): string {
   if (step.value === 0) {
     if (!form.companyEntityId) return "请选择使用单位";
@@ -195,6 +200,7 @@ function validateCurrentStep(): string {
     } catch { return "金额必须是非负数字，最多保留两位小数"; }
   }
   if (step.value === 2) {
+    if (incidentalPayeeError()) return incidentalPayeeError();
     if (!form.reason.trim()) return "请填写事由";
     try { if (BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim())) <= 0n) return "申请金额必须大于 0"; } catch { return "金额必须是非负数字，最多保留两位小数"; }
     if (form.claimType === "loan" && !form.loanExpectedClearanceOn) return "请填写预计清账日期";
@@ -236,6 +242,8 @@ function payload(): CreateExpenseClaimPayload {
 
 async function save() {
   if (submissionUncertain.value) { error.value = "上次保存的结果尚未确认，请先关闭本窗口，到“我的草稿”核对，避免重复创建。"; return; }
+  // Recovered local forms may open directly at review; enforce the original API requirement here too.
+  if (incidentalPayeeError()) { step.value = 2; error.value = incidentalPayeeError(); return; }
   error.value = validateCurrentStep();
   if (error.value || saving.value) return;
   saving.value = true;
@@ -480,6 +488,8 @@ function finishRecovery() {
                 v-model="payeeFields"
                 :definition="options.entryDefinition"
                 :is-loan="form.claimType === 'loan'"
+                :is-incidental="form.claimType === 'incidental_expense'"
+                :payee-name-error="payeeNameError"
               />
             </t-form>
           </section>
