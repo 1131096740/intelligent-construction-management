@@ -26,6 +26,7 @@ export interface ContractSummaryItem {
 }
 
 export interface ContractLedgerRow {
+  contractRelationshipLabel?: string;
   id: string;
   contractId?: string;
   projectId?: string;
@@ -151,6 +152,7 @@ export const contractSummaryItems: ContractSummaryItem[] = [
 ];
 
 export const contractLedgerColumns: PrimaryTableCol<ContractLedgerRow>[] = [
+  { colKey: "contractRelationshipLabel", title: "合同分类", minWidth: 180 },
   { colKey: "contractNo", title: "合同编号", width: 110 },
   { colKey: "name", title: "合同名称", minWidth: 150 },
   { colKey: "project", title: "项目", width: 116 },

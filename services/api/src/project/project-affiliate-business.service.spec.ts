@@ -1,3 +1,6 @@
+jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
+// 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
+jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import { BadRequestException } from "@nestjs/common";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 
@@ -137,6 +140,9 @@ describe("ProjectAffiliateBusinessService", () => {
     ["contract_director", []]
   ])("derives original contract record capability for %s", async (roleKey, expected) => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables(roleKey)
@@ -169,6 +175,9 @@ describe("ProjectAffiliateBusinessService", () => {
     ["finance_director", ["confirm_affiliate_fact", "supplement_affiliate_evidence"]]
   ])("derives oral payment fact capability for %s", async (roleKey, expected) => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables(roleKey),
@@ -195,6 +204,9 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("rejects affiliate evidence upload before file storage for the wrong business role", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("employee"),
@@ -220,6 +232,9 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("does not advertise contract adjustments to a confirming-only contract director", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("contract_director"),
@@ -245,6 +260,9 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("returns a payment request business code for correction receipts without replacing the hidden id", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("finance_staff"),
@@ -279,6 +297,9 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("does not create company approval work when recording an external affiliate contract", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       projectAffiliateAssignment: {
@@ -374,6 +395,9 @@ describe("ProjectAffiliateBusinessService", () => {
     "rejects a post-effective %s payment without an approved payment request",
     async (paymentKind) => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
@@ -415,6 +439,9 @@ describe("ProjectAffiliateBusinessService", () => {
   it("rejects a future post-effective exceptional payment", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-08-17T00:00:00.000Z"));
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "locked-row" }]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
@@ -480,6 +507,9 @@ describe("ProjectAffiliateBusinessService", () => {
       description: "抢险当日已付，事后据实补录"
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "locked-row" }]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
@@ -550,6 +580,9 @@ describe("ProjectAffiliateBusinessService", () => {
       confirmationSignatureSha256: null
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("budget_staff"),
@@ -564,6 +597,8 @@ describe("ProjectAffiliateBusinessService", () => {
         findFirst: jest.fn().mockResolvedValue({
           affiliateAssignmentId: "assignment-1",
           affiliateBusinessPartyVersionId: "party-version-1",
+          id: "company-contract-1",
+          contractReference: "UPPER-001",
           companyEntityNameSnapshot: "材料供应商"
         })
       },
@@ -580,7 +615,7 @@ describe("ProjectAffiliateBusinessService", () => {
 
     await expect(
       service.recordSettlementFact("project-1", "budget-1", {
-        contractLedgerId: "contract-ledger-1",
+        contractLedgerId: "company-contract-1",
         affiliateCompanyContractId: "company-contract-1",
         counterpartyName: "材料供应商",
         settledAt: "2026-07-28",
@@ -599,6 +634,9 @@ describe("ProjectAffiliateBusinessService", () => {
   it("rejects a settlement correction below existing construction-enterprise payments", async () => {
     const target = settlementFact({ amountCents: 100000n });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: target.id }]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("budget_staff"),
@@ -649,6 +687,9 @@ describe("ProjectAffiliateBusinessService", () => {
   it("does not let another pending settlement increase mask a decrease being recorded", async () => {
     const target = settlementFact({ amountCents: 100000n });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: target.id }]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("budget_staff"),
@@ -716,6 +757,9 @@ describe("ProjectAffiliateBusinessService", () => {
   it("aggregates remittances linked to any fact in the settlement ledger", async () => {
     const target = settlementFact({ amountCents: 100000n });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: target.id }]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("budget_staff"),
@@ -772,6 +816,9 @@ describe("ProjectAffiliateBusinessService", () => {
   it("records a normal affiliate payment only against a confirmed matching settlement", async () => {
     const created = paymentFact();
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-fact-1" }]),
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
@@ -968,6 +1015,9 @@ describe("ProjectAffiliateBusinessService", () => {
       recordedByRoleKey: "finance_director"
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-fact-1" }]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("finance_director"),
@@ -1022,6 +1072,9 @@ describe("ProjectAffiliateBusinessService", () => {
         paidAt: new Date("2026-08-02T00:00:00.000Z")
       });
       const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
         $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-request-1" }]),
         project: {
           findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
@@ -1100,6 +1153,9 @@ describe("ProjectAffiliateBusinessService", () => {
 
   it("rejects a payment whose counterparty differs from the contract and settlement subject", async () => {
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-fact-1" }]),
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("finance_staff"),
@@ -1159,6 +1215,9 @@ describe("ProjectAffiliateBusinessService", () => {
       confirmationSignatureSha256: "f".repeat(64)
     };
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([{ id: "settlement-decrease-1" }])
@@ -1253,9 +1312,14 @@ describe("ProjectAffiliateBusinessService", () => {
       confirmationSignatureSha256: "9".repeat(64)
     });
     const tx = {
+ contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
+ upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
+      companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest
         .fn()
+        .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{ id: "payment-fact-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
         .mockResolvedValueOnce([{ id: "finance-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([
           {
@@ -1272,7 +1336,9 @@ describe("ProjectAffiliateBusinessService", () => {
           }
         ]),
       ...roleTables("finance_director"),
+      projectAffiliateSettlementFact: { findMany: jest.fn().mockResolvedValue([{...settlementFact(),amountCents:100000000n,effectDirection:"increase"}]) },
       projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(confirmed),
         findFirst: jest.fn().mockResolvedValue(paymentFact()),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })

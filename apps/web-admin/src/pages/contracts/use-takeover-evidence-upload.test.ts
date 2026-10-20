@@ -22,6 +22,22 @@ describe("takeover evidence retry lifecycle", () => {
     expect(state.file.value).toBe(file);
   });
 
+  it.each([
+    "上传文件为空，请重新选择资料文件",
+    "上传文件超过系统限制，请压缩后重新上传或联系管理员",
+    "文件格式不支持，请上传 PDF、Word、Excel 或图片资料",
+    "上传人信息缺失，请重新登录后再上传资料"
+  ])("shows the server validation reason and retains the file: %s", async message => {
+    const state = useTakeoverEvidenceUpload();
+    state.choose(file);
+    const attach = vi.fn();
+    await state.run(async () => { throw Object.assign(new Error(message), { status: 400 }); }, attach);
+    expect(state.error.value).toContain(message);
+    expect(state.error.value).toContain("已保留所选文件");
+    expect(state.file.value).toBe(file);
+    expect(attach).not.toHaveBeenCalled();
+  });
+
   it("retains file and retry key after a lost upload response", async () => {
     const state = useTakeoverEvidenceUpload();
     state.choose(file);

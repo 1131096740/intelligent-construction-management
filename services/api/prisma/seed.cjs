@@ -1,8 +1,9 @@
+const { initializeSeedLayout } = require("./seed-layout-preview.cjs");
+const { seedAttachmentPdf } = require("./seed-attachment-pdf.cjs");
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 const { createHash } = require("crypto");
 const {
-  copyFile,
   mkdir,
   readFile,
   writeFile
@@ -208,13 +209,6 @@ function privateStoragePath(objectKey) {
   return join(process.cwd(), "storage", "private", objectKey);
 }
 
-async function copyPrivateSeedFile(file, sourcePath) {
-  const targetPath = privateStoragePath(file.objectKey);
-  await mkdir(dirname(targetPath), { recursive: true });
-  await copyFile(sourcePath, targetPath);
-  return fileMetadata(await readFile(targetPath));
-}
-
 async function writePrivateSeedFile(file, buffer) {
   const targetPath = privateStoragePath(file.objectKey);
   await mkdir(dirname(targetPath), { recursive: true });
@@ -229,25 +223,6 @@ function fileMetadata(buffer) {
   };
 }
 
-function minimalPreviewPdf() {
-  const objects = [
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>\nendobj\n",
-    "4 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 760 Td (Template preview) Tj ET\nendstream\nendobj\n"
-  ];
-  let body = "%PDF-1.4\n";
-  const offsets = objects.map((object) => {
-    const offset = Buffer.byteLength(body);
-    body += object;
-    return offset;
-  });
-  const xrefOffset = Buffer.byteLength(body);
-  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  body += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
-  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-  return Buffer.from(body);
-}
 
 async function upsertSeedFile(file, uploadedByUserId, metadata) {
   await prisma.fileObject.upsert({
@@ -538,17 +513,18 @@ async function seedPaymentExecutionClosedLoop() {
 }
 
 async function seedWorkbenchTemplate(data) {
-  const docxMetadata = await copyPrivateSeedFile(
-    data.layout.docxFile,
-    join(__dirname, "..", "assets", "templates", data.layout.docxFile.originalName)
-  );
-  const previewMetadata = await writePrivateSeedFile(
-    data.layout.previewPdfFile,
-    minimalPreviewPdf()
-  );
-
-  await upsertSeedFile(data.layout.docxFile, seed.users.contractStaff.id, docxMetadata);
-  await upsertSeedFile(data.layout.previewPdfFile, seed.users.contractStaff.id, previewMetadata);
+  await initializeSeedLayout({
+    prisma,
+    data,
+    uploaderId: seed.users.contractStaff.id,
+    sourcePath: join(__dirname, "..", "assets", "templates", data.layout.docxFile.originalName),
+    writeFile: async (file, buffer) => {
+      const targetPath = privateStoragePath(file.objectKey);
+      await mkdir(dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, buffer, { flag: "wx" });
+      return fileMetadata(buffer);
+    }
+  });
 
   await prisma.standardClause.upsert({
     where: { code: data.standardPaymentClause.code },
@@ -633,77 +609,6 @@ async function seedWorkbenchTemplate(data) {
       publishedByUserId: "seed-user-contract-director",
       publishedAt: data.publishedAt,
       changeSummary: data.version.changeSummary
-    }
-  });
-
-  await prisma.contractLayoutTemplate.upsert({
-    where: { id: data.layout.id },
-    update: {
-      name: data.layout.name,
-      contractTypeKey: data.template.contractTypeKey
-    },
-    create: {
-      id: data.layout.id,
-      name: data.layout.name,
-      contractTypeKey: data.template.contractTypeKey,
-      createdByUserId: seed.users.contractStaff.id
-    }
-  });
-  await prisma.contractLayoutTemplateVersion.upsert({
-    where: { id: data.layout.versionId },
-    update: {
-      status: data.layout.status,
-      docxFileId: data.layout.docxFile.id,
-      placeholderSchema: {
-        fields: data.fields,
-        bills: data.bills,
-        clauses: data.clauses,
-        required: ["contract.amountUppercase"]
-      },
-      previewPdfFileId: data.layout.previewPdfFile.id,
-      inspectionReport: data.layout.inspectionReport,
-      submittedByUserId: seed.users.contractStaff.id,
-      publishedByUserId: "seed-user-contract-director",
-      publishedAt: data.publishedAt,
-      changeSummary: data.version.changeSummary
-    },
-    create: {
-      id: data.layout.versionId,
-      layoutTemplateId: data.layout.id,
-      versionNo: data.layout.versionNo,
-      status: data.layout.status,
-      docxFileId: data.layout.docxFile.id,
-      placeholderSchema: {
-        fields: data.fields,
-        bills: data.bills,
-        clauses: data.clauses,
-        required: ["contract.amountUppercase"]
-      },
-      previewPdfFileId: data.layout.previewPdfFile.id,
-      inspectionReport: data.layout.inspectionReport,
-      submittedByUserId: seed.users.contractStaff.id,
-      publishedByUserId: "seed-user-contract-director",
-      publishedAt: data.publishedAt,
-      changeSummary: data.version.changeSummary
-    }
-  });
-  await prisma.contractLayoutPreviewJob.upsert({
-    where: { id: data.layout.previewJob.id },
-    update: {
-      status: data.layout.previewJob.status,
-      sampleData: data.layout.previewJob.sampleData,
-      previewPdfFileId: data.layout.previewPdfFile.id,
-      errorMessage: null,
-      completedAt: data.layout.previewJob.completedAt
-    },
-    create: {
-      id: data.layout.previewJob.id,
-      layoutTemplateVersionId: data.layout.versionId,
-      status: data.layout.previewJob.status,
-      sampleData: data.layout.previewJob.sampleData,
-      previewPdfFileId: data.layout.previewPdfFile.id,
-      completedAt: data.layout.previewJob.completedAt,
-      createdByUserId: seed.users.contractStaff.id
     }
   });
 
@@ -876,7 +781,7 @@ async function main() {
 
   const ownerContractFileMetadata = await writePrivateSeedFile(
     seed.ownerContractFile,
-    minimalPreviewPdf()
+    await seedAttachmentPdf()
   );
   await upsertSeedFile(
     seed.ownerContractFile,
@@ -931,7 +836,7 @@ async function main() {
 
   const upstreamSettlementFileMetadata = await writePrivateSeedFile(
     seed.upstreamSettlementFile,
-    minimalPreviewPdf()
+    await seedAttachmentPdf()
   );
   await upsertSeedFile(
     seed.upstreamSettlementFile,
@@ -983,7 +888,7 @@ async function main() {
 
   const projectReceiptFileMetadata = await writePrivateSeedFile(
     seed.projectReceiptFile,
-    minimalPreviewPdf()
+    await seedAttachmentPdf()
   );
   await upsertSeedFile(seed.projectReceiptFile, seed.users.cashier.id, projectReceiptFileMetadata);
   await prisma.projectReceipt.upsert({

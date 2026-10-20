@@ -29,6 +29,8 @@
         </t-button>
       </template>
     </BusinessPageHeader>
+    <ContractRelationshipLedger initial-section="settlements" />
+
 
     <t-tabs v-model="activeView">
       <t-tab-panel
@@ -248,6 +250,7 @@
 </template>
 
 <script setup lang="ts">
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -372,7 +375,7 @@ const settlementColumnOptions = computed(() =>
 const visibleSettlementLedgerColumns = computed(() => {
   const visible = new Set(visibleSettlementColumnKeys.value);
   return settlementLedgerColumns.filter((column) =>
-    column.colKey === "operation" || visible.has(String(column.colKey))
+    column.colKey === "operation" || column.colKey === "contractRelationshipLabel" || visible.has(String(column.colKey))
   );
 });
 

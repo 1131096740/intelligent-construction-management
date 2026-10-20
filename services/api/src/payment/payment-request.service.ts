@@ -1,3 +1,5 @@
+import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
+import { contractProxyPaid, contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { createHash, randomUUID } from "node:crypto";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
@@ -1702,7 +1704,7 @@ export class PaymentRequestService {
       select: { amountCents: true }
     });
 
-    return sumMoneyCents(payments.map((payment) => payment.amountCents));
+    return sumMoneyCents(payments.map((payment) => payment.amountCents)) + await contractProxyPaid(tx, `settlement:${settlementId}`);
   }
 
   private async sumProjectProxyPaymentCentsForContract(
@@ -1734,7 +1736,7 @@ export class PaymentRequestService {
       select: { amountCents: true }
     });
 
-    return sumMoneyCents(payments.map((payment) => payment.amountCents));
+    return sumMoneyCents(payments.map((payment) => payment.amountCents)) + await contractProxyPaidForContract(tx, contractId);
   }
 
   private async sumContractDueAllocatedCentsForSettlement(
@@ -3142,6 +3144,8 @@ export class PaymentRequestService {
           where: { idempotencyKey }
         });
         if (existingExecution) {
+          if(input.bankReceiptReference){const claim=await tx.contractBankEventClaim.findUnique({where:{sourceType_sourceId:{sourceType:"payment_execution",sourceId:existingExecution.id!}}});const bank=claim?await tx.verifiedBankTransactionObservation.findUnique({where:{id:claim.observationId}}):null;if(bank?.reference!==input.bankReceiptReference)throw new ConflictException("原实付银行流水引用已变化，不能复用提交凭据");}
+
           await this.assertPaymentExecutionReceiptReplay(tx, existingExecution, {
             paymentId,
             actorUserId,
@@ -3330,6 +3334,7 @@ export class PaymentRequestService {
           throw new ForbiddenException("付款凭证必须由当前登记人上传");
         }
 
+        const bankEvent = observationSelectionRef ? null : await requireContractBankEvent(tx, {projectId:payment.projectId,reference:input.bankReceiptReference,companyId:payerAttestation?(await tx.paymentExecutionPayerVerification.findUniqueOrThrow({where:{reference:payerAttestation.bankAccountReference}})).holderCompanyEntityId:companyEntityIdSnapshot!,amountCents,occurredAt:paidAt,direction:"outflow"});
         const executionId = randomUUID();
         const execution = await paymentExecutionClient.create({
           data: {
@@ -3360,6 +3365,7 @@ export class PaymentRequestService {
             payerAttestation
           );
         }
+        if(bankEvent)await claimContractBankEvent(tx,bankEvent.id,"payment_execution",execution.id,actorUserId);
         await this.createWagePayableBindings(
           tx,
           execution.id,

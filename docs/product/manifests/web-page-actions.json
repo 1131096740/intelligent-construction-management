@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 371,
+    "registeredActionCount": 392,
     "pageActionCount": 56,
-    "backgroundActionCount": 315,
-    "reachableVueFileCount": 180,
-    "routeRootCount": 68,
-    "totalVueFileCount": 194,
-    "parsedVueFileCount": 194,
-    "reachableProductionModuleCount": 314,
-    "templateEventDirectiveCount": 1106,
+    "backgroundActionCount": 336,
+    "reachableVueFileCount": 191,
+    "routeRootCount": 69,
+    "totalVueFileCount": 205,
+    "parsedVueFileCount": 205,
+    "reachableProductionModuleCount": 333,
+    "templateEventDirectiveCount": 1182,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 361,
-    "candidateProductionMutationConsumerCount": 361,
-    "acceptedProductionMutationConsumerCount": 361,
-    "productionMutationConsumerPairCount": 361,
+    "coveredProductionMutationConsumerCount": 382,
+    "candidateProductionMutationConsumerCount": 382,
+    "acceptedProductionMutationConsumerCount": 382,
+    "productionMutationConsumerPairCount": 382,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 335,
-    "reachableProductionModuleCount": 314,
-    "totalVueFileCount": 194,
-    "parsedVueFileCount": 194
+    "totalProductionModuleCount": 354,
+    "reachableProductionModuleCount": 333,
+    "totalVueFileCount": 205,
+    "parsedVueFileCount": 205
   },
   "actions": [
     {
@@ -39,6 +39,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
@@ -47,7 +54,7 @@
         "event": "confirm",
         "handler": "submitConfirm",
         "kind": "event",
-        "sourceLine": 738,
+        "sourceLine": 757,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -104,6 +111,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
@@ -112,7 +126,7 @@
         "event": "click",
         "handler": "submitRecord",
         "kind": "event",
-        "sourceLine": 722,
+        "sourceLine": 741,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -725,7 +739,7 @@
         "event": "call",
         "handler": "createClearingCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 515,
+        "sourceLine": 518,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -790,7 +804,7 @@
         "event": "call",
         "handler": "attestClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 562,
+        "sourceLine": 565,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -855,7 +869,7 @@
         "event": "call",
         "handler": "confirmClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 552,
+        "sourceLine": 555,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -920,7 +934,7 @@
         "event": "call",
         "handler": "createClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 522,
+        "sourceLine": 525,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -985,7 +999,7 @@
         "event": "call",
         "handler": "reopenClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 582,
+        "sourceLine": 585,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1050,7 +1064,7 @@
         "event": "call",
         "handler": "returnClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 572,
+        "sourceLine": 575,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1115,7 +1129,7 @@
         "event": "call",
         "handler": "reviseClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 532,
+        "sourceLine": 535,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1180,7 +1194,7 @@
         "event": "call",
         "handler": "submitClearingEventWithCapability",
         "kind": "background_call",
-        "sourceLine": 542,
+        "sourceLine": 545,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1419,6 +1433,389 @@
             "localCallChain": [
               "saveCompanyUpdate",
               "updateCompanyEntity"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.createCompanyTransfer",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createCompanyTransferWithCapability",
+        "kind": "background_call",
+        "sourceLine": 28,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "createCompanyTransfer",
+          "method": "POST",
+          "path": "/company-transfers",
+          "normalizedKey": "POST /company-transfers",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-transfers",
+            "normalizedKey": "POST /company-transfers",
+            "controller": "CompanyTransferController",
+            "handler": "create",
+            "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createCompanyTransferWithCapability",
+              "createCompanyTransfer"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.decideCompanyTransfer",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideCompanyTransferWithCapability",
+        "kind": "background_call",
+        "sourceLine": 34,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDecide",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "decideCompanyTransfer",
+          "method": "POST",
+          "path": "/company-transfers/:param/decision",
+          "normalizedKey": "POST /company-transfers/:param/decision",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-transfers/:id/decision",
+            "normalizedKey": "POST /company-transfers/:param/decision",
+            "controller": "CompanyTransferController",
+            "handler": "decide",
+            "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "decideCompanyTransferWithCapability",
+              "decideCompanyTransfer"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.downloadPrivateFileByTicket",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPrivateFileByTicketWithCapability",
+        "kind": "background_call",
+        "sourceLine": 52,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReadEvidence",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPrivateFileByTicketWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5458,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPrivateFileByTicketWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5458,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.executeCompanyTransfer",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "executeCompanyTransferWithCapability",
+        "kind": "background_call",
+        "sourceLine": 40,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canExecute",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "executeCompanyTransfer",
+          "method": "POST",
+          "path": "/company-transfers/:param/events",
+          "normalizedKey": "POST /company-transfers/:param/events",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/company-transfers/:id/events",
+            "normalizedKey": "POST /company-transfers/:param/events",
+            "controller": "CompanyTransferController",
+            "handler": "execute",
+            "sourceFile": "services/api/src/company-transfer/company-transfer.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "executeCompanyTransferWithCapability",
+              "executeCompanyTransfer"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "company-transfer.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/公司互转台账"
+      ],
+      "ownerRoutePaths": [
+        "/公司互转台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 46,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadPrivateFileWithCapability",
+              "uploadPrivateFile"
             ]
           },
           "ticketFollowups": []
@@ -2282,6 +2679,351 @@
       ]
     },
     {
+      "id": "contract-bank-verification.decideBankVerification",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/公司互转台账",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideBankVerificationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 30,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+          "wrapper": "decideBankVerification",
+          "method": "POST",
+          "path": "/contract-bank-verifications/:param/decision",
+          "normalizedKey": "POST /contract-bank-verifications/:param/decision",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-bank-verifications/:id/decision",
+            "normalizedKey": "POST /contract-bank-verifications/:param/decision",
+            "controller": "ContractBankVerificationController",
+            "handler": "decide",
+            "sourceFile": "services/api/src/contract-ledger/contract-bank-verification.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "decideBankVerificationWithCapability",
+              "decideBankVerification"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-bank-verification.downloadPrivateFileByTicket",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/公司互转台账",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPrivateFileByTicketWithCapability",
+        "kind": "background_call",
+        "sourceLine": 42,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReadEvidence",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPrivateFileByTicketWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5458,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPrivateFileByTicketWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5458,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contract-bank-verification.prepareBankVerification",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/公司互转台账",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareBankVerificationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 24,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+          "wrapper": "prepareBankVerification",
+          "method": "POST",
+          "path": "/contract-bank-verifications",
+          "normalizedKey": "POST /contract-bank-verifications",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-bank-verifications",
+            "normalizedKey": "POST /contract-bank-verifications",
+            "controller": "ContractBankVerificationController",
+            "handler": "prepare",
+            "sourceFile": "services/api/src/contract-ledger/contract-bank-verification.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "prepareBankVerificationWithCapability",
+              "prepareBankVerification"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-bank-verification.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/公司互转台账",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 36,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadPrivateFileWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-bill-import.preview",
       "usage": "background",
       "routePaths": [
@@ -2993,7 +3735,7 @@
         "event": "confirm",
         "handler": "confirmContractDocumentDownload",
         "kind": "event",
-        "sourceLine": 184,
+        "sourceLine": 179,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3059,7 +3801,7 @@
         "event": "call",
         "handler": "queueContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 239,
+        "sourceLine": 236,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3125,7 +3867,7 @@
         "event": "call",
         "handler": "retryContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 276,
+        "sourceLine": 273,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3191,7 +3933,7 @@
         "event": "call",
         "handler": "uploadContractDocumentFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 257,
+        "sourceLine": 254,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4058,6 +4800,219 @@
       ]
     },
     {
+      "id": "contract-economic-review.decideEconomicReview",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideEconomicReviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 43,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+          "wrapper": "decideEconomicReview",
+          "method": "POST",
+          "path": "/contract-economic-reviews/:param/decision",
+          "normalizedKey": "POST /contract-economic-reviews/:param/decision",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-economic-reviews/:id/decision",
+            "normalizedKey": "POST /contract-economic-reviews/:param/decision",
+            "controller": "ContractEconomicReviewController",
+            "handler": "decide",
+            "sourceFile": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "decideEconomicReviewWithCapability",
+              "decideEconomicReview"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-economic-review.prepareEconomicReview",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareEconomicReviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 37,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+          "wrapper": "prepareEconomicReview",
+          "method": "POST",
+          "path": "/contract-economic-reviews",
+          "normalizedKey": "POST /contract-economic-reviews",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-economic-reviews",
+            "normalizedKey": "POST /contract-economic-reviews",
+            "controller": "ContractEconomicReviewController",
+            "handler": "prepare",
+            "sourceFile": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "prepareEconomicReviewWithCapability",
+              "prepareEconomicReview"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-economic-review.prepareEconomicSettlement",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareEconomicSettlementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 49,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+          "wrapper": "prepareEconomicSettlement",
+          "method": "POST",
+          "path": "/contract-economic-reviews/settlement-coverage",
+          "normalizedKey": "POST /contract-economic-reviews/settlement-coverage",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-economic-reviews/settlement-coverage",
+            "normalizedKey": "POST /contract-economic-reviews/settlement-coverage",
+            "controller": "ContractEconomicReviewController",
+            "handler": "prepareSettlement",
+            "sourceFile": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "prepareEconomicSettlementWithCapability",
+              "prepareEconomicSettlement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-ended-retention.create-hold",
       "usage": "page_action",
       "routePaths": [
@@ -4253,7 +5208,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5426,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -4297,7 +5252,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5426,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -4696,6 +5651,224 @@
             "localCallChain": [
               "uploadContractPartyFileWithCapability",
               "uploadContractWorkbenchPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-proxy-execution.decideContractProxyExecution",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideContractProxyExecutionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 44,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+          "wrapper": "decideContractProxyExecution",
+          "method": "POST",
+          "path": "/contract-proxy-executions/:param/decision",
+          "normalizedKey": "POST /contract-proxy-executions/:param/decision",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-proxy-executions/:id/decision",
+            "normalizedKey": "POST /contract-proxy-executions/:param/decision",
+            "controller": "ContractProxyExecutionController",
+            "handler": "decide",
+            "sourceFile": "services/api/src/contract-ledger/contract-proxy-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "decideContractProxyExecutionWithCapability",
+              "decideContractProxyExecution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-proxy-execution.prepareContractProxyExecution",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareContractProxyExecutionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 38,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+          "wrapper": "prepareContractProxyExecution",
+          "method": "POST",
+          "path": "/contract-proxy-executions",
+          "normalizedKey": "POST /contract-proxy-executions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-proxy-executions",
+            "normalizedKey": "POST /contract-proxy-executions",
+            "controller": "ContractProxyExecutionController",
+            "handler": "prepare",
+            "sourceFile": "services/api/src/contract-ledger/contract-proxy-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "prepareContractProxyExecutionWithCapability",
+              "prepareContractProxyExecution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-proxy-execution.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 50,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadPrivateFileWithCapability",
+              "uploadPrivateFile"
             ]
           },
           "ticketFollowups": []
@@ -9657,7 +10830,7 @@
         "event": "call",
         "handler": "confirmFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 456,
+        "sourceLine": 457,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9724,7 +10897,7 @@
         "event": "call",
         "handler": "createFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 390,
+        "sourceLine": 391,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9791,7 +10964,7 @@
         "event": "call",
         "handler": "returnFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 444,
+        "sourceLine": 445,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9856,7 +11029,7 @@
         "event": "call",
         "handler": "approveFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 468,
+        "sourceLine": 469,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9922,7 +11095,7 @@
         "event": "call",
         "handler": "returnFundExecutionApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 480,
+        "sourceLine": 481,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9988,7 +11161,7 @@
         "event": "call",
         "handler": "submitFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 432,
+        "sourceLine": 433,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10056,7 +11229,7 @@
         "event": "call",
         "handler": "updateFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 408,
+        "sourceLine": 409,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10124,7 +11297,7 @@
         "event": "call",
         "handler": "createFundExecutionReversalWithCapability",
         "kind": "background_call",
-        "sourceLine": 399,
+        "sourceLine": 400,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10191,7 +11364,7 @@
         "event": "call",
         "handler": "updateFundExecutionReversalReasonWithCapability",
         "kind": "background_call",
-        "sourceLine": 420,
+        "sourceLine": 421,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10774,7 +11947,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5426,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -10818,7 +11991,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5426,
+              "sourceLine": 5458,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11859,6 +13032,126 @@
       ]
     },
     {
+      "id": "layout-sample.read-private-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建",
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "readSampleWithCapability",
+        "kind": "background_call",
+        "sourceLine": 135,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "readSampleWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5458,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "readSampleWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5458,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "necessary-expense-reserve.attest",
       "usage": "background",
       "routePaths": [
@@ -12262,7 +13555,7 @@
         "event": "call",
         "handler": "activateOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 925,
+        "sourceLine": 960,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12327,7 +13620,7 @@
         "event": "call",
         "handler": "addOperatingTakeoverAttachmentGroupWithCapability",
         "kind": "background_call",
-        "sourceLine": 961,
+        "sourceLine": 996,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12392,7 +13685,7 @@
         "event": "call",
         "handler": "confirmOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 912,
+        "sourceLine": 947,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12457,7 +13750,7 @@
         "event": "call",
         "handler": "createOperatingTakeoverBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 900,
+        "sourceLine": 935,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12522,7 +13815,7 @@
         "event": "call",
         "handler": "deleteOperatingTakeoverDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 682,
+        "sourceLine": 717,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12622,7 +13915,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 875,
+        "sourceLine": 910,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12687,7 +13980,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverXlsxWithCapability",
         "kind": "background_call",
-        "sourceLine": 887,
+        "sourceLine": 922,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12752,7 +14045,7 @@
         "event": "call",
         "handler": "updateOperatingTakeoverRowWithCapability",
         "kind": "background_call",
-        "sourceLine": 947,
+        "sourceLine": 982,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12817,7 +14110,7 @@
         "event": "call",
         "handler": "uploadOperatingTakeoverFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 938,
+        "sourceLine": 973,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13460,7 +14753,7 @@
         "event": "call",
         "handler": "allocatePayableSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 240,
+        "sourceLine": 238,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13527,7 +14820,7 @@
         "event": "call",
         "handler": "confirmPayableSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 260,
+        "sourceLine": 258,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13593,7 +14886,7 @@
         "event": "call",
         "handler": "returnInterEntityRelationshipWithCapability",
         "kind": "background_call",
-        "sourceLine": 157,
+        "sourceLine": 155,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13659,7 +14952,7 @@
         "event": "call",
         "handler": "uploadInterEntityRelationshipEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 141,
+        "sourceLine": 139,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13725,7 +15018,7 @@
         "event": "call",
         "handler": "returnPayableSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 270,
+        "sourceLine": 268,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13791,7 +15084,7 @@
         "event": "call",
         "handler": "submitPayableSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 250,
+        "sourceLine": 248,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13858,7 +15151,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalApprove",
         "kind": "event",
-        "sourceLine": 681,
+        "sourceLine": 685,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13923,7 +15216,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalReject",
         "kind": "event",
-        "sourceLine": 696,
+        "sourceLine": 700,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -13988,7 +15281,7 @@
         "event": "call",
         "handler": "abandonPaymentRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2055,
+        "sourceLine": 2064,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14053,7 +15346,7 @@
         "event": "call",
         "handler": "downloadPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 2079,
+        "sourceLine": 2088,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14118,7 +15411,7 @@
         "event": "call",
         "handler": "delegatePaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2067,
+        "sourceLine": 2076,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14183,7 +15476,7 @@
         "event": "call",
         "handler": "downloadPaymentPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2161,
+        "sourceLine": 2170,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14248,7 +15541,7 @@
         "event": "call",
         "handler": "recordPaymentFinanceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2102,
+        "sourceLine": 2111,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14313,7 +15606,7 @@
         "event": "call",
         "handler": "recordPaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2114,
+        "sourceLine": 2123,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14414,7 +15707,7 @@
         "event": "call",
         "handler": "generatePaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2093,
+        "sourceLine": 2102,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14479,7 +15772,7 @@
         "event": "call",
         "handler": "remindPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2131,
+        "sourceLine": 2140,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14544,7 +15837,7 @@
         "event": "call",
         "handler": "transferPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2140,
+        "sourceLine": 2149,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14609,7 +15902,7 @@
         "event": "call",
         "handler": "withdrawPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2152,
+        "sourceLine": 2161,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14674,7 +15967,7 @@
         "event": "confirm",
         "handler": "confirmPaymentExecution",
         "kind": "event",
-        "sourceLine": 711,
+        "sourceLine": 715,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -15338,7 +16631,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 1651,
+        "sourceLine": 1670,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -15633,7 +16926,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2672,
+        "sourceLine": 2699,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15698,7 +16991,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2634,
+        "sourceLine": 2661,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15763,7 +17056,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2045,
+        "sourceLine": 2070,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15828,7 +17121,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2029,
+        "sourceLine": 2054,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16131,7 +17424,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2593,
+        "sourceLine": 2620,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18008,7 +19301,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 853,
+        "sourceLine": 862,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -18067,6 +19360,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18075,7 +19375,7 @@
         "event": "call",
         "handler": "confirmProjectAffiliateContractFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 632,
+        "sourceLine": 643,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18132,6 +19432,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18140,7 +19447,7 @@
         "event": "call",
         "handler": "uploadProjectAffiliateContractEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 511,
+        "sourceLine": 522,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18197,6 +19504,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18205,7 +19519,7 @@
         "event": "call",
         "handler": "recordProjectAffiliateContractFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 436,
+        "sourceLine": 447,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18262,6 +19576,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18270,7 +19591,7 @@
         "event": "call",
         "handler": "supplementProjectAffiliateBusinessEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 728,
+        "sourceLine": 739,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18363,6 +19684,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18371,7 +19699,7 @@
         "event": "call",
         "handler": "confirmProjectAffiliatePaymentFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 674,
+        "sourceLine": 685,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18428,6 +19756,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18436,7 +19771,7 @@
         "event": "call",
         "handler": "uploadProjectAffiliatePaymentEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 561,
+        "sourceLine": 572,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18493,6 +19828,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18501,7 +19843,7 @@
         "event": "call",
         "handler": "recordProjectAffiliatePaymentFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 486,
+        "sourceLine": 497,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18558,6 +19900,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18566,7 +19915,7 @@
         "event": "call",
         "handler": "confirmProjectAffiliateSettlementFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 653,
+        "sourceLine": 664,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18623,6 +19972,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18631,7 +19987,7 @@
         "event": "call",
         "handler": "uploadProjectAffiliateSettlementEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 536,
+        "sourceLine": 547,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18688,6 +20044,13 @@
         "/项目经营"
       ],
       "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
@@ -18696,7 +20059,7 @@
         "event": "call",
         "handler": "recordProjectAffiliateSettlementFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 461,
+        "sourceLine": 472,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -18761,7 +20124,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1564,
+        "sourceLine": 1583,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19103,7 +20466,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1573,
+        "sourceLine": 1592,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19168,7 +20531,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2372,
+        "sourceLine": 2398,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19233,7 +20596,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2311,
+        "sourceLine": 2337,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19298,7 +20661,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 2259,
+        "sourceLine": 2285,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19363,7 +20726,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 2275,
+        "sourceLine": 2301,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -21307,7 +22670,7 @@
         "event": "call",
         "handler": "copySettlementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 413,
+        "sourceLine": 416,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26171,6 +27534,366 @@
             "localCallChain": [
               "submitTemplateWithCapability",
               "submitSettlementTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "upward-contract-amount.decideUpwardAmount",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideUpwardAmountWithCapability",
+        "kind": "background_call",
+        "sourceLine": 37,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+          "wrapper": "decideUpwardAmount",
+          "method": "POST",
+          "path": "/upward-contract-amount-revisions/:param/decision",
+          "normalizedKey": "POST /upward-contract-amount-revisions/:param/decision",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/upward-contract-amount-revisions/:id/decision",
+            "normalizedKey": "POST /upward-contract-amount-revisions/:param/decision",
+            "controller": "UpwardContractAmountController",
+            "handler": "decide",
+            "sourceFile": "services/api/src/contract-ledger/upward-contract-amount.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "decideUpwardAmountWithCapability",
+              "decideUpwardAmount"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "upward-contract-amount.prepareUpwardAmount",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareUpwardAmountWithCapability",
+        "kind": "background_call",
+        "sourceLine": 31,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+          "wrapper": "prepareUpwardAmount",
+          "method": "POST",
+          "path": "/upward-contract-amount-revisions",
+          "normalizedKey": "POST /upward-contract-amount-revisions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/upward-contract-amount-revisions",
+            "normalizedKey": "POST /upward-contract-amount-revisions",
+            "controller": "UpwardContractAmountController",
+            "handler": "prepare",
+            "sourceFile": "services/api/src/contract-ledger/upward-contract-amount.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "prepareUpwardAmountWithCapability",
+              "prepareUpwardAmount"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "upward-contract-amount.uploadPrivateFile",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 43,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadPrivateFileWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "upward-receipt-match.decideReceiptMatch",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "decideReceiptMatchWithCapability",
+        "kind": "background_call",
+        "sourceLine": 25,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canReview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+          "wrapper": "decideReceiptMatch",
+          "method": "POST",
+          "path": "/upward-receipt-matches/:param/decision",
+          "normalizedKey": "POST /upward-receipt-matches/:param/decision",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/upward-receipt-matches/:id/decision",
+            "normalizedKey": "POST /upward-receipt-matches/:param/decision",
+            "controller": "UpwardReceiptMatchController",
+            "handler": "decide",
+            "sourceFile": "services/api/src/contract-ledger/upward-receipt-match.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "decideReceiptMatchWithCapability",
+              "decideReceiptMatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "upward-receipt-match.prepareReceiptMatch",
+      "usage": "background",
+      "routePaths": [
+        "/统一资金办理工作台"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/历史经营接管",
+        "/合同工作台",
+        "/清分工作台",
+        "/结算工作台",
+        "/统一资金办理工作台",
+        "/资金执行案件",
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "prepareReceiptMatchWithCapability",
+        "kind": "background_call",
+        "sourceLine": 19,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canPrepare",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+          "wrapper": "prepareReceiptMatch",
+          "method": "POST",
+          "path": "/upward-receipt-matches",
+          "normalizedKey": "POST /upward-receipt-matches",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/upward-receipt-matches",
+            "normalizedKey": "POST /upward-receipt-matches",
+            "controller": "UpwardReceiptMatchController",
+            "handler": "prepare",
+            "sourceFile": "services/api/src/contract-ledger/upward-receipt-match.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "prepareReceiptMatchWithCapability",
+              "prepareReceiptMatch"
             ]
           },
           "ticketFollowups": []

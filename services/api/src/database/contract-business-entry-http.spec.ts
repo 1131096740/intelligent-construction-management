@@ -1,10 +1,11 @@
 import { verifyApprovedPdf } from "./approval-pdf-acceptance.test-support";
+import { verifyLayoutPreviewHttp } from "./layout-preview-http.acceptance";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { hash } from "bcryptjs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import PizZip from "pizzip";
 import { PDFDocument } from "pdf-lib";
@@ -93,6 +94,7 @@ if (enabled) {
     await app.listen(0, "127.0.0.1");
     baseUrl = await app.getUrl();
     prisma = app.get(PrismaService);
+    if(process.env.OPERATING_LEDGER_DB_WRITE_SECRET){const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET;await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;}
     // Test-only database-boundary fault; all earlier writes use the real PG transaction.
     // No production service is replaced and no persistent database object is installed.
     prisma.$use(async (params, next) => {
@@ -121,6 +123,10 @@ if (enabled) {
       await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id } });
     }
   });
+
+  it("四类版式真实样张、V1保持与资源授权公开HTTP及浏览器", async () => {
+    await verifyLayoutPreviewHttp(app, baseUrl, { id: actorUserId, phone: actorPhone, password: actorPassword });
+  }, 180_000);
 
   afterAll(async () => { await app?.close(); });
 
@@ -201,6 +207,8 @@ if (enabled) {
         await prisma.userPosition.create({ data: { userId: reviewer.id, positionId: uploadPosition.id, projectId: project.id } });
       }
     }
+    let controlledCounterpartyVersionId:string|undefined;
+    if(process.env.COMPANY_TRANSFER_CORE_RECEIPT){const party=await prisma.businessParty.create({data:{name:"合成材料供应商",normalizedName:`合成材料供应商-${randomUUID()}`,createdByUserId:actorUserId}});controlledCounterpartyVersionId=(await prisma.businessPartyVersion.create({data:{businessPartyId:party.id,versionNo:1,snapshot:{name:party.name},createdByUserId:actorUserId}})).id;}
     const templateSchema = {
       fields: [{ key: "deliveryLocation", label: "交货地点", type: "text", required: true }, { key: "adjustment", label: "调整系数", type: "number" }],
       bills: [{ key: "reference", name: "参考清单", amountRole: "reference", pricingMode: "tax_inclusive",
@@ -300,6 +308,7 @@ if (enabled) {
         });
       } finally { token = actorToken; }
     }
+    if(process.env.COMPANY_TRANSFER_CORE_RECEIPT){await prisma.project.update({where:{id:project.id},data:{operatingLedgerEffectiveDate:new Date("2026-01-01")}});}
     const lease = await request<{ token: string }>("POST", `/contract-drafts/${draft.version.id}/edit-lease`);
     await request("PUT", `/contract-drafts/${draft.version.id}`, {
       idempotencyKey: randomUUID(), saveKind: "manual",
@@ -347,7 +356,7 @@ if (enabled) {
         layoutTemplateVersionId: layout.version.id,
         taxFacts: { invoiceType: "vat_general", taxMode: "single_rate", defaultTaxRatePercent: "13", source: "contract_document" }
       },
-      parties: [{ roleKey: "party_b", displayOrder: 0, snapshot: { name: "合成材料供应商" } }],
+      parties: [{ roleKey: "party_b", displayOrder: 0, ...(controlledCounterpartyVersionId?{businessPartyVersionId:controlledCounterpartyVersionId}:{}), snapshot: { name: "合成材料供应商" } }],
       bills: saved.bills.map((bill) => ({ billKey: bill.billKey, expectedRevision: bill.revision, rows: [{
         clientRowKey: "synthetic-row-1", sortOrder: 0, itemName: "合成材料", unit: "件", quantity: "2.00", unitPrice: "10.00",
         taxRateSource: "version_default", isProvisional: false, customData: { brand: "合成品牌" }
@@ -557,7 +566,7 @@ if (enabled) {
         if (!effectiveContract.effectiveAt) throw new Error("合成合同未生效");
         // The public archive flow sets effectiveAt at runtime; settlement periods must follow it.
         const effectiveAt = effectiveContract.effectiveAt;
-        const periodEnd = new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 1, 0))
+        const periodEnd = (process.env.COMPANY_TRANSFER_CORE_RECEIPT ? effectiveAt : new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 1, 0)))
           .toISOString().slice(0, 10);
         const periodLabel = periodEnd.slice(0, 7);
         const offsetPeriodEnd = new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 2, 0))
@@ -1045,11 +1054,27 @@ if (enabled) {
       const executionIds: string[] = [];
       for (const [index, amount] of executionAmounts.entries()) {
         const executionVoucher = index === 0 ? voucher : await upload("synthetic-second-voucher.pdf", "application/pdf", await pdf.save());
+        const actualPaidAt = new Date().toISOString();
+        const bank = await request<Identified>("POST", "/contract-bank-verifications", {
+          projectId: project.id, companyEntityId: company.id, accountNumber: "6222000011111111",
+          bankReference: randomUUID(), direction: "outflow", amountCents: amount.toString(), occurredAt: actualPaidAt,
+          evidenceFileId: (await upload("synthetic-bank-proof.pdf", "application/pdf", await pdf.save())).id,
+          reason: "合成实付银行回单", idempotencyKey: randomUUID(), confirmationPassword: financeIdentity.password
+        });
+        const checker = await loginAs(projectFinanceUserId);
+        const holder = await upload("synthetic-holder.pdf", "application/pdf", await pdf.save());
+        await request("POST", `/contract-bank-verifications/${bank.id}/decision`, {
+          decision: "confirm", accountNumber: "6222000011111111", holderEvidenceFileId: holder.id, confirmationPassword: checker.password
+        });
+        const verified = await prisma.contractBankVerificationRequest.findUniqueOrThrow({ where: { id: bank.id } });
+        const bankReceiptReference = (await prisma.verifiedBankTransactionObservation.findUniqueOrThrow({ where: { id: verified.observationId! } })).reference;
+        await loginAs(roleUsers.get("finance_staff")!);
+
         const executable = await request<{ executionContext: { expectedPaymentUpdatedAt: string } }>("GET", `/payments/${payment.id}`);
         expect(executable.executionContext).toMatchObject({ expectedPaymentUpdatedAt: expect.any(String) });
         const executionBody = {
           ...executable.executionContext, idempotencyKey: randomUUID(), amountCents: amount.toString(),
-          paidAt: new Date().toISOString(), voucherFileId: executionVoucher.id, confirmationPassword: financeIdentity.password
+          paidAt: actualPaidAt, bankReceiptReference, voucherFileId: executionVoucher.id, confirmationPassword: financeIdentity.password
         };
         const execution = await request<Identified>("POST", `/payments/${payment.id}/executions`, executionBody);
         executionIds.push(execution.id);
@@ -1185,6 +1210,11 @@ if (enabled) {
         }, changeLease.token);
         for (const role of ["contract_director", "project_manager", "finance_director", "chairman"]) {
           const identity = await loginAs(roleUsers.get(role)!);
+          const changeSignature = new FormData();
+          changeSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-change-signature.png");
+          expect((await fetch(`${baseUrl}/me/signature/canvas`, {
+            method: "POST", headers: { authorization: `Bearer ${token}` }, body: changeSignature
+          })).status).toBe(201);
           const changeDetail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${change.id}`);
           if (!changeDetail.reviewApprovalContext) throw new Error("合同变更缺少实际审核坐标");
           await request("POST", `/contracts/${change.id}/approval`, {
@@ -1198,6 +1228,7 @@ if (enabled) {
           businessType: "contract_version", businessId: change.id,
           roles: ["contract_director", "project_manager", "finance_director", "chairman"], label: "合同变更-四级实际审批" });
       }
+      if(process.env.COMPANY_TRANSFER_CORE_RECEIPT)await writeFile(process.env.COMPANY_TRANSFER_CORE_RECEIPT,JSON.stringify({projectId:project.id,companyId:company.id,contractId:draft.contract.id,contractVersionId:draft.version.id,paymentId:payment.id}),{mode:0o600});
     }
   }
 

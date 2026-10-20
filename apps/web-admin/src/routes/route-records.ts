@@ -164,6 +164,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         requiredGlobalRoleKeys: fundExecutionRoleKeys
       },
       {
+        label: "公司互转台账",
+        path: "/公司互转台账",
+        requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director"]
+      },
+      {
         label: "资金移动工作台",
         path: "/资金移动工作台",
         requiredGlobalRoleKeys: fundMovementRoleKeys
@@ -495,6 +500,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "统一资金办理工作台",
         component: () => import("../pages/funds/FundsWorkbenchPage.vue"),
         meta: { requiredRoleKeys: fundsWorkbenchRoleKeys, title: "统一资金办理工作台" }
+      },
+      {
+        path: "公司互转台账",
+        component: () => import("../pages/fund-movements/CompanyTransferPage.vue"),
+        meta: { requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director"], title: "公司互转台账" }
       },
       {
         path: "资金移动工作台",

@@ -1,3 +1,4 @@
+import {assertContractBankProject} from "../contract-ledger/contract-bank-project";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -137,6 +138,7 @@ export class PaymentExecutionSharedAllocationService {
       input.observationSelectionRef
     );
     const observation = matched.observation;
+    await assertContractBankProject(tx,observation,input.projectId);
     if (
       observation.direction !== "outflow" ||
       observation.amountCents !== input.amountCents ||

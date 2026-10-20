@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 180,
-    "terminalMigration": "20261020140000_direct_contract_stage_allocation",
-    "terminalMigrationChecksum": "e065b0c8cf5ffd4c56c13089ffe998602ca226f6b2b97198f3169644cdb06ae3",
+    "expectedDirectoryCount": 195,
+    "terminalMigration": "20261020160000_approval_fund_identity_metadata",
+    "terminalMigrationChecksum": "462ec8eb021f7287043742e97a437b6d9b88cbed8373307ff1176a0708d740c6",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 71,
-    "fullyPendingSuites": 60,
+    "pendingFiles": 72,
+    "fullyPendingSuites": 61,
     "partiallyPendingSuites": 11,
-    "pendingTests": 422,
-    "coveredFiles": 71,
-    "coveredTests": 422,
+    "pendingTests": 470,
+    "coveredFiles": 72,
+    "coveredTests": 470,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 129,
+      "pendingTests": 169,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -346,7 +346,7 @@
         },
         {
           "path": "services/api/src/database/contract-business-entry-http.spec.ts",
-          "pendingTests": 7,
+          "pendingTests": 8,
           "suiteStatus": "fully_pending"
         },
         {
@@ -371,7 +371,7 @@
         },
         {
           "path": "services/api/src/database/draft-hard-deletion.pg.spec.ts",
-          "pendingTests": 18,
+          "pendingTests": 57,
           "suiteStatus": "fully_pending"
         },
         {
@@ -393,7 +393,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 149,
+      "pendingTests": 156,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -447,7 +447,7 @@
         },
         {
           "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
-          "pendingTests": 4,
+          "pendingTests": 11,
           "suiteStatus": "partial_pending"
         },
         {
@@ -632,6 +632,23 @@
       "runner": {
         "kind": "node",
         "path": "services/api/prisma/run-general-procurement-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "contract_finance_acceptance",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/company-transfer-http-postgres.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "apiScript",
+        "script": "verify:contract-classification:local",
+        "path": "services/api/prisma/run-contract-classification-local.cjs"
       },
       "state": "executable_local_runner"
     }

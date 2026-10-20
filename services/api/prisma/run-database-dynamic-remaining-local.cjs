@@ -77,13 +77,14 @@ const GROUPS = [
   },
   {
     id: "affiliate_company_contract",
+    requiresOperatingLedgerWriteSecret: true,
     database: "jiangkong_project_affiliate_company_contract_test",
     files: ["src/database/project-affiliate-company-contract-db.spec.ts"],
     flags: {
       RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS: "1",
       PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 4
+    pendingTests: 11
   },
   {
     id: "spot_material_classification",
@@ -712,6 +713,10 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
       }
       await migrate(databaseUrl, environment);
       await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
+      if (group.id === "affiliate_company_contract") {
+        environment.CONTRACT_BANK_RUNTIME_DATABASE_URL = require("./contract-bank-runtime-fixture.cjs")
+          .prepareContractBankRuntime({ name: containerName, db: group.database, password, target: databaseUrl, env: dockerEnv });
+      }
       await run(
         pnpm,
         ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath", ...group.files],

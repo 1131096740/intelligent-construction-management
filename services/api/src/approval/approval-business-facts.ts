@@ -4,6 +4,12 @@ import { formatMoneyCentsAsYuan } from "../money/decimal-money";
 import { approvalEvidenceMetadata } from "./approval-evidence";
 
 export const ADDITIONAL_APPROVAL_TITLES: Record<string, string> = {
+  company_transfer: "公司互转审批单",
+  contract_economic_review: "履约范围复核单",
+  contract_bank_verification: "银行流水核验单",
+  contract_proxy_execution: "代付及往来确认单",
+  upward_contract_amount_revision: "对上合同金额修订单",
+  upward_receipt_match: "对上到账核销单",
   general_procurement: "综合采购申请单",
   project_expense_request: "项目费用审批单",
   project_settlement_exception_quota: "结算例外额度审批单",
@@ -37,6 +43,15 @@ export async function additionalApprovalFacts(
   approvalInstanceId?: string
 ): Promise<ApprovalBusinessFacts | null> {
   if (!ADDITIONAL_APPROVAL_TITLES[businessType]) return null;
+  const ledgerSource = businessType === "company_transfer" ? await tx.companyTransfer.findUnique({ where: { id: businessId } })
+    : businessType === "contract_economic_review" ? await tx.contractEconomicReview.findUnique({ where: { id: businessId } })
+    : businessType === "contract_bank_verification" ? await tx.contractBankVerificationRequest.findUnique({ where: { id: businessId } })
+    : businessType === "contract_proxy_execution" ? await tx.contractProxyExecution.findUnique({ where: { id: businessId } })
+    : businessType === "upward_contract_amount_revision" ? await tx.upwardContractAmountRevision.findUnique({ where: { id: businessId } })
+    : businessType === "upward_receipt_match" ? await tx.upwardReceiptMatch.findUnique({ where: { id: businessId } }) : undefined;
+  if (ledgerSource !== undefined && (!ledgerSource || ledgerSource.status !== (businessType === "company_transfer" ? "approved" : "confirmed"))) {
+    throw new BadRequestException("原审批或复核已失效，不能下载正式审批单");
+  }
   const stored = logs.map(log => approvalEvidenceMetadata(log.metadata).form).filter(Boolean).at(-1);
   if (stored) {
     if (businessType === "contract_seal") {
@@ -62,6 +77,7 @@ export async function additionalApprovalFacts(
     }
     return form as unknown as ApprovalBusinessFacts;
   }
+  if (ledgerSource !== undefined) throw new BadRequestException("该历史审批缺少业务与签名快照，不能补造正式审批单");
   const title = ADDITIONAL_APPROVAL_TITLES[businessType];
   let projectId: string | null = null;
   let companyName = "";

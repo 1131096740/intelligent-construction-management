@@ -9,15 +9,19 @@ import { ContractTakeoverService } from "../contract-takeover/contract-takeover.
 import { SpotProcurementBalanceService } from "../spot-procurement/spot-procurement-balance.service";
 import { ContractTaxFactsService } from "../contract-tax-facts/contract-tax-facts.service";
 import { SpotProcurementPaymentService } from "../spot-procurement/spot-procurement-payment.service";
+import { ExpenseClaimService } from "../expense-claim/expense-claim.service";
 
 const run = process.env.RUN_POL115_ENTRY_PG16 === "1" ? it : it.skip;
-describe("未提交草稿实际删除 PostgreSQL 回归", () => {
-  const db = new PrismaClient();
+describe.each(["UTC", "Asia/Shanghai", "America/New_York"])("未提交草稿实际删除 PostgreSQL 回归 (%s)", timezone => {
+  const databaseUrl = process.env.RUN_POL115_ENTRY_PG16 === "1" ? new URL(process.env.DATABASE_URL!) : undefined;
+  databaseUrl?.searchParams.set("options", `-c timezone=${timezone}`);
+  const db = new PrismaClient(databaseUrl ? { datasources: { db: { url: databaseUrl.toString() } } } : undefined);
   const actor = randomUUID(); const other = randomUUID(); const project = randomUUID();
   beforeAll(async () => {
     if (process.env.RUN_POL115_ENTRY_PG16 !== "1") return;
     const url = new URL(process.env.DATABASE_URL ?? "");
     if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/jiangkong_pol115_entry_test") throw new Error("只能使用本机一次性测试库");
+    expect(await db.$queryRaw`SELECT current_setting('TimeZone') AS timezone`).toEqual([{ timezone }]);
     await db.user.createMany({ data: [{ id: actor, name: "草稿经办人" }, { id: other, name: "其他员工" }] });
     await db.project.create({ data: { id: project, code: project, name: "删除草稿隔离项目" } });
     const party = await db.businessParty.create({ data: { name: "合成施工企业", normalizedName: randomUUID(), createdByUserId: actor } });
@@ -26,6 +30,25 @@ describe("未提交草稿实际删除 PostgreSQL 回归", () => {
     await db.projectMember.create({ data: { projectId: project, userId: actor, positionKey: "material_staff" } });
   });
   afterAll(async () => { await db.$disconnect(); });
+
+  run("本人费用草稿按精确版本删除并保留审计，过期版本和其他员工不能删除", async () => {
+    const company = await db.companyEntity.create({ data: { name: "隔离验收公司" } });
+    const claim = await db.expenseClaim.create({ data: {
+      code: randomUUID(), claimType: "reimbursement", status: "draft", companyEntityId: company.id,
+      companyEntityNameSnapshot: company.name, applicantUserId: actor, applicantNameSnapshot: "测试员工",
+      factWitnessUserId: actor, factWitnessNameSnapshot: "测试员工",
+      handledByUserId: actor, handledByNameSnapshot: "测试员工", reason: "隔离删除验收", requestedAmountCents: 100n
+    } });
+    const service = new ExpenseClaimService(db as never, {} as never, new AuditService());
+    await expect(service.deleteUnsubmittedDraft(claim.id, other, claim.updatedAt.toISOString())).rejects.toThrow();
+    await expect(service.deleteUnsubmittedDraft(claim.id, actor, new Date(claim.updatedAt.getTime() - 1).toISOString())).rejects.toThrow();
+    expect(await db.expenseClaim.count({ where: { id: claim.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { businessId: claim.id, action: "expense_claim.draft.delete" } })).toBe(0);
+    expect(await service.deleteUnsubmittedDraft(claim.id, actor, claim.updatedAt.toISOString())).toMatchObject({ deleted: true });
+    expect(await db.expenseClaim.count({ where: { id: claim.id } })).toBe(0);
+    const audit = await db.auditLog.findFirstOrThrow({ where: { businessId: claim.id, action: "expense_claim.draft.delete" } });
+    expect(audit.metadata).toMatchObject({ code: claim.code, requestedAmountCents: "100", previousStatus: "draft", applicantUserId: actor });
+  });
 
   run("审计来源补充迁移仅恢复原只读默认授权，不扩大运行时或 PUBLIC 权限", async () => {
     const suffix = randomUUID().replaceAll("-", "");
@@ -205,7 +228,7 @@ describe("未提交草稿实际删除 PostgreSQL 回归", () => {
   run("已有付款金额或审批时间的付款草稿禁止删除", async () => {
     const { pay } = await payment();
     const changed = await db.spotProcurementPayment.update({ where: { id: pay.id }, data: { approvedAt: new Date() } });
-    expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_spot_payment(${pay.id},${actor},${changed.updatedAt}::timestamp,'测试') AS deleted`)).toEqual([{ deleted: false }]);
+    expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_spot_payment(${pay.id},${actor},(${changed.updatedAt}::timestamptz AT TIME ZONE 'UTC'),'测试') AS deleted`)).toEqual([{ deleted: false }]);
   });
   run("并发重复删除只成功一次且只有一份审计", async () => {
     const { draft } = await settlement();
@@ -253,7 +276,7 @@ describe("未提交草稿实际删除 PostgreSQL 回归", () => {
     expect(await db.contractTaxFactRevision.count({ where: { id: rev.id } })).toBe(0);
     expect(await db.auditLog.count({ where: { businessId: rev.id, action: "contract.tax_fact_revision.draft.delete" } })).toBe(1);
     const reviewed = await db.contractTaxFactRevision.create({ data: { projectId: project, contractId: c.id, contractVersionId: v.id, revisionNo: 2, kind: "supplement", rowFacts: [], beforeSnapshot: {}, createdByUserId: actor, submittedAt: new Date() } });
-    expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_tax_revision(${reviewed.id},${actor},${reviewed.updatedAt}::timestamp) AS deleted`)).toEqual([{ deleted: false }]);
+    expect(await db.$queryRaw(Prisma.sql`SELECT public.jg_delete_unsubmitted_tax_revision(${reviewed.id},${actor},(${reviewed.updatedAt}::timestamptz AT TIME ZONE 'UTC')) AS deleted`)).toEqual([{ deleted: false }]);
     expect(await db.contractTaxFactRevision.count({ where: { id: reviewed.id } })).toBe(1);
   });
   run("税务草稿删除后真实新建不复用审计修订号", async () => {

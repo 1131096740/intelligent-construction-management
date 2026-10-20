@@ -40,15 +40,10 @@
         alt="版式缩略图"
       >
       <span>版式版本 {{ selectedLayout.versionNo ?? "-" }}</span>
-      <button
+      <PrivatePdfActions
         v-if="selectedLayout.previewPdfFileId"
-        type="button"
-        class="link-button"
-        :disabled="busy"
-        @click="openFile(String(selectedLayout.previewPdfFileId))"
-      >
-        预览文件
-      </button>
+        :file-id="String(selectedLayout.previewPdfFileId)"
+      />
     </div>
 
     <div class="attachments">
@@ -216,6 +211,8 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
+import PrivatePdfActions from "../../../components/files/PrivatePdfActions.vue";
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import {
@@ -409,7 +406,7 @@ async function loadLayouts() {
       layoutTemplateVersionId.value = layoutOptions.value[0]?.value ?? "";
     }
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "版式模板加载失败";
+    message.value = formatUnknownApiError(error, "版式模板加载失败");
   }
 }
 
@@ -445,7 +442,7 @@ async function run(action: () => Promise<unknown>, success: string) {
     emit("reload");
     message.value = success;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "操作失败";
+    message.value = formatUnknownApiError(error, "操作失败");
   } finally {
     busy.value = false;
   }
@@ -485,7 +482,7 @@ async function uploadAttachments(event: Event) {
     attachments.value = [...byId.values()];
     message.value = "附件已加入生成输入";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "附件上传失败";
+    message.value = formatUnknownApiError(error, "附件上传失败");
   } finally {
     busy.value = false;
     (event.target as HTMLInputElement).value = "";
@@ -512,7 +509,7 @@ async function uploadIdentityAttachment(
     attachments.value = [...byId.values()];
     message.value = `${label}已加入生成输入`;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "身份证附件上传失败";
+    message.value = formatUnknownApiError(error, "身份证附件上传失败");
   } finally {
     busy.value = false;
     input.value = "";
@@ -555,7 +552,7 @@ async function openFile(fileId: string) {
     downloadDialogVisible.value = true;
   } catch (error) {
     if (capabilityRequestId === downloadCapabilityRequestId) {
-      message.value = error instanceof Error ? error.message : "下载能力读取失败";
+      message.value = formatUnknownApiError(error, "下载能力读取失败");
     }
   }
 }
@@ -574,7 +571,7 @@ function confirmContractDocumentDownload() {
       closeContractDocumentDownload();
     })
     .catch((error: unknown) => {
-      message.value = error instanceof Error ? error.message : "下载票据创建失败";
+      message.value = formatUnknownApiError(error, "下载票据创建失败");
     })
     .finally(() => {
       busy.value = false;

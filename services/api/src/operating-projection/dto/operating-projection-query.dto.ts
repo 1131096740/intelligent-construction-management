@@ -1,3 +1,4 @@
+import { CONTRACT_RELATIONSHIP_LABELS, type ContractRelationship } from "@jiangkong/shared-domain";
 import {
   IsDateString,
   IsIn,
@@ -45,6 +46,10 @@ export class OperatingProjectionScopedQueryDto {
   @IsString({ message: "来源类型筛选必须是字符串" })
   @MaxLength(QUERY_VALUE_MAX_LENGTH, { message: "来源类型筛选不能超过 256 个字符" })
   sourceType?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(Object.keys(CONTRACT_RELATIONSHIP_LABELS), { message: "合同分类不正确" })
+  contractRelationship?: ContractRelationship;
 }
 
 export class OperatingProjectionProjectQueryDto extends OperatingProjectionScopedQueryDto {}

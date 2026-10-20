@@ -129,6 +129,23 @@ const reserveSource = (input: {
 });
 
 describe("reduceOperatingProjection", () => {
+  it("900收入、400表内、150表外、30其他成本；600对上结算不再计成本", () => {
+    const facts = [
+      fact({ id: "owner", sourceSnapshot: { contractRelationship: "owner" }, impacts: [{ id: "income", impactKind: "confirmed_income", amountCents: 900000000n, direction: "increase" }] }),
+      fact({ id: "inside", sourceType: "settlement", sourceSnapshot: { signingSubjectType: "our_company", companyEntityVersionId: "company-v1" }, impacts: [{ id: "inside-cost", impactKind: "confirmed_cost", amountCents: 400000000n, direction: "increase" }] }),
+      fact({ id: "outside", sourceType: "project_affiliate_settlement_fact", impacts: [{ id: "outside-cost", impactKind: "confirmed_cost", amountCents: 150000000n, direction: "increase" }] }),
+      fact({ id: "upper", sourceType: "project_affiliate_settlement_fact", amountCents: 600000000n, sourceSnapshot: { affiliateCompanyContractId: "upper-contract" }, impacts: [{ id: "internal", impactKind: "contract_commitment_reference", amountCents: 0n, direction: "notice" }] }),
+      fact({ id: "expense", sourceType: "expense_claim_approval", impacts: [{ id: "expense-cost", impactKind: "confirmed_cost", amountCents: 30000000n, direction: "increase" }] })
+    ];
+    const input = { scope: { kind: "project" as const, projectId: "project-1", projectIds: ["project-1"] }, readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", facts, riskByProject: [] };
+    const result = reduceOperatingProjection(input);
+    expect(result.operating.confirmedCostCents).toBe("580000000");
+    expect(result.profitAndLoss.currentOperatingProfitCents).toBe("320000000");
+    expect(result.relationshipTotals?.find((r) => r.relationship === "inside")?.confirmedCostCents).toBe("400000000");
+    expect(result.relationshipTotals?.find((r) => r.relationship === "outside")?.confirmedCostCents).toBe("150000000");
+    expect(result.relationshipTotals?.find((r) => r.relationship === "upward")?.confirmedCostCents).toBe("0");
+  });
+
   it("recomputes project layers from signed impacts and eliminates internal carriers", () => {
     const result = reduceOperatingProjection({
       scope: { kind: "project", projectIds: ["project-1"], projectId: "project-1" },
@@ -1105,4 +1122,24 @@ describe("reduceOperatingProjection", () => {
     expect(result.restrictions.relationshipCompleteness).toBe("complete");
     expect(result.restrictions.necessaryExpenseReserveCents).toBe("30");
   });
+});
+
+describe("合同分类公司余额与项目合并",()=>{
+ const make=(id:string,relationship:string,kind:string,amount:bigint,direction:string,debtor:string,subjectKind:string,subjectId:string)=>fact({id,sourceType:"payment_execution",sourceSnapshot:{contractRelationship:relationship},debtorSubject:{kind:debtor==="enterprise"?"construction_enterprise":"participating_company",id:debtor},subjectReferences:[{kind:"participating_company",id:"company-a"},{kind:"participating_company",id:"company-b"}],impacts:[{id:`${id}-impact`,impactKind:kind,amountCents:amount,direction,subjectKind,subjectId}]} as Partial<ProjectionFactInput>);
+ const facts=[
+  make("up-settle","upward","receivable_increase",600n,"increase","enterprise","participating_company","company-a"),
+  make("up-receipt","upward","receivable_decrease",300n,"decrease","enterprise","participating_company","company-a"),
+  make("inside-settle","inside","payable_increase",400n,"increase","company-a","downstream_counterparty","supplier"),
+  make("inside-paid","inside","payable_decrease",250n,"decrease","company-a","downstream_counterparty","supplier"),
+  make("outside-settle","outside","payable_increase",150n,"increase","enterprise","downstream_counterparty","supplier"),
+  make("outside-paid","outside","payable_decrease",100n,"decrease","enterprise","downstream_counterparty","supplier")
+ ];
+ const view=(company?:string)=>reduceOperatingProjection({scope:{kind:"project",projectIds:["project-1"],projectId:"project-1",...(company?{filters:{companyEntityId:company}}:{})},readAt:"2026-10-19T00:00:00Z",cutoffAt:"2026-10-19T00:00:00Z",facts,riskByProject:[]});
+ it("项目下游余额200，对上300单列，既不追加成本也不冒充对外应收",()=>{
+  const result=view();expect(result.operating).toMatchObject({receivableCents:"0",internalReceivableCents:"300",payableCents:"200",confirmedCostCents:"0",confirmedIncomeCents:"0"});
+ });
+ it("公司A保留应收300和自身应付150，公司B不能复制A的债务",()=>{
+  expect(view("company-a").operating).toMatchObject({receivableCents:"300",payableCents:"150"});
+  expect(view("company-b").operating).toMatchObject({receivableCents:"0",payableCents:"0"});
+ });
 });

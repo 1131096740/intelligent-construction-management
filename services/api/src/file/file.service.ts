@@ -1,4 +1,6 @@
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
+import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
+import {companyTransferRoles} from "../company-transfer/company-transfer.access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { canReadGeneralProcurement, generalProcurementActor } from "../general-procurement/general-procurement-access";
 import {
@@ -740,19 +742,19 @@ export class FileService {
 
   async uploadPrivateFile(input: UploadPrivateFileInput) {
     if (!input.uploadedByUserId.trim()) {
-      throw new Error("上传人信息缺失，请重新登录后再上传资料");
+      throw new BadRequestException("上传人信息缺失，请重新登录后再上传资料");
     }
 
     if (!input.buffer.length || input.sizeBytes <= 0) {
-      throw new Error("上传文件为空，请重新选择资料文件");
+      throw new BadRequestException("上传文件为空，请重新选择资料文件");
     }
 
     if (input.sizeBytes > Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)) {
-      throw new Error("上传文件超过系统限制，请压缩后重新上传或联系管理员");
+      throw new BadRequestException("上传文件超过系统限制，请压缩后重新上传或联系管理员");
     }
 
     if (!ALLOWED_EXTENSIONS.has(extname(input.originalName).toLowerCase())) {
-      throw new Error("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
+      throw new BadRequestException("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     }
 
     const idempotencyKey = input.idempotencyKey;
@@ -1208,7 +1210,7 @@ export class FileService {
   }
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
-    if (!input.actorUserId.trim()) {
+    if (typeof input.actorUserId !== "string" || !input.actorUserId.trim()) {
       throw new BadRequestException("下载人信息缺失，请重新登录后再下载资料");
     }
 
@@ -1771,6 +1773,26 @@ export class FileService {
       if (!instance || instance.status !== "approved") {
         throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单");
       }
+      // Company transfers expose both sides only to company finance/leaders or
+      // finance authorized for BOTH projects, matching their source evidence.
+      if (businessType === "company_transfer") {
+        const row = await tx.companyTransfer.findUniqueOrThrow({ where: { id: businessId } });
+        if (row.status !== "approved") throw new BadRequestException("互转审批尚未通过");
+        if ((await companyTransferRoles(tx, actorUserId)).some(role => ["finance_staff", "finance_director", "chairman", "general_manager"].includes(role))) return;
+        const projects = [row.sourceProjectId, row.destinationProjectId];
+        if (projects.every(Boolean) && (await Promise.all(projects.map(project => this.hasProjectRole(tx, actorUserId, project!, ["finance_staff", "finance_director"])))).every(Boolean)) return;
+        throw new ForbiddenException("当前账号无权下载两侧完整互转审批单");
+      }
+      const ledgerProject = businessType === "contract_bank_verification" ? await tx.contractBankVerificationRequest.findUnique({ where: { id: businessId }, select: { projectId: true } })
+        : businessType === "contract_proxy_execution" ? await tx.contractProxyExecution.findUnique({ where: { id: businessId }, select: { projectId: true } })
+        : businessType === "upward_receipt_match" ? await tx.upwardReceiptMatch.findUnique({ where: { id: businessId }, select: { projectId: true } })
+        : businessType === "upward_contract_amount_revision" ? await tx.upwardContractAmountRevision.findUnique({ where: { id: businessId }, select: { projectId: true } })
+        : businessType === "contract_economic_review" ? await tx.contractEconomicReview.findUnique({ where: { id: businessId }, select: { projectId: true } }) : undefined;
+      if (ledgerProject !== undefined) {
+        const roles: RoleKey[] = ["finance_staff", "finance_director", ...(["upward_contract_amount_revision", "contract_economic_review"].includes(businessType) ? ["contract_staff", "contract_director", "budget_staff", "budget_director", "project_manager", "chairman", "general_manager"] as RoleKey[] : [])];
+        if (ledgerProject?.projectId ? await this.hasProjectRole(tx, actorUserId, ledgerProject.projectId, roles) : ledgerProject && await this.hasGlobalRole(tx, actorUserId, ["finance_staff", "finance_director"])) return;
+        throw new ForbiddenException("当前账号无权下载该复核审批单");
+      }
       if (instance.applicantUserId === actorUserId) return;
 
       const participated = await tx.approvalActionLog.findFirst({
@@ -2239,6 +2261,17 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该费用附件");
     }
 
+    const transferEvidence=await tx.companyTransfer?.findFirst({where:{evidenceFileId:file.id}});
+    if(transferEvidence){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director","chairman","general_manager"].includes(r)))return;const projects=[transferEvidence.sourceProjectId,transferEvidence.destinationProjectId];if(projects.every(Boolean)&&(await Promise.all(projects.map(p=>this.hasProjectRole(tx,actorUserId,p!,["finance_staff","finance_director"])))).every(Boolean))return;throw new ForbiddenException("无权查看互转申请依据");}
+    const bankVerificationEvidence=await tx.contractBankVerificationRequest?.findFirst({where:{OR:[{evidenceFileId:file.id},{holderEvidenceFileId:file.id}]},select:{projectId:true}});
+    if(bankVerificationEvidence){if(!bankVerificationEvidence.projectId){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director"].includes(r)))return;throw new ForbiddenException("无权访问公司自有资金核验依据");}if(await this.hasProjectRole(tx,actorUserId,bankVerificationEvidence.projectId,["finance_staff","finance_director"]))return;throw new ForbiddenException("当前账号无权访问银行核验依据");}
+    const classificationEvidence=await tx.contractProxyExecution?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}})
+      ??await tx.upwardContractAmountRevision?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}});
+    if(classificationEvidence){
+      if(await this.hasProjectRole(tx,actorUserId,classificationEvidence.projectId,["finance_staff","finance_director","contract_director"]))return;
+      throw new ForbiddenException("当前账号无权访问本项目核验依据");
+    }
+
     const affiliateBusinessClients = tx as unknown as {
       projectAffiliateContractFact?: {
         findFirst(args: unknown): Promise<{ projectId: string } | null>;
@@ -2437,6 +2470,12 @@ export class FileService {
         return;
       }
       throw new ForbiddenException("当前账号无权下载该一般争议资金依据");
+    }
+
+    const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);
+    if (layoutAccess !== null) {
+      if (layoutAccess) return;
+      throw new ForbiddenException("当前账号无权查看该合同版式资料");
     }
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {

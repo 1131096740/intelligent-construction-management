@@ -1,3 +1,4 @@
+import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { forwardRef, Module } from "@nestjs/common";
 import { ApprovalModule } from "../approval/approval.module";
 import { AuditModule } from "../audit/audit.module";
@@ -23,6 +24,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
 
 @Module({
   imports: [
+    OperatingLedgerModule,
     ApprovalModule,
     AuditModule,
     AuthModule,

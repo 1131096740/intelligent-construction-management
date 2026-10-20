@@ -28,6 +28,7 @@ export interface SettlementSummaryItem {
 }
 
 export interface SettlementLedgerRow {
+  contractRelationshipLabel?: string;
   id: string;
   settlementNo: string;
   contractNo: string;
@@ -86,6 +87,7 @@ export const settlementSummaryItems: SettlementSummaryItem[] = [
 ];
 
 export const settlementLedgerColumns: PrimaryTableCol<SettlementLedgerRow>[] = [
+  { colKey: "contractRelationshipLabel", title: "合同分类", minWidth: 180 },
   { colKey: "settlementNo", title: "结算编号", width: 112 },
   { colKey: "contractNo", title: "关联合同", width: 112 },
   { colKey: "project", title: "项目", minWidth: 140 },

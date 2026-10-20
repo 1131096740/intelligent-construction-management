@@ -1,3 +1,5 @@
+import {CompanyTransferModule} from "./company-transfer/company-transfer.module";
+import { ContractRelationshipLedgerModule } from "./contract-ledger/contract-relationship-ledger.module";
 import { Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { ArchiveModule } from "./archive/archive.module";
@@ -46,6 +48,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
 
 @Module({
   imports: [
+    ContractRelationshipLedgerModule,
     DatabaseModule,
     OrganizationModule,
     ProjectModule,
@@ -71,6 +74,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     GeneralProcurementModule,
     FundsWorkbenchModule,
     FundMovementModule,
+    CompanyTransferModule,
     FundExecutionModule,
     SpotProcurementModule,
     WageStatementModule,

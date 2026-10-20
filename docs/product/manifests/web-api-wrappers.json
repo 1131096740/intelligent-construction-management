@@ -7,23 +7,23 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 32,
-    "exportedFunctionCount": 635,
-    "transportWrapperCount": 613,
+    "apiModuleCount": 39,
+    "exportedFunctionCount": 664,
+    "transportWrapperCount": 642,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 650,
+    "mainRequestBindingCount": 681,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 640,
-    "productionConsumerCount": 520,
+    "requestEdgeCount": 669,
+    "productionConsumerCount": 549,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
-    "duplicateNormalizedRouteGroupCount": 11,
+    "duplicateNormalizedRouteGroupCount": 13,
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 335,
-    "reachableProductionModuleCount": 314
+    "productionModuleCount": 354,
+    "reachableProductionModuleCount": 333
   },
   "wrappers": [
     {
@@ -1025,6 +1025,427 @@
       "unreachableConsumers": []
     },
     {
+      "name": "createCompanyTransfer",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "POST",
+          "path": "/company-transfers",
+          "normalizedPath": "/company-transfers",
+          "normalizedKey": "POST /company-transfers",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createCompanyTransfer",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "decideCompanyTransfer",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "POST",
+          "path": "/company-transfers/:param/decision",
+          "normalizedPath": "/company-transfers/:param/decision",
+          "normalizedKey": "POST /company-transfers/:param/decision",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "decideCompanyTransfer",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "executeCompanyTransfer",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "POST",
+          "path": "/company-transfers/:param/events",
+          "normalizedPath": "/company-transfers/:param/events",
+          "normalizedKey": "POST /company-transfers/:param/events",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeCompanyTransfer",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "exportCompanyTransfers",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "none",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 18,
+          "method": "GET",
+          "path": "/company-transfers/export?:param",
+          "normalizedPath": "/company-transfers/export",
+          "normalizedKey": "GET /company-transfers/export",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "exportCompanyTransfers"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractFinancialBalances.vue",
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchCompanyTransferBanks",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 7,
+          "method": "GET",
+          "path": "/company-transfers/:param/banks?:param",
+          "normalizedPath": "/company-transfers/:param/banks",
+          "normalizedKey": "GET /company-transfers/:param/banks",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyTransferBanks",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchCompanyTransferCapabilities",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 7,
+          "method": "GET",
+          "path": "/company-transfers?:param",
+          "normalizedPath": "/company-transfers",
+          "normalizedKey": "GET /company-transfers",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyTransferCapabilities",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/company-transfer.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchCompanyTransfers",
+      "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 7,
+          "method": "GET",
+          "path": "/company-transfers?:param",
+          "normalizedPath": "/company-transfers",
+          "normalizedKey": "GET /company-transfers",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyTransfers",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "decideBankVerification",
+      "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 10,
+          "method": "POST",
+          "path": "/contract-bank-verifications/:param/decision",
+          "normalizedPath": "/contract-bank-verifications/:param/decision",
+          "normalizedKey": "POST /contract-bank-verifications/:param/decision",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "decideBankVerification",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchBankVerifications",
+      "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 5,
+          "method": "GET",
+          "path": "/contract-bank-verifications?:param",
+          "normalizedPath": "/contract-bank-verifications",
+          "normalizedKey": "GET /contract-bank-verifications",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchBankVerifications",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareBankVerification",
+      "apiFile": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 10,
+          "method": "POST",
+          "path": "/contract-bank-verifications",
+          "normalizedPath": "/contract-bank-verifications",
+          "normalizedKey": "POST /contract-bank-verifications",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "prepareBankVerification",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "decideEconomicReview",
+      "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 18,
+          "method": "POST",
+          "path": "/contract-economic-reviews/:param/decision",
+          "normalizedPath": "/contract-economic-reviews/:param/decision",
+          "normalizedKey": "POST /contract-economic-reviews/:param/decision",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "decideEconomicReview",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractCounterparties",
+      "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 30,
+          "method": "GET",
+          "path": "/contract-economic-reviews/counterparties?:param",
+          "normalizedPath": "/contract-economic-reviews/counterparties",
+          "normalizedKey": "GET /contract-economic-reviews/counterparties",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractCounterparties"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchEconomicReviews",
+      "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-economic-reviews?:param",
+          "normalizedPath": "/contract-economic-reviews",
+          "normalizedKey": "GET /contract-economic-reviews",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchEconomicReviews",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareEconomicReview",
+      "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 18,
+          "method": "POST",
+          "path": "/contract-economic-reviews",
+          "normalizedPath": "/contract-economic-reviews",
+          "normalizedKey": "POST /contract-economic-reviews",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "prepareEconomicReview",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareEconomicSettlement",
+      "apiFile": "apps/web-admin/src/api/contract-economic-review.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 18,
+          "method": "POST",
+          "path": "/contract-economic-reviews/settlement-coverage",
+          "normalizedPath": "/contract-economic-reviews/settlement-coverage",
+          "normalizedKey": "POST /contract-economic-reviews/settlement-coverage",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "prepareEconomicSettlement",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractEconomicReviewPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createContractEndedApplicationRetentionHold",
       "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
       "kind": "transport",
@@ -1365,6 +1786,200 @@
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
       "productionConsumers": []
+    },
+    {
+      "name": "decideContractProxyExecution",
+      "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/contract-proxy-executions/:param/decision",
+          "normalizedPath": "/contract-proxy-executions/:param/decision",
+          "normalizedKey": "POST /contract-proxy-executions/:param/decision",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "decideContractProxyExecution",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchCompanyBankEvents",
+      "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 6,
+          "method": "GET",
+          "path": "/contract-proxy-executions/bank-options?:param",
+          "normalizedPath": "/contract-proxy-executions/bank-options",
+          "normalizedKey": "GET /contract-proxy-executions/bank-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyBankEvents",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/CompanyBankEventSelect.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractProxyExecutions",
+      "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 6,
+          "method": "GET",
+          "path": "/contract-proxy-executions?:param",
+          "normalizedPath": "/contract-proxy-executions",
+          "normalizedKey": "GET /contract-proxy-executions",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractProxyExecutions",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareContractProxyExecution",
+      "apiFile": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 11,
+          "method": "POST",
+          "path": "/contract-proxy-executions",
+          "normalizedPath": "/contract-proxy-executions",
+          "normalizedKey": "POST /contract-proxy-executions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "prepareContractProxyExecution",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractProxyExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "exportContractRelationshipLedger",
+      "apiFile": "apps/web-admin/src/api/contract-relationship-ledger.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 18,
+          "method": "GET",
+          "path": "/contract-relationship-ledger/export?:param",
+          "normalizedPath": "/contract-relationship-ledger/export",
+          "normalizedKey": "GET /contract-relationship-ledger/export",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "exportContractRelationshipLedger"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractRelationshipLedger.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractClassificationPreflight",
+      "apiFile": "apps/web-admin/src/api/contract-relationship-ledger.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 24,
+          "method": "GET",
+          "path": "/contract-relationship-ledger/preflight?:param",
+          "normalizedPath": "/contract-relationship-ledger/preflight",
+          "normalizedKey": "GET /contract-relationship-ledger/preflight",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractClassificationPreflight"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractRelationshipLedger.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractRelationshipLedger",
+      "apiFile": "apps/web-admin/src/api/contract-relationship-ledger.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 7,
+          "method": "GET",
+          "path": "/contract-relationship-ledger?:param",
+          "normalizedPath": "/contract-relationship-ledger",
+          "normalizedKey": "GET /contract-relationship-ledger",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractRelationshipLedger"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractRelationshipLedger.vue",
+        "apps/web-admin/src/pages/search/GlobalSearchPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "createContractBusinessScenario",
@@ -5810,7 +6425,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7122,
+          "sourceLine": 7158,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -5842,7 +6457,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7106,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -5872,7 +6487,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7106,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -5902,7 +6517,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5535,
+          "sourceLine": 5571,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -5931,7 +6546,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7106,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5961,7 +6576,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2687,
+          "sourceLine": 2708,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -5975,7 +6590,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -5986,7 +6602,7 @@
       "name": "downloadPrivateFileByTicket",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
-      "returnProvenance": "none",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
@@ -6022,7 +6638,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5426,
+          "sourceLine": 5458,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -6033,11 +6649,16 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
+        "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+        "apps/web-admin/src/components/files/PrivatePdfActions.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6048,7 +6669,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3594,
+          "sourceLine": 3615,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -6107,7 +6728,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7149,
+          "sourceLine": 7185,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -6136,7 +6757,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7136,
+          "sourceLine": 7172,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -6165,7 +6786,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7164,
+          "sourceLine": 7200,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -6194,7 +6815,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7106,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -6653,6 +7274,66 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractFinancialBalances",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "GET",
+          "path": "/operating-projections/as-of?:param",
+          "normalizedPath": "/operating-projections/as-of",
+          "normalizedKey": "GET /operating-projections/as-of",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractFinancialBalances",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "GET",
+          "path": "/operating-projections/company/:param?:param",
+          "normalizedPath": "/operating-projections/company/:param",
+          "normalizedKey": "GET /operating-projections/company/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractFinancialBalances",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "GET",
+          "path": "/operating-projections/project/:param?:param",
+          "normalizedPath": "/operating-projections/project/:param",
+          "normalizedKey": "GET /operating-projections/project/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractFinancialBalances",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ContractFinancialBalances.vue"
       ],
       "unreachableConsumers": []
     },
@@ -7353,7 +8034,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -7411,7 +8093,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -7498,7 +8181,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+        "apps/web-admin/src/api/core-flow-read.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
@@ -7589,6 +8273,7 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/ContractRelationshipLedger.vue",
         "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
@@ -8048,6 +8733,7 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/files/PrivatePdfActions.vue",
         "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
@@ -10117,8 +10803,12 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+        "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+        "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
@@ -12216,7 +12906,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 54,
+          "sourceLine": 55,
           "method": "GET",
           "path": "/fund-movements",
           "normalizedPath": "/fund-movements",
@@ -12259,7 +12949,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/funds-workbench.api.test.ts"
+        "apps/web-admin/src/api/funds-workbench.api.test.ts",
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
@@ -14569,6 +15260,7 @@
         }
       ],
       "testConsumers": [
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts",
         "apps/web-admin/src/api/project-close-profit.api.test.ts"
       ],
       "productionConsumers": [
@@ -14658,6 +15350,7 @@
         }
       ],
       "testConsumers": [
+        "apps/web-admin/src/api/operating-projection-concurrency.api.test.ts",
         "apps/web-admin/src/api/project-close-profit.api.test.ts"
       ],
       "productionConsumers": [
@@ -18866,6 +19559,174 @@
       "unreachableConsumers": []
     },
     {
+      "name": "decideUpwardAmount",
+      "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 10,
+          "method": "POST",
+          "path": "/upward-contract-amount-revisions/:param/decision",
+          "normalizedPath": "/upward-contract-amount-revisions/:param/decision",
+          "normalizedKey": "POST /upward-contract-amount-revisions/:param/decision",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "decideUpwardAmount",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchUpwardAmounts",
+      "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 5,
+          "method": "GET",
+          "path": "/upward-contract-amount-revisions?:param",
+          "normalizedPath": "/upward-contract-amount-revisions",
+          "normalizedKey": "GET /upward-contract-amount-revisions",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchUpwardAmounts",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareUpwardAmount",
+      "apiFile": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 10,
+          "method": "POST",
+          "path": "/upward-contract-amount-revisions",
+          "normalizedPath": "/upward-contract-amount-revisions",
+          "normalizedKey": "POST /upward-contract-amount-revisions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "prepareUpwardAmount",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "decideReceiptMatch",
+      "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 10,
+          "method": "POST",
+          "path": "/upward-receipt-matches/:param/decision",
+          "normalizedPath": "/upward-receipt-matches/:param/decision",
+          "normalizedKey": "POST /upward-receipt-matches/:param/decision",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "decideReceiptMatch",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchReceiptMatches",
+      "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 5,
+          "method": "GET",
+          "path": "/upward-receipt-matches?:param",
+          "normalizedPath": "/upward-receipt-matches",
+          "normalizedKey": "GET /upward-receipt-matches",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchReceiptMatches",
+              "read"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "prepareReceiptMatch",
+      "apiFile": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 10,
+          "method": "POST",
+          "path": "/upward-receipt-matches",
+          "normalizedPath": "/upward-receipt-matches",
+          "normalizedKey": "POST /upward-receipt-matches",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "prepareReceiptMatch",
+              "request"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "confirmWageStatement",
       "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
       "kind": "transport",
@@ -19798,6 +20659,19 @@
   ],
   "duplicateNormalizedRoutes": [
     {
+      "normalizedKey": "GET /company-transfers",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "fetchCompanyTransferCapabilities"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/company-transfer.api.ts",
+          "wrapper": "fetchCompanyTransfers"
+        }
+      ]
+    },
+    {
       "normalizedKey": "GET /contract-drafts/:param/workbench",
       "wrappers": [
         {
@@ -19907,6 +20781,19 @@
         {
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "withdrawProcurement"
+        }
+      ]
+    },
+    {
+      "normalizedKey": "GET /operating-projections/as-of",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchContractFinancialBalances"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectSetOperatingProjection"
         }
       ]
     },

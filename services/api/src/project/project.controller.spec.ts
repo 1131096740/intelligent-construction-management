@@ -256,6 +256,7 @@ describe("ProjectController authorization wiring", () => {
       {
         contractReference: "GL-2026-001",
         contractName: "项目挂靠管理协议",
+        amountNature: "uncapped" as const,
         signedAt: "2026-07-20",
         rightsObligationsSummary: "双方权利义务摘要",
         companyEntityId: "company-1",
@@ -1005,6 +1006,7 @@ describe("ProjectController authorization wiring", () => {
     const body = {
       contractReference: "GL-2026-001",
       contractName: "项目挂靠管理协议",
+        amountNature: "uncapped" as const,
       signedAt: "2026-07-20",
       rightsObligationsSummary: "双方权利义务摘要",
       companyEntityId: "company-1",

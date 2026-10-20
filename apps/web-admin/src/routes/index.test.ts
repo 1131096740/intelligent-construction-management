@@ -623,6 +623,7 @@ describe("web admin routes", () => {
       { label: "结算工作台", path: "/结算工作台" },
       { label: "资金办理工作台", path: "/统一资金办理工作台" },
       { label: "资金执行案件", path: "/资金执行案件" },
+      { label: "公司互转台账", path: "/公司互转台账" },
       { label: "资金移动工作台", path: "/资金移动工作台" },
       { label: "工资应付核销工作台", path: "/工资应付核销工作台" },
       { label: "零星采购工作台", path: "/零星采购工作台" },
@@ -685,12 +686,12 @@ describe("web admin routes", () => {
     expect(groupLabels).toContain("项目");
     expect(groupLabels).toContain("合同");
     expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目");
-    expect(visibleAdminNavigationGroups(["contract_staff"]).map((group) => group.label)).not.toContain("付款");
+    expect(visibleAdminNavigationGroups(["contract_staff"]).find(group => group.label === "付款")?.items.map(item => item.label)).toEqual(["公司互转台账"]);
     expect(
       visibleAdminNavigationGroups(["finance_staff"])
         .find((group) => group.label === "付款")
         ?.items.map((item) => item.label)
-    ).toEqual(["资金办理工作台"]);
+    ).toEqual(["资金办理工作台", "公司互转台账"]);
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {

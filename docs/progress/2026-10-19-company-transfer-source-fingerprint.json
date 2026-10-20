@@ -1,0 +1,838 @@
+{
+  "baselineCommit": "d899e4eacd8276f04fae4e26d21416650fcc1b84",
+  "workspace": "/private/tmp/jgzg-contract-ledger-20261019",
+  "state": "uncommitted-local-development",
+  "scope": "modified and new code/schema/config/tests; documentation excluded",
+  "fileCount": 207,
+  "aggregateSha256": "1e1713805765c8acc2199963bb9509b1e06f216d87886f096add784a4cbda5b4",
+  "files": [
+    {
+      "path": "apps/web-admin/e2e/company-transfer-real.e2e.ts",
+      "sha256": "3ade2151f1c7efbb2d8c2443d8b7cb5f85c339dabeb9f5e78805802d6140dc74"
+    },
+    {
+      "path": "apps/web-admin/e2e/contract-relationship.e2e.ts",
+      "sha256": "22b0bfcfde6951bbf667654c416b7dbb659cae38d82f16fd0ef37cadd4811537"
+    },
+    {
+      "path": "apps/web-admin/playwright.company-transfer-real.config.ts",
+      "sha256": "b661ec3f026c428dbd281330969486c3aa330d8aded2ead9b1c5a383aed4f866"
+    },
+    {
+      "path": "apps/web-admin/playwright.contract-relationship.config.ts",
+      "sha256": "85f35016a62f76ba5f2e55fb462162733af893b2f0e6fb68c1170f99cfea6543"
+    },
+    {
+      "path": "apps/web-admin/src/api/company-transfer.api.ts",
+      "sha256": "0124d0413d632afa939a402840bd520d7e58d0ab4af0b513877e3b8a1657ac0f"
+    },
+    {
+      "path": "apps/web-admin/src/api/contract-bank-verification.api.ts",
+      "sha256": "a929778319eb08fa5f07225b82a79f3bdd9ac6b6177a15a5e9ad84d750799d5a"
+    },
+    {
+      "path": "apps/web-admin/src/api/contract-economic-review.api.ts",
+      "sha256": "c012dde6a3daa841a37645e8bd6abbd87bc5a7ea75fd28a5b2fc8f6dc3344f77"
+    },
+    {
+      "path": "apps/web-admin/src/api/contract-proxy-execution.api.ts",
+      "sha256": "9d23ad27bebc9adf801f6510307c7de5a6b3c1eff285d0907252680f5bf58d9d"
+    },
+    {
+      "path": "apps/web-admin/src/api/contract-relationship-ledger.api.ts",
+      "sha256": "75aced32cea3a2c8d450f12634352f809f68faccc62ba51a6df9649c9458434d"
+    },
+    {
+      "path": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "sha256": "fb069e3fb0bd9e857846f41cbc8d52441d9d9d2ec2735f04f9e9040a85ffaab3"
+    },
+    {
+      "path": "apps/web-admin/src/api/fund-movement.api.ts",
+      "sha256": "cca9a35f352905306cbc01cf49af2578de117fabb09b9e1e03654574141440e8"
+    },
+    {
+      "path": "apps/web-admin/src/api/upward-contract-amount.api.ts",
+      "sha256": "c8b2bed378df78d4fbb41ee3df516a6d86833e2a3038fc441ea4af241057eae0"
+    },
+    {
+      "path": "apps/web-admin/src/api/upward-receipt-match.api.ts",
+      "sha256": "1a4ffdeabb589af69f800cac18242f33977aca7ad88a955f61d8383090d32e10"
+    },
+    {
+      "path": "apps/web-admin/src/app/business-navigation.ts",
+      "sha256": "68adaa9be6fdda3075987aa441fefb5ca062eb67714fb47a7641f74e5106d61d"
+    },
+    {
+      "path": "apps/web-admin/src/components/CompanyBankEventSelect.vue",
+      "sha256": "ac7c6ddde337dc89c73a6262d6bd7967458c126564edaf822224fbbe06dda0a0"
+    },
+    {
+      "path": "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+      "sha256": "27f0f50f5fe128b89cf18062f1c31ef4c5fbcf7be78990d66419a77de2474d3a"
+    },
+    {
+      "path": "apps/web-admin/src/components/ContractEconomicReviewPanel.vue",
+      "sha256": "066b3abc36a5a04f0e02eb3825d8f93f95f70d0085af72cec3eb9a4844db2207"
+    },
+    {
+      "path": "apps/web-admin/src/components/ContractFinancialBalances.vue",
+      "sha256": "193c72160084ac1d552099dfe0bb53f89b45cd2b2e25ed0a66c60833f64cf018"
+    },
+    {
+      "path": "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
+      "sha256": "8016c5f255e785806770edabae7e8a466191ce67a81c838962abededddfae9fe"
+    },
+    {
+      "path": "apps/web-admin/src/components/ContractRelationshipLedger.vue",
+      "sha256": "180a9f21288517c0adf9eaedc99a60a301af646ec5545297809d3863c582dc1f"
+    },
+    {
+      "path": "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
+      "sha256": "df67f0326518581c902a675397b0afaa3113e008ef95dff43586f7953dacb964"
+    },
+    {
+      "path": "apps/web-admin/src/components/UpwardReceiptMatchPanel.vue",
+      "sha256": "0223d0cad4e1e5f97b6e649e67b35129df228198e3692ffe1c81d6b8beb58955"
+    },
+    {
+      "path": "apps/web-admin/src/pages/approval-center/ApprovalCenterPage.vue",
+      "sha256": "70f097fbbd82bab3f1f4ed23c4fb136bd1e6f9c4059f9edd45c8ea6a09ec2671"
+    },
+    {
+      "path": "apps/web-admin/src/pages/archives/archive-list.config.test.ts",
+      "sha256": "728b0b8dd387dde91ea9c55db6834684c770eb082bf62786b340216cc0187246"
+    },
+    {
+      "path": "apps/web-admin/src/pages/archives/archive-list.config.ts",
+      "sha256": "4c2f1cdf564501b6c494a4c93511fcb1761853c830d4b20a92d5e6b121d21b18"
+    },
+    {
+      "path": "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+      "sha256": "92a416048daf6fdb34f19b9dd05534fd95556a850eff6a526e335fd5314f7d92"
+    },
+    {
+      "path": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
+      "sha256": "13641a967516b7e671bb82f31af77287819cfc15efff5fd06d983164d9c801c0"
+    },
+    {
+      "path": "apps/web-admin/src/pages/contracts/contract-list.config.test.ts",
+      "sha256": "f3dbf9e6bf7893472a6ebdb96454b3bd7ae86ebe8b0bb12eb42bdf3a5915c486"
+    },
+    {
+      "path": "apps/web-admin/src/pages/contracts/contract-list.config.ts",
+      "sha256": "184f3d306f282269377a80d6b71a70125996807dd957755d29b8949aa424de03"
+    },
+    {
+      "path": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+      "sha256": "0aeef07ba89fc975065f81ad219ec7ec800125c17c010c6014d18bb947b9f3f3"
+    },
+    {
+      "path": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
+      "sha256": "d6207dad33d9a907fa392fca5dc004a725deebf049ad8cd704cf6acfe64a957b"
+    },
+    {
+      "path": "apps/web-admin/src/pages/fund-movements/FundMovementPage.vue",
+      "sha256": "1482be991bd3ae55938ca0b8e73c04038ae9530bea768e8fe3908fcd25c4f9be"
+    },
+    {
+      "path": "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue",
+      "sha256": "96a567dd2bdaee266c4595983ced6865f269ced7ed1c797fe5578cac598fd735"
+    },
+    {
+      "path": "apps/web-admin/src/pages/home/HomePage.vue",
+      "sha256": "2203d042fa42184825e493d2d46d139f8563af336272204f0e05611abf4103f0"
+    },
+    {
+      "path": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+      "sha256": "9cfb2fb0a0d5dfa5e1186f35d0349d0a170ac21fe1097a1b001d3665a0cf64ff"
+    },
+    {
+      "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "sha256": "3f75b5b1409cd2cbd816da9fee21f2aced0a033d76ffe13bc7bb1e97a18aa736"
+    },
+    {
+      "path": "apps/web-admin/src/pages/payments/PaymentListPage.vue",
+      "sha256": "5af6efbbc929e5a0c9557211e06e14d3d558ce0f123742ff3d356b0a39af04ff"
+    },
+    {
+      "path": "apps/web-admin/src/pages/payments/payment-list.config.test.ts",
+      "sha256": "ebf98de0e9c6495366def5a6151144bfb38b4d42c1cd5d7eea15fa57f1aad8ca"
+    },
+    {
+      "path": "apps/web-admin/src/pages/payments/payment-list.config.ts",
+      "sha256": "540ac3df3549a14889fc86a40fd9d3f8833c2633d4f18f6890eed982e05a9d33"
+    },
+    {
+      "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "sha256": "976f86e66130d323caadadad689977f15385b5c1f2e5fef6f8bd1a9722117061"
+    },
+    {
+      "path": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "sha256": "9a90e4a07445644a45ca8bbb6709a0ab5bc3dc68b92a09804b0eb5d158406c4c"
+    },
+    {
+      "path": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "sha256": "d0dfe56e00d4268f843952986d2f47a873af12c4582f7c0445dc873360095811"
+    },
+    {
+      "path": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
+      "sha256": "fa101883841f5da05b0256aace826e6e826e201b68b8da3bfd1790ce739dcaa3"
+    },
+    {
+      "path": "apps/web-admin/src/pages/projects/components/affiliate-company-contract.structure.test.ts",
+      "sha256": "072321d2015101d7e5a48ddee38039bd7f991fbed26f32a893f474689f02dfbc"
+    },
+    {
+      "path": "apps/web-admin/src/pages/search/GlobalSearchPage.vue",
+      "sha256": "e2744ae0c83254c31727b5e87259f952bea9050f78f10bd18a2cceefd2cd07d7"
+    },
+    {
+      "path": "apps/web-admin/src/pages/search/global-search.config.ts",
+      "sha256": "abc646779edf1cf2b603ca775c59bf79d13c75bc5a25f547f872f3500f9a6a86"
+    },
+    {
+      "path": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+      "sha256": "0a1b04fd262f37182f36c65eef7f1bfc92dac044575638c35db7835f5f0ef172"
+    },
+    {
+      "path": "apps/web-admin/src/pages/settlements/settlement-list.config.test.ts",
+      "sha256": "bc6e7954a1314b8ef9a72d581dd1162dd7aed5fc3a0d9ccb3d2b5e1d5c73e40b"
+    },
+    {
+      "path": "apps/web-admin/src/pages/settlements/settlement-list.config.ts",
+      "sha256": "cd1ac2ecb860ff84575fa29f0ff7c48795f3058ee22f6bbf34a97f5f29f74801"
+    },
+    {
+      "path": "apps/web-admin/src/routes/index.test.ts",
+      "sha256": "ccd32916f5f839ea6d9e68b0d6d4de49f9bdff31b3cc855bd725abf57513118a"
+    },
+    {
+      "path": "apps/web-admin/src/routes/route-records.ts",
+      "sha256": "9e39bebcaa1af21560b3c0fdb1a626b27203a1b7b211bd2353c214bbe87dee60"
+    },
+    {
+      "path": "packages/shared-domain/src/contract-relationship-ledger.ts",
+      "sha256": "32fe4a7f965bf7e24ef412beb7b4fe9867ef7f51b16fbdd8fb8531c47de1b942"
+    },
+    {
+      "path": "packages/shared-domain/src/contract-relationship.test.ts",
+      "sha256": "c722da8ffb6c5316737df9c4d648138043779bd0f71c355558b2d4ecb234d435"
+    },
+    {
+      "path": "packages/shared-domain/src/contract-relationship.ts",
+      "sha256": "50bec9fb7b27650b4dba08e7325cb6d3fc90cbb582bb8aa0bb8ac1ef2be7479d"
+    },
+    {
+      "path": "packages/shared-domain/src/core-flow-read-model.ts",
+      "sha256": "510c601f97a45fbd52481bac3dbe6d498aca210880424f5417cc508daecd1617"
+    },
+    {
+      "path": "packages/shared-domain/src/index.ts",
+      "sha256": "d730a0db1d086d37d3e0bc0bc3d4ad87128c305763d2fe9b4cbd8cd770cdf656"
+    },
+    {
+      "path": "packages/shared-domain/src/operating-projection-export.ts",
+      "sha256": "ddab07abaca20a87a3d8fdf81d477bdd498265c5dea41e2b9cf08e17433afe70"
+    },
+    {
+      "path": "packages/shared-domain/src/project-operating-contracts.ts",
+      "sha256": "7c64640e754e38928eb6d58d3179cd70c5c5de77eb36785b43e37b518bd95e1a"
+    },
+    {
+      "path": "services/api/package.json",
+      "sha256": "2c79c12386b06dacf3b84122f25370d1548f69438bab692c688ff540853a70c3"
+    },
+    {
+      "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+      "sha256": "4f6d886d7390019bc90a3f083883fd0011dfcc4943a3045584f6e63b76e74a68"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019120000_contract_relationship_amounts/migration.sql",
+      "sha256": "b250096459daa322af70259f4e8b7d90cc3cca6e74a6abb58526b1edc6922010"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019200000_contract_economic_review/migration.sql",
+      "sha256": "65d6273b4255aa53ddec03418afae07220a35f4930179c546720595d280c2297"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019210000_contract_proxy_execution/migration.sql",
+      "sha256": "0067e3d587da650fbe7179eaf4887f279c64fea6987d12109551ecee2647f782"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019220000_contract_party_identity/migration.sql",
+      "sha256": "4f8cd835463fdad05795de6bef86997891d24dc49f5b7c22be1882cc15b07947"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019230000_upward_contract_amount_revision/migration.sql",
+      "sha256": "982f4f12ce0315f864093956c8f5164119fbeb0b2d0189d83ec5b90199452cce"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019233000_upward_receipt_match/migration.sql",
+      "sha256": "ed34ef16f45b6ab573c81e62274c5de9bf68f477de91d24adf0ca563f94a8874"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019234000_contract_proxy_bank_claim/migration.sql",
+      "sha256": "2d1ff01f000fc6e0e9bbf6f23d9f38f195d08d364df30b60ee69326fb807b525"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019235000_enterprise_bank_event_guard/migration.sql",
+      "sha256": "6c7411c49941613955736dc06082d042ea84a6cf2d23d04dd51c7ce3e2931c0c"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261019235500_contract_bank_event/migration.sql",
+      "sha256": "74b6cdf561a46a1eb230faea1b062f5556ccabac1eb0314defa43da686ed1074"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261020000000_contract_bank_verification_entry/migration.sql",
+      "sha256": "80a160374e4f0ab6963def2760177b10a04a52cba682f61bf980737600ab3c82"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261020120000_company_transfer/migration.sql",
+      "sha256": "2afc9e06f49ab98cd7456b1388dd8401624e52843c9489f93d8f95ce05e48f6b"
+    },
+    {
+      "path": "services/api/prisma/run-contract-classification-local.cjs",
+      "sha256": "56b28ed6b98be9a4fc6773a4a5afbe9775ecdc4ac9c874b2f0da80e8e16c0477"
+    },
+    {
+      "path": "services/api/prisma/schema.prisma",
+      "sha256": "ab8bae160bd23b9d437e1bf4ce37713c6f848190796ac1555d24ece6f306e61c"
+    },
+    {
+      "path": "services/api/src/app.module.ts",
+      "sha256": "1e4d1f48d8982b817e97c211e5ce5782a85e5693abc524f6dfd68d726246223c"
+    },
+    {
+      "path": "services/api/src/approval/approval-form.service.ts",
+      "sha256": "197bda8b222cc9e0adbd3ca3f63ef475f73f187a4ffa3984bd2733b12eed9b0f"
+    },
+    {
+      "path": "services/api/src/archive/archive.service.ts",
+      "sha256": "e560ae2803fe6926536309bea81e498338a8818caa1feb4688478618fdabb65d"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-legacy-balances.ts",
+      "sha256": "f5b146cac5a0ae5db71d8e296d58e3684892f918ee899e58c5faa97d819605e7"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-legacy-operating.ts",
+      "sha256": "7f088c192497cc122bb37f1bfd83eb73805227e69c975b86a286f967210fca44"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-legacy.spec.ts",
+      "sha256": "cd71755bfab56ad418262d21b7d5c5366f1ca208697acfd284ad2f82eb73fafd"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-legacy.ts",
+      "sha256": "8f85d68008f961b10f06520bc7ddc7e6649b15c8abd47eb40de7fae4c9480d96"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-operating-source.adapter.ts",
+      "sha256": "a609aaf10833d5f71814911bd7569d066ff3b485fb28c7106bbe49f0b7fb624f"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-read.service.ts",
+      "sha256": "42b28c9a97381f3bcf6509820467c584972b5f7491c2cc0cf12b1c84acaf6716"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-summary.spec.ts",
+      "sha256": "a2af75fe9dff3a0f09125b17009e25c3110fa1d83f50de927bd061ceb88e002b"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-summary.ts",
+      "sha256": "a3251e5273e07933e700732bfd4fd470b191d55584aa57309a1429b7a820269d"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer-workitems.ts",
+      "sha256": "aedc661b47b9ab9c29a7523a74e2ec24d09bf2038865260ac0a1e2ff059982f6"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer.access.ts",
+      "sha256": "378de59286293fe48104129000cae76c5b322547937dd829e9e73c0d851c5946"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer.balance.ts",
+      "sha256": "59e49e05e73d4bc1883a1199a4155b1b87938b7fd523246b8e6274ddb2ece9f3"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer.controller.ts",
+      "sha256": "e85be6f1f1343b11f308f76062f049f56be1db574758c10cafee49f876f186ff"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer.domain.ts",
+      "sha256": "4d6cef4130ad279de9cbd9f56d7db7cf44bf61f384d71f1db939db3a0bb8dbcd"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer.module.ts",
+      "sha256": "b18c50a8a7a90c4850c11e9659c3daa90f6fa6736c6330a164884273ac879db6"
+    },
+    {
+      "path": "services/api/src/company-transfer/company-transfer.service.ts",
+      "sha256": "3c5b576df46d44222b0b2b836982024c8238c81024c6c10858afd3d5ce53749d"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-event.spec.ts",
+      "sha256": "84d0d2ad08e094ef5b8b4a8739dbe9ca8082fbd944587be5bd24879c6d83de6a"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-event.ts",
+      "sha256": "7553d15e99fb17564f4fd1641d54ddf27258f3d19b3a16b0335a1eb00477aa4f"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-project.spec.ts",
+      "sha256": "d1f954d4c92aac3a104545df3a60d03d20672c448798f8112e2d97d3a28d2a51"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-project.ts",
+      "sha256": "8a1533202fa93b7125c1c7dcba9a11e20134a43270e00d69c316190c58e0304d"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-verification.controller.ts",
+      "sha256": "c06524dfc5852ca0d1e459f5806206cdd143526a11c23b61ca89b7d4ee22c295"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-verification.service.spec.ts",
+      "sha256": "5e4f6b7a6775dbd3dfd5ad77c9b57ba5a04cb72aed6985c340f53da61813c49f"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-bank-verification.service.ts",
+      "sha256": "00673976539a1fc2b62dca6c3e6b9159089b22ff7d7e027b4f7dfa1315f00a8f"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-classification-preflight.service.spec.ts",
+      "sha256": "87ff123e5ca2dacefa83aa959522cc62378094e3f792b51d27871fde5f31ecca"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-classification-preflight.service.ts",
+      "sha256": "cb8f1916c29dab9fc8eb312e4d3a7f77a173c85dfb6a0541dbac705f8a378185"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-classification-read.ts",
+      "sha256": "0b5ceeb697d41a08032308d8ba09b82f2b16df9c109bcb54a293170f60146968"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-counterparty.ts",
+      "sha256": "cb7725d9e6eef62080b581ad78a68b6ec1f10b193ab032461b26103ac4368c4f"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-coverage.spec.ts",
+      "sha256": "3f5d52ad11bf8bbc96db6689bdf67c09828b3296aa721688ed0f42b0c6b6795f"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-coverage.ts",
+      "sha256": "21d997845a3802996368e3421030d51545655bf224ee856304991b10f3a191db"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-review-operating-source.adapter.ts",
+      "sha256": "dd8a9193ef35bd5c38cebba8511c72a6dc506e6f1938d8ccd424151c3ead07d4"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-review.controller.ts",
+      "sha256": "6e06a3925472e10b170e968bf47707811e6573d0abdd6108a29a609451505fc9"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-review.service.ts",
+      "sha256": "4a167d6418153810b34be18406faa9155a6a5881183b9b142810fb1e4ad9b74e"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-scope.ts",
+      "sha256": "fd60c7b0d0bad8320a2b97e6f363125e935b0961eef8facac01b27ef4a95389a"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-settlement.spec.ts",
+      "sha256": "06643a396b5af87fdce89a65db55219817b411e428bb7e8e17eff3eec49a98d3"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-economic-settlement.ts",
+      "sha256": "7556009df287f6ecc90f8fb013fac01d3e52f8e2ca23b8cb7d04fe717b267cfb"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-handling-workitems.spec.ts",
+      "sha256": "1e91b6bcfc0055becf67a25ec529125f9b02f31b50466429cc8d02503e3189b9"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-handling-workitems.ts",
+      "sha256": "64e99730b342910b673f1b27586e2aac39561c11cb4bc0f6264f1641ff2246a8"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-bank.spec.ts",
+      "sha256": "b321424a2dd9a41eab8aacd329dcda639d8b19a163a4cd83d5a6241d62387000"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-bank.ts",
+      "sha256": "20ee0b667af65770c290e468acaf5053d376d4522bc8a2f9b138aa13250d9344"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-capacity.ts",
+      "sha256": "02a6c37490e70100dbaa3fa9744e1fcf99e446b798d02106f2165e1e390b6329"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-execution.controller.ts",
+      "sha256": "6fff32e5671e9fe641ca806d857cd1ba48dd6241452180b64d1dda1241a23411"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-execution.service.spec.ts",
+      "sha256": "4fe4640bc3e885129093bd1797fbb5b1225c5d36c75ed142e0db902ffb5c4ef8"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-execution.service.ts",
+      "sha256": "0c85d1cb5d2f95bcc8f0980852f89c637b43e2039f7e10e236c9ec54ec9e16d1"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-operating-source.adapter.spec.ts",
+      "sha256": "2637cd4130362b1b6edacd0079c943de68d8095856894455900b5b3414c88919"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-operating-source.adapter.ts",
+      "sha256": "d26949b665baeb494c554e06550aa3c03fee97f810a54d0c42e684018e88c4c6"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-source.ts",
+      "sha256": "4354a003e7e2a283d0398e3e7f5e774941dbd821968235fdf98bb312c1bee2a3"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-relationship-ledger.controller.ts",
+      "sha256": "24eedfdf1206858a072a9a7da5fb74513131da73634c72efb67d626493db0550"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-relationship-ledger.module.ts",
+      "sha256": "07b4495d4bddc4e32eab29df84c8cd84f538d4a1506f0acb96ad05e614732094"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-relationship-ledger.service.spec.ts",
+      "sha256": "9ea2ff4682ac52061073e4204c36dd2b38496a8fa2461be6bb385be5d7cb9b6e"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-relationship-ledger.service.ts",
+      "sha256": "93506da3069906cc68d804fcb21f6e656358b14bce80e67d10e8446bf0ffddd5"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-relationship-summary.ts",
+      "sha256": "0a27f5505a28e5ea515b176731ebc2e5cf3258640ac86ff30722ab2a77c32da6"
+    },
+    {
+      "path": "services/api/src/contract-ledger/fund-counterparty-cash.adapter.spec.ts",
+      "sha256": "5c4f927bb4e0d7e169e8efa8463a41e32fcc4bfa1884aa6574b03bccd42f4967"
+    },
+    {
+      "path": "services/api/src/contract-ledger/fund-counterparty-cash.adapter.ts",
+      "sha256": "c5c45b58e027a763e1ce5293749a293ba481e2afb7de0cc1075dc1bec0f65ad3"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-contract-amount.controller.ts",
+      "sha256": "55f62cf15b93186de672b78636b63c592f13cef04113a357c9280d389b1ac5ee"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-contract-amount.service.ts",
+      "sha256": "a9de8bcae58a1e0fd68b04cd7587bb6e866a7e211ac1846d58468bae54c6d207"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-receipt-capacity.ts",
+      "sha256": "5b5e2d6616d85e4dcedd2a8761c52805e6865534c1fcd476603ea9170c628d27"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-receipt-match-operating-source.adapter.spec.ts",
+      "sha256": "46e6c93bd52a5ad98c04b056a38fe0e53282149e759b3e93c1ca5c086401f9a4"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-receipt-match-operating-source.adapter.ts",
+      "sha256": "8702a533c5b4371ff03561286398d24caed4194ef69cef692ed1350db201f55c"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-receipt-match.controller.ts",
+      "sha256": "361979de7c0d028818bce79b0b4145ac259695b6f21495e67f11f3dd88407835"
+    },
+    {
+      "path": "services/api/src/contract-ledger/upward-receipt-match.service.ts",
+      "sha256": "155d7c406b2b6f952ee9633e12fa586e08827590938ed55b0acf617b92be1ec3"
+    },
+    {
+      "path": "services/api/src/contract-takeover/contract-takeover-activation.service.spec.ts",
+      "sha256": "d34eac922add83f83ab9f2e27696141874c86dd187d36b319705d786dc8abe7b"
+    },
+    {
+      "path": "services/api/src/contract-takeover/contract-takeover-activation.service.ts",
+      "sha256": "914b92132d3ea07755bdd832d8062d0883ae34e09083c257f1d2e1eee69112a4"
+    },
+    {
+      "path": "services/api/src/contract-takeover/contract-takeover-operating-source.adapter.ts",
+      "sha256": "abb753a80254ff5f6974a5b5be8cb12adc2553353c18b1f7e147d3d339d50b2e"
+    },
+    {
+      "path": "services/api/src/contract/contract-operating-source.adapter.spec.ts",
+      "sha256": "8b396e87a788606e69bf681041b509b4db5397784ee3b50176addafd18cf92dd"
+    },
+    {
+      "path": "services/api/src/contract/contract-operating-source.adapter.ts",
+      "sha256": "3c98f56a776fff5c484561b407da50289fc353db16d803fcdf4d5dd521f5c0ea"
+    },
+    {
+      "path": "services/api/src/contract/contract-read.service.ts",
+      "sha256": "242f316bd1271bdb07c40b82cc4ac05ffdc740218f55d3767078e9d7a18454dd"
+    },
+    {
+      "path": "services/api/src/contract/contract-version-activation.service.spec.ts",
+      "sha256": "685831b5bb233cd0876cc7a49f25d4f8bd67ee14a61b3d17db5497be763d1974"
+    },
+    {
+      "path": "services/api/src/contract/contract-version-activation.service.ts",
+      "sha256": "4e163ff6e14db8b252633fceee1e265e98813450fee2d9062acc3f1bc15048bf"
+    },
+    {
+      "path": "services/api/src/contract/contract.module.ts",
+      "sha256": "7457be2b54661f13f4484842a7cca5134b500e506289702ebdb1e32426112bcb"
+    },
+    {
+      "path": "services/api/src/contract/contract.service.spec.ts",
+      "sha256": "0bcd9c78ca530e687393ec7f85f45f03853125c81422bc8b22ba26b135e098e0"
+    },
+    {
+      "path": "services/api/src/database/clearing-reconciliation-concurrency.spec.ts",
+      "sha256": "4ccd656a54a01760ec787cecea443ec249a6485d56d3e3a0e31d07b288cb3a1f"
+    },
+    {
+      "path": "services/api/src/database/company-transfer-contract-acceptance.ts",
+      "sha256": "3d68caa5ab7c7f33e1ec23a974f31d4ab0b20e1e85066e61a0085d1c638e3ebf"
+    },
+    {
+      "path": "services/api/src/database/company-transfer-fixture.ts",
+      "sha256": "1484cc8dd6ad4210bf1acc3f69b44e3f1e28f4750dbeb4142532631c520e463d"
+    },
+    {
+      "path": "services/api/src/database/company-transfer-http-postgres.spec.ts",
+      "sha256": "9f6e498b347a106e93e0dfa5cbd7326971bd3a1704e126b9f65898fc8d27327d"
+    },
+    {
+      "path": "services/api/src/database/contract-business-entry-http.spec.ts",
+      "sha256": "3c9804c86c441091f3cd1564e61759ea95798114d53673cb6e254f04758b562f"
+    },
+    {
+      "path": "services/api/src/database/payment-execution-concurrency.spec.ts",
+      "sha256": "2d220134a91bec3edf5dcd1dc23b228caf51db5de54a0d93b102213df0a6ba03"
+    },
+    {
+      "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
+      "sha256": "112ff87434c68b60b9134de006cc60b5460b869fa592c9998d0c714359ddcfa6"
+    },
+    {
+      "path": "services/api/src/database/spot-procurement-core-schema.spec.ts",
+      "sha256": "0d2dc04f8f37e6748d731318bc19ba769af3b8c330e6e85aca5b3807007c065d"
+    },
+    {
+      "path": "services/api/src/database/unified-file-business-binding-guard.spec.ts",
+      "sha256": "addb29a381632274b0864c3f2b9123f2dd9678ede45f33479c7de2018e44fdef"
+    },
+    {
+      "path": "services/api/src/file/file-business-binding.spec.ts",
+      "sha256": "9e8ce6ad834de5ae69ecd67dd86809bb322a4f51cfc2d94c7f85735c19f7b727"
+    },
+    {
+      "path": "services/api/src/file/file-business-binding.ts",
+      "sha256": "851e3c2260f3b9c44007a9aa2bbcff63d84f0b3772ec0792cf03aaba742d4060"
+    },
+    {
+      "path": "services/api/src/file/file.service.ts",
+      "sha256": "c69cc6b5e5627e8a4a7b7a31edef862cd42cb587acc4f92877217639d022e535"
+    },
+    {
+      "path": "services/api/src/fund-execution/fund-execution-canonical-adapter.service.ts",
+      "sha256": "aa558b533207f6231d7f41ab707c0023f880cba48c6a222f28967c30be617e79"
+    },
+    {
+      "path": "services/api/src/fund-execution/fund-execution-selection-options.service.ts",
+      "sha256": "3d70658211d29b4fbb51c1f0363a7194ce191e21e8d44fa6dae779739ac47b91"
+    },
+    {
+      "path": "services/api/src/fund-execution/fund-execution.controller.spec.ts",
+      "sha256": "4d98f6878f82f38604d1c75e65474235a39d7a623192878b3146342df626c4f7"
+    },
+    {
+      "path": "services/api/src/fund-execution/payment-execution-shared-allocation.service.spec.ts",
+      "sha256": "11c01820d1790275c3ee489b307f706021e16fcd58fb226b469aa7722b4772ab"
+    },
+    {
+      "path": "services/api/src/fund-execution/payment-execution-shared-allocation.service.ts",
+      "sha256": "981c523d4638b9b0c4838102a46a053cd9143e1015fcbaa0d6d187792b40c726"
+    },
+    {
+      "path": "services/api/src/fund-execution/verified-bank-transaction-observation.service.ts",
+      "sha256": "7fee8d98fb987db8380576ef5576b2e3f3d1206b41a3fd7d0045dbad37767d3b"
+    },
+    {
+      "path": "services/api/src/fund-movement/fund-movement.service.spec.ts",
+      "sha256": "5a063d6fde6978936eda84675f851baf3f9bd6e0ba5d27a75774df664a36132d"
+    },
+    {
+      "path": "services/api/src/fund-movement/fund-movement.service.ts",
+      "sha256": "ab05dbeae977446de52172206fc701eaf5638853f18fef8e59db4c4b32b85694"
+    },
+    {
+      "path": "services/api/src/me/me.service.spec.ts",
+      "sha256": "4cffb34fa0ede97a9ce1bf5661c70daa91e5bd7d4cf69a34ba77f6df3e2bebd5"
+    },
+    {
+      "path": "services/api/src/me/me.service.ts",
+      "sha256": "43698cceea98b4dfe809342c5e86e86d32b44dd4d64702cbdc383cd18ea1e6ff"
+    },
+    {
+      "path": "services/api/src/operating-ledger/operating-ledger.module.spec.ts",
+      "sha256": "4867d953bb3b299eae07723df79881ce833678319e21556e779b3bdd66213f2f"
+    },
+    {
+      "path": "services/api/src/operating-ledger/operating-ledger.module.ts",
+      "sha256": "420187f77f18b565b0c32e8db69a5cda04f14d4111551074542acdb371313a45"
+    },
+    {
+      "path": "services/api/src/operating-ledger/operating-ledger.service.ts",
+      "sha256": "dabe8e8088913ecc78935e405e2c6650ede1020d4289b5e464fe3d4ea98af0e1"
+    },
+    {
+      "path": "services/api/src/operating-projection/dto/operating-projection-export.dto.ts",
+      "sha256": "e5942221d9faf5a53f018046c25a063f22e7ee812f965d936e6f23454fbe298f"
+    },
+    {
+      "path": "services/api/src/operating-projection/dto/operating-projection-query.dto.ts",
+      "sha256": "d0b03026ae8c086036a2375404fc69d47176d58fb267fe6eab2fd1136281b55a"
+    },
+    {
+      "path": "services/api/src/operating-projection/operating-projection.controller.ts",
+      "sha256": "2c7140654df465821a831b5344f85077e1dab93f2f914aa47ab92e55dd2e2df6"
+    },
+    {
+      "path": "services/api/src/operating-projection/operating-projection.reducer.spec.ts",
+      "sha256": "9b6c86c2068948558475d8793aaee11a3e1c1fd7282605daa10592fed035eac1"
+    },
+    {
+      "path": "services/api/src/operating-projection/operating-projection.reducer.ts",
+      "sha256": "c38c221608ba502f9c5b3d71b2f99aac079faea739d21c63a52e0d8022e53f9a"
+    },
+    {
+      "path": "services/api/src/operating-projection/operating-projection.service.spec.ts",
+      "sha256": "0e1bcded50ae608df7b13c21998e97d800c4335bc3e023117440faf256aa06d6"
+    },
+    {
+      "path": "services/api/src/operating-projection/operating-projection.service.ts",
+      "sha256": "6f12f9605a3071078a12a93b51a3d57934222baaf4f781f9968ffb7f964b07cc"
+    },
+    {
+      "path": "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts",
+      "sha256": "fbed03ad8ae44415236aecc5d845cd968136e88c72f949edaedaf92c6bbea34e"
+    },
+    {
+      "path": "services/api/src/payable-registry/payable-registry.service.spec.ts",
+      "sha256": "0ee5c69640c79fa1cd6dc7d20ce7f271f389918fceff8e0085fffc2c68dc0eea"
+    },
+    {
+      "path": "services/api/src/payable-registry/payable-registry.service.ts",
+      "sha256": "d99cf28659b75abea9e02465979caeb92fe449c87cf6d29103d08d038440e4f1"
+    },
+    {
+      "path": "services/api/src/payment/dto/record-payment-execution.dto.ts",
+      "sha256": "23687bfce0f9cda688cb22b9b09943750bad3b9ad8d1e908cf1026ea5f07e31d"
+    },
+    {
+      "path": "services/api/src/payment/payment-operating-source.adapter.spec.ts",
+      "sha256": "7f1288ef42bd6e32c552f4eef44ec55f6f7c0ed35fe4069f576a6a31a34c0fe5"
+    },
+    {
+      "path": "services/api/src/payment/payment-operating-source.adapter.ts",
+      "sha256": "234cb372ad662469dba062e355f3187c2994b9246fcbd8c803394f8688b5e06d"
+    },
+    {
+      "path": "services/api/src/payment/payment-read.service.spec.ts",
+      "sha256": "6e651f9add5a8ea8fd1927eb9bd84fbb5934f71cabe6193c9b358fad2885ab0e"
+    },
+    {
+      "path": "services/api/src/payment/payment-read.service.ts",
+      "sha256": "0ae94879b766bd4737080f0ba5578d229dc558b647b62383d68d37192cacc0cb"
+    },
+    {
+      "path": "services/api/src/payment/payment-request.service.spec.ts",
+      "sha256": "65298ffc35bb1f6457dee8f928a00fbc7afc1818eea90fc43037159cb2b3430c"
+    },
+    {
+      "path": "services/api/src/payment/payment-request.service.ts",
+      "sha256": "5a498faf0d6ea3ea669d88ea5c5addd5a64ea1be6abade0370cf730f9cf5628f"
+    },
+    {
+      "path": "services/api/src/project-funding/project-funding-availability.service.spec.ts",
+      "sha256": "087d8265f3aaa6231fa2c7b663f0e4acdd5bd379dc4a16c40ad2d4af80e2fbc9"
+    },
+    {
+      "path": "services/api/src/project-funding/project-funding-availability.service.ts",
+      "sha256": "a24d0733eaf756f33b7a83d666ba5bd7d92db77cda282263186e58935e4b1101"
+    },
+    {
+      "path": "services/api/src/project/dto/record-project-affiliate-company-contract.dto.ts",
+      "sha256": "fc0f5071d328b1155e183149842a4022996881769071fda97aad54d6d0ab7eed"
+    },
+    {
+      "path": "services/api/src/project/dto/record-project-affiliate-contract-fact.dto.ts",
+      "sha256": "4d6c09b06f467e8196e1cb325760c7c7144c2dd0f6ca17eb30059acaa6fa1a2a"
+    },
+    {
+      "path": "services/api/src/project/dto/record-project-upstream-fund-fact.dto.ts",
+      "sha256": "524fcb2eef7732376e42500142c5b88db981f6c93e07daac23855ce4b2146fac"
+    },
+    {
+      "path": "services/api/src/project/project-affiliate-business.service.spec.ts",
+      "sha256": "6da9e04819e55a12ee63089e90a04ec774fecfaeb1a9789bfca90b4ce46d5cd4"
+    },
+    {
+      "path": "services/api/src/project/project-affiliate-business.service.ts",
+      "sha256": "0ef68b3dc7bd38f1c7011d5b403141ea339fc341bc2f40c99905dfe110af5d31"
+    },
+    {
+      "path": "services/api/src/project/project-affiliate-company-contract.service.spec.ts",
+      "sha256": "8d8f8237c25065871ac261c6549266928a0003ff552ddcb5f889d98fa0c98167"
+    },
+    {
+      "path": "services/api/src/project/project-affiliate-company-contract.service.ts",
+      "sha256": "c0ac7a7217de3f6c7fd06bd362471ab26e8c6ce4f5ac1943e1827097c549bdbf"
+    },
+    {
+      "path": "services/api/src/project/project-operating-source.adapter.spec.ts",
+      "sha256": "c8a747e86e84dd5a848a859462c8476c5acb175fa86f2d78d3cb8fd7e4d47b2e"
+    },
+    {
+      "path": "services/api/src/project/project-operating-source.adapter.ts",
+      "sha256": "1ab2a4555d0b2b2d12251dde962ccf3195cc7e8c7e5deb73d9defa3595f1a58a"
+    },
+    {
+      "path": "services/api/src/project/project-upstream-fund-fact.spec.ts",
+      "sha256": "5229f115388cd2e5d7373dae0fa4b34a8622dadf9883c6e6e9f719d1ea1595c4"
+    },
+    {
+      "path": "services/api/src/project/project.controller.spec.ts",
+      "sha256": "e9113f4d8b3f200eeb94ec62eb685177bf2a62c8e98e9e237e1552bee4084468"
+    },
+    {
+      "path": "services/api/src/project/project.service.spec.ts",
+      "sha256": "31f1aae1b0c7e1bfe3fa2e72afeb8e40862316654a0ab2ef4003786c77e73006"
+    },
+    {
+      "path": "services/api/src/project/project.service.ts",
+      "sha256": "f65dcff9d41278232dce7a3be842893b69c89dd2b7fda5152624921fc165544c"
+    },
+    {
+      "path": "services/api/src/settlement/settlement-read.service.spec.ts",
+      "sha256": "1a1a37126323914285b642b210f2c3e2a8a4dbccec7eda660ebba1e12c23effe"
+    },
+    {
+      "path": "services/api/src/settlement/settlement-read.service.ts",
+      "sha256": "5acdee53ec4ea49912d09b4319602e326ed98bdeb2865a2c68502fe62c3008cc"
+    },
+    {
+      "path": "services/api/src/settlement/settlement.service.spec.ts",
+      "sha256": "7f57bd8afda9d5fb26a4817d02083dc26b9e8175f14dd83ccfe0240114f7bb92"
+    },
+    {
+      "path": "services/api/src/settlement/settlement.service.ts",
+      "sha256": "1ad8a4aa111832d2410eac35668058768d83d56df595599381dbb34fcb4862ef"
+    },
+    {
+      "path": "services/api/src/validation/task3-static-field-validation.spec.ts",
+      "sha256": "2d8af87f4c48854a4537be2277a8d3ca04c0bd11629621a45c7d26484fa1f593"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import {contractBankProject} from "../contract-ledger/contract-bank-project";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
@@ -392,7 +393,8 @@ export class FundExecutionSelectionOptionsService {
     actorUserId: string,
     now: Date
   ) {
-    const payables = await this.loadAvailablePayables(tx);
+    const bankProject = await contractBankProject(tx,context.observation);
+    const payables = (await this.loadAvailablePayables(tx)).filter(p=>!bankProject||p.registered.beneficiaryProjectId===bankProject);
     const amount = context.execution.amountCents;
     const seeds: PlanLineSeed[][] = [];
     for (const payable of payables) {
@@ -642,8 +644,10 @@ export class FundExecutionSelectionOptionsService {
     actorUserId: string,
     now: Date
   ): Promise<readonly InternalIssuedPlan[]> {
+    const bankProject = await contractBankProject(tx,context.observation);
     const participantRows = await tx.projectParticipatingCompany.findMany({
       where: {
+        ...(bankProject?{projectId:bankProject}:{}),
         companyEntityId: context.observation.holderCompanyEntityId,
         effectiveFrom: { lte: context.execution.occurredAt },
         OR: [
@@ -1057,9 +1061,7 @@ export class FundExecutionSelectionOptionsService {
   private async loadUnclaimedObservations(
     db: PrismaService | FundExecutionTransaction
   ): Promise<readonly ObservationCandidate[]> {
-    const claims = await db.bankTransactionClaim.findMany({
-      select: { observationId: true }
-    });
+    const claims = [...await db.companyTransferBankClaim.findMany({select:{observationId:true}}),...await db.contractBankEventClaim.findMany({select:{observationId:true}}),...await db.bankTransactionClaim.findMany({select:{observationId:true}}),...await db.contractProxyBankClaim.findMany({select:{observationId:true}})];
     const observations = await db.verifiedBankTransactionObservation.findMany({
       where: { id: { notIn: claims.map(({ observationId }) => observationId) } },
       orderBy: [{ occurredAt: "desc" }, { id: "asc" }],

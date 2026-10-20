@@ -1,4 +1,8 @@
+import type {CompanyTransferBalance} from "../company-transfer/company-transfer-summary";
 import {
+  CONTRACT_RELATIONSHIP_LABELS,
+  operatingContractRelationship,
+  type ContractRelationship,
   EVIDENCE_LEVELS,
   NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE,
   OPERATING_FACT_KIND_LABELS,
@@ -45,11 +49,14 @@ export interface ProjectionFactInput {
   sourceSnapshot: unknown;
   entryKind: string;
   adjustsFactId?: string | null;
+  debtorSubject?: { kind: string; id: string } | null;
+  creditorSubject?: { kind: string; id: string } | null;
   subjectReferences?: Array<{ kind: string; id: string }>;
   impacts: ProjectionImpactInput[];
 }
 
 export interface ProjectionFilters {
+  contractRelationship?: ContractRelationship;
   constructionEnterpriseId?: string;
   companyEntityId?: string;
   counterpartyId?: string;
@@ -146,6 +153,7 @@ export interface ReduceOperatingProjectionInput {
 }
 
 export interface ProjectionAggregateSeed {
+  relationshipTotals?: Array<[string, bigint]>;
   totals: Partial<Record<OperatingImpactKind, bigint>>;
   evidence: Record<EvidenceLevel, { factCount: number; amountCents: bigint }>;
   sourceGroups: Array<{
@@ -184,6 +192,7 @@ export interface OperatingProjectionDetail {
   sourceBusinessCode: string;
   factKind: string;
   factKindLabel: string;
+  contractRelationshipLabel?: string;
   evidenceLevel: string;
   occurredAt: string;
   confirmedAt: string;
@@ -202,6 +211,7 @@ export interface OperatingProjectionDetail {
 }
 
 export interface OperatingProjectionReadModel {
+  companyTransferBalances?:CompanyTransferBalance[];
   schema: "operating_projection/V1";
   scope: ProjectionScopeInput;
   asOf: {
@@ -217,9 +227,11 @@ export interface OperatingProjectionReadModel {
     notices: string[];
   };
   commitments: { contractCommitmentCents: string };
+  relationshipTotals?: Array<{ relationship: ContractRelationship; label: string; contractCommitmentCents: string; confirmedCostCents: string; receivableCents: string; payableCents: string; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
   operating: {
     confirmedIncomeCents: string;
     confirmedCostCents: string;
+    internalReceivableCents?: string;
     receivableCents: string;
     payableCents: string;
   };
@@ -306,6 +318,7 @@ export interface OperatingProjectionReadModel {
 }
 
 export interface OperatingProjectionAggregateView {
+  companyTransferBalances?:CompanyTransferBalance[];
   scope: { label: string; projectCount: number };
   asOf: {
     businessDate: string;
@@ -318,6 +331,7 @@ export interface OperatingProjectionAggregateView {
     notices: string[];
   };
   commitments: OperatingProjectionReadModel["commitments"];
+  relationshipTotals?: OperatingProjectionReadModel["relationshipTotals"];
   operating: OperatingProjectionReadModel["operating"];
   actualFunds: OperatingProjectionReadModel["actualFunds"];
   restrictions: Omit<OperatingProjectionReadModel["restrictions"], "relationshipCompleteness"> & {
@@ -343,6 +357,7 @@ export interface OperatingProjectionDetailedView extends OperatingProjectionAggr
     sourceTypeLabel: string;
     sourceBusinessCode: string;
     factKindLabel: string;
+    contractRelationshipLabel?: string;
     evidenceLevel: string | null;
     occurredAt: string | null;
     confirmedAt: string | null;
@@ -399,6 +414,7 @@ export function toOperatingProjectionAggregate(
     sources.set(row.sourceType, current);
   }
   return {
+    companyTransferBalances:projection.companyTransferBalances,
     scope: {
       label: projection.scope.kind === "project"
         ? "单项目口径"
@@ -418,6 +434,7 @@ export function toOperatingProjectionAggregate(
       notices: projection.integrity.notices
     },
     commitments: projection.commitments,
+    relationshipTotals: projection.relationshipTotals,
     operating: projection.operating,
     actualFunds: projection.actualFunds,
     restrictions: {
@@ -473,6 +490,7 @@ export function toOperatingProjectionDetailedView(
         sourceTypeLabel: detail.sourceTypeLabel,
         sourceBusinessCode: detail.sourceBusinessCode,
         factKindLabel: detail.factKindLabel,
+        contractRelationshipLabel: detail.contractRelationshipLabel,
         evidenceLevel: detail.evidenceLevel,
         occurredAt: detail.occurredAt,
         confirmedAt: detail.confirmedAt,
@@ -549,6 +567,7 @@ export function toOperatingProjectionPublicDetail(
     sourceTypeLabel: sourceTypeLabel(fact.sourceType),
     sourceBusinessCode: fact.sourceBusinessCode,
     factKindLabel: factKindLabel(fact.factKind),
+    contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)],
     evidenceLevel: fact.evidenceLevel,
     occurredAt: fact.occurredAt,
     confirmedAt: fact.confirmedAt,
@@ -595,11 +614,14 @@ const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   owner_settlement: "业主结算",
   project_upstream_settlement: "对上结算",
   project_upstream_fund_fact: "对上资金事实",
-  project_affiliate_contract_fact: "施工企业—我方合同事实",
+  project_affiliate_contract_fact: "表外合同（施工企业签约）",
   project_affiliate_settlement_fact: "施工企业—我方结算事实",
   project_affiliate_payment_fact: "施工企业—我方付款事实",
   project_proxy_payment: "项目代付",
   contract_version: "下游合同",
+  contract_proxy_execution: "受控代付及往来归还",
+  company_transfer_event: "公司互转资金",
+  contract_economic_review: "履约范围复核调整",
   settlement: "下游结算",
   payment_execution: "合同付款执行",
   expense_claim_approval: "费用报销审批",
@@ -616,6 +638,7 @@ const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   wage_statement_version: "工资承担事实",
   fund_movement: "项目资金调度",
   fund_execution: "资金执行",
+  fund_execution_counterparty:"银行到账施工企业资金视角",
   clearing_event_version: "施工企业清分",
   [NECESSARY_EXPENSE_RESERVE_SOURCE_TYPE]: "必要费用准备",
   [PROJECT_FUND_DISPUTE_SOURCE_TYPE]: "一般争议资金",
@@ -1136,13 +1159,17 @@ function matchesFilters(
   companyEntityVersionIds: string[] | undefined
 ): boolean {
   if (!filters) return true;
+  // 应付的分账归属是原债务人；影响分录的收款人字段不能用来选公司。
+  const ownershipImpact = ["payable_increase", "payable_decrease"].includes(impact.impactKind) && fact.debtorSubject
+    ? { ...impact, subjectKind: fact.debtorSubject.kind, subjectId: fact.debtorSubject.id } : impact;
+  if (filters.contractRelationship && operatingContractRelationship(fact.sourceType, fact.sourceSnapshot) !== filters.contractRelationship) return false;
   if (filters.sourceType && fact.sourceType !== filters.sourceType) return false;
   if (filters.costCategoryCode && impact.costCategoryCode !== filters.costCategoryCode) return false;
   if (filters.constructionEnterpriseId && ![
     filters.constructionEnterpriseId,
     ...(constructionEnterpriseSubjectIds ?? [])
   ].some((enterpriseSubjectId) =>
-    factMatchesSubject(fact, impact, "construction_enterprise", enterpriseSubjectId)
+    factMatchesSubject(fact, ownershipImpact, "construction_enterprise", enterpriseSubjectId)
   )) {
     return false;
   }
@@ -1150,9 +1177,17 @@ function matchesFilters(
     filters.companyEntityId,
     ...(companyEntityVersionIds ?? [])
   ].some((companySubjectId) =>
-    factMatchesSubject(fact, impact, "participating_company", companySubjectId)
+    factMatchesSubject(fact, ownershipImpact, "participating_company", companySubjectId) ||
+    (["inter_subject_balance_increase","inter_subject_balance_decrease"].includes(impact.impactKind) && fact.debtorSubject?.kind === "participating_company" && fact.debtorSubject.id === companySubjectId)
   )) {
     return false;
+  }
+  if (filters.companyEntityId) {
+    const ids = [filters.companyEntityId, ...(companyEntityVersionIds ?? [])];
+    if (["payable_increase", "payable_decrease"].includes(impact.impactKind) && fact.debtorSubject &&
+      (fact.debtorSubject.kind !== "participating_company" || !ids.includes(fact.debtorSubject.id))) return false;
+    if (["receivable_increase", "receivable_decrease"].includes(impact.impactKind) && impact.subjectKind &&
+      (impact.subjectKind !== "participating_company" || !ids.includes(impact.subjectId ?? ""))) return false;
   }
   if (filters.counterpartyId &&
       !factMatchesSubject(fact, impact, "downstream_counterparty", filters.counterpartyId) &&
@@ -1239,6 +1274,7 @@ type StreamingFactState = {
  * coordinates needed for fail-closed validation survive between pages.
  */
 export class OperatingProjectionStreamAccumulator {
+  private readonly relationshipTotals = new Map<string, bigint>();
   private readonly totals = new Map<OperatingImpactKind, bigint>();
   private readonly evidence = {
     A: { factCount: 0, amountCents: 0n },
@@ -1293,8 +1329,9 @@ export class OperatingProjectionStreamAccumulator {
         this.context.scope.filters?.companyEntityId ||
         this.context.scope.filters?.counterpartyId
       );
-      const sourceSelected = !this.context.scope.filters?.sourceType ||
-        this.context.scope.filters.sourceType === fact.sourceType;
+      const sourceSelected = (!this.context.scope.filters?.sourceType ||
+        this.context.scope.filters.sourceType === fact.sourceType) && (!this.context.scope.filters?.contractRelationship ||
+          operatingContractRelationship(fact.sourceType, fact.sourceSnapshot) === this.context.scope.filters.contractRelationship);
       const integrityFilters = subjectOnlyFilters(this.context.scope.filters);
       const integritySelected = Object.keys(integrityFilters).length === 0 ||
         projectionFactMatchesFilters(
@@ -1377,6 +1414,7 @@ export class OperatingProjectionStreamAccumulator {
       if (projectionSigned === null) continue;
       const kind = impact.impactKind as OperatingImpactKind;
       this.totals.set(kind, (this.totals.get(kind) ?? 0n) + projectionSigned);
+      foldRelationship(this.relationshipTotals, fact, kind, projectionSigned, this.context.scope.filters?.companyEntityId);
       state.matchingSignedImpactCents += projectionSigned;
       if (CASH_IMPACT_KINDS.has(kind)) {
         state.cashNetCents += projectionSigned;
@@ -1448,6 +1486,7 @@ export class OperatingProjectionStreamAccumulator {
     return {
       aggregateSeed: {
         totals: Object.fromEntries(this.totals),
+        relationshipTotals: [...this.relationshipTotals],
         evidence: this.evidence,
         sourceGroups: Array.from(this.sourceGroups, ([sourceType, group]) => ({
           sourceType,
@@ -1615,6 +1654,7 @@ export function reduceOperatingProjection(
   ];
   let moneyComplete = (input.aggregateSeed?.moneyComplete ?? true) &&
     !restrictionIntegrity.conflict;
+  const relationshipTotals = new Map<string, bigint>(input.aggregateSeed?.relationshipTotals ?? []);
   const totals = new Map<OperatingImpactKind, bigint>(
     Object.entries(input.aggregateSeed?.totals ?? {}) as Array<[OperatingImpactKind, bigint]>
   );
@@ -1718,6 +1758,7 @@ export function reduceOperatingProjection(
       if (projectionSigned !== null) {
         const kind = impact.impactKind as OperatingImpactKind;
         totals.set(kind, (totals.get(kind) ?? 0n) + projectionSigned);
+        foldRelationship(relationshipTotals, fact, kind, projectionSigned, input.scope.filters?.companyEntityId);
         if (CASH_IMPACT_KINDS.has(kind)) {
           cashNetByFact.set(fact.id, (cashNetByFact.get(fact.id) ?? 0n) + projectionSigned);
           const holder = restrictionIntegrity.holderByImpactId.get(impact.id);
@@ -1743,6 +1784,7 @@ export function reduceOperatingProjection(
         sourceBusinessCode: fact.sourceBusinessCode,
         factKind: fact.factKind,
         factKindLabel: factKindLabel(fact.factKind),
+        contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)],
         evidenceLevel: fact.evidenceLevel,
         occurredAt: fact.occurredAt,
         confirmedAt: fact.confirmedAt,
@@ -1768,7 +1810,8 @@ export function reduceOperatingProjection(
   const contractCommitment = total("contract_commitment_reference");
   const confirmedIncome = total("confirmed_income");
   const confirmedCost = total("confirmed_cost");
-  const receivable = sumKinds("receivable_increase", "receivable_decrease");
+  const internalReceivable = (relationshipTotals.get("upward:receivable_increase") ?? 0n) + (relationshipTotals.get("upward:receivable_decrease") ?? 0n);
+  const receivable = sumKinds("receivable_increase", "receivable_decrease") - (input.scope.kind === "company" || input.scope.filters?.companyEntityId ? 0n : internalReceivable);
   const payable = sumKinds("payable_increase", "payable_decrease");
   const constructionEnterpriseFunds = sumKinds(
     "construction_enterprise_funds_increase",
@@ -1993,6 +2036,7 @@ export function reduceOperatingProjection(
     operating: {
       confirmedIncomeCents: apiMoney(confirmedIncome),
       confirmedCostCents: apiMoney(confirmedCost),
+      internalReceivableCents: apiMoney(internalReceivable),
       receivableCents: apiMoney(receivable),
       payableCents: apiMoney(payable)
     },
@@ -2043,6 +2087,16 @@ export function reduceOperatingProjection(
       gapFactCount: evidence.C.factCount,
       gapAmountCents: apiMoney(evidence.C.amountCents)
     },
+    relationshipTotals: Object.entries(CONTRACT_RELATIONSHIP_LABELS).map(([relationship, label]) => ({
+      relationship: relationship as ContractRelationship, label,
+      contractCommitmentCents: (relationshipTotals.get(`${relationship}:contract_commitment_reference`) ?? 0n).toString(),
+      confirmedCostCents: (relationshipTotals.get(`${relationship}:confirmed_cost`) ?? 0n).toString(),
+      receivableCents: ((relationshipTotals.get(`${relationship}:receivable_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:receivable_decrease`) ?? 0n)).toString(),
+      payableCents: ((relationshipTotals.get(`${relationship}:payable_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:payable_decrease`) ?? 0n)).toString(),
+      interSubjectReceivableCents: (relationshipTotals.get(`${relationship}:inter_subject_receivable`) ?? 0n).toString(),
+      interSubjectPayableCents: (relationshipTotals.get(`${relationship}:inter_subject_payable`) ?? 0n).toString(),
+      interSubjectBalanceCents: ((relationshipTotals.get(`${relationship}:inter_subject_balance_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:inter_subject_balance_decrease`) ?? 0n)).toString()
+    })),
     impactTotalsByKind,
     clearingRiskDetails,
     details: details.sort((left, right) =>
@@ -2075,4 +2129,15 @@ export function reduceOperatingProjection(
         left.sourceReferenceId.localeCompare(right.sourceReferenceId)
       )
   };
+}
+
+function foldRelationship(totals: Map<string, bigint>, fact: ProjectionFactInput, kind: string, amount: bigint, companyId?: string) {
+  if (!["contract_commitment_reference", "confirmed_cost", "receivable_increase", "receivable_decrease", "payable_increase", "payable_decrease", "inter_subject_balance_increase", "inter_subject_balance_decrease"].includes(kind)) return;
+  const key = `${operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)}:${kind}`;
+  totals.set(key, (totals.get(key) ?? 0n) + amount);
+  if(kind.startsWith("inter_subject_balance_")){
+    const prefix=operatingContractRelationship(fact.sourceType,fact.sourceSnapshot);
+    const side=companyId && fact.debtorSubject?.kind==="participating_company" && fact.debtorSubject.id===companyId?"inter_subject_payable":"inter_subject_receivable";
+    totals.set(`${prefix}:${side}`,(totals.get(`${prefix}:${side}`)??0n)+amount);
+  }
 }

@@ -838,7 +838,7 @@ describe("FundMovementService", () => {
   it.each([
     ["company_advance_recovery", "company_advance"],
     ["temporary_project_fund_return", "temporary_project_fund_use"]
-  ] as const)("keeps repayment of existing %s usable for an inactive historical company", async (kind, entryKind) => {
+  ] as const)("requires leader-approved company transfer for existing %s even for an inactive historical company", async (kind, entryKind) => {
     const { service, tx } = createHarness();
     tx.companyEntity.findUnique.mockImplementation(async ({ where }) => where.isActive ? null : { id: where.id, isActive: false });
     tx.fundMovementRelationshipEntry.findUnique.mockResolvedValue({
@@ -854,8 +854,8 @@ describe("FundMovementService", () => {
         { ...original.legs[0], direction: "increase" },
         { ...original.legs[1], projectId: "project-source", direction: "decrease" }
       ]
-    }))).resolves.toMatchObject({ status: "draft" });
-    expect(tx.companyEntity.findUnique).toHaveBeenCalledWith({ where: { id: "company-source" }, select: { id: true } });
+    }))).rejects.toThrow("公司间互转请从公司互转台账发起");
+    expect(tx.fundMovement.create).not.toHaveBeenCalled();
   });
 
   it("rejects a client-supplied #109 profit authorization before opening a transaction", async () => {
@@ -936,7 +936,7 @@ describe("FundMovementService", () => {
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "fund_movement.create" }));
   });
 
-  it("rejects a company advance that is labelled as project-funded", async () => {
+  it("rejects the legacy company-to-company advance entry before it can bypass leader approval", async () => {
     const { service, prisma } = createHarness();
     await expect(service.create("actor-1", {
       ...crossProjectInput(),
@@ -953,7 +953,7 @@ describe("FundMovementService", () => {
         projectId: "project-source",
         direction: index === 0 ? "decrease" : "increase"
       }))
-    })).rejects.toThrow("公司垫资必须全部由公司垫资组成");
+    })).rejects.toThrow("公司间互转请从公司互转台账发起");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -1192,8 +1192,8 @@ describe("FundMovementService", () => {
     expect(harness.ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
   });
 
-  it("increments the aggregate revision only after a complete confirmation", async () => {
-    const { service, tx, ledger, funding } = createHarness(["finance_director"]);
+  it("rejects legacy company transfer confirmation with zero revisions or operating facts", async () => {
+    const { service, tx, ledger } = createHarness(["finance_director"]);
     tx.fundMovement.findUniqueOrThrow.mockResolvedValueOnce({
       id: "movement-1",
       kind: "same_project_company_transfer",
@@ -1297,22 +1297,9 @@ describe("FundMovementService", () => {
       movementId: "movement-1",
       expectedRevision: 2,
       idempotencyKey: CONFIRM_KEY
-    })).resolves.toEqual({ movementId: "movement-1", status: "confirmed", revision: 3 });
-    expect(funding.lockFundingContext).toHaveBeenCalledWith(tx, "project-source");
-    expect(funding.assertPersistedProjectFundingLedgerCoverage).toHaveBeenCalledWith(tx, "project-source");
-    expect(ledger.appendConfirmedSourceInTransaction).toHaveBeenCalledTimes(2);
-    const factInputs = ledger.appendConfirmedSourceInTransaction.mock.calls.map(([, input]) => input as {
-      impacts: Array<{ sourceImpactKey: string; direction: string; amountCents: bigint }>;
-    });
-    expect(factInputs[0].impacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sourceImpactKey: "project_funds", direction: "decrease", amountCents: 100n })
-    ]));
-    expect(factInputs[1].impacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sourceImpactKey: "project_funds", direction: "increase", amountCents: 100n })
-    ]));
-    expect(tx.fundMovement.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ revision: { increment: 1 }, status: "confirmed" })
-    }));
+    })).rejects.toThrow("公司间互转请从公司互转台账发起");
+    expect(ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
+    expect(tx.fundMovement.update).not.toHaveBeenCalled();
   });
 
   it("fails closed when the canonical payer or payee cannot be represented in a leg project", async () => {

@@ -73,6 +73,17 @@ describe("independent approvals record actual signatures", () => {
   });
 });
 
+it("keeps a historical finance continuation operable without inventing the missing contract signature", async () => {
+  const db = database();
+  await recordIndependentApproval(db.tx as never, { ...base, stageIndex: 1, nodes,
+    actorUserId: "contract", roleKey: "contract_director", nodeName: nodes[1].name,
+    preserveHistoricalContinuation: true });
+  expect(db.actions).toHaveLength(1);
+  expect(db.actions[0]).toMatchObject({ actorUserId: "contract", approvedRoleKey: "contract_director" });
+  expect(db.getInstance().status).toBe("approved");
+  expect(() => finalApprovalEvidence("approved", nodes, db.actions as never)).toThrow("冻结节点不一致");
+});
+
 describe("source approval invalidation", () => {
   it.each(["spot_procurement_receipt", "no_invoice_confirmation", "invoice_exception_confirmation"])("keeps signed history but blocks formal output after %s is reversed", async businessType => {
     const db = database();

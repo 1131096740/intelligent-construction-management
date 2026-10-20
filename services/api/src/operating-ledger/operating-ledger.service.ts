@@ -1,3 +1,4 @@
+import { repaymentOwnershipDate } from "../company-transfer/company-transfer-ownership";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -528,12 +529,13 @@ export class OperatingLedgerService {
     if (!project.operatingLedgerEffectiveDate) {
       throw new BadRequestException("项目尚未启用经营账，不能执行一致性校验");
     }
-    const subjectSnapshot = await this.factSubjectSnapshot(tx, input);
+    const ownershipDate = input.sourceType === "company_transfer_event" ? await repaymentOwnershipDate(tx, input) : undefined;
+    const subjectSnapshot = await this.factSubjectSnapshot(tx, input, ownershipDate);
     const impactSnapshots = new Map<string, Prisma.InputJsonObject>();
     for (const impact of input.impacts) {
       impactSnapshots.set(
         impact.sourceImpactKey,
-        await this.impactSnapshotWithSubject(tx, input, impact)
+        await this.impactSnapshotWithSubject(tx, input, impact, ownershipDate)
       );
     }
     return {
@@ -556,6 +558,7 @@ export class OperatingLedgerService {
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
+    if (input.sourceType === "company_transfer_event") ownershipOccurredAt = await repaymentOwnershipDate(tx, input) ?? ownershipOccurredAt;
     const writeScope = await this.assertWriteScope(
       tx,
       input,
@@ -1286,12 +1289,6 @@ function validateImpactInput(impact: OperatingImpactInput) {
     impact.direction !== "notice"
   ) {
     throw new BadRequestException("资料依据提示必须使用notice方向");
-  }
-  if (
-    impact.impactKind === "contract_commitment_reference" &&
-    impact.direction !== "notice"
-  ) {
-    throw new BadRequestException("合同承诺引用必须使用notice方向");
   }
   if (
     ["confirmed_cost", "estimated_clearing_expense"].includes(impact.impactKind) &&

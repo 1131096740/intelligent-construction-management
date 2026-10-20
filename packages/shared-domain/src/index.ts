@@ -59,3 +59,6 @@ export * from "./operating-projection-export";
 export * from "./master-data";
 
 export * from "./general-procurement";
+
+export * from "./contract-relationship";
+export * from "./contract-relationship-ledger";

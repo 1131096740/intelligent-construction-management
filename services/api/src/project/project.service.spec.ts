@@ -1,3 +1,4 @@
+jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";

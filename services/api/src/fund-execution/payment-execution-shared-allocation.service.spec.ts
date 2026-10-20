@@ -107,7 +107,7 @@ describe("PaymentExecutionSharedAllocationService", () => {
           reauthorizedAt: new Date("2026-08-30T01:00:00.000Z")
         })
       },
-      bankTransactionClaim: {
+      contractProxyBankClaim:{findMany:jest.fn().mockResolvedValue([])}, bankTransactionClaim: {
         create: jest.fn().mockResolvedValue({ id: "claim-1" }),
         findUnique: jest.fn()
       },

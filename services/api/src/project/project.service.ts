@@ -1,3 +1,4 @@
+import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
 import { hasProjectBusiness, lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import {
@@ -1200,6 +1201,7 @@ export class ProjectService {
     }
 
     const requestFingerprint = upstreamFundRequestFingerprint({
+      bankObservationReference:input.bankObservationReference,
       projectId,
       actorUserId,
       factType,
@@ -1468,6 +1470,7 @@ export class ProjectService {
             : "pending_confirm";
         const created = await tx.projectUpstreamFundFact.create({
           data: {
+            bankObservationReference:input.bankObservationReference?.trim()||null,
             projectId,
             factType,
             entryKind,
@@ -1684,6 +1687,11 @@ export class ProjectService {
         await this.funding.lockFundingContext(tx, projectId);
       }
 
+      if(fact.factType==="affiliate_remittance_to_company"){
+        await acquireFileBusinessBindingTransactionLock(tx);
+        const bank=await requireContractBankEvent(tx,{projectId:fact.projectId,reference:fact.bankObservationReference??undefined,companyId:fact.companyEntityId!,amountCents:fact.amountCents,occurredAt:fact.occurredAt,direction:fact.effectDirection==="decrease"?"outflow":"inflow"});
+        await claimContractBankEvent(tx,bank.id,"project_upstream_fund_fact",fact.id,actorUserId);
+      }
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
         required: true
       });

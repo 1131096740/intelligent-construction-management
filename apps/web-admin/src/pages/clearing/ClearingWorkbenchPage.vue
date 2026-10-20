@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useRoute } from "vue-router";
 import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
 
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -55,7 +57,8 @@ const loading = ref(false);
 const submitting = ref(false);
 const errorMessage = ref("");
 const projects = ref<ProjectOptionReadModel[]>([]);
-const selectedProjectId = ref("");
+const route = useRoute();
+const selectedProjectId = ref(typeof route.query.projectId === "string" ? route.query.projectId : "");
 const capabilities = ref<ClearingCapabilities>({ ...emptyCapabilities });
 const cases = ref<ClearingCaseReadModel[]>([]);
 const authorityOptions = ref<import("../../api/clearing.api").AffiliateClearingAuthorityOption[]>([]);
@@ -624,6 +627,10 @@ function formatDate(value: string | null) {
 </script>
 
 <template>
+  <ContractRelationshipLedger
+    :project-id="selectedProjectId"
+    initial-section="settlements"
+  />
   <section class="clearing-workbench jg-responsive-detail">
     <header class="page-head">
       <div>
@@ -632,14 +639,34 @@ function formatDate(value: string | null) {
         <p>稳定事项与事件标识，版本只追加；正式确认只消费显式分配并投影到经营账。</p>
       </div>
       <t-space>
-        <t-button :loading="loading" variant="outline" @click="loadInitial">刷新</t-button>
-        <t-button v-if="capabilities.prepare" theme="primary" @click="openCaseCreate">新建清分事项</t-button>
+        <t-button
+          :loading="loading"
+          variant="outline"
+          @click="loadInitial"
+        >
+          刷新
+        </t-button>
+        <t-button
+          v-if="capabilities.prepare"
+          theme="primary"
+          @click="openCaseCreate"
+        >
+          新建清分事项
+        </t-button>
       </t-space>
     </header>
 
-    <t-alert v-if="errorMessage" theme="error" :close="false" :message="errorMessage" />
+    <t-alert
+      v-if="errorMessage"
+      theme="error"
+      :close="false"
+      :message="errorMessage"
+    />
 
-    <t-card class="panel" title="项目与清分事项">
+    <t-card
+      class="panel"
+      title="项目与清分事项"
+    >
       <div class="filters">
         <t-select
           v-model="selectedProjectId"
@@ -656,47 +683,150 @@ function formatDate(value: string | null) {
         empty="暂无清分事项"
         @row-click="openCase"
       >
-        <template #subject="{ row }">{{ displaySubject(row) }}</template>
+        <template #subject="{ row }">
+          {{ displaySubject(row) }}
+        </template>
       </t-table>
     </t-card>
 
-    <t-card v-if="detail" class="panel" :title="`事项：${displaySubject(detail)}`">
+    <t-card
+      v-if="detail"
+      class="panel"
+      :title="`事项：${displaySubject(detail)}`"
+    >
       <template #actions>
-        <t-button v-if="capabilities.prepare" theme="primary" @click="openEventCreate">新增事件草稿</t-button>
+        <t-button
+          v-if="capabilities.prepare"
+          theme="primary"
+          @click="openEventCreate"
+        >
+          新增事件草稿
+        </t-button>
       </template>
-      <t-descriptions bordered :column="2">
-        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="项目">{{ projectOptions.find((option) => option.value === detail?.projectId)?.label || "当前项目" }}</t-descriptions-item>
-        <t-descriptions-item v-if="!detail.sourceDiscriminator" label="施工企业档案">已按当前项目档案确认</t-descriptions-item>
-        <t-descriptions-item v-if="detail.sourceDiscriminator" label="权威依据">已按系统权威资料冻结</t-descriptions-item>
-        <t-descriptions-item v-if="detail.sourceDiscriminator" label="来源">{{ detail.sourceDiscriminator === "construction_enterprise_guarantee" ? "保证金义务" : "派驻工资" }}</t-descriptions-item>
-        <t-descriptions-item v-if="detail.sourceDiscriminator" label="覆盖方式">{{ detail.coverageKind === "ROLE_SUMMARY" ? "岗位汇总（不含人员）" : "人员明细（系统核验）" }}</t-descriptions-item>
-        <t-descriptions-item label="权威毛额（元）">{{ centsTextToYuanText(detail.authoritativeGrossCapCents) }}</t-descriptions-item>
-        <t-descriptions-item label="事项修订">{{ detail.revision }}</t-descriptions-item>
+      <t-descriptions
+        bordered
+        :column="2"
+      >
+        <t-descriptions-item
+          v-if="!detail.sourceDiscriminator"
+          label="项目"
+        >
+          {{ projectOptions.find((option) => option.value === detail?.projectId)?.label || "当前项目" }}
+        </t-descriptions-item>
+        <t-descriptions-item
+          v-if="!detail.sourceDiscriminator"
+          label="施工企业档案"
+        >
+          已按当前项目档案确认
+        </t-descriptions-item>
+        <t-descriptions-item
+          v-if="detail.sourceDiscriminator"
+          label="权威依据"
+        >
+          已按系统权威资料冻结
+        </t-descriptions-item>
+        <t-descriptions-item
+          v-if="detail.sourceDiscriminator"
+          label="来源"
+        >
+          {{ detail.sourceDiscriminator === "construction_enterprise_guarantee" ? "保证金义务" : "派驻工资" }}
+        </t-descriptions-item>
+        <t-descriptions-item
+          v-if="detail.sourceDiscriminator"
+          label="覆盖方式"
+        >
+          {{ detail.coverageKind === "ROLE_SUMMARY" ? "岗位汇总（不含人员）" : "人员明细（系统核验）" }}
+        </t-descriptions-item>
+        <t-descriptions-item label="权威毛额（元）">
+          {{ centsTextToYuanText(detail.authoritativeGrossCapCents) }}
+        </t-descriptions-item>
+        <t-descriptions-item label="事项修订">
+          {{ detail.revision }}
+        </t-descriptions-item>
       </t-descriptions>
-      <t-table row-key="id" :columns="eventColumns" :data="detail.events" empty="暂无清分事件">
-        <template #kind="{ row }">{{ clearingKindLabel(row.kind) }}</template>
-        <template #amount="{ row }">{{ currentAmount(row) }}</template>
+      <t-table
+        row-key="id"
+        :columns="eventColumns"
+        :data="detail.events"
+        empty="暂无清分事件"
+      >
+        <template #kind="{ row }">
+          {{ clearingKindLabel(row.kind) }}
+        </template>
+        <template #amount="{ row }">
+          {{ currentAmount(row) }}
+        </template>
         <template #actions="{ row }">
           <t-space break-line>
-            <t-link v-if="row.workflowStatus === 'draft' && capabilities.prepare" @click="openEventRevision(row)">修订</t-link>
-            <t-link v-if="clearingEventActions(row, capabilities).submit" @click="requestAction('submit', row)">提交</t-link>
-            <t-link v-if="clearingEventActions(row, capabilities).attest" @click="requestAction('attest', row)">实名核验</t-link>
-            <t-link v-if="clearingEventActions(row, capabilities).confirm" theme="primary" @click="requestAction('confirm', row)">确认</t-link>
-            <t-link v-if="clearingEventActions(row, capabilities).return" theme="warning" @click="requestAction('return', row)">退回</t-link>
-            <t-link v-if="clearingEventActions(row, capabilities).reopen" @click="requestAction('reopen', row)">重开</t-link>
+            <t-link
+              v-if="row.workflowStatus === 'draft' && capabilities.prepare"
+              @click="openEventRevision(row)"
+            >
+              修订
+            </t-link>
+            <t-link
+              v-if="clearingEventActions(row, capabilities).submit"
+              @click="requestAction('submit', row)"
+            >
+              提交
+            </t-link>
+            <t-link
+              v-if="clearingEventActions(row, capabilities).attest"
+              @click="requestAction('attest', row)"
+            >
+              实名核验
+            </t-link>
+            <t-link
+              v-if="clearingEventActions(row, capabilities).confirm"
+              theme="primary"
+              @click="requestAction('confirm', row)"
+            >
+              确认
+            </t-link>
+            <t-link
+              v-if="clearingEventActions(row, capabilities).return"
+              theme="warning"
+              @click="requestAction('return', row)"
+            >
+              退回
+            </t-link>
+            <t-link
+              v-if="clearingEventActions(row, capabilities).reopen"
+              @click="requestAction('reopen', row)"
+            >
+              重开
+            </t-link>
           </t-space>
         </template>
       </t-table>
     </t-card>
 
-    <t-card v-if="detail" class="panel" title="不可变版本时间线">
-      <t-table row-key="key" :columns="timelineColumns" :data="timeline" empty="暂无版本记录">
-        <template #createdAt="{ row }">{{ formatDate(row.createdAt) }}</template>
-        <template #confirmedAt="{ row }">{{ formatDate(row.confirmedAt) }}</template>
+    <t-card
+      v-if="detail"
+      class="panel"
+      title="不可变版本时间线"
+    >
+      <t-table
+        row-key="key"
+        :columns="timelineColumns"
+        :data="timeline"
+        empty="暂无版本记录"
+      >
+        <template #createdAt="{ row }">
+          {{ formatDate(row.createdAt) }}
+        </template>
+        <template #confirmedAt="{ row }">
+          {{ formatDate(row.confirmedAt) }}
+        </template>
       </t-table>
     </t-card>
 
-    <t-dialog v-model:visible="caseDialogVisible" header="新建清分事项" :confirm-btn="{ loading: submitting }" @confirm="saveCase">
+    <t-dialog
+      v-model:visible="caseDialogVisible"
+      header="新建清分事项"
+      :confirm-btn="{ loading: submitting }"
+      @confirm="saveCase"
+    >
       <t-form label-align="top">
         <BusinessEntryForm
           v-model="caseEntryPayload"
@@ -704,19 +834,32 @@ function formatDate(value: string | null) {
           :options-by-field="caseEntryOptions"
         />
         <template v-if="authorityCategoryValues.has(caseForm.category)">
-          <t-alert theme="info" :close="false" message="协议、人员或岗位、适用规则、金额上限和业务依据均由系统确认；这里只选择当前有效的业务选项。" />
+          <t-alert
+            theme="info"
+            :close="false"
+            message="协议、人员或岗位、适用规则、金额上限和业务依据均由系统确认；这里只选择当前有效的业务选项。"
+          />
         </template>
       </t-form>
     </t-dialog>
 
-    <t-dialog v-model:visible="eventDialogVisible" :header="editingEvent ? '修订清分事件草稿' : '新增清分事件草稿'" :confirm-btn="{ loading: submitting }" @confirm="saveEvent">
+    <t-dialog
+      v-model:visible="eventDialogVisible"
+      :header="editingEvent ? '修订清分事件草稿' : '新增清分事件草稿'"
+      :confirm-btn="{ loading: submitting }"
+      @confirm="saveEvent"
+    >
       <t-form label-align="top">
         <BusinessEntryForm
           v-model="eventEntryPayload"
           :definition="activeEventDefinition"
         />
         <template v-if="isAuthorityCase">
-          <t-alert theme="info" :close="false" message="正式金额、证据等级和业务依据均由系统权威事项确认；页面不接受自行填写的技术内容或内部关联编号。" />
+          <t-alert
+            theme="info"
+            :close="false"
+            message="正式金额、证据等级和业务依据均由系统权威事项确认；页面不接受自行填写的技术内容或内部关联编号。"
+          />
         </template>
       </t-form>
     </t-dialog>
@@ -729,7 +872,10 @@ function formatDate(value: string | null) {
       :require-reason="pendingAction === 'return' || pendingAction === 'reopen'"
       @confirm="executeAction"
     >
-      <div v-if="pendingAction === 'confirm'" class="confirmation-fields">
+      <div
+        v-if="pendingAction === 'confirm'"
+        class="confirmation-fields"
+      >
         <BusinessEntryForm
           v-model="confirmationEntryPayload"
           :definition="activeConfirmationDefinition"

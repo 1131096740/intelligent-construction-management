@@ -1,4 +1,6 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
+import { OperatingSourceReplayService, missingOperatingSourceReplayService, type OperatingSourceAppendPort } from "../operating-ledger/operating-source-replay.service";
+import { ConflictException, Injectable, Inject, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { loadSettlementLineOccupancy } from "../settlement/settlement-line-occupancy";
@@ -153,13 +155,20 @@ export interface ActivateContractVersionInput {
 
 @Injectable()
 export class ContractVersionActivationService {
+  constructor(@Optional() @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort = missingOperatingSourceReplayService()) {}
+
   async activate(tx: Prisma.TransactionClient, input: ActivateContractVersionInput) {
     const version = await tx.contractVersion.findUnique({ where: { id: input.contractVersionId } }) as ContractVersion | null;
     if (!version) throw new ConflictException("合同版本不存在，请刷新后重试");
     if (version.status !== "pending_archive_confirm") {
       throw new ConflictException("当前合同版本尚不能确认归档，请先完成用印并上传已签署合同归档文件");
     }
+    const sourceContract = await tx.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true } });
+    if (!sourceContract) throw new ConflictException("合同所属项目不存在");
+    await lockEconomicProject(tx,sourceContract.projectId);
     await this.lockContract(tx, version.contractId);
+    await assertEconomicContractReady(tx, sourceContract.projectId, `contract:${version.contractId}`, undefined, undefined, version.id);
 
     let predecessor: ContractVersion | null = null;
     if (version.changeType === "change" || version.changeType === "supplement") {
@@ -198,6 +207,19 @@ export class ContractVersionActivationService {
       where: { contractVersionId: version.id },
       data: { status: "effective" }
     });
+    const contract = await tx.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true } });
+    if (contract && predecessor) {
+      const project = await tx.project.findUnique({ where: { id: contract.projectId }, select: { operatingLedgerEffectiveDate: true } });
+      if (project?.operatingLedgerEffectiveDate) {
+        const previousCommitment = await tx.operatingFact.findFirst({ where: {
+          projectId: contract.projectId, sourceType: "contract_version", sourceBusinessId: predecessor.id, entryKind: "original"
+        }, select: { id: true } });
+        if (!previousCommitment) throw new ConflictException("前版合同承诺尚未完成经营来源核对，不能只登记本次差额；请先核对该合同的历史承诺基线");
+      }
+    }
+    if (contract) await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, {
+      projectId: contract.projectId, sourceType: "contract_version", sourceBusinessId: version.id
+    }, input.actorUserId);
     return { effectiveVersion, supersededVersionId: predecessor?.id ?? null };
   }
 

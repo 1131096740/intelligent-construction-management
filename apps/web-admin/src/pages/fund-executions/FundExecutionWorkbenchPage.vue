@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
+import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onMounted, reactive, ref } from "vue";
 import { MessagePlugin } from "tdesign-vue-next";
 
@@ -596,6 +597,8 @@ function statusTone(row: FundExecutionCaseListItem) {
     title="资金执行案件"
     description="银行流水先形成不可变资金执行事实和待办案件；正式归类只选择服务端签发的中文业务方案。"
   >
+    <ContractRelationshipLedger initial-section="payments" />
+
     <template #actions>
 <ApprovalDocumentDownload v-if="selectedCase" business-type="fund_execution_case" :business-id="selectedCase.caseRef" :refresh-key="selectedCase.approvalStatusLabel" />
       <t-button

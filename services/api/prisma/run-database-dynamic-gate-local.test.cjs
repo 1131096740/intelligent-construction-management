@@ -223,18 +223,18 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 422 pending tests as executable local coverage", () => {
+test("manifest derives all 470 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 71,
-    fullyPendingSuites: 60,
+    pendingFiles: 72,
+    fullyPendingSuites: 61,
     partiallyPendingSuites: 11,
-    pendingTests: 422,
-    coveredFiles: 71,
-    coveredTests: 422,
+    pendingTests: 470,
+    coveredFiles: 72,
+    coveredTests: 470,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -299,7 +299,7 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
-test("canonical manifest executes all 129 entry tests including the template workbench", () => {
+test("canonical manifest executes all 169 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -307,7 +307,7 @@ test("canonical manifest executes all 129 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 129,
+    pendingTests: 169,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -316,7 +316,7 @@ test("canonical manifest executes all 129 entry tests including the template wor
       },
       {
         path: "services/api/src/database/contract-business-entry-http.spec.ts",
-        pendingTests: 7,
+        pendingTests: 8,
         suiteStatus: "fully_pending"
       },
       {
@@ -341,7 +341,7 @@ test("canonical manifest executes all 129 entry tests including the template wor
       },
       {
         path: "services/api/src/database/draft-hard-deletion.pg.spec.ts",
-        pendingTests: 18,
+        pendingTests: 57,
         suiteStatus: "fully_pending"
       },
       {
@@ -620,7 +620,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=422/u
+    /inventory\.coveredTests=26，派生值=470/u
   );
 });
 
@@ -843,7 +843,9 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
       CONTRACT_DATABASE_URL: "postgresql://must-not-leak",
       NODE_OPTIONS: "--require must-not-leak",
       POSTGRES_PASSWORD: "must-not-leak",
-      DOCKER_CONTEXT: "must-not-leak"
+      DOCKER_CONTEXT: "must-not-leak",
+      LANG: "C",
+      LC_ALL: "C"
     },
     "/tmp/dynamic-gate",
     "unix:///var/run/docker.sock"
@@ -853,6 +855,7 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
     PATH: "/usr/bin",
     HOME: "/tmp/local-home",
     TMPDIR: "/tmp/dynamic-gate",
+    LANG: "C.UTF-8",
     NODE_ENV: "test",
     CI: "true",
     DOCKER_HOST: "unix:///var/run/docker.sock",
@@ -1073,4 +1076,12 @@ module.exports.capturePreparation = async () => {
 test("outer gate delegates preparation only to the remaining runner that always prepares itself", async () => {
   assert.equal((await artifactLifecycleFixture(false)).preparations, 1);
   assert.equal((await artifactLifecycleFixture(false, "remaining_dynamic_postgresql16")).preparations, 0);
+});
+
+test("contract finance remaining subgroup creates its own ledger write credential", () => {
+  const group = remainingGroups.find(({ id }) => id === "affiliate_company_contract");
+  assert.ok(group);
+  const env = createRemainingRuntimeEnvironment({ PATH: "/usr/bin", OPERATING_LEDGER_DB_WRITE_SECRET: "caller-secret" }, "/tmp/gate", "postgresql://localhost/synthetic", group);
+  assert.match(env.OPERATING_LEDGER_DB_WRITE_SECRET, /^[0-9a-f-]{36}$/u);
+  assert.notEqual(env.OPERATING_LEDGER_DB_WRITE_SECRET, "caller-secret");
 });

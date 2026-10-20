@@ -4380,7 +4380,7 @@ export class ContractTakeoverService {
     }
     if (facts.action === "delete_pristine_draft") {
       const [result] = await tx.$queryRaw<Array<{ deleted: boolean }>>(Prisma.sql`
-        SELECT public.jg_delete_unsubmitted_takeover(${takeover.id}, ${actorUserId}, ${expectedUpdatedAt}::timestamp) AS deleted
+        SELECT public.jg_delete_unsubmitted_takeover(${takeover.id}, ${actorUserId}, (${expectedUpdatedAt}::timestamptz AT TIME ZONE 'UTC')) AS deleted
       `);
       if (!result?.deleted) throw new ConflictException("接管草稿已有确认、审批或正式业务事实，不能删除，请刷新后核对");
       return { takeoverId: takeover.id, status: "deleted", action: facts.action, idempotent: false };

@@ -74,6 +74,7 @@ export interface SettlementDocumentInput {
   contractName: string;
   counterparty: string;
   companyEntityName: string;
+  contractRelationshipLabel?: string;
   amountCents: bigint;
   invoiceType: string;
   taxMode: string;
@@ -228,8 +229,8 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
   const infoRows = [
     ["项目名称", input.projectName, "", "结算编号", input.settlementCode, "", "结算期次", input.periodLabel, "", "", "", ""],
     ["合同名称", input.contractName, "", "合同编号", input.contractCode, "", "相对方", input.counterparty, "", "", "", ""],
-    ["我方主体", input.companyEntityName, "", "结算类型", input.isFinal ? "最终结算" : "过程结算", "", "生成日期", formatDate(input.generatedAt), "", "", "", ""],
-    ["状态", settlementStatusLabel(input.status), "", "", "", "", "", "", "", "", "", ""]
+    ["签约主体", input.companyEntityName, "", "结算类型", input.isFinal ? "最终结算" : "过程结算", "", "生成日期", formatDate(input.generatedAt), "", "", "", ""],
+    ["状态", settlementStatusLabel(input.status), "", "合同分类", input.contractRelationshipLabel ?? "待确认分类", "", "", "", "", "", "", ""]
   ];
   for (const values of infoRows) {
     sheet.addRow(values);
@@ -514,7 +515,7 @@ function drawSettlementPdfPage(
   const contentWidth = pageWidth - margin * 2;
   doc.fontSize(16).text(settlementDocumentTitle(input), margin, 18, { width: contentWidth, align: "center" });
   doc.fontSize(7.5).fillColor("#334155").text(
-    `结算编号：${page.settlementCode}    单据：${page.revisionLabel}`,
+    `结算编号：${page.settlementCode}    合同编号：${input.contractCode}    单据：${page.revisionLabel}`,
     margin,
     44,
     { width: contentWidth / 2, align: "left" }
@@ -549,7 +550,7 @@ function drawCompactInfoRows(
 ) {
   const widths = [58, 210, 58, 150, 58, contentWidth - 534];
   drawFixedRow(doc, x, y, ["项目", input.projectName, "合同", input.contractName, "乙方", input.counterparty], widths, 21, [0, 2, 4]);
-  drawFixedRow(doc, x, y + 21, ["我方主体", input.companyEntityName, "合同编号", input.contractCode, "结算期次", input.periodLabel], widths, 21, [0, 2, 4]);
+  drawFixedRow(doc, x, y + 21, ["签约主体", input.companyEntityName, "合同分类", input.contractRelationshipLabel ?? "待确认分类", "结算期次", input.periodLabel], widths, 21, [0, 2, 4]);
   drawFixedRow(
     doc,
     x,

@@ -12,6 +12,7 @@ export interface IndependentApprovalFacts {
   comment?: string | null;
   signedAt: Date | null;
   stageIndex?: number;
+  preserveHistoricalContinuation?: boolean;
   nodes?: Array<{ name: string; mode: "any"; roleKeys: string[] }>;
   form: {
     title: string;
@@ -35,10 +36,10 @@ export async function recordIndependentApproval(tx: Prisma.TransactionClient, in
     orderBy: [{ createdAt: "desc" }, { id: "desc" }]
   });
   if (!instance) {
-    if (stage !== 0) throw new ConflictException("前序审批签名证据缺失，请核查原审批记录");
+    if (stage !== 0 && !input.preserveHistoricalContinuation) throw new ConflictException("前序审批签名证据缺失，请核查原审批记录");
     instance = await tx.approvalInstance.create({ data: {
       businessType: input.businessType, businessId: input.businessId, flowType: "formal_approval_evidence",
-      status: "in_progress", currentNodeIndex: 0, frozenNodes: nodes,
+      status: "in_progress", currentNodeIndex: stage, frozenNodes: nodes,
       applicantUserId: input.applicantUserId
     } });
   }

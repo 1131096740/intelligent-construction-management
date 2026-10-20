@@ -1,3 +1,4 @@
+import { downstreamContractRelationship, contractRelationshipLabel } from "@jiangkong/shared-domain";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, type SettlementDraft } from "@prisma/client";
 import { PDFDocument } from "pdf-lib";
@@ -337,10 +338,11 @@ export class SettlementFrozenDocumentService {
         ? draftData.contractName.trim() : contract.name,
       contractTypeKey: contract.contractTypeKey,
       counterparty: counterpartyNames.length ? counterpartyNames.join("、") : contract.counterparty,
-      companyEntityName:
-        version.companyEntityNameSnapshot ??
-        contract.companyEntityName ??
-        "我方主体",
+      contractRelationshipLabel: contractRelationshipLabel(downstreamContractRelationship(version)),
+      signingSubjectType: version.signingSubjectType,
+      companyEntityName: version.signingSubjectType === "affiliate"
+        ? version.affiliateNameSnapshot?.trim() || "原施工企业签约主体未提供"
+        : version.companyEntityNameSnapshot ?? contract.companyEntityName ?? "我方主体",
       taxFactRevision: taxFacts.taxFactRevision,
       invoiceType: taxFacts.invoiceType,
       taxMode: taxFacts.taxMode!,

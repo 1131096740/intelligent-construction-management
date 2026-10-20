@@ -31,3 +31,23 @@ describe("formal PDF source validity", () => {
     expect(tx.fundExecutionCase.findFirstOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { caseKey: "case", approvalInstanceId: "approval-current" } }));
   });
 });
+
+
+describe("new main approval PDF coverage", () => {
+  it.each([
+    ["company_transfer", "companyTransfer", "approved"],
+    ["contract_economic_review", "contractEconomicReview", "confirmed"],
+    ["contract_bank_verification", "contractBankVerificationRequest", "confirmed"],
+    ["contract_proxy_execution", "contractProxyExecution", "confirmed"],
+    ["upward_contract_amount_revision", "upwardContractAmountRevision", "confirmed"],
+    ["upward_receipt_match", "upwardReceiptMatch", "confirmed"]
+  ])("requires current final source and frozen form for %s", async (businessType, model, status) => {
+    const read = jest.fn().mockResolvedValue({ status });
+    const tx = { [model]: { findUnique: read } };
+    await expect(additionalApprovalFacts(tx as never, businessType, "source", logs)).resolves.toEqual(form);
+    read.mockResolvedValue({ status: "returned" });
+    await expect(additionalApprovalFacts(tx as never, businessType, "source", logs)).rejects.toThrow("已失效");
+    read.mockResolvedValue({ status });
+    await expect(additionalApprovalFacts(tx as never, businessType, "source", [])).rejects.toThrow("快照");
+  });
+});

@@ -1,3 +1,4 @@
+import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
   Injectable,
@@ -993,6 +994,7 @@ export class ContractReadService {
     });
     const rows = ledger.rows.map((row) => ({
       contractNo: row.contractNo,
+      contractRelationshipLabel: "contractRelationshipLabel" in row ? row.contractRelationshipLabel : "待确认分类",
       name: row.name,
       project: row.project,
       counterparty: row.counterparty,
@@ -1011,6 +1013,7 @@ export class ContractReadService {
       columns: [
         { header: "合同编号", key: "contractNo", width: 20 },
         { header: "合同名称", key: "name", width: 28 },
+        { header: "合同分类", key: "contractRelationshipLabel", width: 24 },
         { header: "项目", key: "project", width: 24 },
         { header: "相对方", key: "counterparty", width: 24 },
         { header: "合同金额", key: "amount", width: 18 },
@@ -1594,6 +1597,7 @@ export class ContractReadService {
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
         { label: "当前版本", value: `合同 v${version.versionNo}` },
+        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version)] },
         { label: "付款条款", value: `v${terms.versionNo} ${this.termsStatusLabel(terms.status)}` },
         { label: "责任部门", value: "合同部" },
         { label: "当前处理人", value: this.currentOwnerLabel(version.status) },
@@ -3260,7 +3264,7 @@ export class ContractReadService {
     version: {
       id: string; status: string; versionNo: number; amountCents: bigint;
       amountLimitType?: string | null; pricingNature?: string | null;
-    },
+    } & ContractSigningIdentity,
     termsVersion?: { versionNo: number } | null,
     project?: { name: string } | null,
     lifecycle: Record<string, unknown> = {}
@@ -3271,6 +3275,7 @@ export class ContractReadService {
     return {
       id: contract.code ?? contract.id,
       contractId: contract.id,
+      contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version)],
       contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
       name: contract.name,
       project: project?.name ?? contract.projectId,

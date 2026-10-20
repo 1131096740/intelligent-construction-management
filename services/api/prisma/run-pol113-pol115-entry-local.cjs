@@ -71,6 +71,7 @@ function runDedicatedDatabase({ id, database, flags, spec }) {
       ...process.env,
       DOCKER_HOST: endpoint,
       NODE_ENV: "test",
+      OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(),
       FILE_STORAGE_DRIVER: "local",
       FILE_STORAGE_ROOT: files,
       XDG_CACHE_HOME: cache,

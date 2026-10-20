@@ -1,3 +1,4 @@
+import {readLegacyTransferDebt,transferRepaymentUsage} from "../company-transfer/company-transfer-legacy";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -315,10 +316,12 @@ export class FundMovementService {
         createdAt: true,
         submittedAt: true,
         confirmedAt: true,
+        relationshipEntries:{where:{status:"confirmed",direction:"increase",adjustsEntryId:null},select:{id:true,debtorCompanyEntityId:true,creditorCompanyEntityId:true}},
         legs: { select: { id: true, legNo: true, role: true, projectId: true, operatingFactId: true } }
       }
     });
-    return rows.map((row) => ({
+    return Promise.all(rows.map(async (row) => ({
+      repaymentBalances:await this.repaymentBalances(row.relationshipEntries ?? []),
       ...row,
       paymentAmountCents: row.paymentAmountCents.toString(),
       projectFundUsedCents: row.projectFundUsedCents.toString(),
@@ -326,7 +329,7 @@ export class FundMovementService {
       createdAt: row.createdAt.toISOString(),
       submittedAt: row.submittedAt?.toISOString() ?? null,
       confirmedAt: row.confirmedAt?.toISOString() ?? null
-    }));
+    })));
   }
 
   async get(actorUserId: string, movementId: string) {
@@ -339,10 +342,15 @@ export class FundMovementService {
       }
     });
     if (!row) throw new NotFoundException("资金移动不存在");
-    return this.readModel(row);
+    return { ...this.readModel(row), repaymentBalances: await this.repaymentBalances(row.relationshipEntries.filter(r => r.status === "confirmed" && r.direction === "increase" && !r.adjustsEntryId)) };
+  }
+
+  private async repaymentBalances(rows: Array<{id:string;debtorCompanyEntityId:string;creditorCompanyEntityId:string}>) {
+    return await Promise.all(rows.filter(r=>r.debtorCompanyEntityId!==r.creditorCompanyEntityId).map(async r=>{const ref={originalFundMovementRelationshipId:r.id},debt=await readLegacyTransferDebt(this.prisma,ref),usage=await transferRepaymentUsage(this.prisma,ref);return {originalId:r.id,remainingCents:((debt?.remainingCents??0n)-usage.received).toString(),availableCents:((debt?.remainingCents??0n)-usage.reserved).toString()};}));
   }
 
   async create(actorUserId: string, input: CreateFundMovementInput) {
+    if (["same_project_company_transfer","temporary_project_fund_use","temporary_project_fund_return","company_advance","company_advance_recovery"].includes(input.kind) && input.sourceCompanyEntityId !== input.beneficiaryCompanyEntityId) throw new BadRequestException("公司间互转请从公司互转台账发起，须经董事长或总经理终审并认领两侧银行流水");
     await this.assertGlobalFinanceWriter(actorUserId);
     const idempotencyKey = requiredUuid(input.idempotencyKey);
     const sourceProjectId = requiredText(input.sourceProjectId, "来源项目不能为空");
@@ -965,6 +973,7 @@ export class FundMovementService {
       ) {
         throw new ForbiddenException("创建人和提交人不能确认自己的资金移动");
       }
+      if (["same_project_company_transfer","temporary_project_fund_use","temporary_project_fund_return","company_advance","company_advance_recovery"].includes(movementScope.kind) && movementScope.sourceCompanyEntityId !== movementScope.beneficiaryCompanyEntityId) throw new BadRequestException("公司间互转请从公司互转台账发起，须经领导终审并核验两侧银行流水");
       assertFundMovementPurpose({
         kind: movement.kind,
         sourceProjectId: movement.sourceProjectId,

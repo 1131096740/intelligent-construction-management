@@ -98,6 +98,10 @@ export class PaymentExecutionOperatingSourceAdapter
       requiredJsonText(source, "approvedPayerType", "付款执行"),
       requiredJsonText(source, "approvedPayerId", "付款执行")
     );
+    const debtor = payerSubject(
+      requiredJsonText(source, "debtorType", "付款执行"),
+      requiredJsonText(source, "debtorId", "付款执行")
+    );
     const actualPayer = payerSubject(
       requiredJsonText(source, "actualPayerType", "付款执行"),
       requiredJsonText(source, "actualPayerId", "付款执行")
@@ -135,7 +139,7 @@ export class PaymentExecutionOperatingSourceAdapter
       subject: actualPayer,
       description: "实际付款减少付款主体项目资金"
     });
-    if (!sameSubject(approvedPayer, actualPayer)) {
+    if (!sameSubject(debtor, actualPayer)) {
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:proxy`,
         sourceImpactKey: "inter_subject_proxy_payment",
@@ -145,7 +149,7 @@ export class PaymentExecutionOperatingSourceAdapter
         subjectRole: "actual_payer",
         subject: actualPayer,
         description: "实际付款主体代原债务主体付款形成主体间往来",
-        impactSnapshot: sourceJson({ approvedPayer, actualPayer })
+        impactSnapshot: sourceJson({ debtor, approvedPayer, actualPayer })
       });
     }
     return {
@@ -165,7 +169,7 @@ export class PaymentExecutionOperatingSourceAdapter
         "付款执行"
       ),
       factKind: "downstream_payment",
-      operatingLevel: sameSubject(approvedPayer, actualPayer)
+      operatingLevel: sameSubject(debtor, actualPayer)
         ? "project"
         : "inter_subject",
       evidenceLevel: "A",
@@ -189,7 +193,7 @@ export class PaymentExecutionOperatingSourceAdapter
         voucherFileId: requiredJsonText(source, "voucherFileId", "付款执行")
       }),
       subjects: {
-        debtor: approvedPayer,
+        debtor,
         approvedPayer,
         actualPayer,
         payee
@@ -222,7 +226,7 @@ export class PaymentExecutionOperatingSourceAdapter
         }),
         tx.contractPartySnapshot.findFirst({
           where: {
-            contractVersionId: request.contractVersionId,
+    contractVersionId: request.contractVersionId,
             roleKey: "party_b"
           },
           select: { businessPartyVersionId: true, snapshot: true },
@@ -259,6 +263,7 @@ export class PaymentExecutionOperatingSourceAdapter
       assignmentId: version.affiliateAssignmentId,
       businessPartyVersionId: version.affiliateBusinessPartyVersionId
     });
+    const debtor = approvedPayerIdentity(version, { paymentSubjectType: version.signingSubjectType });
     const approvedPayer = approvedPayerIdentity(version, request);
     const actualPayer = actualPayerIdentity(
       row,
@@ -300,6 +305,9 @@ export class PaymentExecutionOperatingSourceAdapter
         paymentSourceType: request.sourceType,
         contractId: request.contractId,
         contractVersionId: request.contractVersionId,
+        signingSubjectType: version.signingSubjectType,
+        companyEntityVersionId: version.companyEntityVersionId,
+        companyEntityIdSnapshot: version.companyEntityIdSnapshot,
         settlementId: request.settlementId,
         approvedAmountCents: approvedAmountCents.toString(),
         amountCents: row.amountCents.toString(),
@@ -307,6 +315,8 @@ export class PaymentExecutionOperatingSourceAdapter
         confirmedAt: row.createdAt.toISOString(),
         executedByUserId: row.executedByUserId,
         voucherFileId: row.voucherFileId,
+        debtorType: debtor.type,
+        debtorId: debtor.id,
         approvedPayerType: approvedPayer.type,
         approvedPayerId: approvedPayer.id,
         actualPayerType: actualPayer.type,
@@ -362,14 +372,14 @@ function approvedPayerIdentity(
   },
   request: Pick<PaymentRequestRow, "paymentSubjectType">
 ): { type: "affiliate" | "our_company"; id: string } {
-  if (
-    request.paymentSubjectType === "affiliate" ||
-    version.signingSubjectType === "affiliate"
-  ) {
+  if (request.paymentSubjectType === "affiliate") {
     if (!version.affiliateBusinessPartyVersionId) {
       throw new BadRequestException("付款申请缺少施工企业付款主体快照");
     }
     return { type: "affiliate", id: version.affiliateBusinessPartyVersionId };
+  }
+  if (request.paymentSubjectType !== "our_company") {
+    throw new BadRequestException("付款申请的批准付款主体类型不明确，请先核对");
   }
   if (!version.companyEntityIdSnapshot || !version.companyEntityVersionId) {
     throw new BadRequestException("付款申请缺少我方公司付款主体快照");

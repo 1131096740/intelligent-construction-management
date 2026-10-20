@@ -11,6 +11,10 @@ describe("OperatingLedgerModule formal source registry", () => {
       [...OPERATING_SOURCE_TYPES].sort()
     );
     expect(OPERATING_SOURCE_TYPES).toEqual([
+      "contract_version",
+      "contract_economic_review",
+      "contract_proxy_execution", "company_transfer_event", "upward_receipt_match",
+      "fund_execution_counterparty",
       "project_upstream_settlement",
       "project_upstream_fund_fact",
       "project_affiliate_contract_fact",

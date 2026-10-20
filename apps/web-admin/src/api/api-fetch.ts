@@ -2,12 +2,13 @@ import { useAuthStore } from "../auth/auth.store";
 import { router } from "../routes";
 import { createApiFetch } from "./http";
 import { publishApiRequestFailure } from "./api-request-failure";
+import { createOperatingReadFetch } from "./operating-read-fetch";
 
 /**
  * 接入 Pinia 登录态与路由的默认鉴权 fetch。
  * 登录态失效（refresh 也救不回）时清理并跳登录页，带上 redirect 以便回跳。
  */
-export const apiFetch = createApiFetch({
+export const apiFetch = createOperatingReadFetch(createApiFetch({
   getAccessToken: () => useAuthStore().accessToken,
   refresh: () => useAuthStore().refreshTokens(),
   onUnauthorized: () => {
@@ -29,4 +30,4 @@ export const apiFetch = createApiFetch({
     }
   },
   onRequestFailure: publishApiRequestFailure
-});
+}), () => useAuthStore().user);

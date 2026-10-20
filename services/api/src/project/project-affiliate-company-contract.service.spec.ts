@@ -10,6 +10,8 @@ import { ProjectAffiliateCompanyContractService } from "./project-affiliate-comp
 const SHA256 = "a".repeat(64);
 const CONFIRMATION_ACTION_ID = "6dfbdece-803c-44c5-bf68-edbcf1529ce5";
 const RECORD_INPUT = {
+  amountNature: "fixed" as const,
+  amountCents: "800000",
   contractReference: "GL-2026-001",
   contractName: "项目挂靠管理协议",
   signedAt: "2026-07-20",
@@ -32,6 +34,8 @@ function recordRequestFingerprint(
         contractName: RECORD_INPUT.contractName,
         signedAt: "2026-07-20T00:00:00.000Z",
         rightsObligationsSummary: RECORD_INPUT.rightsObligationsSummary,
+        amountNature: RECORD_INPUT.amountNature,
+        amountCents: RECORD_INPUT.amountCents,
         companyEntityId: RECORD_INPUT.companyEntityId,
         fileId: RECORD_INPUT.fileId
       })
@@ -45,6 +49,7 @@ function pendingContract(overrides: Record<string, unknown> = {}) {
     projectId: "project-1",
     contractReference: "GL-2026-001",
     contractName: "项目挂靠管理协议",
+        amountNature: "uncapped" as const,
     signedAt: new Date("2026-07-20T00:00:00.000Z"),
     rightsObligationsSummary: "挂靠企业负责上游收款，我方按约承担项目管理义务。",
     affiliateAssignmentId: "assignment-1",
@@ -107,6 +112,7 @@ function recordHarness(
         }
       : options.lockedFile;
   const tx = {
+ upwardContractAmountRevision:{findMany:jest.fn().mockResolvedValue([])},
     project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
     ...roleTables(roleKey),
     projectAffiliateAssignment: {
@@ -244,6 +250,7 @@ function confirmHarness(
     }
   ];
   const tx = {
+ upwardContractAmountRevision:{findMany:jest.fn().mockResolvedValue([])},
     project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
     ...roleTables(options.roleKey ?? "contract_director"),
     projectAffiliateCompanyContract: {
@@ -311,6 +318,7 @@ describe("ProjectAffiliateCompanyContractService", () => {
     "derives list capabilities from role and pending status for %s",
     async (roleKey, expectedRootActions, expectedContractActions) => {
       const tx = {
+ upwardContractAmountRevision:{findMany:jest.fn().mockResolvedValue([])},
       $queryRaw: jest.fn().mockResolvedValue([]),
         project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
         ...roleTables(roleKey),
@@ -557,6 +565,7 @@ describe("ProjectAffiliateCompanyContractService", () => {
       service.record("project-1", "contract-staff-1", {
         contractReference: "GL-2026-001",
         contractName: "项目挂靠管理协议",
+        amountNature: "uncapped" as const,
         signedAt: "2026-07-20",
         rightsObligationsSummary: "双方权利义务摘要",
         companyEntityId: "company-1",
@@ -570,6 +579,7 @@ describe("ProjectAffiliateCompanyContractService", () => {
     const confirmedAt = new Date("2026-07-29T12:00:00.000Z");
     const fact = pendingContract();
     const tx = {
+ upwardContractAmountRevision:{findMany:jest.fn().mockResolvedValue([])},
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
       ...roleTables("contract_director"),
       projectAffiliateCompanyContract: {

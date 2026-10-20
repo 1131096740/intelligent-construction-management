@@ -1,5 +1,6 @@
 import { finalApprovalEvidence } from "../approval/approval-evidence";
 import { assertSettlementApplicant } from "./settlement-applicant";
+import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import {
   BadRequestException,
@@ -2838,6 +2839,8 @@ export class SettlementService {
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
+      const projectScope=await tx.settlement.findUnique({where:{id:settlementId},select:{projectId:true}});
+      if(projectScope)await lockEconomicProject(tx,projectScope.projectId);
       if (typeof tx.$queryRaw === "function") {
         await tx.$queryRaw(Prisma.sql`
           SELECT "id" FROM "Settlement" WHERE "id" = ${settlementId} FOR UPDATE
@@ -2854,6 +2857,8 @@ export class SettlementService {
       if (settlement.status !== "pending_archive_confirm") {
         throw new Error("当前结算单尚不能确认归档，请先上传已签署的结算归档文件");
       }
+
+      await assertEconomicContractReady(tx, settlement.projectId, `contract:${settlement.contractId}`, settlement.amountCents, `settlement:${settlement.id}`, settlement.contractVersionId);
 
       if (settlement.governanceVersion === 1) {
         const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);

@@ -1,4 +1,6 @@
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
+jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
+jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import {
   BadRequestException,
