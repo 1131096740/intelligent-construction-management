@@ -51,7 +51,15 @@ test("员工填元金额，按顺序审批归档后由综合部请款", async ({
   for (const role of ["director", "manager", "chairman"]) {
     await login(page, role);
     await page.getByRole("button", { name: "审批", exact: true }).click();
-    await page.getByRole("button", { name: "批准", exact: true }).click();
+    const review = page.locator(".t-dialog").filter({ hasText: "审批综合采购申请" });
+    await expect(review).toBeVisible();
+    await expect(review).toHaveCSS("opacity", "1");
+    await expect(review).toHaveCSS("transform", "none");
+    const [reviewedResponse] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith(`/general-procurements/${id}/review`) && response.request().method() === "POST", { timeout: 5000 }),
+      review.getByRole("button", { name: "批准", exact: true }).click(),
+    ]);
+    expect(reviewedResponse.status(), await reviewedResponse.text()).toBe(201);
     await expect(page.getByRole("button", { name: "批准", exact: true })).toBeHidden();
   }
   await login(page, "director");
