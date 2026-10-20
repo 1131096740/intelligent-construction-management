@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
-const fixtures = JSON.parse(process.env.LAYOUT_PREVIEW_FIXTURES ?? "[]") as Array<{ templateId: string; name: string; sha: string }>;
+const fixtures = JSON.parse(process.env.LAYOUT_PREVIEW_FIXTURES ?? "[]") as Array<{ templateId: string; name: string; sha: string; pages: number }>;
 test("四类版式真实预览、下载及 V1 历史只读回读", async ({ page }, testInfo) => {
   expect(fixtures).toHaveLength(4);
   await page.goto("/login");
@@ -33,16 +33,36 @@ test("四类版式真实预览、下载及 V1 历史只读回读", async ({ page
       await expect(dialog).toBeHidden();
       if (mode === "preview") {
         const preview = page.locator(".t-dialog").filter({ hasText: "版式样张预览" });
-        const frame = preview.getByTitle("版式样张 PDF 预览");
-        await expect(frame).toBeVisible();
-        const blobUrl = await frame.getAttribute("src");
+        const canvas = preview.getByRole("img", { name: "版式样张第 1 页", exact: true });
+        await expect(canvas).toBeVisible();
+        await expect(canvas).toHaveAttribute("data-page", "1");
+        const blobUrl = await preview.locator(".pdf-preview").getAttribute("data-pdf-source");
+        // The viewer reads the exact fetched Blob; validate its bytes independently of CDP PDF body capture.
+        expect(blobUrl).toBeTruthy();
         const blobSha = await page.evaluate(async (url) => {
           const bytes = await (await fetch(url!)).arrayBuffer();
           const hash = await crypto.subtle.digest("SHA-256", bytes);
           return [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, "0")).join("");
         }, blobUrl);
         expect(blobSha).toBe(fixture.sha);
-        await page.screenshot({ path: testInfo.outputPath(`${fixture.templateId.split("-").slice(0, 2).join("-")}-preview.png`) });
+        for (let number = 1; number <= fixture.pages; number += 1) {
+          const currentCanvas = preview.getByRole("img", { name: `版式样张第 ${number} 页`, exact: true });
+          await expect(currentCanvas).toHaveAttribute("data-page", String(number));
+          const painted = await currentCanvas.evaluate((element) => {
+            const image = element as HTMLCanvasElement;
+            const pixels = image.getContext("2d")!.getImageData(0, 0, image.width, image.height).data;
+            let dark = 0;
+            for (let i = 0; i < pixels.length; i += 16) if (pixels[i] < 180 && pixels[i + 3] > 0) dark += 1;
+            return dark;
+          });
+          expect(painted).toBeGreaterThan(100);
+          expect((await preview.locator(".pdf-page-text").textContent())?.trim().length).toBeGreaterThan(10);
+          if (number === 1) {
+            expect((await preview.locator(".pdf-page-text").textContent())?.replace(/\s/g, "")).toContain("样张");
+            await page.screenshot({ path: testInfo.outputPath(`${fixture.templateId.split("-").slice(0, 2).join("-")}-preview.png`) });
+          }
+          if (number < fixture.pages) await preview.getByRole("button", { name: "下一页", exact: true }).click();
+        }
         await preview.locator(".t-dialog__close").click();
         await expect(preview).toBeHidden();
       } else {

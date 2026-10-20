@@ -58,11 +58,9 @@
     :footer="false"
     @close="releasePreview"
   >
-    <iframe
-      v-if="previewUrl"
-      :src="previewUrl"
-      title="版式样张 PDF 预览"
-      class="pdf-frame"
+    <LayoutPdfPreview
+      v-if="previewVisible && previewUrl"
+      :url="previewUrl"
     />
   </t-dialog>
   <span
@@ -72,8 +70,10 @@
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from "vue";
+import { defineAsyncComponent, onUnmounted, ref, watch } from "vue";
 import { createPrivateFileDownloadTicket, getPrivateFileDownloadTicketCapability, readPrivatePdfTicket } from "../../api/core-flow-read.api";
+
+const LayoutPdfPreview = defineAsyncComponent(() => import("./LayoutPdfPreview.vue"));
 
 const props = defineProps<{ fileId: string }>();
 const visible = ref(false);
@@ -161,6 +161,5 @@ onUnmounted(cleanup);
 </script>
 
 <style scoped>
-.pdf-frame { width: 100%; height: 70vh; border: 0; }
 .pdf-actions { display: inline-flex; flex-wrap: wrap; gap: var(--jg-space-xs); }
 </style>

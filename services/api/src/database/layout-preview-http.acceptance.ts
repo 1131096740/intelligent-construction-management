@@ -64,7 +64,7 @@ export async function verifyLayoutPreviewHttp(
   }
   const samples = [coreFlowSeedData.materialPurchaseWorkbench, coreFlowSeedData.equipmentRentalWorkbench,
     coreFlowSeedData.laborSubcontractWorkbench, coreFlowSeedData.genericContractWorkbench];
-  const browserFixtures: Array<{ templateId: string; name: string; sha: string }> = [];
+  const browserFixtures: Array<{ templateId: string; name: string; sha: string; pages: number }> = [];
   for (const sample of samples) {
     const prefix = `${sample.template.contractTypeKey}-${suffix}`;
     const data = { ...sample, layout: { ...sample.layout,
@@ -174,7 +174,7 @@ export async function verifyLayoutPreviewHttp(
     for (const action of ["file.preview.ticket", "file.download.ticket", "file.preview", "file.download"]) {
       expect(audit.some((entry) => entry.action === action)).toBe(true);
     }
-    browserFixtures.push({ templateId: data.layout.id, name: data.layout.name, sha: digest(source.buffer) });
+    browserFixtures.push({ templateId: data.layout.id, name: data.layout.name, sha: digest(source.buffer), pages: (await PDFDocument.load(source.buffer)).getPageCount() });
   }
   const unrelated = await files.uploadPrivateFile({ originalName: "其他私有文件.pdf", mimeType: "application/pdf",
     sizeBytes: 5, uploadedByUserId: owner.id, buffer: Buffer.from("other") });
