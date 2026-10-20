@@ -22,11 +22,12 @@ test("四类版式真实预览、下载及 V1 历史只读回读", async ({ page
       await expect(dialog).toHaveCSS("transform", "none");
       await dialog.locator('input[type="password"]').fill(process.env.LAYOUT_PREVIEW_PASSWORD!);
       await dialog.getByPlaceholder("请填写原因，便于留痕审计").fill("隔离浏览器样张验收");
-      const content = page.waitForResponse(response => response.request().method() === "GET" &&
-        /\/api\/files\/[^/]+\/download$/.test(new URL(response.url()).pathname));
-      const download = mode === "download" ? page.waitForEvent("download") : null;
-      await dialog.getByRole("button", { name: mode === "preview" ? "确认预览" : "确认下载", exact: true }).click();
-      const response = await content;
+      const [response, download] = await Promise.all([
+        page.waitForResponse(response => response.request().method() === "GET" &&
+          /\/api\/files\/[^/]+\/download$/.test(new URL(response.url()).pathname)),
+        mode === "download" ? page.waitForEvent("download") : Promise.resolve(null),
+        dialog.getByRole("button", { name: mode === "preview" ? "确认预览" : "确认下载", exact: true }).click(),
+      ]);
       expect(response.status()).toBe(200);
       expect(new URL(response.url()).searchParams.get("accessMode")).toBe(mode);
       expect(response.headers()["content-disposition"]).toMatch(mode === "preview" ? /^inline/ : /^attachment/);
@@ -66,7 +67,7 @@ test("四类版式真实预览、下载及 V1 历史只读回读", async ({ page
         await preview.locator(".t-dialog__close").click();
         await expect(preview).toBeHidden();
       } else {
-        const saved = await download!;
+        const saved = download!;
         expect(saved.suggestedFilename()).toMatch(/\.pdf$/);
         expect(await saved.failure()).toBeNull();
         expect(createHash("sha256").update(readFileSync((await saved.path())!)).digest("hex")).toBe(fixture.sha);

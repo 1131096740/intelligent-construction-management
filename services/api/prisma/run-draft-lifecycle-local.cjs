@@ -74,7 +74,7 @@ async function main() {
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
     FILE_STORAGE_DRIVER: "local",
-    FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage"),
+    FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private"),
     SEED_PASSWORD: `Local@1-${randomUUID()}`
   };
   assertDedicatedLocalDatabase(databaseUrl);

@@ -1170,3 +1170,145 @@ module.exports.captureSeedStorage = async () => {
     await rm(existingRoot, { recursive: true, force: true });
   }
 });
+
+for (const [name, bypassDatabase] of [
+  ['run-payment-execution-concurrency-local.cjs', 'verifyRetainedMigration = async () => {}; runPrismaMigrate = async () => {}; assertSeedPaymentExecutionClosedLoop = async () => {};'],
+  ['run-pol214-authority-concurrency-local.cjs', 'createFixture = async () => ({}); runAuthorityAssertions = async () => {};'],
+  ['run-draft-lifecycle-local.cjs', ''],
+]) {
+  test(`${name} keeps both seed runs inside owned storage and preserves external files`, async () => {
+    const Module = require('node:module');
+    const { mkdtemp, mkdir, readFile, rm, stat, writeFile } = require('node:fs/promises');
+    const filename = path.join(__dirname, name);
+    const externalRoot = await mkdtemp(path.join(require('node:os').tmpdir(), 'seed-storage-external-'));
+    const externalFile = path.join(externalRoot, 'preserve-sentinel');
+    await writeFile(externalFile, 'external bytes unchanged');
+    const previous = { driver: process.env.FILE_STORAGE_DRIVER, root: process.env.FILE_STORAGE_ROOT };
+    process.env.FILE_STORAGE_DRIVER = 'cos';
+    process.env.FILE_STORAGE_ROOT = externalRoot;
+    const roots = [];
+    try {
+      for (let iteration = 0; iteration < 2; iteration += 1) {
+        const calls = [];
+        const fixture = new Module(filename, module);
+        fixture.filename = filename;
+        fixture.paths = Module._nodeModulePaths(__dirname);
+        const originalRequire = fixture.require.bind(fixture);
+        fixture.require = id => {
+          if (id === '@prisma/client') return { PrismaClient: class { async $disconnect() {} }, Prisma: {} };
+          if (id !== './money-bigint-runner-runtime.cjs') return originalRequire(id);
+          const runtime = originalRequire(id);
+          return { ...runtime, createCommandRuntime: ({ defaultCwd }) => ({
+            stopAll: async () => {},
+            command: async (_bin, args, options = {}) => {
+              if (options.env?.DATABASE_URL) calls.push({ args, cwd: options.cwd ?? defaultCwd, env: options.env });
+              if (args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs'))) {
+                const storage = options.env.FILE_STORAGE_ROOT;
+                assert.equal(options.env.FILE_STORAGE_DRIVER, 'local');
+                assert.ok(path.isAbsolute(storage));
+                assert.notEqual(storage, externalRoot);
+                assert.equal(path.basename(storage), 'private');
+                assert.equal(path.basename(path.dirname(storage)), 'storage');
+                assert.equal(options.cwd ?? defaultCwd, path.dirname(path.dirname(storage)), 'real seed resolves files from its working directory');
+                await mkdir(storage, { recursive: true });
+                await writeFile(path.join(storage, 'synthetic-seed-output'), 'this run only');
+              }
+              return { stdout: '"unix:///fixture"', stderr: '', code: 0 };
+            },
+          }) };
+        };
+        fixture._compile(readFileSync(filename, 'utf8').replace(/^#!.*\n/u, '') + `\nfreePort = async () => 1234; waitForPostgres = async () => {}; ${bypassDatabase} module.exports.captureStorage = main;\n`, filename);
+        await fixture.exports.captureStorage();
+        const seeds = calls.filter(({ args }) => args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs')));
+        assert.equal(seeds.length, name.startsWith('run-payment-') ? 2 : 1);
+        const storage = seeds[0].env.FILE_STORAGE_ROOT;
+        for (const call of calls) {
+          assert.equal(call.env.FILE_STORAGE_DRIVER, "local");
+          assert.equal(call.env.FILE_STORAGE_ROOT, storage);
+        }
+        await assert.rejects(stat(path.dirname(path.dirname(storage))), { code: 'ENOENT' });
+        assert.equal(await readFile(externalFile, 'utf8'), 'external bytes unchanged');
+        roots.push(storage);
+      }
+      assert.notEqual(roots[0], roots[1]);
+    } finally {
+      for (const [key, value] of [['FILE_STORAGE_DRIVER', previous.driver], ['FILE_STORAGE_ROOT', previous.root]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      await rm(externalRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+test("authority overlap probe cannot pass because an unrelated constraint rejected its fixture", async () => {
+  const Module = require("node:module");
+  const filename = path.join(__dirname, "run-pol214-authority-concurrency-local.cjs");
+  const fixture = new Module(filename, module);
+  fixture.filename = filename;
+  fixture.paths = Module._nodeModulePaths(__dirname);
+  fixture._compile(readFileSync(filename, "utf8") + "\nmodule.exports.expectReject = expectReject;", filename);
+  await assert.rejects(
+    fixture.exports.expectReject(Promise.reject(new Error("unrelated unique constraint")), "区间重叠", /effective ranges overlap/u),
+    /未命中预期约束/u
+  );
+  await fixture.exports.expectReject(Promise.reject(new Error("POL-214 guarantee obligation effective ranges overlap")), "区间重叠", /effective ranges overlap/u);
+  await assert.rejects(fixture.exports.expectReject(Promise.resolve(), "区间重叠", /effective ranges overlap/u), /未拒绝/u);
+});
+
+test("draft rollback probe keeps a paid seed request intact and tests a new unpaid draft", async () => {
+  const Module = require("node:module");
+  const filename = path.join(__dirname, "verify-draft-lifecycle.cjs");
+  const fixture = new Module(filename, module);
+  fixture.filename = filename;
+  fixture.paths = Module._nodeModulePaths(__dirname);
+  fixture._compile(readFileSync(filename, "utf8") + `
+module.exports.useSyntheticSnapshot = () => {
+  verifyReadOnly = async () => ({ originalPaidAmountCents: "50" });
+  readProbeFacts = async () => ({ contract: { id: "contract" }, payment: { id: "paid-source" }, template: { id: "template" } });
+};`, filename);
+  fixture.exports.useSyntheticSnapshot();
+  const paidSource = { id: "paid-source", code: "PAID-SOURCE", status: "partially_paid", requestedAmountCents: 100n, approvedAmountCents: 100n, paidAmountCents: 50n, createdAt: new Date(), updatedAt: new Date() };
+  let draft;
+  let paymentWrites = 0;
+  const tx = {
+    contractVersion: {
+      findUnique: async () => ({ id: "contract", amountCents: 100n }),
+      update: async () => ({ amountCents: 100n })
+    },
+    paymentRequest: {
+      findUnique: async () => ({ ...paidSource }),
+      create: async ({ data }) => {
+        assert.notEqual(data.id, paidSource.id);
+        assert.notEqual(data.code, paidSource.code);
+        assert.equal(data.status, "draft");
+        assert.equal(data.paidAmountCents, 0n);
+        assert.equal(data.approvedAmountCents, null);
+        assert.equal(data.requestedAmountCents, 1n);
+        draft = { id: "new-unpaid-probe", ...data };
+        return draft;
+      },
+      update: async ({ where, data }) => {
+        assert.notEqual(where.id, paidSource.id, "never abandon the paid source");
+        assert.ok(draft && where.id === draft.id);
+        assert.equal(data.status, "abandoned");
+        paymentWrites += 1;
+        return { ...draft, ...data };
+      }
+    },
+    contractBusinessTemplateVersion: {
+      findUnique: async () => ({ id: "template" }),
+      update: async () => ({})
+    }
+  };
+  let forcedRollback = false;
+  await fixture.exports.verifyRollbackProbe({
+    $transaction: async (body) => {
+      try { return await body(tx); }
+      catch (error) { forcedRollback = error.message === "ROLLBACK_DRAFT_LIFECYCLE_PROBE"; throw error; }
+    }
+  });
+  assert.equal(paymentWrites, 1);
+  assert.equal(forcedRollback, true);
+  assert.equal(paidSource.status, "partially_paid");
+  assert.equal(paidSource.paidAmountCents, 50n);
+});
