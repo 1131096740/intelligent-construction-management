@@ -18,6 +18,7 @@
     </t-button>
   </span>
   <t-dialog
+    v-if="layoutPdfAction && layoutPdfAction.enabled"
     v-model:visible="visible"
     :header="mode === 'preview' ? '预览版式样张' : '下载版式样张'"
     :confirm-btn="{ content: mode === 'preview' ? '确认预览' : '确认下载', loading: busy,
@@ -70,13 +71,15 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, onUnmounted, ref, watch } from "vue";
-import { createPrivateFileDownloadTicket, getPrivateFileDownloadTicketCapability, readPrivatePdfTicket } from "../../api/core-flow-read.api";
+import { formatUnknownApiError } from "../../api/error-message";
+import { defineAsyncComponent, onUnmounted, ref, shallowRef, watch } from "vue";
+import { downloadPrivateFileByTicket, getPrivateFileDownloadTicketCapability } from "../../api/core-flow-read.api";
 
 const LayoutPdfPreview = defineAsyncComponent(() => import("./LayoutPdfPreview.vue"));
 
 const props = defineProps<{ fileId: string }>();
 const visible = ref(false);
+const layoutPdfAction = shallowRef<{ key: "create_private_file_download_ticket"; enabled: boolean } | null>(null);
 const previewVisible = ref(false);
 const previewUrl = ref("");
 function releasePreview() {
@@ -98,6 +101,7 @@ function close() {
   password.value = "";
   reason.value = "";
   authorizedFileId = "";
+  layoutPdfAction.value = null;
 }
 
 async function open(accessMode: "preview" | "download") {
@@ -108,49 +112,61 @@ async function open(accessMode: "preview" | "download") {
   message.value = "";
   busy.value = true;
   try {
-    const { action } = await getPrivateFileDownloadTicketCapability(fileId);
+    const capability = await getPrivateFileDownloadTicketCapability(fileId);
     if (requestGeneration !== generation || props.fileId !== fileId) return;
-    if (action.key !== "create_private_file_download_ticket" || !action.enabled) {
+    layoutPdfAction.value = capability.action;
+    const matchesRequestedAction = layoutPdfAction.value.key === "create_private_file_download_ticket";
+    if (!matchesRequestedAction) {
+      throw new Error("样张读取权限未就绪，请重新打开");
+    }
+    if (!layoutPdfAction.value.enabled) {
       throw new Error("当前账号无权查看该版式样张");
     }
     authorizedFileId = fileId;
     mode.value = accessMode;
     visible.value = true;
   } catch (error) {
-    if (requestGeneration === generation) message.value = error instanceof Error ? error.message : "读取样张权限失败";
+    if (requestGeneration === generation) message.value = formatUnknownApiError(error, "读取样张权限失败");
   } finally {
     busy.value = false;
   }
 }
 
+async function readSampleWithCapability(fileId: string) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes("create_private_file_download_ticket");
+  if (!operationAllowed) throw new Error("当前账号无权查看该版式样张");
+  return downloadPrivateFileByTicket(fileId, {
+    confirmationPassword: password.value, downloadReason: reason.value, accessMode: mode.value
+  }, "pdf-blob");
+}
+
 async function confirm() {
   if (busy.value || !authorizedFileId || !password.value.trim() || !reason.value.trim()) return;
+  if (!layoutPdfAction.value?.enabled) return;
   const requestGeneration = generation;
   const fileId = authorizedFileId;
   busy.value = true;
   message.value = "";
   try {
-    const ticket = await createPrivateFileDownloadTicket(fileId, {
-      confirmationPassword: password.value, downloadReason: reason.value, accessMode: mode.value
-    });
+    const result = await readSampleWithCapability(fileId);
     if (requestGeneration !== generation || props.fileId !== fileId) return;
-    const blob = await readPrivatePdfTicket(ticket);
-    if (requestGeneration !== generation || props.fileId !== fileId) return;
+    if (!result) throw new Error("读取版式样张失败");
     releasePreview();
-    previewUrl.value = URL.createObjectURL(blob);
+    previewUrl.value = URL.createObjectURL(result.blob);
     if (mode.value === "preview") {
       previewVisible.value = true;
     } else {
       const anchor = document.createElement("a");
       anchor.href = previewUrl.value;
-      anchor.download = ticket.fileName;
+      anchor.download = result.fileName;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
     }
     close();
   } catch (error) {
-    if (requestGeneration === generation) message.value = error instanceof Error ? error.message : "读取样张失败";
+    if (requestGeneration === generation) message.value = formatUnknownApiError(error, "读取样张失败");
   } finally {
     busy.value = false;
   }

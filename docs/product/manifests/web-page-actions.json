@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 390,
+    "registeredActionCount": 391,
     "pageActionCount": 56,
-    "backgroundActionCount": 334,
-    "reachableVueFileCount": 187,
+    "backgroundActionCount": 335,
+    "reachableVueFileCount": 189,
     "routeRootCount": 68,
-    "totalVueFileCount": 201,
-    "parsedVueFileCount": 201,
-    "reachableProductionModuleCount": 328,
-    "templateEventDirectiveCount": 1169,
+    "totalVueFileCount": 203,
+    "parsedVueFileCount": 203,
+    "reachableProductionModuleCount": 330,
+    "templateEventDirectiveCount": 1175,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 379,
-    "candidateProductionMutationConsumerCount": 379,
-    "acceptedProductionMutationConsumerCount": 379,
-    "productionMutationConsumerPairCount": 379,
+    "coveredProductionMutationConsumerCount": 380,
+    "candidateProductionMutationConsumerCount": 380,
+    "acceptedProductionMutationConsumerCount": 380,
+    "productionMutationConsumerPairCount": 380,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 349,
-    "reachableProductionModuleCount": 328,
-    "totalVueFileCount": 201,
-    "parsedVueFileCount": 201
+    "totalProductionModuleCount": 351,
+    "reachableProductionModuleCount": 330,
+    "totalVueFileCount": 203,
+    "parsedVueFileCount": 203
   },
   "actions": [
     {
@@ -1568,7 +1568,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1614,7 +1614,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2755,7 +2755,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2799,7 +2799,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3669,7 +3669,7 @@
         "event": "confirm",
         "handler": "confirmContractDocumentDownload",
         "kind": "event",
-        "sourceLine": 184,
+        "sourceLine": 179,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3735,7 +3735,7 @@
         "event": "call",
         "handler": "queueContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 239,
+        "sourceLine": 236,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3801,7 +3801,7 @@
         "event": "call",
         "handler": "retryContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 276,
+        "sourceLine": 273,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3867,7 +3867,7 @@
         "event": "call",
         "handler": "uploadContractDocumentFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 257,
+        "sourceLine": 254,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5142,7 +5142,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5186,7 +5186,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11881,7 +11881,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11925,7 +11925,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5450,
+              "sourceLine": 5455,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -12962,6 +12962,126 @@
             ]
           },
           "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-sample.read-private-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建",
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "readSampleWithCapability",
+        "kind": "background_call",
+        "sourceLine": 135,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "readSampleWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5455,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "readSampleWithCapability",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5455,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
         }
       ]
     },

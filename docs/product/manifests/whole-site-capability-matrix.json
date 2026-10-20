@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "d88881d272976051b3bd93059eba789e6f119a1796e3c50c42a08cced9764318",
+      "sha256": "b5eb53aab590675448377525a65be9f0d31af910b908127be94579bdc241e05b",
       "status": "ready",
       "summary": {
         "apiModuleCount": 38,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "5beaca01914bdd2b6b029f7de67d476e9c68df904be57aba4cdadf2eff38896a",
+      "sha256": "f2dd91506bef2fa72d5ed1d52d8ffc67618ba715976ffe380c589279b9cea246",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 390,
+        "registeredActionCount": 391,
         "pageActionCount": 56,
-        "backgroundActionCount": 334,
-        "reachableVueFileCount": 187,
+        "backgroundActionCount": 335,
+        "reachableVueFileCount": 189,
         "routeRootCount": 68,
-        "totalVueFileCount": 201,
-        "parsedVueFileCount": 201,
-        "reachableProductionModuleCount": 328,
-        "templateEventDirectiveCount": 1169,
+        "totalVueFileCount": 203,
+        "parsedVueFileCount": 203,
+        "reachableProductionModuleCount": 330,
+        "templateEventDirectiveCount": 1175,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 379,
-        "candidateProductionMutationConsumerCount": 379,
-        "acceptedProductionMutationConsumerCount": 379,
-        "productionMutationConsumerPairCount": 379,
+        "coveredProductionMutationConsumerCount": 380,
+        "candidateProductionMutationConsumerCount": 380,
+        "acceptedProductionMutationConsumerCount": 380,
+        "productionMutationConsumerPairCount": 380,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "1704c0c8486f0eda946029c732e5c1496762599cfbe6f052bc81a67b27cd8e27",
+      "sha256": "9c7219c3bf721042b86d61631317bc4d92947e447843c44866ee4cf8b25dd040",
       "status": "ready",
       "summary": {
         "routeCount": 686,
@@ -104,12 +104,12 @@
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 390,
-    "actionBindingCount": 449,
-    "acceptedActionBindingCount": 413,
+    "registeredActionCount": 391,
+    "actionBindingCount": 451,
+    "acceptedActionBindingCount": 414,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 379,
-    "coveredProductionMutationConsumerPairCount": 379,
+    "productionMutationConsumerPairCount": 380,
+    "coveredProductionMutationConsumerPairCount": 380,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -4098,11 +4098,14 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -4112,6 +4115,7 @@
           "normalizedKey": "GET /files/:param/download-ticket-capability",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue",
             "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
@@ -4227,6 +4231,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "layout-sample.read-private-pdf",
+          "bindingIndex": 0,
+          "identity": "layout-sample.read-private-pdf\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadPrivateFileByTicket\u0000GET\u0000GET /files/:param/download-ticket-capability\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
           ],
           "causalVerified": true,
           "accepted": false,
@@ -22354,11 +22384,14 @@
           "bodyKind": "json",
           "productionConsumers": [
             "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -22566,6 +22599,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "layout-sample.read-private-pdf",
+          "bindingIndex": 1,
+          "identity": "layout-sample.read-private-pdf\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadPrivateFileByTicket\u0000POST\u0000POST /files/:param/download-ticket\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/files/PrivatePdfActions.vue"
           ],
           "causalVerified": true,
           "accepted": true,

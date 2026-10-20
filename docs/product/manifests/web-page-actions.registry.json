@@ -9834,6 +9834,32 @@
           "name": "downloadPrivateFileByTicket"
         }
       ]
+    },
+    {
+      "id": "layout-sample.read-private-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "readSampleWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
     }
   ]
 }
