@@ -920,6 +920,37 @@ test("child runner preserves only an absolute Playwright browser cache path", ()
   );
 });
 
+test("child runner forwards only an absolute Fontconfig file to its subprocess", () => {
+  const child = createChildEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/tmp/local-home",
+      FONTCONFIG_FILE: "/tmp/local-fonts/fonts.conf",
+      FONTCONFIG_PATH: "/tmp/must-not-inherit",
+      DOC_CONVERTER_COMMAND: "/tmp/must-not-inherit",
+      DATABASE_URL: "postgresql://must-not-leak",
+      NODE_OPTIONS: "--require must-not-leak"
+    },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+  assert.equal(child.FONTCONFIG_FILE, "/tmp/local-fonts/fonts.conf");
+  const probe = spawnSync(process.execPath, ["-e", `
+    process.stdout.write(JSON.stringify(Object.fromEntries(
+      ["FONTCONFIG_FILE", "FONTCONFIG_PATH", "DOC_CONVERTER_COMMAND", "DATABASE_URL", "NODE_OPTIONS"]
+        .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]])
+    )));
+  `], { env: child, encoding: "utf8" });
+  assert.equal(probe.status, 0, probe.stderr);
+  assert.deepEqual(JSON.parse(probe.stdout), { FONTCONFIG_FILE: "/tmp/local-fonts/fonts.conf" });
+  for (const value of ["relative/fonts.conf", "https://example.com/fonts.conf"]) {
+    assert.throws(
+      () => createChildEnvironment({ FONTCONFIG_FILE: value }, "/tmp/dynamic-gate", "unix:///var/run/docker.sock"),
+      /FONTCONFIG_FILE.*绝对路径/u
+    );
+  }
+});
+
 test("preserves an explicitly configured Corepack cache location", () => {
   const child = createChildEnvironment(
     {
