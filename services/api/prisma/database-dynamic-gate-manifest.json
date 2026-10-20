@@ -29,9 +29,9 @@
     "pendingFiles": 70,
     "fullyPendingSuites": 59,
     "partiallyPendingSuites": 11,
-    "pendingTests": 451,
+    "pendingTests": 452,
     "coveredFiles": 70,
-    "coveredTests": 451,
+    "coveredTests": 452,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 153,
+      "pendingTests": 154,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -346,7 +346,7 @@
         },
         {
           "path": "services/api/src/database/contract-business-entry-http.spec.ts",
-          "pendingTests": 3,
+          "pendingTests": 4,
           "suiteStatus": "fully_pending"
         },
         {

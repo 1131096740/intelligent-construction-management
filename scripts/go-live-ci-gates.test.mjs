@@ -299,9 +299,10 @@ test("CI fans out independent static and database gates behind one stable summar
   );
   assert.equal(
     dynamic.match(/libreoffice-writer/gu)?.length,
-    2,
-    "document conversion runtime must remain isolated to the entry and contract finance shards"
+    3,
+    "DOCX-backed seed initialization requires writer in every dynamic shard"
   );
+  assert.match(dynamic, /matrix\.group != 'pol113_pol115_business_entries' && matrix\.group != 'contract_finance_acceptance'[\s\S]*?libreoffice-writer fonts-noto-cjk/u);
   assert.equal(
     dynamic.match(/libreoffice-calc/gu)?.length,
     2,

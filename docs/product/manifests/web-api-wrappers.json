@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 349,
-    "reachableProductionModuleCount": 328
+    "productionModuleCount": 351,
+    "reachableProductionModuleCount": 330
   },
   "wrappers": [
     {
@@ -6370,7 +6370,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7146,
+          "sourceLine": 7155,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -6400,7 +6400,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7130,
+          "sourceLine": 7139,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -6430,7 +6430,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7130,
+          "sourceLine": 7139,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -6460,7 +6460,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5559,
+          "sourceLine": 5568,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -6489,7 +6489,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7130,
+          "sourceLine": 7139,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -6545,7 +6545,7 @@
       "name": "downloadPrivateFileByTicket",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
-      "returnProvenance": "none",
+      "returnProvenance": "unverified",
       "requests": [
         {
           "kind": "main",
@@ -6581,7 +6581,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5450,
+          "sourceLine": 5455,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -6592,13 +6592,16 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+        "apps/web-admin/src/components/files/PrivatePdfActions.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6669,7 +6672,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7173,
+          "sourceLine": 7182,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -6698,7 +6701,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7160,
+          "sourceLine": 7169,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -6727,7 +6730,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7188,
+          "sourceLine": 7197,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -6756,7 +6759,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7130,
+          "sourceLine": 7139,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -8674,6 +8677,7 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/files/PrivatePdfActions.vue",
         "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",

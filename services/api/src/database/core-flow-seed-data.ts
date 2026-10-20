@@ -359,16 +359,19 @@ export const coreFlowSeedData = {
           contract: {
             name: "材料采购合同样张",
             temporaryCode: "样张-材料-001",
-            amountUppercase: "人民币壹拾贰万捌仟元整"
+            amountUppercase: "人民币肆万贰仟元整"
           },
           field: {
-            projectName: TRIAL_PROJECT_NAME,
-            deliveryLocation: "项目现场",
+            projectName: "版式样张演示项目（非真实业务）",
+            deliveryLocation: "演示项目现场",
+            deliveryDeadline: "样张约定交货期限",
+            qualityStandard: "符合国家现行质量标准及样张约定",
+            settlementMethod: "按验收数量结算",
             taxRatePercent: "13",
             invoiceType: "增值税专用发票"
           },
           party: {
-            owner: { name: "建工智管建设有限公司" },
+            owner: { name: "样张甲方公司（演示）" },
             counterparty: { name: "示例供应商" }
           },
           clause: {
@@ -377,13 +380,14 @@ export const coreFlowSeedData = {
             }
           },
           bill: {
+            transportFees: [],
             materials: [
               {
                 itemName: "钢筋",
                 specification: "HRB400E 直径18",
                 unit: "吨",
                 quantity: "10.00",
-                unitPrice: "4200.00",
+                unitPrice: "4200.00", taxInclusiveUnitPrice: "4200.00",
                 taxRatePercent: "13",
                 taxInclusiveAmount: "42000.00"
               }
@@ -521,14 +525,18 @@ export const coreFlowSeedData = {
         status: "succeeded",
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
-          contract: { name: "机械租赁合同样张", temporaryCode: "样张-机械-001", amountUppercase: "人民币壹万元整" },
+          contract: { name: "机械租赁合同样张", temporaryCode: "样张-机械-001", amountUppercase: "人民币肆佰叁拾元整" },
           field: {
-            useLocation: "项目现场",
+            useLocation: "演示项目现场",
+            rentalStartDate: "2026-07-01",
+            rentalEndDate: "2026-07-31",
+            settlementCycle: "按月结算",
+            paymentRatioPercent: 80,
             taxRatePercent: "1",
             invoiceType: "增值税专用发票"
           },
           party: {
-            owner: { name: "建工智管建设有限公司" },
+            owner: { name: "样张甲方公司（演示）" },
             counterparty: { name: "示例租赁公司" }
           },
           clause: { payment: { text: "甲方依据双方确认的对账结算凭证和合规发票支付租赁费用。" } },
@@ -539,7 +547,7 @@ export const coreFlowSeedData = {
                 specification: "神钢350",
                 unit: "台/小时",
                 quantity: "1.00",
-                unitPrice: "430.00",
+                unitPrice: "430.00", taxInclusiveUnitPrice: "430.00",
                 taxRatePercent: "1",
                 taxInclusiveAmount: "430.00"
               }
@@ -685,7 +693,7 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: { name: "劳务分包合同样张", temporaryCode: "样张-劳务-001", amountUppercase: "人民币壹万元整" },
           field: {
-            projectName: TRIAL_PROJECT_NAME,
+            projectName: "版式样张演示项目（非真实业务）",
             workScope: "主体结构劳务作业",
             workLocation: "项目现场",
             plannedStartDate: "2026-07-01",
@@ -695,12 +703,13 @@ export const coreFlowSeedData = {
             taxRatePercent: "3",
             invoiceType: "增值税普通发票"
           },
+          party: { owner: { name: "样张甲方公司（演示）" }, counterparty: { name: "样张乙方公司（演示）" } },
           clause: {
             payment: { text: "甲方结合总分包合同和发包人付款情况支付劳务工程款。" },
             safety: { text: "乙方应遵守甲方项目安全生产管理制度。" },
             wageCommitment: { text: "乙方承诺及时足额发放农民工工资。" }
           },
-          bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.00", unitPrice: "10000.00", taxInclusiveAmount: "10000.00" }] }
+          bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.00", unitPrice: "10000.00", taxInclusiveUnitPrice: "10000.00", taxInclusiveAmount: "10000.00" }] }
         }
       },
       inspectionReport: {
@@ -842,7 +851,7 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: { name: "通用合同样张", temporaryCode: "样张-通用-001", amountUppercase: "人民币壹万元整" },
           field: {
-            projectName: TRIAL_PROJECT_NAME,
+            projectName: "版式样张演示项目（非真实业务）",
             counterpartyName: "通用合同相对方",
             businessSummary: "双方约定的业务内容",
             settlementCycle: "按月结算",
@@ -850,6 +859,7 @@ export const coreFlowSeedData = {
             taxRatePercent: "6",
             invoiceType: "增值税普通发票"
           },
+          party: { owner: { name: "样张甲方公司（演示）" }, counterparty: { name: "样张乙方公司（演示）" } },
           clause: {
             payment: { text: "甲方依据双方确认的结算资料和合规发票付款。" },
             specialAgreement: { text: "" }
@@ -861,7 +871,7 @@ export const coreFlowSeedData = {
                 specification: "按现场要求",
                 unit: "项",
                 quantity: "1.00",
-                unitPrice: "10000.00",
+                unitPrice: "10000.00", taxInclusiveUnitPrice: "10000.00",
                 taxInclusiveAmount: "10000.00"
               }
             ]

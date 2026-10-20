@@ -1,3 +1,6 @@
+jest.mock("./layout-preview-docx", () => ({
+  renderLayoutPreviewDocx: (...args: unknown[]) => jest.requireMock("./contract-docx-renderer").renderContractDocx(...args)
+}));
 jest.mock("./contract-docx-renderer", () => ({
   renderContractDocx: jest.fn(() => Buffer.from("rendered-docx"))
 }));

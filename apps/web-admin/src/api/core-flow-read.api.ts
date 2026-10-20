@@ -5439,7 +5439,8 @@ export function createPrivateFileDownloadTicket(
  */
 export async function downloadPrivateFileByTicket(
   fileId: string,
-  body: CreatePrivateFileDownloadTicketPayload
+  body: CreatePrivateFileDownloadTicketPayload,
+  delivery?: "pdf-blob"
 ) {
   const capability = await getPrivateFileDownloadTicketCapability(fileId);
   const operationAllowed = capability.availableActions.includes(
@@ -5447,9 +5448,17 @@ export async function downloadPrivateFileByTicket(
   );
   if (!operationAllowed) throw new Error("当前用户不能访问该文件");
   const ticket = await createPrivateFileDownloadTicket(fileId, body);
+  if (delivery === "pdf-blob" &&
+    (!/^\/files\/[^/?#]+\/download\?/.test(ticket.downloadUrl) || ticket.downloadUrl.includes("\\"))) {
+    throw new Error("版式样张访问地址不正确，请重新申请");
+  }
   const response = await apiFetch(ticket.downloadUrl);
   await ensureOk(response, "下载文件失败");
+  if (delivery === "pdf-blob" && !/^application\/pdf(?:;|$)/i.test(response.headers.get("content-type") ?? "")) {
+    throw new Error("版式样张格式不正确，请联系合同部核对");
+  }
   const blob = await response.blob();
+  if (delivery === "pdf-blob") return { blob, fileName: ticket.fileName };
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

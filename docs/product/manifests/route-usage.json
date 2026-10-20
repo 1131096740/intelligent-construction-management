@@ -3582,9 +3582,10 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5450,
+            "sourceLine": 5455,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+              "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
@@ -3627,6 +3628,7 @@
             "normalizedKey": "GET /files/:param/download-ticket-capability",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+              "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
@@ -3639,6 +3641,7 @@
             "normalizedPath": "/files/:param/download-ticket-capability",
             "normalizedKey": "GET /files/:param/download-ticket-capability",
             "productionConsumers": [
+              "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
@@ -16804,6 +16807,7 @@
             "normalizedKey": "POST /files/:param/download-ticket",
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
+              "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
