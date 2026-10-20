@@ -387,7 +387,7 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
         createdByUserId: fixture.recorderId
       }
     });
-    const guaranteeOverlapFailure = await expectReject(
+    await expectReject(
       prisma.guaranteeObligationVersion.create({
         data: {
           id: `pol214-guarantee-overlap-${randomUUID()}`,
@@ -411,11 +411,9 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
           createdByUserId: fixture.recorderId
         }
       }),
-      "保证金半开区间重叠约束"
+      "保证金半开区间重叠约束",
+      /POL-214 guarantee obligation effective ranges overlap/u
     );
-    if (!String(guaranteeOverlapFailure.message).includes("guarantee obligation effective ranges overlap")) {
-      fail("保证金重叠用例未由区间重叠约束拒绝");
-    }
     await prisma.guaranteeObligationVersion.create({
       data: {
         id: `pol214-guarantee-adjacent-${randomUUID()}`,
@@ -472,7 +470,7 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
 
     const sourceVersionId = await createSubmittedWithheld(prisma, caseId, 100n, "pol214-source");
     await prisma.clearingConfirmation.create({ data: { eventVersionId: sourceVersionId, confirmedByUserId: fixture.directorId, confirmerActorSetSnapshot: [fixture.directorId] } });
-    const sourceVersion = await prisma.clearingEventVersion.findUniqueOrThrow({ where: { id: sourceVersionId } });
+    const sourceVersion = await prisma.clearingEventVersion.findUniqueOrThrow({ where: { id: sourceVersionId }, select: { clearingEventId: true } });
     await prisma.clearingEvent.update({ where: { id: sourceVersion.clearingEventId }, data: { workflowStatus: "confirmed" } });
     const targetOne = await createTargetVersion(prisma, caseId, "pol214-target-one");
     const targetTwo = await createTargetVersion(prisma, caseId, "pol214-target-two");
@@ -481,6 +479,8 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
       second.clearingAllocation.create({ data: { eventVersionId: targetTwo, sourceEventVersionId: sourceVersionId, sourceKind: "withheld", amountCents: 70n, sourceRemainingAfterCents: 30n } })
     ]);
     if (balanceOutcomes.filter((outcome) => outcome.status === "fulfilled").length !== 1) fail("并发 allocation 未做到恰好一次消费来源余额");
+    const rejectedAllocation = balanceOutcomes.find((outcome) => outcome.status === "rejected");
+    if (!/超过来源余额/u.test(String(rejectedAllocation?.reason?.message))) fail("并发 allocation 未命中来源余额约束");
   } finally {
     await Promise.all([first.$disconnect(), second.$disconnect()]);
   }
@@ -502,10 +502,13 @@ async function createTargetVersion(prisma, caseId, prefix) {
   return versionId;
 }
 
-async function expectReject(promise, label) {
+async function expectReject(promise, label, expectedError) {
   try {
     await promise;
   } catch (error) {
+    if (expectedError && !expectedError.test(String(error?.message ?? error))) {
+      fail(`${label}未命中预期约束`);
+    }
     return error;
   }
   fail(`${label}未拒绝`);

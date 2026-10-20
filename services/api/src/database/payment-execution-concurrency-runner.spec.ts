@@ -101,6 +101,8 @@ describe("payment execution PostgreSQL concurrency runner", () => {
     expect(runner).toMatch(
       /process\.execPath,\s*\[path\.join\(__dirname, "seed\.cjs"\)\],\s*\{\s*cwd: temporaryRoot/u
     );
+    expect(runner).toContain('FILE_STORAGE_DRIVER: "local"');
+    expect(runner).toContain('FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private")');
     expect(runner).toContain("assertSeedPaymentExecutionClosedLoop");
     expect(runner.match(/await runCoreSeed\(/gu)).toHaveLength(2);
     expect(runner.match(/await assertSeedPaymentExecutionClosedLoop\(/gu))
