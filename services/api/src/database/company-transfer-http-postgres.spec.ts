@@ -63,6 +63,17 @@ const user = await db.user.create({ data: { name: `验收${role}`, phone: `139${
       relation: "independent", coverage: [], reason: "合成独立履约范围确认及PDF留存", confirmationPassword: password, idempotencyKey: randomUUID()
     });
     await call(`/contract-economic-reviews/${economic.id}/decision`, "contract_director", { revision: 1, decision: "confirm", confirmationPassword: password });
+    const originalProxy = await db.contractProxyExecution.findFirstOrThrow({ where: { projectId: f.projectId, status: "confirmed", entryKind: "payment" } });
+    for (const entryKind of ["refund", "repayment"] as const) {
+      const returned = await call("/contract-proxy-executions", "finance_staff", {
+        projectId: f.projectId, sourceRef: originalProxy.sourceRef, originalId: originalProxy.id, entryKind,
+        amountCents: "1000", occurredAt: "2026-08-20", actualPayerKey: originalProxy.actualPayerKey,
+        bankObservationId: await bank(f.companyId, "inflow", "1000"), bankReference: `往来回单-${entryKind}`,
+        evidenceFileId: await upload("finance_staff"), reason: "合成退款归还实际方向及PDF留存", confirmationPassword: password, idempotencyKey: randomUUID()
+      });
+      await call(`/contract-proxy-executions/${returned.id}/decision`, "finance_director", { decision: "confirm", confirmationPassword: password });
+    }
+    expect(new Set((await db.contractProxyExecution.findMany({ where: { projectId: f.projectId, status: "confirmed" } })).map(row => row.entryKind))).toEqual(new Set(["payment", "refund", "repayment"]));
     const types = ["company_transfer", "contract_economic_review", "contract_bank_verification", "contract_proxy_execution", "upward_contract_amount_revision", "upward_receipt_match"];
     const instances = await db.approvalInstance.findMany({ where: { status: "approved", businessType: { in: types } } });
     expect(new Set(instances.map(row => row.businessType))).toEqual(new Set(types));
