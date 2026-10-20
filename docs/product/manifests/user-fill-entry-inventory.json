@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 381,
+    "activeBusinessActionCount": 382,
     "technicalActionCount": 9,
-    "activeBindingCount": 439,
+    "activeBindingCount": 441,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -2883,6 +2883,24 @@
         "POST /global-invoices/:param/void"
       ],
       "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-sample.read-private-pdf",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同模板库/版式/:layoutTemplateId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "GET /files/:param/download-ticket-capability",
+        "POST /files/:param/download-ticket"
+      ],
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
