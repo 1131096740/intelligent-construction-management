@@ -1,4 +1,5 @@
 const { readdirSync } = require("node:fs");
+const { randomUUID } = require("node:crypto");
 const { join } = require("node:path");
 const { PrismaClient } = require("@prisma/client");
 
@@ -261,14 +262,33 @@ async function verifyRollbackProbe(client) {
   const rollbackSignal = new Error("ROLLBACK_DRAFT_LIFECYCLE_PROBE");
   try {
     await client.$transaction(async (tx) => {
-      const [contract, payment, template] = await Promise.all([
+      const [contract, sourcePayment, template] = await Promise.all([
         tx.contractVersion.findUnique({ where: { id: probeFactsBefore.contract.id } }),
         tx.paymentRequest.findUnique({ where: { id: probeFactsBefore.payment.id } }),
         tx.contractBusinessTemplateVersion.findUnique({
           where: { id: probeFactsBefore.template.id }
         })
       ]);
-      assert(contract && payment && template, "回滚探针目标在事务开始前发生变化");
+      assert(contract && sourcePayment && template, "回滚探针目标在事务开始前发生变化");
+      // The seeded payment already has formal execution facts. Probe only a new,
+      // unfunded draft inside this transaction; the forced rollback removes it.
+      const payment = await tx.paymentRequest.create({
+        data: {
+          projectId: sourcePayment.projectId,
+          settlementId: sourcePayment.settlementId,
+          sourceType: sourcePayment.sourceType,
+          contractId: sourcePayment.contractId,
+          contractVersionId: sourcePayment.contractVersionId,
+          paymentTermsVersionId: sourcePayment.paymentTermsVersionId,
+          paymentTermsStageId: sourcePayment.paymentTermsStageId,
+          paymentSubjectType: sourcePayment.paymentSubjectType,
+          code: `LOCAL-DRAFT-ROLLBACK-${randomUUID()}`,
+          status: "draft",
+          requestedAmountCents: 1n,
+          approvedAmountCents: null,
+          paidAmountCents: 0n
+        }
+      });
       const contractAmount = contract.amountCents;
       const paymentAmounts = [
         payment.requestedAmountCents,

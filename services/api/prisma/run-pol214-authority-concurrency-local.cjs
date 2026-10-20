@@ -120,7 +120,7 @@ async function main() {
       timeoutMs: 15 * 60 * 1000
     });
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], {
-      cwd: root,
+      cwd: temporaryRoot,
       env: runtimeEnv,
       forwardOutput: true,
       timeoutMs: 15 * 60 * 1000
@@ -387,11 +387,11 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
         createdByUserId: fixture.recorderId
       }
     });
-    await expectReject(
+    const guaranteeOverlapFailure = await expectReject(
       prisma.guaranteeObligationVersion.create({
         data: {
           id: `pol214-guarantee-overlap-${randomUUID()}`,
-          authorityVersionId: fixture.authorityId,
+          authorityVersionId: adjacentAuthority.id,
           projectId: fixture.projectId,
           constructionEnterpriseAssignmentId: fixture.assignmentId,
           affiliateCompanyContractId: fixture.contractId,
@@ -413,10 +413,13 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
       }),
       "保证金半开区间重叠约束"
     );
+    if (!String(guaranteeOverlapFailure.message).includes("guarantee obligation effective ranges overlap")) {
+      fail("保证金重叠用例未由区间重叠约束拒绝");
+    }
     await prisma.guaranteeObligationVersion.create({
       data: {
         id: `pol214-guarantee-adjacent-${randomUUID()}`,
-        authorityVersionId: fixture.authorityId,
+        authorityVersionId: adjacentAuthority.id,
         projectId: fixture.projectId,
         constructionEnterpriseAssignmentId: fixture.assignmentId,
         affiliateCompanyContractId: fixture.contractId,
@@ -469,6 +472,8 @@ async function runAuthorityAssertions(prisma, fixture, databaseUrl) {
 
     const sourceVersionId = await createSubmittedWithheld(prisma, caseId, 100n, "pol214-source");
     await prisma.clearingConfirmation.create({ data: { eventVersionId: sourceVersionId, confirmedByUserId: fixture.directorId, confirmerActorSetSnapshot: [fixture.directorId] } });
+    const sourceVersion = await prisma.clearingEventVersion.findUniqueOrThrow({ where: { id: sourceVersionId } });
+    await prisma.clearingEvent.update({ where: { id: sourceVersion.clearingEventId }, data: { workflowStatus: "confirmed" } });
     const targetOne = await createTargetVersion(prisma, caseId, "pol214-target-one");
     const targetTwo = await createTargetVersion(prisma, caseId, "pol214-target-two");
     const balanceOutcomes = await Promise.allSettled([
@@ -500,8 +505,8 @@ async function createTargetVersion(prisma, caseId, prefix) {
 async function expectReject(promise, label) {
   try {
     await promise;
-  } catch {
-    return;
+  } catch (error) {
+    return error;
   }
   fail(`${label}未拒绝`);
 }

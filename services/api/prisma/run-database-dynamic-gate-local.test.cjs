@@ -1141,3 +1141,69 @@ module.exports.captureSeedStorage = async () => {
     await rm(existingRoot, { recursive: true, force: true });
   }
 });
+
+for (const [name, bypassDatabase] of [
+  ['run-payment-execution-concurrency-local.cjs', 'verifyRetainedMigration = async () => {}; runPrismaMigrate = async () => {}; assertSeedPaymentExecutionClosedLoop = async () => {};'],
+  ['run-pol214-authority-concurrency-local.cjs', 'createFixture = async () => ({}); runAuthorityAssertions = async () => {};'],
+  ['run-draft-lifecycle-local.cjs', ''],
+]) {
+  test(`${name} keeps both seed runs inside owned storage and preserves external files`, async () => {
+    const Module = require('node:module');
+    const { mkdtemp, mkdir, readFile, rm, stat, writeFile } = require('node:fs/promises');
+    const filename = path.join(__dirname, name);
+    const externalRoot = await mkdtemp(path.join(require('node:os').tmpdir(), 'seed-storage-external-'));
+    const externalFile = path.join(externalRoot, 'preserve-sentinel');
+    await writeFile(externalFile, 'external bytes unchanged');
+    const previous = { driver: process.env.FILE_STORAGE_DRIVER, root: process.env.FILE_STORAGE_ROOT };
+    process.env.FILE_STORAGE_DRIVER = 'cos';
+    process.env.FILE_STORAGE_ROOT = externalRoot;
+    const roots = [];
+    try {
+      for (let iteration = 0; iteration < 2; iteration += 1) {
+        const calls = [];
+        const fixture = new Module(filename, module);
+        fixture.filename = filename;
+        fixture.paths = Module._nodeModulePaths(__dirname);
+        const originalRequire = fixture.require.bind(fixture);
+        fixture.require = id => {
+          if (id === '@prisma/client') return { PrismaClient: class { async $disconnect() {} }, Prisma: {} };
+          if (id !== './money-bigint-runner-runtime.cjs') return originalRequire(id);
+          const runtime = originalRequire(id);
+          return { ...runtime, createCommandRuntime: ({ defaultCwd }) => ({
+            stopAll: async () => {},
+            command: async (_bin, args, options = {}) => {
+              if (options.env?.DATABASE_URL) calls.push({ args, cwd: options.cwd ?? defaultCwd, env: options.env });
+              if (args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs'))) {
+                const storage = options.env.FILE_STORAGE_ROOT;
+                assert.equal(options.env.FILE_STORAGE_DRIVER, 'local');
+                assert.ok(path.isAbsolute(storage));
+                assert.notEqual(storage, externalRoot);
+                assert.equal(path.basename(storage), 'private');
+                assert.equal(path.basename(path.dirname(storage)), 'storage');
+                assert.equal(options.cwd ?? defaultCwd, path.dirname(path.dirname(storage)), 'real seed resolves files from its working directory');
+                await mkdir(storage, { recursive: true });
+                await writeFile(path.join(storage, 'synthetic-seed-output'), 'this run only');
+              }
+              return { stdout: '"unix:///fixture"', stderr: '', code: 0 };
+            },
+          }) };
+        };
+        fixture._compile(readFileSync(filename, 'utf8').replace(/^#!.*\n/u, '') + `\nfreePort = async () => 1234; waitForPostgres = async () => {}; ${bypassDatabase} module.exports.captureStorage = main;\n`, filename);
+        await fixture.exports.captureStorage();
+        const seeds = calls.filter(({ args }) => args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs')));
+        assert.equal(seeds.length, name.startsWith('run-payment-') ? 2 : 1);
+        const storage = seeds[0].env.FILE_STORAGE_ROOT;
+        for (const call of calls) assert.equal(call.env.FILE_STORAGE_ROOT, storage);
+        await assert.rejects(stat(path.dirname(path.dirname(storage))), { code: 'ENOENT' });
+        assert.equal(await readFile(externalFile, 'utf8'), 'external bytes unchanged');
+        roots.push(storage);
+      }
+      assert.notEqual(roots[0], roots[1]);
+    } finally {
+      for (const [key, value] of [['FILE_STORAGE_DRIVER', previous.driver], ['FILE_STORAGE_ROOT', previous.root]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      await rm(externalRoot, { recursive: true, force: true });
+    }
+  });
+}
