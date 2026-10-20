@@ -275,18 +275,12 @@ async function runPsql(dockerCommand, databaseName, sql) {
   ]);
 }
 
-async function runCoreSeed(runtimeEnv) {
+async function runCoreSeed(runtimeEnv, temporaryRoot) {
   await command(
-    pnpm,
-    [
-      "--filter",
-      "@jiangkong/api",
-      "exec",
-      "prisma",
-      "db",
-      "seed"
-    ],
+    process.execPath,
+    [path.join(__dirname, "seed.cjs")],
     {
+      cwd: temporaryRoot,
       env: runtimeEnv,
       forwardOutput: true,
       timeoutMs: 15 * 60 * 1000
@@ -1138,6 +1132,8 @@ async function main() {
     TMPDIR: process.env.TMPDIR ?? tmpdir(),
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
+    FILE_STORAGE_DRIVER: "local",
+    FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private"),
     RUN_PAYMENT_EXECUTION_CONCURRENCY: "1",
     OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(),
     SEED_PASSWORD: randomUUID()
@@ -1238,9 +1234,9 @@ async function main() {
         timeoutMs: 15 * 60 * 1000
       }
     );
-    await runCoreSeed(runtimeEnv);
+    await runCoreSeed(runtimeEnv, temporaryRoot);
     await assertSeedPaymentExecutionClosedLoop(dockerCommand);
-    await runCoreSeed(runtimeEnv);
+    await runCoreSeed(runtimeEnv, temporaryRoot);
     await assertSeedPaymentExecutionClosedLoop(dockerCommand);
     await command(
       pnpm,

@@ -1,4 +1,5 @@
 const { readdirSync } = require("node:fs");
+const { randomUUID } = require("node:crypto");
 const { join } = require("node:path");
 const { PrismaClient } = require("@prisma/client");
 
@@ -270,12 +271,29 @@ async function verifyRollbackProbe(client) {
       ]);
       assert(contract && payment && template, "回滚探针目标在事务开始前发生变化");
       const contractAmount = contract.amountCents;
-      const paymentAmounts = [
-        payment.requestedAmountCents,
-        payment.approvedAmountCents,
-        payment.paidAmountCents
-      ];
       const now = new Date();
+      // Seed payments may already have executions; test abandonment on a new unpaid draft.
+      // The clone is inside this forced-rollback transaction and never persists.
+      const probePayment = await tx.paymentRequest.create({
+        data: {
+          ...payment,
+          id: randomUUID(),
+          code: `ROLLBACK-PROBE-${randomUUID()}`,
+          status: "draft",
+          approvedAmountCents: null,
+          paidAmountCents: 0n,
+          abandonedAt: null,
+          abandonedByUserId: null,
+          abandonReason: null,
+          createdAt: now,
+          updatedAt: now
+        }
+      });
+      const paymentAmounts = [
+        probePayment.requestedAmountCents,
+        probePayment.approvedAmountCents,
+        probePayment.paidAmountCents
+      ];
       const actor = "seed-user-contract-staff";
 
       const changedContract = await tx.contractVersion.update({
@@ -288,7 +306,7 @@ async function verifyRollbackProbe(client) {
         }
       });
       const changedPayment = await tx.paymentRequest.update({
-        where: { id: payment.id },
+        where: { id: probePayment.id },
         data: {
           status: "abandoned",
           abandonedAt: now,
