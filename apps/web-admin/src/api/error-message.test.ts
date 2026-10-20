@@ -32,3 +32,15 @@ describe("API error messages", () => {
     expect(formatApiErrorMessage("工资应付案件修订号无效", 409, "保存失败")).toBe("保存失败：409");
   });
 });
+
+
+describe("upload validation messages", () => {
+  const message = "文件格式不支持，请上传 PDF、Word、Excel 或图片资料";
+  it("keeps the fixed supported-format explanation", () => {
+    expect(formatApiErrorMessage(message, 400, "上传失败")).toBe(message);
+    expect(formatUnknownApiError(new Error(message), "上传失败")).toBe(message);
+  });
+  it("continues hiding unknown technical details appended to a format message", () => {
+    expect(formatApiErrorMessage(`${message} internalObjectId=123`, 400, "上传失败")).toBe("上传失败：400");
+  });
+});
