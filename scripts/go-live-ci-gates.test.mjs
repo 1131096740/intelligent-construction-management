@@ -34,6 +34,28 @@ function jobBlock(workflow, jobName) {
   return workflow.slice(start, end);
 }
 
+test("temporary roster sampling stops at the first failed independent run", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Capture independent roster failure samples\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n  release-gates:)/u.exec(workflow);
+  assert.ok(step);
+  assert.equal(step[1], "${{ matrix.group == 'employee_onboarding' && github.event_name == 'pull_request' && github.event.pull_request.number == 348 }}");
+  const source = step[2].replace(/^          /gmu, "");
+  const directory = await mkdtemp(join(tmpdir(), "roster-ci-sampling-"));
+  const counter = join(directory, "count");
+  await writeFile(join(directory, "node"), '#!/bin/sh\ncount=0\nif [ -f "$SAMPLE_COUNT" ]; then count=$(cat "$SAMPLE_COUNT"); fi\ncount=$((count + 1))\nprintf "%s" "$count" > "$SAMPLE_COUNT"\nif [ "$count" = "$FAIL_SAMPLE" ]; then exit 7; fi\n', { mode: 0o755 });
+  try {
+    for (const failAt of ["never", "2"]) {
+      await rm(counter, { force: true });
+      const result = spawnSync("bash", ["-c", source], { cwd: root, encoding: "utf8",
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, SAMPLE_COUNT: counter, FAIL_SAMPLE: failAt } });
+      assert.equal(result.status, failAt === "never" ? 0 : 7, result.stderr);
+      assert.equal(await readFile(counter, "utf8"), failAt === "never" ? "3" : "2");
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on success and drift", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const step = /      - name: Prefetch POL-275 reviewed-base frozen dependencies\n        if: (.+)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(workflow);

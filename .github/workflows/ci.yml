@@ -337,6 +337,21 @@ jobs:
             --candidate-sha "$candidate_sha" \
             --confirm LOCAL_PG16_DYNAMIC_GATE
 
+      # Temporary failure sampling for PR #348; remove before merge after the root cause is verified.
+      - name: Capture independent roster failure samples
+        if: ${{ matrix.group == 'employee_onboarding' && github.event_name == 'pull_request' && github.event.pull_request.number == 348 }}
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          for sample in 1 2 3; do
+            printf '[roster-ci-sample] %s\n' "$sample"
+            node services/api/prisma/run-database-dynamic-gate-local.cjs \
+              --execute \
+              --group employee_onboarding \
+              --candidate-sha "$candidate_sha" \
+              --confirm LOCAL_PG16_DYNAMIC_GATE
+          done
+
   release-gates:
     name: Release gates
     if: ${{ always() }}
