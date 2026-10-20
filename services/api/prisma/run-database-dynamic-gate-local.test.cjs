@@ -299,6 +299,30 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
+test("POL-109 readiness ignores the Unix-only initialization server until TCP PostgreSQL is ready", async () => {
+  const source = readFileSync(path.join(__dirname, "run-pol109-project-close-profit-local.cjs"), "utf8");
+  const start = source.indexOf("async function waitForPostgres(");
+  const end = source.indexOf("async function waitForApi(", start);
+  assert.ok(start >= 0 && end > start);
+  const calls = [];
+  const command = async (_bin, args) => {
+    calls.push(args);
+    // PostgreSQL's temporary init server accepts Unix sockets before its final TCP server starts.
+    if (args.includes("-h") && calls.length === 1) throw new Error("TCP server still initializing");
+    return { stdout: "accepting connections" };
+  };
+  const wait = new Function("command", "docker", "DATABASE_NAME", "fail", "setTimeout",
+    `${source.slice(start, end)}; return waitForPostgres;`)(
+    command, "docker", "jiangkong_pol109", (message) => { throw new Error(message); }, (callback) => callback()
+  );
+  await wait("owned-disposable-container");
+  assert.equal(calls.length, 2, "Unix-only readiness must not allow migration to start");
+  for (const args of calls) {
+    assert.deepEqual(args.slice(0, 3), ["exec", "owned-disposable-container", "pg_isready"]);
+    assert.equal(args[args.indexOf("-h") + 1], "127.0.0.1");
+  }
+});
+
 test("canonical manifest executes all 169 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
