@@ -1,4 +1,23 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function openProjectSettings(page: Page) {
+  const tabs = page.locator(".project-operating-tabs");
+  const settings = tabs.locator(".t-tabs__nav-item").filter({ hasText: /^项目设置$/ });
+  const next = tabs.locator(".t-tabs__btn--right");
+  await expect(settings).toBeVisible();
+  // Native scrollIntoView can move a clipped label underneath TDesign's scroll control.
+  // Use the component's own navigation before asking Playwright to click the final tab.
+  await expect.poll(async () => await next.isVisible() || await settings.evaluate((element) => {
+    const clip = element.closest(".t-tabs__nav-scroll")!.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
+    return rect.left >= clip.left && rect.right <= clip.right;
+  })).toBe(true);
+  if (await next.isVisible()) await next.click();
+  await settings.scrollIntoViewIfNeeded();
+  await expect(settings).toBeInViewport({ ratio: 1 });
+  await settings.click();
+  await expect(settings).toHaveClass(/\bt-is-active\b/);
+}
 
 test("项目页加载后撤回本项目岗位，保存及后续目标预检冻结均按当前权限失败且其他项目不变", async ({ page, request }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "岗位撤回验收只需单个真实浏览器，避免重复撤回共享合成岗位");
@@ -22,7 +41,7 @@ test("项目页加载后撤回本项目岗位，保存及后续目标预检冻�
   const selected = before.find((project: { id: string }) => project.id === projectId);
   await page.locator(".project-picker input").click();
   await page.locator(".t-select__dropdown:visible").getByText(`${selected.code} · ${selected.name}`, { exact: true }).click();
-  await page.getByText("项目设置", { exact: true }).click();
+  await openProjectSettings(page);
   const form = page.getByRole("region", { name: "项目经营档案单条业务表单" });
   await expect(form).toBeVisible();
   const definitionResponse = await request.get(`${api}/business-entry-definitions/project_operating_profile?${new URLSearchParams({ projectId, operation: "edit", targetEntityType: "project", targetEntityId: projectId })}`, { headers });
@@ -138,7 +157,7 @@ test("综合部主管通过统一字段新增参与公司，空白原因保留�
   await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
   await expect(page.locator(".project-picker input")).toBeEnabled();
   await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
-  await page.getByText("项目设置", { exact: true }).click();
+  await openProjectSettings(page);
   const form = page.getByRole("region", { name: "新增参与公司单条业务表单" });
   await expect(form).toBeVisible();
   await form.locator('[data-field="companyEntityId"]').click();
@@ -186,7 +205,7 @@ test("综合部主管通过统一字段新增参与公司，空白原因保留�
   await page.locator(".t-select__dropdown:visible").getByText(`${isolated.code} · ${isolated.name}`, { exact: true }).click();
   await expect(page.locator(".project-picker input")).toBeEnabled();
   await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
-  await page.getByText("项目设置", { exact: true }).click();
+  await openProjectSettings(page);
   await expect(page.getByText("已停止新增业务", { exact: true })).toBeVisible();
   const history = await request.get(`${api}/projects/${projectId}/operating-profile`, { headers });
   expect((await history.json()).entrySnapshots).toContainEqual(expect.objectContaining({ sceneLabel: "停止新增业务", companyName: "参与主体合成验收公司",
@@ -406,7 +425,7 @@ test("项目财务通过统一字段保存档案，预检失败保留输入且�
   expect(selected).toBeTruthy();
   await page.locator(".project-picker input").click();
   await page.locator(".t-select__dropdown:visible").getByText(`${selected.code} · ${selected.name}`, { exact: true }).click();
-  await page.getByText("项目设置", { exact: true }).click();
+  await openProjectSettings(page);
   const form = page.getByRole("region", { name: "项目经营档案单条业务表单" });
   await expect(form).toBeVisible();
   const status = form.locator('[data-field="takeoverStatus"]');
