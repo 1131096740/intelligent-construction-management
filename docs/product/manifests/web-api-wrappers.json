@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 31,
-    "exportedFunctionCount": 633,
-    "transportWrapperCount": 611,
+    "apiModuleCount": 32,
+    "exportedFunctionCount": 635,
+    "transportWrapperCount": 613,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 648,
+    "mainRequestBindingCount": 650,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 638,
-    "productionConsumerCount": 518,
+    "requestEdgeCount": 640,
+    "productionConsumerCount": 520,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,10 +22,65 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 332,
-    "reachableProductionModuleCount": 311
+    "productionModuleCount": 335,
+    "reachableProductionModuleCount": 314
   },
   "wrappers": [
+    {
+      "name": "approvalDocumentCapability",
+      "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 22,
+          "method": "GET",
+          "path": "/approval-forms/:param/:param/capability",
+          "normalizedPath": "/approval-forms/:param/:param/capability",
+          "normalizedKey": "GET /approval-forms/:param/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "approvalDocumentCapability"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+        "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "listApprovalDocuments",
+      "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 16,
+          "method": "GET",
+          "path": "/approval-forms",
+          "normalizedPath": "/approval-forms",
+          "normalizedKey": "GET /approval-forms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listApprovalDocuments"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
     {
       "name": "downloadBusinessEntryExcelTemplate",
       "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
@@ -5755,7 +5810,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7119,
+          "sourceLine": 7122,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -5769,6 +5824,8 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+        "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
@@ -5785,7 +5842,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7103,
+          "sourceLine": 7106,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -5815,7 +5872,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7103,
+          "sourceLine": 7106,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -5845,7 +5902,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5532,
+          "sourceLine": 5535,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -5874,7 +5931,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7103,
+          "sourceLine": 7106,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5965,7 +6022,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5423,
+          "sourceLine": 5426,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -5987,11 +6044,11 @@
       "name": "downloadProjectExpenseApprovalPdf",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
-      "returnProvenance": "transparent_main_response",
+      "returnProvenance": "none",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 85,
+          "sourceLine": 3594,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -5999,8 +6056,7 @@
           "bodyKind": "json",
           "localCallChains": [
             [
-              "downloadProjectExpenseApprovalPdf",
-              "postJson"
+              "downloadProjectExpenseApprovalPdf"
             ]
           ]
         }
@@ -6051,7 +6107,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7146,
+          "sourceLine": 7149,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -6080,7 +6136,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7133,
+          "sourceLine": 7136,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -6109,7 +6165,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7161,
+          "sourceLine": 7164,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -6138,7 +6194,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7103,
+          "sourceLine": 7106,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",

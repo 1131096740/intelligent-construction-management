@@ -908,7 +908,7 @@
     <SensitiveActionDialog
       v-model="frozenDownloadDialogVisible"
       title="下载冻结结算单"
-      description="冻结结算单包含结算业务事实和签名占位。下载行为会记录审计，请确认用于本次乙方线下签章。"
+      description="此文件用于乙方线下签章，包含已冻结的结算内容及预留签章栏。正式结算单在最终审批通过后生成，并使用实际审批记录中的签名。下载行为会记录审计。"
       confirm-text="生成下载链接"
       require-reason
       require-password

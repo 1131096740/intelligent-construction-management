@@ -133,23 +133,23 @@ describe("ContractApprovalRouteService", () => {
   it.each([
     [
       "material_purchase",
-      ["contract_director", "material_director", "project_manager", "finance_director", "chairman|general_manager"]
+      ["material_director", "contract_director", "project_manager", "finance_director", "chairman|general_manager"]
     ],
     [
       "equipment_rental",
-      ["contract_director", "material_director", "project_manager", "finance_director", "chairman|general_manager"]
+      ["material_director", "contract_director", "project_manager", "finance_director", "chairman|general_manager"]
     ],
     [
       "labor_subcontract",
-      ["contract_director", "engineering_director", "project_manager", "finance_director", "chairman|general_manager"]
+      ["engineering_director", "contract_director", "project_manager", "finance_director", "chairman|general_manager"]
     ],
     [
       "professional_subcontract",
-      ["contract_director", "engineering_director", "project_manager", "finance_director", "chairman|general_manager"]
+      ["engineering_director", "contract_director", "project_manager", "finance_director", "chairman|general_manager"]
     ],
     [
       "generic_contract",
-      ["contract_director", "comprehensive_director", "project_manager", "finance_director", "chairman|general_manager"]
+      ["comprehensive_director", "contract_director", "project_manager", "finance_director", "chairman|general_manager"]
     ]
   ])("freezes the complete %s route and concrete candidates", async (contractTypeKey, expected) => {
     const { tx } = txFor();
@@ -180,7 +180,7 @@ describe("ContractApprovalRouteService", () => {
       "staff-1"
     );
 
-    expect(frozen[0]?.roleKeys).toEqual(["contract_director"]);
+    expect(frozen[1]?.roleKeys).toEqual(["contract_director"]);
   });
 
   it("freezes the director self-review node but keeps later required nodes distinct", async () => {
@@ -204,14 +204,14 @@ describe("ContractApprovalRouteService", () => {
     );
 
     expect(frozen.map((node) => node.roleKeys)).toEqual([
-      ["contract_director"],
       ["comprehensive_director"],
+      ["contract_director"],
       ["project_manager"],
       ["finance_director"],
       ["chairman", "general_manager"]
     ]);
-    expect(frozen[0]?.candidateUserIdsByRole).toEqual({ contract_director: ["director-1"] });
-    expect(frozen.slice(1).flatMap((node) => node.candidateUserIds)).not.toContain("director-1");
+    expect(frozen[1]?.candidateUserIdsByRole).toEqual({ contract_director: ["director-1"] });
+    expect(frozen.filter((_, index) => index !== 1).flatMap((node) => node.candidateUserIds)).not.toContain("director-1");
   });
 
   it("does not treat a project-scoped legacy contract director as an applicant role", async () => {
@@ -271,7 +271,7 @@ describe("ContractApprovalRouteService", () => {
     ).rejects.toThrow("所属项目的项目总工配置缺失或冲突");
   });
 
-  it("blocks when the only project engineer is the applicant", async () => {
+  it("retains the applicant as the project engineer approver", async () => {
     const { tx } = txFor({
       projectCandidates: [
         { userId: "staff-1", roleKey: "engineering_director" },
@@ -281,17 +281,17 @@ describe("ContractApprovalRouteService", () => {
 
     await expect(
       service.freezeNewContractRoute(tx as Prisma.TransactionClient, contract("professional_subcontract"), "staff-1")
-    ).rejects.toThrow("所属项目的项目总工不能审批本人发起的合同，请先配置其他审批人");
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ roleKeys: ["engineering_director"], candidateUserIds: ["staff-1"] })]));
   });
 
-  it("blocks a single-role node after excluding the applicant", async () => {
+  it("retains the applicant as the project manager approver", async () => {
     const { tx } = txFor({
       projectCandidates: [{ userId: "staff-1", roleKey: "project_manager" }]
     });
 
     await expect(
       service.freezeNewContractRoute(tx as Prisma.TransactionClient, contract("material_purchase"), "staff-1")
-    ).rejects.toThrow("项目经理没有可审批本合同的人员，请先完善岗位配置");
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ roleKeys: ["project_manager"], candidateUserIds: ["staff-1"] })]));
   });
 
   it("keeps both OR role keys and accepts one remaining leader", async () => {
@@ -350,7 +350,7 @@ describe("ContractApprovalRouteService", () => {
       "staff-1"
     );
 
-    expect(frozen[0]?.candidateUserIds).toEqual(["contract-a", "contract-z"]);
+    expect(frozen[1]?.candidateUserIds).toEqual(["contract-a", "contract-z"]);
     expect(frozen.at(-1)?.candidateUserIds).toEqual(["leader-a", "leader-z"]);
   });
 

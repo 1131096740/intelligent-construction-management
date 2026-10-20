@@ -1,3 +1,4 @@
+import { attachApprovalEvidenceFixture } from "../approval/approval-evidence-test-fixture";
 import { ContractTakeoverService } from "./contract-takeover.service";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -314,6 +315,7 @@ describe("ContractTakeoverService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
+    attachApprovalEvidenceFixture(tx);
     return tx;
   }
 
@@ -809,6 +811,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     return tx;
   }
 
@@ -1344,6 +1347,7 @@ describe("ContractTakeoverService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
+    attachApprovalEvidenceFixture(tx);
     return tx;
   }
 
@@ -1667,7 +1671,7 @@ describe("ContractTakeoverService", () => {
   it("validates a selected historical company entity while preserving the original name", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-inactive" }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
@@ -1675,6 +1679,7 @@ describe("ContractTakeoverService", () => {
       paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       contractTakeover: { create: jest.fn().mockResolvedValue(takeoverRecord()) }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     const service = new ContractTakeoverService(prisma as never, audit as never);
 
@@ -1706,10 +1711,11 @@ describe("ContractTakeoverService", () => {
   it("rejects an unknown company entity before creating historical contract facts", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
       companyEntity: { findUnique: jest.fn().mockResolvedValue(null) },
       contract: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     const service = new ContractTakeoverService(prisma as never, audit as never);
 
@@ -1731,12 +1737,13 @@ describe("ContractTakeoverService", () => {
   it("rejects a tombstoned formal code before creating a historical takeover contract", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
       contractNumberTombstone: {
         findUnique: jest.fn().mockResolvedValue({ id: "tombstone-1" })
       },
       contract: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -1763,7 +1770,7 @@ describe("ContractTakeoverService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true })
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({ id: "entity-historical-1" })
@@ -1797,6 +1804,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -1929,7 +1937,7 @@ describe("ContractTakeoverService", () => {
   it("persists manually entered direct payment stages for a generic contract takeover", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
       paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
@@ -1939,6 +1947,7 @@ describe("ContractTakeoverService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     };
@@ -2019,12 +2028,13 @@ describe("ContractTakeoverService", () => {
   it("rejects generic takeover without explicit direct stages and settlement contracts with them", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
       paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
       paymentTermsStage: { createMany: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     };
@@ -2074,7 +2084,7 @@ describe("ContractTakeoverService", () => {
   ])("keeps the current-settlement initial stage for %s takeover", async (contractTypeKey) => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true }) },
       contract: { create: jest.fn().mockResolvedValue({ id: "contract-1" }) },
       contractVersion: { create: jest.fn().mockResolvedValue({ id: "contract-version-1" }) },
       paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "terms-version-1" }) },
@@ -2082,6 +2092,7 @@ describe("ContractTakeoverService", () => {
       contractTakeover: { create: jest.fn().mockResolvedValue(takeoverRecord()) },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     };
@@ -2123,7 +2134,7 @@ describe("ContractTakeoverService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true })
       },
       contract: {
         create: jest.fn().mockResolvedValue({ id: "contract-1" })
@@ -2150,6 +2161,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue(takeoverRecord())
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -2279,6 +2291,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -2313,6 +2326,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -2353,6 +2367,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -2966,7 +2981,7 @@ describe("ContractTakeoverService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       project: {
-        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "签批人甲", isActive: true })
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({ id: "entity-historical-1" })
@@ -3022,6 +3037,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       contract: tx.contract,
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -3186,6 +3202,7 @@ describe("ContractTakeoverService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       contract: tx.contract,
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -3279,6 +3296,7 @@ describe("ContractTakeoverService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       contract: tx.contract,
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -3430,6 +3448,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3515,6 +3534,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3577,6 +3597,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3616,6 +3637,7 @@ describe("ContractTakeoverService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3668,6 +3690,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       contract: tx.contract,
       $transaction: jest.fn()
@@ -3723,6 +3746,7 @@ describe("ContractTakeoverService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3860,6 +3884,7 @@ describe("ContractTakeoverService", () => {
       },
       contract: { update: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3916,6 +3941,7 @@ describe("ContractTakeoverService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3985,6 +4011,7 @@ describe("ContractTakeoverService", () => {
       contractVersion: { update: jest.fn() },
       paymentTermsVersion: { update: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4050,6 +4077,7 @@ describe("ContractTakeoverService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4175,6 +4203,7 @@ describe("ContractTakeoverService", () => {
         findMany: jest.fn().mockResolvedValue([{ id: "contract-version-1", amountCents: 1_000_000n }])
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     };
@@ -4220,6 +4249,7 @@ describe("ContractTakeoverService", () => {
       },
       archiveRecord: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     };
@@ -4251,6 +4281,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4285,6 +4316,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4321,6 +4353,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4362,6 +4395,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue({ id: "takeover-correction-1" })
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4468,6 +4502,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4521,7 +4556,7 @@ describe("ContractTakeoverService", () => {
           isActive: false
         })
       },
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "responsible-1", isActive: true }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "responsible-1", name: "签批人甲", isActive: true }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
       },
@@ -4534,6 +4569,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue({ id: "correction-entity-1" })
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     const service = new ContractTakeoverService(prisma as never, audit as never, auth as never, files as never);
 
@@ -4599,6 +4635,7 @@ describe("ContractTakeoverService", () => {
       position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -4635,6 +4672,7 @@ describe("ContractTakeoverService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
       contractTakeoverCorrection: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -4683,7 +4721,7 @@ describe("ContractTakeoverService", () => {
           isActive: true
         })
       },
-      user: { findUnique: jest.fn().mockResolvedValue({ id: "responsible-1", isActive: true }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "responsible-1", name: "签批人甲", isActive: true }) },
       contractTakeoverCorrection: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockRejectedValue({
@@ -4695,6 +4733,7 @@ describe("ContractTakeoverService", () => {
         })
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -4755,6 +4794,7 @@ describe("ContractTakeoverService", () => {
       },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-after" }) }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     const service = new ContractTakeoverService(prisma as never, audit as never, auth as never, files as never);
 
@@ -4796,6 +4836,7 @@ describe("ContractTakeoverService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
       contractTakeoverCorrection: { findUnique: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -4819,7 +4860,7 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeoverCorrection.findUnique).not.toHaveBeenCalled();
   });
 
-  it("主体更正驳回不修改合同，且跨项目、重复处理和自审均失败关闭", async () => {
+  it("主体更正驳回不修改合同，跨项目和重复处理失败关闭，直接兼岗可签批", async () => {
     const baseCorrection = {
       id: "correction-entity-1",
       projectId: "project-1",
@@ -4847,6 +4888,7 @@ describe("ContractTakeoverService", () => {
         },
         companyEntity: { findUnique: jest.fn() }
       };
+    attachApprovalEvidenceFixture(tx);
       const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
       return { tx, service: new ContractTakeoverService(prisma as never, audit as never, auth as never, files as never) };
     };
@@ -4875,10 +4917,11 @@ describe("ContractTakeoverService", () => {
     }, "contract-director")).rejects.toThrow("主体更正已处理或发生变化，请刷新后重试");
 
     const selfReview = makeService(baseCorrection);
+    selfReview.tx.companyEntity.findUnique.mockResolvedValue({ id: "entity-after", isActive: true, dataStatus: "complete" });
     await expect(selfReview.service.reviewCompanyEntityCorrection("project-1", "takeover-1", "correction-entity-1", {
       decision: "approve",
       currentPassword: "current-password"
-    }, "contract-user")).rejects.toThrow("主体更正提交人与确认人不能是同一人");
+    }, "contract-user")).resolves.toBeDefined();
   });
 
   it("主体更正确认和驳回都必须先验证当前密码", async () => {
@@ -4957,6 +5000,7 @@ describe("ContractTakeoverService", () => {
       },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({ id: "entity-after" }) }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -4987,6 +5031,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5023,6 +5068,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5085,6 +5131,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5125,6 +5172,7 @@ describe("ContractTakeoverService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5146,6 +5194,7 @@ describe("ContractTakeoverService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5187,6 +5236,7 @@ describe("ContractTakeoverService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5228,6 +5278,7 @@ describe("ContractTakeoverService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5325,6 +5376,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5425,6 +5477,7 @@ describe("ContractTakeoverService", () => {
         ])
       }
     };
+    attachApprovalEvidenceFixture(tx);
 
     await expect(
       internal.assertTakeoverPaymentStages.call(service, tx, takeoverRecord())
@@ -5463,6 +5516,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5532,6 +5586,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalEvidenceFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)

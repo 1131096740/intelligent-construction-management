@@ -29,11 +29,10 @@ import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
-  isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
   assertActiveApprovalRecipient
 } from "../approval/approval-review-identity";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import {
   lockApprovalReviewRow,
   supportsApprovalReviewLock
@@ -2340,7 +2339,7 @@ export class PaymentRequestService {
       }
 
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+        required: input.decision === "approve"
       });
 
       if (input.decision === "reject_previous") {
@@ -2570,22 +2569,18 @@ export class PaymentRequestService {
         }
       });
       await tx.approvalActionLog.create({
-        data: {
+        data: await withApprovalIdentity(tx, {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
           approvedRoleKey,
           representedUserId: identity.representedUserId,
-          ...(isGovernedFrozenApprovalNode(currentNode)
-            ? {
-                signatureFileIdSnapshot: signature.fileId,
-                signatureSha256Snapshot: signature.sha256,
-                signatureVersionIdSnapshot: signature.versionId
-              }
-            : {}),
+          signatureFileIdSnapshot: signature.fileId,
+          signatureSha256Snapshot: signature.sha256,
+          signatureVersionIdSnapshot: signature.versionId,
           ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
-        }
+        }, signature)
       });
       if (flowCompleted) {
         await this.shrinkFinancingQuotaUsageToApprovedAmount(

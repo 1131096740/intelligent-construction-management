@@ -203,6 +203,15 @@ describe("home workbench card helpers", () => {
     });
   });
 
+  it("uses actual business type for procurement and expense approvals", () => {
+    const data = workItemsFixture();
+    data.queues.pending[0] = { ...data.queues.pending[0]!, businessType: "general_procurement" };
+    data.queues.pending[1] = { ...data.queues.pending[1]!, businessType: "expense_claim" };
+    const rows = toHomeWorkItemRows(toWorkItemQueues(data));
+    expect(rows.filter((row) => row.queueId === "pending").map((row) => row.businessTypeLabel))
+      .toEqual(["综合采购审批", "费用申请审批"]);
+  });
+
   it("filters work items by project, business type, status and keyword", () => {
     const rows = toHomeWorkItemRows(toWorkItemQueues(workItemsFixture()));
 

@@ -89,6 +89,22 @@ describe("SettlementReadService", () => {
     );
   });
 
+  it.each([
+    ["draft", false], ["in_approval", false], ["approval_pending", false],
+    ["approval_rejected", false], ["withdrawn", false], ["voided", false],
+    ["pending_generation", true], ["approved_pending_archive", true], ["archive_pending", true],
+    ["pending_archive_confirm", true], ["effective", true], ["partially_paid", true], ["paid", true]
+  ])("shows formal settlement download availability for %s", (status, enabled) => {
+    const service = new SettlementReadService({} as never) as unknown as {
+      settlementActions(status: string, roles: string[], review: object, files: []): Array<{ key: string; enabled: boolean; disabledReason?: string }>;
+    };
+    const action = service.settlementActions(status as string, ["contract_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false }, [])
+      .find((item) => item.key === "download_approval_form");
+    expect(action?.enabled).toBe(enabled);
+    if (!enabled) expect(action?.disabledReason).toBe("仅最终审批通过后可下载正式结算单");
+  });
+
   it("does not expose settlement PDF generation to read-only ledger users", () => {
     const service = new SettlementReadService({} as never) as unknown as {
       settlementActions(
@@ -1031,7 +1047,7 @@ describe("SettlementReadService", () => {
     ).rejects.toThrow("未找到结算绑定的付款条款版本，请刷新结算台账后重试");
   });
 
-  it("结算普通节点不因申请人兼任领导而标记自审确认", async () => {
+  it("结算申请人兼任当前岗位仍须本人确认签批", async () => {
     const prisma = {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
@@ -1066,8 +1082,8 @@ describe("SettlementReadService", () => {
     );
     expect(access).toEqual({
       canAct: true,
-      canReview: false,
-      requiresSelfReviewConfirmation: false
+      canReview: true,
+      requiresSelfReviewConfirmation: true
     });
     expect(
       service.settlementActions(
@@ -1080,9 +1096,9 @@ describe("SettlementReadService", () => {
       expect.arrayContaining([
         expect.objectContaining({
           key: "review_approval",
-          enabled: false,
-          disabledReason: "申请人不能审批自己发起的业务",
-          requiresSelfReviewConfirmation: false
+          enabled: true,
+          disabledReason: null,
+          requiresSelfReviewConfirmation: true
         }),
         expect.objectContaining({ key: "transfer_approval", enabled: true }),
         expect.objectContaining({ key: "delegate_approval", enabled: true })

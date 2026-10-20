@@ -26,7 +26,7 @@ const contractTemplateRoles = ["contract_staff", "contract_director"] as const;
 const businessPartyCreateRoles = MASTER_DATA_MAINTAINER_ROLES;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
-const spotProcurementCreateRoles = ["material_staff", "material_director"] as const;
+const spotProcurementCreateRoles = ["material_staff"] as const;
 const upstreamFundFactTypes = [
   { value: "owner_payment_to_affiliate", label: "业主向施工企业付款" },
   { value: "affiliate_remittance_to_company", label: "施工企业向我方拨款" },

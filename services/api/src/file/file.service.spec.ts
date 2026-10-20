@@ -255,6 +255,23 @@ describe("FileService", () => {
       .resolves.toBeUndefined();
   });
 
+  it.each(["frozen_counterparty_copy", "counterparty_signed_original"])("allows only the owning preparer to download active %s before submission", async purpose => {
+    const service = new FileService({} as PrismaService, audit as unknown as AuditService, storage as unknown as PrivateFileStorage);
+    const document = { status: "active", purpose, settlementId: null, settlementDraftId: "draft-1" };
+    const tx = {
+      settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue(document) },
+      settlementDraft: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1", ownerUserId: "engineer-owner" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const access = service as unknown as { governedSettlementSignedDocumentAccess(tx: unknown, id: string, actor: string): Promise<boolean | null> };
+    await expect(access.governedSettlementSignedDocumentAccess(tx, "file-1", "engineer-owner")).resolves.toBe(true);
+    await expect(access.governedSettlementSignedDocumentAccess(tx, "file-1", "other-engineer")).resolves.toBe(false);
+    document.status = "superseded";
+    await expect(access.governedSettlementSignedDocumentAccess(tx, "file-1", "engineer-owner")).resolves.toBe(false);
+  });
+
   it("registers a generated file and advances its settlement claim in one transaction", async () => {
     const claimUpdate = jest.fn().mockResolvedValue({ count: 1 });
     const tx = {
@@ -1056,7 +1073,7 @@ describe("FileService", () => {
     const tx = {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
-          id: "approval-1",
+          id: "approval-1", status: "approved",
           applicantUserId: "applicant-1"
         })
       },
@@ -6898,7 +6915,7 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("allows the applicant to download an approval-form PDF", async () => {
+  it("blocks raw-file bypass: allows the applicant to download an approval-form PDF", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -6943,15 +6960,13 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
 
-    const ticket = await service.createDownloadTicket("file-1", {
+    await expect(service.createDownloadTicket("file-1", {
       actorUserId: "applicant-1",
       downloadReason: "资料下载复核"
-    });
-
-    expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
+    })).rejects.toThrow("审批单必须通过专用下载入口下载");
   });
 
-  it("allows finance staff to download a project expense approval-form PDF by project role", async () => {
+  it("blocks raw-file bypass: allows finance staff to download a project expense approval-form PDF by project role", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -7004,15 +7019,11 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
 
-    const ticket = await service.createDownloadTicket("file-1", {
+    await expect(service.createDownloadTicket("file-1", {
       actorUserId: "finance-1",
       downloadReason: "资料下载复核"
-    });
-
-    expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
-    expect(tx.projectExpenseRequest.findUnique).toHaveBeenCalledWith({
-      where: { id: "expense-1" }
-    });
+    })).rejects.toThrow("审批单必须通过专用下载入口下载");
+    expect(tx.projectExpenseRequest.findUnique).not.toHaveBeenCalled();
   });
 
   it("allows finance staff to download a project expense archived PDF by project role", async () => {
@@ -7070,7 +7081,7 @@ describe("FileService", () => {
     });
   });
 
-  it("allows the applicant to download the latest in-progress settlement approval PDF", async () => {
+  it("blocks raw-file bypass: allows the applicant to download the latest in-progress settlement approval PDF", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -7115,15 +7126,13 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
 
-    const ticket = await service.createDownloadTicket("file-1", {
+    await expect(service.createDownloadTicket("file-1", {
       actorUserId: "applicant-1",
       downloadReason: "资料下载复核"
-    });
-
-    expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
+    })).rejects.toThrow("审批单必须通过专用下载入口下载");
   });
 
-  it("denies latest settlement approval PDF download to roles outside the frozen approval route", async () => {
+  it("blocks raw-file bypass: denies latest settlement approval PDF download to roles outside the frozen approval route", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -7182,10 +7191,10 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "engineering-user-1", downloadReason: "资料下载复核" })
-    ).rejects.toThrow("当前账号无权下载该资料");
+    ).rejects.toThrow("审批单必须通过专用下载入口下载");
   });
 
-  it("allows latest settlement approval PDF download to roles in the frozen approval route", async () => {
+  it("blocks raw-file bypass: allows latest settlement approval PDF download to roles in the frozen approval route", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -7243,15 +7252,13 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
 
-    const ticket = await service.createDownloadTicket("file-1", {
+    await expect(service.createDownloadTicket("file-1", {
       actorUserId: "material-user-1",
       downloadReason: "资料下载复核"
-    });
-
-    expect(ticket.downloadUrl).toContain("actorUserId=material-user-1");
+    })).rejects.toThrow("审批单必须通过专用下载入口下载");
   });
 
-  it("does not treat non-signature approval logs as latest settlement approval PDF signatures", async () => {
+  it("blocks raw-file bypass: does not treat non-signature approval logs as latest settlement approval PDF signatures", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -7311,17 +7318,11 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "reminder-user-1", downloadReason: "资料下载复核" })
-    ).rejects.toThrow("当前账号无权下载该资料");
-    expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
-      where: {
-        approvalInstanceId: "inst-1",
-        actorUserId: "reminder-user-1",
-        action: { in: ["approve", "reject_previous", "return_to_applicant"] }
-      }
-    });
+    ).rejects.toThrow("审批单必须通过专用下载入口下载");
+    expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
   });
 
-  it("denies an unrelated user from downloading an approval-form PDF", async () => {
+  it("blocks raw-file bypass: denies an unrelated user from downloading an approval-form PDF", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -7373,7 +7374,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "stranger-1", downloadReason: "资料下载复核" })
-    ).rejects.toThrow("当前账号无权下载该资料");
+    ).rejects.toThrow("审批单必须通过专用下载入口下载");
   });
 
   it("rejects overly long download reasons before creating a ticket", async () => {

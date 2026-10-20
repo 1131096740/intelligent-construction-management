@@ -2662,11 +2662,10 @@ async function downloadExpenseApprovalPdf() {
     if (!downloadReason) {
       throw new Error("请填写下载原因");
     }
-    const ticket = await downloadProjectExpenseApprovalPdfWithCapability(selectedProjectId.value, row.id, {
+    await downloadProjectExpenseApprovalPdfWithCapability(selectedProjectId.value, row.id, {
       confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "审批单下载密码"),
       downloadReason
     });
-    triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
   });
 }
 

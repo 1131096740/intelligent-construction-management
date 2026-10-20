@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity } from "../approval/approval-review-identity";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import {
@@ -1067,10 +1067,10 @@ export class FundExecutionService {
       }
       const finalNode = instance.currentNodeIndex === nodes.length - 1;
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: finalNode
+        required: true
       });
       await tx.approvalActionLog.create({
-        data: {
+        data: await withApprovalIdentity(tx, {
           id: randomUUID(),
           approvalInstanceId: instance.id,
           action: "approve",
@@ -1084,7 +1084,7 @@ export class FundExecutionService {
           signatureFileIdSnapshot: signature.fileId,
           signatureSha256Snapshot: signature.sha256,
           signatureVersionIdSnapshot: signature.versionId
-        }
+        }, signature)
       });
       await tx.approvalInstance.update({
         where: { id: instance.id },

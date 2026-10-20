@@ -1,3 +1,4 @@
+import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import {
   BadRequestException,
@@ -2445,9 +2446,6 @@ export class ContractTakeoverService {
       if (correction.status !== "submitted") {
         throw new BadRequestException("主体更正已处理或发生变化，请刷新后重试");
       }
-      if (correction.createdByUserId === actorUserId) {
-        throw new ForbiddenException("主体更正提交人与确认人不能是同一人");
-      }
       const contract = await tx.contract.findUnique({
         where: { id: takeover.contractId },
         select: { id: true, companyEntityId: true, companyEntityName: true }
@@ -2485,6 +2483,12 @@ export class ContractTakeoverService {
           data: { companyEntityId: targetCompanyEntityId }
         });
       }
+      if (decision === "approve") await recordIndependentApproval(tx, {
+        businessType: "contract_company_correction", businessId: correction.id,
+        applicantUserId: correction.createdByUserId, actorUserId, roleKey: "contract_director", nodeName: "合同部主管", comment: reviewComment, signedAt: now,
+        form: { title: "历史我方主体更正审批单", code: "主体更正", projectId, companyName: contract.companyEntityName ?? "",
+          summary: [{ label: "更正原因", value: correction.reason }, { label: "复核意见", value: reviewComment ?? "同意" }] }
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: `contract_takeover.company_entity_correction.${decision === "approve" ? "confirm" : "reject"}`,
@@ -2651,6 +2655,7 @@ export class ContractTakeoverService {
     if (!acceptanceConclusion) throw new Error("请填写批次验收结论后再提交复核结果");
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractTakeoverBatch" WHERE "id" = ${batchId} AND "projectId" = ${projectId} FOR UPDATE`);
       const batch = await tx.contractTakeoverBatch.findFirst({
         where: { id: batchId, projectId }
       });
@@ -2666,6 +2671,13 @@ export class ContractTakeoverService {
       const updated = await tx.contractTakeoverBatch.update({
         where: { id: batch.id },
         data: { status, reviewComment, acceptanceConclusion }
+      });
+      if (status === "accepted" || status === "limited_accepted") await recordIndependentApproval(tx, {
+        businessType: "contract_takeover_batch", businessId: batch.id, applicantUserId: batch.createdByUserId,
+        actorUserId, roleKey: "contract_director", nodeName: "合同部主管", comment: reviewComment, signedAt: updated.updatedAt,
+        form: { title: "历史合同导入批次验收单", code: batch.batchNo, projectId, companyName: "",
+          summary: [{ label: "验收结论", value: acceptanceConclusion }, { label: "复核意见", value: reviewComment },
+            { label: "导入行数", value: String(batch.totalRows) }] }
       });
       await this.audit.record(tx, {
         actorUserId,

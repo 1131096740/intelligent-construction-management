@@ -1,3 +1,4 @@
+import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 import {
   BadRequestException,
   ForbiddenException
@@ -70,7 +71,8 @@ function connectBusinessEntryFixture(
   const snapshots: Array<Record<string, unknown>> = [];
   Object.assign(tx, {
     user: { findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
-      where.id === actorUserId ? { id: actorUserId, isActive: true } : null) },
+      where.id === actorUserId ? {
+name: "签批人甲", id: actorUserId, isActive: true } : null) },
     userPosition: { findMany: jest.fn(async ({ where }: { where: { userId: string } }) =>
       where.userId === actorUserId
         ? [{ userId: actorUserId, projectId: "project-1", positionId: "entry-contract-staff" }] : []) },
@@ -182,7 +184,7 @@ describe("ContractService", () => {
         }),
         create: jest.fn().mockImplementation(({ data }) => ({ id: "new-contract", ...data }))
       },
-      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" }) },
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue(sourceVersion),
         create: jest.fn().mockImplementation(({ data }) => ({ id: "new-version", ...data }))
@@ -349,7 +351,7 @@ describe("ContractService", () => {
         create: jest.fn().mockResolvedValue({ id: "new-version", amountCents: 0n })
       },
       project: {
-        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true, name: "签批人甲" })
       },
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       contractBill: { findMany: jest.fn().mockResolvedValue([]) },
@@ -692,6 +694,7 @@ describe("ContractService", () => {
       contractVersion: { updateMany: jest.fn() },
       approvalInstance: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const numbering = { allocateDaily: jest.fn() };
     const routes = { freezeNewContractRoute: jest.fn() };
     const service = new ContractService(
@@ -730,7 +733,7 @@ describe("ContractService", () => {
     };
     delegates.$queryRaw = jest.fn(async (query: { strings?: string[] }) => {
       const sql = query.strings?.join(" ") ?? "";
-      if (sql.includes('FROM "Project"')) return [{ id: "project-1", isActive: true }];
+      if (sql.includes('FROM "Project"')) return [{ id: "project-1", isActive: true, name: "签批人甲" }];
       if (sql.includes('FROM "ContractBusinessTemplate"')) {
         const template = await delegates.contractBusinessTemplate?.findUnique({});
         if (template === undefined) {
@@ -861,7 +864,7 @@ describe("ContractService", () => {
           return [{ contractVersionId: version.id }];
         }
         if (sql.includes('FROM "Project"')) {
-          return [{ id: "project-1", isActive: true }];
+          return [{ id: "project-1", isActive: true, name: "签批人甲" }];
         }
         return [];
       }),
@@ -919,6 +922,7 @@ describe("ContractService", () => {
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "company-1",
           isActive: true,
           dataStatus: "complete",
@@ -980,6 +984,7 @@ describe("ContractService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       }
     };
+    attachApprovalSignatureFixture(tx);
     let queue: Promise<unknown> = Promise.resolve();
     const prisma = {
       $transaction: jest.fn((callback: (client: typeof tx) => Promise<unknown>) => {
@@ -2140,6 +2145,7 @@ describe("ContractService", () => {
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "entity-1",
           isActive: true,
           dataStatus: "complete",
@@ -2176,6 +2182,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -2495,6 +2502,7 @@ describe("ContractService", () => {
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "entity-1",
           isActive: true,
           dataStatus: "complete",
@@ -2531,6 +2539,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -2753,6 +2762,7 @@ describe("ContractService", () => {
       },
       contractVersion: { updateMany: jest.fn() },
       companyEntity: { findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
         id: "entity-1", isActive: true, dataStatus: "complete", currentVersionNo: 1
       }) },
       companyEntityVersion: { findUnique: jest.fn().mockResolvedValue({
@@ -2763,6 +2773,7 @@ describe("ContractService", () => {
       approvalInstance: { create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
@@ -3262,6 +3273,7 @@ describe("ContractService", () => {
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "entity-1",
           isActive: true,
           dataStatus: "complete",
@@ -3291,6 +3303,7 @@ describe("ContractService", () => {
       },
       approvalInstance: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3423,6 +3436,7 @@ describe("ContractService", () => {
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "entity-1",
           isActive: true,
           dataStatus: "complete",
@@ -3520,6 +3534,7 @@ describe("ContractService", () => {
       approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
@@ -3682,6 +3697,7 @@ describe("ContractService", () => {
       contractVersion: { updateMany: jest.fn() },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "entity-1",
           isActive: true,
           dataStatus: "complete",
@@ -3698,6 +3714,7 @@ describe("ContractService", () => {
       },
       approvalInstance: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const readiness = {
       check: jest.fn().mockResolvedValue({ blocking: [], warnings: [], checkedRevision: 1 }),
       freeze: jest.fn().mockResolvedValue({ draftRevision: 1 })
@@ -3792,6 +3809,7 @@ describe("ContractService", () => {
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "entity-1",
           isActive: true,
           dataStatus: "complete",
@@ -3812,6 +3830,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3889,6 +3908,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -3986,6 +4006,7 @@ describe("ContractService", () => {
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       approvalInstance: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const service = new ContractService(
       {
         $transaction: jest.fn(
@@ -4196,6 +4217,7 @@ describe("ContractService", () => {
       },
       approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) }
     };
+    attachApprovalSignatureFixture(tx);
     const service = new ContractService(
       {
         $transaction: jest.fn(
@@ -4250,6 +4272,7 @@ describe("ContractService", () => {
       },
       approvalInstance: { create: jest.fn().mockResolvedValue({ id: "approval-1" }) }
     };
+    attachApprovalSignatureFixture(tx);
     const service = new ContractService(
       {
         $transaction: jest.fn(
@@ -4313,7 +4336,7 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-chair", fileId: "sig-chair", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("chairman")
@@ -4365,6 +4388,7 @@ describe("ContractService", () => {
         approvedRoleKey: "chairman",
         representedUserId: "chairman-1",
         metadata: {
+          approverName: "签批人甲",
           ownerContractRisk: {
             status: "clear",
             ownerContractAmountCents: "5000000",
@@ -4448,7 +4472,7 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-chair", fileId: "sig-chair", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("chairman")
@@ -4503,7 +4527,7 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "signature-version-1", fileId: "signature-file-1", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "signature-file-1", storageStatus: "active", contentSha256: "a".repeat(64) }]),
       contractVersion: {
@@ -4579,7 +4603,7 @@ describe("ContractService", () => {
         actorUserId: "contract-director-1",
         approvedRoleKey: "contract_director",
         representedUserId: "contract-director-1",
-        metadata: { selfReview: true, selfReviewReason: "项目合同经办与合同部主管由本人兼任" }
+        metadata: { selfReview: true, selfReviewReason: "项目合同经办与合同部主管由本人兼任", approverName: "签批人甲" }
       })
     });
   });
@@ -4589,7 +4613,7 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "contract-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "signature-version-1", fileId: "signature-file-1", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "signature-file-1", storageStatus: "active", contentSha256: "a".repeat(64) }]),
       contractVersion: {
@@ -4682,6 +4706,7 @@ describe("ContractService", () => {
       auditLog: { create: jest.fn() },
       ...approvalRoleTables("contract_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -4739,6 +4764,7 @@ describe("ContractService", () => {
       approvalActionLog: { create: jest.fn() },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
@@ -4801,6 +4827,7 @@ describe("ContractService", () => {
     const actionMetadata = tx.approvalActionLog.create.mock.calls[0]?.[0].data.metadata;
     const auditMetadata = audit.record.mock.calls[0]?.[1].metadata;
     expect(actionMetadata).toEqual({
+      approverName: "签批人甲",
       selfReview: true,
       selfReviewReason: "业务紧急且由本人发起",
       ownerContractRisk: {
@@ -4884,8 +4911,9 @@ describe("ContractService", () => {
       projectMember: {
         findMany: jest.fn().mockResolvedValue([])
       },
-      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) }
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, name: "原审批人乙" }) }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
@@ -4949,6 +4977,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("general_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5037,6 +5066,7 @@ describe("ContractService", () => {
         findFirst: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5088,6 +5118,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5137,6 +5168,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5176,6 +5208,7 @@ describe("ContractService", () => {
         })
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5230,6 +5263,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("project_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5294,6 +5328,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5387,6 +5422,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5439,6 +5475,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("general_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
         callback(tx)
@@ -5520,6 +5557,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5786,11 +5824,12 @@ describe("ContractService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-transfer", fileId: "sig-transfer", contentSha256: "d".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-transfer", contentSha256: "d".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("employee")
     };
+    tx.user.findUnique.mockResolvedValue({ id: "chairman-1", isActive: true, name: "董事长乙" });
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5855,6 +5894,7 @@ describe("ContractService", () => {
       },
       ...approvalRoleTables("general_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -6772,6 +6812,7 @@ describe("ContractService", () => {
         create: jest.fn().mockResolvedValue({ id: "action-log-1", action: "remind" })
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const contractService = new ContractService(prisma as never, audit as never);
 
@@ -6827,6 +6868,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const contractService = new ContractService(prisma as never, audit as never);
 
@@ -6862,6 +6904,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const contractService = new ContractService(prisma as never, audit as never);
 
@@ -6966,6 +7009,7 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
@@ -7039,6 +7083,7 @@ describe("ContractService", () => {
       },
       approvalActionLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       approvalInstance: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -7141,6 +7186,7 @@ describe("ContractService", () => {
       },
       approvalActionLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1" })

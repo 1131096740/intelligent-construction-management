@@ -12,7 +12,12 @@ describe("approval flow readonly configuration", () => {
       "contract_change_major",
       "settlement_material_mechanical",
       "settlement_labor_professional",
-      "payment"
+      "payment",
+      "general_procurement",
+      "spot_procurement",
+      "spot_procurement_payment",
+      "expense_claim_project",
+      "expense_claim_no_project"
     ]);
   });
 
@@ -42,23 +47,23 @@ describe("approval flow readonly configuration", () => {
 
     expect(routes).toEqual({
       contract_material_purchase: [
-        ["contract_director"], ["material_director"], ["project_manager"],
+        ["material_director"], ["contract_director"], ["project_manager"],
         ["finance_director"], ["chairman", "general_manager"]
       ],
       contract_equipment_rental: [
-        ["contract_director"], ["material_director"], ["project_manager"],
+        ["material_director"], ["contract_director"], ["project_manager"],
         ["finance_director"], ["chairman", "general_manager"]
       ],
       contract_labor_subcontract: [
-        ["contract_director"], ["engineering_director"], ["project_manager"],
+        ["engineering_director"], ["contract_director"], ["project_manager"],
         ["finance_director"], ["chairman", "general_manager"]
       ],
       contract_professional_subcontract: [
-        ["contract_director"], ["engineering_director"], ["project_manager"],
+        ["engineering_director"], ["contract_director"], ["project_manager"],
         ["finance_director"], ["chairman", "general_manager"]
       ],
       contract_generic_contract: [
-        ["contract_director"], ["comprehensive_director"], ["project_manager"],
+        ["comprehensive_director"], ["contract_director"], ["project_manager"],
         ["finance_director"], ["chairman", "general_manager"]
       ]
     });
@@ -117,7 +122,7 @@ describe("approval flow readonly configuration", () => {
     ]);
   });
 
-  it("shows the unified contract change route and skips the director for their own initiation", () => {
+  it("keeps the director node for their own contract change initiation", () => {
     const change = approvalFlowRules.find((rule) => rule.id === "contract_change_major");
 
     expect(change?.nodes.map((node) => node.roleKeys)).toEqual([
@@ -127,8 +132,25 @@ describe("approval flow readonly configuration", () => {
       ["chairman", "general_manager"]
     ]);
     expect(change?.title).toBe("合同变更审批");
-    expect(change?.guardrails).toContain("合同部主管本人发起时跳过合同部主管节点");
+    expect(change?.guardrails).toContain("发起人兼任审批岗位时保留节点，须本人逐节点审批并签名");
     expect(JSON.stringify(change)).not.toContain("budget_director");
+  });
+
+  it("distinguishes procurement, spot payment, and project/no-project expense routes", () => {
+    const roles = (id: string) => approvalFlowRules.find((rule) => rule.id === id)?.nodes.map((node) => node.roleKeys);
+    expect(roles("general_procurement")).toEqual([
+      ["comprehensive_director"], ["project_manager"], ["chairman", "general_manager"]
+    ]);
+    expect(roles("spot_procurement")).toEqual([["material_director"], ["project_manager"]]);
+    expect(roles("spot_procurement_payment")).toEqual([
+      ["material_director"], ["project_manager"], ["finance_director"], ["chairman", "general_manager"]
+    ]);
+    expect(roles("expense_claim_project")).toEqual([
+      ["comprehensive_director"], ["project_manager"], ["finance_director"], ["chairman", "general_manager"]
+    ]);
+    expect(roles("expense_claim_no_project")).toEqual([
+      ["comprehensive_director"], ["employee"], ["finance_director"], ["chairman", "general_manager"]
+    ]);
   });
 
   it("labels countersign and OR-sign nodes for operators", () => {

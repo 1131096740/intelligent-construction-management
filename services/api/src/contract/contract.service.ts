@@ -26,12 +26,11 @@ import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
-  isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
   assertActiveApprovalRecipient,
   type ApprovalActorRoleScopes
 } from "../approval/approval-review-identity";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -2828,7 +2827,7 @@ export class ContractService {
         expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
       };
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+        required: input.decision === "approve"
       });
 
       if (input.decision === "reject_previous") {
@@ -3001,14 +3000,14 @@ export class ContractService {
       });
 
       await tx.approvalActionLog.create({
-        data: {
+        data: await withApprovalIdentity(tx, {
           approvalInstanceId: instance.id,
           action: input.decision === "approve" ? "approve" : "reject",
           actorUserId,
           comment: input.comment?.trim() || undefined,
           approvedRoleKey,
           representedUserId: identity.representedUserId,
-          ...(input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+          ...(input.decision === "approve"
             ? {
                 signatureFileIdSnapshot: signature.fileId,
                 signatureSha256Snapshot: signature.sha256,
@@ -3025,7 +3024,7 @@ export class ContractService {
                 }
               : {}
           )
-        }
+        }, signature)
       });
 
       if (isFinalApproval) {

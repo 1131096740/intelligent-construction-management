@@ -101,7 +101,8 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     items: [
       { label: "首页", path: "/首页" },
       { label: "全局搜索", path: "/全局搜索" },
-      { label: "审批中心", path: "/审批中心" }
+      { label: "审批中心", path: "/审批中心" },
+      { label: "审批单留存", path: "/审批单留存" }
     ]
   },
   {
@@ -602,6 +603,10 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "审批中心",
         component: () => import("../pages/approval-center/ApprovalCenterPage.vue")
+      },
+      {
+        path: "审批单留存",
+        component: () => import("../pages/approval-center/ApprovalDocumentsPage.vue")
       },
       {
         path: "委托台账",

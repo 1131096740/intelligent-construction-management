@@ -1,3 +1,4 @@
+import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { canReadGeneralProcurement, generalProcurementActor } from "../general-procurement/general-procurement-access";
 import {
@@ -1756,17 +1757,18 @@ export class FileService {
     if (
       businessType !== "settlement" &&
       businessType !== "payment_request" &&
-      businessType !== "expense_claim"
+      businessType !== "expense_claim" &&
+      !ADDITIONAL_APPROVAL_TITLES[businessType]
     ) {
       throw new BadRequestException("当前业务类型不支持下载审批单");
     }
 
     await this.prisma.$transaction(async (tx) => {
       const instance = await tx.approvalInstance.findFirst({
-        where: { businessType, businessId, status: "approved" },
-        orderBy: { updatedAt: "desc" }
+        where: { businessType, businessId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      if (!instance) {
+      if (!instance || instance.status !== "approved") {
         throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单");
       }
       if (instance.applicantUserId === actorUserId) return;
@@ -1780,7 +1782,15 @@ export class FileService {
       });
       if (participated) return;
 
-      const projectId = await this.resolveApprovalProjectId(tx, businessType, businessId);
+      if (businessType === "employee_registration") {
+        if (await this.hasGlobalRole(tx, actorUserId, ["chairman", "comprehensive_director"])) return;
+        throw new ForbiddenException("当前账号无权下载该入职审批单");
+      }
+      const evidence = ADDITIONAL_APPROVAL_TITLES[businessType]
+        ? await tx.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }) : [];
+      const facts = await additionalApprovalFacts(tx, businessType, businessId, evidence, instance.id);
+      const projectId = facts?.projectId ?? await this.resolveApprovalProjectId(tx, businessType, businessId);
+      if (!projectId && await this.hasGlobalRole(tx, actorUserId, ["finance_director", "finance_staff", "chairman", "general_manager"])) return;
       if (
         projectId &&
         (await this.hasProjectRole(
@@ -1916,24 +1926,7 @@ export class FileService {
       approvalFormClients.pdfDocument?.findFirst({
         where: {
           fileId: file.id,
-          OR: [
-            {
-              businessType: {
-                in: [
-                  "contract_version",
-                  "spot_procurement_version",
-                  "spot_procurement_payment"
-                ]
-              },
-              templateKey: "approval_form"
-            },
-            {
-              businessType: {
-                in: ["spot_procurement_version", "spot_procurement_payment"]
-              },
-              templateKey: SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
-            }
-          ]
+          templateKey: { in: ["approval_form", SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY, "settlement_approval_latest"] }
         },
         select: { id: true, businessType: true, templateKey: true }
       }) ?? null,
@@ -1944,16 +1937,8 @@ export class FileService {
     ]);
     // 无水印审批单及其上传中间件只能作为内部归档锚点；公开 fileId 票据一律拒绝。
     if (
-      (rawApprovalForm && (
-        (rawApprovalForm.businessType === "contract_version" &&
-          rawApprovalForm.templateKey === "approval_form") ||
-        (["spot_procurement_version", "spot_procurement_payment"].includes(
-          rawApprovalForm.businessType
-        ) && [
-          "approval_form",
-          SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
-        ].includes(rawApprovalForm.templateKey))
-      )) ||
+      (rawApprovalForm && ["approval_form", SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY,
+        "settlement_approval_latest"].includes(rawApprovalForm.templateKey)) ||
       generationClaim
     ) {
       throw new ForbiddenException("审批单必须通过专用下载入口下载");
@@ -2958,20 +2943,28 @@ export class FileService {
     if (!document) return claim ? false : null;
     if (document.status !== "active") return false;
     let projectId: string | null = null;
+    let preparerUserId: string | null = null;
     if (document.settlementId) {
-      projectId = (await tx.settlement.findUnique({
-        where: { id: document.settlementId }, select: { projectId: true }
-      }))?.projectId ?? null;
+      const settlement = await tx.settlement.findUnique({
+        where: { id: document.settlementId }, select: { projectId: true, preparedByUserId: true }
+      });
+      projectId = settlement?.projectId ?? null;
+      preparerUserId = settlement?.preparedByUserId ?? null;
     } else if (document.settlementDraftId) {
-      projectId = (await tx.settlementDraft.findUnique({
-        where: { id: document.settlementDraftId }, select: { projectId: true }
-      }))?.projectId ?? null;
+      const draft = await tx.settlementDraft.findUnique({
+        where: { id: document.settlementDraftId }, select: { projectId: true, ownerUserId: true }
+      });
+      projectId = draft?.projectId ?? null;
+      preparerUserId = draft?.ownerUserId ?? null;
     }
     if (!projectId || ![
       "frozen_counterparty_copy",
       "counterparty_signed_original",
       "final_internal_signed_copy"
     ].includes(document.purpose)) return false;
+    // The preparer must be able to deliver their frozen copy to the counterparty,
+    // including project engineers who are not archive administrators.
+    if (preparerUserId === actorUserId) return true;
     return this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES);
   }
 

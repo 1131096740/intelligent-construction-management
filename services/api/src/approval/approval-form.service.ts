@@ -1,3 +1,7 @@
+import { approvalDate as formatDate, approvalDateTime as formatDateTime } from "./approval-date";
+import { drawApprovalTable as drawTable } from "./approval-pdf-table";
+import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "./approval-business-facts";
+import { isFormalApprovalV6, markFormalApprovalPdf, watermarkApprovalPdf } from "./approval-pdf-watermark";
 import {
   BadRequestException,
   ConflictException,
@@ -6,7 +10,7 @@ import {
   Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import {
   canUseCurrentContractApprovalForm,
@@ -18,6 +22,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { finalApprovalEvidence, approvalEvidenceMetadata, settlementApprovalActionSetHash } from "./approval-evidence";
 import { verifyApprovalSignatureSnapshot } from "./approval-signature-snapshot";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 import {
@@ -49,37 +54,7 @@ interface ContractApprovalFormRenderToken {
   versionUpdatedAt: number;
 }
 
-type ApprovalFormClient = Pick<
-  Prisma.TransactionClient,
-  | "$queryRaw"
-  | "approvalInstance"
-  | "approvalActionLog"
-  | "pdfDocument"
-  | "paymentRequest"
-  | "paymentTermsStage"
-  | "project"
-  | "settlement"
-  | "contract"
-  | "contractVersion"
-  | "user"
-  | "userPosition"
-  | "projectMember"
-  | "position"
-  | "spotProcurement"
-  | "spotProcurementVersion"
-  | "spotProcurementLine"
-  | "spotProcurementPayment"
-  | "spotProcurementPaymentChannel"
-  | "spotProcurementPaymentMethodOption"
-  | "spotProcurementPaymentExecution"
-  | "spotProcurementDiscrepancy"
-  | "spotProcurementRefund"
-  | "supplierBalanceEntry"
-  | "fileObject"
-  | "auditLog"
-  | "expenseClaim"
-  | "expenseClaimLine"
->;
+type ApprovalFormClient = Prisma.TransactionClient;
 
 interface ApprovalFormFreezeToken {
   approvalInstanceId: string;
@@ -151,11 +126,11 @@ const ROLE_LABELS: Record<string, string> = {
   budget_staff: "预算员",
   finance_director: "财务主管",
   finance_staff: "财务员",
-  material_director: "物资主管",
+  material_director: "物资部主管",
   material_staff: "物资员",
-  engineering_director: "工程部主管",
-  engineering_foreman: "施工队长",
-  engineering_tech: "技术员",
+  engineering_director: "项目总工",
+  engineering_foreman: "工长",
+  engineering_tech: "施工员",
   comprehensive_director: "综合部主管",
   employee: "员工",
   super_admin: "系统管理员"
@@ -176,8 +151,9 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const BUSINESS_TYPE_LABELS: Record<string, string> = {
+  ...ADDITIONAL_APPROVAL_TITLES,
   contract_version: "合同审批单",
-  settlement: "结算审批单",
+  settlement: "结算单",
   payment_request: "项目付款审批表",
   spot_procurement_version: "项目零星材料采购申请单",
   spot_procurement_payment: "项目零星材料付款审批单",
@@ -213,31 +189,14 @@ function frozenApprovalRelationship(
   };
 }
 
-function formatDateTime(value: Date): string {
-  // 本地化为 YYYY-MM-DD HH:mm:ss，避免依赖运行环境 locale
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ` +
-    `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
-  );
-}
-
-function formatDate(value: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
-}
-
 // 分 -> 「1,234.56 元」，不依赖运行环境 locale。
 function formatYuan(cents: bigint): string {
   return `${formatMoneyCentsAsYuan(dbMoneyToBigInt(cents, "审批金额"))} 元`;
 }
 
-interface TableColumn {
-  header: string;
-  width: number;
-}
-
 interface RenderInput {
+  approvalActionSetHash?: string;
+  businessId?: string;
   businessType: string;
   title: string;
   companyName: string;
@@ -449,12 +408,6 @@ function spotProcurementApprovalFileName(
     : `项目零星付款申请单-${input.paymentCode}.pdf`;
 }
 
-function spotProcurementApprovalBusinessCode(
-  input: SpotProcurementApprovalFormInput
-): string {
-  return input.kind === "application" ? input.procurementCode : input.paymentCode;
-}
-
 function approvalSignatureForRoles(
   logs: RenderInput["logs"],
   roleKeys: string[]
@@ -527,81 +480,6 @@ function pairRows(rows: ApprovalFormRow[]): string[][] {
   return paired;
 }
 
-// 画带框线的表格，返回表格底部 y。单元格内文本自动换行；行高随内容增长。
-// 可选 imageColumn + rowImages（按数据行索引）在指定列嵌入图片（如签名图）。
-function drawTable(
-  doc: PDFKit.PDFDocument,
-  startX: number,
-  startY: number,
-  columns: TableColumn[],
-  rows: string[][],
-  options: {
-    headerRow?: boolean;
-    minRowHeight?: number;
-    imageColumn?: number;
-    rowImages?: (Buffer | null)[];
-  } = {}
-): number {
-  const cellPadding = 4;
-  const fontSize = 9;
-  doc.fontSize(fontSize);
-  const bottomLimit = doc.page.height - doc.page.margins.bottom;
-
-  const hasHeader = options.headerRow !== false;
-  const all = hasHeader ? [columns.map((c) => c.header), ...rows] : rows;
-  let y = startY;
-
-  all.forEach((row, rowIndex) => {
-    const isHeader = hasHeader && rowIndex === 0;
-    const dataIndex = hasHeader ? rowIndex - 1 : rowIndex;
-    const rowHeight = Math.max(
-      Math.max(
-        ...row.map((cell, colIndex) =>
-          doc.heightOfString(cell || "", { width: columns[colIndex].width - cellPadding * 2 })
-        )
-      ) +
-        cellPadding * 2,
-      isHeader ? 0 : options.minRowHeight ?? 0
-    );
-
-    if (y + rowHeight > bottomLimit) {
-      doc.addPage();
-      y = doc.page.margins.top;
-    }
-
-    let x = startX;
-    row.forEach((cell, colIndex) => {
-      const width = columns[colIndex].width;
-      if (isHeader) {
-        doc.rect(x, y, width, rowHeight).fill("#eeeeee");
-        doc.fillColor("#000000");
-      }
-      doc.rect(x, y, width, rowHeight).stroke("#000000");
-
-      const image = !isHeader && colIndex === options.imageColumn ? options.rowImages?.[dataIndex] : null;
-      if (image) {
-        try {
-          doc.image(image, x + cellPadding, y + cellPadding, {
-            fit: [width - cellPadding * 2, rowHeight - cellPadding * 2],
-            align: "center",
-            valign: "center"
-          });
-        } catch {
-          // 签名图损坏/格式不支持时退化为空白单元格，不影响整单渲染。
-        }
-      } else {
-        doc.text(cell || "", x + cellPadding, y + cellPadding, {
-          width: width - cellPadding * 2
-        });
-      }
-      x += width;
-    });
-    y += rowHeight;
-  });
-
-  return y;
-}
-
 // 平铺对角水印（浅灰半透明），盖在内容之上。用于下载件按下载人留痕。
 function stampWatermark(doc: PDFKit.PDFDocument, lines: string[]): void {
   const text = lines.filter(Boolean).join("  ·  ");
@@ -632,6 +510,68 @@ export class ApprovalFormService {
     @Optional()
     private readonly spotAccess?: SpotProcurementAccessService
   ) {}
+
+  async downloadAvailability(businessType: string, businessId: string, actorUserId: string) {
+    if (!this.prisma || !this.files || !BUSINESS_TYPE_LABELS[businessType]) return { available: false };
+    try {
+      if (SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType)) {
+        if (!this.spotAccess || await this.spotAccess.resolveBusinessDownloadAccess(businessType, businessId, actorUserId) !== "allowed") return { available: false };
+      } else await this.files.assertCanDownloadApprovalFormByBusiness(businessType, businessId, actorUserId);
+      const instance = await this.prisma.approvalInstance.findFirst({
+        where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      });
+      if (!instance || instance.status !== "approved") return { available: false };
+      const logs = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+      finalApprovalEvidence(instance.status, instance.frozenNodes, logs);
+      await additionalApprovalFacts(this.prisma, businessType, businessId, logs, instance.id);
+      return { available: true };
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ForbiddenException) return { available: false };
+      throw error;
+    }
+  }
+
+  async listForDownload(actorUserId: string, cursor?: string) {
+    if (!this.prisma || !this.files) throw new BadRequestException("审批单服务暂不可用");
+    const actor = await this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!actor?.isActive) throw new ForbiddenException("当前账号已停用");
+    const candidates = await this.prisma.approvalInstance.findMany({
+      where: { status: "approved", businessType: { in: Object.keys(BUSINESS_TYPE_LABELS) } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+    });
+    const items: Array<{ id: string; businessType: string; businessId: string; title: string; code: string; approvedAt: Date; available: boolean; unavailableReason: string | null }> = [];
+    for (const instance of candidates) {
+      const latest = await this.prisma.approvalInstance.findFirst({
+        where: { businessType: instance.businessType, businessId: instance.businessId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true }
+      });
+      if (latest?.id !== instance.id) continue;
+      try {
+        if (SPOT_PROCUREMENT_APPROVAL_TYPES.has(instance.businessType)) {
+          if (!this.spotAccess || await this.spotAccess.resolveBusinessDownloadAccess(instance.businessType, instance.businessId, actorUserId) !== "allowed") continue;
+        } else await this.files.assertCanDownloadApprovalFormByBusiness(instance.businessType, instance.businessId, actorUserId);
+      } catch (error) {
+        if (error instanceof ForbiddenException || error instanceof BadRequestException) continue;
+        throw error;
+      }
+      const logs = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+      let available = true;
+      let code = BUSINESS_TYPE_LABELS[instance.businessType];
+      try {
+        finalApprovalEvidence(instance.status, instance.frozenNodes, logs);
+        const facts = await additionalApprovalFacts(this.prisma, instance.businessType, instance.businessId, logs, instance.id);
+        code = facts?.code ?? await this.resolveBusinessCode(this.prisma, instance.businessType, instance.businessId);
+      } catch (error) {
+        if (!(error instanceof BadRequestException)) throw error;
+        available = false;
+      }
+      items.push({ id: instance.id, businessType: instance.businessType, businessId: instance.businessId,
+        title: BUSINESS_TYPE_LABELS[instance.businessType], code, approvedAt: logs.at(-1)?.createdAt ?? instance.updatedAt,
+        available, unavailableReason: available ? null : "历史审批或签名证据不完整，请核查原审批记录" });
+    }
+    return { items, nextCursor: candidates.length === 50 ? candidates.at(-1)!.id : null };
+  }
 
   private async loadContractApprovalFormRenderToken(
     client: ApprovalFormClient,
@@ -757,7 +697,8 @@ export class ApprovalFormService {
         kind: "claimed" as const,
         instance,
         uploadedFileId: claim?.uploadedFileId ?? null,
-        contractApprovalFormRenderToken
+        contractApprovalFormRenderToken,
+        evidenceToken: await this.generationEvidenceToken(tx, instance)
       };
     });
 
@@ -778,7 +719,7 @@ export class ApprovalFormService {
     try {
       input = await this.buildRenderInput(acquisition.instance);
       if (!uploadedFileId) {
-        const buffer = await this.renderPdf(input);
+        const buffer = await markFormalApprovalPdf(await this.renderPdf(input));
         const file = await this.files.uploadPrivateFile({
         buffer,
         originalName: approvalFileName(input),
@@ -812,6 +753,18 @@ export class ApprovalFormService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${instanceId} FOR UPDATE
+        `);
+        const currentInstance = await tx.approvalInstance.findUnique({ where: { id: instanceId } });
+        const latestInstance = await tx.approvalInstance.findFirst({
+          where: { businessType: acquisition.instance.businessType, businessId: acquisition.instance.businessId },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        });
+        if (!currentInstance || currentInstance.status !== "approved" || latestInstance?.id !== instanceId ||
+          await this.generationEvidenceToken(tx, currentInstance) !== acquisition.evidenceToken) {
+          throw new ConflictException("审批状态或签批证据已变化，不能归档正式审批单");
+        }
         await tx.$queryRaw(Prisma.sql`
           SELECT "approvalInstanceId" FROM "ApprovalFormGenerationClaim"
           WHERE "approvalInstanceId" = ${instanceId} FOR UPDATE
@@ -880,6 +833,18 @@ export class ApprovalFormService {
       });
       throw error;
     }
+  }
+
+  private async generationEvidenceToken(client: ApprovalFormClient, instance: {
+    id: string; status: string; applicantUserId: string; frozenNodes: unknown;
+  }) {
+    const logs = await client.approvalActionLog.findMany({
+      where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    return createHash("sha256").update(JSON.stringify({
+      status: instance.status, applicantUserId: instance.applicantUserId,
+      frozenNodes: instance.frozenNodes, logs
+    })).digest("hex");
   }
 
   private async waitForGeneratedForm(instanceId: string) {
@@ -965,7 +930,7 @@ export class ApprovalFormService {
     const { instance, freezeToken } = source;
     // 签批信息读取、PDF 渲染与私有文件上传全部在数据库事务外执行。
     const input = await this.buildSpotProcurementApprovalFormInput(instance);
-    const buffer = await renderSpotProcurementApprovalForm(input);
+    const buffer = await markFormalApprovalPdf(await renderSpotProcurementApprovalForm(input));
     const file = await this.files.uploadPrivateFile({
       buffer,
       originalName: spotProcurementApprovalFileName(input),
@@ -1144,34 +1109,29 @@ export class ApprovalFormService {
           where: { businessType, businessId, status: "approved" },
           orderBy: { updatedAt: "desc" }
         });
-    if (!instance) {
+    if (!instance || instance.status !== "approved" || instance.businessType !== businessType || instance.businessId !== businessId) {
       throw new Error("当前业务尚未完成审批，暂不能下载审批单");
     }
 
+    const downloadToken = await this.loadApprovalFormFreezeToken(this.prisma, instance);
     const downloader = await this.prisma.user.findUnique({ where: { id: downloaderUserId } });
     const watermark = [
       "建工智管",
       `下载人：${downloader?.name ?? "下载人未读取"}`,
       formatDateTime(new Date())
     ];
-    const isSpotProcurement = SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType);
-    let buffer: Buffer;
-    let businessCode: string;
-    let fileName: string;
-    if (isSpotProcurement) {
-      const input = await this.buildSpotProcurementApprovalFormInput(
-        instance,
-        watermark
-      );
-      buffer = await renderSpotProcurementApprovalForm(input);
-      businessCode = spotProcurementApprovalBusinessCode(input);
-      fileName = spotProcurementApprovalFileName(input);
-    } else {
-      const input = await this.buildRenderInput(instance);
-      buffer = await this.renderPdf({ ...input, watermark });
-      businessCode = input.businessCode;
-      fileName = approvalFileName(input);
+    const input = await this.buildRenderInput(instance);
+    const businessCode = input.businessCode;
+    const fileName = approvalFileName(input);
+    const archived = await this.files.getFileBuffer(pdfDocument.fileId);
+    let original = businessType === "settlement" ? await this.renderPdf(input) : archived.buffer;
+    if (!await isFormalApprovalV6(original)) {
+      original = SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType)
+        ? await renderSpotProcurementApprovalForm(await this.buildSpotProcurementApprovalFormInput(instance))
+        : await this.renderPdf(input);
+      original = await markFormalApprovalPdf(original);
     }
+    const buffer = await watermarkApprovalPdf(original, watermark);
 
     if (contractRenderToken) {
       const currentToken = await this.loadContractApprovalFormRenderToken(
@@ -1181,6 +1141,14 @@ export class ApprovalFormService {
       if (!this.sameContractApprovalFormRenderToken(contractRenderToken, currentToken)) {
         throw new ConflictException("合同审批状态已变化，请刷新后重新下载");
       }
+    }
+
+    const latestInstance = await this.prisma.approvalInstance.findFirst({
+      where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    if (!latestInstance || latestInstance.status !== "approved" || !this.sameApprovalFormFreezeToken(
+      downloadToken, await this.loadApprovalFormFreezeToken(this.prisma, latestInstance))) {
+      throw new ConflictException("审批状态或签名记录已变化，请刷新后重新下载");
     }
 
     await this.audit.record(this.prisma, {
@@ -1197,20 +1165,33 @@ export class ApprovalFormService {
   // 收集渲染审批单所需的全部数据（业务摘要、我方主体、签批人姓名/职位/签名图）。
   private async buildRenderInput(instance: {
     id: string;
+    status: string;
     businessType: string;
     businessId: string;
     applicantUserId: string;
     frozenNodes: unknown;
   }, client?: ApprovalFormClient): Promise<RenderInput> {
     const prisma = client ?? (this.prisma as ApprovalFormClient);
-    const logs = await prisma.approvalActionLog.findMany({
+    const allLogs = await prisma.approvalActionLog.findMany({
       where: { approvalInstanceId: instance.id },
-      orderBy: { createdAt: "asc" }
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
 
+    const logs = finalApprovalEvidence(instance.status, instance.frozenNodes, allLogs);
+
+    let approvalActionSetHash: string | undefined;
+    if (instance.businessType === "settlement") {
+      const submission = [...allLogs].reverse().find(log => log.action === "submit");
+      if (!submission?.signatureVersionIdSnapshot || !submission.signatureFileIdSnapshot ||
+          !submission.signatureSha256Snapshot || !approvalEvidenceMetadata(submission.metadata).approverName) {
+        throw new BadRequestException("编制人提交身份与签名证据不完整，不能生成结算单");
+      }
+      approvalActionSetHash = settlementApprovalActionSetHash([submission, ...logs]);
+    }
+    const facts = await additionalApprovalFacts(prisma, instance.businessType, instance.businessId, logs, instance.id);
     const [businessCode, companyName, expenseClaim] = await Promise.all([
-      this.resolveBusinessCode(prisma, instance.businessType, instance.businessId),
-      this.resolveCompanyName(prisma, instance.businessType, instance.businessId),
+      facts?.code ?? this.resolveBusinessCode(prisma, instance.businessType, instance.businessId),
+      facts?.companyName ?? this.resolveCompanyName(prisma, instance.businessType, instance.businessId),
       this.loadExpenseClaimApprovalFacts(prisma, instance.businessType, instance.businessId)
     ]);
 
@@ -1244,8 +1225,8 @@ export class ApprovalFormService {
       );
     }
 
-    const applicantName = nameById.get(instance.applicantUserId) ?? "申请人未读取";
-    const summary = await this.resolveBusinessSummary(
+    const applicantName = facts?.applicantName ?? nameById.get(instance.applicantUserId) ?? "申请人未读取";
+    const summary = facts?.summary ?? await this.resolveBusinessSummary(
       prisma,
       instance.businessType,
       instance.businessId,
@@ -1266,12 +1247,12 @@ export class ApprovalFormService {
         log.representedUserId &&
         log.representedUserId !== log.actorUserId
       ) {
-        relationshipText = `代批关系：${nameById.get(log.representedUserId) ?? "原审批人未读取"} → ${nameById.get(log.actorUserId) ?? "实际审批人未读取"}（${log.approvedRoleKey ? (ROLE_LABELS[log.approvedRoleKey] ?? "审批岗位未读取") : "审批岗位未冻结"}）`;
+        relationshipText = `代批关系：${approvalEvidenceMetadata(log.metadata).representedName ?? "原审批人未读取"} → ${approvalEvidenceMetadata(log.metadata).approverName ?? "实际审批人未读取"}（${log.approvedRoleKey ? (ROLE_LABELS[log.approvedRoleKey] ?? "审批岗位未读取") : "审批岗位未冻结"}）`;
       }
       return {
         actionKey: log.action,
         approvedRoleKey: log.approvedRoleKey ?? null,
-        name: nameById.get(log.actorUserId) ?? "处理人未读取",
+        name: approvalEvidenceMetadata(log.metadata).approverName as string,
         position: log.approvedRoleKey
           ? roleLabel(log.approvedRoleKey as RoleKey)
           : "历史签名未冻结",
@@ -1285,10 +1266,14 @@ export class ApprovalFormService {
     });
 
     return {
+      approvalActionSetHash,
       businessType: instance.businessType,
-      title: expenseClaim
-        ? expenseClaim.claimType === "reimbursement" ? "费用报销单" : "借款申请单"
-        : BUSINESS_TYPE_LABELS[instance.businessType] ?? "审批单",
+      businessId: instance.businessId,
+      title: facts?.title ?? (expenseClaim
+        ? expenseClaim.generalProcurementId ? "综合采购付款申请单"
+          : expenseClaim.claimType === "reimbursement" ? "费用报销单"
+            : expenseClaim.claimType === "incidental_expense" ? "零星费用支付申请单" : "借款申请单"
+        : BUSINESS_TYPE_LABELS[instance.businessType] ?? "审批单"),
       companyName,
       businessCode,
       applicantName,
@@ -1315,6 +1300,7 @@ export class ApprovalFormService {
   private async buildSpotProcurementApprovalFormInput(
     instance: {
       id: string;
+      status: string;
       businessType: string;
       businessId: string;
       applicantUserId: string;
@@ -1334,6 +1320,7 @@ export class ApprovalFormService {
       materialDirector: approvalSignatureForRoles(signatureLogs, ["material_director"]),
       projectManager: approvalSignatureForRoles(signatureLogs, ["project_manager"]),
       comprehensiveDirector: approvalSignatureForRoles(signatureLogs, [
+        "material_director",
         "comprehensive_director"
       ]),
       financeDirector: approvalSignatureForRoles(signatureLogs, ["finance_director"]),
@@ -1362,6 +1349,7 @@ export class ApprovalFormService {
         : null;
       return {
         kind: "application",
+        approvals: rendered.logs,
         projectName: project?.name ?? "项目名称未读取",
         procurementCode: procurement?.code ?? version.id,
         applicationDepartment: version.applicationDepartmentSnapshot,
@@ -1413,6 +1401,11 @@ export class ApprovalFormService {
         .join("、");
       return {
         kind: "payment",
+        approvals: rendered.logs,
+        businessDirectorLabel: signatureLogs.some((log) => log.approvedRoleKey === "material_director")
+          ? "物资部主管" : "综合部主管",
+        finalApproverLabel: signatureLogs.some((log) => log.approvedRoleKey === "general_manager")
+          ? "总经理" : "董事长",
         projectName: project?.name ?? "项目名称未读取",
         paymentCode: payment.code,
         submittedAt: payment.submittedAt ?? payment.createdAt,
@@ -1487,10 +1480,10 @@ export class ApprovalFormService {
       return this.generateForInstance(instance.id, actorUserId);
     }
     const instance = await this.prisma.approvalInstance.findFirst({
-      where: { businessType, businessId, status: "approved" },
-      orderBy: { updatedAt: "desc" }
+      where: { businessType, businessId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     });
-    if (!instance) {
+    if (!instance || instance.status !== "approved") {
       throw new Error("当前业务尚未完成审批，暂不能生成审批单");
     }
 
@@ -1701,6 +1694,23 @@ export class ApprovalFormService {
   }
 
   private async renderPdf(input: RenderInput): Promise<Buffer> {
+    if (input.businessType === "settlement") {
+      if (!input.businessId || !this.prisma || !this.files) throw new BadRequestException("结算单生成依赖不完整");
+      const document = await this.prisma.settlementSignedDocument.findFirst({
+        where: { settlementId: input.businessId, purpose: "final_internal_signed_copy", status: "active", generationStatus: "completed" },
+        orderBy: { createdAt: "desc" }
+      });
+      if (!document) throw new BadRequestException("最终签章结算单尚未生成，请在结算工作台完成签章合成后下载");
+      if (!input.approvalActionSetHash || document.approvalActionSetHash !== input.approvalActionSetHash) {
+        throw new BadRequestException("结算单与当前审批签名证据不一致，请重新核验签章合成件");
+      }
+      const original = await this.files.getFileBuffer(document.fileId);
+      if (createHash("sha256").update(original.buffer).digest("hex") !== document.contentSha256) {
+        throw new BadRequestException("最终签章结算单完整性校验失败");
+      }
+      return original.buffer;
+    }
+
     if (input.expenseClaim) {
       return renderExpenseClaimApprovalForm({
         ...input.expenseClaim,
@@ -1772,47 +1782,23 @@ export class ApprovalFormService {
         ) + 16;
     }
 
-    // 审批路线
-    doc.fontSize(12).text("审批路线", left, y);
-    y = doc.y + 4;
-    y =
-      drawTable(
-        doc,
-        left,
-        y,
-        [
-          { header: "序号", width: 36 },
-          { header: "审批节点", width: 150 },
-          { header: "签批方式", width: 70 },
-          { header: "审批角色", width: contentWidth - 36 - 150 - 70 }
-        ],
-        input.nodes.map((node, index) => [
-          String(index + 1),
-          node.name,
-          node.mode === "all" ? "会签" : "或签",
-          (node.roleKeys ?? []).map(roleLabel).join("、")
-        ])
-      ) + 16;
-
     // 签批记录（含签名图列）
     doc.fontSize(12).text("签批记录", left, y);
     y = doc.y + 4;
     const hasLogs = input.logs.length > 0;
     const sigCols = [
-      { header: "序号", width: 30 },
-      { header: "审批人", width: 64 },
-      { header: "职位", width: 76 },
-      { header: "动作", width: 44 },
-      { header: "签批时间", width: 92 },
-      { header: "审批意见 / 委托转交关系", width: contentWidth - 30 - 64 - 76 - 44 - 92 - 100 },
-      { header: "签名", width: 100 }
+      { header: "序号", width: 24 },
+      { header: "审批人", width: 60 },
+      { header: "职位", width: 74 },
+      { header: "签批时间", width: 80 },
+      { header: "审批意见 / 委托关系", width: contentWidth - 24 - 60 - 74 - 80 - 90 },
+      { header: "签名", width: 90 }
     ];
     const sigRows = hasLogs
       ? input.logs.map((log, index) => [
           String(index + 1),
           log.name,
           log.position,
-          log.action,
           log.signedAt,
           [log.relationship, log.comment].filter(Boolean).join("\n"),
           ""
@@ -1820,7 +1806,7 @@ export class ApprovalFormService {
       : [["", "（无签批记录）", "", "", "", "", ""]];
     drawTable(doc, left, y, sigCols, sigRows, {
       minRowHeight: 44,
-      imageColumn: 6,
+      imageColumn: 5,
       rowImages: hasLogs ? input.logs.map((log) => log.signature) : [null]
     });
 
@@ -1929,6 +1915,7 @@ export class ApprovalFormService {
       where: { id: businessId },
       select: {
         claimType: true,
+        generalProcurementId: true,
         incidentalExpenseCategory: true,
         projectId: true,
         handledByNameSnapshot: true,
@@ -1976,6 +1963,7 @@ export class ApprovalFormService {
       incidentalExpenseCategory: claim.incidentalExpenseCategory,
       projectName: project?.name ?? "",
       handlerName: claim.handledByNameSnapshot,
+      generalProcurementId: claim.generalProcurementId,
       submittedAt: claim.submittedAt,
       reason: claim.reason,
       requestedAmountCents: dbMoneyToBigInt(claim.requestedAmountCents, "费用申请金额"),

@@ -1,3 +1,4 @@
+import { attachApprovalEvidenceFixture } from "../approval/approval-evidence-test-fixture";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
@@ -534,6 +535,11 @@ function createHarness(options?: {
     kind: "no_invoice" | "exception"
   ) {
     return {
+      findUniqueOrThrow: jest.fn(async ({ where }: { where: { id: string } }) => {
+        const record = rows.find(row => row.id === where.id);
+        if (!record) throw new Error("fixture confirmation missing");
+        return { ...record };
+      }),
       findFirst: jest.fn().mockImplementation(
         ({ where }: { where: Record<string, unknown> }) =>
           Promise.resolve(filterRows(rows, where)[0] ?? null)
@@ -875,6 +881,7 @@ function createHarness(options?: {
       )
     }
   };
+    attachApprovalEvidenceFixture(tx);
   const prisma = {
     ...tx,
     $transaction: jest.fn().mockImplementation(

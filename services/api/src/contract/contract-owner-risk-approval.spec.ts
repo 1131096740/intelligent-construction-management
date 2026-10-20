@@ -22,7 +22,7 @@ function finalApprovalTransaction(ownerContractAmounts: bigint[] = []) {
     $queryRaw: jest.fn()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
+      .mockResolvedValueOnce([{ id: "chairman-1", isActive: true, name: "签批人甲" }])
       .mockResolvedValueOnce([
         {
           id: "signature-version-1",
@@ -213,6 +213,7 @@ describe("ContractService owner master risk final confirmation", () => {
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         metadata: {
+          approverName: "签批人甲",
           ownerContractRisk: {
             status: "missing_owner_contract",
             ownerContractAmountCents: "0",
@@ -343,6 +344,7 @@ describe("ContractService owner master risk final confirmation", () => {
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         metadata: {
+          approverName: "签批人甲",
           ownerContractRisk: {
             status: "clear",
             ownerContractAmountCents: "5000000",

@@ -250,7 +250,7 @@
                 >
                   <t-alert
                     theme="warning"
-                    title="领导自审二次确认"
+                    title="本人申请审批二次确认"
                     message="当前单据由您本人发起，请填写独立自审原因；当前密码将在确认对话框中输入。"
                   />
                   <label class="action-field">

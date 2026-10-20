@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { randomUUID } from "node:crypto";
@@ -545,6 +546,23 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     }
   }, 60_000);
 
+  (enabled ? it.each(["reimbursement", "loan", "incidental_expense"] as const) : it.skip.each(["reimbursement", "loan", "incidental_expense"] as const))("V6 正式 PDF：%s 逐节点签名及未通过下载边界", async claimType => {
+    const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    const capability = `/approval-forms/expense_claim/${created.body.id}/capability`;
+    expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
+    expect((await request(`${path}/submission`, {})).status).toBe(201);
+    for (const approvalToken of approvalTokens) {
+      expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
+      expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(201);
+    }
+    await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token, password: accountPassword,
+      businessType: "expense_claim", businessId: created.body.id,
+      roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: `费用-${claimType}` });
+    expect((await request(`/approval-forms/expense_claim/${created.body.id}/download`, { confirmationPassword: accountPassword, downloadReason: "无关人员边界" }, strangerToken)).status).toBe(403);
+  }, 60_000);
+
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机通过真实页面创建费用草稿而不自动提交", async () => {
     await app.get(PrismaService).projectRosterMember.upsert({ where: { projectId_userId: { projectId, userId: financeSession.user.id } }, create: { projectId, userId: financeSession.user.id }, update: {} });
     await new Promise<void>((done, reject) => {
@@ -591,6 +609,12 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(detail.body.entrySnapshots[0]!.valuesSnapshot.requestedAmountYuan).toBe("125.00");
     expect((await request(`${path}/submission`, {})).status).toBe(400);
     expect((await request(path)).body.entrySnapshots).toEqual(detail.body.entrySnapshots);
+    for (const approvalToken of approvalTokens) {
+      expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(201);
+    }
+    await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token, password: accountPassword,
+      businessType: "expense_claim", businessId: created.body.id,
+      roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: "费用-备用金用途" });
   }, 60_000);
 
   (enabled ? it : it.skip)("填写选项提供与提交快照相同的统一字段定义，非项目报销不借用个人资料授权", async () => {

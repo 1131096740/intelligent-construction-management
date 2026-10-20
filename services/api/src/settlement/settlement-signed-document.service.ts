@@ -1,11 +1,15 @@
+import { approvalDate } from "../approval/approval-date";
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import PDFKitDocument = require("pdfkit");
+import { resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { degrees, PDFDocument, StandardFonts } from "pdf-lib";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { verifyApprovalSignatureSnapshot } from "../approval/approval-signature-snapshot";
+import { approvalEvidenceMetadata, finalApprovalEvidence, settlementApprovalActionSetHash } from "../approval/approval-evidence";
 import {
   SETTLEMENT_SIGNATURE_BOARD_LAYOUT
 } from "./settlement-document-renderer";
@@ -17,6 +21,8 @@ const GENERATION_LEASE_MS = 5 * 60 * 1000;
 
 type FrozenSignature = {
   roleKey: string;
+  name: string;
+  representedName?: string;
   fileId: string;
   sha256: string;
   signedAt: Date;
@@ -55,7 +61,8 @@ export async function overlayFrozenSettlementSignatures(
       ? await pdf.embedPng(signature.image)
       : await pdf.embedJpg(signature.image)
   })));
-  for (const page of pdf.getPages()) {
+  // V6: the horizontal signing area belongs only to the final content page.
+  for (const page of pdf.getPages().slice(-1)) {
     const crop = page.getCropBox();
     const rotation = ((page.getRotation().angle % 360) + 360) % 360;
     const quarterTurn = rotation === 90 || rotation === 270;
@@ -80,19 +87,44 @@ export async function overlayFrozenSettlementSignatures(
     const orderedRoles = material
       ? ["preparer", "material_staff", "material_director", "contract_director", "project_manager", "finance_director"]
       : ["preparer", "engineering_foreman|engineering_tech", "engineering_director", "contract_director", "project_manager", "finance_director"];
+    const labels = new PDFKitDocument({ size: [displayedWidth, displayedHeight], margin: 0 });
+    labels.registerFont("cn", resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf")).font("cn");
+    const labelChunks: Buffer[] = [];
+    labels.on("data", (chunk: Buffer) => labelChunks.push(chunk));
+    const labelDone = new Promise<Buffer>((resolve, reject) => {
+      labels.on("end", () => resolve(Buffer.concat(labelChunks)));
+      labels.on("error", reject);
+    });
     const usedSlots = new Set<number>();
     for (const signature of embedded) {
       const roleSlot = orderedRoles.findIndex((role) => role.split("|").includes(signature.roleKey));
-      if (roleSlot < 0) continue;
+      if (roleSlot < 0) throw new BadRequestException("结算签名岗位与签章栏不一致，不能合成");
       if (usedSlots.has(roleSlot)) {
         throw new BadRequestException("同一结算签名岗位存在多个有效签名快照，不能合成");
       }
       usedSlots.add(roleSlot);
       const cellX = left + cellWidth * (roleSlot + 1);
-      const visualX = cellX + 8;
-      const visualY = imageBottom;
-      const visualWidth = cellWidth - 16;
-      const visualHeight = SETTLEMENT_SIGNATURE_BOARD_LAYOUT.imageHeight;
+      if (!signature.name?.trim()) throw new BadRequestException("结算签批人姓名快照缺失");
+      const nameLabel = signature.representedName
+        ? `${signature.name}（代表${signature.representedName}）` : signature.name;
+      const nameWidth = cellWidth - 6;
+      const nameHeight = SETTLEMENT_SIGNATURE_BOARD_LAYOUT.dateTopOffset - 46;
+      let nameFontSize = 7;
+      labels.fontSize(nameFontSize);
+      while (labels.heightOfString(nameLabel, { width: nameWidth }) > nameHeight && nameFontSize > 4.5) {
+        nameFontSize -= 0.25;
+        labels.fontSize(nameFontSize);
+      }
+      if (labels.heightOfString(nameLabel, { width: nameWidth }) > nameHeight) {
+        throw new BadRequestException("结算签批人姓名及代签关系过长，无法完整显示，请联系管理员核验");
+      }
+      labels.text(nameLabel, cellX + 3, SETTLEMENT_SIGNATURE_BOARD_LAYOUT.boardTop + 46,
+        { width: nameWidth, height: nameHeight, align: "center" });
+      const fitted = signature.image.scaleToFit(cellWidth - 16, SETTLEMENT_SIGNATURE_BOARD_LAYOUT.imageHeight);
+      const visualX = cellX + (cellWidth - fitted.width) / 2;
+      const visualY = imageBottom + (SETTLEMENT_SIGNATURE_BOARD_LAYOUT.imageHeight - fitted.height) / 2;
+      const visualWidth = fitted.width;
+      const visualHeight = fitted.height;
       const draw = rotation === 90
         ? { x: crop.x + visualY, y: crop.y + crop.width - visualX - visualWidth, width: visualHeight, height: visualWidth, rotate: degrees(-90) }
         : rotation === 270
@@ -112,10 +144,21 @@ export async function overlayFrozenSettlementSignatures(
           : rotation === 180
             ? { x: crop.x + crop.width - dateX, y: crop.y + crop.height - dateY, rotate: degrees(180) }
             : { x: crop.x + dateX, y: crop.y + dateY };
-      page.drawText(signature.signedAt.toISOString().slice(0, 10), {
+      page.drawText(approvalDate(signature.signedAt), {
         ...dateDraw, size: 7, font
       });
     }
+    if (usedSlots.size !== 6) throw new BadRequestException("结算编制及审批签名不完整，不能合成");
+    labels.end();
+    const [labelPage] = await pdf.embedPdf(await labelDone);
+    const labelDraw = rotation === 90
+      ? { x: crop.x, y: crop.y + crop.width, rotate: degrees(-90) }
+      : rotation === 270
+        ? { x: crop.x + crop.height, y: crop.y, rotate: degrees(90) }
+        : rotation === 180
+          ? { x: crop.x + crop.width, y: crop.y + crop.height, rotate: degrees(180) }
+          : { x: crop.x, y: crop.y };
+    page.drawPage(labelPage, labelDraw);
   }
   return Buffer.from(await pdf.save({ useObjectStreams: false, addDefaultPage: false }));
 }
@@ -516,7 +559,7 @@ export class SettlementSignedDocumentService {
   private async loadFacts(tx: Prisma.TransactionClient, settlementId: string): Promise<GenerationFacts> {
     const settlement = await tx.settlement.findUnique({ where: { id: settlementId } });
     const instance = await tx.approvalInstance.findFirst({
-      where: { businessType: "settlement", businessId: settlementId, flowType: "settlement.approve", status: "approved" },
+      where: { businessType: "settlement", businessId: settlementId, flowType: "settlement.approve" },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
     });
     const draft = await tx.settlementDraft.findFirst({ where: { submittedSettlementId: settlementId } });
@@ -528,48 +571,25 @@ export class SettlementSignedDocumentService {
     const actionHistory = await tx.approvalActionLog.findMany({
       where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
-    const frozenNodes = Array.isArray(instance.frozenNodes)
-      ? instance.frozenNodes as Array<{ mode?: string; roleKeys?: string[] }>
-      : [];
-    const effectiveByNode = frozenNodes.map(() => new Map<string, (typeof actionHistory)[number]>());
-    let nodeIndex = 0;
-    for (const action of actionHistory) {
-      if (action.action === "approve" && nodeIndex < frozenNodes.length && action.approvedRoleKey) {
-        const node = frozenNodes[nodeIndex];
-        effectiveByNode[nodeIndex].set(action.approvedRoleKey, action);
-        const completed = node.mode === "any" || (node.roleKeys ?? []).every((role) => effectiveByNode[nodeIndex].has(role));
-        if (completed) nodeIndex += 1;
-      } else if (action.action === "reject_previous") {
-        nodeIndex = Math.max(nodeIndex - 1, 0);
-        effectiveByNode[nodeIndex]?.clear();
-      } else if (action.action === "reject" || action.action === "return_to_applicant") {
-        effectiveByNode.forEach((node) => node.clear());
-        nodeIndex = 0;
-      }
-    }
-    if (nodeIndex !== frozenNodes.length) {
-      throw new BadRequestException("当前审批实例没有完整有效的终审动作集合");
-    }
-    const actions = effectiveByNode.flatMap((node) => Array.from(node.values()));
+    const actions = finalApprovalEvidence(instance.status, instance.frozenNodes, actionHistory);
     const signatures: FrozenSignature[] = [];
     if (!settlement.preparerSignatureFileId || !settlement.preparerSignatureSha256 || !settlement.preparedByUserId) {
       throw new BadRequestException("编制人提交签名快照不完整，不能生成最终合成件");
     }
-    signatures.push({ roleKey: "preparer", fileId: settlement.preparerSignatureFileId, sha256: settlement.preparerSignatureSha256, signedAt: settlement.createdAt });
+    const submission = [...actionHistory].reverse().find((action) => action.action === "submit" && action.actorUserId === settlement.preparedByUserId);
+    const preparerName = approvalEvidenceMetadata(submission?.metadata).approverName;
+    if (typeof preparerName !== "string" || !preparerName.trim() ||
+        submission?.signatureFileIdSnapshot !== settlement.preparerSignatureFileId ||
+        submission.signatureSha256Snapshot !== settlement.preparerSignatureSha256 || !submission.signatureVersionIdSnapshot) {
+      throw new BadRequestException("编制人提交身份与签名证据不完整，不能生成最终合成件");
+    }
+    signatures.push({ roleKey: "preparer", name: preparerName, fileId: settlement.preparerSignatureFileId, sha256: settlement.preparerSignatureSha256, signedAt: submission.createdAt });
     for (const action of actions) {
       if (!action.approvedRoleKey || !action.signatureFileIdSnapshot || !action.signatureSha256Snapshot) {
         throw new BadRequestException("审批签名快照不完整，不能生成最终合成件");
       }
-      signatures.push({ roleKey: action.approvedRoleKey, fileId: action.signatureFileIdSnapshot, sha256: action.signatureSha256Snapshot, signedAt: action.createdAt });
+      signatures.push({ roleKey: action.approvedRoleKey, name: approvalEvidenceMetadata(action.metadata).approverName as string, representedName: action.representedUserId && action.representedUserId !== action.actorUserId ? approvalEvidenceMetadata(action.metadata).representedName as string : undefined, fileId: action.signatureFileIdSnapshot, sha256: action.signatureSha256Snapshot, signedAt: action.createdAt });
     }
-    const canonical = actions.map((action) => ({
-      id: action.id, action: action.action, actorUserId: action.actorUserId,
-      approvedRoleKey: action.approvedRoleKey, representedUserId: action.representedUserId,
-      signatureFileIdSnapshot: action.signatureFileIdSnapshot,
-      signatureSha256Snapshot: action.signatureSha256Snapshot,
-      createdAt: action.createdAt.toISOString(),
-      metadata: action.metadata
-    }));
     return {
       settlementId,
       sourceRevision: original.sourceRevision,
@@ -578,7 +598,7 @@ export class SettlementSignedDocumentService {
       originalPageCount: original.pageCount,
       originalContentSha256: original.contentSha256,
       businessSnapshotToken: original.businessSnapshotToken,
-      approvalActionSetHash: createHash("sha256").update(JSON.stringify(canonical)).digest("hex"),
+      approvalActionSetHash: settlementApprovalActionSetHash([submission, ...actions]),
       signatures
     };
   }

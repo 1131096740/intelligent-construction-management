@@ -17,7 +17,7 @@ import {
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -1117,7 +1117,7 @@ export class SpotProcurementPaymentService {
         throw new ConflictException(PAYER_TASK_COMPLETED_ERROR);
       }
       if (approval && !isFinanceDirectorReapproval && approval.currentNodeIndex !== 0) {
-        throw new ConflictException("综合部主管审批完成后，只有财务主管可在本节点调整付款主体");
+        throw new ConflictException("首个审批节点完成后，只有财务主管可在财务审批节点调整付款主体");
       }
       if (isFinanceDirectorReapproval && !optionalText(input.changeReason)) {
         throw new BadRequestException("财务主管调整付款主体时必须填写变更原因");
@@ -1535,7 +1535,7 @@ export class SpotProcurementPaymentService {
           );
         }
         if (
-          approvedRoleKey === "comprehensive_director" &&
+          ["material_director", "comprehensive_director"].includes(approvedRoleKey) &&
           input.decision === "approve"
         ) {
           const [realPayment, methodCount] = await Promise.all([
@@ -1558,7 +1558,7 @@ export class SpotProcurementPaymentService {
               methodCount < 1)
           ) {
             throw new BadRequestException(
-              "综合部主管审批通过前必须确定付款主体和至少一种拟付款方式"
+              "首个审批节点通过前必须确定付款主体和至少一种拟付款方式"
             );
           }
         }
@@ -1576,9 +1576,9 @@ export class SpotProcurementPaymentService {
                 required: true
               })
             : null;
-        const recordApprovalAction = () =>
+        const recordApprovalAction = async () =>
           tx.approvalActionLog.create({
-            data: {
+            data: await withApprovalIdentity(tx, {
               approvalInstanceId: approval.id,
               action: input.decision,
               actorUserId,
@@ -1604,7 +1604,7 @@ export class SpotProcurementPaymentService {
                   : {}),
                 ...selfReviewMetadata
               }
-            }
+            }, signature)
           });
 
         if (input.decision === "reject") {

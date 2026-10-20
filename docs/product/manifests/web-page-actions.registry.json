@@ -9354,6 +9354,30 @@
           "name": "deleteOperatingTakeoverDraft"
         }
       ]
+    },
+    {
+      "id": "approval-documents.download-form",
+      "usage": "background",
+      "routePaths": [
+        "/审批单留存"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadRetainedApprovalFormWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.available"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadApprovalForm"
+        }
+      ]
     }
   ]
 }

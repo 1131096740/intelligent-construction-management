@@ -48,6 +48,8 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
     isFinal: false,
     calculationVersion: null,
     finalCumulativeAmountCents: null,
+    finalDeclarationVersion: null as number | null,
+    finalDeclarationSnapshot: null as { version: number; accepted: boolean } | null,
     lines: [],
     revision: 3,
     status: "draft",
@@ -78,6 +80,7 @@ function context(preparedFacts: ReturnType<typeof facts>[] = [facts(), facts()])
       contractTypeKey: "material_purchase", counterparty: "供应商",
       companyEntityName: "建设公司"
     }) },
+    contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
     project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "项目一" }) },
     contractVersion: { findUnique: jest.fn().mockResolvedValue({
       id: "version-1", companyEntityNameSnapshot: "建设公司",
@@ -320,6 +323,35 @@ describe("SettlementFrozenDocumentService", () => {
     await expect(wrongRole.service.generate("project-1", "draft-1", "owner-1", 3))
       .rejects.toThrow("现场复核岗位与合同类型不一致");
     expect(wrongRole.files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("freezes names from the exact approved contract version instead of empty legacy contract fields", async () => {
+    const current = context();
+    current.tx.contract.findUnique.mockResolvedValue({ id: "contract-1", code: "HT-001", name: "", contractTypeKey: "material_purchase", counterparty: "", companyEntityName: "建设公司" });
+    current.tx.contractVersion.findUnique.mockResolvedValue({ id: "version-1", companyEntityNameSnapshot: "建设公司", draftData: { contractName: "本版本材料采购合同" } } as never);
+    current.tx.contractPartySnapshot.findMany.mockResolvedValue([{ snapshot: { name: "本版本供应商" } }]);
+    const prepared = await (current.service as unknown as { prepare(...args: unknown[]): Promise<{ input: unknown }> })
+      .prepare(current.tx, "project-1", "draft-1", "owner-1", 3);
+    expect(prepared.input).toEqual(expect.objectContaining({ contractName: "本版本材料采购合同", counterparty: "本版本供应商" }));
+    expect(current.tx.contractPartySnapshot.findMany).toHaveBeenCalledWith({ where: { contractVersionId: "version-1", roleKey: "party_b" }, orderBy: { displayOrder: "asc" } });
+  });
+
+  it("validates the saved V2 final declaration on both sides of PDF generation", async () => {
+    const current = context();
+    current.draft.isFinal = true;
+    current.draft.finalDeclarationVersion = 1;
+    current.draft.finalDeclarationSnapshot = { version: 1, accepted: true };
+
+    await current.service.generate("project-1", "draft-1", "owner-1", 3);
+
+    expect(current.settlements.freezeGovernedSettlementFacts).toHaveBeenCalledTimes(2);
+    for (const call of current.settlements.freezeGovernedSettlementFacts.mock.calls) {
+      expect(call[2]).toBe(true);
+      expect(call[4]).toEqual(expect.objectContaining({
+        finalDeclarationVersion: 1,
+        finalDeclarationSnapshot: { version: 1, accepted: true }
+      }));
+    }
   });
 
   it("refuses a missing, cross-project or inactive field reviewer before upload", async () => {

@@ -164,8 +164,9 @@ export class SettlementWorkbenchService {
   private async participantOptionsLocked(
     client: Prisma.TransactionClient,
     contractVersionId: string,
-    actorUserId: string
+    _actorUserId: string
   ) {
+  void _actorUserId;
     const version = await lockContractAndAssertCurrentEffective(client, contractVersionId);
     const contract = await client.contract.findUnique({
       where: { id: version.contractId },
@@ -182,7 +183,6 @@ export class SettlementWorkbenchService {
       ? ["material_staff"]
       : ["engineering_foreman", "engineering_tech"];
     const memberships = (await loadProjectApprovalAssignments(client, contract.projectId, allowedRoles))
-      .filter((assignment) => assignment.userId !== actorUserId)
       .map((assignment) => ({ userId: assignment.userId, positionKey: assignment.roleKey }));
     const userIds = [...new Set(memberships.map((membership) => membership.userId))];
     const users = userIds.length

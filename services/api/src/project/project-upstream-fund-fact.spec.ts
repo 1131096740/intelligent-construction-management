@@ -554,7 +554,7 @@ describe("ProjectService upstream fund facts", () => {
     const tx = {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
-        .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "finance-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{
           id: "signature-version-1",
           fileId: "signature-file-1",
@@ -623,7 +623,7 @@ describe("ProjectService upstream fund facts", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
         .mockResolvedValueOnce([{ id: "settlement-fact-1" }])
-        .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "finance-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{
           id: "signature-version-1",
           fileId: "signature-file-1",
@@ -710,7 +710,7 @@ describe("ProjectService upstream fund facts", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
         .mockResolvedValueOnce([{ id: "settlement-fact-1" }])
-        .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "finance-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{
           id: "signature-version-1",
           fileId: "signature-file-1",
@@ -828,7 +828,7 @@ describe("ProjectService upstream fund facts", () => {
     const tx = {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
-        .mockResolvedValueOnce([{ id: "finance-director-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "finance-director-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{
           id: "signature-version-1",
           fileId: "signature-file-1",

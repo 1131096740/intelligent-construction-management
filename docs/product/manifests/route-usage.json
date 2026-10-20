@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 659,
-    "exactRouteCount": 659,
-    "normalizedRouteCount": 659,
+    "routeCount": 661,
+    "exactRouteCount": 661,
+    "normalizedRouteCount": 661,
     "classificationOverrideCount": 221,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "085f9bbd84ae8b0133bba665bea7b0214ea2e4d800c626b52eb12e10e46d556e",
     "consumerSurfaceOverrideSha256": "6066b9577688310205b0bcb95a49813902e8082597620fa7bd092ba8d68a77be",
-    "derivedProductionPageCount": 438,
-    "pageRouteCount": 454,
+    "derivedProductionPageCount": 440,
+    "pageRouteCount": 456,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 96,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 507,
+      "web_api_wrapper": 509,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 507,
+    "productionWrapperRouteCount": 509,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -538,6 +538,89 @@
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/approval-forms",
+      "normalizedKey": "GET /approval-forms",
+      "controller": "ApprovalFormController",
+      "handler": "list",
+      "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
+            "wrapper": "listApprovalDocuments",
+            "method": "GET",
+            "normalizedPath": "/approval-forms",
+            "normalizedKey": "GET /approval-forms",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/approval-forms/:businessType/:businessId/capability",
+      "normalizedKey": "GET /approval-forms/:param/:param/capability",
+      "controller": "ApprovalFormController",
+      "handler": "capability",
+      "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/approval-forms.api.ts",
+            "wrapper": "approvalDocumentCapability",
+            "method": "GET",
+            "normalizedPath": "/approval-forms/:param/:param/capability",
+            "normalizedKey": "GET /approval-forms/:param/:param/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+              "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
             ]
           }
         ],
@@ -3059,7 +3142,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5423,
+            "sourceLine": 5426,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
@@ -10805,6 +10888,8 @@
             "normalizedPath": "/approval-forms/:param/:param/download",
             "normalizedKey": "POST /approval-forms/:param/:param/download",
             "productionConsumers": [
+              "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+              "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",

@@ -2,6 +2,8 @@
   "extends": "./tsconfig.json",
   "exclude": [
     "src/**/*.spec.ts",
+    "src/**/*.test-support.ts",
+    "src/approval/approval-evidence-test-fixture.ts",
     "src/database/operating-projection-postgresql.cases.ts"
   ]
 }

@@ -9,6 +9,8 @@ import {
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
@@ -170,19 +172,23 @@ export class ProjectExpenseController {
   }
 
   @Post(":expenseRequestId/approval-pdf-download-ticket")
-  createApprovalPdfDownloadTicket(
+  async createApprovalPdfDownloadTicket(
     @Param("projectId") projectId: string,
     @Param("expenseRequestId") expenseRequestId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: CreateProjectExpenseDownloadTicketDto
+    @Body() body: CreateProjectExpenseDownloadTicketDto,
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
-    return this.expenses.createApprovalPdfDownloadTicket(
+    const result = await this.expenses.createApprovalPdfDownloadTicket(
       projectId,
       expenseRequestId,
       user.id,
       body.confirmationPassword,
       body.downloadReason
     );
+    response.set({ "Content-Type": "application/pdf", "Content-Length": String(result.buffer.length),
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}` });
+    return new StreamableFile(result.buffer);
   }
 
   @Post(":expenseRequestId/voiding")

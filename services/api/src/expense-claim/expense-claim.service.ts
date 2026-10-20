@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
 import { ApprovalFormService } from "../approval/approval-form.service";
-import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -949,7 +949,7 @@ export class ExpenseClaimService {
         data: { currentNodeIndex: nextNodeIndex, frozenNodes: nextNodes as unknown as Prisma.InputJsonValue, status: completed ? "approved" : "in_progress" }
       });
       await tx.approvalActionLog.create({
-        data: {
+        data: await withApprovalIdentity(tx, {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
@@ -960,7 +960,7 @@ export class ExpenseClaimService {
           signatureFileIdSnapshot: signature.fileId,
           signatureSha256Snapshot: signature.sha256,
           signatureVersionIdSnapshot: signature.versionId
-        }
+        }, signature)
       });
       if (
         completed &&

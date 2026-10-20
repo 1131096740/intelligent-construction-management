@@ -948,7 +948,7 @@ describe("spot procurement web pages", () => {
     expect(payment).toContain('decision: "return_to_applicant"');
     expect(payment).toContain("merchantPayeeMismatchNote");
     expect(payment).toContain("付款主体已调整");
-    expect(payment).toContain("从综合部节点重新审批");
+    expect(payment).toContain("从本轮冻结的首个节点重新审批");
     expect(payment).toContain("result.newDraftPaymentId");
     expect(payment).toContain("router.push('/零星材料付款工作台')");
     expect(payment).not.toContain("router.push('/零星材料付款')");

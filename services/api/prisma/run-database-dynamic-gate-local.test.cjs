@@ -223,18 +223,18 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 404 pending tests as executable local coverage", () => {
+test("manifest derives all 422 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 69,
-    fullyPendingSuites: 58,
+    pendingFiles: 71,
+    fullyPendingSuites: 60,
     partiallyPendingSuites: 11,
-    pendingTests: 404,
-    coveredFiles: 69,
-    coveredTests: 404,
+    pendingTests: 422,
+    coveredFiles: 71,
+    coveredTests: 422,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
@@ -299,7 +299,7 @@ test("POL-109 runner resolves Playwright from the Web workspace", () => {
   );
 });
 
-test("canonical manifest executes all 114 entry tests including the template workbench", () => {
+test("canonical manifest executes all 129 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -307,7 +307,7 @@ test("canonical manifest executes all 114 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 114,
+    pendingTests: 129,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -316,17 +316,17 @@ test("canonical manifest executes all 114 entry tests including the template wor
       },
       {
         path: "services/api/src/database/contract-business-entry-http.spec.ts",
-        pendingTests: 3,
+        pendingTests: 7,
         suiteStatus: "fully_pending"
       },
       {
         path: "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-        pendingTests: 53,
+        pendingTests: 56,
         suiteStatus: "fully_pending"
       },
       {
         path: "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
-        pendingTests: 3,
+        pendingTests: 2,
         suiteStatus: "fully_pending"
       },
       {
@@ -347,6 +347,11 @@ test("canonical manifest executes all 114 entry tests including the template wor
       {
         path: "services/api/src/database/draft-deletion-numbering.pg.spec.ts",
         pendingTests: 2,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/database/approval-v6-independent-http-postgres.spec.ts",
+        pendingTests: 9,
         suiteStatus: "fully_pending"
       }
     ],
@@ -615,7 +620,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=404/u
+    /inventory\.coveredTests=26，派生值=422/u
   );
 });
 

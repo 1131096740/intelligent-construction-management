@@ -1,3 +1,4 @@
+import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import {
   BadRequestException,
@@ -182,7 +183,7 @@ describe("PaymentRequestService", () => {
         contractVersion: {
           findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
         },
-        $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: true }]),
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: true, name: "签批人甲" }]),
         projectReceipt: {
           findMany: jest.fn().mockResolvedValue(
             receiptAmountCents > 0n ? [{ amountCents: receiptAmountCents }] : []
@@ -345,7 +346,7 @@ describe("PaymentRequestService", () => {
         ...(current.user ?? {}),
         findUnique:
           current.user?.findUnique ??
-          jest.fn().mockResolvedValue({ id: "cashier-1", isActive: true })
+          jest.fn().mockResolvedValue({ id: "cashier-1", isActive: true, name: "签批人甲" })
       },
       userPosition: {
         ...(current.userPosition ?? {}),
@@ -449,6 +450,7 @@ describe("PaymentRequestService", () => {
       },
       user: {
         findUnique: jest.fn().mockResolvedValue({
+name: "签批人甲",
           id: "cashier-1",
           isActive: true
         })
@@ -788,7 +790,7 @@ describe("PaymentRequestService", () => {
         sourceRecordId: "bank-source-record-1"
       })
     };
-    tx.user.findUnique = jest.fn().mockResolvedValue({ id: "user", isActive: true });
+    tx.user.findUnique = jest.fn().mockResolvedValue({ id: "user", isActive: true, name: "签批人甲" });
     tx.userPosition.findMany = jest.fn(
       ({ where }: { where: { userId: string; projectId?: string | null } }) =>
         Promise.resolve(
@@ -801,7 +803,7 @@ describe("PaymentRequestService", () => {
       { id: "finance-director-position", key: "finance_director" }
     ]);
     tx.companyEntity = {
-      findUnique: jest.fn().mockResolvedValue({ id: "company-1", isActive: true })
+      findUnique: jest.fn().mockResolvedValue({ id: "company-1", isActive: true, name: "签批人甲" })
     };
     tx.fileObject = {
       findUnique: jest.fn().mockResolvedValue({
@@ -1122,7 +1124,7 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
-        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true, name: "签批人甲" }])
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -1290,7 +1292,7 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
-        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true, name: "签批人甲" }])
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -1367,7 +1369,7 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
-        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true, name: "签批人甲" }])
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -3335,8 +3337,9 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
-        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true, name: "签批人甲" }])
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3752,7 +3755,7 @@ describe("PaymentRequestService", () => {
           .fn()
           .mockResolvedValueOnce([{ id: "contract-1" }])
           .mockResolvedValueOnce([{ id: "settlement-1" }])
-          .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+          .mockResolvedValueOnce([{ id: "project-1", isActive: true, name: "签批人甲" }])
       };
       const prisma = {
         $transaction: jest.fn(async (callback) => callback(tx))
@@ -3824,6 +3827,7 @@ describe("PaymentRequestService", () => {
       auditLog: { create: jest.fn() },
       ...cashPool.tables
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -3919,6 +3923,7 @@ describe("PaymentRequestService", () => {
         }
       : node);
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -3953,7 +3958,7 @@ describe("PaymentRequestService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "pm-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "pm-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-pm", fileId: "sig-pm", contentSha256: "c".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-pm", contentSha256: "c".repeat(64), storageStatus: "active" }]),
       ...approvalRoleTables("comprehensive_director")
@@ -4007,13 +4012,15 @@ describe("PaymentRequestService", () => {
         representedUserId: "pm-1",
         signatureFileIdSnapshot: "sig-pm",
         signatureSha256Snapshot: "c".repeat(64),
-        signatureVersionIdSnapshot: "sig-version-pm"
+        signatureVersionIdSnapshot: "sig-version-pm",
+        metadata: { approverName: "签批人甲" }
       }
     });
   });
 
-  it("拒绝普通岗位申请人审批自己发起的付款", async () => {
+  it("普通岗位申请人审批本人发起的业务需要二次确认：付款", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -4037,6 +4044,7 @@ describe("PaymentRequestService", () => {
       auditLog: { create: jest.fn() },
       ...approvalRoleTables("comprehensive_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4047,7 +4055,7 @@ describe("PaymentRequestService", () => {
         ...paymentReviewCoordinates,
         decision: "approve"
       })
-    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    ).rejects.toThrow("自审原因");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
@@ -4056,6 +4064,7 @@ describe("PaymentRequestService", () => {
 
   function paymentLeaderSelfReviewFixture() {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4089,6 +4098,7 @@ describe("PaymentRequestService", () => {
       projectFinancingQuotaUsage: { findMany: jest.fn().mockResolvedValue([]) },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new PaymentRequestService(
       new PaymentAmountService(),
@@ -4154,7 +4164,7 @@ describe("PaymentRequestService", () => {
     expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "top-secret");
     const actionMetadata = tx.approvalActionLog.create.mock.calls[0]?.[0].data.metadata;
     const auditMetadata = audit.record.mock.calls[0]?.[1].metadata;
-    expect(actionMetadata).toEqual({ selfReview: true, selfReviewReason: "业务紧急且由本人发起" });
+    expect(actionMetadata).toEqual({ approverName: "签批人甲", selfReview: true, selfReviewReason: "业务紧急且由本人发起" });
     expect(auditMetadata).toEqual(expect.objectContaining({
       selfReview: true,
       selfReviewReason: "业务紧急且由本人发起"
@@ -4167,6 +4177,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects setting approved amount before the final payment approval node", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4195,6 +4206,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("comprehensive_director")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4229,6 +4241,7 @@ describe("PaymentRequestService", () => {
       paymentApprovalNodes[3]
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4263,6 +4276,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates(),
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4314,6 +4328,7 @@ describe("PaymentRequestService", () => {
       paymentApprovalNodes[3]
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4342,6 +4357,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4360,6 +4376,7 @@ describe("PaymentRequestService", () => {
 
   it("fails closed before final approval when the frozen payer snapshot is not our company", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4394,6 +4411,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates(),
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4419,6 +4437,7 @@ describe("PaymentRequestService", () => {
 
   it("persists the approver's remark on the approval action log", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4451,6 +4470,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates(),
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4469,13 +4489,18 @@ describe("PaymentRequestService", () => {
         actorUserId: "chairman-1",
         comment: "同意付款",
         approvedRoleKey: "chairman",
-        representedUserId: "chairman-1"
+        representedUserId: "chairman-1",
+        signatureFileIdSnapshot: "signature-file-1",
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "signature-version-1",
+        metadata: { approverName: "签批人甲" }
       }
     });
   });
 
   it("lets a standing delegate approve a payment node as the delegator's role", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4533,6 +4558,7 @@ describe("PaymentRequestService", () => {
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{
+name: "签批人甲",
           id: "delegate-user-1",
           isActive: true,
           signatureFileId: "sig-delegate"
@@ -4588,6 +4614,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects a pending payment request without making it payable", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4628,6 +4655,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates(),
       ...approvalRoleTables("general_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4714,6 +4742,7 @@ describe("PaymentRequestService", () => {
       }
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4746,6 +4775,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4802,6 +4832,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects returning to a previous node from the first payment approval node", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4833,6 +4864,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4851,6 +4883,7 @@ describe("PaymentRequestService", () => {
 
   it("returns a payment approval to the applicant as draft and closes the instance", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -4890,6 +4923,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates(),
       ...approvalRoleTables("general_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4939,6 +4973,7 @@ describe("PaymentRequestService", () => {
       }
     ];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -4963,6 +4998,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5017,6 +5053,7 @@ describe("PaymentRequestService", () => {
 
   it("lets the transferred user approve a payment as the source role", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           ...paymentReviewPaymentVersion,
@@ -5068,7 +5105,7 @@ describe("PaymentRequestService", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true }])
+        .mockResolvedValueOnce([{ id: "transfer-user-1", isActive: true, name: "签批人甲" }])
         .mockResolvedValueOnce([{ id: "sig-version-transfer", fileId: "sig-transfer", contentSha256: "f".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-transfer", contentSha256: "f".repeat(64), storageStatus: "active" }]),
       ...financingUsageUpdates(),
@@ -5100,6 +5137,7 @@ describe("PaymentRequestService", () => {
 
   it("delegates the current payment approval node and records delegation ledger", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -5133,6 +5171,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("general_manager")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5208,6 +5247,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5234,6 +5274,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5260,6 +5301,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5297,6 +5339,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5336,6 +5379,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("employee")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5389,6 +5433,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5406,6 +5451,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects approval review when approval instance cannot be found", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -5421,6 +5467,7 @@ describe("PaymentRequestService", () => {
       approvalActionLog: { create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5467,6 +5514,7 @@ describe("PaymentRequestService", () => {
         })
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5483,6 +5531,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects approval review when the actor cannot approve the current node", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -5516,6 +5565,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5549,6 +5599,7 @@ describe("PaymentRequestService", () => {
     const paymentUpdatedAt = new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt);
     const approvalUpdatedAt = new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt);
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -5587,6 +5638,7 @@ describe("PaymentRequestService", () => {
       ...approvalRoleTables("chairman"),
       ...financingUsageUpdates()
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -5621,6 +5673,7 @@ describe("PaymentRequestService", () => {
       updatedAt: approvalUpdatedAt
     };
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -5646,6 +5699,7 @@ describe("PaymentRequestService", () => {
       ...approvalRoleTables("chairman"),
       ...financingUsageUpdates()
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -5694,6 +5748,7 @@ describe("PaymentRequestService", () => {
       },
       ...approvalRoleTables("chairman")
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -9115,6 +9170,7 @@ describe("PaymentRequestService", () => {
     const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
     const now = new Date("2026-06-25T00:00:00.000Z"); // +48h, hits the default SLA
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -9142,6 +9198,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9177,6 +9234,7 @@ describe("PaymentRequestService", () => {
     const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
     const now = new Date("2026-06-24T00:00:00.000Z"); // +24h, under the default 48h SLA
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -9202,6 +9260,7 @@ describe("PaymentRequestService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9213,6 +9272,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects a payment approval reminder from a non-applicant", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -9238,6 +9298,7 @@ describe("PaymentRequestService", () => {
       },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9253,6 +9314,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects a payment approval reminder when payment request cannot be found", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue(null)
       },
@@ -9275,6 +9337,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects a payment approval reminder after payment leaves approval", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -9289,6 +9352,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9305,6 +9369,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects a payment approval reminder when approval instance cannot be found", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -9319,6 +9384,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9334,6 +9400,7 @@ describe("PaymentRequestService", () => {
 
   it("lets the payment approval applicant withdraw before approval completes", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       $queryRaw: jest.fn().mockResolvedValue([
         {
           id: "payment-1",
@@ -9364,6 +9431,7 @@ describe("PaymentRequestService", () => {
       },
       ...financingUsageUpdates()
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9405,6 +9473,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects payment approval withdrawal from a non-applicant", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       $queryRaw: jest.fn().mockResolvedValue([
         {
           id: "payment-1",
@@ -9426,6 +9495,7 @@ describe("PaymentRequestService", () => {
       approvalActionLog: { create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9447,6 +9517,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9474,6 +9545,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn()
       }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9486,6 +9558,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects payment approval withdrawal once it has left approval_pending", async () => {
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       $queryRaw: jest.fn().mockResolvedValue([
         {
           id: "payment-1",
@@ -9503,6 +9576,7 @@ describe("PaymentRequestService", () => {
       approvalActionLog: { create: jest.fn() },
       auditLog: { create: jest.fn() }
     };
+    attachApprovalSignatureFixture(tx);
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
@@ -9535,6 +9609,7 @@ describe("PaymentRequestService", () => {
     };
     const usages = overrides.usages ?? [];
     const tx = {
+user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: where.id, name: "原审批人乙", isActive: true })) },
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([payment])

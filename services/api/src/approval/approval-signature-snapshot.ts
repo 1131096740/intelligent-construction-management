@@ -10,13 +10,14 @@ export async function snapshotApprovalSignature(
   tx: SignatureSnapshotClient,
   actorUserId: string,
   options: { required: boolean }
-): Promise<{ fileId: string | null; sha256: string | null; versionId: string | null }> {
-  if (!options.required) return { fileId: null, sha256: null, versionId: null };
+): Promise<{ fileId: string | null; sha256: string | null; versionId: string | null; actorName: string | null }> {
+  if (!options.required) return { fileId: null, sha256: null, versionId: null, actorName: null };
   const [user] = await tx.$queryRaw<Array<{
     id: string;
     isActive: boolean;
+    name: string;
   }>>(Prisma.sql`
-    SELECT "id", "isActive"
+    SELECT "id", "isActive", "name"
     FROM "User"
     WHERE "id" = ${actorUserId}
     FOR UPDATE
@@ -57,7 +58,8 @@ export async function snapshotApprovalSignature(
   if (verifiedSha256.toLowerCase() !== signatureVersion.contentSha256.toLowerCase()) {
     throw new BadRequestException("审批手写签名版本校验失败，请重新签名后重试");
   }
-  return { fileId: file.id, sha256: verifiedSha256, versionId: signatureVersion.id };
+  if (!user.name?.trim()) throw new BadRequestException("审批人姓名未配置，不能冻结审批签名");
+  return { fileId: file.id, sha256: verifiedSha256, versionId: signatureVersion.id, actorName: user.name };
 }
 
 export function verifyApprovalSignatureSnapshot(
@@ -75,6 +77,26 @@ export function verifyApprovalSignatureSnapshot(
     throw new BadRequestException("审批签名快照不是有效的 PNG 或 JPEG 图片");
   }
   return buffer;
+}
+
+/** Store the identity from the same locked transaction as the signature version. */
+export async function withApprovalIdentity<T extends object>(
+  tx: Pick<Prisma.TransactionClient, "user">,
+  data: T,
+  signature: { actorName: string | null } | null
+): Promise<Omit<T, "metadata"> & { metadata?: Prisma.InputJsonObject }> {
+  const raw = (data as { metadata?: unknown }).metadata;
+  const metadata = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Prisma.InputJsonObject : {};
+  const identity = data as { actorUserId?: string; representedUserId?: string | null };
+  const represented = signature?.actorName && identity.representedUserId && identity.representedUserId !== identity.actorUserId
+    ? await tx.user.findUnique({ where: { id: identity.representedUserId }, select: { name: true } }) : null;
+  if (signature?.actorName && identity.representedUserId && identity.representedUserId !== identity.actorUserId && !represented?.name) {
+    throw new BadRequestException("被代表审批人身份不完整，不能冻结签批记录");
+  }
+  const frozenMetadata = { ...metadata, ...(signature?.actorName ? { approverName: signature.actorName } : {}),
+    ...(represented ? { representedName: represented.name } : {}) };
+  return { ...data, ...(Object.keys(frozenMetadata).length ? { metadata: frozenMetadata } : {}) };
 }
 
 function isEmbeddableSignatureImage(buffer: Buffer): boolean {

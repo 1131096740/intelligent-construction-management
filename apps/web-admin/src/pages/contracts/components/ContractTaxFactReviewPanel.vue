@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocumentDownload.vue";
 import type {
   ContractInvoiceType,
   ContractTaxFactSource,
@@ -843,6 +844,7 @@ function currentStatusLabel(value: string) {
             :label="item.updatedAt"
           >
             <div class="timeline-item">
+<ApprovalDocumentDownload  business-type="contract_tax_fact_revision" :business-id="item.id" :refresh-key="item.status" />
               <strong>{{ item.title }} · {{ item.status }}</strong>
               <p>{{ item.summary }}</p>
               <p

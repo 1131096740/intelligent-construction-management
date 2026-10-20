@@ -1,3 +1,4 @@
+import { verifyApprovedPdf } from "./approval-pdf-acceptance.test-support";
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createHash, randomUUID } from "node:crypto";
@@ -27,7 +28,7 @@ type Workbench = {
     values: { settlementMode: string | null };
     history: BusinessEntryFrozenSnapshot[];
   };
-  bills: Array<{ id: string; billKey: string; revision: number }>;
+  bills: Array<{ id: string; billKey: string; revision: number; rows: Array<Record<string, unknown>> }>;
 };
 type Submission = { approvalInstanceId: string; draftRevision: number; businessEntrySnapshot: BusinessEntryFrozenSnapshot; templateEntrySnapshot: BusinessEntryFrozenSnapshot; billEntrySnapshots: BusinessEntryFrozenSnapshot[]; partyEntrySnapshots: BusinessEntryFrozenSnapshot[]; commercialEntrySnapshot: BusinessEntryFrozenSnapshot; paymentTermsEntrySnapshot: BusinessEntryFrozenSnapshot; paymentStageEntrySnapshots: BusinessEntryFrozenSnapshot[] };
 if (enabled) {
@@ -123,7 +124,7 @@ if (enabled) {
 
   afterAll(async () => { await app?.close(); });
 
-  async function runContractCase(entryMode: "aggregate" | "legacy" | "legacy-ownerless") {
+  async function runContractCase(entryMode: "aggregate" | "legacy" | "legacy-ownerless", typeOverride?: string, paymentMode?: "direct") {
     // Each case owns its identity, even if Jest eventually aborts an earlier case.
     let token = "";
     async function request<T = unknown>(method: string, path: string, body?: unknown, leaseToken?: string): Promise<T> {
@@ -141,10 +142,10 @@ if (enabled) {
       return value;
     }
 
-    async function upload(name: string, mimeType: string, data: Uint8Array) {
+    async function upload(name: string, mimeType: string, data: Uint8Array, uploadPath = "/files") {
       const form = new FormData();
       form.append("file", new Blob([Uint8Array.from(data).buffer], { type: mimeType }), name);
-      const response = await fetch(`${baseUrl}/files`, {
+      const response = await fetch(`${baseUrl}${uploadPath}`, {
         method: "POST", headers: { authorization: `Bearer ${token}` }, body: form
       });
       const result = await response.json() as Identified;
@@ -155,9 +156,14 @@ if (enabled) {
     token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", {
       phone: actorPhone, password: actorPassword
     })).tokens.accessToken;
-    const settlementFinance = process.env.RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16 === "1";
-    const paymentFinance = process.env.RUN_POL114_PAYMENT_HTTP_PG16 === "1" || settlementFinance;
-    const contractTypeKey = paymentFinance && !settlementFinance ? "generic_contract" : "material_purchase";
+    const tokensByUserId = new Map([[actorUserId, token]]);
+    const settlementFinance = paymentMode !== "direct" && process.env.RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16 === "1";
+    const paymentFinance = paymentMode === "direct" || process.env.RUN_POL114_PAYMENT_HTTP_PG16 === "1" || settlementFinance;
+    const contractTypeKey = typeOverride ?? (paymentFinance && !settlementFinance ? "generic_contract" : "material_purchase");
+    const engineering = ["labor_subcontract", "professional_subcontract"].includes(contractTypeKey);
+    const fieldReviewerRole = engineering ? "engineering_foreman" : "material_staff";
+    const applicantRole = engineering ? "engineering_tech" : "contract_staff";
+    const settlementRoles = [fieldReviewerRole, engineering ? "engineering_director" : "material_director", "contract_director", "project_manager", "finance_director"];
     const settlementMode = settlementFinance ? "settlement_required" : "direct_payment";
     const project = await request<Identified>("POST", "/projects", {
       code: `POL114-${randomUUID()}`, name: "合同统一录入合成项目"
@@ -165,7 +171,7 @@ if (enabled) {
     const prisma = app.get(PrismaService);
     let projectFinanceUserId = "";
     const roleUsers = new Map<string, string>();
-    for (const key of ["budget_staff", "contract_staff", "material_staff", "material_director", "project_manager", "finance_director", "finance_staff", "budget_director", "contract_director", "chairman", "comprehensive_director"]) {
+    for (const key of ["budget_staff", "contract_staff", "material_staff", "material_director", "project_manager", "finance_director", "finance_staff", "budget_director", "contract_director", "chairman", "comprehensive_director", "engineering_director", "engineering_foreman", "engineering_tech"]) {
       const phone = `114-${randomUUID()}`;
       const password = `Test-${randomUUID()}`;
       const reviewer = await prisma.user.create({ data: {
@@ -176,9 +182,9 @@ if (enabled) {
       const position = await prisma.position.upsert({ where: { key }, update: {}, create: { key, name: key } });
       await prisma.userPosition.create({ data: {
         userId: reviewer.id, positionId: position.id,
-        projectId: ["project_manager", "material_staff", "contract_staff", "budget_staff"].includes(key) ? project.id : null
+        projectId: ["project_manager", "material_staff", "contract_staff", "budget_staff", "engineering_director", "engineering_foreman", "engineering_tech"].includes(key) ? project.id : null
       } });
-      if (["project_manager", "material_staff", "contract_staff", "budget_staff"].includes(key)) {
+      if (["project_manager", "material_staff", "contract_staff", "budget_staff", "engineering_director", "engineering_foreman", "engineering_tech"].includes(key)) {
         await prisma.projectMember.create({ data: { projectId: project.id, userId: reviewer.id, positionKey: key } });
       }
       if (key === "finance_director") {
@@ -332,7 +338,7 @@ if (enabled) {
       });
       saved = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
     }
-    await request("PUT", `/contract-drafts/${draft.version.id}`, {
+    const completeDraftInput = {
       idempotencyKey: randomUUID(), saveKind: "manual",
       expectedRevision: saved.version.draftRevision, changedSections: ["draft", "parties", "payment_terms", "bills"],
       draft: {
@@ -352,7 +358,8 @@ if (enabled) {
         originalText: "合同生效后支付合同金额的100%。"
       }] : [] }, attachments: [],
       negotiationDocuments: { referencedGeneratedDocumentIds: [] }
-    }, lease.token);
+    };
+    await request("PUT", `/contract-drafts/${draft.version.id}`, completeDraftInput, lease.token);
     let current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
     const modeConfirmation = await request<{ settlementModeSnapshot: BusinessEntryFrozenSnapshot }>("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
       expectedRevision: current.version.draftRevision, settlementMode
@@ -452,7 +459,7 @@ if (enabled) {
     });
     expect(submitted.paymentTermsEntrySnapshot).toMatchObject({ sceneKey: "contract_payment_terms", values: { originalText: "验收后付款" } });
     expect(submitted.paymentStageEntrySnapshots).toEqual([expect.objectContaining({
-      sceneKey: "contract_payment_stage", values: expect.objectContaining({ name: "合同款", basis: "current_settlement", ratioBps: 10000, dueDays: 0, requiresInvoice: false, allowsEarlyPayment: false, allowsInstallments: true })
+      sceneKey: "contract_payment_stage", values: expect.objectContaining({ name: "合同款", basis: settlementFinance ? "current_settlement" : "contract_amount", ratioBps: 10000, dueDays: 0, requiresInvoice: false, allowsEarlyPayment: false, allowsInstallments: true })
     })]);
     await prisma.contractBusinessTemplateVersion.create({ data: {
       templateId: templateRecord.id, versionNo: 2, status: "published",
@@ -484,7 +491,9 @@ if (enabled) {
       const loginAs = async (userId: string) => {
         const identity = identities.get(userId);
         if (!identity) throw new Error("公开链缺少本次合成账号");
-        token = (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", identity)).tokens.accessToken;
+        const cachedToken = tokensByUserId.get(userId);
+        token = cachedToken ?? (await request<{ tokens: { accessToken: string } }>("POST", "/auth/login", identity)).tokens.accessToken;
+        tokensByUserId.set(userId, token);
         return identity;
       };
       for (let step = 0; step < 12; step++) {
@@ -511,10 +520,21 @@ if (enabled) {
           expectedOwnerContractRisk: reviewDetail.ownerContractRisk
         });
       }
+      await loginAs(actorUserId);
+      await verifyApprovedPdf({ db: prisma, baseUrl, token, password: actorPassword,
+        businessType: "contract_version", businessId: draft.version.id,
+        roles: [engineering ? "engineering_director" : contractTypeKey === "generic_contract" ? "comprehensive_director" : "material_director", "contract_director", "project_manager", "finance_director", "chairman"], label: `合同-${contractTypeKey}` });
       const sealPosition = await prisma.position.findUniqueOrThrow({ where: { key: "comprehensive_director" } });
       const sealActor = await prisma.userPosition.findFirstOrThrow({ where: { positionId: sealPosition.id, projectId: null, userId: { in: [...identities.keys()] } } });
       const sealIdentity = await loginAs(sealActor.userId);
+      // V6 requires every actual approver to have their own stored signature, including the seal approver.
+      const sealSignature = new FormData();
+      sealSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-seal-signature.png");
+      expect((await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: sealSignature })).status).toBe(201);
       await request("POST", `/contracts/${draft.version.id}/seal/approve`, { confirmationPassword: sealIdentity.password });
+      const sealTask = await prisma.contractSealTask.findFirstOrThrow({ where: { contractVersionId: draft.version.id } });
+      await verifyApprovedPdf({ db: prisma, baseUrl, token, password: sealIdentity.password,
+        businessType: "contract_seal", businessId: sealTask.id, roles: ["comprehensive_director"], label: "合同用章" });
       await loginAs(actorUserId);
       const declaration = { firstPartySignedOrStamped: true, companySealCompleted: true, crossPageSealCompleted: true, signingDateCompleted: true };
       await request("POST", `/contracts/${draft.version.id}/seal/complete`, declaration);
@@ -572,12 +592,13 @@ if (enabled) {
           approvingPartyName: "合成业主", periodLabel: "2026-09", voucherFileId: upstreamVoucher.id
         });
         expect(await request("POST", `/projects/${project.id}/upstream-settlements/${upstream.id}/confirmation`, { confirmationPassword: upstreamActor.password })).toMatchObject({ status: "confirmed" });
-        const settlementApplicant = await loginAs(roleUsers.get("contract_staff")!);
+        const settlementApplicant = await loginAs(roleUsers.get(applicantRole)!);
         const applicantSignature = new FormData();
         applicantSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-applicant-signature.png");
         const applicantSignatureResponse = await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: applicantSignature });
         if (!applicantSignatureResponse.ok) throw new Error(`合成经办签名上传失败：${applicantSignatureResponse.status}`);
         const settlementDraftPath = `/projects/${project.id}/settlement-drafts`;
+        const uploadSettlement = (name: string, mimeType: string, data: Uint8Array) => upload(name, mimeType, data, `${settlementDraftPath}/files`);
         const rejectedSubmissionBaseline = {
           approvals: await prisma.approvalInstance.count({ where: { businessType: "settlement" } }),
           snapshots: await prisma.businessEntrySubmissionSnapshot.count({
@@ -627,7 +648,7 @@ if (enabled) {
         const settlementDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
           contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
           code: settlementCode, periodLabel, periodEnd,
-          fieldReviewerUserId: roleUsers.get("material_staff"), fieldReviewerRoleKey: "material_staff",
+          fieldReviewerUserId: roleUsers.get(fieldReviewerRole), fieldReviewerRoleKey: fieldReviewerRole,
           settlementLines: [
             { sourceType: "manual_adjustment", name: "合成现场签认金额", quantity: "2.50", amountCents: "10000", reason: "本期合成现场签认" },
             { sourceType: "manual_adjustment", name: "合成零数量调整", quantity: "0", amountCents: "5000", reason: "原领域允许零数量" }
@@ -659,8 +680,8 @@ if (enabled) {
           periodLabel,
           periodEnd,
           isFinal: false,
-          fieldReviewerUserId: roleUsers.get("material_staff"),
-          fieldReviewerRoleKey: "material_staff"
+          fieldReviewerUserId: roleUsers.get(fieldReviewerRole),
+          fieldReviewerRoleKey: fieldReviewerRole
         });
         expect(settlementDraftDetail.businessEntryLines).toEqual(expect.arrayContaining([
           expect.objectContaining({
@@ -688,13 +709,13 @@ if (enabled) {
         expect(settlementDraftDetail.businessEntryLines).toHaveLength(2);
         const settlementLineKey = settlementDraftDetail.businessEntryLines?.[0]?.lineKey;
         if (!settlementLineKey) throw new Error("公开结算草稿未返回明细标识");
-        const lineEvidence = await upload("synthetic-line-evidence.pdf", "application/pdf", await pdf.save());
+        const lineEvidence = await uploadSettlement("synthetic-line-evidence.pdf", "application/pdf", await pdf.save());
         const firstAttached = await request<{ revision: number }>(
           "POST",
           `${draftPath}/lines/${encodeURIComponent(settlementLineKey)}/attachments`,
           { fileId: lineEvidence.id, purpose: "现场签证单", expectedRevision: settlementDraft.revision }
         );
-        const measurementEvidence = await upload("synthetic-measurement-evidence.pdf", "application/pdf", await pdf.save());
+        const measurementEvidence = await uploadSettlement("synthetic-measurement-evidence.pdf", "application/pdf", await pdf.save());
         const attached = await request<{ revision: number }>(
           "POST",
           `${draftPath}/lines/${encodeURIComponent(settlementLineKey)}/attachments`,
@@ -706,7 +727,7 @@ if (enabled) {
         });
         const downloaded = await fetch(new URL(download.downloadUrl, baseUrl));
         if (!downloaded.ok) throw new Error(`结算冻结件下载失败：${downloaded.status}`);
-        const signed = await upload("synthetic-settlement-signed.pdf", "application/pdf", new Uint8Array(await downloaded.arrayBuffer()));
+        const signed = await uploadSettlement("synthetic-settlement-signed.pdf", "application/pdf", new Uint8Array(await downloaded.arrayBuffer()));
         await request("POST", `${draftPath}/counterparty-signed-documents`, {
           expectedRevision: attached.revision, frozenDocumentId: frozen.id, uploadedFileId: signed.id,
           declaration: { pageOrderMatchesFrozenDocument: true, counterpartySignedAndDated: true, everyPageStamped: true, crossPageSealCompleted: true }
@@ -753,8 +774,8 @@ if (enabled) {
             periodLabel,
             periodEnd,
             isFinal: false,
-            fieldReviewerUserId: roleUsers.get("material_staff"),
-            fieldReviewerRoleKey: "material_staff"
+            fieldReviewerUserId: roleUsers.get(fieldReviewerRole),
+            fieldReviewerRoleKey: fieldReviewerRole
           }
         });
         expect(settlement.businessEntryLineSnapshots).toEqual(expect.arrayContaining([
@@ -819,7 +840,7 @@ if (enabled) {
             { name: "合成零数量调整", amountYuan: "50.00", quantity: "0" }
           ], ["现场签证单", "计量凭证"]);
         }
-        for (const role of ["material_staff", "material_director", "contract_director", "project_manager", "finance_director"]) {
+        for (const role of settlementRoles) {
           const identity = await loginAs(roleUsers.get(role)!);
           const signature = new FormData();
           signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-signature.png");
@@ -828,15 +849,19 @@ if (enabled) {
           await request("POST", `/settlements/${settlement.id}/approval`, { decision: "approve", confirmationPassword: identity.password, selfReviewReason: "合成结算链验证" });
         }
         const archiveActor = await loginAs(roleUsers.get("contract_director")!);
+        await verifyApprovedPdf({ db: prisma, baseUrl, token, password: archiveActor.password,
+          businessType: "settlement", businessId: settlement.id,
+          roles: settlementRoles, label: `${contractTypeKey}-过程结算` });
         await request("POST", `/settlements/${settlement.id}/signed-document-generation-retry`, {});
         expect(await request("POST", `/settlements/${settlement.id}/archive-confirmation`, { confirmationPassword: archiveActor.password })).toMatchObject({ status: "effective" });
         const sourceSettlementLineId = settlement.businessEntryLineSnapshots?.[0]?.target.entityId;
         if (!sourceSettlementLineId) throw new Error("公开结算提交未返回可追溯明细");
-        await loginAs(roleUsers.get("contract_staff")!);
+        await loginAs(roleUsers.get(applicantRole)!);
         const offsetDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
           contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
           code: `POL114-ST-OFFSET-${randomUUID()}`, periodLabel: offsetPeriodEnd.slice(0, 7), periodEnd: offsetPeriodEnd,
-          fieldReviewerUserId: roleUsers.get("material_staff"), fieldReviewerRoleKey: "material_staff",
+          isFinal: true, finalDeclarationAccepted: true,
+          fieldReviewerUserId: roleUsers.get(fieldReviewerRole), fieldReviewerRoleKey: fieldReviewerRole,
           settlementLines: [
             { sourceType: "manual_adjustment", name: "合成本期补充量", amountCents: "10000", reason: "本期合法正向调整" },
             {
@@ -857,7 +882,7 @@ if (enabled) {
         );
         const offsetDownloaded = await fetch(new URL(offsetDownload.downloadUrl, baseUrl));
         if (!offsetDownloaded.ok) throw new Error(`结算冲减冻结件下载失败：${offsetDownloaded.status}`);
-        const offsetSigned = await upload(
+        const offsetSigned = await uploadSettlement(
           "synthetic-offset-signed.pdf", "application/pdf", new Uint8Array(await offsetDownloaded.arrayBuffer())
         );
         await request("POST", `${offsetDraftPath}/counterparty-signed-documents`, {
@@ -892,6 +917,13 @@ if (enabled) {
             { name: "合成超结冲减", amountYuan: "-50.00" }
           ]);
         }
+        for (const role of settlementRoles) {
+          const identity = await loginAs(roleUsers.get(role)!);
+          await request("POST", `/settlements/${offsetSettlement.id}/approval`, { decision: "approve", confirmationPassword: identity.password, selfReviewReason: "合成最终结算逐节点签批" });
+        }
+        const finalPdfActor = await loginAs(roleUsers.get("contract_director")!);
+        await verifyApprovedPdf({ db: prisma, baseUrl, token, password: finalPdfActor.password,
+          businessType: "settlement", businessId: offsetSettlement.id, roles: settlementRoles, label: `${contractTypeKey}-最终结算` });
         await loginAs(actorUserId);
         const paymentEntry = await request<{ businessEntry?: { definition: BusinessEntrySceneDefinition } }>("GET", `/payments/create-capability?projectId=${project.id}`);
         expect(paymentEntry.businessEntry?.definition).toMatchObject({
@@ -979,7 +1011,10 @@ if (enabled) {
         expect((await request<{ businessEntryHistory: BusinessEntryFrozenSnapshot[] }>("GET", `/payments/${payment.id}`)).businessEntryHistory)
           .toEqual([payment.businessEntrySnapshot, paymentApprovalSnapshot]);
       }
-      await loginAs(projectFinanceUserId);
+      const paymentPdfActor = await loginAs(projectFinanceUserId);
+      await verifyApprovedPdf({ db: prisma, baseUrl, token, password: paymentPdfActor.password,
+        businessType: "payment_request", businessId: payment.id,
+        roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: settlementFinance ? "结算付款" : "直接付款" });
       const quotaEvidence = await upload("synthetic-quota.pdf", "application/pdf", await pdf.save());
       const quota = await request<{ quotaId: string }>("POST", `/projects/${project.id}/financing-quotas`, {
         idempotencyKey: randomUUID(), amountCents: "10000", reason: "合成公开付款链额度", attachmentFileId: quotaEvidence.id
@@ -999,14 +1034,102 @@ if (enabled) {
           selfReviewReason: "合成公开链由财务主管独立复核本人额度申请"
         });
       }
+      await verifyApprovedPdf({ db: prisma, baseUrl, token, password: actorPassword,
+        businessType: "project_financing_quota", businessId: quota.quotaId,
+        roles: ["finance_director", "chairman"], label: "融资额度" });
       const financeIdentity = await loginAs(roleUsers.get("finance_staff")!);
       const voucher = await upload("synthetic-payment-voucher.pdf", "application/pdf", await pdf.save());
-      const executable = await request<{ executionContext: { expectedPaymentUpdatedAt: string } }>("GET", `/payments/${payment.id}`);
-      expect(executable.executionContext).toMatchObject({ expectedPaymentUpdatedAt: expect.any(String) });
-      await request("POST", `/payments/${payment.id}/executions`, {
-        ...executable.executionContext, idempotencyKey: randomUUID(), amountCents: expectedApprovedAmountCents,
-        paidAt: new Date().toISOString(), voucherFileId: voucher.id, confirmationPassword: financeIdentity.password
-      });
+      const executionAmounts = settlementFinance
+        ? [BigInt(expectedApprovedAmountCents)]
+        : [BigInt(expectedApprovedAmountCents) / 2n, BigInt(expectedApprovedAmountCents) - BigInt(expectedApprovedAmountCents) / 2n];
+      const executionIds: string[] = [];
+      for (const [index, amount] of executionAmounts.entries()) {
+        const executionVoucher = index === 0 ? voucher : await upload("synthetic-second-voucher.pdf", "application/pdf", await pdf.save());
+        const executable = await request<{ executionContext: { expectedPaymentUpdatedAt: string } }>("GET", `/payments/${payment.id}`);
+        expect(executable.executionContext).toMatchObject({ expectedPaymentUpdatedAt: expect.any(String) });
+        const executionBody = {
+          ...executable.executionContext, idempotencyKey: randomUUID(), amountCents: amount.toString(),
+          paidAt: new Date().toISOString(), voucherFileId: executionVoucher.id, confirmationPassword: financeIdentity.password
+        };
+        const execution = await request<Identified>("POST", `/payments/${payment.id}/executions`, executionBody);
+        executionIds.push(execution.id);
+        if (!settlementFinance) {
+          const replay = await request<Identified>("POST", `/payments/${payment.id}/executions`, executionBody);
+          expect(replay.id).toBe(execution.id);
+          const persisted = await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } });
+          expect(persisted.paidAmountCents).toBe(executionAmounts.slice(0, index + 1).reduce((sum, value) => sum + value, 0n));
+          expect(persisted.status).toBe(index === 0 ? "partially_paid" : "paid");
+        }
+      }
+      if (!settlementFinance) {
+        const allocations = await prisma.paymentExecutionAllocation.findMany({ where: { paymentRequestId: payment.id } });
+        expect(allocations).toHaveLength(2);
+        expect(allocations.reduce((sum, item) => sum + item.amountCents, 0n)).toBe(BigInt(expectedApprovedAmountCents));
+        const allocation = allocations[0]!;
+        const frozenRequest = await prisma.paymentRequest.findUniqueOrThrow({ where: { id: payment.id } });
+        expect(allocation).toMatchObject({
+          settlementId: null, sourceType: "contract_due", allocationType: "contract_due_payment",
+          contractVersionId: frozenRequest.contractVersionId, paymentTermsVersionId: frozenRequest.paymentTermsVersionId,
+          stageId: frozenRequest.paymentTermsStageId,
+          sourceRowId: `contract:${frozenRequest.paymentTermsVersionId}:${frozenRequest.paymentTermsStageId}`
+        });
+        const mutations: Array<Partial<typeof allocation>> = [
+          { paymentExecutionId: randomUUID() }, { paymentRequestId: randomUUID() },
+          { projectId: randomUUID() }, { contractId: randomUUID() },
+          { contractVersionId: randomUUID() }, { contractVersionId: null },
+          { paymentTermsVersionId: randomUUID() }, { stageId: randomUUID() }, { stageId: null },
+          { sourceType: "settlement" }, { allocationType: "advance_deduction" },
+          { sourceRowId: `contract:${frozenRequest.paymentTermsVersionId}:invented-stage` },
+          { triggerAnchor: "settlement_effective" }, { triggerAnchor: null },
+          { stageType: "final" }, { stageName: "替换后的阶段" },
+          { dueDays: allocation.dueDays! + 1 }, { ratioBps: 9999 }, { fixedAmountCents: 1n },
+          { sourceEffectiveAt: new Date(allocation.sourceEffectiveAt!.getTime() + 1) },
+          { expectedPayableAt: new Date(allocation.expectedPayableAt!.getTime() + 1) },
+          { sourcePayableAmountCents: allocation.sourcePayableAmountCents + 1n },
+          { amountCents: BigInt(expectedApprovedAmountCents) + 1n },
+          { createdByUserId: randomUUID() }, { allocationOrder: 1 }
+        ];
+        for (const mutation of mutations) {
+          await expect(prisma.paymentExecutionAllocation.create({
+            data: { ...allocation, ...mutation, id: randomUUID() }
+          })).rejects.toThrow("Direct contract allocation does not match its frozen payment stage");
+        }
+        await expect(prisma.paymentExecutionAllocation.create({
+          data: { ...allocation, id: randomUUID(), amountCents: 0n }
+        })).rejects.toThrow("PaymentExecutionAllocation_amount_positive_check");
+        await expect(prisma.paymentExecutionAllocation.create({
+          data: { ...allocation, id: randomUUID(), amountCents: 1n }
+        })).rejects.toThrow("payment_execution_allocation_total_invalid");
+        await expect(prisma.paymentExecutionAllocation.update({
+          where: { id: allocation.id }, data: { amountCents: allocation.amountCents + 1n }
+        })).rejects.toThrow("immutable");
+        // Fixed stages are supported by historical takeover, not the current
+        // aggregate editor. This rollback-only PG fixture isolates the SAME
+        // database guard; it is not claimed as a fixed-stage HTTP lifecycle.
+        const stageBefore = await prisma.paymentTermsStage.findUniqueOrThrow({ where: { id: allocation.stageId! } });
+        const fixtureRollback = new Error("fixed-stage-constraint-fixture-rollback");
+        try {
+          await prisma.$transaction(async tx => {
+            await tx.paymentTermsStage.update({ where: { id: stageBefore.id }, data: { ratioBps: null, fixedAmountCents: 100000n } });
+            await tx.$executeRawUnsafe('CREATE TEMP TABLE direct_stage_guard_fixture (LIKE public."PaymentExecutionAllocation" INCLUDING DEFAULTS INCLUDING CONSTRAINTS) ON COMMIT DROP');
+            await tx.$executeRawUnsafe('CREATE TRIGGER direct_stage_guard_fixture BEFORE INSERT ON direct_stage_guard_fixture FOR EACH ROW EXECUTE FUNCTION public.guard_direct_contract_stage_allocation()');
+            const fixture = { ...allocation, id: randomUUID(), ratioBps: null, fixedAmountCents: 100000n, sourcePayableAmountCents: 100000n };
+            const fields = Object.keys(fixture);
+            const sql = `INSERT INTO direct_stage_guard_fixture (${fields.map(key => `"${key}"`).join(",")}) VALUES (${fields.map((_, index) => `$${index + 1}`).join(",")})`;
+            expect(await tx.$executeRawUnsafe(sql, ...Object.values(fixture))).toBe(1);
+            await expect(tx.$executeRawUnsafe(sql, ...Object.values({ ...fixture, id: randomUUID(), fixedAmountCents: 1n })))
+              .rejects.toThrow("Direct contract allocation does not match its frozen payment stage");
+            throw fixtureRollback;
+          });
+          throw new Error("fixed-stage fixture must roll back");
+        } catch (error) { if (error !== fixtureRollback) throw error; }
+        expect(await prisma.paymentTermsStage.findUniqueOrThrow({ where: { id: stageBefore.id } })).toEqual(stageBefore);
+        expect(await prisma.paymentExecutionAllocation.count({ where: { paymentRequestId: payment.id } })).toBe(2);
+        expect(await prisma.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(2);
+        expect(await prisma.auditLog.count({ where: { action: "payment.execution.record", businessId: payment.id } })).toBe(2);
+        const funding = await prisma.projectFundingAllocation.findMany({ where: { executionId: { in: executionIds } } });
+        expect(funding.reduce((sum, row) => sum + row.amountCents, 0n)).toBe(BigInt(expectedApprovedAmountCents));
+      }
       const finance = await request<{ businessEntrySnapshot?: BusinessEntryFrozenSnapshot }>("POST", `/payments/${payment.id}/finance-records`, {
         amountCents: expectedApprovedAmountCents, occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: financeIdentity.password
       });
@@ -1025,14 +1148,72 @@ if (enabled) {
         amountCents: "1", occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: nonFinanceIdentity.password
       })).rejects.toThrow("403");
       expect((await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`)).financeEntry.history).toEqual([]);
+      if (paymentMode === "direct") {
+        await loginAs(actorUserId);
+        const change = await request<Identified>("POST", `/contracts/${draft.version.id}/change-drafts`, {
+          changeType: "change", changeReason: "合成合同条款调整，金额不变", changeDirection: "unchanged", changeAmountCents: "0"
+        });
+        const changeLease = await request<{ token: string }>("POST", `/contract-drafts/${change.id}/edit-lease`);
+        let changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
+        await request("PUT", `/contract-drafts/${change.id}`, {
+          ...completeDraftInput, idempotencyKey: randomUUID(), expectedRevision: changeWorkbench.version.draftRevision,
+          bills: changeWorkbench.bills.map(bill => ({
+            billKey: bill.billKey, expectedRevision: bill.revision,
+            rows: bill.rows.map((row, index) => {
+              if (typeof row.rowKey !== "string") throw new Error("变更清单缺少继承行标识");
+              const original = completeDraftInput.bills.find(item => item.billKey === bill.billKey)?.rows[index];
+              if (!original) throw new Error("变更清单缺少原有行内容");
+              return { ...original, rowKey: row.rowKey };
+            })
+          }))
+        }, changeLease.token);
+        for (const side of ["first_party", "counterparty"]) {
+          changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
+          await request("POST", `/contracts/${change.id}/authorizations`, { side, expectedRevision: changeWorkbench.version.draftRevision, required: false });
+        }
+        const changeFile = await upload("合成变更互签文件.pdf", "application/pdf", await pdf.save());
+        changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
+        const changeSigned = await request<{ previewFormalFileId: string }>("POST", `/contracts/${change.id}/formal-files/counterparty`, {
+          fileIds: [changeFile.id], sourceRevision: changeWorkbench.version.draftRevision
+        });
+        await request("POST", `/contracts/${change.id}/formal-files/counterparty/confirmation`, {
+          formalFileId: changeSigned.previewFormalFileId, expectedDraftRevision: changeWorkbench.version.draftRevision
+        });
+        changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
+        await request("POST", `/contract-drafts/${change.id}/submission`, {
+          idempotencyKey: randomUUID(), expectedRevision: changeWorkbench.version.draftRevision
+        }, changeLease.token);
+        for (const role of ["contract_director", "project_manager", "finance_director", "chairman"]) {
+          const identity = await loginAs(roleUsers.get(role)!);
+          const changeDetail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${change.id}`);
+          if (!changeDetail.reviewApprovalContext) throw new Error("合同变更缺少实际审核坐标");
+          await request("POST", `/contracts/${change.id}/approval`, {
+            ...changeDetail.reviewApprovalContext, decision: "approve", confirmationPassword: identity.password,
+            selfReviewReason: "合成合同变更逐节点本人签字", ownerContractRiskConfirmed: true,
+            expectedOwnerContractRisk: changeDetail.ownerContractRisk
+          });
+        }
+        await loginAs(actorUserId);
+        await verifyApprovedPdf({ db: prisma, baseUrl, token, password: actorPassword,
+          businessType: "contract_version", businessId: change.id,
+          roles: ["contract_director", "project_manager", "finance_director", "chairman"], label: "合同变更-四级实际审批" });
+      }
     }
   }
+
+  it("按冻结合同阶段直接付款：分次实付、幂等、真实分摊约束与财务回读", async () => {
+    await runContractCase("aggregate", "generic_contract", "direct");
+  }, 60_000);
 
   for (const entryMode of ["aggregate", "legacy", "legacy-ownerless"] as const) {
     // Each Playwright invocation owns its global deadline and worker/server cleanup.
     // The ordinary HTTP modes and each Playwright case retain their original limits.
     const timeoutMs = process.env.RUN_POL114_BROWSER === "1" && entryMode === "aggregate"
       ? 60_000 + 2 * (85_000 + 30_000) + 10_000 : 60_000;
-    it.each([entryMode])("合同现役提交与旧入口退出：%s", runContractCase, timeoutMs);
+    it.each([entryMode])("合同现役提交与旧入口退出：%s", mode => runContractCase(mode), timeoutMs);
   }
+  (process.env.RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16 === "1" ? it.each(["equipment_rental", "labor_subcontract", "professional_subcontract"]) : it.skip.each(["equipment_rental", "labor_subcontract", "professional_subcontract"]))("V6 合同结算付款完整链：%s", async kind => {
+    await runContractCase("aggregate", kind);
+  }, 60_000);
+
 });

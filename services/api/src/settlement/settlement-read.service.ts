@@ -1542,10 +1542,11 @@ export class SettlementReadService {
     const workflowActions = [
       detailAction({
         key: "download_approval_form",
-        label: "下载最新审批 PDF",
+        label: "下载结算单 PDF",
         kind: "normal",
         roleKeys,
-        enabled: true
+        enabled: ["pending_generation", "approved_pending_archive", "archive_pending", "pending_archive_confirm", "effective", "partially_paid", "paid"].includes(status),
+        disabledReason: "仅最终审批通过后可下载正式结算单"
       }),
       ...(withdrawApprovalContext
         ? [detailAction({

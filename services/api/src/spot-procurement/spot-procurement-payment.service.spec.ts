@@ -428,7 +428,8 @@ function queueActivePaymentApprovalSignature(
   actorUserId: string
 ) {
   queryRaw
-    .mockResolvedValueOnce([{ id: actorUserId, isActive: true }])
+    .mockResolvedValueOnce([{
+name: "签批人甲", id: actorUserId, isActive: true }])
     .mockResolvedValueOnce([
       {
         id: "payment-signature-version-1",
@@ -1640,9 +1641,9 @@ describe("SpotProcurementPaymentService", () => {
         applicantUserId: "material-1",
         frozenNodes: [
           {
-            name: "综合部主管审批",
+            name: "物资部主管审批",
             mode: "any",
-            roleKeys: ["comprehensive_director"]
+            roleKeys: ["material_director"]
           },
           {
             name: "项目经理审批",
@@ -1957,7 +1958,8 @@ describe("SpotProcurementPaymentService", () => {
     const current = realPaymentReviewHarness();
     current.tx.$queryRaw
       .mockResolvedValueOnce([
-        { id: "project-manager-1", isActive: true }
+        {
+name: "签批人甲", id: "project-manager-1", isActive: true }
       ])
       .mockResolvedValueOnce([]);
 
@@ -1979,7 +1981,8 @@ describe("SpotProcurementPaymentService", () => {
     const current = realPaymentReviewHarness();
     current.tx.$queryRaw
       .mockResolvedValueOnce([
-        { id: "project-manager-1", isActive: true }
+        {
+name: "签批人甲", id: "project-manager-1", isActive: true }
       ])
       .mockResolvedValueOnce([
         {
@@ -2331,8 +2334,8 @@ describe("SpotProcurementPaymentService", () => {
         currentNodeIndex: 0,
         frozenNodes: expect.arrayContaining([
           expect.objectContaining({
-            name: "综合部主管审批",
-            roleKeys: ["comprehensive_director"]
+            name: "物资部主管审批",
+            roleKeys: ["material_director"]
           })
         ])
       })
@@ -2494,7 +2497,7 @@ describe("SpotProcurementPaymentService", () => {
     "reject",
     "return_to_applicant"
   ] as const)(
-    "does not let an ordinary applicant %s their own payment",
+    "requires explicit self-review confirmation for applicant %s",
     async (decision) => {
       const current = harness();
       current.tx.$queryRaw
@@ -2529,7 +2532,7 @@ describe("SpotProcurementPaymentService", () => {
           comment:
             decision === "approve" ? undefined : "申请人不能处理自己的单据"
         })
-      ).rejects.toThrow("申请人不能审批自己发起的业务");
+      ).rejects.toThrow("自审原因");
       expectNoPaymentReviewWrites(current);
     }
   );

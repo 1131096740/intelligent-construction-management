@@ -1,3 +1,5 @@
+import { finalApprovalEvidence } from "../approval/approval-evidence";
+import { assertSettlementApplicant } from "./settlement-applicant";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import {
   BadRequestException,
@@ -29,14 +31,13 @@ import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
-  isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
   assertActiveApprovalRecipient
 } from "../approval/approval-review-identity";
 import {
   snapshotApprovalSignature,
-  verifyApprovalSignatureSnapshot
-} from "../approval/approval-signature-snapshot";
+  verifyApprovalSignatureSnapshot,
+  withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -163,15 +164,7 @@ const SETTLEMENT_ACTIVE_PERIOD_STATUSES = [
   "paid"
 ] as const satisfies readonly SettlementStatus[];
 const SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES = ["occupied", "used"] as const;
-const SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY = "settlement_approval_latest";
 const SETTLEMENT_PREVIOUS_EFFECTIVE_STATUSES = ["effective", "partially_paid", "paid"] as const;
-const SETTLEMENT_SIGNATURE_ACTIONS = ["approve", "reject_previous", "return_to_applicant"] as const;
-const SETTLEMENT_APPROVAL_PDF_ARCHIVE_READ_ROLES: readonly RoleKey[] = [
-  "contract_staff",
-  "contract_director",
-  "finance_staff",
-  "finance_director"
-];
 
 const ROLE_LABELS: Record<string, string> = {
   chairman: "董事长",
@@ -206,6 +199,8 @@ function formatSettlementAmount(cents: bigint): string {
 }
 
 interface SettlementApprovalActionLogSnapshot {
+  id: string;
+  signatureVersionIdSnapshot?: string | null;
   action: string;
   actorUserId: string;
   comment: string | null;
@@ -223,11 +218,7 @@ interface SettlementApprovalLogMetadataSnapshot {
   approverName?: string;
 }
 
-interface SettlementApprovalPdfSnapshotToken {
-  approvalInstanceId: string | null;
-  approvalInstanceUpdatedAt: string | null;
-  latestActionLogId: string | null;
-}
+
 
 interface UserLookupClient {
   user?: {
@@ -1463,6 +1454,7 @@ export class SettlementService {
       throw new BadRequestException("该合同已由最终结算关闭，不能再发起结算审批");
     }
     assertSettlementContractType(contract.contractTypeKey);
+    if (applicantUserId) await assertSettlementApplicant(tx, contract, applicantUserId);
     const governedFacts = governedDraft && applicantUserId
       ? await this.freezeGovernedSettlementFacts(tx, contract, input.isFinal === true, applicantUserId, governedDraft)
       : null;
@@ -1710,7 +1702,7 @@ export class SettlementService {
     }
 
     if (applicantUserId) {
-      await tx.approvalInstance.create({
+      const approvalInstance = await tx.approvalInstance.create({
         data: {
           flowType: "settlement.approve",
           businessType: "settlement",
@@ -1721,6 +1713,13 @@ export class SettlementService {
           applicantUserId
         }
       });
+      if (governedFacts) await tx.approvalActionLog.create({ data: {
+        approvalInstanceId: approvalInstance.id, action: "submit", actorUserId: applicantUserId,
+        signatureFileIdSnapshot: governedFacts.preparerSignature.fileId,
+        signatureSha256Snapshot: governedFacts.preparerSignature.sha256,
+        signatureVersionIdSnapshot: governedFacts.preparerSignature.versionId,
+        metadata: { approverName: governedFacts.preparerSignature.actorName }
+      } });
     }
 
     return settlement;
@@ -1749,8 +1748,7 @@ export class SettlementService {
           : "结算现场复核人员配置异常，请重新选择后再提交"
       );
     }
-    if (participants.fieldReviewerUserId === applicantUserId ||
-      participants.fieldReviewerRoleKey !== governed.fieldReviewerRoleKey) {
+    if (participants.fieldReviewerRoleKey !== governed.fieldReviewerRoleKey) {
       throw new SettlementGovernanceSubmissionDenial(
         "现场复核人或岗位已变化，请重新选择所属项目当前有效人员"
       );
@@ -1764,7 +1762,7 @@ export class SettlementService {
       FOR SHARE OF up, p, u
     `);
     const candidates = (roleKey: string, source = globalRows) =>
-      [...new Set(source.filter((row) => row.roleKey === roleKey && row.userId !== applicantUserId).map((row) => row.userId))].sort();
+      [...new Set(source.filter((row) => row.roleKey === roleKey).map((row) => row.userId))].sort();
     const node = (name: string, roleKey: RoleKey, ids: string[]): SettlementApprovalNode => {
       if (!ids.length) {
         throw new SettlementGovernanceSubmissionDenial(
@@ -1780,7 +1778,7 @@ export class SettlementService {
       .map(({ userId, roleKey }) => ({ userId, roleKey }));
     const frozenNodes = contract.contractTypeKey === "material_purchase" || contract.contractTypeKey === "equipment_rental"
       ? [fieldNode, node("物资主管", "material_director", candidates("material_director")), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))]
-      : [fieldNode, node("项目总工", "engineering_director", participants.engineeringDirectorUserId === applicantUserId ? [] : [participants.engineeringDirectorUserId!]), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))];
+      : [fieldNode, node("项目总工", "engineering_director", [participants.engineeringDirectorUserId!]), node("合同部主管", "contract_director", candidates("contract_director")), node("项目经理", "project_manager", candidates("project_manager", projectRows)), node("财务主管", "finance_director", candidates("finance_director"))];
     const confirmations = governed.finalConfirmations;
     const v2Final = governed.finalDeclarationVersion === 1;
     const confirmationChecks = [
@@ -1904,10 +1902,7 @@ export class SettlementService {
   }
 
   async finalizeSubmission(settlement: Settlement, applicantUserId?: string) {
-    if (applicantUserId) {
-      await this.tryRefreshSettlementApprovalPdf(settlement.id, applicantUserId);
-    }
-
+    void applicantUserId;
     return mapBigIntMoneyFieldsToApi(settlement, SETTLEMENT_POST_MONEY_FIELDS);
   }
 
@@ -2216,7 +2211,6 @@ export class SettlementService {
 
     let completedInstanceId: string | undefined;
     let completedGenerationClaimToken: string | undefined;
-    let approvalPdfSettlementId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
       await lockApprovalReviewRow(tx, Prisma.sql`
         SELECT "id" FROM "Settlement" WHERE "id" = ${settlementId} FOR UPDATE
@@ -2301,7 +2295,7 @@ export class SettlementService {
       }
       const approvedRoleKey = identity.approvedRoleKey;
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
+        required: input.decision === "approve"
       });
 
       const selfReview = await confirmApprovalSelfReview({
@@ -2502,31 +2496,26 @@ export class SettlementService {
       });
 
       await tx.approvalActionLog.create({
-        data: {
+        data: await withApprovalIdentity(tx, {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
           approvedRoleKey,
           representedUserId: identity.representedUserId,
-          ...(isGovernedFrozenApprovalNode(currentNode)
-            ? {
-                signatureFileIdSnapshot: signature.fileId,
-                signatureSha256Snapshot: signature.sha256,
-                signatureVersionIdSnapshot: signature.versionId
-              }
-            : {}),
+          signatureFileIdSnapshot: signature.fileId,
+          signatureSha256Snapshot: signature.sha256,
+          signatureVersionIdSnapshot: signature.versionId,
           metadata: {
-            ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
+            ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey, signature.actorName)),
             ...selfReview.metadata
           }
-        }
+        }, signature)
       });
 
       if (flowCompleted) {
         completedInstanceId = instance.id;
       }
-      approvalPdfSettlementId = settlement.id;
 
       await this.audit.record(tx, {
         actorUserId,
@@ -2556,10 +2545,6 @@ export class SettlementService {
 
       return updated;
     });
-
-    if (approvalPdfSettlementId) {
-      await this.tryRefreshSettlementApprovalPdf(approvalPdfSettlementId, actorUserId);
-    }
 
     if (completedInstanceId) {
       await this.signedDocuments
@@ -3086,7 +3071,19 @@ export class SettlementService {
         throw new Error("结算归档 PDF 已生成，请勿重复生成");
       }
 
-      return this.loadSettlementDocumentInput(tx, settlement.id);
+      const source = await this.loadSettlementDocumentInput(tx, settlement.id);
+      const instance = await tx.approvalInstance.findFirst({
+        where: { businessType: "settlement", businessId: settlement.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      });
+      const actions = instance ? await tx.approvalActionLog.findMany({
+        where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      }) : [];
+      finalApprovalEvidence(instance?.status ?? "", instance?.frozenNodes, actions);
+      if (!settlement.preparerSignatureFileId || !settlement.preparerSignatureSha256) {
+        throw new BadRequestException("历史结算缺少编制人签名证据，不能补造正式结算单");
+      }
+      return source;
     });
     const buffer = await renderSettlementArchivePdf(source);
     const file = await this.files.uploadPrivateFile({
@@ -3154,7 +3151,7 @@ export class SettlementService {
         throw new Error("当前结算单不是待审批或已退回状态，不能导出草稿明细表。请在结算发起或退回后再导出");
       }
 
-      return this.loadSettlementDocumentInput(tx, settlement.id);
+      return this.loadSettlementDocumentInput(tx, settlement.id, true);
     });
 
     return {
@@ -3169,307 +3166,14 @@ export class SettlementService {
     confirmationPassword: string | undefined,
     downloadReason: string | undefined
   ) {
-    if (!this.prisma || !this.files) {
-      throw new Error("结算审批单下载服务暂不可用，请稍后重试或联系管理员");
-    }
-    if (!confirmationPassword?.trim()) {
-      throw new BadRequestException("结算审批单下载密码必填");
-    }
-    if (!downloadReason?.trim()) {
-      throw new BadRequestException("结算审批单下载原因必填");
-    }
-    if (!this.auth) {
-      throw new Error("当前密码校验服务暂不可用，请稍后重试或联系管理员");
-    }
-
-    await this.auth.confirmPassword(actorUserId, confirmationPassword);
-    let source = await this.loadLatestApprovalPdfSource(settlementId);
-    if (!source.fileId) {
-      await this.assertCanReadLatestApprovalPdfBySettlementId(settlementId, actorUserId);
-      await this.refreshSettlementApprovalPdf(settlementId, actorUserId);
-      source = await this.loadLatestApprovalPdfSource(settlementId);
-    }
-
-    if (!source.fileId) {
-      throw new Error("结算审批单暂不可下载，请稍后刷新后重试");
-    }
-
-    await this.files.assertCanDownloadFileById(source.fileId, actorUserId);
-    const file = await this.files.getFileBuffer(source.fileId);
-    await this.audit.record(this.prisma, {
-      actorUserId,
-      action: "settlement.approval_pdf.download",
-      businessType: "settlement",
-      businessId: settlementId,
-      metadata: { fileId: source.fileId, settlementCode: source.settlementCode, downloadReason }
-    });
-
-    return {
-      buffer: file.buffer,
-      fileName: `${source.settlementCode}-结算审批最新.pdf`
-    };
-  }
-
-  private async loadLatestApprovalPdfSource(settlementId: string): Promise<{
-    settlementCode: string;
-    fileId: string | null;
-  }> {
-    if (!this.prisma) {
-      throw new Error("结算审批单读取服务暂不可用，请稍后重试或联系管理员");
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const settlement = await tx.settlement.findUnique({
-        where: { id: settlementId }
-      });
-
-      if (!settlement) {
-        throw new Error("未找到该结算单，请刷新结算台账后重试");
-      }
-
-      const pdfDocument = await tx.pdfDocument.findFirst({
-        where: {
-          businessType: "settlement",
-          businessId: settlement.id,
-          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-      });
-
-      return {
-        settlementCode: settlement.code,
-        fileId: pdfDocument?.fileId ?? null
-      };
-    });
-  }
-
-  private async assertCanReadLatestApprovalPdfBySettlementId(
-    settlementId: string,
-    actorUserId: string
-  ): Promise<void> {
-    if (!this.prisma) {
-      throw new Error("结算审批单授权服务暂不可用，请稍后重试或联系管理员");
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      const settlement = await tx.settlement.findUnique({
-        where: { id: settlementId },
-        select: { id: true, projectId: true }
-      });
-
-      if (!settlement) {
-        throw new Error("未找到该结算单，请刷新结算台账后重试");
-      }
-
-      const instance = await tx.approvalInstance.findFirst({
-        where: {
-          businessType: "settlement",
-          businessId: settlement.id,
-          status: { in: ["in_progress", "approved"] }
-        },
-        orderBy: { updatedAt: "desc" }
-      });
-
-      if (instance?.applicantUserId === actorUserId) {
-        return;
-      }
-
-      if (instance) {
-        const signed = await tx.approvalActionLog.findFirst({
-          where: {
-            approvalInstanceId: instance.id,
-            actorUserId,
-            action: { in: [...SETTLEMENT_SIGNATURE_ACTIONS] }
-          }
-        });
-        if (signed) {
-          return;
-        }
-      }
-
-      const actorRoleKeys = await this.safeLoadActorRoleKeys(tx, actorUserId, settlement.projectId);
-      if (
-        actorRoleKeys.some((roleKey) =>
-          SETTLEMENT_APPROVAL_PDF_ARCHIVE_READ_ROLES.includes(roleKey)
-        )
-      ) {
-        return;
-      }
-
-      const routeRoleKeys = this.roleKeysFromSettlementApprovalNodes(
-        Array.isArray(instance?.frozenNodes)
-          ? (instance.frozenNodes as unknown as SettlementApprovalNode[])
-          : []
-      );
-      if (actorRoleKeys.some((roleKey) => routeRoleKeys.includes(roleKey))) {
-        return;
-      }
-
-      throw new Error("当前账号无权下载该结算审批单");
-    });
-  }
-
-  private async tryRefreshSettlementApprovalPdf(
-    settlementId: string,
-    actorUserId: string
-  ): Promise<void> {
-    try {
-      await this.refreshSettlementApprovalPdf(settlementId, actorUserId);
-    } catch (error) {
-      await this.recordSettlementApprovalPdfRefreshFailure(settlementId, actorUserId, error).catch(
-        () => undefined
-      );
-    }
-  }
-
-  private async refreshSettlementApprovalPdf(
-    settlementId: string,
-    actorUserId: string
-  ): Promise<void> {
-    const files = this.files;
-    if (!this.prisma || !files) {
-      return;
-    }
-
-    const { source, snapshotToken } = await this.prisma.$transaction(async (tx) => ({
-      snapshotToken: await this.loadSettlementApprovalPdfSnapshotToken(tx, settlementId),
-      source: await this.loadSettlementDocumentInput(tx, settlementId)
-    }));
-    const buffer = await renderSettlementArchivePdf(source);
-    const file = await files.uploadPrivateFile({
-      originalName: `${source.settlementCode}-结算审批最新.pdf`,
-      mimeType: "application/pdf",
-      sizeBytes: buffer.length,
-      uploadedByUserId: actorUserId,
-      buffer
-    });
-
-    await this.prisma.$transaction(async (tx) => {
-      const [lockedSettlement] = await tx.$queryRaw<Array<{ id: string }>>(
-        Prisma.sql`SELECT "id" FROM "Settlement" WHERE "id" = ${source.settlementId} FOR UPDATE`
-      );
-      if (!lockedSettlement) {
-        throw new Error("未找到结算单，无法关联结算审批 PDF");
-      }
-      const currentSnapshotToken = await this.loadSettlementApprovalPdfSnapshotToken(
-        tx,
-        source.settlementId
-      );
-      if (
-        currentSnapshotToken.approvalInstanceId !== snapshotToken.approvalInstanceId ||
-        currentSnapshotToken.approvalInstanceUpdatedAt !==
-          snapshotToken.approvalInstanceUpdatedAt ||
-        currentSnapshotToken.latestActionLogId !== snapshotToken.latestActionLogId
-      ) {
-        throw new Error("结算审批状态已变化，本次 PDF 不再关联，请重新生成");
-      }
-      const existing = await tx.pdfDocument.findFirst({
-        where: {
-          businessType: "settlement",
-          businessId: source.settlementId,
-          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
-      });
-      const oldFileId = existing?.fileId ?? null;
-      let pdfDocument;
-      if (existing) {
-        await files.linkFileReplacement(tx, {
-          newFileId: file.id,
-          oldFileId: existing.fileId,
-          actorUserId
-        });
-        pdfDocument = await tx.pdfDocument.update({
-          where: { id: existing.id },
-          data: { fileId: file.id }
-        });
-      } else {
-        pdfDocument = await tx.pdfDocument.create({
-          data: {
-            businessType: "settlement",
-            businessId: source.settlementId,
-            fileId: file.id,
-            templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
-          }
-        });
-      }
-
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "settlement.approval_pdf.refresh",
-        businessType: "settlement",
-        businessId: source.settlementId,
-        metadata: {
-          pdfDocumentId: pdfDocument.id,
-          fileId: file.id,
-          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY,
-          newFileId: file.id,
-          oldFileId,
-          replacementKind: existing ? "settlement_approval_pdf_refresh" : null
-        }
-      });
-    });
-  }
-
-  private async loadSettlementApprovalPdfSnapshotToken(
-    tx: Prisma.TransactionClient,
-    settlementId: string
-  ): Promise<SettlementApprovalPdfSnapshotToken> {
-    const approvalInstance = await tx.approvalInstance.findFirst({
-      where: {
-        businessType: "settlement",
-        businessId: settlementId,
-        flowType: "settlement.approve"
-      },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      select: { id: true, updatedAt: true }
-    });
-    if (!approvalInstance) {
-      return {
-        approvalInstanceId: null,
-        approvalInstanceUpdatedAt: null,
-        latestActionLogId: null
-      };
-    }
-
-    const latestAction = await tx.approvalActionLog.findFirst({
-      where: { approvalInstanceId: approvalInstance.id },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { id: true }
-    });
-    return {
-      approvalInstanceId: approvalInstance.id,
-      approvalInstanceUpdatedAt: approvalInstance.updatedAt?.toISOString() ?? null,
-      latestActionLogId: latestAction?.id ?? null
-    };
-  }
-
-  private async recordSettlementApprovalPdfRefreshFailure(
-    settlementId: string,
-    actorUserId: string,
-    error: unknown
-  ): Promise<void> {
-    if (!this.prisma) {
-      return;
-    }
-
-    await this.prisma.$transaction((tx) =>
-      this.audit.record(tx, {
-        actorUserId,
-        action: "settlement.approval_pdf.refresh_failed",
-        businessType: "settlement",
-        businessId: settlementId,
-        metadata: {
-          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY,
-          errorMessage: error instanceof Error ? error.message : String(error)
-        }
-      })
-    );
+    if (!this.approvalForms) throw new BadRequestException("结算单下载服务暂不可用");
+    return this.approvalForms.renderForDownload("settlement", settlementId, actorUserId, confirmationPassword, downloadReason);
   }
 
   private async loadSettlementDocumentInput(
     tx: Prisma.TransactionClient,
-    settlementId: string
+    settlementId: string,
+    draftHistory = false
   ): Promise<SettlementDocumentInput> {
     const settlement = await tx.settlement.findUnique({
       where: { id: settlementId }
@@ -3675,33 +3379,21 @@ export class SettlementService {
         Array.isArray(approvalInstance?.frozenNodes)
           ? (approvalInstance.frozenNodes as unknown as SettlementApprovalNode[])
           : [],
-        actionLogs
+        draftHistory || approvalInstance?.status === "approved" ? actionLogs : [],
+        !draftHistory
       )
     };
   }
 
   private async buildSettlementApprovalRows(
-    tx: Prisma.TransactionClient,
+    _tx: Prisma.TransactionClient,
     _projectId: string,
     frozenNodes: SettlementApprovalNode[],
-    actionLogs: SettlementApprovalActionLogSnapshot[]
+    actionLogs: SettlementApprovalActionLogSnapshot[],
+    requireFormal = true
   ): Promise<SettlementDocumentInput["approvalRows"]> {
-    const signatureLogs = actionLogs.filter((log) =>
-      SETTLEMENT_SIGNATURE_ACTIONS.includes(
-        log.action as (typeof SETTLEMENT_SIGNATURE_ACTIONS)[number]
-      )
-    );
-    if (!signatureLogs.length) {
-      return [];
-    }
-
-    const actorIds = Array.from(new Set(signatureLogs.map((log) => log.actorUserId)));
-    const users = (tx as unknown as UserLookupClient).user
-      ? await (tx as unknown as UserLookupClient).user!.findMany({
-          where: { id: { in: actorIds } }
-        })
-      : [];
-    const userById = new Map(users.map((user) => [user.id, user]));
+    if (!actionLogs.length) return [];
+    const signatureLogs = requireFormal ? finalApprovalEvidence("approved", frozenNodes, actionLogs) : actionLogs.filter(log => log.action === "approve");
 
     const signatureByLog = new Map<SettlementApprovalActionLogSnapshot, Buffer>();
     for (const log of signatureLogs) {
@@ -3745,12 +3437,11 @@ export class SettlementService {
         approvedRoleKeysByNode[nodeIndex]?.clear();
       }
 
-      const user = userById.get(log.actorUserId);
       return {
         nodeName: metadata.nodeName ?? node?.name ?? log.action,
         roleName,
         roleKey: metadata.roleKey ?? roleKey ?? null,
-        approverName: metadata.approverName ?? user?.name ?? "审批人未读取",
+        approverName: metadata.approverName!,
         comment: log.comment ?? "",
         approvedAt: log.createdAt,
         signatureImage: signatureByLog.get(log) ?? null
@@ -3762,14 +3453,15 @@ export class SettlementService {
     tx: Prisma.TransactionClient,
     node: SettlementApprovalNode,
     actorUserId: string,
-    roleKey: RoleKey
+    roleKey: RoleKey,
+    actorName?: string | null
   ): Promise<{
     nodeName: string;
     roleKey: RoleKey;
     roleName: string;
     approverName: string;
   }> {
-    const user = (tx as unknown as UserLookupClient).user
+    const user = !actorName && (tx as unknown as UserLookupClient).user
       ? await (tx as unknown as UserLookupClient).user!.findMany({
           where: { id: { in: [actorUserId] } }
         })
@@ -3779,7 +3471,7 @@ export class SettlementService {
       nodeName: node.name,
       roleKey,
       roleName: roleLabel(roleKey),
-      approverName: user[0]?.name ?? "审批人未读取"
+      approverName: actorName ?? user[0]?.name ?? "审批人未读取"
     };
   }
 
@@ -3797,26 +3489,6 @@ export class SettlementService {
       roleName: typeof value.roleName === "string" ? value.roleName : undefined,
       approverName: typeof value.approverName === "string" ? value.approverName : undefined
     };
-  }
-
-  private async safeLoadActorRoleKeys(
-    tx: Prisma.TransactionClient,
-    actorUserId: string,
-    projectId: string
-  ): Promise<RoleKey[]> {
-    const maybeTx = tx as unknown as Partial<
-      Pick<Prisma.TransactionClient, "userPosition" | "projectMember" | "position">
-    >;
-    if (!maybeTx.userPosition || !maybeTx.projectMember || !maybeTx.position) return [];
-    return this.loadActorRoleKeys(tx, actorUserId, projectId);
-  }
-
-  private roleKeysFromSettlementApprovalNodes(nodes: SettlementApprovalNode[]): RoleKey[] {
-    return Array.from(
-      new Set(
-        nodes.flatMap((node) => (Array.isArray(node.roleKeys) ? node.roleKeys : []))
-      )
-    );
   }
 
   private settlementApprovalNodesFor(contract: {
