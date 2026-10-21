@@ -26,6 +26,8 @@ HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-15}"
 BACKUP_SCRIPT="${BACKUP_SCRIPT:-$REPO_ROOT/scripts/ops/db-backup.sh}"
 DB_BACKUP_TRANSFER_SCRIPT="${DB_BACKUP_TRANSFER_SCRIPT:-$REPO_ROOT/scripts/ops/cos-backup-transfer.mjs}"
 RUNTIME_HEALTH_SCRIPT="${RUNTIME_HEALTH_SCRIPT:-$REPO_ROOT/scripts/ops/check-runtime-health.sh}"
+RUNTIME_MANIFEST_TOOL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runtime-manifest.py"
+DEPLOY_EVIDENCE_DIR="${DEPLOY_EVIDENCE_DIR:-}"
 SYSTEMD_UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
 DRAFT_RETENTION_SERVICE_SOURCE="${DRAFT_RETENTION_SERVICE_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-draft-retention.service}"
 DRAFT_RETENTION_TIMER_SOURCE="${DRAFT_RETENTION_TIMER_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-draft-retention.timer}"
@@ -38,6 +40,16 @@ RUNTIME_SNAPSHOT_READY=false
 RUNTIME_REPLACEMENT_STARTED=false
 DEPLOY_SUCCEEDED=false
 DEPLOY_WEB=false
+
+capture_manifest() {
+  python3 "$RUNTIME_MANIFEST_TOOL" capture --root "$1" --manifest "$DEPLOY_EVIDENCE_DIR/$2.json"
+}
+
+compare_manifest() {
+  python3 "$RUNTIME_MANIFEST_TOOL" compare --expected "$DEPLOY_EVIDENCE_DIR/$2.json" \
+    --root "$1" --actual-manifest "$DEPLOY_EVIDENCE_DIR/$3.actual.json" \
+    --receipt "$DEPLOY_EVIDENCE_DIR/$3.diff.json"
+}
 
 case "$DEPLOY_SCOPE" in
   full)
@@ -385,19 +397,29 @@ cleanup() {
     echo "Deployment failed after the API stop was attempted; starting runtime recovery" >&2
     if [[ "$RUNTIME_REPLACEMENT_STARTED" == true && "$RUNTIME_SNAPSHOT_READY" == true ]]; then
       mkdir -p "$API_RUNTIME_DIR"
-      if ! rsync -a --delete "$ROLLBACK_DIR/api/" "$API_RUNTIME_DIR/"; then
+      if ! sudo --non-interactive rsync -ac --delete "$ROLLBACK_DIR/api/" "$API_RUNTIME_DIR/"; then
         echo "Failed to restore the previous API runtime snapshot" >&2
         recovery_failed=true
       fi
       if [[ "$DEPLOY_WEB" == true ]]; then
         mkdir -p "$WEB_RUNTIME_DIR"
-        if ! rsync -a --delete "$ROLLBACK_DIR/web-admin/" "$WEB_RUNTIME_DIR/"; then
+        if ! sudo --non-interactive rsync -ac --delete "$ROLLBACK_DIR/web-admin/" "$WEB_RUNTIME_DIR/"; then
           echo "Failed to restore the previous Web runtime snapshot" >&2
           recovery_failed=true
         fi
       fi
     fi
 
+    if [[ "$RUNTIME_REPLACEMENT_STARTED" == true && "$RUNTIME_SNAPSHOT_READY" == true ]]; then
+      if ! compare_manifest "$API_RUNTIME_DIR" old-api recovered-api; then
+        echo "Recovered API differs from its original runtime manifest" >&2
+        recovery_failed=true
+      fi
+      if [[ "$DEPLOY_WEB" == true ]] && ! compare_manifest "$WEB_RUNTIME_DIR" old-web recovered-web; then
+        echo "Recovered Web differs from its original runtime manifest" >&2
+        recovery_failed=true
+      fi
+    fi
     if ! sudo systemctl restart "$API_SERVICE"; then
       echo "Failed to restart the API service during recovery" >&2
       recovery_failed=true
@@ -418,10 +440,10 @@ cleanup() {
   fi
 
   if [[ -n "$STAGING_DIR" && -d "$STAGING_DIR" ]]; then
-    rm -rf "$STAGING_DIR"
+    mv "$STAGING_DIR" "$DEPLOY_EVIDENCE_DIR/staged-runtime" || exit 1
   fi
   if [[ -n "$ROLLBACK_DIR" && -d "$ROLLBACK_DIR" ]]; then
-    rm -rf "$ROLLBACK_DIR"
+    mv "$ROLLBACK_DIR" "$DEPLOY_EVIDENCE_DIR/previous-runtime" || exit 1
   fi
   exit "$exit_code"
 }
@@ -506,6 +528,22 @@ fi
 
 assert_dependency_tree_writable
 
+# Persist evidence outside the staging/snapshot directories removed by cleanup.
+if [[ -z "$DEPLOY_EVIDENCE_DIR" ]]; then
+  DEPLOY_EVIDENCE_DIR="$(mktemp -d "$STAGING_PARENT_DIR/.deploy-evidence.XXXXXXXX")"
+else
+  [[ "$DEPLOY_EVIDENCE_DIR" == /* && ! -e "$DEPLOY_EVIDENCE_DIR" && ! -L "$DEPLOY_EVIDENCE_DIR" ]] || {
+    echo "Deployment evidence directory must be a new absolute non-symlink path" >&2
+    exit 1
+  }
+  mkdir -m 0700 "$DEPLOY_EVIDENCE_DIR"
+fi
+chmod 0700 "$DEPLOY_EVIDENCE_DIR"
+echo "Private runtime evidence: $DEPLOY_EVIDENCE_DIR"
+printf '{"schemaVersion":1,"targetSha":"%s","scope":"%s"}\n' "$TARGET_SHA" "$DEPLOY_SCOPE" \
+  > "$DEPLOY_EVIDENCE_DIR/release.json"
+chmod 0600 "$DEPLOY_EVIDENCE_DIR/release.json"
+
 # Build every selected runtime before applying database migrations. A build
 # failure must not leave production with a new schema and the previous API
 # process.
@@ -518,24 +556,36 @@ fi
 
 STAGING_DIR="$(mktemp -d "$STAGING_PARENT_DIR/.deploy-stage.XXXXXX")"
 mkdir -p "$STAGING_DIR/api"
-rsync -a --delete "$REPO_ROOT/services/api/dist/" "$STAGING_DIR/api/dist/"
-rsync -a --delete "$REPO_ROOT/services/api/prisma/" "$STAGING_DIR/api/prisma/"
-rsync -a --delete "$REPO_ROOT/services/api/scripts/" "$STAGING_DIR/api/scripts/"
+for component in dist prisma scripts; do
+  capture_manifest "$REPO_ROOT/services/api/$component" "build-api-$component"
+  sudo --non-interactive rsync -ac --delete "$REPO_ROOT/services/api/$component/" "$STAGING_DIR/api/$component/"
+  compare_manifest "$STAGING_DIR/api/$component" "build-api-$component" "stage-api-$component"
+done
 if [[ -d "$REPO_ROOT/services/api/assets" ]]; then
-  rsync -a --delete "$REPO_ROOT/services/api/assets/" "$STAGING_DIR/api/assets/"
+  capture_manifest "$REPO_ROOT/services/api/assets" build-api-assets
+  sudo --non-interactive rsync -ac --delete "$REPO_ROOT/services/api/assets/" "$STAGING_DIR/api/assets/"
+  compare_manifest "$STAGING_DIR/api/assets" build-api-assets stage-api-assets
 fi
 ln -sfn "$REPO_ROOT/services/api/node_modules" "$STAGING_DIR/api/node_modules"
 if [[ "$DEPLOY_WEB" == true ]]; then
   mkdir -p "$STAGING_DIR/web-admin"
-  rsync -a --delete "$REPO_ROOT/apps/web-admin/dist/" "$STAGING_DIR/web-admin/dist/"
+  capture_manifest "$REPO_ROOT/apps/web-admin/dist" build-web
+  sudo --non-interactive rsync -ac --delete "$REPO_ROOT/apps/web-admin/dist/" "$STAGING_DIR/web-admin/dist/"
+  compare_manifest "$STAGING_DIR/web-admin/dist" build-web stage-web
 fi
+capture_manifest "$STAGING_DIR/api" candidate-api
+if [[ "$DEPLOY_WEB" == true ]]; then capture_manifest "$STAGING_DIR/web-admin" candidate-web; fi
 
 ROLLBACK_DIR="$(mktemp -d "$ROLLBACK_PARENT_DIR/.deploy-rollback.XXXXXX")"
 mkdir -p "$ROLLBACK_DIR/api"
-rsync -a --delete "$API_RUNTIME_DIR/" "$ROLLBACK_DIR/api/"
+capture_manifest "$API_RUNTIME_DIR" old-api
+sudo --non-interactive rsync -ac --delete "$API_RUNTIME_DIR/" "$ROLLBACK_DIR/api/"
+compare_manifest "$ROLLBACK_DIR/api" old-api snapshot-api
 if [[ "$DEPLOY_WEB" == true ]]; then
   mkdir -p "$ROLLBACK_DIR/web-admin"
-  rsync -a --delete "$WEB_RUNTIME_DIR/" "$ROLLBACK_DIR/web-admin/"
+  capture_manifest "$WEB_RUNTIME_DIR" old-web
+  sudo --non-interactive rsync -ac --delete "$WEB_RUNTIME_DIR/" "$ROLLBACK_DIR/web-admin/"
+  compare_manifest "$ROLLBACK_DIR/web-admin" old-web snapshot-web
 fi
 RUNTIME_SNAPSHOT_READY=true
 
@@ -557,10 +607,12 @@ run_prisma_migrations
 
 RUNTIME_REPLACEMENT_STARTED=true
 mkdir -p "$API_RUNTIME_DIR"
-rsync -a --delete "$STAGING_DIR/api/" "$API_RUNTIME_DIR/"
+sudo --non-interactive rsync -ac --delete "$STAGING_DIR/api/" "$API_RUNTIME_DIR/"
+compare_manifest "$API_RUNTIME_DIR" candidate-api installed-api
 if [[ "$DEPLOY_WEB" == true ]]; then
   mkdir -p "$WEB_RUNTIME_DIR"
-  rsync -a --delete "$STAGING_DIR/web-admin/" "$WEB_RUNTIME_DIR/"
+  sudo --non-interactive rsync -ac --delete "$STAGING_DIR/web-admin/" "$WEB_RUNTIME_DIR/"
+  compare_manifest "$WEB_RUNTIME_DIR" candidate-web installed-web
 fi
 
 sudo systemctl restart "$API_SERVICE"

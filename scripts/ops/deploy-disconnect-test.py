@@ -56,6 +56,21 @@ try:
             receipt = json.loads(receipts[0].read_text())
             assert receipt == {'targetSha': os.environ['TARGET_SHA'], 'exitCode': expected_exit}, receipt
             assert receipts[0].stat().st_mode & 0o777 == 0o600
+            evidence = receipts[0].parent / 'evidence'
+            assert evidence.stat().st_mode & 0o777 == 0o700
+            assert json.loads((evidence / 'release.json').read_text()) == {
+                'schemaVersion': 1, 'targetSha': os.environ['TARGET_SHA'], 'scope': 'full'}
+            web = json.loads((evidence / 'candidate-web.json').read_text())
+            assert 'dist/release.txt' in web['entries'] and 'release.txt' not in web['entries']
+            for name in ['stage-web', 'snapshot-api', 'snapshot-web', 'installed-api', 'installed-web']:
+                path = evidence / (name + '.diff.json')
+                assert path.stat().st_mode & 0o777 == 0o600
+                assert json.loads(path.read_text())['status'] == 'passed'
+            assert (evidence / 'staged-runtime/web-admin/dist/release.txt').is_file()
+            assert (evidence / 'previous-runtime/api/dist/release.txt').is_file()
+            if action != 'CONFIRM':
+                for name in ['recovered-api', 'recovered-web']:
+                    assert json.loads((evidence / (name + '.diff.json')).read_text())['status'] == 'passed'
             break
         time.sleep(0.05)
     else:

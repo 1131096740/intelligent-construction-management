@@ -7,6 +7,7 @@ FAKE_BIN="$TEST_ROOT/bin"
 FAKE_LOG="$TEST_ROOT/fake.log"
 REAL_NODE="$(command -v node)"
 export REAL_NODE
+python3 "$SCRIPT_DIR/runtime-manifest.test.py"
 
 bash -n \
   "$SCRIPT_DIR/check-production-db-backup.sh" \
@@ -298,6 +299,12 @@ cat > "$FAKE_BIN/rsync" <<'FAKE'
 set -euo pipefail
 printf 'rsync %s\n' "$*" >> "${FAKE_LOG:?}"
 /usr/bin/rsync "$@"
+if [[ "${FAKE_CORRUPT_INSTALLED_API:-false}" == true && "${*: -1}" == "${API_RUNTIME_DIR:-missing}/" && "$*" == *".deploy-stage."* ]]; then
+  printf 'corrupted-installed-runtime\n' > "$API_RUNTIME_DIR/dist/release.txt"
+fi
+if [[ "${FAKE_CORRUPT_INSTALLED_WEB:-false}" == true && "${*: -1}" == "${WEB_RUNTIME_DIR:-missing}/" && "$*" == *".deploy-stage."* ]]; then
+  printf 'corrupted-installed-web\n' > "$WEB_RUNTIME_DIR/dist/release.txt"
+fi
 FAKE
 
 cat > "$FAKE_BIN/node" <<'FAKE'
@@ -774,10 +781,50 @@ run_deploy_fixture() {
     SYSTEMD_UNIT_DIR="$fixture/systemd" \
     STAGING_PARENT_DIR="$fixture/staging-parent" \
     ROLLBACK_PARENT_DIR="$fixture/rollback-parent" \
+    DEPLOY_EVIDENCE_DIR="$fixture/evidence" \
     HEALTH_ATTEMPTS=1 \
     "$@" \
     bash "${DEPLOY_FIXTURE_ENTRY:-$SCRIPT_DIR/deploy-production-server.sh}"
 }
+
+manifest_failure_fixture="$TEST_ROOT/deploy-runtime-manifest-failure"
+make_deploy_fixture "$manifest_failure_fixture"
+if run_deploy_fixture "$manifest_failure_fixture" env FAKE_RUNTIME_HEALTH_ALLOW_NEW=true FAKE_CORRUPT_INSTALLED_API=true \
+  > "$manifest_failure_fixture/output" 2>&1; then
+  fail "deployment must reject an installed runtime content mismatch"
+fi
+python3 - "$manifest_failure_fixture" <<'PY'
+import json, sys
+from pathlib import Path
+p=Path(sys.argv[1]);e=p/'evidence'
+failed=json.loads((e/'installed-api.diff.json').read_text())
+assert failed['status']=='failed' and any(x['path']=='dist/release.txt' for x in failed['differences'])
+assert (e/'installed-api.actual.json').is_file()
+assert json.loads((e/'recovered-api.diff.json').read_text())['status']=='passed'
+assert (e/'previous-runtime/api/dist/release.txt').read_text()=='old-api\n'
+assert (e/'staged-runtime/api/dist/release.txt').read_text()=='new-api-release\n'
+assert (p/'runtime/api/dist/release.txt').read_text()=='old-api\n'
+PY
+
+web_manifest_fixture="$TEST_ROOT/deploy-web-runtime-manifest-failure"
+make_deploy_fixture "$web_manifest_fixture"
+if run_deploy_fixture "$web_manifest_fixture" env FAKE_RUNTIME_HEALTH_ALLOW_NEW=true FAKE_CORRUPT_INSTALLED_WEB=true \
+  > "$web_manifest_fixture/output" 2>&1; then
+  fail "deployment must reject a real installed Web content difference"
+fi
+python3 - "$web_manifest_fixture" <<'PY'
+import json, sys
+from pathlib import Path
+p=Path(sys.argv[1]);e=p/'evidence'
+failed=json.loads((e/'installed-web.diff.json').read_text())
+assert failed['status']=='failed' and any(x['path']=='dist/release.txt' for x in failed['differences'])
+assert json.loads((e/'stage-web.diff.json').read_text())['status']=='passed'
+assert json.loads((e/'recovered-web.diff.json').read_text())['status']=='passed'
+assert json.loads((e/'recovered-api.diff.json').read_text())['status']=='passed'
+assert (p/'runtime/web-admin/dist/release.txt').read_text()=='old-web\n'
+assert (p/'runtime/api/dist/release.txt').read_text()=='old-api\n'
+assert (e/'staged-runtime/web-admin/dist/release.txt').read_text()=='new-web-release\n'
+PY
 
 for frozen_control in \
   'OPERATIONAL_WRITE_FREEZE_MODE=all' \
