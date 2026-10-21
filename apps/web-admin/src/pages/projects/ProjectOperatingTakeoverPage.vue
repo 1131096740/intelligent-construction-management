@@ -1052,7 +1052,7 @@ function professionLabel(profession: OperatingTakeoverProfession) {
 </script>
 
 <style scoped>
-.operating-takeover-page { display: grid; gap: var(--jg-space-lg); min-width: 0; }
+.operating-takeover-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--jg-space-lg); min-width: 0; }
 .page-head, .detail-head, .actions, .form-actions, .filters { display: flex; gap: var(--jg-space-md); align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .page-head { align-items: flex-start; }
 .page-eyebrow { color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
@@ -1064,7 +1064,7 @@ h1 { margin: var(--jg-space-xs) 0; font-size: var(--jg-font-size-page-title); }
 .precheck-result { margin-top: var(--jg-space-md); }
 .helper-text { margin: 0; color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
 .draft-table, .attachment-panel { margin-top: var(--jg-space-md); }
-.attachment-form { display: grid; gap: var(--jg-space-sm); }
+.attachment-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--jg-space-sm); }
 .attachment-target { display: flex; gap: var(--jg-space-sm); align-items: center; color: var(--jg-color-text-secondary); font-size: var(--jg-font-size-meta); }
 .attachment-list { display: grid; gap: var(--jg-space-xs); margin: var(--jg-space-md) 0 0; padding-left: var(--jg-space-lg); color: var(--jg-color-text-secondary); }
 @media (max-width: 720px) { .page-head, .detail-head { align-items: stretch; } .actions, .actions .t-button { width: 100%; } .filters label { min-width: 100%; } }

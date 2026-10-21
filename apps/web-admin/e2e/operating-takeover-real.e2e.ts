@@ -19,7 +19,8 @@ test("真实接管：XLSX零写入预检和绑定、PDF失败保留、取消与�
   await page.locator(".t-select-option:visible").filter({ hasText: "本次接管合成项目" }).click();
   await expect(page.getByRole("button", { name: "新增页面业务行", exact: true })).toBeEnabled();
   const before = await (await request.get(prefix, { headers })).json();
-  await page.locator('input[type="file"][accept=".xlsx"]').setInputFiles({ name: "本次合成原始文件.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(process.env.OT_XLSX_BASE64!, "base64") });
+  const xlsxByViewport: Record<string, string> = JSON.parse(process.env.OT_XLSX_BY_VIEWPORT!);
+  await page.locator('input[type="file"][accept=".xlsx"]').setInputFiles({ name: "本次合成原始文件.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(xlsxByViewport[info.project.name]!, "base64") });
   const checked = page.waitForResponse(r => r.url().endsWith("/precheck-xlsx") && r.request().method() === "POST");
   await page.getByRole("button", { name: "Excel 预检（零写入）", exact: true }).click();
   const check = await checked; expect(check.status(), await check.text()).toBe(201);
@@ -37,8 +38,14 @@ test("真实接管：XLSX零写入预检和绑定、PDF失败保留、取消与�
   await expect(panel.getByText("不支持的合成附件.exe", { exact: true })).toBeVisible();
   const retry = panel.getByRole("button", { name: "重试上传", exact: true }); await expect(retry).toBeEnabled();
   const errorBox = await panel.getByRole("alert").boundingBox(); const buttonBox = await retry.boundingBox();
+  await info.attach("提示和重试按钮布局", { body: JSON.stringify({ viewport: page.viewportSize(), errorBox, buttonBox }), contentType: "application/json" });
   expect(errorBox).not.toBeNull(); expect(buttonBox).not.toBeNull();
   expect(Math.abs(errorBox!.y - (buttonBox!.y + buttonBox!.height))).toBeLessThan(140);
+  const viewportWidth = page.viewportSize()!.width;
+  expect(errorBox!.x).toBeGreaterThanOrEqual(0);
+  expect(errorBox!.x + errorBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
+  expect(buttonBox!.x).toBeGreaterThanOrEqual(0);
+  expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
   await page.screenshot({ path: info.outputPath("格式失败保留文件.png"), fullPage: true });
   await panel.getByRole("row").filter({ hasText: "不支持的合成附件.exe" }).getByRole("button", { name: "删除", exact: true }).click();
   await panel.locator('input[type="file"]').setInputFiles({ name: "本次合成依据.pdf", mimeType: "application/pdf", buffer: Buffer.from(process.env.OT_PDF_BASE64!, "base64") });

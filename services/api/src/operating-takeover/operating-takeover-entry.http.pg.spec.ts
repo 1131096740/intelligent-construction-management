@@ -146,11 +146,12 @@ describe("历史经营接管真实授权 / HTTP / PostgreSQL 16", () => {
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("真实桌面/手机页面预检、原始文件绑定、上传失败保留及取消/删除与审计", async () => {
     const baseline = await facts();
     const pdf = await PDFDocument.create(); pdf.addPage([100, 100]);
-    const xlsxBase64 = (await workbook()).toString("base64"); const pdfBase64 = Buffer.from(await pdf.save()).toString("base64");
+    const xlsxByViewport = { desktop: (await workbook()).toString("base64"), mobile: (await workbook()).toString("base64") };
+    const pdfBase64 = Buffer.from(await pdf.save()).toString("base64");
     await new Promise<void>((done, reject) => {
       const env = { ...process.env, POL115_API_URL: base, POL115_BROWSER_SESSION: JSON.stringify(browserSession),
         POL115_BROWSER_SPEC: "operating-takeover-real.e2e.ts", OT_PROJECT_ID: projectId, OT_LOGIN_PHONE: browserPhone, OT_LOGIN_PASSWORD: browserPassword,
-        OT_XLSX_BASE64: xlsxBase64, OT_PDF_BASE64: pdfBase64 };
+        OT_XLSX_BY_VIEWPORT: JSON.stringify(xlsxByViewport), OT_PDF_BASE64: pdfBase64 };
       delete (env as NodeJS.ProcessEnv).JEST_WORKER_ID;
       const child = spawn("pnpm", ["exec", "playwright", "test", "--config", "playwright.pol115-real.config.ts"], { cwd: resolve(__dirname, "../../../../apps/web-admin"), env, stdio: "inherit" });
       child.on("error", reject); child.on("exit", code => code === 0 ? done() : reject(new Error("接管真实页面回归失败")));
