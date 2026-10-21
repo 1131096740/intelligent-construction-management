@@ -3,7 +3,7 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
-const { readFileSync } = require("node:fs");
+const { readFileSync, existsSync, statSync } = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const {
@@ -24,7 +24,8 @@ const {
   selectGroups: selectRemainingGroups
 } = require("./run-database-dynamic-remaining-local.cjs");
 const {
-  probePostgresReady
+  probePostgresReady,
+  psql: runFundPsql
 } = require("./verify-fund-execution-v7.cjs");
 const {
   waitForLocalTcpReady
@@ -55,6 +56,58 @@ const runnerPath = path.join(
   __dirname,
   "run-database-dynamic-gate-local.cjs"
 );
+
+test("fund verifier SQL completes without depending on Docker interactive stdin EOF", () => {
+  const sql = readFileSync(path.join(__dirname, "migrations/20260814120000_operating_ledger_runtime_write_guard/migration.sql"), "utf8");
+  let localFile; let containerFile; let calls = 0;
+  const result = runFundPsql("fund-synthetic", sql, (_exe, args, options) => {
+    calls += 1;
+    if (args.includes("--interactive")) throw new Error("Docker stdin EOF held open after SQL completed");
+    assert.equal(options.timeout, 180_000);
+    assert.equal(options.input, undefined);
+    if (args[0] === "cp") {
+      localFile = args[1]; containerFile = args[2].split(":").slice(1).join(":");
+      assert.equal(readFileSync(localFile, "utf8"), sql, "execute the exact original migration bytes");
+      assert.equal(statSync(localFile).mode & 0o777, 0o600);
+      assert.equal(statSync(path.dirname(localFile)).mode & 0o777, 0o700);
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    assert.deepEqual(args.slice(0, 3), ["exec", "fund-synthetic", "psql"]);
+    assert.ok(args.includes("ON_ERROR_STOP=1"));
+    assert.equal(args[args.indexOf("--file") + 1], containerFile);
+    return { status: 0, stdout: "EXACT_SQL_COMPLETED", stderr: "" };
+  });
+  assert.equal(result.stdout, "EXACT_SQL_COMPLETED");
+  assert.equal(calls, 2);
+  assert.equal(existsSync(path.dirname(localFile)), false);
+});
+
+test("fund verifier preserves SQL failure and removes only its private input", () => {
+  let localFile; const failure = new Error("controlled SQL failure");
+  assert.throws(() => runFundPsql("fund-synthetic", "SELECT 1;", (_exe, args) => {
+    if (args[0] === "cp") { localFile = args[1]; return {}; }
+    throw failure;
+  }), error => error === failure);
+  assert.equal(existsSync(path.dirname(localFile)), false);
+});
+
+test("fund verifier fails closed on copy failure without executing SQL", () => {
+  let localFile; let calls = 0; const failure = new Error("controlled copy failure");
+  assert.throws(() => runFundPsql("fund-synthetic", "SELECT 1;", (_exe, args) => {
+    calls += 1; assert.equal(args[0], "cp"); localFile = args[1]; throw failure;
+  }), error => error === failure);
+  assert.equal(calls, 1);
+  assert.equal(existsSync(path.dirname(localFile)), false);
+});
+
+test("fund verifier preserves transport timeout instead of counting it as success", () => {
+  let localFile; const timeout = Object.assign(new Error("controlled transport timeout"), { code: "ETIMEDOUT" });
+  assert.throws(() => runFundPsql("fund-synthetic", "SELECT 1;", (_exe, args) => {
+    if (args[0] === "cp") { localFile = args[1]; return {}; }
+    throw timeout;
+  }), error => error === timeout);
+  assert.equal(existsSync(path.dirname(localFile)), false);
+});
 
 test("POL113 readiness cannot finish on the bootstrap socket-only server", () => {
   const source = readFileSync(path.join(__dirname, "run-pol113-pol115-entry-local.cjs"), "utf8");
@@ -1248,8 +1301,16 @@ for (const [name, bypassDatabase] of [
             },
           }) };
         };
-        fixture._compile(readFileSync(filename, 'utf8').replace(/^#!.*\n/u, '') + `\nfreePort = async () => 1234; waitForPostgres = async () => {}; ${bypassDatabase} module.exports.captureStorage = main;\n`, filename);
+        // These runners are instrumented filesystem fixtures, not real PG runs.
+        // Capture their console output locally instead of sending runner logs
+        // through node:test's child-v8 result stream on Node 20.
+        const outputCapture = `const fixtureOutput = []; const console = {
+          log: (...args) => fixtureOutput.push({level: 'log', args}),
+          error: (...args) => fixtureOutput.push({level: 'error', args})
+        };\n`;
+        fixture._compile(outputCapture + readFileSync(filename, 'utf8').replace(/^#!.*\n/u, '') + `\nfreePort = async () => 1234; waitForPostgres = async () => {}; ${bypassDatabase} module.exports.captureStorage = main; module.exports.fixtureOutput = fixtureOutput;\n`, filename);
         await fixture.exports.captureStorage();
+        assert.deepEqual(fixture.exports.fixtureOutput.filter(entry => entry.level === "error"), []);
         const seeds = calls.filter(({ args }) => args.includes('seed') || args.some(arg => arg.endsWith('seed.cjs')));
         assert.equal(seeds.length, name.startsWith('run-payment-') ? 2 : 1);
         const storage = seeds[0].env.FILE_STORAGE_ROOT;

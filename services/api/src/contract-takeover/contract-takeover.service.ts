@@ -5,6 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -3171,7 +3172,7 @@ export class ContractTakeoverService {
       where: { id: takeoverId }
     });
     if (!takeover || takeover.projectId !== projectId) {
-      throw new Error("未找到历史合同接管记录，请刷新接管工作台后重试");
+      throw new NotFoundException("未找到历史合同接管记录，请刷新接管工作台后重试");
     }
 
     return takeover;

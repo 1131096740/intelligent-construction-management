@@ -5164,6 +5164,13 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it.each([null, { id: "other-takeover", projectId: "other-project" }])("已删除或不属于本项目的接管详情返回明确404：%j", async row => {
+    const prisma = { contractTakeover: { findUnique: jest.fn().mockResolvedValue(row) } };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+    await expect(service.detail("project-1", "deleted-takeover")).rejects.toMatchObject({ status: 404, message: "未找到历史合同接管记录，请刷新接管工作台后重试" });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("接管记录不存在时不能提交复核", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
