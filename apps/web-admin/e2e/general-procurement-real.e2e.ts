@@ -98,8 +98,19 @@ test("员工填元金额，按顺序审批归档后由综合部请款", async ({
   await expect(page.getByRole("link", { name: /查看采购申请/ })).toBeVisible();
   await page.getByRole("link", { name: /查看采购申请/ }).click();
   await page.getByRole("button", { name: "撤销付款草稿", exact: true }).click();
-  await page.getByPlaceholder("填写撤销原因").fill("收款方录错，重新办理");
-  await page.getByRole("button", { name: "确认撤销", exact: true }).click();
+  const cancellation = page.locator(".t-dialog").filter({ hasText: "撤销付款草稿" });
+  // WebKit may finish the input click while TDesign's opening transform is still
+  // moving the confirm button. Preserve the real click and wait for that opening.
+  await expect(cancellation).toBeVisible();
+  await expect(cancellation).toHaveCSS("opacity", "1");
+  await expect(cancellation).toHaveCSS("transform", "none");
+  await cancellation.evaluate(async (element) => { await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)); });
+  await cancellation.getByPlaceholder("填写撤销原因").fill("收款方录错，重新办理");
+  const [cancelledResponse] = await Promise.all([
+    page.waitForResponse(response => response.url().endsWith(`/general-procurements/${id}/payments/${claim.id}/cancellation`) && response.request().method() === "POST", { timeout: 5000 }),
+    cancellation.getByRole("button", { name: "确认撤销", exact: true }).click(),
+  ]);
+  expect(cancelledResponse.status(), await cancelledResponse.text()).toBe(201);
   await expect(page.getByText(/已驳回或撤销/)).toBeVisible();
   await expect(page.getByRole("button", { name: "发起付款申请", exact: true })).toBeVisible();
   const cancelled = await request.get(`${process.env.GP_API_URL}/general-procurements/${id}`, { headers: { authorization: `Bearer ${sessions.director.tokens.accessToken}` } });

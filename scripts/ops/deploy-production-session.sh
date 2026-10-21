@@ -40,7 +40,7 @@ nohup bash -c '
   server=$2
   set +e
   # Keep private receipt permissions here, but preserve the original build mask.
-  (umask "$3"; bash "$server")
+  (umask "$3"; export DEPLOY_EVIDENCE_DIR="$session/evidence"; bash "$server")
   result=$?
   printf "{\"targetSha\":\"%s\",\"exitCode\":%s}\n" "$TARGET_SHA" "$result" > "$session/result.json.tmp"
   mv "$session/result.json.tmp" "$session/result.json"
