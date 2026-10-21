@@ -21,6 +21,9 @@ class RuntimeManifestTests(unittest.TestCase):
         self.runtime = self.root / "runtime"
         self.built.mkdir()
         (self.built / "main.js").write_text("new")
+        # The gate runs with umask 077; this fixture needs a deliberate mode
+        # difference rather than relying on the caller's creation permissions.
+        (self.built / "main.js").chmod(0o644)
         (self.built / ".hidden").write_text("hidden")
         (self.built / "empty").mkdir()
         (self.built / "node_modules").symlink_to("/private/not-followed")
