@@ -1,5 +1,9 @@
 # 建工智管 - 当前进度看板
 
+## 当前执行（2026-10-21，历史经营接管领域授权本地修复）
+
+- [~] 历史经营接管领域授权与附件提示修复：本地候选`11e40654a06148c5bb8802ce7d3fec75f719c3e9`在干净隔离目录自然通过完整17门和原收据校验，含22组真实PG16；真实HTTP3项/桌面手机2项及原草稿删除审计通过，双轴0/0。用户现已授权本批推送、PR、再审查、完整CI通过后合并，并对准确合并SHA从首项重跑17门；候选/主线CI及新17门终态待本轮PR与确认包绑定，不继承旧SHA资格。原岗位/项目/专业、权限和资金规则保持，无Schema/迁移修改。本轮不部署、不访问真实业务或旧草稿。详见[修复记录](docs/progress/2026-10-21-operating-takeover-domain-authorization-local.md)与[上线确认方案](docs/progress/2026-10-21-operating-takeover-release-confirmation-plan.md)。
+
 > 本文件是项目的唯一进度登记入口，只保留当前结论、正在推进的事项、门禁和下一步。
 >
 > `AGENTS.md` 负责业务与工程规则；详细规格、运行证据和历史记录分别进入 `docs/specs/`、`docs/progress/` 与 GitHub Issues。

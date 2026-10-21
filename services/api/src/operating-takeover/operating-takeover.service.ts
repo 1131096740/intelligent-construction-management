@@ -531,7 +531,7 @@ export class OperatingTakeoverService {
       const requestedDefinitionVersion = input.definitionVersion;
       const validationInput = { target: { entityType: "operating_takeover_row", entityId: projectId }, definitionVersion: requestedDefinitionVersion, values: input.values, operation: "import" } as const;
       const validation = validationRoles
-        ? await this.definitions.validateDraftWithRoles(definition.key, projectId, validationRoles, validationInput)
+        ? await this.definitions.validateDraftWithRoles(definition.key, projectId, validationRoles, validationInput, actorUserId)
         : await this.definitions.validateDraft(definition.key, projectId, actorUserId, validationInput);
       definitionVersion = validation.definitionVersion;
       if (!validation.valid) for (const error of validation.errors) issues.push({ code: error.code, severity: "error", fieldKey: error.fieldKey, message: error.message });
