@@ -101,6 +101,9 @@ test("员工填元金额，按顺序审批归档后由综合部请款", async ({
   const cancellation = page.locator(".t-dialog").filter({ hasText: "撤销付款草稿" });
   // WebKit may finish the input click while TDesign's opening transform is still
   // moving the confirm button. Preserve the real click and wait for that opening.
+  await expect(cancellation).toBeVisible();
+  await expect(cancellation).toHaveCSS("opacity", "1");
+  await expect(cancellation).toHaveCSS("transform", "none");
   await cancellation.evaluate(async (element) => { await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)); });
   await cancellation.getByPlaceholder("填写撤销原因").fill("收款方录错，重新办理");
   const [cancelledResponse] = await Promise.all([
