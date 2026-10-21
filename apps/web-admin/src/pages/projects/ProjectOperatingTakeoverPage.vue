@@ -173,12 +173,17 @@
           {{ sourceError ? "重试生成整批草稿" : "生成整批草稿" }}
         </t-button>
       </div>
-      <t-alert
+      <div
         v-if="sourceError"
-        theme="error"
-        :message="sourceError"
-        role="alert"
-      />
+        ref="sourceFeedback"
+        class="upload-feedback"
+      >
+        <t-alert
+          theme="error"
+          :message="sourceError"
+          role="alert"
+        />
+      </div>
       <t-alert
         v-if="precheckResult"
         theme="info"
@@ -348,12 +353,17 @@
             {{ attachmentError ? "重试上传" : attachmentTargetRow ? "关联到当前行" : "关联到批次" }}
           </t-button>
         </div>
-        <t-alert
+        <div
           v-if="attachmentError"
-          theme="error"
-          :message="attachmentError"
-          role="alert"
-        />
+          ref="attachmentFeedback"
+          class="upload-feedback"
+        >
+          <t-alert
+            theme="error"
+            :message="attachmentError"
+            role="alert"
+          />
+        </div>
         <t-alert
           v-if="attachmentSuccess"
           theme="success"
@@ -493,6 +503,14 @@ const excelFiles = ref<UploadFile[]>([]);
 const sourceError = ref("");
 const attachmentError = ref("");
 const attachmentSuccess = ref("");
+const sourceFeedback = ref<HTMLElement | null>(null);
+const attachmentFeedback = ref<HTMLElement | null>(null);
+watch(sourceError, (value) => {
+  if (value) sourceFeedback.value?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}, { flush: "post" });
+watch(attachmentError, (value) => {
+  if (value) attachmentFeedback.value?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}, { flush: "post" });
 let uploadGeneration = 0;
 let uploadedFiles = new WeakMap<File, { key: string; id?: string }>();
 async function uploadRetainedFile(projectId: string, file: File) {
@@ -1064,6 +1082,7 @@ h1 { margin: var(--jg-space-xs) 0; font-size: var(--jg-font-size-page-title); }
 .precheck-result { margin-top: var(--jg-space-md); }
 .helper-text { margin: 0; color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
 .draft-table, .attachment-panel { margin-top: var(--jg-space-md); }
+.upload-feedback { scroll-margin-block: var(--jg-space-md); }
 .attachment-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--jg-space-sm); }
 .attachment-target { display: flex; gap: var(--jg-space-sm); align-items: center; color: var(--jg-color-text-secondary); font-size: var(--jg-font-size-meta); }
 .attachment-list { display: grid; gap: var(--jg-space-xs); margin: var(--jg-space-md) 0 0; padding-left: var(--jg-space-lg); color: var(--jg-color-text-secondary); }
