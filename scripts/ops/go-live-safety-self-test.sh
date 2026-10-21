@@ -305,6 +305,20 @@ fi
 if [[ "${FAKE_CORRUPT_INSTALLED_WEB:-false}" == true && "${*: -1}" == "${WEB_RUNTIME_DIR:-missing}/" && "$*" == *".deploy-stage."* ]]; then
   printf 'corrupted-installed-web\n' > "$WEB_RUNTIME_DIR/dist/release.txt"
 fi
+for component in API WEB; do
+  flag="FAKE_CORRUPT_RECOVERED_$component"
+  if [[ "${!flag:-false}" == true && "$*" == *".deploy-rollback."* ]]; then
+    case "$component" in
+      API) destination="${API_RUNTIME_DIR:-missing}" ;;
+      WEB) destination="${WEB_RUNTIME_DIR:-missing}" ;;
+    esac
+    if [[ "${*: -1}" == "$destination/" ]]; then
+      printf 'corrupted-recovery\n' > "$destination/dist/release.txt"
+      printf 'recovery-corrupted %s\n' "$component" >> "${FAKE_LOG:?}"
+    fi
+  fi
+done
+
 FAKE
 
 cat > "$FAKE_BIN/node" <<'FAKE'
@@ -825,6 +839,48 @@ assert (p/'runtime/web-admin/dist/release.txt').read_text()=='old-web\n'
 assert (p/'runtime/api/dist/release.txt').read_text()=='old-api\n'
 assert (e/'staged-runtime/web-admin/dist/release.txt').read_text()=='new-web-release\n'
 PY
+
+for recovery_trigger in installed-mismatch manual-rollback; do
+for damaged_recovery in API WEB; do
+  recovery_fixture="$TEST_ROOT/deploy-recovery-manifest-failure-$recovery_trigger-$damaged_recovery"
+  make_deploy_fixture "$recovery_fixture"
+  recovery_options=(FAKE_CORRUPT_INSTALLED_API=true)
+  if [[ "$recovery_trigger" == manual-rollback ]]; then
+    recovery_options=(DEPLOY_CONFIRMATION_MODE=manual DEPLOY_CONFIRMATION_DIR="$recovery_fixture"
+      DEPLOY_CONFIRMATION_FILE="$recovery_fixture/decision" DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=2
+      FAKE_DEPLOY_CONFIRMATION_FILE="$recovery_fixture/decision" FAKE_DEPLOY_CONFIRMATION_ACTION=ROLLBACK)
+  fi
+  : > "$FAKE_LOG"
+  if run_deploy_fixture "$recovery_fixture" env FAKE_RUNTIME_HEALTH_ALLOW_NEW=true \
+    "${recovery_options[@]}" "FAKE_CORRUPT_RECOVERED_$damaged_recovery=true" \
+    > "$recovery_fixture/output" 2>&1; then
+    fail "deployment must fail when the restored $damaged_recovery payload is corrupt"
+  fi
+  python3 - "$recovery_fixture" "$damaged_recovery" "$FAKE_LOG" "$recovery_trigger" <<'PYTEST'
+import json, sys
+from pathlib import Path
+p=Path(sys.argv[1]);component={'API':'api','WEB':'web'}[sys.argv[2]]
+e=p/'evidence'
+failed=json.loads((e/f'recovered-{component}.diff.json').read_text())
+assert failed['status']=='failed' and any(x['path']=='dist/release.txt' for x in failed['differences'])
+assert (e/f'recovered-{component}.actual.json').is_file()
+assert (e/'staged-runtime').is_dir() and (e/'previous-runtime').is_dir()
+log=Path(sys.argv[3]).read_text().splitlines()
+corruption=log.index(f'recovery-corrupted {sys.argv[2]}')
+assert 'systemctl restart jiangkong-api' not in log[corruption:], log
+assert 'systemctl reload nginx' not in log[corruption:], log
+assert 'systemctl stop nginx' in log[corruption:], log
+assert 'requires immediate operator attention' in (p/'output').read_text()
+if sys.argv[4]=='manual-rollback':
+    started=log.index('systemctl restart jiangkong-api')
+    restore=next(i for i,x in enumerate(log) if x.startswith('rsync -ac ') and '.deploy-rollback.' in x)
+    assert started < restore
+    assert 'systemctl stop jiangkong-api' in log[started:restore], log
+else:
+    assert 'systemctl restart jiangkong-api' not in log, log
+PYTEST
+done
+done
 
 for frozen_control in \
   'OPERATIONAL_WRITE_FREEZE_MODE=all' \

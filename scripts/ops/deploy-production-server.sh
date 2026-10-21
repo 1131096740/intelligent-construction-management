@@ -396,6 +396,14 @@ cleanup() {
   if [[ "$DEPLOY_SUCCEEDED" != true && "$STOP_ATTEMPTED" == true ]]; then
     echo "Deployment failed after the API stop was attempted; starting runtime recovery" >&2
     if [[ "$RUNTIME_REPLACEMENT_STARTED" == true && "$RUNTIME_SNAPSHOT_READY" == true ]]; then
+      # A healthy candidate may already be running when manual acceptance fails.
+      # Never restore files underneath that process or reactivate an unverified tree.
+      if ! sudo systemctl stop "$API_SERVICE"; then
+        echo "Failed to stop the API before restoring its runtime" >&2
+        recovery_failed=true
+      fi
+    fi
+    if [[ "$RUNTIME_REPLACEMENT_STARTED" == true && "$RUNTIME_SNAPSHOT_READY" == true && "$recovery_failed" == false ]]; then
       mkdir -p "$API_RUNTIME_DIR"
       if ! sudo --non-interactive rsync -ac --delete "$ROLLBACK_DIR/api/" "$API_RUNTIME_DIR/"; then
         echo "Failed to restore the previous API runtime snapshot" >&2
@@ -420,19 +428,28 @@ cleanup() {
         recovery_failed=true
       fi
     fi
-    if ! sudo systemctl restart "$API_SERVICE"; then
-      echo "Failed to restart the API service during recovery" >&2
-      recovery_failed=true
-    fi
-    if ! sudo nginx -t || ! sudo systemctl reload nginx; then
-      echo "Failed to validate or reload Nginx during recovery" >&2
-      recovery_failed=true
-    fi
-    if ! wait_for_liveness; then
-      echo "Recovered runtime did not pass the API health check" >&2
-      recovery_failed=true
+    if [[ "$recovery_failed" == false ]]; then
+      if ! sudo systemctl restart "$API_SERVICE"; then
+        echo "Failed to restart the API service during recovery" >&2
+        recovery_failed=true
+      fi
+      if ! sudo nginx -t || ! sudo systemctl reload nginx; then
+        echo "Failed to validate or reload Nginx during recovery" >&2
+        recovery_failed=true
+      fi
+      if ! wait_for_liveness; then
+        echo "Recovered runtime did not pass the API health check" >&2
+        recovery_failed=true
+      fi
     fi
     if [[ "$recovery_failed" == true ]]; then
+      # Nginx serves static files without a reload: prevent an unverified Web
+      # restore from remaining reachable, as well as stopping any running API.
+      sudo systemctl stop "$API_SERVICE" || echo "Failed to keep API stopped" >&2
+      if [[ "$DEPLOY_WEB" == true ]]; then
+        sudo systemctl stop nginx || echo "Failed to keep Nginx stopped" >&2
+      fi
+      exit_code=1
       echo "Deployment recovery requires immediate operator attention" >&2
     else
       echo "Previous runtime recovered and passed the API health check" >&2
