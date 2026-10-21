@@ -873,7 +873,7 @@ assert 'systemctl stop nginx' in log[corruption:], log
 assert 'requires immediate operator attention' in (p/'output').read_text()
 if sys.argv[4]=='manual-rollback':
     started=log.index('systemctl restart jiangkong-api')
-    restore=next(i for i,x in enumerate(log) if x.startswith('rsync -ac ') and '.deploy-rollback.' in x)
+    restore=next(i for i,x in enumerate(log) if x.startswith('rsync -ac ') and '.deploy-rollback.' in x.split()[3])
     assert started < restore
     assert 'systemctl stop jiangkong-api' in log[started:restore], log
 else:
