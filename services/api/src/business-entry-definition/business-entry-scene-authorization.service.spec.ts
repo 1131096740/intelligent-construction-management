@@ -32,7 +32,8 @@ describe("BusinessEntrySceneAuthorizationService", () => {
           assertCanDeactivateBusinessEntry: jest.fn()
         } as never,
         projects as never,
-        {} as never
+        {} as never,
+        { assertAuthorized: jest.fn() } as never
       ),
       organization,
       organizationRoles,

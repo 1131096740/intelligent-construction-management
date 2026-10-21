@@ -24,6 +24,7 @@ import { BUSINESS_ENTRY_SCENE_ACCESS_REGISTRY } from "./business-entry-scene-acc
 import { BusinessEntryExcelService } from "./business-entry-excel.service";
 import { BusinessEntryCreateTargetService } from "./business-entry-create-target.service";
 import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-authorization.service";
+import { OperatingTakeoverEntryAccessService } from "../operating-takeover/operating-takeover-entry-access.service";
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { BusinessEntrySceneAuthorizationService } from "./business-entry-scene-a
     { provide: BUSINESS_ENTRY_SCENE_ACCESS_REGISTRY, useValue: accessRegistry },
     { provide: BUSINESS_ENTRY_SNAPSHOT_STORE, useClass: PrismaBusinessEntrySnapshotStore },
     BusinessEntryCreateTargetService,
+    OperatingTakeoverEntryAccessService,
     BusinessEntrySceneAuthorizationService,
     BusinessEntryDefinitionService,
     BusinessEntryExcelService

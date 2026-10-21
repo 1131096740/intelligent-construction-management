@@ -549,7 +549,8 @@ describe("BusinessEntryDefinitionService", () => {
         definitionVersion: 1,
         target: companyTarget,
         values: { name: "上海示例建设有限公司" }
-      }
+      },
+      "user-1"
     )).rejects.toThrow("业务场景缺少领域授权服务");
   });
 
@@ -1236,7 +1237,8 @@ describe("BusinessEntryDefinitionService", () => {
       "company_profile",
       "project-1",
       ["comprehensive_director"],
-      { ...input, target: { entityType: "company_entity", entityId: "company-1" } }
+      { ...input, target: { entityType: "company_entity", entityId: "company-1" } },
+      "user-1"
     )).rejects.toThrow(BadRequestException);
   });
 

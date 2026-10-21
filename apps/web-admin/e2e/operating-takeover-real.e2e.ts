@@ -1,0 +1,68 @@
+import { expect, test } from "@playwright/test";
+
+test.use({ trace: "retain-on-failure", screenshot: "only-on-failure" });
+
+test("真实接管：XLSX零写入预检和绑定、PDF失败保留、取消与彻底删除", async ({ page, request }, info) => {
+  const api = process.env.POL115_API_URL!;
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(api)) throw new Error("仅允许本机合成验收API");
+  const projectId = process.env.OT_PROJECT_ID!;
+  const prefix = `${api}/projects/${projectId}/operating-takeovers`;
+  const session = JSON.parse(process.env.POL115_BROWSER_SESSION!);
+  const headers = { authorization: `Bearer ${session.tokens.accessToken}` };
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill(process.env.OT_LOGIN_PHONE!);
+  await page.getByPlaceholder("请输入密码").fill(process.env.OT_LOGIN_PASSWORD!);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
+  await page.goto("/历史经营接管");
+  await page.locator(".filters label").first().locator("input").click();
+  await page.locator(".t-select-option:visible").filter({ hasText: "本次接管合成项目" }).click();
+  await expect(page.getByRole("button", { name: "新增页面业务行", exact: true })).toBeEnabled();
+  const before = await (await request.get(prefix, { headers })).json();
+  await page.locator('input[type="file"][accept=".xlsx"]').setInputFiles({ name: "本次合成原始文件.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(process.env.OT_XLSX_BASE64!, "base64") });
+  const checked = page.waitForResponse(r => r.url().endsWith("/precheck-xlsx") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Excel 预检（零写入）", exact: true }).click();
+  const check = await checked; expect(check.status(), await check.text()).toBe(201);
+  expect(await check.json()).toMatchObject({ zeroWrites: true, summary: { totalRows: 1, blockedRows: 0 } });
+  expect(await (await request.get(prefix, { headers })).json()).toEqual(before);
+  const created = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(`/projects/${projectId}/operating-takeovers`) && r.request().method() === "POST");
+  await page.getByRole("button", { name: "生成整批草稿", exact: true }).click();
+  const creation = await created; expect(creation.status(), await creation.text()).toBe(201);
+  const batch = await creation.json(); expect(batch.sourceFileId).toBeTruthy(); expect(batch.status).toBe("under_review");
+  const panel = page.locator(".attachment-panel");
+  await panel.getByPlaceholder("附件用途，例如：付款凭据、对账单").fill(`本次${info.project.name}合成依据`);
+  await panel.locator('input[type="file"]').setInputFiles({ name: "不支持的合成附件.exe", mimeType: "text/plain", buffer: Buffer.from("Plain text only. Synthetic upload rejection fixture.") });
+  await panel.getByRole("button", { name: "关联到批次", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText(/格式|支持/);
+  await expect(panel.getByText("不支持的合成附件.exe", { exact: true })).toBeVisible();
+  const retry = panel.getByRole("button", { name: "重试上传", exact: true }); await expect(retry).toBeEnabled();
+  const errorBox = await panel.getByRole("alert").boundingBox(); const buttonBox = await retry.boundingBox();
+  expect(errorBox).not.toBeNull(); expect(buttonBox).not.toBeNull();
+  expect(Math.abs(errorBox!.y - (buttonBox!.y + buttonBox!.height))).toBeLessThan(140);
+  await page.screenshot({ path: info.outputPath("格式失败保留文件.png"), fullPage: true });
+  await panel.getByRole("row").filter({ hasText: "不支持的合成附件.exe" }).getByRole("button", { name: "删除", exact: true }).click();
+  await panel.locator('input[type="file"]').setInputFiles({ name: "本次合成依据.pdf", mimeType: "application/pdf", buffer: Buffer.from(process.env.OT_PDF_BASE64!, "base64") });
+  await retry.click();
+  await expect(panel.getByText("附件已关联到接管批次", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("合成PDF关联成功.png"), fullPage: true });
+  const remove = page.getByRole("button", { name: "删除批次草稿", exact: true }); await remove.click();
+  await page.getByRole("button", { name: "保留草稿", exact: true }).click();
+  await expect(page.getByRole("button", { name: "确认删除", exact: true })).toBeHidden();
+  expect((await request.get(`${prefix}/${batch.id}`, { headers })).status()).toBe(200);
+  await remove.click();
+  const confirm = page.getByRole("button", { name: "确认删除", exact: true });
+  await expect(confirm).toBeVisible();
+  await confirm.evaluate(async element => {
+    const animations = [];
+    for (let parent: Element | null = element; parent; parent = parent.parentElement) animations.push(...parent.getAnimations());
+    await Promise.all(animations.filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished));
+  });
+  const [deleted] = await Promise.all([
+    page.waitForResponse(r => r.url().endsWith(`/${batch.id}/draft-deletion`) && r.request().method() === "POST"),
+    confirm.click()
+  ]);
+  expect(deleted.status()).toBe(201);
+  expect((await request.get(`${prefix}/${batch.id}`, { headers })).status()).toBe(404);
+  const remaining = await (await request.get(prefix, { headers })).json();
+  expect(remaining.some((item: { id: string }) => item.id === batch.id)).toBe(false);
+});

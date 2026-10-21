@@ -17,6 +17,7 @@ import { ProjectOperatingProfileService } from "../project/project-operating-pro
 import { ProjectService } from "../project/project.service";
 import { SettlementTemplateService } from "../settlement/settlement-template.service";
 import { PrismaService } from "../database/prisma.service";
+import { OperatingTakeoverEntryAccessService } from "../operating-takeover/operating-takeover-entry-access.service";
 import type { BusinessEntryTargetScope } from "./business-entry-scene-access";
 import {
   BUSINESS_ENTRY_SCENE_DEFINITIONS,
@@ -96,14 +97,9 @@ export class BusinessEntrySceneAuthorizationService {
     settlementTemplates: SettlementTemplateService,
     projectOperatingProfiles: ProjectOperatingProfileService,
     projects: ProjectService,
-    prisma: PrismaService
+    prisma: PrismaService,
+    operatingTakeoverEntries: OperatingTakeoverEntryAccessService
   ) {
-    // These project-scoped legacy scenes previously reached the switch default.
-    // Keep that fail-closed behavior explicit until their owning domains register
-    // a real resolver; generic BusinessAction permission is not a substitute.
-    const legacyUnresolved = async () => {
-      throw new BadRequestException("业务场景未登记领域授权器");
-    };
     this.registry = new BusinessEntryDomainAuthorizationRegistry(
       BUSINESS_ENTRY_SCENE_DEFINITIONS,
       [
@@ -203,7 +199,7 @@ export class BusinessEntrySceneAuthorizationService {
         },
         ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({
           sceneKey: definition.key,
-          resolve: legacyUnresolved
+          resolve: (context: BusinessEntrySceneAuthorizationContext) => operatingTakeoverEntries.assertAuthorized(context)
         })),
         {
           sceneKey: "department",

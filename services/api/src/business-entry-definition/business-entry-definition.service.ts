@@ -199,7 +199,8 @@ export class BusinessEntryDefinitionService {
     sceneKey: string,
     projectId: string | undefined,
     roleKeys: readonly RoleKey[],
-    input: BusinessEntryDraftRequest
+    input: BusinessEntryDraftRequest,
+    actorUserId: string
   ): Promise<BusinessEntryValidationResult> {
     this.requireAuthorization();
     const access = this.registeredAccess(sceneKey);
@@ -209,7 +210,7 @@ export class BusinessEntryDefinitionService {
       projectId,
       access,
       roleKeys,
-      "role-validation",
+      actorUserId,
       input
     );
   }
