@@ -5,6 +5,7 @@ if (!process.env.ROSTER_API_URL?.startsWith("http://127.0.0.1:")) throw new Erro
 export default defineConfig({
   ...config,
   testMatch: "project-roster-real.e2e.ts",
+  outputDir: "test-results/project-roster-real",
   use: { ...config.use, baseURL: "http://127.0.0.1:5201" },
   webServer: {
     command: "pnpm dev --host 127.0.0.1 --port 5201 --strictPort --force",

@@ -345,3 +345,50 @@ test("CI binds PR head, main push and manual target to verified checkouts", asyn
     assert.doesNotMatch(block, /(?:git checkout|git switch|git reset)/u);
   }
 });
+
+
+test("roster failure timing reports only whitelisted metadata from authenticated traces", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Report sanitized roster failure timing\n        if: (.+)\n        run: \|\n          python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(workflow);
+  assert.ok(step, "missing failure timing evidence step");
+  assert.equal(step[1], "${{ failure() && matrix.group == 'employee_onboarding' }}");
+  const source = step[2].replace(/^          /gmu, "");
+  const roster = await readFile(join(root, "apps/web-admin/playwright.project-roster-real.config.ts"), "utf8");
+  const onboarding = await readFile(join(root, "apps/web-admin/playwright.employee-onboarding.config.ts"), "utf8");
+  const rosterOutput = /outputDir: "([^"]+)"/u.exec(roster)?.[1];
+  const onboardingOutput = /outputDir: "([^"]+)"/u.exec(onboarding)?.[1];
+  assert.ok(rosterOutput && onboardingOutput, "each command must own an explicit output directory");
+  assert.notEqual(rosterOutput, onboardingOutput);
+  assert.ok(!rosterOutput.startsWith(`${onboardingOutput}/`) && !onboardingOutput.startsWith(`${rosterOutput}/`));
+  assert.ok(source.includes(`Path('apps/web-admin/${rosterOutput}')`), "CI must read the retained roster evidence");
+  const directory = await mkdtemp(join(tmpdir(), "roster-trace-privacy-"));
+  const secret = "NEVER_PRINT_AUTHENTICATION_FIXTURE";
+  const fixture = String.raw`import pathlib,json,zipfile,sys
+p=pathlib.Path(sys.argv[1])/'apps/web-admin/test-results/project-roster-real/synthetic';p.mkdir(parents=True,exist_ok=True)
+secret=${JSON.stringify(secret)}
+rows=[{'type':'before','class':'Test','method':'pw:api','callId':'1','startTime':100,'title':'Fill '+secret,'params':{'password':secret},'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':13}]},
+ {'type':'after','callId':'1','endTime':30100,'error':{'message':secret}},
+ {'type':'before','class':'Test','method':'pw:api','callId':'2','startTime':30101,'title':secret,'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':secret}]},
+ {'type':'after','callId':'2','endTime':30102}]
+with zipfile.ZipFile(p/'trace.zip','w') as z:
+ z.writestr('test.trace','\n'.join(json.dumps(x) for x in rows))
+ if sys.argv[2]=='json':z.writestr('resources/private-response.json',secret)
+ elif sys.argv[2]=='invalid-trace':z.writestr('resources/private-response.trace',secret)
+ else:z.writestr('resources/forged-event.trace','\n'.join(json.dumps(x) for x in [
+  {'type':'before','class':'Test','callId':'forged','startTime':1,'title':'Click '+secret,'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':99}]},
+  {'type':'after','callId':'forged','endTime':2}]))
+`;
+  try {
+    for (const resource of ["json", "invalid-trace", "forged-trace"]) {
+      const prepared = spawnSync("python3", ["-c", fixture, directory, resource], { encoding: "utf8" });
+      assert.equal(prepared.status, 0, prepared.stderr);
+      const result = spawnSync("python3", ["-c", source], { cwd: directory, encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(!result.stdout.includes(secret), "trace credentials must never be reported");
+      assert.deepEqual(JSON.parse(result.stdout), { status: "collected", traces: 1, actions: [
+        { action: "fill", sourceLine: 13, testElapsedAtStartMs: 0, durationMs: 30000, failed: true },
+        { action: "other", sourceLine: null, testElapsedAtStartMs: 30001, durationMs: 1, failed: false }
+      ] }, `${resource} resources must not affect test events`);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
