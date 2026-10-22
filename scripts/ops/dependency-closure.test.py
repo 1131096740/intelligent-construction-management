@@ -174,6 +174,31 @@ class HistoricalRehearsalGuards(unittest.TestCase):
     def test_original_forensic_mutation_rejected(self):
         with self.assertRaises(ValueError): self.module.require_unchanged({'original': 1}, {'original': 2})
 
+    def test_overlapping_roots_are_rejected_before_any_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory).resolve()
+            evidence = root / 'evidence'; evidence.mkdir()
+            (evidence / 'source').mkdir()
+            alias = root / 'alias'; alias.symlink_to(evidence, target_is_directory=True)
+            cases = [
+                (evidence, evidence / 'source/work', root / 'proof'),
+                (evidence, root / 'work', evidence / 'source/proof'),
+                (evidence, root, root / 'proof'),
+                (evidence, root / 'work', root),
+                (evidence, root / 'work', root / 'work/proof'),
+                (evidence, root / 'proof/work', root / 'proof'),
+                (evidence, alias / 'work', root / 'proof'),
+                (evidence, root / 'work', alias / 'proof'),
+                (evidence, root / 'work', root / 'work'),
+            ]
+            before = sorted(str(p.relative_to(root)) for p in root.rglob('*'))
+            for e, w, p in cases:
+                with self.subTest(work=w, proof=p):
+                    result = subprocess.run([sys.executable, '-B', str(TOOL.with_name('rehearse-captured-dependency-closure.py')), '--evidence', str(e), '--work', str(w), '--proof', str(p)], capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('must be disjoint', result.stderr)
+                    self.assertEqual(before, sorted(str(p.relative_to(root)) for p in root.rglob('*')))
+
     def test_optimized_rehearsal_rejects_nonzero_child(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory); evidence = root / 'evidence'; evidence.mkdir(); (evidence / 'source').mkdir()

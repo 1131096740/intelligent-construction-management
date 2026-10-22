@@ -28,8 +28,11 @@ def main():
     parser.add_argument('--proof', required=True, type=P)
     a = parser.parse_args()
     (E, W, O) = (a.evidence.resolve(), a.work.resolve(), a.proof.resolve())
-    if not (E != W and E != O and (W != O)):
-        raise ValueError('rehearsal safety condition failed')
+    roots = (E, W, O)
+    for index, left in enumerate(roots):
+        for right in roots[index + 1:]:
+            if left == right or left in right.parents or right in left.parents:
+                raise ValueError('evidence/work/proof roots must be disjoint')
     for directory in (W, O):
         directory.mkdir(exist_ok=True)
         if not not any(directory.iterdir()):
