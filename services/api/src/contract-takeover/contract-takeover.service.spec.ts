@@ -4090,13 +4090,17 @@ describe("ContractTakeoverService", () => {
       files as never
     );
 
-    await service.attachEvidenceFile(
+    const attached = await service.attachEvidenceFile(
       "project-1",
       "takeover-1",
       { fileId: "file-1", purpose: "historical_contract_scan" },
       "contract-user"
     );
 
+    expect(attached.lifecycleBlockers).toEqual([]);
+    expect(attached.availableActions).toEqual([
+      expect.objectContaining({ key: "delete_pristine_draft", enabled: true, disabledReason: null })
+    ]);
     expect(files.assertCanDownloadFile).toHaveBeenCalledWith(tx, "file-1", "contract-user");
     expect(tx.archiveRecord.create).toHaveBeenCalledWith({
       data: {
@@ -4214,12 +4218,14 @@ describe("ContractTakeoverService", () => {
       files as never
     );
 
-    await service.attachHistoricalPaymentVoucher(
+    const attached = await service.attachHistoricalPaymentVoucher(
       "project-1",
       "takeover-1",
       { fileId: "file-1" },
       "finance-user"
     );
+    expect(attached.lifecycleBlockers).toEqual(["当前账号不是该接管记录责任人"]);
+    expect(attached.availableActions).toEqual([expect.objectContaining({ enabled: false })]);
 
     expect(tx.archiveRecord.create).toHaveBeenCalledWith({
       data: {
@@ -5142,6 +5148,8 @@ describe("ContractTakeoverService", () => {
     const result = await service.submitReview("project-1", "takeover-1", "contract-user");
 
     expect(result.takeoverStatus).toBe("pending_review");
+    expect(result.lifecycleBlockers).toEqual([]);
+    expect(result.availableActions).toEqual([expect.objectContaining({ key: "abandon_application", enabled: true })]);
     expect(result).not.toHaveProperty("contractVersionId");
     expect(result).not.toHaveProperty("submittedByUserId");
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
@@ -5259,6 +5267,8 @@ describe("ContractTakeoverService", () => {
     );
 
     expect(result.takeoverStatus).toBe("needs_supplement");
+    expect(result.lifecycleBlockers).toEqual(["当前账号不是该接管记录责任人"]);
+    expect(result.availableActions).toEqual([expect.objectContaining({ enabled: false })]);
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
       data: { takeoverStatus: "needs_supplement" }

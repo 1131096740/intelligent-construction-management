@@ -221,7 +221,7 @@ describe("ContractTaxFactsService", () => {
     tx.contractTaxFactRevision.create.mockResolvedValue(revision());
     const service = new ContractTaxFactsService(prisma as never);
 
-    await service.create(
+    const created = await service.create(
       "project-1",
       "takeover-1",
       {
@@ -241,6 +241,8 @@ describe("ContractTaxFactsService", () => {
       "contract-staff-1"
     );
 
+    expect(created.lifecycleBlockers).toEqual([]);
+    expect(created.availableActions).toEqual([expect.objectContaining({ key: "delete_pristine_draft", enabled: true })]);
     expect(tx.contractTaxFactRevision.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: "project-1",
@@ -354,7 +356,7 @@ describe("ContractTaxFactsService", () => {
     );
     const service = new ContractTaxFactsService(prisma as never);
 
-    await service.financeReview(
+    const reviewed = await service.financeReview(
       "project-1",
       "takeover-1",
       "revision-1",
@@ -362,6 +364,8 @@ describe("ContractTaxFactsService", () => {
       "finance-director-1"
     );
 
+    expect(reviewed.lifecycleBlockers).toEqual(["当前账号不是该税务修订创建人"]);
+    expect(reviewed.availableActions).toEqual([expect.objectContaining({ enabled: false })]);
     expect(tx.contractTaxFactRevision.update).toHaveBeenCalledWith({
       where: { id: "revision-1" },
       data: expect.objectContaining({

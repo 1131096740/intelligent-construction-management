@@ -961,7 +961,7 @@ export class ContractTakeoverService {
           takeover,
           emptyPostConfirmationVerificationStats()
         )
-      });
+      }, actorUserId);
   }
 
   async updateDraft(
@@ -1117,7 +1117,7 @@ export class ContractTakeoverService {
           updated,
           emptyPostConfirmationVerificationStats()
         )
-      });
+      }, actorUserId);
     });
   }
 
@@ -2157,7 +2157,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return this.toReadModelFromDatabase(tx, takeover);
+      return this.toReadModelFromDatabase(tx, takeover, actorUserId);
     });
   }
 
@@ -2211,7 +2211,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return this.toReadModelFromDatabase(tx, takeover);
+      return this.toReadModelFromDatabase(tx, takeover, actorUserId);
     });
   }
 
@@ -2792,7 +2792,7 @@ export class ContractTakeoverService {
           where: { takeoverBatchId: existingBatch.id },
           orderBy: { importRowNo: "asc" }
         });
-        const created = await this.toReadModels(tx, existingTakeovers);
+        const created = await this.toReadModels(tx, existingTakeovers, actorUserId);
         return {
           projectId,
           batch: this.toImportBatchReadModel(existingBatch),
@@ -2907,7 +2907,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return this.toReadModelFromDatabase(tx, updated);
+      return this.toReadModelFromDatabase(tx, updated, actorUserId);
     });
   }
 
@@ -2946,7 +2946,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return this.toReadModelFromDatabase(tx, updated);
+      return this.toReadModelFromDatabase(tx, updated, actorUserId);
     });
   }
 
@@ -2970,7 +2970,7 @@ export class ContractTakeoverService {
       if (takeover.takeoverStatus !== "pending_review") {
         throw new Error("当前接管记录尚不能确认，请先提交复核并完成资料核验");
       }
-      const [takeoverReadModel] = await this.toReadModels(tx, [takeover]);
+      const [takeoverReadModel] = await this.toReadModels(tx, [takeover], actorUserId);
       const missingEvidenceLabels = takeoverReadModel.evidenceChecklist
         .filter((item) => item.required && !item.uploaded)
         .map((item) => item.purposeLabel);
@@ -3031,7 +3031,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return this.toReadModelFromDatabase(tx, updated);
+      return this.toReadModelFromDatabase(tx, updated, actorUserId);
     });
   }
 
@@ -3261,7 +3261,7 @@ export class ContractTakeoverService {
   private async toReadModels(
     client: TakeoverReadClient,
     takeovers: ContractTakeoverRecord[],
-    actorUserId?: string
+    actorUserId: string | undefined
   ): Promise<ContractTakeoverBusinessReadModel[]> {
     if (!takeovers.length) {
       return [];
@@ -3979,7 +3979,7 @@ export class ContractTakeoverService {
   private async toReadModelFromDatabase(
     client: TakeoverReadClient,
     takeover: ContractTakeoverRecord,
-    actorUserId?: string
+    actorUserId: string | undefined
   ) {
     const [readModel] = await this.toReadModels(client, [takeover], actorUserId);
     return readModel;
@@ -4008,7 +4008,7 @@ export class ContractTakeoverService {
       appliedCorrections: ContractTakeoverBusinessReadModel["appliedCorrections"];
       postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
     },
-    actorUserId?: string
+    actorUserId: string | undefined
   ): ContractTakeoverBusinessReadModel {
     const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
     const invoiceType = contract.contractVersion?.invoiceType ?? null;
