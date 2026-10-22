@@ -150,5 +150,38 @@ class DependencyClosureTests(unittest.TestCase):
         diff = json.loads((out / 'original.diff.json').read_text())
         self.assertTrue(any((x['path'] == 'opt/app/main.js' for x in diff)))
         self.assertFalse((out / 'passed.json').exists())
+class HistoricalRehearsalGuards(unittest.TestCase):
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('historical_rehearsal', TOOL.with_name('rehearse-captured-dependency-closure.py'))
+        self.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.module)
+
+    def test_preserved_manifest_header_tamper_rejected_with_same_body(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = pathlib.Path(directory) / 'prior.tar.gz'
+            def write(uid):
+                with tarfile.open(archive, 'w:gz') as stream:
+                    for name in ['opt/jiangkong/services/api/package.json', 'opt/jiangkong/apps/web-admin/package.json']:
+                        member = tarfile.TarInfo(name); member.size = 2; member.uid = uid; member.gid = 1001; member.mode = 436
+                        stream.addfile(member, io.BytesIO(b'{}'))
+            write(1000)
+            pinned = hashlib.sha256(archive.read_bytes()).hexdigest()
+            self.assertEqual(set(self.module.read_prior_manifests(archive, pinned)), {'api', 'web'})
+            write(1001)
+            with self.assertRaises(ValueError): self.module.read_prior_manifests(archive, pinned)
+
+    def test_original_forensic_mutation_rejected(self):
+        with self.assertRaises(ValueError): self.module.require_unchanged({'original': 1}, {'original': 2})
+
+    def test_optimized_rehearsal_still_rejects_artifact_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory); evidence = root / 'evidence'; evidence.mkdir(); (evidence / 'source').mkdir()
+            # It must stop on its missing unit runner rather than skip nonzero exit under -O.
+            work, proof = root / 'work', root / 'proof'
+            result = subprocess.run([sys.executable, '-O', str(TOOL.with_name('rehearse-captured-dependency-closure.py')), '--evidence', str(evidence), '--work', str(work), '--proof', str(proof)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((proof / 'result.json').exists())
+
 if __name__ == '__main__':
     unittest.main()
