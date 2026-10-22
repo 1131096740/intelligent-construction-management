@@ -174,13 +174,18 @@ class HistoricalRehearsalGuards(unittest.TestCase):
     def test_original_forensic_mutation_rejected(self):
         with self.assertRaises(ValueError): self.module.require_unchanged({'original': 1}, {'original': 2})
 
-    def test_optimized_rehearsal_still_rejects_artifact_mismatch(self):
+    def test_optimized_rehearsal_rejects_nonzero_child(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory); evidence = root / 'evidence'; evidence.mkdir(); (evidence / 'source').mkdir()
-            # It must stop on its missing unit runner rather than skip nonzero exit under -O.
+            tools = evidence / 'source/scripts/ops'; tools.mkdir(parents=True)
+            for name in ['dependency-closure.py', 'runtime-manifest.py']:
+                (tools / name).write_bytes(TOOL.with_name(name).read_bytes())
+            (tools / 'dependency-closure.test.py').write_text("print('intentional child failure exit 7', flush=True)\nraise SystemExit(7)\n")
             work, proof = root / 'work', root / 'proof'
             result = subprocess.run([sys.executable, '-O', str(TOOL.with_name('rehearse-captured-dependency-closure.py')), '--evidence', str(evidence), '--work', str(work), '--proof', str(proof)], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
+            self.assertIn('intentional child failure exit 7', (proof / 'linux-unit.log').read_text())
+            self.assertIn("'exit': 7", result.stderr)
             self.assertFalse((proof / 'result.json').exists())
 
 if __name__ == '__main__':
