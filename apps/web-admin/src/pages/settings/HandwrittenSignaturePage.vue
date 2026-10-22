@@ -23,6 +23,7 @@
 import { onMounted, ref, shallowRef } from "vue";
 import { useRoute } from "vue-router";
 import { completeCanvasSignatureHandoff, getCanvasSignatureHandoff } from "../../api/core-flow-read.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import JgSignaturePanel from "../../components/JgSignaturePanel.vue";
 
 const route = useRoute();
@@ -47,7 +48,7 @@ onMounted(async () => {
     handoffAvailableActions.value = handoff.availableActions;
     if (handoff.completedAt) { completed.value = true; messageTone.value = "success"; message.value = "该二维码已完成手写签名，请回到电脑端继续。"; }
     else ready.value = handoffActionEnabled("complete_canvas_signature_handoff");
-  } catch (error) { message.value = error instanceof Error ? error.message : "签名二维码已失效，请在电脑端重新生成。"; }
+  } catch (error) { message.value = formatUnknownApiError(error, "签名二维码已失效，请在电脑端重新生成。"); }
 });
 
 function complete(file: File) {
@@ -62,7 +63,7 @@ function complete(file: File) {
       message.value = "手写签名已完成，请回到电脑端继续。";
     })
     .catch((error: unknown) => {
-      message.value = `签名未保存，笔迹已保留。${error instanceof Error ? error.message : "保存手写签名失败，请重试。"}`;
+      message.value = `签名未保存，笔迹已保留。${formatUnknownApiError(error, "保存手写签名失败，请重试。")}`;
     })
     .finally(() => {
       busy.value = false;
