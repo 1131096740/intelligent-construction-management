@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { expectNoDocumentHorizontalOverflow } from "./helpers/responsive-assertions";
 
-test("按项目调入和调出普通员工", async ({ page }) => {
+test("按项目调入和调出普通员工", async ({ page }, testInfo) => {
   const startedAt = performance.now();
   const phases: Array<{ name: string; elapsedMs: number }> = [];
-  const mark = (name: string) => phases.push({ name, elapsedMs: Math.round(performance.now() - startedAt) });
+  const mark = (name: string) => { const phase = { name, elapsedMs: Math.round(performance.now() - startedAt) }; phases.push(phase); console.info("[DEBUG-d5f8-roster-phase]" + JSON.stringify(phase)); };
   try {
   const password = "Local-Roster-Only-01";
   mark("登录页面");
   await page.goto("/login");
-  await page.getByPlaceholder("请输入手机号").fill(process.env.ROSTER_MANAGER_PHONE!);
+  await page.getByPlaceholder("请输入手机号").fill((JSON.parse(process.env.ROSTER_MANAGER_PHONES!) as string[])[testInfo.repeatEachIndex]!);
   await page.getByPlaceholder("请输入密码").fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page).not.toHaveURL(/login/);

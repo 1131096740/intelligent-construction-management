@@ -1,214 +1,30 @@
-name: CI
-
+# Temporary diagnostic branch only. This workflow is not release qualification.
+name: CI roster diagnosis only
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       target_sha:
-        description: "用于非生产 CI 验证的 40 位 main commit SHA"
+        description: "Exact diagnostic branch SHA; never production"
         required: true
         type: string
-
 env:
-  CI_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
-  CI_REQUIRE_MAIN_ANCESTOR: ${{ github.event_name == 'workflow_dispatch' }}
-
+  CI_SOURCE_SHA: ${{ inputs.target_sha }}
+  CI_REQUIRE_MAIN_ANCESTOR: "false"
 permissions:
   contents: read
-
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: diagnostic-roster-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  quality-gates:
-    name: Quality gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.CI_SOURCE_SHA }}
-          fetch-depth: 0
-
-      - name: Verify checked-out CI source SHA
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CI_SOURCE_SHA"
-          if [ "$CI_REQUIRE_MAIN_ANCESTOR" = true ]; then
-            git merge-base --is-ancestor "$CI_SOURCE_SHA" origin/main
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-
-      - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
-
-      - name: Install frozen dependencies
-        run: CI=true pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Verify migration baseline
-        run: pnpm check:migration-baseline
-
-      - name: Verify CI orchestration contract
-        run: pnpm test:ci-orchestration
-
-      - name: Audit production dependencies
-        run: pnpm audit --prod --audit-level high
-
-      - name: Typecheck
-        run: |
-          pnpm typecheck
-          pnpm --filter @jiangkong/web-admin typecheck:e2e
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Verify business error and operations safety gates
-        run: |
-          node scripts/check-business-language.mjs
-          node services/api/scripts/check-business-errors.self-test.cjs
-          pnpm --filter @jiangkong/api check:business-errors
-          bash scripts/ops/go-live-safety-self-test.sh
-
-  unit-test-gates:
-    name: Unit test gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.CI_SOURCE_SHA }}
-          fetch-depth: 0
-
-      - name: Verify checked-out CI source SHA
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CI_SOURCE_SHA"
-          if [ "$CI_REQUIRE_MAIN_ANCESTOR" = true ]; then
-            git merge-base --is-ancestor "$CI_SOURCE_SHA" origin/main
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-
-      - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
-
-      - name: Install frozen dependencies
-        run: CI=true pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Test
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm test
-
-  build-manifest-gates:
-    name: Build and manifest gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.CI_SOURCE_SHA }}
-          fetch-depth: 0
-
-      - name: Verify checked-out CI source SHA
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CI_SOURCE_SHA"
-          if [ "$CI_REQUIRE_MAIN_ANCESTOR" = true ]; then
-            git merge-base --is-ancestor "$CI_SOURCE_SHA" origin/main
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-
-      - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
-
-      - name: Install frozen dependencies
-        run: CI=true pnpm install --frozen-lockfile
-
-      - name: Generate Prisma client
-        run: pnpm --filter @jiangkong/api exec prisma generate
-
-      - name: Build API and Web production applications
-        run: |
-          pnpm --filter @jiangkong/api build
-          pnpm --filter @jiangkong/web-admin build
-
-      - name: Verify business cleanup preservation and safety
-        run: pnpm test:business-zeroing-tools
-
-      - name: Verify Web UI governance
-        run: pnpm --filter @jiangkong/web-admin check:ui
-
-      - name: Verify capability and usage manifests
-        run: pnpm inspect:release-manifests
-
-      - name: Install upload and draft feedback browser runtime
-        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
-
-      - name: Verify upload retry and draft deletion feedback
-        run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.upload-draft.config.ts
-
   postgresql16-dynamic-gates:
-    name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
+    name: DIAGNOSTIC ONLY - roster trigger (${{ matrix.group }})
     runs-on: ubuntu-latest
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
     timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
     strategy:
       fail-fast: false
       matrix:
-        group:
-          - project_financing_quota
-          - contract_template_scenario
-          - contract_settlement_v2
-          - payment_execution
-          - project_expense_execution
-          - project_expense_finance
-          - project_expense_receipt
-          - settlement_draft_lifecycle
-          - fund_execution_v7
-          - invoice_ledger_pol260
-          - clearing_reconciliation_pol275
-          - necessary_expense_reserve_pol279
-          - project_fund_dispute_pol280
-          - operating_projection_pol108
-          - operating_projection_pol108_facts
-          - operating_projection_pol108_impacts
-          - project_close_profit_pol109
-          - pol113_pol115_business_entries
-          - remaining_dynamic_postgresql16
-          - employee_onboarding
-          - general_procurement
-          - contract_finance_acceptance
+        group: [employee_onboarding]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -219,7 +35,9 @@ jobs:
       - name: Verify checked-out CI source SHA
         run: |
           set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/codex/d5f8-roster-diagnosis
           test "$(git rev-parse HEAD)" = "$CI_SOURCE_SHA"
+          git merge-base --is-ancestor 40c133f5bb88c56b3d1428ef1e158c3eee698113 HEAD
           if [ "$CI_REQUIRE_MAIN_ANCESTOR" = true ]; then
             git merge-base --is-ancestor "$CI_SOURCE_SHA" origin/main
           fi
@@ -321,21 +139,24 @@ jobs:
             --candidate-sha "$candidate_sha" \
             --confirm LOCAL_PG16_DYNAMIC_GATE
 
-  release-gates:
-    name: Release gates
-    if: ${{ always() }}
-    needs: [quality-gates, unit-test-gates, build-manifest-gates, postgresql16-dynamic-gates]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Assert all release gates passed
-        env:
-          QUALITY_RESULT: ${{ needs['quality-gates'].result }}
-          TEST_RESULT: ${{ needs['unit-test-gates'].result }}
-          BUILD_RESULT: ${{ needs['build-manifest-gates'].result }}
-          DYNAMIC_RESULT: ${{ needs['postgresql16-dynamic-gates'].result }}
+
+      - name: Print sanitized timing evidence on failure
+        if: ${{ failure() }}
+        shell: bash
         run: |
-          test "$QUALITY_RESULT" = success
-          test "$TEST_RESULT" = success
-          test "$BUILD_RESULT" = success
-          test "$DYNAMIC_RESULT" = success
+          python3 - <<'PYTRACE'
+          import pathlib,json,zipfile
+          for file in pathlib.Path('apps/web-admin/test-results').rglob('trace.zip'):
+            print('DIAGNOSTIC_TRACE',file.parent.name)
+            with zipfile.ZipFile(file) as trace:
+              for member in trace.namelist():
+                if not member.endswith('.trace'):continue
+                calls={}
+                for line in trace.read(member).splitlines():
+                  event=json.loads(line)
+                  if event.get('type')=='before' and event.get('class')=='Test':calls[event['callId']]=event
+                  if event.get('type')=='after' and event.get('callId') in calls:
+                    start=calls[event['callId']]
+                    title=start.get('title','').split(' ',1)[0]
+                    print(json.dumps({'action':title,'sourceLine':next((x.get('line') for x in start.get('stack',[]) if x.get('file','').endswith('project-roster-real.e2e.ts')),None),'startedMs':start.get('startTime'),'durationMs':round(event['endTime']-start['startTime'],1),'failed':bool(event.get('error'))}))
+          PYTRACE
