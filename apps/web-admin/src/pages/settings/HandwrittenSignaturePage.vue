@@ -4,16 +4,16 @@
       title="手机手写签名"
       :bordered="true"
     >
-      <t-alert
-        v-if="message"
-        :theme="messageTone"
-        :message="message"
-      />
       <JgSignaturePanel
         v-if="ready && !completed && handoffActionEnabled('complete_canvas_signature_handoff')"
         preview-url=""
         :busy="busy"
         @save="complete"
+      />
+      <t-alert
+        v-if="message"
+        :theme="messageTone"
+        :message="message"
       />
     </t-card>
   </main>
@@ -62,7 +62,7 @@ function complete(file: File) {
       message.value = "手写签名已完成，请回到电脑端继续。";
     })
     .catch((error: unknown) => {
-      message.value = error instanceof Error ? error.message : "保存手写签名失败";
+      message.value = `签名未保存，笔迹已保留。${error instanceof Error ? error.message : "保存手写签名失败，请重试。"}`;
     })
     .finally(() => {
       busy.value = false;

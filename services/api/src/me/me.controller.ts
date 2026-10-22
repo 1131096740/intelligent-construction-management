@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { FileInterceptor } from "../file/uploaded-file";
@@ -50,7 +50,7 @@ export class MeController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     if (!file) {
-      throw new Error("请先完成手写签名");
+      throw new BadRequestException("请先完成手写签名");
     }
     return this.me.setCanvasSignature(user.id, {
       originalName: file.originalname,
@@ -77,7 +77,7 @@ export class MeController {
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    if (!file) throw new Error("请先完成手写签名");
+    if (!file) throw new BadRequestException("请先完成手写签名");
     return this.me.setCanvasSignature(user.id, {
       originalName: file.originalname,
       mimeType: file.mimetype,

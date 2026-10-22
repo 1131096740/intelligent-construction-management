@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  ServiceUnavailableException,
   Logger
 } from "@nestjs/common";
 import { createHash, createHmac } from "node:crypto";
@@ -2764,6 +2765,26 @@ describe("FileService", () => {
       fetchMock.mockRestore();
       restoreStorageEnv(previous);
     }
+  });
+
+  it.each(["write", "read", "delete"] as const)("reports restricted storage for %s without provider detail leakage", async method => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const remote = jest.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      "<Error><Code>UnavailableForLegalReasons</Code><Message>private billing message</Message></Error>",
+      { status: 451 }
+    ));
+    const log = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    try {
+      const storage = new PrivateFileStorage();
+      const action = method === "write" ? storage.write("uploads/synthetic.png", Buffer.from("synthetic")) : storage[method]("uploads/synthetic.png");
+      const error = await action.catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as ServiceUnavailableException).getStatus()).toBe(503);
+      expect((error as Error).message).toContain("资料存储服务当前受限");
+      expect(JSON.stringify((error as ServiceUnavailableException).getResponse())).not.toMatch(/private billing|UnavailableForLegalReasons|secret-key/);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 451, cosErrorCode: "UnavailableForLegalReasons" }));
+    } finally { remote.mockRestore(); log.mockRestore(); restoreStorageEnv(previous); }
   });
 
   it("logs sanitized COS diagnostics without exposing credentials or file names", async () => {

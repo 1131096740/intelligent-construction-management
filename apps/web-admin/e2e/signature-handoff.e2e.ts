@@ -37,6 +37,7 @@ test("桌面生成同源二维码并在手机端完成后刷新状态", async ({
   await page.getByPlaceholder("请输入手机号").fill("13800000001");
   await page.getByPlaceholder("请输入密码").fill("Jgzg@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/系统配置");
 
@@ -112,6 +113,7 @@ test("资料库只在服务端授权后打开敏感下载确认并提交原因",
   await page.getByPlaceholder("请输入手机号").fill("13800000001");
   await page.getByPlaceholder("请输入密码").fill("Jgzg@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   await page.goto("/资料库");
 
   await page.getByText("授权下载", { exact: true }).click();

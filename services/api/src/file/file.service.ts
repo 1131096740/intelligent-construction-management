@@ -10,6 +10,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
   type OnModuleInit
 } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
@@ -52,6 +53,10 @@ export interface UploadPrivateFileInput {
     claimToken: string;
   };
 }
+
+// A definite provider rejection of PUT cannot have created an object. Keep it
+// distinct from an interrupted/ambiguous write, which still requires cleanup.
+class RejectedPrivateFileUploadException extends ServiceUnavailableException {}
 
 export interface ReadPrivateFileInput {
   actorUserId: string;
@@ -582,6 +587,12 @@ export class PrivateFileStorage implements OnModuleInit {
         cosRequestId: diagnostics.requestId,
         objectKeyFingerprint: this.objectKeyFingerprint(objectKey)
       });
+      if (response.status === 451) {
+        const operation = method === "PUT" ? "上传" : method === "GET" ? "读取资料" : "删除资料";
+        const message = `资料存储服务当前受限，暂时无法${operation}。请联系管理员检查服务状态，恢复后重试。`;
+        if (method === "PUT") throw new RejectedPrivateFileUploadException(message);
+        throw new ServiceUnavailableException(message);
+      }
       throw new Error(this.cosFailureMessage(method));
     }
 
@@ -833,6 +844,7 @@ export class FileService {
     try {
       await this.storage.write(objectKey, input.buffer);
     } catch (storageError) {
+      if (storageError instanceof RejectedPrivateFileUploadException) throw storageError;
       if (attemptOwnsObjectKey) {
         await cleanupWrittenObject(storageError, "storage_write");
       }

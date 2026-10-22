@@ -4,7 +4,7 @@ const baseURL = "http://127.0.0.1:4176";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(?:handwritten-signature|signature-handoff)\.e2e\.ts/,
+  testMatch: /(?:handwritten-signature|signature-handoff|signature-storage-retry)\.e2e\.ts/,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   workers: 1,
@@ -18,6 +18,8 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } }
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    { name: "mobile-chromium", use: { ...devices["Pixel 5"] } },
+    { name: "mobile-webkit", use: { ...devices["iPhone 13"] } }
   ]
 });

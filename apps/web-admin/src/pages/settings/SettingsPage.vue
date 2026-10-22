@@ -127,6 +127,8 @@
       />
       <div
         v-if="signatureMessage"
+        role="status"
+        aria-live="polite"
         :class="['msg', signatureTone]"
       >
         {{ signatureMessage }}
@@ -611,7 +613,7 @@ function submitCanvasSignature(signature: File) {
     })
     .catch((error: unknown) => {
       signatureTone.value = "danger";
-      signatureMessage.value = formatUnknownApiError(error, "保存手写签名失败");
+      signatureMessage.value = `签名未保存，笔迹已保留。${formatUnknownApiError(error, "保存手写签名失败，请重试。")}`;
     })
     .finally(() => {
       signatureBusy.value = false;
