@@ -16,7 +16,7 @@ test("真实接管：XLSX零写入预检和绑定、PDF失败保留、取消与�
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   await page.goto("/历史经营接管");
   await page.locator(".filters label").first().locator("input").click();
-  await page.locator(".t-select-option:visible").filter({ hasText: "本次接管合成项目" }).click();
+  await page.locator(".t-select-option:visible").filter({ hasText: process.env.OT_PROJECT_LABEL ?? "本次接管合成项目" }).click();
   await expect(page.getByRole("button", { name: "新增页面业务行", exact: true })).toBeEnabled();
   const before = await (await request.get(prefix, { headers })).json();
   const xlsxByViewport: Record<string, string> = JSON.parse(process.env.OT_XLSX_BY_VIEWPORT!);
@@ -47,12 +47,13 @@ test("真实接管：XLSX零写入预检和绑定、PDF失败保留、取消与�
   const batch = await creation.json(); expect(batch.sourceFileId).toBeTruthy(); expect(batch.status).toBe("under_review");
   const panel = page.locator(".attachment-panel");
   await panel.getByPlaceholder("附件用途，例如：付款凭据、对账单").fill(`本次${info.project.name}合成依据`);
-  await panel.locator('input[type="file"]').setInputFiles({ name: "不支持的合成附件.exe", mimeType: "text/plain", buffer: Buffer.from("Plain text only. Synthetic upload rejection fixture.") });
+  await panel.locator('input[type="file"]').setInputFiles({ name: "本次合成依据.pdf", mimeType: "application/pdf", buffer: Buffer.from(process.env.OT_PDF_BASE64!, "base64") });
   const link = panel.getByRole("button", { name: "关联到批次", exact: true });
   await link.evaluate(element => element.scrollIntoView({ block: "end" }));
+  await page.context().setOffline(true);
   await link.click();
-  await expect(panel.getByRole("alert")).toContainText(/格式|支持/);
-  await expect(panel.getByText("不支持的合成附件.exe", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("alert")).toContainText(/网络|连接|失败|重试/);
+  await expect(panel.getByText("本次合成依据.pdf", { exact: true })).toBeVisible();
   const retry = panel.getByRole("button", { name: "重试上传", exact: true }); await expect(retry).toBeEnabled();
   const errorBox = await panel.getByRole("alert").boundingBox(); const buttonBox = await retry.boundingBox();
   await info.attach("提示和重试按钮布局", { body: JSON.stringify({ viewport: page.viewportSize(), errorBox, buttonBox }), contentType: "application/json" });
@@ -65,9 +66,9 @@ test("真实接管：XLSX零写入预检和绑定、PDF失败保留、取消与�
   expect(errorBox!.x + errorBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
   expect(buttonBox!.x).toBeGreaterThanOrEqual(0);
   expect(buttonBox!.x + buttonBox!.width).toBeLessThanOrEqual(viewportWidth + 1);
-  await page.screenshot({ path: info.outputPath("格式失败保留文件.png"), fullPage: true });
-  await panel.getByRole("row").filter({ hasText: "不支持的合成附件.exe" }).getByRole("button", { name: "删除", exact: true }).click();
-  await panel.locator('input[type="file"]').setInputFiles({ name: "本次合成依据.pdf", mimeType: "application/pdf", buffer: Buffer.from(process.env.OT_PDF_BASE64!, "base64") });
+  await page.screenshot({ path: info.outputPath("PDF断网失败保留文件.png"), fullPage: true });
+  await page.context().setOffline(false);
+  // Retry the same genuine PDF without replacing or reselecting it.
   await retry.click();
   await expect(panel.getByText("附件已关联到接管批次", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("合成PDF关联成功.png"), fullPage: true });
