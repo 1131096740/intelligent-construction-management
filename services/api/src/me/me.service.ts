@@ -312,7 +312,7 @@ export class MeService {
       && input.buffer[2] === 0x4e
       && input.buffer[3] === 0x47;
     if (!isPng) {
-      throw new Error("手写签名只能提交签字板生成的 PNG 图片");
+      throw new BadRequestException("签名图片无法识别，请保留当前笔迹并重试保存。");
     }
 
     const file = await this.files.uploadPrivateFile({

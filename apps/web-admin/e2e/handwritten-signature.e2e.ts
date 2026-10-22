@@ -44,6 +44,7 @@ test("本人可在设置页直接手写并提交透明 PNG 签名", async ({ pag
   await page.getByPlaceholder("请输入手机号").fill("13800000001");
   await page.getByPlaceholder("请输入密码").fill("Jgzg@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/系统配置");
   await expect(page.getByText("个人签名", { exact: true })).toBeVisible();
