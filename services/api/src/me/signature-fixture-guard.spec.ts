@@ -1,5 +1,5 @@
 // This guard has no database connection; every rejection precedes Prisma setup.
-const { assertSyntheticSignatureDatabase } = require("../../prisma/signature-fixture-guard.cjs");
+import { assertSyntheticSignatureDatabase } from "../../prisma/signature-fixture-guard.cjs";
 
 describe("signature fixture database isolation", () => {
   const config = { runId: "123456abcdef", container: "jgzg-signature-acceptance-123456abcdef", url: "postgresql://synthetic:secret@127.0.0.1:49321/postgres" };

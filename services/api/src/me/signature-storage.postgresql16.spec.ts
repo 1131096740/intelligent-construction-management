@@ -15,7 +15,7 @@ import { MeController } from "./me.controller";
 import { MeService } from "./me.service";
 
 const url = process.env.SIGNATURE_POSTGRESQL16_ACCEPTANCE_URL;
-const { assertSyntheticSignatureDatabase } = require("../../prisma/signature-fixture-guard.cjs");
+import { assertSyntheticSignatureDatabase } from "../../prisma/signature-fixture-guard.cjs";
 const acceptance = url ? describe : describe.skip;
 
 acceptance("signature with real PostgreSQL16, password login and authenticated HTTP", () => {
