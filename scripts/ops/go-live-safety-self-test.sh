@@ -8,6 +8,7 @@ FAKE_LOG="$TEST_ROOT/fake.log"
 REAL_NODE="$(command -v node)"
 export REAL_NODE
 python3 "$SCRIPT_DIR/runtime-manifest.test.py"
+python3 "$SCRIPT_DIR/dependency-closure.test.py"
 
 bash -n \
   "$SCRIPT_DIR/check-production-db-backup.sh" \
