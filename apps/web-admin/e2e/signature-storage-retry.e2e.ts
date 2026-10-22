@@ -4,7 +4,8 @@ for (const role of ["employee", "project_manager"]) {
   for (const handoff of [false, true]) {
     test(role + (handoff ? " 扫码签名" : " 手机直接登录签名") + "失败保留笔迹并原样重试", async ({ page }, testInfo) => {
       let uploads = 0;
-      await page.route("**/api/**", route => route.fulfill({ contentType: "application/json", body: "[]" }));
+      await page.route("**/api/**", route => new URL(route.request().url()).pathname.startsWith("/api/")
+        ? route.fulfill({ contentType: "application/json", body: "[]" }) : route.continue());
       await page.route("**/api/auth/login", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
         user: { id: "synthetic-employee", name: "合成签名验收员工", phone: "13800000001", mustChangePassword: false,
           roleKeys: [role], globalRoleKeys: role === "employee" ? ["employee"] : [] },
@@ -29,7 +30,7 @@ for (const role of ["employee", "project_manager"]) {
       await page.getByPlaceholder("请输入手机号").fill("13800000001");
       await page.getByPlaceholder("请输入密码").fill("Synthetic@2026");
       await page.getByRole("button", { name: "登录" }).click();
-  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
+      await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(handoff ? "/手写签名?handoff=synthetic-token" : "/系统配置");
       const pad = page.getByLabel("横向手写签字板");

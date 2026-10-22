@@ -2,8 +2,8 @@ const fs = require("node:fs"), path = require("node:path"), crypto = require("no
 process.umask(0o077);
 const root = path.resolve(__dirname, "../../../.."), req = createRequire(root + "/services/api/package.json");
 const settings = JSON.parse(fs.readFileSync(process.env.SIGNATURE_REAL_DB_CONFIG));
-const parsed = new URL(settings.url);
-if (parsed.hostname !== "127.0.0.1" || parsed.pathname !== "/postgres" || settings.container !== "jgzg-signature-local-20261022") throw Error("local synthetic DB required");
+const {assertSyntheticSignatureDatabase} = require(root + "/services/api/prisma/signature-fixture-guard.cjs");
+assertSyntheticSignatureDatabase(settings);
 Object.assign(process.env, { NODE_ENV:"test", FILE_STORAGE_DRIVER:"cos", FILE_STORAGE_ROOT: process.env.SIGNATURE_REAL_STORAGE,
  COS_BUCKET:"synthetic-private", COS_REGION:"ap-guangzhou", COS_SECRET_ID:"synthetic-key-id", COS_SECRET_KEY:crypto.randomBytes(32).toString("hex"),
  JWT_ACCESS_SECRET:crypto.randomBytes(32).toString("hex"), JWT_REFRESH_SECRET:crypto.randomBytes(32).toString("hex") });

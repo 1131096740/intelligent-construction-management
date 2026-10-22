@@ -15,8 +15,7 @@ import { MeController } from "./me.controller";
 import { MeService } from "./me.service";
 
 const url = process.env.SIGNATURE_POSTGRESQL16_ACCEPTANCE_URL;
-const local = url ? new URL(url) : null;
-if (local && (local.hostname !== "127.0.0.1" || local.pathname !== "/postgres")) throw new Error("isolated signature database required");
+const { assertSyntheticSignatureDatabase } = require("../../prisma/signature-fixture-guard.cjs");
 const acceptance = url ? describe : describe.skip;
 
 acceptance("signature with real PostgreSQL16, password login and authenticated HTTP", () => {
@@ -30,6 +29,7 @@ acceptance("signature with real PostgreSQL16, password login and authenticated H
   const users: Array<{ id: string; role: string; phone: string }> = [];
 
   beforeAll(async () => {
+    assertSyntheticSignatureDatabase({ url, container: process.env.SIGNATURE_ACCEPTANCE_CONTAINER, runId: process.env.SIGNATURE_ACCEPTANCE_RUN_ID });
     db = new PrismaClient({ datasources: { db: { url: url! } } });
     process.env.FILE_STORAGE_DRIVER = "local";
     process.env.FILE_STORAGE_ROOT = process.env.SIGNATURE_ACCEPTANCE_STORAGE_ROOT!;

@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+test.skip(!process.env.SIGNATURE_REAL_DB_CONFIG || !process.env.SIGNATURE_REAL_ACCOUNTS,
+  "真实后台签名验收仅在专用本机合成配置下运行");
+
 for (const role of ["employee", "project_manager"]) {
  for (const handoff of [false, true]) {
   test(role + (handoff ? " 扫码" : " 直接登录") + "真实后台保存与存储恢复重试", async ({page}, info) => {
