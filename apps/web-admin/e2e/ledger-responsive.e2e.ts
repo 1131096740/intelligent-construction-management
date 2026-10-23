@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { ContractRelationshipLedger } from "@jiangkong/shared-domain";
 import { expect, test, type Page } from "@playwright/test";
 import {
   expectBusinessContentWithinViewport,
@@ -134,6 +135,20 @@ async function mockSession(page: Page) {
     contentType: "application/json",
     body: JSON.stringify([{ id: "finance-responsive", name: "财务主管" }])
   }));
+  await page.route("**/api/contract-relationship-ledger?*", (route) => {
+    const section = new URL(route.request().url()).searchParams.get("section");
+    expect(["contracts", "settlements", "payments"]).toContain(section);
+    expect(route.request().method()).toBe("GET");
+    // The current search index combines the original ledgers below with this
+    // additional relationship ledger. This fixture has no supplemental records.
+    const ledger = {
+      readAt: "2026-10-23T00:00:00.000Z",
+      rows: [],
+      totals: [],
+      notice: "当前验收项目无补充分类记录"
+    } satisfies ContractRelationshipLedger;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(ledger) });
+  });
   await page.route("**/api/contracts", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ rows: [{
@@ -169,6 +184,7 @@ async function login(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
 }
 
 test("五类业务台账在手机、平板和电脑中只由数据区横向滚动", async ({ page }, testInfo) => {

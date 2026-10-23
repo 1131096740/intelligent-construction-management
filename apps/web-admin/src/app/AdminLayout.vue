@@ -20,7 +20,7 @@
       />
     </t-aside>
     <t-drawer
-      v-if="compactNavigation"
+      v-if="compactNavigation && navigationOpen"
       v-model:visible="navigationOpen"
       class="navigation-drawer"
       :header="false"

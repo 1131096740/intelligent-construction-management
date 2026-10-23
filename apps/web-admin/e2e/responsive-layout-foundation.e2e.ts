@@ -86,7 +86,17 @@ test("keeps navigation, page content, and confirmation controls usable across de
     await page.setViewportSize(viewport);
     await expect(page.locator(".business-page-header")).toBeVisible();
     await expect(page.getByRole("button", { name: "刷新" })).toBeVisible();
-    await expect(page.locator(".content")).toHaveCSS("overflow-x", "clip");
+    // WebKit computes clip as hidden when the other axis is scrollable.
+    await expect(page.locator(".content")).toHaveCSS("overflow-x", /^(clip|hidden)$/);
+    const contentScroll = await page.locator(".content").evaluate((element) => {
+      const node = element as HTMLElement;
+      const start = node.scrollLeft;
+      node.scrollLeft = 80;
+      const after = node.scrollLeft;
+      node.scrollLeft = start;
+      return { after, clientWidth: node.clientWidth, scrollWidth: node.scrollWidth };
+    });
+    expect(contentScroll.after === 0 || contentScroll.scrollWidth <= contentScroll.clientWidth + 1).toBe(true);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
     await expectBusinessContentWithinViewport(page);
@@ -103,26 +113,54 @@ test("keeps navigation, page content, and confirmation controls usable across de
     if (viewport.width <= 1280) {
       await expect(page.locator(".aside")).toHaveCount(0);
       const toggle = page.getByRole("button", { name: "打开导航" });
+      await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       const navigation = page.locator(".navigation-drawer");
       await expect(navigation.getByText("业务导航", { exact: true })).toBeVisible();
+      await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(1);
       const settingsEntry = navigation.getByRole("link", { name: "系统配置", exact: true });
       await settingsEntry.scrollIntoViewIfNeeded();
       await expect(settingsEntry).toBeInViewport();
       await navigation.getByText("首页", { exact: true }).click();
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
-      await expect(navigation.locator(".t-drawer__content-wrapper")).not.toBeVisible();
-      await expect(navigation.locator(".t-drawer__mask")).toHaveCSS("opacity", "0");
+      await expect(navigation).toHaveCount(0);
+      await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
+      await expect(page.locator("#main-content")).toBeFocused();
     } else {
       await expect(page.locator(".aside")).toBeVisible();
       await expect(page.getByRole("button", { name: "打开导航" })).toHaveCount(0);
+      await expect(page.locator(".navigation-drawer")).toHaveCount(0);
+      await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
     }
     await page.screenshot({
       path: resolve(screenshotDir, `foundation-home-${viewport.width}x${viewport.height}.png`),
       fullPage: false
     });
   }
+
+  // Crossing the exact compact-navigation boundary must unmount an open drawer.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const boundaryToggle = page.getByRole("button", { name: "打开导航" });
+  await boundaryToggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "业务导航" }).getByRole("link").first()).toBeFocused();
+  await page.setViewportSize({ width: 1281, height: 720 });
+  await expect(page.locator(".aside")).toBeVisible();
+  await expect(page.locator(".navigation-drawer")).toHaveCount(0);
+  await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
+  await expect(boundaryToggle).toHaveCount(0);
+  await expect(page.locator(".main-shell")).toHaveJSProperty("inert", false);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(boundaryToggle).toBeVisible();
+  await expect(boundaryToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
+  await boundaryToggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "业务导航" }).getByRole("link").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(boundaryToggle).toBeFocused();
+  await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const toggle = page.getByRole("button", { name: "打开导航" });
@@ -147,7 +185,8 @@ test("keeps navigation, page content, and confirmation controls usable across de
   await expect(links.first()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(toggle).toBeFocused();
-  await expect(page.locator(".navigation-drawer .t-drawer__content-wrapper")).not.toBeVisible();
+  await expect(page.locator(".navigation-drawer")).toHaveCount(0);
+  await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
   const bottomNavigation = page.getByRole("navigation", { name: "常用工作导航" });
   const bottomToggle = bottomNavigation.getByRole("button", { name: "全部业务", exact: true });
   await bottomToggle.focus();
@@ -155,7 +194,8 @@ test("keeps navigation, page content, and confirmation controls usable across de
   await expect(links.first()).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(bottomToggle).toBeFocused();
-  await expect(page.locator(".navigation-drawer .t-drawer__content-wrapper")).not.toBeVisible();
+  await expect(page.locator(".navigation-drawer")).toHaveCount(0);
+  await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
 
   const previousKeyboardState = await page.evaluate(() => document.documentElement.getAttribute("data-keyboard"));
   try {
@@ -168,7 +208,8 @@ test("keeps navigation, page content, and confirmation controls usable across de
     await expect(links.first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(toggle).toBeFocused();
-    await expect(page.locator(".navigation-drawer .t-drawer__content-wrapper")).not.toBeVisible();
+    await expect(page.locator(".navigation-drawer")).toHaveCount(0);
+    await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
   } finally {
     await page.evaluate((state) => {
       if (state === null) document.documentElement.removeAttribute("data-keyboard");
@@ -182,7 +223,8 @@ test("keeps navigation, page content, and confirmation controls usable across de
   await approvalLink.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "审批中心" })).toBeVisible();
-  await expect(page.locator(".navigation-drawer .t-drawer__content-wrapper")).not.toBeVisible();
+  await expect(page.locator(".navigation-drawer")).toHaveCount(0);
+  await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
   await page.goto("/首页");
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
 
