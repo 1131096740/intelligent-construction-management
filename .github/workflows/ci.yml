@@ -1,5 +1,5 @@
 # Temporary diagnostic branch only. This workflow is not release qualification.
-name: CI roster diagnosis only
+name: CI roster paired-engine diagnosis only
 on:
   workflow_dispatch:
     inputs:
@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   postgresql16-dynamic-gates:
-    name: DIAGNOSTIC ONLY - roster trigger (${{ matrix.group }})
+    name: DIAGNOSTIC ONLY - desktop then mobile roster pairs (${{ matrix.group }})
     runs-on: ubuntu-latest
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
     timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
@@ -140,23 +140,32 @@ jobs:
             --confirm LOCAL_PG16_DYNAMIC_GATE
 
 
-      - name: Print sanitized timing evidence on failure
-        if: ${{ failure() }}
-        shell: bash
+      - name: Report sanitized roster failure timing
+        if: ${{ failure() && matrix.group == 'employee_onboarding' }}
         run: |
-          python3 - <<'PYTRACE'
-          import pathlib,json,zipfile
-          for file in pathlib.Path('apps/web-admin/test-results').rglob('trace.zip'):
-            print('DIAGNOSTIC_TRACE',file.parent.name)
-            with zipfile.ZipFile(file) as trace:
-              for member in trace.namelist():
-                if not member.endswith('.trace'):continue
-                calls={}
-                for line in trace.read(member).splitlines():
-                  event=json.loads(line)
-                  if event.get('type')=='before' and event.get('class')=='Test':calls[event['callId']]=event
-                  if event.get('type')=='after' and event.get('callId') in calls:
-                    start=calls[event['callId']]
-                    title=start.get('title','').split(' ',1)[0]
-                    print(json.dumps({'action':title,'sourceLine':next((x.get('line') for x in start.get('stack',[]) if x.get('file','').endswith('project-roster-real.e2e.ts')),None),'startedMs':start.get('startTime'),'durationMs':round(event['endTime']-start['startTime'],1),'failed':bool(event.get('error'))}))
-          PYTRACE
+          python3 - <<'PY'
+          import pathlib,json,zipfile,math
+          files=sorted(pathlib.Path('apps/web-admin/test-results/project-roster-real').rglob('trace.zip'));actions=[]
+          def numeric(value):return type(value) in (int,float) and math.isfinite(value)
+          try:
+            for file in files:
+              events=[]
+              with zipfile.ZipFile(file) as trace:
+                for member in trace.infolist():
+                  if member.filename=='test.trace' and member.file_size<=16*1024*1024:
+                    events.extend(json.loads(line) for line in trace.read(member).splitlines())
+              starts=[event for event in events if event.get('type')=='before' and event.get('class')=='Test' and numeric(event.get('startTime'))]
+              origin=min((event['startTime'] for event in starts),default=0);calls={event.get('callId'):event for event in starts}
+              for event in events:
+                if event.get('type')!='after' or event.get('callId') not in calls or not numeric(event.get('endTime')):continue
+                before=calls[event['callId']]
+                frames=[frame for frame in before.get('stack',[]) if str(frame.get('file','')).endswith('project-roster-real.e2e.ts')]
+                if not frames or event['endTime']<before['startTime']:continue
+                word=before.get('title','').split(' ',1)[0].lower()
+                action=word if word in {'navigate','fill','click','expect','create','close'} else 'other'
+                line=frames[0].get('line');line=line if type(line) is int and 0<line<=1000000 else None
+                actions.append({'action':action,'sourceLine':line,'testElapsedAtStartMs':round(before['startTime']-origin),'durationMs':round(event['endTime']-before['startTime']),'failed':'error' in event})
+            print(json.dumps({'status':'collected' if actions else 'unavailable','traces':len(files),'actions':actions}))
+          except (OSError,ValueError,zipfile.BadZipFile,TypeError,KeyError):
+            print(json.dumps({'status':'unavailable','traces':len(files),'actions':[]}))
+          PY

@@ -388,22 +388,27 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     const employee = await person();
     const projectRow = await project();
     const managers = [manager];
-    for (let index = 1; index < 100; index += 1) managers.push(await person("comprehensive_director"));
-    const env: NodeJS.ProcessEnv = { ...process.env, ROSTER_API_URL: base, ROSTER_MANAGER_PHONE: manager.phone!,
-      ROSTER_MANAGER_PHONES: JSON.stringify(managers.map(person => person.phone!)),
-      ROSTER_EMPLOYEE_PHONE: employee.phone!, ROSTER_PROJECT_NAME: projectRow.name };
-    delete env.JEST_WORKER_ID;
-    const output = await new Promise<{ status: number | null; output: string }>((resolve, reject) => {
-      const child = spawn("pnpm", ["--filter", "@jiangkong/web-admin", "exec", "playwright", "test", "--config", "playwright.project-roster-real.config.ts", "--project", "mobile", "--repeat-each", "100", "--max-failures", "1"], {
-        cwd: path.resolve(__dirname, "../../../.."), env, stdio: ["ignore", "pipe", "pipe"]
+    for (let index = 1; index < 20; index += 1) managers.push(await person("comprehensive_director"));
+    for (let pairIndex = 0; pairIndex < managers.length; pairIndex += 1) {
+      const pairManager = managers[pairIndex]!;
+      const env: NodeJS.ProcessEnv = { ...process.env, ROSTER_API_URL: base, ROSTER_MANAGER_PHONE: pairManager.phone!,
+        ROSTER_MANAGER_PHONES: JSON.stringify([pairManager.phone!]),
+        ROSTER_EMPLOYEE_PHONE: employee.phone!, ROSTER_PROJECT_NAME: projectRow.name };
+      delete env.JEST_WORKER_ID;
+      console.info("[DEBUG-d5f8-roster-pair]" + JSON.stringify({ pair: pairIndex + 1, status: "started" }));
+      const output = await new Promise<{ status: number | null; output: string }>((resolve, reject) => {
+        const child = spawn("pnpm", ["--filter", "@jiangkong/web-admin", "exec", "playwright", "test", "--config", "playwright.project-roster-real.config.ts", "--max-failures", "1"], {
+          cwd: path.resolve(__dirname, "../../../.."), env, stdio: ["ignore", "pipe", "pipe"]
+        });
+        let output = "";
+        child.stdout.on("data", (data) => { output += String(data); });
+        child.stderr.on("data", (data) => { output += String(data); });
+        child.on("error", reject);
+        child.on("close", (status) => resolve({ status, output }));
       });
-      let output = "";
-      child.stdout.on("data", (data) => { output += String(data); });
-      child.stderr.on("data", (data) => { output += String(data); });
-      child.on("error", reject);
-      child.on("close", (status) => resolve({ status, output }));
-    });
-    if (output.status !== 0) throw new Error(output.output);
-    console.info(output.output);
+      if (output.status !== 0) throw new Error(output.output);
+      console.info(output.output);
+      console.info("[DEBUG-d5f8-roster-pair]" + JSON.stringify({ pair: pairIndex + 1, status: "passed" }));
+    }
   }, 1_800_000);
 });
