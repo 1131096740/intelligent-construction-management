@@ -39,16 +39,22 @@ function containsResponsibility(node: unknown, userId: string) {
   const preciseRoles = Array.isArray(frozen.roleKeys) && frozen.roleKeys.every((role) =>
     typeof role === "string" && ROLE_KEYS.includes(role as RoleKey)) &&
     (frozen.approvedRoleKeys === undefined || (Array.isArray(frozen.approvedRoleKeys) && frozen.approvedRoleKeys.every((role) => roleKeys.includes(role))));
+  const byRole = frozen.candidateUserIdsByRole;
+  const candidateMap = byRole && typeof byRole === "object" && !Array.isArray(byRole) ? byRole as Record<string, unknown> : null;
+  const completeMapping = preciseRoles && roleKeys.length > 0 && candidateMap !== null &&
+    Object.keys(candidateMap).every((role) => roleKeys.includes(role)) && roleKeys.every((role) => {
+      const candidates = candidateMap[role];
+      return Object.prototype.hasOwnProperty.call(candidateMap, role) && Array.isArray(candidates) && candidates.length > 0 &&
+        candidates.every((id) => typeof id === "string" && id.length > 0 && id.trim() === id);
+    });
   if (frozenCandidateUserIds(frozen).includes(userId)) {
-    const byRole = frozen.candidateUserIdsByRole;
-    const mappedRoles = preciseRoles && byRole && typeof byRole === "object" && !Array.isArray(byRole)
-      ? roleKeys.filter((role) => Array.isArray((byRole as Record<string, unknown>)[role]) &&
-        ((byRole as Record<string, unknown>)[role] as unknown[]).includes(userId)) : [];
-    // A role mapping can prove that this person's signatures are complete.
+    const mappedRoles = completeMapping && candidateMap
+      ? roleKeys.filter((role) => (candidateMap[role] as string[]).includes(userId)) : [];
+    // Only a complete role mapping can prove that this person's signatures are complete.
     // Legacy unions or incomplete mappings cannot prove it and remain blocked.
     if (!mappedRoles.length || mappedRoles.some((role) => pendingRoles.includes(role))) return true;
   }
   const assignments = Array.isArray(frozen.assignments) ? frozen.assignments as FrozenApprovalAssignment[] : [];
   return assignments.some((assignment) => (assignment.toUserId === userId || assignment.fromUserId === userId) &&
-    (!preciseRoles || typeof assignment.fromRoleKey !== "string" || !roleKeys.includes(assignment.fromRoleKey) || pendingRoles.includes(assignment.fromRoleKey)));
+    (!completeMapping || typeof assignment.fromRoleKey !== "string" || !roleKeys.includes(assignment.fromRoleKey) || pendingRoles.includes(assignment.fromRoleKey)));
 }

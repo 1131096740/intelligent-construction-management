@@ -394,6 +394,19 @@ pg("精简人事办理 HTTP / PostgreSQL 16", () => {
     expect(removal.status).toBe(201); expect(removal.body.canApply).toBe(true);
     expect((await request("/organization/role-changes/apply", chairman.token,
       { ...remove, snapshotHash: removal.body.snapshotHash, confirmationPassword: password })).status).toBe(201);
+    // Removing an already signed role does not prove that a missing remaining-role map is safe.
+    const signedBefore = await snapshot(signed.id);
+    const incomplete = [{ ...frozenNodes[0], candidateUserIdsByRole: { contract_director: [signed.id] } }];
+    await db.approvalInstance.update({ where: { id: active.id }, data: { frozenNodes: incomplete } });
+    const incompleteCommand = await offboardCommand(signed.id);
+    const incompletePreview = await request("/organization/personnel-changes/preview", chairman.token, incompleteCommand);
+    expect(incompletePreview.body.canApply).toBe(false);
+    expect(incompletePreview.body.blockingReasons.join("；")).toContain("冻结审批");
+    expect((await apply(chairman.token, incompleteCommand, incompletePreview.body)).status).toBe(409);
+    expect((await request(`/organization/users/${signed.id}`, chairman.token,
+      { isActive: false, confirmationPassword: password }, "PATCH")).status).toBe(400);
+    expect(await snapshot(signed.id)).toEqual(signedBefore);
+    await db.approvalInstance.update({ where: { id: active.id }, data: { frozenNodes } });
     const pendingBefore = await snapshot(pending.id);
     const pendingCommand = await offboardCommand(pending.id);
     const pendingPreview = await request("/organization/personnel-changes/preview", chairman.token, pendingCommand);

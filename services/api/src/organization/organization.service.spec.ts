@@ -959,6 +959,18 @@ describe("OrganizationService permission integrity", () => {
 });
 
 describe("OrganizationService core writes", () => {
+  it("未签岗位的冻结映射缺失时，旧停用入口不能仅按本人已签岗位放行", async () => {
+    const harness = createWriteHarness();
+    harness.tx.approvalInstance.findMany.mockResolvedValue([{ applicantUserId: "other-user", currentNodeIndex: 0,
+      frozenNodes: [{ name: "历史映射待核对", mode: "all", roleKeys: ["contract_staff", "finance_staff"],
+        approvedRoleKeys: ["contract_staff"], candidateUserIds: ["user-2", "other-user"],
+        candidateUserIdsByRole: { contract_staff: ["user-2"] } }] }]);
+    await expect(harness.service.updateUser("user-2", "actor-1", {
+      isActive: false, confirmationPassword: "current-password"
+    })).rejects.toThrow("冻结审批任务");
+    expect(harness.tx.user.update).not.toHaveBeenCalled();
+  });
+
   it("会签本人岗位已完成且仅另一岗位未办时，旧停用入口不继续占用已完成候选", async () => {
     const harness = createWriteHarness();
     harness.tx.approvalInstance.findMany.mockResolvedValue([{ applicantUserId: "applicant", currentNodeIndex: 0,

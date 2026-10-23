@@ -51,4 +51,21 @@ describe("员工离职仅保护尚未完成的冻结责任", () => {
     expect(reasons("legacy-from", [legacy])).not.toEqual([]);
     expect(reasons("legacy-to", [legacy])).not.toEqual([]);
   });
+
+  it("未签岗位缺失或畸形映射时，已签候选与其转审双方仍保留责任阻断", () => {
+    for (const candidateUserIdsByRole of [
+      { contract_staff: ["u"] },
+      { contract_staff: ["u"], finance_staff: null },
+      { contract_staff: ["u"], finance_staff: [] },
+      { contract_staff: ["u"], finance_staff: [" "] },
+      { contract_staff: ["u"], finance_staff: ["v", 42] }
+    ]) {
+      const incomplete = { name: "旧会签映射待核对", mode: "all", roleKeys: ["contract_staff", "finance_staff"],
+        approvedRoleKeys: ["contract_staff"], candidateUserIds: ["u", "v"], candidateUserIdsByRole };
+      expect(reasons("u", [incomplete])).not.toEqual([]);
+      const transferred = { ...incomplete, assignments: [{ kind: "transfer", fromUserId: "u", toUserId: "old-transfer", fromRoleKey: "contract_staff" }] };
+      expect(reasons("u", [transferred])).not.toEqual([]);
+      expect(reasons("old-transfer", [transferred])).not.toEqual([]);
+    }
+  });
 });
