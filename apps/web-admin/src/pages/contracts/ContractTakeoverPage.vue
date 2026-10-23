@@ -5628,6 +5628,7 @@ input[type="date"] {
 
 .detail-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -5938,6 +5939,10 @@ input[type="date"] {
 }
 
 @container takeover-detail (max-width: 720px) {
+  .pricing-readonly-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .detail-list.compact,
   .post-verification-counts,
   .evidence-uploader,
