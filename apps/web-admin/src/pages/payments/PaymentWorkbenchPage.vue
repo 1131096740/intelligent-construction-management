@@ -1,5 +1,5 @@
 <template>
-  <section class="payment-workbench-page">
+  <section class="payment-workbench-page jg-responsive-flow">
     <BusinessPageHeader
       title="付款工作台"
       description="选择有效付款来源，录入本次申请金额，并在提交前完成付款事实复核。"
@@ -1088,6 +1088,24 @@ onMounted(() => {
 
   .create-field--wide {
     grid-column: span 2;
+  }
+}
+
+@container jg-page (max-width: 720px) {
+  .create-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .create-field--wide {
+    grid-column: auto;
+  }
+
+  .create-actions {
+    flex-wrap: wrap;
+  }
+
+  .create-actions > div {
+    flex-basis: 100%;
   }
 }
 </style>

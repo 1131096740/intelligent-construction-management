@@ -8,6 +8,7 @@
         v-if="ready && !completed && handoffActionEnabled('complete_canvas_signature_handoff')"
         preview-url=""
         :busy="busy"
+        :save-error="messageTone === 'error' ? message : ''"
         @save="complete"
       />
       <t-alert

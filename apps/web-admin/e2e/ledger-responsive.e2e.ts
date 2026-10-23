@@ -1,19 +1,14 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import {
-  expectHorizontalScrollOwner,
+  expectBusinessContentWithinViewport,
+  expectHorizontalScrollOwnerIfNeeded,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+import { responsiveViewports } from "./helpers/responsive-viewports";
 
-const viewports = [
-  { width: 1512, height: 982 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 800 },
-  { width: 1180, height: 820 },
-  { width: 1024, height: 768 },
-  { width: 900, height: 768 }
-] as const;
+test.setTimeout(90_000);
 
 const workItem = {
   id: "approval-responsive",
@@ -176,7 +171,7 @@ async function login(page: Page) {
   await page.getByRole("button", { name: "登录" }).click();
 }
 
-test("五类业务台账在六档桌面窗口中只由数据区横向滚动", async ({ page }, testInfo) => {
+test("五类业务台账在手机、平板和电脑中只由数据区横向滚动", async ({ page }, testInfo) => {
   await mockSession(page);
   await login(page);
   const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
@@ -188,15 +183,16 @@ test("五类业务台账在六档桌面窗口中只由数据区横向滚动", as
     { path: "/全局搜索", heading: "全局搜索", slug: "global-search", table: true }
   ] as const;
 
-  for (const viewport of viewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     for (const ledger of ledgers) {
       await page.goto(ledger.path);
       await expect(page.getByRole("heading", { name: ledger.heading })).toBeVisible();
       await expectNoDocumentHorizontalOverflow(page);
       await expectNoNestedHorizontalScrollers(page);
-      if (ledger.table && viewport.width <= 1280) {
-        await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content").first());
+      await expectBusinessContentWithinViewport(page);
+      if (ledger.table) {
+        await expectHorizontalScrollOwnerIfNeeded(page.locator(".jg-table-region .t-table__content").first());
       }
       await page.screenshot({
         path: path.join(screenshotDir, `${ledger.slug}-${viewport.width}x${viewport.height}.png`),
