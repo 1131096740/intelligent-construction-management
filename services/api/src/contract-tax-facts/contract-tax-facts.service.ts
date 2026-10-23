@@ -171,7 +171,7 @@ export class ContractTaxFactsService {
           kind: revision.kind
         }
       });
-      return this.revisionReadModel(revision);
+      return this.revisionReadModel(revision, actorUserId);
     });
   }
 
@@ -199,7 +199,7 @@ export class ContractTaxFactsService {
         throw new ForbiddenException("只能删除或放弃自己创建的税务事实修订");
       }
       if (revision.status === "abandoned") {
-        return { ...this.revisionReadModel(revision), idempotent: true };
+        return { ...this.revisionReadModel(revision, actorUserId), idempotent: true };
       }
       if (revision.status === "confirmed") {
         throw new ConflictException("已确认的税务事实不能放弃，请发起新的税务修订");
@@ -265,7 +265,7 @@ export class ContractTaxFactsService {
           abandonedByUserId: actorUserId,
           abandonReason: pristine ? null : reason,
           updatedAt: now
-        }),
+        }, actorUserId),
         action: expectedAction,
         idempotent: false
       };
@@ -335,7 +335,7 @@ export class ContractTaxFactsService {
         businessId: revision.id,
         metadata: { projectId, takeoverId, contractVersionId: context.version.id }
       });
-      return this.revisionReadModel(updated);
+      return this.revisionReadModel(updated, actorUserId);
     });
   }
 
@@ -378,7 +378,7 @@ export class ContractTaxFactsService {
         businessId: revision.id,
         metadata: { projectId, takeoverId, contractVersionId: context.version.id }
       });
-      return this.revisionReadModel(updated);
+      return this.revisionReadModel(updated, actorUserId);
     });
   }
 
@@ -441,7 +441,7 @@ export class ContractTaxFactsService {
         businessId: revision.id,
         metadata: { projectId, takeoverId, contractVersionId: context.version.id, comment }
       });
-      return this.revisionReadModel(updated);
+      return this.revisionReadModel(updated, actorUserId);
     });
   }
 
@@ -490,7 +490,7 @@ export class ContractTaxFactsService {
           businessId: revision.id,
           metadata: { projectId, takeoverId, contractVersionId: context.version.id, comment }
         });
-        return this.revisionReadModel(rejected);
+        return this.revisionReadModel(rejected, actorUserId);
       }
 
       const candidate = this.candidateFromRevision(revision);
@@ -621,7 +621,7 @@ export class ContractTaxFactsService {
           comment
         }
       });
-      return this.revisionReadModel(confirmed);
+      return this.revisionReadModel(confirmed, actorUserId);
     });
   }
 
@@ -890,7 +890,7 @@ export class ContractTaxFactsService {
     abandonReason?: string | null;
     createdAt: Date;
     updatedAt: Date;
-  }, actorUserId?: string) {
+  }, actorUserId: string | undefined) {
     const terminal = ["confirmed", "abandoned"].includes(revision.status);
     const pristine = revision.status === "draft" && !revision.submittedAt;
     const owns = Boolean(actorUserId) && revision.createdByUserId === actorUserId;

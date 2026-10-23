@@ -249,15 +249,7 @@ jobs:
           pnpm --dir "$legacy_root" fetch --ignore-scripts
           test "$(sha256sum "$legacy_root/pnpm-lock.yaml" | cut -d ' ' -f 1)" = "$lock_sha"
 
-      - name: Install seed layout PDF runtime
-        if: ${{ matrix.group != 'pol113_pol115_business_entries' && matrix.group != 'contract_finance_acceptance' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libreoffice-writer fonts-noto-cjk
-          command -v soffice
-
-      - name: Install POL-113/POL-115 browser and document runtimes
-        if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
+      - name: Prefer official HTTPS Ubuntu mirrors
         run: |
           sudo python3 - <<'PY'
           from pathlib import Path
@@ -272,6 +264,17 @@ jobs:
                       raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
                   mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
           PY
+
+      - name: Install seed layout PDF runtime
+        if: ${{ matrix.group != 'pol113_pol115_business_entries' && matrix.group != 'contract_finance_acceptance' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer fonts-noto-cjk
+          command -v soffice
+
+      - name: Install POL-113/POL-115 browser and document runtimes
+        if: ${{ matrix.group == 'pol113_pol115_business_entries' }}
+        run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk
           command -v soffice
@@ -283,19 +286,6 @@ jobs:
       - name: Install contract finance browser and document runtimes
         if: ${{ matrix.group == 'contract_finance_acceptance' }}
         run: |
-          sudo python3 - <<'PY'
-          from pathlib import Path
-          mirrors = Path('/etc/apt/apt-mirrors.txt')
-          if mirrors.is_file():
-              lines = mirrors.read_text().splitlines(keepends=True)
-              azure = 'http://azure.archive.ubuntu.com/ubuntu/'
-              official = {'https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/'}
-              urls = [line.split()[0] for line in lines if line.strip() and not line.lstrip().startswith('#')]
-              if azure in urls:
-                  if not official.intersection(urls):
-                      raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
-                  mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
-          PY
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk
           command -v soffice
@@ -306,19 +296,6 @@ jobs:
       - name: Install POL-109 browser runtime
         if: ${{ matrix.group == 'project_close_profit_pol109' }}
         run: |
-          sudo python3 - <<'PY'
-          from pathlib import Path
-          mirrors = Path('/etc/apt/apt-mirrors.txt')
-          if mirrors.is_file():
-              lines = mirrors.read_text().splitlines(keepends=True)
-              azure = 'http://azure.archive.ubuntu.com/ubuntu/'
-              official = {'https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/'}
-              urls = [line.split()[0] for line in lines if line.strip() and not line.lstrip().startswith('#')]
-              if azure in urls:
-                  if not official.intersection(urls):
-                      raise SystemExit('Missing official HTTPS Ubuntu mirror; refusing to change mirrors')
-                  mirrors.write_text(''.join(line for line in lines if not line.split() or line.split()[0] != azure))
-          PY
           browser_path="$RUNNER_TEMP/pol109-playwright"
           echo "PLAYWRIGHT_BROWSERS_PATH=$browser_path" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$browser_path" pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
@@ -343,6 +320,36 @@ jobs:
             --group "$DYNAMIC_GROUP" \
             --candidate-sha "$candidate_sha" \
             --confirm LOCAL_PG16_DYNAMIC_GATE
+
+      - name: Report sanitized roster failure timing
+        if: ${{ failure() && matrix.group == 'employee_onboarding' }}
+        run: |
+          python3 - <<'PY'
+          import pathlib,json,zipfile,math
+          files=sorted(pathlib.Path('apps/web-admin/test-results/project-roster-real').rglob('trace.zip'));actions=[]
+          def numeric(value):return type(value) in (int,float) and math.isfinite(value)
+          try:
+            for file in files:
+              events=[]
+              with zipfile.ZipFile(file) as trace:
+                for member in trace.infolist():
+                  if member.filename=='test.trace' and member.file_size<=16*1024*1024:
+                    events.extend(json.loads(line) for line in trace.read(member).splitlines())
+              starts=[event for event in events if event.get('type')=='before' and event.get('class')=='Test' and numeric(event.get('startTime'))]
+              origin=min((event['startTime'] for event in starts),default=0);calls={event.get('callId'):event for event in starts}
+              for event in events:
+                if event.get('type')!='after' or event.get('callId') not in calls or not numeric(event.get('endTime')):continue
+                before=calls[event['callId']]
+                frames=[frame for frame in before.get('stack',[]) if str(frame.get('file','')).endswith('project-roster-real.e2e.ts')]
+                if not frames or event['endTime']<before['startTime']:continue
+                word=before.get('title','').split(' ',1)[0].lower()
+                action=word if word in {'navigate','fill','click','expect','create','close'} else 'other'
+                line=frames[0].get('line');line=line if type(line) is int and 0<line<=1000000 else None
+                actions.append({'action':action,'sourceLine':line,'testElapsedAtStartMs':round(before['startTime']-origin),'durationMs':round(event['endTime']-before['startTime']),'failed':'error' in event})
+            print(json.dumps({'status':'collected' if actions else 'unavailable','traces':len(files),'actions':actions}))
+          except (OSError,ValueError,zipfile.BadZipFile,TypeError,KeyError):
+            print(json.dumps({'status':'unavailable','traces':len(files),'actions':[]}))
+          PY
 
   release-gates:
     name: Release gates

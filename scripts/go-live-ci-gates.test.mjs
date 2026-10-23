@@ -58,61 +58,58 @@ test("POL-275 CI prefetch preserves the reviewed lockfile and cleans up on succe
   }
 });
 
-for (const [stepName, group] of [
-  ["Install POL-113/POL-115 browser and document runtimes", "pol113_pol115_business_entries"],
-  ["Install POL-109 browser runtime", "project_close_profit_pol109"],
-  ["Install contract finance browser and document runtimes", "contract_finance_acceptance"]
-]) {
-  test(`${stepName} removes only the Azure mirror with an existing official HTTPS fallback`, async () => {
-    const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
-    const start = workflow.indexOf(`      - name: ${stepName}\n`);
-    assert.notEqual(start, -1);
-    const end = workflow.indexOf("\n      - name:", start + 1);
-    const block = workflow.slice(start, end === -1 ? undefined : end);
-    const step = /        if: (.+)\n        run: \|\n          sudo python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(block);
-    assert.ok(step);
-    assert.equal(step[1], "${{ matrix.group == '" + group + "' }}");
-    const directory = await mkdtemp(join(tmpdir(), "pol113-apt-mirrors-test-"));
-    const mirrors = join(directory, "apt-mirrors.txt");
-    const signedSources = "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-security\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
-    const source = step[2].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors));
-    const azure = "http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n";
-    const archive = "https://archive.ubuntu.com/ubuntu/\tpriority:2\n";
-    const security = "https://security.ubuntu.com/ubuntu/\tpriority:3\n";
-    const other = "# keep comments\nhttp://azure.archive.ubuntu.com/ubuntu-other/\tpriority:4\nhttps://azure.archive.ubuntu.com/ubuntu/\tpriority:5\n";
-    const cases = [
-      [azure + archive + security + other, archive + security + other, true],
-      [azure + security, security, true],
-      [azure + "http://archive.ubuntu.com/ubuntu/\n", null, false],
-      [azure + "# https://archive.ubuntu.com/ubuntu/\n", null, false],
-      [archive + security + other, archive + security + other, true],
-      ["", "", true],
-      [null, null, true]
-    ];
-    try {
-      await writeFile(join(directory, "ubuntu.sources"), signedSources);
-      for (const [input, expected, success] of cases) {
-        await rm(mirrors, { force: true });
-        if (input !== null) await writeFile(mirrors, input);
-        const result = spawnSync("python3", ["-c", source], { encoding: "utf8" });
-        assert.equal(result.status === 0, success, result.stderr);
-        if (!success) assert.match(result.stderr, /Missing official HTTPS Ubuntu mirror/u);
-        if (input !== null) {
-          assert.equal(await readFile(mirrors, "utf8"), success ? expected : input);
-          if (success) {
-            const repeated = spawnSync("python3", ["-c", source], { encoding: "utf8" });
-            assert.equal(repeated.status, 0, repeated.stderr);
-            assert.equal(await readFile(mirrors, "utf8"), expected);
-          }
-        } else assert.deepEqual(await readdir(directory), ["ubuntu.sources"]);
-        assert.equal(await readFile(join(directory, "ubuntu.sources"), "utf8"), signedSources);
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true });
+test("all PostgreSQL runtime installs remove only Azure with an existing official HTTPS fallback", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
+  const start = dynamic.indexOf("      - name: Prefer official HTTPS Ubuntu mirrors\n");
+  assert.notEqual(start, -1);
+  for (const runtime of ["Install seed layout PDF runtime", "Install POL-113/POL-115 browser and document runtimes", "Install contract finance browser and document runtimes", "Install POL-109 browser runtime", "Install employee onboarding browser runtime"]) {
+    assert.ok(dynamic.indexOf(`      - name: ${runtime}\n`) > start, `${runtime} must use the prepared mirror list`);
+  }
+  const end = dynamic.indexOf("\n      - name:", start + 1);
+  const block = dynamic.slice(start, end);
+  assert.doesNotMatch(block, /^        if:/mu);
+  const step = /        run: \|\n          sudo python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(block);
+  assert.ok(step);
+  const directory = await mkdtemp(join(tmpdir(), "ci-apt-mirrors-test-"));
+  const mirrors = join(directory, "apt-mirrors.txt");
+  const signedSources = "Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-security\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n";
+  const source = step[1].replace(/^          /gmu, "").replace("'/etc/apt/apt-mirrors.txt'", JSON.stringify(mirrors));
+  const azure = "http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n";
+  const archive = "https://archive.ubuntu.com/ubuntu/\tpriority:2\n";
+  const security = "https://security.ubuntu.com/ubuntu/\tpriority:3\n";
+  const other = "# keep comments\nhttp://azure.archive.ubuntu.com/ubuntu-other/\tpriority:4\nhttps://azure.archive.ubuntu.com/ubuntu/\tpriority:5\n";
+  const cases = [
+    [azure + archive + security + other, archive + security + other, true],
+    [azure + security, security, true],
+    [azure + "http://archive.ubuntu.com/ubuntu/\n", null, false],
+    [azure + "# https://archive.ubuntu.com/ubuntu/\n", null, false],
+    [archive + security + other, archive + security + other, true],
+    ["", "", true],
+    [null, null, true]
+  ];
+  try {
+    await writeFile(join(directory, "ubuntu.sources"), signedSources);
+    for (const [input, expected, success] of cases) {
+      await rm(mirrors, { force: true });
+      if (input !== null) await writeFile(mirrors, input);
+      const result = spawnSync("python3", ["-c", source], { encoding: "utf8" });
+      assert.equal(result.status === 0, success, result.stderr);
+      if (!success) assert.match(result.stderr, /Missing official HTTPS Ubuntu mirror/u);
+      if (input !== null) {
+        assert.equal(await readFile(mirrors, "utf8"), success ? expected : input);
+        if (success) {
+          const repeated = spawnSync("python3", ["-c", source], { encoding: "utf8" });
+          assert.equal(repeated.status, 0, repeated.stderr);
+          assert.equal(await readFile(mirrors, "utf8"), expected);
+        }
+      } else assert.deepEqual(await readdir(directory), ["ubuntu.sources"]);
+      assert.equal(await readFile(join(directory, "ubuntu.sources"), "utf8"), signedSources);
     }
-  });
-
-}
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("repository restores bounded CI beside the manual deploy workflow", async () => {
   const entries = await readdir(join(root, ".github", "workflows"));
@@ -347,4 +344,51 @@ test("CI binds PR head, main push and manual target to verified checkouts", asyn
     assert.match(block, /if \[ "\$CI_REQUIRE_MAIN_ANCESTOR" = true \]; then\s+git merge-base --is-ancestor "\$CI_SOURCE_SHA" origin\/main\s+fi/u);
     assert.doesNotMatch(block, /(?:git checkout|git switch|git reset)/u);
   }
+});
+
+
+test("roster failure timing reports only whitelisted metadata from authenticated traces", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = /      - name: Report sanitized roster failure timing\n        if: (.+)\n        run: \|\n          python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(workflow);
+  assert.ok(step, "missing failure timing evidence step");
+  assert.equal(step[1], "${{ failure() && matrix.group == 'employee_onboarding' }}");
+  const source = step[2].replace(/^          /gmu, "");
+  const roster = await readFile(join(root, "apps/web-admin/playwright.project-roster-real.config.ts"), "utf8");
+  const onboarding = await readFile(join(root, "apps/web-admin/playwright.employee-onboarding.config.ts"), "utf8");
+  const rosterOutput = /outputDir: "([^"]+)"/u.exec(roster)?.[1];
+  const onboardingOutput = /outputDir: "([^"]+)"/u.exec(onboarding)?.[1];
+  assert.ok(rosterOutput && onboardingOutput, "each command must own an explicit output directory");
+  assert.notEqual(rosterOutput, onboardingOutput);
+  assert.ok(!rosterOutput.startsWith(`${onboardingOutput}/`) && !onboardingOutput.startsWith(`${rosterOutput}/`));
+  assert.ok(source.includes(`Path('apps/web-admin/${rosterOutput}')`), "CI must read the retained roster evidence");
+  const directory = await mkdtemp(join(tmpdir(), "roster-trace-privacy-"));
+  const secret = "NEVER_PRINT_AUTHENTICATION_FIXTURE";
+  const fixture = String.raw`import pathlib,json,zipfile,sys
+p=pathlib.Path(sys.argv[1])/'apps/web-admin/test-results/project-roster-real/synthetic';p.mkdir(parents=True,exist_ok=True)
+secret=${JSON.stringify(secret)}
+rows=[{'type':'before','class':'Test','method':'pw:api','callId':'1','startTime':100,'title':'Fill '+secret,'params':{'password':secret},'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':13}]},
+ {'type':'after','callId':'1','endTime':30100,'error':{'message':secret}},
+ {'type':'before','class':'Test','method':'pw:api','callId':'2','startTime':30101,'title':secret,'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':secret}]},
+ {'type':'after','callId':'2','endTime':30102}]
+with zipfile.ZipFile(p/'trace.zip','w') as z:
+ z.writestr('test.trace','\n'.join(json.dumps(x) for x in rows))
+ if sys.argv[2]=='json':z.writestr('resources/private-response.json',secret)
+ elif sys.argv[2]=='invalid-trace':z.writestr('resources/private-response.trace',secret)
+ else:z.writestr('resources/forged-event.trace','\n'.join(json.dumps(x) for x in [
+  {'type':'before','class':'Test','callId':'forged','startTime':1,'title':'Click '+secret,'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':99}]},
+  {'type':'after','callId':'forged','endTime':2}]))
+`;
+  try {
+    for (const resource of ["json", "invalid-trace", "forged-trace"]) {
+      const prepared = spawnSync("python3", ["-c", fixture, directory, resource], { encoding: "utf8" });
+      assert.equal(prepared.status, 0, prepared.stderr);
+      const result = spawnSync("python3", ["-c", source], { cwd: directory, encoding: "utf8" });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(!result.stdout.includes(secret), "trace credentials must never be reported");
+      assert.deepEqual(JSON.parse(result.stdout), { status: "collected", traces: 1, actions: [
+        { action: "fill", sourceLine: 13, testElapsedAtStartMs: 0, durationMs: 30000, failed: true },
+        { action: "other", sourceLine: null, testElapsedAtStartMs: 30001, durationMs: 1, failed: false }
+      ] }, `${resource} resources must not affect test events`);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
