@@ -16,10 +16,12 @@ import {
   canManageRole,
   ORGANIZATION_MANAGER_ROLE_KEYS,
   requiresDepartmentBoundary,
-  roleScope
+  resolveRoleAssignmentScope
 } from "./organization-management-policy";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { employeeTargetNeedsChairman, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
+import { assertEngineeringDirectorAvailable } from "./organization-role-assignment-policy";
+import { recordPersonnelFact } from "./personnel-fact";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
@@ -66,21 +68,20 @@ export class OrganizationRoleService {
     ) {
       throw new ConflictException("岗位命令必须明确授予或撤销的岗位及授权范围");
     }
-    const expectedScope = roleScope(roleKey as RoleKey);
-    if (expectedScope === "global" && (scope !== "global" || projectId !== undefined)) {
-      throw new ConflictException("全局岗位命令不得携带项目范围");
+    if (projectId !== undefined && projectId !== null && (typeof projectId !== "string" || !projectId.trim())) {
+      throw new ConflictException("请选择有效项目范围");
     }
+    const expectedScope = resolveRoleAssignmentScope(roleKey as RoleKey, {
+      scope, projectId: typeof projectId === "string" ? projectId : undefined
+    });
     if (expectedScope === "project") {
-      if (scope !== "project" || typeof projectId !== "string" || !projectId.trim()) {
-        throw new ConflictException("项目岗位命令必须绑定项目");
-      }
       const project = await this.prisma.project.findUnique({
-        where: { id: projectId, isActive: true },
+        where: { id: projectId as string, isActive: true },
         select: { id: true }
       });
       if (!project) throw new ConflictException("项目不存在或已停用");
     }
-    await this.assertCanManageTargetRole(
+    await this.assertCanManageRoleInTransaction(
       this.prisma,
       actorUserId,
       targetUserId,
@@ -90,12 +91,12 @@ export class OrganizationRoleService {
   }
 
   async previewRoleAddition(actorUserId: string, input: PreviewRoleAdditionDto) {
-    await this.assertCanManageTargetRole(this.prisma, actorUserId, input.userId, input.roleKey);
+    await this.assertCanManageRoleInTransaction(this.prisma, actorUserId, input.userId, input.roleKey);
     return this.permissionImpacts.previewRoleAddition(input);
   }
 
   async previewRoleRemoval(actorUserId: string, input: PreviewRoleRemovalDto) {
-    await this.assertCanManageTargetRole(this.prisma, actorUserId, input.userId, input.roleKey);
+    await this.assertCanManageRoleInTransaction(this.prisma, actorUserId, input.userId, input.roleKey);
     return this.permissionImpacts.previewRoleRemoval(input);
   }
 
@@ -108,7 +109,7 @@ export class OrganizationRoleService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          await this.assertCanManageTargetRole(tx, actorUserId, input.userId, input.roleKey);
+          await this.assertCanManageRoleInTransaction(tx, actorUserId, input.userId, input.roleKey);
           const evaluatedAt = new Date();
           const evaluation = await this.permissionImpacts.evaluateRoleRemoval(
             tx,
@@ -147,6 +148,10 @@ export class OrganizationRoleService {
             where: { userId: evaluation.preview.change.userId, revokedAt: null },
             data: { revokedAt: evaluatedAt }
           });
+          await recordPersonnelFact(tx, { userId: evaluation.preview.change.userId, actorUserId,
+            action: "role_remove", reason: "撤销岗位", before: { assignmentId: target.id, ...evaluation.preview.change },
+            after: { removed: true, scope: evaluation.preview.change.scope,
+              projectId: evaluation.preview.change.projectId, roleKey: evaluation.preview.change.roleKey } });
           await this.audit.record(tx, {
             actorUserId,
             action: "permission.role.remove",
@@ -195,7 +200,10 @@ export class OrganizationRoleService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          await this.assertCanManageTargetRole(tx, actorUserId, input.userId, input.roleKey, "新增");
+          await this.assertCanManageRoleInTransaction(tx, actorUserId, input.userId, input.roleKey, "新增");
+          if (input.roleKey === "engineering_department_director") {
+            await assertEngineeringDirectorAvailable(tx, input.userId);
+          }
           const evaluatedAt = new Date();
           const evaluation = await this.permissionImpacts.evaluateRoleAddition(
             tx,
@@ -265,6 +273,8 @@ export class OrganizationRoleService {
             where: { userId: change.userId, revokedAt: null },
             data: { revokedAt: evaluatedAt }
           });
+          await recordPersonnelFact(tx, { userId: change.userId, actorUserId, action: "role_add", reason: "新增岗位",
+            before: {}, after: { assignmentId: assignment.id, scope: change.scope, projectId: change.projectId, roleKey: change.roleKey } });
           await this.audit.record(tx, {
             actorUserId,
             action: "permission.role.add",
@@ -336,7 +346,7 @@ export class OrganizationRoleService {
     }
   }
 
-  private async assertCanManageTargetRole(
+  async assertCanManageRoleInTransaction(
     tx: Prisma.TransactionClient | PrismaService,
     actorUserId: string,
     targetUserId: string,

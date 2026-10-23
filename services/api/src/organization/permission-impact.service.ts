@@ -90,8 +90,6 @@ export type RoleAdditionBlockingIssueCode =
   | "project_super_admin_forbidden"
   | "global_role_scope_required"
   | "project_role_scope_required"
-  | "engineering_member_requires_project_manager"
-  | "engineering_director_requires_membership"
   | "engineering_director_already_active"
   | "legacy_shadow_assignment"
   | "canonical_role_writes_not_ready";
@@ -107,8 +105,6 @@ const ADDITION_BLOCKING_ISSUE_MESSAGES: Record<RoleAdditionBlockingIssueCode, st
   project_super_admin_forbidden: "super_admin 不允许新增到项目范围",
   global_role_scope_required: "该岗位只能新增到全局范围",
   project_role_scope_required: "该岗位只能新增到项目范围",
-  engineering_member_requires_project_manager: "公司工程技术部成员必须先持有同一项目的项目经理岗位",
-  engineering_director_requires_membership: "公司工程技术部部长必须至少在一个项目同时持有工程技术部成员和项目经理岗位",
   engineering_director_already_active: "当前已有启用的公司工程技术部部长，请先预览并完成更换",
   legacy_shadow_assignment: "项目范围存在 UserPosition 遗留岗位",
   canonical_role_writes_not_ready: "权限事实完整性未通过，不能新增岗位"
@@ -740,36 +736,7 @@ export class PermissionImpactService {
     ) {
       issue("project_role_scope_required");
     }
-    if (
-      change.roleKey === "engineering_department_member" &&
-      change.scope === "project" &&
-      !projectMembers.some(
-        (row) =>
-          row.userId === change.userId &&
-          row.projectId === change.projectId &&
-          row.positionKey === "project_manager"
-      )
-    ) {
-      issue("engineering_member_requires_project_manager");
-    }
     if (change.roleKey === "engineering_department_director" && change.scope === "global") {
-      const projectManagerProjectIds = new Set(
-        projectMembers
-          .filter(
-            (row) => row.userId === change.userId && row.positionKey === "project_manager"
-          )
-          .map((row) => row.projectId)
-      );
-      if (
-        !projectMembers.some(
-          (row) =>
-            row.userId === change.userId &&
-            row.positionKey === "engineering_department_member" &&
-            projectManagerProjectIds.has(row.projectId)
-        )
-      ) {
-        issue("engineering_director_requires_membership");
-      }
       const directorPosition = positions.find(
         (row) => row.key === "engineering_department_director"
       );
@@ -832,8 +799,6 @@ export class PermissionImpactService {
       "project_super_admin_forbidden",
       "global_role_scope_required",
       "project_role_scope_required",
-      "engineering_member_requires_project_manager",
-      "engineering_director_requires_membership",
       "engineering_director_already_active",
       "legacy_shadow_assignment"
     ]);

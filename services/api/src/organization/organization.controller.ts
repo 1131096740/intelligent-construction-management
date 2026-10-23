@@ -15,6 +15,8 @@ import { OrganizationService } from "./organization.service";
 import { OrganizationRoleService } from "./organization-role.service";
 import { PermissionImpactService } from "./permission-impact.service";
 import { ORGANIZATION_MANAGER_ROLE_KEYS } from "./organization-management-policy";
+import { PersonnelLifecycleService } from "./personnel-lifecycle.service";
+import { ApplyPersonnelChangeDto, PersonnelChangeDto } from "./dto/personnel-change.dto";
 
 @Controller("organization")
 @RequirePositions("super_admin")
@@ -22,8 +24,33 @@ export class OrganizationController {
   constructor(
     private readonly organization: OrganizationService,
     private readonly permissionImpacts: PermissionImpactService,
-    private readonly organizationRoles: OrganizationRoleService
+    private readonly organizationRoles: OrganizationRoleService,
+    private readonly personnel: PersonnelLifecycleService
   ) {}
+
+  @Post("personnel-changes/preview")
+  @RequirePositions("chairman", "comprehensive_director")
+  previewPersonnel(@CurrentUser() actor: AuthenticatedUser, @Body() body: PersonnelChangeDto) {
+    return this.personnel.preview(actor.id, body);
+  }
+
+  @Post("personnel-changes/apply")
+  @RequirePositions("chairman", "comprehensive_director")
+  applyPersonnel(@CurrentUser() actor: AuthenticatedUser, @Body() body: ApplyPersonnelChangeDto) {
+    return this.personnel.apply(actor.id, body);
+  }
+
+  @Get("personnel-changes/results/:commandKey")
+  @RequirePositions("chairman", "comprehensive_director")
+  personnelResult(@CurrentUser() actor: AuthenticatedUser, @Param("commandKey") commandKey: string) {
+    return this.personnel.result(actor.id, commandKey);
+  }
+
+  @Get("users/:userId/employment")
+  @RequirePositions("chairman", "comprehensive_director")
+  employment(@CurrentUser() actor: AuthenticatedUser, @Param("userId") userId: string) {
+    return this.personnel.history(actor.id, userId);
+  }
 
   @Get("directory")
   @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)

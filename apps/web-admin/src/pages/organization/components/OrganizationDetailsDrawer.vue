@@ -67,12 +67,15 @@ async function saveUser() {
   const capability = await fetchOrganizationManagementCapabilities();
   if (!capability.canManageUsers) throw new Error("当前账号不能管理人员");
   if (!capability.manageableUserIds.includes(props.user.id)) throw new Error("当前账号不能管理该人员");
-  if (!form.departmentId || !capability.manageableDepartmentIds.includes(form.departmentId)) {
+  const departmentId = form.departmentId || null;
+  const departmentChanged = departmentId !== props.user.departmentId;
+  const reactivating = form.isActive && props.user.status === "inactive";
+  if ((departmentChanged || reactivating) && (!departmentId || !capability.manageableDepartmentIds.includes(departmentId))) {
     throw new Error("请选择可管理的启用部门");
   }
   await updateOrganizationUserWithCapability(props.user.id, buildUserPatch(
     { departmentId: props.user.departmentId, isActive: props.user.status === "active" },
-    { departmentId: form.departmentId, isActive: form.isActive }, form.confirmationPassword
+    { departmentId, isActive: form.isActive }, form.confirmationPassword
   ));
 }
 async function submit() {
@@ -126,7 +129,12 @@ async function updateOrganizationUserWithCapability(id: string, body: Parameters
     @close="!saving && emit('close')"
   >
     <div class="organization-details">
-      <t-alert v-if="message" theme="error" :title="message" :close="false" />
+      <t-alert
+        v-if="message"
+        theme="error"
+        :title="message"
+        :close="false"
+      />
       <t-alert
         v-if="user"
         theme="info"
@@ -134,14 +142,36 @@ async function updateOrganizationUserWithCapability(id: string, body: Parameters
         :close="false"
       />
       <t-form label-align="top">
-        <BusinessEntryForm v-model="entryDraft" :definition="entryDefinition" :readonly="saving" :options-by-field="{ parentId: parentOptions, departmentId: departmentOptions }" />
+        <BusinessEntryForm
+          v-model="entryDraft"
+          :definition="entryDefinition"
+          :readonly="saving"
+          :options-by-field="{ parentId: parentOptions, departmentId: departmentOptions }"
+        />
         <t-form-item label="你的当前登录密码">
-          <t-input v-model="form.confirmationPassword" type="password" autocomplete="current-password" :disabled="saving" />
+          <t-input
+            v-model="form.confirmationPassword"
+            type="password"
+            autocomplete="current-password"
+            :disabled="saving"
+          />
         </t-form-item>
       </t-form>
       <div class="drawer-actions">
-        <t-button variant="outline" :disabled="saving" @click="emit('close')">取消</t-button>
-        <t-button theme="primary" :loading="saving" @click="submit">保存调整</t-button>
+        <t-button
+          variant="outline"
+          :disabled="saving"
+          @click="emit('close')"
+        >
+          取消
+        </t-button>
+        <t-button
+          theme="primary"
+          :loading="saving"
+          @click="submit"
+        >
+          保存调整
+        </t-button>
       </div>
     </div>
   </t-drawer>

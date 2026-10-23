@@ -354,13 +354,13 @@ export function globalPositionsText(user: OrganizationDirectoryUser) {
 export function projectPositionsText(user: OrganizationDirectoryUser) {
   return (
     user.projectPositions
-      .map((position) => `${position.projectName}：${position.names.join("、") || "无"}`)
+      .map((position) => `${position.projectName}：${position.names.join("、") || "无"}${position.needsReconciliation ? `；旧任职待核对（${position.legacyPositionNames?.join("、") || "原岗位待核实"}）` : ""}`)
       .join("；") || "无"
   );
 }
 
 export function rosterProjectsText(user: OrganizationDirectoryUser) {
-  return user.rosterProjects?.map((project) => project.projectName).join("、") || "无";
+  return user.rosterProjects?.map((project) => `${project.projectName}${project.needsReconciliation ? "（旧任职待核对）" : ""}`).join("、") || "无";
 }
 
 export function activeOrganizationProjectOptions(projects: OrganizationDirectory["projects"]) {

@@ -159,7 +159,8 @@ describe("AuthService", () => {
   let prisma: {
     $transaction: jest.Mock;
     $executeRaw: jest.Mock;
-    employeeRegistration: { findUnique: jest.Mock };
+    employeeRegistration: { findFirst: jest.Mock };
+    personnelChange: { findFirst: jest.Mock; create: jest.Mock };
     user: {
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -192,7 +193,8 @@ describe("AuthService", () => {
     prisma = {
       $transaction: jest.fn(),
       $executeRaw: jest.fn().mockResolvedValue(0),
-      employeeRegistration: { findUnique: jest.fn().mockResolvedValue(null) },
+      employeeRegistration: { findFirst: jest.fn().mockResolvedValue(null) },
+      personnelChange: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
       user: {
         findUnique: jest.fn(),
         update: jest.fn()

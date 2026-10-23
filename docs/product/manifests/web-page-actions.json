@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 392,
+    "registeredActionCount": 394,
     "pageActionCount": 56,
-    "backgroundActionCount": 336,
-    "reachableVueFileCount": 192,
-    "routeRootCount": 69,
-    "totalVueFileCount": 206,
-    "parsedVueFileCount": 206,
-    "reachableProductionModuleCount": 334,
-    "templateEventDirectiveCount": 1184,
+    "backgroundActionCount": 338,
+    "reachableVueFileCount": 195,
+    "routeRootCount": 70,
+    "totalVueFileCount": 209,
+    "parsedVueFileCount": 209,
+    "reachableProductionModuleCount": 340,
+    "templateEventDirectiveCount": 1212,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 382,
-    "candidateProductionMutationConsumerCount": 382,
-    "acceptedProductionMutationConsumerCount": 382,
-    "productionMutationConsumerPairCount": 382,
+    "coveredProductionMutationConsumerCount": 384,
+    "candidateProductionMutationConsumerCount": 384,
+    "acceptedProductionMutationConsumerCount": 384,
+    "productionMutationConsumerPairCount": 384,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 355,
-    "reachableProductionModuleCount": 334,
-    "totalVueFileCount": 206,
-    "parsedVueFileCount": 206
+    "totalProductionModuleCount": 361,
+    "reachableProductionModuleCount": 340,
+    "totalVueFileCount": 209,
+    "parsedVueFileCount": 209
   },
   "actions": [
     {
@@ -1632,7 +1632,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1678,7 +1678,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2821,7 +2821,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2865,7 +2865,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5208,7 +5208,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5252,7 +5252,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -8718,10 +8718,12 @@
       "id": "employee.admin-reset",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/系统配置",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/系统配置",
         "/组织权限"
       ],
@@ -9018,10 +9020,12 @@
       "id": "employee.generate-recovery",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/系统配置",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/系统配置",
         "/组织权限"
       ],
@@ -9280,9 +9284,11 @@
       "id": "employee.review",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
@@ -9291,7 +9297,7 @@
         "event": "call",
         "handler": "reviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 229,
+        "sourceLine": 288,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11947,7 +11953,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -11991,7 +11997,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -13098,7 +13104,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -13142,7 +13148,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5458,
+              "sourceLine": 5462,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -14164,9 +14170,11 @@
       "id": "organization.department.create",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -14175,7 +14183,7 @@
         "event": "call",
         "handler": "createOrganizationDepartmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 95,
+        "sourceLine": 98,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14231,9 +14239,11 @@
       "id": "organization.department.update",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -14242,7 +14252,7 @@
         "event": "call",
         "handler": "updateOrganizationDepartmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 102,
+        "sourceLine": 105,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14298,9 +14308,11 @@
       "id": "organization.role-addition.apply",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
@@ -14372,9 +14384,11 @@
       "id": "organization.role-addition.preview",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
@@ -14446,9 +14460,11 @@
       "id": "organization.role-removal.apply",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
@@ -14520,9 +14536,11 @@
       "id": "organization.role-removal.preview",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
@@ -14594,9 +14612,11 @@
       "id": "organization.user.create",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
@@ -14605,7 +14625,7 @@
         "event": "call",
         "handler": "createOrganizationUserWithCapability",
         "kind": "background_call",
-        "sourceLine": 162,
+        "sourceLine": 175,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14668,9 +14688,11 @@
       "id": "organization.user.update",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -14679,7 +14701,7 @@
         "event": "call",
         "handler": "updateOrganizationUserWithCapability",
         "kind": "background_call",
-        "sourceLine": 109,
+        "sourceLine": 112,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16148,6 +16170,146 @@
             "localCallChain": [
               "createPaymentRequestWithCapability",
               "createPaymentRequest"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "personnel.change.apply",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/员工管理",
+        "/组织权限",
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyPersonnelWithCapability",
+        "kind": "background_call",
+        "sourceLine": 14,
+        "sourceColumn": 7
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "applyPersonnelChange",
+          "method": "POST",
+          "path": "/organization/personnel-changes/apply",
+          "normalizedKey": "POST /organization/personnel-changes/apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/personnel-changes/apply",
+            "normalizedKey": "POST /organization/personnel-changes/apply",
+            "controller": "OrganizationController",
+            "handler": "applyPersonnel",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyPersonnelWithCapability",
+              "applyPersonnelChange"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "personnel.change.preview",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/员工管理",
+        "/组织权限",
+        "/项目花名册"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewPersonnelWithCapability",
+        "kind": "background_call",
+        "sourceLine": 4,
+        "sourceColumn": 7
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "previewPersonnelChange",
+          "method": "POST",
+          "path": "/organization/personnel-changes/preview",
+          "normalizedKey": "POST /organization/personnel-changes/preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/organization/personnel-changes/preview",
+            "normalizedKey": "POST /organization/personnel-changes/preview",
+            "controller": "OrganizationController",
+            "handler": "previewPersonnel",
+            "sourceFile": "services/api/src/organization/organization.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewPersonnelWithCapability",
+              "previewPersonnelChange"
             ]
           },
           "ticketFollowups": []
@@ -20256,19 +20418,22 @@
       "id": "project.roster.apply",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/项目花名册"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
+        "/组织权限",
         "/项目花名册"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "applyWithCapability",
+        "handler": "applyRosterWithCapability",
         "kind": "background_call",
-        "sourceLine": 72,
-        "sourceColumn": 0
+        "sourceLine": 36,
+        "sourceColumn": 7
       },
       "semantic": "business_write",
       "capability": {
@@ -20303,15 +20468,15 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "applyWithCapability",
+              "applyRosterWithCapability",
               "applyProjectRosterChange"
             ]
           },
@@ -20323,19 +20488,22 @@
       "id": "project.roster.preview",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/项目花名册"
       ],
       "ownerRoutePaths": [
+        "/员工管理",
+        "/组织权限",
         "/项目花名册"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "previewWithCapability",
+        "handler": "previewRosterWithCapability",
         "kind": "background_call",
-        "sourceLine": 65,
-        "sourceColumn": 0
+        "sourceLine": 26,
+        "sourceColumn": 7
       },
       "semantic": "business_write",
       "capability": {
@@ -20370,15 +20538,15 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "previewWithCapability",
+              "previewRosterWithCapability",
               "previewProjectRosterChange"
             ]
           },

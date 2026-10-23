@@ -5,12 +5,26 @@
   >
     <div class="page-head">
       <div>
-        <h1>组织权限</h1>
-        <p>管理部门、人员账号和岗位。新增人员即开通登录账号。</p>
+        <h1>员工目录与办理</h1>
+        <p>查看员工、待审入职和任职办理；部门与账号安全在同页管理。</p>
       </div>
       <div class="page-actions">
-        <t-button v-if="capabilities?.canCreateUser" theme="primary" :disabled="refreshing" @click="createUserVisible = true">新增人员和账号</t-button>
-        <t-button v-if="capabilities?.canManageDepartments" variant="outline" :disabled="refreshing" @click="openDepartment()">新增部门</t-button>
+        <t-button
+          v-if="capabilities?.canCreateUser"
+          theme="primary"
+          :disabled="refreshing"
+          @click="createUserVisible = true"
+        >
+          新增人员和账号
+        </t-button>
+        <t-button
+          v-if="capabilities?.canManageDepartments"
+          variant="outline"
+          :disabled="refreshing"
+          @click="openDepartment()"
+        >
+          新增部门
+        </t-button>
         <t-button
           variant="outline"
           :loading="refreshing"
@@ -24,7 +38,7 @@
 
     <t-alert
       theme="info"
-      title="新增人员后，用手机号和公司初始密码登录，首次登录填写姓名并修改密码。调岗请先增加新岗位，再预览撤销原岗位；停用账号保留全部历史记录。"
+      title="新增人员后，用手机号和公司初始密码登录，首次登录填写姓名并修改密码。调动与离职先核对办理影响；账号停用保留全部历史记录。"
       :close="false"
     />
 
@@ -35,8 +49,19 @@
       :close="false"
     />
 
+    <t-alert
+      v-if="savedMessage"
+      theme="success"
+      :title="savedMessage"
+    />
     <BusinessStatusSummary :items="summaryItems" />
-    <EmployeeApplicationsCard v-if="capabilities?.canReviewApplications" :directory="directory" :capabilities="capabilities" :refresh-key="applicationRefreshKey" @approved="loadDirectory" />
+    <EmployeeApplicationsCard
+      v-if="capabilities?.canReviewApplications"
+      :directory="directory"
+      :capabilities="capabilities"
+      :refresh-key="applicationRefreshKey"
+      @approved="loadDirectory"
+    />
 
     <t-card
       v-if="isTechnicalAdmin"
@@ -114,7 +139,13 @@
           empty="暂无部门"
         >
           <template #operation="{ row }">
-            <t-button v-if="capabilities?.canManageDepartments" variant="text" @click="openDepartment(row)">调整部门</t-button>
+            <t-button
+              v-if="capabilities?.canManageDepartments"
+              variant="text"
+              @click="openDepartment(row)"
+            >
+              调整部门
+            </t-button>
           </template>
           <template #name="{ row }">
             <span class="department-name">{{ row.path }}</span>
@@ -155,7 +186,43 @@
             placeholder="全部状态"
           />
         </div>
+        <div
+          v-if="mobile"
+          class="employee-cards"
+
+          aria-label="人员目录"
+        >
+          <article
+            v-for="row in filteredUsers"
+            :key="row.id"
+            class="employee-card"
+          >
+            <strong>{{ row.name }} · {{ row.phone }}</strong>
+            <span>{{ row.departmentName }}</span>
+            <span>{{ userStatusText(row.status) }}</span>
+            <span>首次改密：{{ mustChangePasswordText(row.mustChangePassword) }}</span>
+            <span>公司岗位：{{ globalPositionsText(row) }}</span>
+            <span>项目归属：{{ rosterProjectsText(row) }}</span>
+            <span>项目岗位：{{ projectPositionsText(row) }}</span>
+            <OrganizationPersonActions
+              :user="row"
+              :can-manage="canManagePerson(row.id)"
+              :can-manage-roles="canManagePersonRoles(row.id)"
+              :can-manage-personnel="canManagePersonnel(row.id)"
+              :current-user-id="auth.user?.id"
+              @details="openPersonnel(row)"
+              @security="openUser(row)"
+              @add="openRole(row, 'add')"
+              @remove="openRole(row, 'remove')"
+              @reset="passwordResetUser = row"
+            />
+          </article>
+          <p v-if="!filteredUsers.length">
+            {{ directoryLoading ? '正在读取人员' : '暂无人员' }}
+          </p>
+        </div>
         <t-table
+          v-else
           row-key="id"
           size="small"
           :columns="userColumns"
@@ -165,13 +232,18 @@
           empty="暂无人员"
         >
           <template #operation="{ row }">
-            <div v-if="canManagePerson(row.id) || canManagePersonRoles(row.id)" class="row-actions">
-              <t-button v-if="canManagePerson(row.id)" variant="text" @click="openUser(row)">{{ row.status === 'active' ? '部门 / 停用' : '重新启用' }}</t-button>
-              <t-button v-if="canManagePersonRoles(row.id) && row.status === 'active'" variant="text" @click="openRole(row, 'add')">新增岗位</t-button>
-              <t-button v-if="canManagePersonRoles(row.id)" variant="text" @click="openRole(row, 'remove')">撤销岗位</t-button>
-              <t-button v-if="canManagePerson(row.id) && row.status === 'active'" variant="text" @click="passwordResetUser = row">重置密码</t-button>
-            </div>
-            <span v-else>{{ row.id === auth.user?.id ? '当前账号' : '无管理权限' }}</span>
+            <OrganizationPersonActions
+              :user="row"
+              :can-manage="canManagePerson(row.id)"
+              :can-manage-roles="canManagePersonRoles(row.id)"
+              :can-manage-personnel="canManagePersonnel(row.id)"
+              :current-user-id="auth.user?.id"
+              @details="openPersonnel(row)"
+              @security="openUser(row)"
+              @add="openRole(row, 'add')"
+              @remove="openRole(row, 'remove')"
+              @reset="passwordResetUser = row"
+            />
           </template>
           <template #status="{ row }">
             <t-tag
@@ -220,14 +292,57 @@
       </div>
     </t-card>
     <OrganizationUserCreationDrawer
-      v-if="createUserVisible && capabilities?.canCreateUser" visible
-      :department-options="manageableDepartmentOptions" :role-options="initialRoleOptions" :project-options="activeProjectOptions"
-      @close="createUserVisible = false" @created="finishManagement"
+      v-if="createUserVisible && capabilities?.canCreateUser"
+      visible
+      :department-options="manageableDepartmentOptions"
+      :role-options="initialRoleOptions"
+      :project-options="activeProjectOptions"
+      @close="createUserVisible = false"
+      @created="finishManagement"
     />
-    <AccountCredentialDialog v-if="passwordResetUser" :id="passwordResetUser.id" :name="passwordResetUser.name" kind="users" @close="passwordResetUser = undefined" @saved="loadDirectory" />
-    <OrganizationDetailsDrawer v-if="detailsVisible" :directory="directory" :department="selectedDepartment" :user="selectedUser" @close="detailsVisible = false" @saved="finishManagement" />
-    <OrganizationRoleAdditionDrawer v-if="roleMode === 'add'" visible :user="selectedUser ?? null" :projects="directory.projects" :positions="manageablePositions" @close="roleMode = null" @applied="finishManagement" />
-    <OrganizationRoleRemovalDrawer v-if="roleMode === 'remove'" visible :user="selectedUser ?? null" :positions="manageablePositions" @close="roleMode = null" @applied="finishManagement" />
+    <PersonnelDetailsDrawer
+      v-if="personnelUser && capabilities"
+      :visible="personnelVisible"
+      :user="personnelUser"
+      :directory="directory"
+      :capabilities="capabilities"
+      @close="personnelVisible = false"
+      @pending="pendingPersonnel = $event"
+      @saved="finishPersonnel"
+    />
+    <AccountCredentialDialog
+      v-if="passwordResetUser"
+      :id="passwordResetUser.id"
+      :name="passwordResetUser.name"
+      kind="users"
+      @close="passwordResetUser = undefined"
+      @saved="loadDirectory"
+    />
+    <OrganizationDetailsDrawer
+      v-if="detailsVisible"
+      :directory="directory"
+      :department="selectedDepartment"
+      :user="selectedUser"
+      @close="detailsVisible = false"
+      @saved="finishManagement"
+    />
+    <OrganizationRoleAdditionDrawer
+      v-if="roleMode === 'add'"
+      visible
+      :user="selectedUser ?? null"
+      :projects="directory.projects"
+      :positions="manageablePositions"
+      @close="roleMode = null"
+      @applied="finishManagement"
+    />
+    <OrganizationRoleRemovalDrawer
+      v-if="roleMode === 'remove'"
+      visible
+      :user="selectedUser ?? null"
+      :positions="manageablePositions"
+      @close="roleMode = null"
+      @applied="finishManagement"
+    />
   </section>
 </template>
 
@@ -235,6 +350,10 @@
 import { formatUnknownApiError } from "../../api/error-message";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
+import { loadPendingPersonnel } from "./personnel-pending";
+import { usePersonnelMobile } from "./use-personnel-mobile";
+import OrganizationPersonActions from "./components/OrganizationPersonActions.vue";
+import PersonnelDetailsDrawer from "./components/PersonnelDetailsDrawer.vue";
 import OrganizationUserCreationDrawer from "./components/OrganizationUserCreationDrawer.vue";
 import OrganizationDetailsDrawer from "./components/OrganizationDetailsDrawer.vue";
 import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
@@ -245,6 +364,7 @@ import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 import {
   fetchOrganizationDirectory,
+  fetchEmploymentHistory,
   fetchOrganizationManagementCapabilities,
   type OrganizationManagementCapabilities,
   type OrganizationDirectoryUser,
@@ -277,6 +397,11 @@ const emptyDirectory = (): OrganizationDirectory => ({
   positions: []
 });
 
+const mobile = usePersonnelMobile();
+const personnelUser = ref<OrganizationDirectoryUser>();
+const personnelVisible = ref(false);
+const pendingPersonnel = ref(false);
+const savedMessage = ref("");
 const directory = reactive<OrganizationDirectory>(emptyDirectory());
 const auth = useAuthStore();
 const isTechnicalAdmin = computed(
@@ -291,11 +416,22 @@ const selectedDepartment = ref<FlatOrganizationDepartment>();
 const selectedUser = ref<OrganizationDirectoryUser>();
 const roleMode = ref<"add" | "remove" | null>(null);
 const manageablePositions = computed(() => directory.positions.filter((position) => capabilities.value?.manageableRoleKeys.includes(position.key)));
-const initialRoleOptions = computed(() => manageablePositions.value.filter((position) => !["super_admin", "engineering_department_member", "engineering_department_director"].includes(position.key)).map((position) => ({ label: position.name, value: position.key })));
+const initialRoleOptions = computed(() => manageablePositions.value.filter((position) => position.key !== "super_admin").map((position) => ({ label: position.name, value: position.key })));
 const activeProjectOptions = computed(() => activeOrganizationProjectOptions(directory.projects));
 const manageableDepartmentOptions = computed(() => flatDepartments.value.filter((department) => department.isActive && capabilities.value?.manageableDepartmentIds.includes(department.id)).map((department) => ({ label: department.path, value: department.id })));
 function openDepartment(department?: FlatOrganizationDepartment) { selectedUser.value = undefined; selectedDepartment.value = department; detailsVisible.value = true; }
-function openUser(user: OrganizationDirectoryUser) { selectedDepartment.value = undefined; selectedUser.value = user; detailsVisible.value = true; }
+async function openUser(user: OrganizationDirectoryUser) {
+  if (user.status === "inactive" && canManagePersonnel(user.id)) {
+    try {
+      const history = await fetchEmploymentHistory(user.id);
+      if (history.periods.length && history.periods.every((period) => period.endedAt !== null)) { openPersonnel(user); return; }
+    } catch (error) { directoryMessage.value = formatUnknownApiError(error, "请先核对任职履历，已离职人员须办理返聘"); return; }
+  }
+  selectedDepartment.value = undefined; selectedUser.value = user; detailsVisible.value = true;
+}
+function canManagePersonnel(id: string) { return canManagePerson(id) && auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") === true; }
+function openPersonnel(user: OrganizationDirectoryUser) { if (!pendingPersonnel.value) personnelUser.value = user; personnelVisible.value = true; }
+async function finishPersonnel() { personnelVisible.value = false; savedMessage.value = "人事办理已保存"; await refreshPage(); }
 function openRole(user: OrganizationDirectoryUser, mode: "add" | "remove") { selectedUser.value = user; roleMode.value = mode; }
 function canManagePerson(id: string) { return capabilities.value?.manageableUserIds.includes(id) === true; }
 function canManagePersonRoles(id: string) { return (capabilities.value?.manageableRoleUserIds ?? capabilities.value?.manageableUserIds)?.includes(id) === true; }
@@ -386,6 +522,11 @@ async function loadDirectory() {
     const [result, access] = await Promise.all([fetchOrganizationDirectory(), fetchOrganizationManagementCapabilities()]);
     capabilities.value = access;
     Object.assign(directory, result);
+    const pending = loadPendingPersonnel(auth.user?.id ?? "");
+    if (pending && !personnelUser.value) {
+      const user = result.users.find((row) => row.id === pending.userId);
+      if (user && canManagePersonnel(user.id)) { personnelUser.value = user; pendingPersonnel.value = true; personnelVisible.value = true; }
+    }
     applicationRefreshKey.value += 1;
     directoryMessage.value = "";
   } catch (error) {
@@ -426,7 +567,8 @@ async function refreshPage() {
 </script>
 
 <style scoped>
-.row-actions { display: flex; flex-wrap: wrap; gap: var(--jg-space-xs); }
+.employee-cards, .employee-card { display: grid; min-width: 0; gap: var(--jg-space-md); }
+.employee-card { padding: var(--jg-space-md); border: var(--jg-border-width-base) solid var(--jg-border); border-radius: var(--jg-radius-md); overflow-wrap: anywhere; }
 .organization-page {
   display: flex;
   flex-direction: column;

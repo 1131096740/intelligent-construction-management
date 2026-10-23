@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "52c5236f75207c4dd5bd373427e70ae4b76813d9af2d58ab63dbf43aa37fe4e8",
+      "sha256": "f952c3ab8e38cd6bc5a7fa973e27923d1a0b12f52d0ccf36941403dd6ebf7fe2",
       "status": "ready",
       "summary": {
-        "routeCount": 688
+        "routeCount": 692
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "e270122e313514915e70cc106610858e2673f0dc9e6a0c1ab6f91c2894e3b7ea",
+      "sha256": "2ec6a9d4fe27c2d196d9afc0aeb80707a51ae03eccab6ac13f338b90ccd17d56",
       "status": "ready",
       "summary": {
         "apiModuleCount": 39,
-        "exportedFunctionCount": 664,
-        "transportWrapperCount": 642,
+        "exportedFunctionCount": 668,
+        "transportWrapperCount": 646,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 681,
+        "mainRequestBindingCount": 685,
         "ticketFollowupCount": 4,
-        "requestEdgeCount": 669,
-        "productionConsumerCount": 549,
+        "requestEdgeCount": 673,
+        "productionConsumerCount": 553,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e7a6800c05ced5b85c188b5248775cfdfa27bb660ba7143d0f02976919cd6fa6",
+      "sha256": "3121f473add42af568aa7a804ac7e6fba84924200a568a09f350cac3d5b6d395",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 392,
+        "registeredActionCount": 394,
         "pageActionCount": 56,
-        "backgroundActionCount": 336,
-        "reachableVueFileCount": 192,
-        "routeRootCount": 69,
-        "totalVueFileCount": 206,
-        "parsedVueFileCount": 206,
-        "reachableProductionModuleCount": 334,
-        "templateEventDirectiveCount": 1184,
+        "backgroundActionCount": 338,
+        "reachableVueFileCount": 195,
+        "routeRootCount": 70,
+        "totalVueFileCount": 209,
+        "parsedVueFileCount": 209,
+        "reachableProductionModuleCount": 340,
+        "templateEventDirectiveCount": 1212,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 382,
-        "candidateProductionMutationConsumerCount": 382,
-        "acceptedProductionMutationConsumerCount": 382,
-        "productionMutationConsumerPairCount": 382,
+        "coveredProductionMutationConsumerCount": 384,
+        "candidateProductionMutationConsumerCount": 384,
+        "acceptedProductionMutationConsumerCount": 384,
+        "productionMutationConsumerPairCount": 384,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "4a3a81e98d1f226e2012cf04ca40df660eb9a70f79aec49563397e18c46e62a6",
+      "sha256": "9dc81974ef1f3e601bcdb6e6e98ca335afe6412fcd4afce402d04e207cb08118",
       "status": "ready",
       "summary": {
-        "routeCount": 688,
-        "exactRouteCount": 688,
-        "normalizedRouteCount": 688,
+        "routeCount": 692,
+        "exactRouteCount": 692,
+        "normalizedRouteCount": 692,
         "classificationOverrideCount": 219,
         "consumerSurfaceOverrideCount": 38,
         "classificationOverrideSha256": "30ef73f5d88d4e1468e36bec2117c9a36d5e9bc80f91b3801f6079a3a10999f5",
         "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-        "derivedProductionPageCount": 469,
-        "pageRouteCount": 485,
+        "derivedProductionPageCount": 473,
+        "pageRouteCount": 489,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 96,
         "internalTaskCount": 37,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 538,
+          "web_api_wrapper": 542,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 688,
-    "pageRouteCount": 485,
+    "routeCount": 692,
+    "pageRouteCount": 489,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 96,
     "internalTaskRouteCount": 37,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 681,
+    "mainRequestBindingCount": 685,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 392,
-    "actionBindingCount": 452,
-    "acceptedActionBindingCount": 415,
+    "registeredActionCount": 394,
+    "actionBindingCount": 454,
+    "acceptedActionBindingCount": 417,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 382,
-    "coveredProductionMutationConsumerPairCount": 382,
+    "productionMutationConsumerPairCount": 384,
+    "coveredProductionMutationConsumerPairCount": 384,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -1545,6 +1545,7 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractBasicSection.vue",
+            "apps/web-admin/src/pages/organization/components/PersonnelDetailsDrawer.vue",
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
           ],
@@ -6102,7 +6103,8 @@
             "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
             "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
             "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
-            "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
+            "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "testConsumers": []
         }
@@ -6159,6 +6161,50 @@
     {
       "route": {
         "method": "GET",
+        "path": "/organization/personnel-changes/results/:commandKey",
+        "normalizedKey": "GET /organization/personnel-changes/results/:param",
+        "controller": "OrganizationController",
+        "handler": "personnelResult",
+        "sourceFile": "services/api/src/organization/organization.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "fetchPersonnelResult",
+          "method": "GET",
+          "path": "/organization/personnel-changes/results/:param",
+          "normalizedKey": "GET /organization/personnel-changes/results/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/components/PersonnelDetailsDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/organization/project-roster/options",
         "normalizedKey": "GET /organization/project-roster/options",
         "controller": "ProjectRosterManagementController",
@@ -6189,8 +6235,52 @@
           "normalizedKey": "GET /organization/project-roster/options",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+            "apps/web-admin/src/pages/projects/ProjectRosterPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/organization/users/:userId/employment",
+        "normalizedKey": "GET /organization/users/:param/employment",
+        "controller": "OrganizationController",
+        "handler": "employment",
+        "sourceFile": "services/api/src/organization/organization.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "fetchEmploymentHistory",
+          "method": "GET",
+          "path": "/organization/users/:param/employment",
+          "normalizedKey": "GET /organization/users/:param/employment",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
+            "apps/web-admin/src/pages/organization/components/PersonnelDetailsDrawer.vue"
           ],
           "testConsumers": []
         }
@@ -25574,6 +25664,144 @@
     {
       "route": {
         "method": "POST",
+        "path": "/organization/personnel-changes/apply",
+        "normalizedKey": "POST /organization/personnel-changes/apply",
+        "controller": "OrganizationController",
+        "handler": "applyPersonnel",
+        "sourceFile": "services/api/src/organization/organization.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "applyPersonnelChange",
+          "method": "POST",
+          "path": "/organization/personnel-changes/apply",
+          "normalizedKey": "POST /organization/personnel-changes/apply",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "personnel.change.apply",
+          "bindingIndex": 0,
+          "identity": "personnel.change.apply\u0000apps/web-admin/src/api/organization.api.ts\u0000applyPersonnelChange\u0000POST\u0000POST /organization/personnel-changes/apply\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canManageUsers",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "applyPersonnelChange",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/organization/personnel-changes/preview",
+        "normalizedKey": "POST /organization/personnel-changes/preview",
+        "controller": "OrganizationController",
+        "handler": "previewPersonnel",
+        "sourceFile": "services/api/src/organization/organization.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "previewPersonnelChange",
+          "method": "POST",
+          "path": "/organization/personnel-changes/preview",
+          "normalizedKey": "POST /organization/personnel-changes/preview",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "personnel.change.preview",
+          "bindingIndex": 0,
+          "identity": "personnel.change.preview\u0000apps/web-admin/src/api/organization.api.ts\u0000previewPersonnelChange\u0000POST\u0000POST /organization/personnel-changes/preview\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canManageUsers",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "wrapper": "previewPersonnelChange",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/organization/project-roster/apply",
         "normalizedKey": "POST /organization/project-roster/apply",
         "controller": "ProjectRosterManagementController",
@@ -25604,7 +25832,7 @@
           "normalizedKey": "POST /organization/project-roster/apply",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "testConsumers": []
         }
@@ -25617,7 +25845,7 @@
           "identity": "project.roster.apply\u0000apps/web-admin/src/api/organization.api.ts\u0000applyProjectRosterChange\u0000POST\u0000POST /organization/project-roster/apply\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canManageRoster",
@@ -25627,10 +25855,10 @@
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
           "wrapper": "applyProjectRosterChange",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -25673,7 +25901,7 @@
           "normalizedKey": "POST /organization/project-roster/preview",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "testConsumers": []
         }
@@ -25686,7 +25914,7 @@
           "identity": "project.roster.preview\u0000apps/web-admin/src/api/organization.api.ts\u0000previewProjectRosterChange\u0000POST\u0000POST /organization/project-roster/preview\u00000",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canManageRoster",
@@ -25696,10 +25924,10 @@
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
           "wrapper": "previewProjectRosterChange",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+            "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
           ],
           "causalVerified": true,
           "accepted": true,

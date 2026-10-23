@@ -347,6 +347,23 @@ test("CI binds PR head, main push and manual target to verified checkouts", asyn
 });
 
 
+test("personnel feedback runs after its real PostgreSQL shard with both browsers and original budgets", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
+  const feedback = /      - name: Verify personnel feedback and recovery on desktop and mobile\n        if: (.+)\n        run: (.+)\n/u.exec(dynamic);
+  assert.ok(feedback, "personnel feedback must be part of the required dynamic shard");
+  assert.equal(feedback[1], "${{ matrix.group == 'employee_onboarding' }}");
+  assert.equal(feedback[2], "pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.personnel-feedback.config.ts");
+  assert.ok(dynamic.indexOf(feedback[0]) > dynamic.indexOf("      - name: Run exact-SHA PostgreSQL dynamic gate shard\n"));
+  assert.match(dynamic, /Install employee onboarding browser runtime[\s\S]*?playwright install --with-deps chromium webkit/u);
+  const config = await readFile(join(root, "apps/web-admin/playwright.personnel-feedback.config.ts"), "utf8");
+  assert.match(config, /timeout: 30_000/u);
+  assert.match(config, /timeout: 120_000/u);
+  assert.match(config, /retries: 0/u);
+  assert.match(config, /devices\["Desktop Chrome"\]/u);
+  assert.match(config, /devices\["iPhone 13"\]/u);
+});
+
 test("roster failure timing reports only whitelisted metadata from authenticated traces", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const step = /      - name: Report sanitized roster failure timing\n        if: (.+)\n        run: \|\n          python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(workflow);

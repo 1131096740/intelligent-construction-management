@@ -22,7 +22,7 @@ test("按项目调入和调出普通员工", async ({ page }) => {
   await expectNoDocumentHorizontalOverflow(page);
   await drawer.getByRole("button", { name: "确认调入项目", exact: true }).click();
   await expect(drawer).toHaveCount(0);
-  const row = page.getByRole("row").filter({ hasText: process.env.ROSTER_EMPLOYEE_PHONE! });
+  const row = page.locator("tr, article.employee-card, article.application-card, article.roster-card").filter({ hasText: process.env.ROSTER_EMPLOYEE_PHONE! });
   await expect(row).toHaveCount(1);
   await row.getByRole("button", { name: "调出项目", exact: true }).click();
   await drawer.locator('[data-field="reason"] input').fill("合成验收调出");

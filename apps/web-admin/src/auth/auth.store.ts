@@ -92,6 +92,28 @@ function normalizeUser(user: AuthUser): AuthUser {
   };
 }
 
+async function sendSensitiveAccountChange(
+  session: { accessToken: string | null; refreshTokens(): Promise<boolean>; clearSession(): void },
+  send: () => Promise<Response>,
+  fallback: string
+): Promise<AuthenticatedSessionResponse> {
+  if (!session.accessToken) throw new Error("请先登录");
+  let response: Response;
+  try {
+    response = await send();
+    // A 401 is a rejected request, so renewing authentication cannot replay a committed change.
+    if (response.status === 401 && await session.refreshTokens()) response = await send();
+  } catch (error) {
+    throw new Error(formatUnknownApiError(error, fallback));
+  }
+  if (response.status === 401) {
+    session.clearSession();
+    throw new AuthRequestError("登录已过期，请返回登录后重试", 401);
+  }
+  if (!response.ok) throw new Error(formatAuthError(await response.text(), response.status, fallback));
+  return response.json() as Promise<AuthenticatedSessionResponse>;
+}
+
 export const useAuthStore = defineStore("auth", {
   state: (): AuthState => ({
     accessToken: null,
@@ -173,60 +195,20 @@ export const useAuthStore = defineStore("auth", {
       }
     },
     async changePassword(oldPassword: string, newPassword: string, name?: string) {
-      if (!this.accessToken) {
-        throw new Error("请先登录");
-      }
-
-      let response: Response;
-      try {
-        response = await fetch("/api/auth/change-password", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.accessToken}`
-          },
-          body: JSON.stringify({ oldPassword, newPassword, ...(name ? { name } : {}) })
-        });
-      } catch (error) {
-        throw new Error(formatUnknownApiError(error, "修改密码失败"));
-      }
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(formatAuthError(text, response.status, "修改密码失败"));
-      }
-
-      const result = (await response.json()) as AuthenticatedSessionResponse;
+      const result = await sendSensitiveAccountChange(this, () => fetch("/api/auth/change-password", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.accessToken}` },
+        body: JSON.stringify({ oldPassword, newPassword, ...(name ? { name } : {}) })
+      }), "修改密码失败");
       this.accessToken = result.tokens.accessToken;
       this.refreshToken = result.tokens.refreshToken;
       this.user = normalizeUser(result.user);
       this.persist();
     },
     async updateProfile(name: string, phone: string, currentPassword: string, code?: string) {
-      if (!this.accessToken) {
-        throw new Error("请先登录");
-      }
-
-      let response: Response;
-      try {
-        response = await fetch("/api/auth/profile", {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.accessToken}`
-          },
-          body: JSON.stringify({ name, phone, currentPassword, ...(code ? { code } : {}) })
-        });
-      } catch (error) {
-        throw new Error(formatUnknownApiError(error, "修改账号资料失败"));
-      }
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(formatAuthError(text, response.status, "修改账号资料失败"));
-      }
-
-      const result = (await response.json()) as AuthenticatedSessionResponse;
+      const result = await sendSensitiveAccountChange(this, () => fetch("/api/auth/profile", {
+        method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.accessToken}` },
+        body: JSON.stringify({ name, phone, currentPassword, ...(code ? { code } : {}) })
+      }), "修改账号资料失败");
       this.accessToken = result.tokens.accessToken;
       this.refreshToken = result.tokens.refreshToken;
       this.user = normalizeUser(result.user);

@@ -32,6 +32,10 @@ export class CreateOrganizationUserDto {
   @IsIn(ROLE_KEYS, { message: "初始岗位不在固定岗位清单中" })
   initialRoleKey?: RoleKey;
 
+  @IsOptional()
+  @IsIn(["global", "project"], { message: "请选择公司或项目岗位范围" })
+  initialRoleScope?: "global" | "project";
+
   @ValidateIf((value: CreateOrganizationUserDto) => value.projectId !== undefined)
   @IsString({ message: "项目标识必须是文字" })
   @IsMaxUnicodeTextLength({ max: 128, message: "项目标识不能超过 128 个字符" })

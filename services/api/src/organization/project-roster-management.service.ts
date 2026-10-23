@@ -8,6 +8,7 @@ import { PrismaService } from "../database/prisma.service";
 import { employeeManagerRoles, employeeTargetNeedsChairman, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
 import { PermissionImpactService } from "./permission-impact.service";
 import { type ApplyProjectRosterChangeDto, type ProjectRosterChangeDto } from "./dto/project-roster-change.dto";
+import { personnelFingerprint, recordPersonnelFact } from "./personnel-fact";
 
 @Injectable()
 export class ProjectRosterManagementService {
@@ -43,6 +44,23 @@ export class ProjectRosterManagementService {
     await this.auth.confirmPassword(actorId, input.confirmationPassword);
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${actorId} FOR UPDATE`;
+        await this.auth.confirmPassword(actorId, input.confirmationPassword, tx);
+        const fingerprint = personnelFingerprint({ userId: input.userId, projectId: input.projectId, operation: input.operation, reason: input.reason.trim() });
+        if (input.commandKey) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`personnel-command:${input.commandKey}`}))`;
+          const roles = await employeeManagerRoles(tx, actorId);
+          if (actorId === input.userId || (!roles.includes("chairman") && await employeeTargetNeedsChairman(tx, input.userId))) {
+            throw new ForbiddenException("当前已无权办理此人员，请联系有权人员核对");
+          }
+          const saved = await tx.personnelChange.findUnique({ where: { commandKey: input.commandKey } });
+          if (saved) {
+            if (saved.actorUserId !== actorId || saved.userId !== input.userId || saved.payloadFingerprint !== fingerprint) {
+              throw new ConflictException("此办理编号已用于其他内容，请核对原办理结果");
+            }
+            return { projectId: input.projectId, userId: input.userId, operation: input.operation, commandKey: input.commandKey };
+          }
+        }
         const preview = await this.evaluate(tx, actorId, input);
         if (preview.snapshotHash !== input.snapshotHash) {
           throw new ConflictException("人员、项目或待办已经变化，请重新预览后提交");
@@ -64,7 +82,11 @@ export class ProjectRosterManagementService {
           metadata: { userId: input.userId, reason: input.reason.trim(), removedRoles: input.operation === "leave" ? preview.projectRoleKeys : [],
             snapshotHash: preview.snapshotHash, affectedApprovals: preview.affectedApprovals }
         });
-        return { projectId: input.projectId, userId: input.userId, operation: input.operation };
+        const fact = await recordPersonnelFact(tx, { actorUserId: actorId, userId: input.userId, action: `project_${input.operation}`,
+          reason: input.reason.trim(), commandKey: input.commandKey, payloadFingerprint: fingerprint,
+          before: { projectId: input.projectId, belongs: input.operation === "leave", roles: preview.projectRoleKeys },
+          after: { projectId: input.projectId, belongs: input.operation === "join", roles: [] } });
+        return { projectId: input.projectId, userId: input.userId, operation: input.operation, commandKey: fact.commandKey };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2025", "P2034"].includes(error.code)) {

@@ -215,6 +215,34 @@ describe("useAuthStore", () => {
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('"mustChangePassword":false');
   });
 
+  it("renews an expired access credential once before retrying a rejected password change", async () => {
+    const store = await seedSession();
+    const requests: Array<{ path: string; authorization: string | null; body: unknown }> = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      const path = String(input);
+      requests.push({ path, authorization: new Headers(init?.headers).get("Authorization"), body: JSON.parse(String(init?.body)) });
+      if (path === "/api/auth/refresh") return new Response(JSON.stringify({
+        tokens: { accessToken: "renewed-access", refreshToken: "renewed-refresh", expiresIn: 900 }
+      }), { status: 200 });
+      if (requests.filter((request) => request.path === "/api/auth/change-password").length === 1) {
+        return new Response(JSON.stringify({ message: "登录凭证无效，请重新登录" }), { status: 401 });
+      }
+      return new Response(JSON.stringify({ user: store.user,
+        tokens: { accessToken: "changed-access", refreshToken: "changed-refresh", expiresIn: 900 }
+      }), { status: 200 });
+    }) as never;
+
+    await store.changePassword("Synthetic-Current-01", "Synthetic-New-01");
+
+    expect(requests).toEqual([
+      { path: "/api/auth/change-password", authorization: "Bearer access-1", body: { oldPassword: "Synthetic-Current-01", newPassword: "Synthetic-New-01" } },
+      { path: "/api/auth/refresh", authorization: null, body: { refreshToken: "refresh-1" } },
+      { path: "/api/auth/change-password", authorization: "Bearer renewed-access", body: { oldPassword: "Synthetic-Current-01", newPassword: "Synthetic-New-01" } }
+    ]);
+    expect(store.accessToken).toBe("changed-access");
+    expect(store.refreshToken).toBe("changed-refresh");
+  });
+
   it("updates the signed-in user's name and login phone with a rotated session", async () => {
     const store = await seedSession();
     globalThis.fetch = vi.fn(
@@ -241,6 +269,53 @@ describe("useAuthStore", () => {
     expect(store.user?.phone).toBe("13900000001");
     expect(store.accessToken).toBe("access-3");
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain("13900000001");
+  });
+
+  it("clears an expired session when renewal fails without resending the password change", async () => {
+    const store = await seedSession();
+    const paths: string[] = [];
+    globalThis.fetch = vi.fn(async (input) => {
+      paths.push(String(input));
+      return new Response(JSON.stringify({ message: "登录凭证无效，请重新登录" }), { status: 401 });
+    }) as never;
+
+    await expect(store.changePassword("Synthetic-Current-01", "Synthetic-New-01")).rejects.toThrow("登录已过期，请返回登录后重试");
+    expect(paths).toEqual(["/api/auth/change-password", "/api/auth/refresh"]);
+    expect(store.isAuthenticated).toBe(false);
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+  });
+
+  it("does not renew or replay a password change after an uncertain network failure", async () => {
+    const store = await seedSession();
+    globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as never;
+
+    await expect(store.changePassword("Synthetic-Current-01", "Synthetic-New-01")).rejects.toThrow();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("renews a rejected profile change once and keeps its phone-verification payload", async () => {
+    const store = await seedSession();
+    let changes = 0;
+    const bodies: unknown[] = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      if (String(input) === "/api/auth/refresh") return new Response(JSON.stringify({
+        tokens: { accessToken: "renewed-access", refreshToken: "renewed-refresh", expiresIn: 900 }
+      }), { status: 200 });
+      changes += 1;
+      bodies.push(JSON.parse(String(init?.body)));
+      if (changes === 1) return new Response("{}", { status: 401 });
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer renewed-access");
+      return new Response(JSON.stringify({ user: { ...store.user, phone: "13900000002" },
+        tokens: { accessToken: "changed-access", refreshToken: "changed-refresh", expiresIn: 900 }
+      }), { status: 200 });
+    }) as never;
+
+    await store.updateProfile("合成员工", "13900000002", "Synthetic-Current-01", "123456");
+    expect(bodies).toEqual([
+      { name: "合成员工", phone: "13900000002", currentPassword: "Synthetic-Current-01", code: "123456" },
+      { name: "合成员工", phone: "13900000002", currentPassword: "Synthetic-Current-01", code: "123456" }
+    ]);
+    expect(store.user?.phone).toBe("13900000002");
   });
 
   it("shows a business message when password change fails", async () => {

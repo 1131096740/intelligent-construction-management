@@ -290,7 +290,7 @@ describePostgres("员工入职公开 HTTP / PostgreSQL 16", () => {
       const code = sent.find((item) => item.phone === smsPhone)!.code;
       await db.smsChallenge.update({ where: { phone_purpose: { phone: smsPhone, purpose: "register" } }, data: { expiresAt: new Date(Date.now() - 1) } });
       expect((await request("/employee-onboarding/register", "POST", { phone: smsPhone, name: "过期核验", password, code })).status).toBe(400);
-      expect(await db.employeeRegistration.findUnique({ where: { phone: smsPhone } })).toBeNull();
+      expect(await db.employeeRegistration.findFirst({ where: { phone: smsPhone, status: { not: "approved" } } })).toBeNull();
     } finally { for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key]; Object.assign(process.env, previous); }
   });
 

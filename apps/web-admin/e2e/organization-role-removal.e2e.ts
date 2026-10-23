@@ -153,8 +153,8 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
-  await page.getByText("组织权限", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
+  await page.getByText("员工管理", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "员工目录与办理" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "撤销岗位" }).click();
   const globalRow = page.getByRole("row").filter({ hasText: "合同部主管" });

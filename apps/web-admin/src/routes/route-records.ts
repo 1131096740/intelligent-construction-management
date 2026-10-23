@@ -131,7 +131,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
         path: "/全局发票与清分分配",
         requiredGlobalRoleKeys: clearingRoleKeys
       },
-      { label: "项目花名册", path: "/项目花名册" }
+      { label: "员工管理", path: "/员工管理" }
     ]
   },
   {
@@ -216,11 +216,6 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       {
         label: "合作单位档案",
         path: "/business-parties"
-      },
-      {
-        label: "组织权限",
-        path: "/组织权限",
-        requiredGlobalRoleKeys: organizationAdminRoleKeys
       },
       { label: "系统配置", path: "/系统配置" }
     ]
@@ -633,6 +628,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
           requiredGlobalRoleKeys: companyEntityReaderRoleKeys,
           title: "我方公司主体"
         }
+      },
+      {
+        path: "员工管理",
+        component: () => import("../pages/organization/EmployeeManagementPage.vue"),
+        meta: { title: "员工管理" }
       },
       {
         path: "组织权限",

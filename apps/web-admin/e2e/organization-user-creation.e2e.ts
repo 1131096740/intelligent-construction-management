@@ -116,8 +116,8 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
-  await page.getByText("组织权限", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
+  await page.getByText("员工管理", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "员工目录与办理" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "新增人员和账号" }).click();
   const userDialog = page.locator(".t-drawer__header:visible").filter({ hasText: /^新增人员和账号$/u }).locator("..");
@@ -126,6 +126,8 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
   await page.locator(".t-select__dropdown:visible").getByText("合同部", { exact: true }).click();
   await userDialog.getByPlaceholder("请选择或填写初始岗位").click();
   await page.locator(".t-select__dropdown:visible").getByText("财务员", { exact: true }).click();
+  await userDialog.getByPlaceholder("请选择或填写岗位范围").click();
+  await page.locator(".t-select__dropdown:visible").getByText("公司岗位（适用全部项目）", { exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
   const passwordNotice = userDialog.getByRole("checkbox", {
@@ -146,6 +148,7 @@ test("全局管理员安全创建待本人确认人员并在成功后清空确�
       phone: "13800000001",
       departmentId: "department-1",
       initialRoleKey: "finance_staff",
+      initialRoleScope: "global",
       confirmationPassword: " current-password "
     }
   ]);

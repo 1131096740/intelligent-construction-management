@@ -43,6 +43,9 @@ export class EmployeeRoleDto {
   @IsIn(ROLE_KEYS, { message: "请选择有效岗位" })
   roleKey!: RoleKey;
   @IsOptional()
+  @IsIn(["global", "project"], { message: "请选择公司或项目岗位范围" })
+  scope?: "global" | "project";
+  @IsOptional()
   @IsString({ message: "请选择有效项目" })
   @Length(1, 128, { message: "请选择有效项目" })
   projectId?: string;

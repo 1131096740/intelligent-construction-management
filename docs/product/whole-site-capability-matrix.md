@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `52c5236f75207c4dd5bd373427e70ae4b76813d9af2d58ab63dbf43aa37fe4e8` |
-| webApiWrappers | ready | `e270122e313514915e70cc106610858e2673f0dc9e6a0c1ab6f91c2894e3b7ea` |
-| webPageActions | ready | `e7a6800c05ced5b85c188b5248775cfdfa27bb660ba7143d0f02976919cd6fa6` |
-| routeUsage | ready | `4a3a81e98d1f226e2012cf04ca40df660eb9a70f79aec49563397e18c46e62a6` |
+| nestRoutes | ready | `f952c3ab8e38cd6bc5a7fa973e27923d1a0b12f52d0ccf36941403dd6ebf7fe2` |
+| webApiWrappers | ready | `2ec6a9d4fe27c2d196d9afc0aeb80707a51ae03eccab6ac13f338b90ccd17d56` |
+| webPageActions | ready | `3121f473add42af568aa7a804ac7e6fba84924200a568a09f350cac3d5b6d395` |
+| routeUsage | ready | `9dc81974ef1f3e601bcdb6e6e98ca335afe6412fcd4afce402d04e207cb08118` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 688 |
-| pageRouteCount | 485 |
+| routeCount | 692 |
+| pageRouteCount | 489 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 96 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 681 |
+| mainRequestBindingCount | 685 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 392 |
-| actionBindingCount | 452 |
-| acceptedActionBindingCount | 415 |
+| registeredActionCount | 394 |
+| actionBindingCount | 454 |
+| acceptedActionBindingCount | 417 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 382 |
-| coveredProductionMutationConsumerPairCount | 382 |
+| productionMutationConsumerPairCount | 384 |
+| coveredProductionMutationConsumerPairCount | 384 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -159,7 +159,9 @@
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/management-capabilities | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationManagementCapabilities | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
+| GET | /organization/personnel-changes/results/:commandKey | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPersonnelResult | — | not_applicable | — |
 | GET | /organization/project-roster/options | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchProjectRosterManagementOptions | — | not_applicable | — |
+| GET | /organization/users/:userId/employment | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchEmploymentHistory | — | not_applicable | — |
 | GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
 | GET | /payable-settlements/inter-entity-relationships | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchInterEntityRelationships | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
@@ -483,6 +485,8 @@
 | POST | /operating-takeovers/historical-wage/scopes | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /operating-takeovers/historical-wage/scopes/selection-ref | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /organization/departments | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | organization.department.create | covered | — |
+| POST | /organization/personnel-changes/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyPersonnelChange | personnel.change.apply | covered | — |
+| POST | /organization/personnel-changes/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewPersonnelChange | personnel.change.preview | covered | — |
 | POST | /organization/project-roster/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyProjectRosterChange | project.roster.apply | covered | — |
 | POST | /organization/project-roster/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewProjectRosterChange | project.roster.preview | covered | — |
 | POST | /organization/role-additions/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | organization.role-addition.apply | covered | — |

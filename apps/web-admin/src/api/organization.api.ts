@@ -62,11 +62,19 @@ export interface OrganizationDirectoryUser {
     projectName: string;
     keys: RoleKey[];
     names: string[];
+    needsReconciliation?: boolean;
+    legacySource?: "user_position";
+    legacyPositionKeys?: RoleKey[];
+    legacyPositionNames?: string[];
   }>;
   rosterProjects?: Array<{
     projectId: string;
     projectCode: string;
     projectName: string;
+    needsReconciliation?: boolean;
+    legacySource?: "user_position";
+    legacyPositionKeys?: RoleKey[];
+    legacyPositionNames?: string[];
   }>;
 }
 
@@ -332,6 +340,7 @@ export interface CreateOrganizationUserPayload {
   phone: string;
   departmentId: string;
   initialRoleKey: RoleKey;
+  initialRoleScope?: "global" | "project";
   projectId?: string;
   confirmationPassword: string;
 }
@@ -426,9 +435,36 @@ export function previewProjectRosterChange(body: ProjectRosterChange) {
   return sendJson<ProjectRosterChangePreview>("/organization/project-roster/preview", "POST", body, "预览人员调整失败");
 }
 
-export function applyProjectRosterChange(body: ProjectRosterChange & { snapshotHash: string; confirmationPassword: string }) {
-  return sendJson<{ projectId: string; userId: string; operation: "join" | "leave" }>("/organization/project-roster/apply", "POST", body, "保存人员调整失败");
+export function applyProjectRosterChange(body: ProjectRosterChange & { snapshotHash: string; confirmationPassword: string; commandKey?: string }) {
+  return sendJson<{ projectId: string; userId: string; operation: "join" | "leave"; commandKey: string }>("/organization/project-roster/apply", "POST", body, "保存人员调整失败");
 }
+
+export interface PersonnelCommand {
+  commandKey: string;
+  userId: string;
+  action: "join" | "adjust" | "offboard" | "rehire";
+  reason: string;
+  departmentId?: string;
+  startedOn?: string;
+  companyEntityId?: string;
+  additions?: OrganizationRoleAdditionTarget[];
+  removals?: OrganizationRoleRemovalTarget[];
+  rosterChanges?: Array<{ operation: "join" | "leave"; projectId: string }>;
+}
+export interface PersonnelPreview {
+  snapshotHash: string; canApply: boolean; blockingReasons: string[];
+  userId: string; personName: string; action: string;
+}
+export interface PersonnelResult { commandKey: string; userId: string; action: string }
+export interface EmploymentHistory {
+  periods: Array<{ id: string; startedOn: string | null; endedOn: string | null; endedAt: string | null;
+    verified: boolean; companyEntityId: string | null; revision: number }>;
+  changes: Array<{ id: string; action: string; reason: string; createdAt: string }>;
+}
+export const previewPersonnelChange = (body: PersonnelCommand) => sendJson<PersonnelPreview>("/organization/personnel-changes/preview", "POST", body, "读取人事办理影响失败");
+export const applyPersonnelChange = (body: PersonnelCommand & { snapshotHash: string; confirmationPassword: string }) => sendJson<PersonnelResult>("/organization/personnel-changes/apply", "POST", body, "办理结果仍待核实");
+export const fetchPersonnelResult = (key: string) => readJson<PersonnelResult | { found: false; message: string }>(`/organization/personnel-changes/results/${encodeURIComponent(key)}`, "核对办理结果失败");
+export const fetchEmploymentHistory = (userId: string) => readJson<EmploymentHistory>(`/organization/users/${encodeURIComponent(userId)}/employment`, "读取任职履历失败");
 
 export function fetchOrganizationDirectory() {
   return readJson<OrganizationDirectory>("/organization/directory");
@@ -626,6 +662,7 @@ export function createOrganizationUser(payload: CreateOrganizationUserPayload) {
     phone: payload.phone,
     departmentId: payload.departmentId,
     initialRoleKey: payload.initialRoleKey,
+    ...(payload.initialRoleScope ? { initialRoleScope: payload.initialRoleScope } : {}),
     ...(payload.projectId ? { projectId: payload.projectId } : {}),
     confirmationPassword: payload.confirmationPassword
   }, "创建人员失败");

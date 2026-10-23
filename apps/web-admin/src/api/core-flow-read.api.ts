@@ -1670,6 +1670,10 @@ export interface ProjectRosterRowReadModel {
   positionNames: string[];
   globalPositionNames: string[];
   projectPositionNames: string[];
+  needsReconciliation?: boolean;
+  legacySource?: "user_position";
+  legacyPositionKeys?: string[];
+  legacyPositionNames?: string[];
 }
 
 export interface CreateProjectPayload {

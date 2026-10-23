@@ -10,7 +10,7 @@ describe("组织管理入口", () => {
     expect(pageSource).toContain("capabilities.value?.manageableUserIds.includes(id)");
     expect(pageSource).toContain("capabilities.value?.manageableRoleUserIds");
     expect(pageSource).toContain("新增人员和账号");
-    expect(pageSource).toContain("重新启用");
+    expect(readFileSync(fileURLToPath(new URL("./components/OrganizationPersonActions.vue", import.meta.url)), "utf8")).toContain("重新启用");
     expect(pageSource).not.toContain("首次上线只读");
   });
   it("复用既有逐条授岗撤岗和人员编辑，保留批量撤岗关闭", () => {

@@ -8,12 +8,12 @@ export interface EmployeeApplication {
   revision: number; reason: string; createdAt: string; phoneVerified: boolean; mustChangePassword: boolean;
   canResubmit?: boolean; canChangePassword?: boolean;
   departmentId?: string | null;
-  proposedRoles?: Array<{ roleKey: RoleKey; projectId?: string }>;
+  proposedRoles?: Array<{ roleKey: RoleKey; scope?: "global" | "project"; projectId?: string }>;
 }
 export interface ApplicationSession { application: EmployeeApplication; applicationToken: string }
 export interface EmployeeReview {
   revision: number; decision: "approve" | "refer" | "return"; departmentId?: string;
-  roles?: Array<{ roleKey: RoleKey; projectId?: string }>; identityVerified?: boolean; reason?: string; confirmationPassword: string;
+  roles?: Array<{ roleKey: RoleKey; scope?: "global" | "project"; projectId?: string }>; identityVerified?: boolean; reason?: string; confirmationPassword: string;
 }
 export class AccountApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
