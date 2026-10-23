@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   postgresql16-dynamic-gates:
-    name: DIAGNOSTIC ONLY - desktop then mobile roster pairs (${{ matrix.group }})
+    name: DIAGNOSTIC ONLY - pristine desktop then mobile roster pairs (${{ matrix.group }})
     runs-on: ubuntu-latest
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
     timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || 20 }}
