@@ -6,10 +6,12 @@
     "types": ["node", "@playwright/test"]
   },
   "include": [
+    "src/env.d.ts",
     "e2e/**/*.ts",
     "playwright.config.ts",
     "playwright.handwritten-signature.config.ts",
     "playwright.signature-real.config.ts",
+    "playwright.responsive.config.ts",
     "playwright.rc06.config.ts",
     "playwright.rc06-real.config.ts",
     "playwright.project-financing-quota-termination.config.ts",

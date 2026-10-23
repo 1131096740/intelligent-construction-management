@@ -114,17 +114,19 @@
       :bordered="true"
       class="settings-card"
     >
-      <JgSignatureHandoff
-        v-if="desktopSignatureMode"
-        @completed="loadSignature"
-      />
       <JgSignaturePanel
-        v-else-if="signatureActionEnabled('upload_canvas_signature')"
+        v-if="signatureActionEnabled('upload_canvas_signature')"
         :preview-url="signaturePreviewUrl"
         :preview-source="signatureSource"
         :busy="signatureBusy"
+        :saved-version="signatureSavedVersion"
+        :save-error="signatureTone === 'danger' ? signatureMessage : ''"
         @save="submitCanvasSignature"
       />
+      <details class="signature-handoff-option">
+        <summary>使用其他手机扫码签名</summary>
+        <JgSignatureHandoff @completed="loadSignature" />
+      </details>
       <div
         v-if="signatureMessage"
         role="status"
@@ -293,7 +295,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from "vue";
+import { computed, onMounted, reactive, ref, shallowRef } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
@@ -359,7 +361,7 @@ async function loadRetentionPreview() {
 }
 const signaturePreviewUrl = ref("");
 const signatureSource = ref<"canvas" | "legacy" | undefined>();
-const desktopSignatureMode = ref(false);
+const signatureSavedVersion = ref(0);
 const signatureBusy = ref(false);
 const signatureMessage = ref("");
 const signatureTone = ref<"success" | "danger">("success");
@@ -422,8 +424,6 @@ function signatureActionEnabled(
 }
 
 onMounted(async () => {
-  updateSignatureMode();
-  window.addEventListener("resize", updateSignatureMode);
   await Promise.all([
     loadProfileDefinition(),
     loadSignature(),
@@ -432,12 +432,6 @@ onMounted(async () => {
     fetchAccountOptions().then((options) => { smsAvailable.value = options.smsEnabled; }).catch(() => { /* 服务端仍会强制核验已开启的短信。 */ })
   ]);
 });
-onBeforeUnmount(() => window.removeEventListener("resize", updateSignatureMode));
-
-function updateSignatureMode() {
-  desktopSignatureMode.value = window.matchMedia("(min-width: 768px)").matches;
-}
-
 function clearProfilePassword() {
   profileForm.currentPassword = "";
   profileForm.code = "";
@@ -604,11 +598,13 @@ function submitCanvasSignature(signature: File) {
   if (canvasSignaturePromise) return canvasSignaturePromise;
   signatureBusy.value = true;
   signatureMessage.value = "";
+  let signatureSaved = false;
   const request = uploadCanvasSignature(signature);
   canvasSignaturePromise = request
     .then(async () => {
       signatureTone.value = "success";
       signatureMessage.value = "手写签名已保存，将用于之后的审批。";
+      signatureSaved = true;
       await loadSignature();
     })
     .catch((error: unknown) => {
@@ -617,6 +613,7 @@ function submitCanvasSignature(signature: File) {
     })
     .finally(() => {
       signatureBusy.value = false;
+      if (signatureSaved) signatureSavedVersion.value += 1;
       canvasSignaturePromise = null;
     });
   return canvasSignaturePromise;
@@ -688,6 +685,9 @@ function submitCanvasSignature(signature: File) {
 .signature-row {
   margin-bottom: 12px;
 }
+
+.signature-handoff-option { margin-top: var(--jg-space-lg); }
+.signature-handoff-option summary { cursor: pointer; color: var(--jg-color-text-secondary); margin-bottom: var(--jg-space-md); }
 
 .signature-preview {
   max-height: 80px;

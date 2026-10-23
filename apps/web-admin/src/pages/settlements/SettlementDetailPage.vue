@@ -2008,12 +2008,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .settlement-detail-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--jg-space-lg);
   min-width: 0;
   color: var(--jg-color-text-primary);
 }
 
 .detail-navigation {
+  min-width: 0;
   border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 

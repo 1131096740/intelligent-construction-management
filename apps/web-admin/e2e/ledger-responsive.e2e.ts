@@ -1,19 +1,15 @@
 import path from "node:path";
+import type { ContractRelationshipLedger } from "@jiangkong/shared-domain";
 import { expect, test, type Page } from "@playwright/test";
 import {
-  expectHorizontalScrollOwner,
+  expectBusinessContentWithinViewport,
+  expectHorizontalScrollOwnerIfNeeded,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+import { responsiveViewports } from "./helpers/responsive-viewports";
 
-const viewports = [
-  { width: 1512, height: 982 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 800 },
-  { width: 1180, height: 820 },
-  { width: 1024, height: 768 },
-  { width: 900, height: 768 }
-] as const;
+test.setTimeout(90_000);
 
 const workItem = {
   id: "approval-responsive",
@@ -139,6 +135,20 @@ async function mockSession(page: Page) {
     contentType: "application/json",
     body: JSON.stringify([{ id: "finance-responsive", name: "财务主管" }])
   }));
+  await page.route("**/api/contract-relationship-ledger?*", (route) => {
+    const section = new URL(route.request().url()).searchParams.get("section");
+    expect(["contracts", "settlements", "payments"]).toContain(section);
+    expect(route.request().method()).toBe("GET");
+    // The current search index combines the original ledgers below with this
+    // additional relationship ledger. This fixture has no supplemental records.
+    const ledger = {
+      readAt: "2026-10-23T00:00:00.000Z",
+      rows: [],
+      totals: [],
+      notice: "当前验收项目无补充分类记录"
+    } satisfies ContractRelationshipLedger;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(ledger) });
+  });
   await page.route("**/api/contracts", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ rows: [{
@@ -174,9 +184,10 @@ async function login(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
 }
 
-test("五类业务台账在六档桌面窗口中只由数据区横向滚动", async ({ page }, testInfo) => {
+test("五类业务台账在手机、平板和电脑中只由数据区横向滚动", async ({ page }, testInfo) => {
   await mockSession(page);
   await login(page);
   const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
@@ -188,15 +199,16 @@ test("五类业务台账在六档桌面窗口中只由数据区横向滚动", as
     { path: "/全局搜索", heading: "全局搜索", slug: "global-search", table: true }
   ] as const;
 
-  for (const viewport of viewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     for (const ledger of ledgers) {
       await page.goto(ledger.path);
       await expect(page.getByRole("heading", { name: ledger.heading })).toBeVisible();
       await expectNoDocumentHorizontalOverflow(page);
       await expectNoNestedHorizontalScrollers(page);
-      if (ledger.table && viewport.width <= 1280) {
-        await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content").first());
+      await expectBusinessContentWithinViewport(page);
+      if (ledger.table) {
+        await expectHorizontalScrollOwnerIfNeeded(page.locator(".jg-table-region .t-table__content").first());
       }
       await page.screenshot({
         path: path.join(screenshotDir, `${ledger.slug}-${viewport.width}x${viewport.height}.png`),

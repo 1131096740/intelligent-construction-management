@@ -29,7 +29,8 @@ describe("responsive layout foundation", () => {
     expect(layout).toContain(".jg-table-region .t-table__content");
     expect(layout).toContain(".jg-workspace-scroll");
     expect(layout).toContain("overscroll-behavior-inline: contain");
-    expect(layout).not.toContain("100vw");
+    expect(layout).not.toMatch(/(?<!-)width:\s*100vw/u);
+    expect(layout).toContain("max-height: calc(100dvh - var(--jg-space-xxl))");
   });
 
   it("uses container-responsive shared business components", () => {

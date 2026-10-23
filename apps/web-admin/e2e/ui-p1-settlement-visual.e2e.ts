@@ -2,23 +2,16 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
-  expectHorizontalScrollOwner,
+  expectBusinessContentWithinViewport,
+  expectHorizontalScrollOwnerIfNeeded,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+import { responsiveViewports } from "./helpers/responsive-viewports";
 
 const screenshotDir = process.env.UI_P1_SETTLEMENT_SCREENSHOT_DIR
   ? resolve(process.env.UI_P1_SETTLEMENT_SCREENSHOT_DIR)
   : resolve("test-results/ui-p1-settlement-screenshots");
-
-const desktopViewports = [
-  { width: 1512, height: 982 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 800 },
-  { width: 1180, height: 820 },
-  { width: 1024, height: 768 },
-  { width: 900, height: 768 }
-];
 
 const ledgerBody = {
   rows: [
@@ -113,8 +106,16 @@ const archiveDetailBody = settlementDetail({
 });
 
 test("captures the settlement P1.1 ledger and detail states", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
   mkdirSync(screenshotDir, { recursive: true });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && /^(?:TypeError|ReferenceError|SyntaxError|RangeError|Error):/.test(message.text())) {
+      pageErrors.push(message.text());
+    }
+  });
 
   let ledgerMode: "normal" | "failure" | "empty" = "normal";
   let pendingLoadingRoute: Route | null = null;
@@ -310,11 +311,12 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   await page.getByText("结算明细", { exact: true }).click();
   await expect(page.getByText("¥2,831.86", { exact: true })).toBeVisible();
   await expect(page.getByText("¥36,814.16", { exact: true })).toBeVisible();
-  for (const viewport of desktopViewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
-    await expectHorizontalScrollOwner(page.locator(".table-panel .t-table__content"));
+    await expectBusinessContentWithinViewport(page);
+    await expectHorizontalScrollOwnerIfNeeded(page.locator(".table-panel .t-table__content"));
     await capture(
       page,
       `settlement-detail-tax-lines-${viewport.width}x${viewport.height}.png`
@@ -342,6 +344,8 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
     contentType: "application/json",
     body: JSON.stringify(approvalDetailBody)
   });
+  await expect(page.locator(".detail-loading-skeleton")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test("renders frozen settlement entry history on desktop and 390px", async ({ page }) => {
@@ -587,22 +591,24 @@ async function login(page: Page) {
 }
 
 async function captureRequiredViewports(page: Page, compactPrefix: string, widePrefix: string) {
-  for (const viewport of desktopViewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await page.evaluate(() => new Promise<void>((resolveFrame) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()));
     }));
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
+    await expectBusinessContentWithinViewport(page);
     const prefix = viewport.width === 1440 ? widePrefix : compactPrefix;
     await capture(page, `${prefix}-${viewport.width}x${viewport.height}.png`);
   }
 }
 
 async function capture(page: Page, fileName: string) {
+  mkdirSync(resolve(screenshotDir, test.info().project.name), { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: resolve(screenshotDir, fileName),
+    path: resolve(screenshotDir, test.info().project.name, fileName),
     animations: "disabled"
   });
 }

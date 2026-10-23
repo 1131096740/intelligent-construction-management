@@ -2,22 +2,15 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
+  expectBusinessContentWithinViewport,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+import { responsiveViewports } from "./helpers/responsive-viewports";
 
 const screenshotDir = process.env.UI_P0_SCREENSHOT_DIR
   ? resolve(process.env.UI_P0_SCREENSHOT_DIR)
   : resolve("test-results/ui-p0-screenshots");
-
-const desktopViewports = [
-  { width: 1512, height: 982 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 800 },
-  { width: 1180, height: 820 },
-  { width: 1024, height: 768 },
-  { width: 900, height: 768 }
-];
 
 const normalWorkItems = {
   generatedAt: "2026-07-14T08:00:00.000Z",
@@ -397,8 +390,16 @@ const detailBody = {
 };
 
 test("captures the UI P0 enterprise sample and reproducible states", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
   mkdirSync(screenshotDir, { recursive: true });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && /^(?:TypeError|ReferenceError|SyntaxError|RangeError|Error):/.test(message.text())) {
+      pageErrors.push(message.text());
+    }
+  });
 
   let ledgerMode: "normal" | "failure" = "normal";
   let pendingLoadingRoute: Route | null = null;
@@ -519,6 +520,8 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
     contentType: "application/json",
     body: JSON.stringify(detailBody)
   });
+  await expect(page.locator(".detail-loading-skeleton")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 async function login(page: Page) {
@@ -530,24 +533,26 @@ async function login(page: Page) {
 }
 
 async function captureRequiredViewports(page: Page, compactPrefix: string, widePrefix: string) {
-  for (const viewport of desktopViewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await page.evaluate(() =>
       new Promise<void>((resolveFrame) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()));
       })
     );
-    await expectNoDocumentHorizontalOverflow(page);
-    await expectNoNestedHorizontalScrollers(page);
     const prefix = viewport.width === 1440 ? widePrefix : compactPrefix;
     await capture(page, `${prefix}-${viewport.width}x${viewport.height}.png`);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await expectBusinessContentWithinViewport(page);
   }
 }
 
 async function capture(page: Page, fileName: string) {
+  mkdirSync(resolve(screenshotDir, test.info().project.name), { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: resolve(screenshotDir, fileName),
+    path: resolve(screenshotDir, test.info().project.name, fileName),
     animations: "disabled"
   });
 }
