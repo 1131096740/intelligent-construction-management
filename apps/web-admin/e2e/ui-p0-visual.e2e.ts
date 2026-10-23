@@ -1,5 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ContractRelationshipLedger } from "@jiangkong/shared-domain";
+import type { OperatingProjectionAggregateReadModel, PaymentCreateCapabilityReadModel } from "../src/api/core-flow-read.api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   expectBusinessContentWithinViewport,
@@ -401,6 +403,14 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
     }
   });
 
+  const unhandledApiRequests: string[] = [];
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.startsWith("/api/")) return route.continue();
+    unhandledApiRequests.push(`${route.request().method()} ${url.pathname}${url.search}`);
+    return route.fulfill({ status: 501, json: { message: "验收夹具未定义此公开接口" } });
+  });
+
   let ledgerMode: "normal" | "failure" = "normal";
   let pendingLoadingRoute: Route | null = null;
 
@@ -435,6 +445,42 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
       body: JSON.stringify([{ id: "project-ui-1", code: "P-UI-001", name: "科技园项目" }])
     })
   );
+  await page.route("**/api/payments/create-capability?projectId=project-ui-1", (route) => {
+    const capability = { projectId: "project-ui-1", availableActions: ["create_payment"] } satisfies PaymentCreateCapabilityReadModel;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(capability) });
+  });
+  await page.route("**/api/contract-relationship-ledger?*", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("section")).toBe("payments");
+    const ledger = {
+      readAt: "2026-10-23T00:00:00.000Z", rows: [], totals: [], notice: "当前合成验收范围无补充分类记录"
+    } satisfies ContractRelationshipLedger;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(ledger) });
+  });
+  await page.route("**/api/operating-projections/as-of?*", (route) => {
+    const projection = {
+      scope: { label: "合成验收授权范围", projectCount: 1 },
+      asOf: { businessDate: "2026-10-23", readAt: "2026-10-23T00:00:00.000Z", retroactiveFactCount: 0 },
+      integrity: { statusLabel: "金额完整", moneyComplete: true, notices: [] },
+      commitments: { contractCommitmentCents: "0" },
+      operating: { confirmedIncomeCents: "0", confirmedCostCents: "0", receivableCents: "0", payableCents: "0" },
+      actualFunds: {
+        constructionEnterpriseFundsCents: "0", companyProjectFundsCents: "0", netProjectCashPositionCents: "0",
+        nonNegativeUsableCashStartCents: "0", confirmedProjectInflowsCents: "0", confirmedProjectOutflowsCents: "0",
+        companyAdvanceForProjectCents: "0", companyReturnableToProjectCents: "0", interSubjectBalanceCents: "0"
+      },
+      restrictions: {
+        estimatedClearingExpenseCents: "0", necessaryExpenseReserveCents: "0", projectDisputedFundsCents: "0",
+        constructionEnterpriseFrozenFundsCents: "0", openPendingReconciliationGrossCents: "0",
+        openCoveredReconciliationCents: "0", openUncoveredReconciliationCents: "0", continuedWithheldRetainedCents: "0",
+        temporaryProfitDistributionCents: "0", relationshipCompletenessLabel: "关系完整"
+      },
+      profitAndLoss: { currentOperatingProfitCents: "0", estimatedClearingExpenseCents: "0", currentEstimatedProfitCents: "0", finalConfirmedProfitCents: null, finalConfirmable: false },
+      distribution: { cashCeilingCents: "0", projectedProfitCeilingCents: "0", currentDistributableProfitCents: "0" },
+      evidence: { A: { factCount: 0, amountCents: "0" }, B: { factCount: 0, amountCents: "0" }, C: { factCount: 0, amountCents: "0" }, gapFactCount: 0, gapAmountCents: "0" },
+      sources: []
+    } satisfies OperatingProjectionAggregateReadModel;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(projection) });
+  });
   await page.route("**/api/contracts/payment-create-options?*", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify([contractOption]) })
   );
@@ -521,6 +567,7 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
     body: JSON.stringify(detailBody)
   });
   await expect(page.locator(".detail-loading-skeleton")).toHaveCount(0);
+  expect(unhandledApiRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
 
