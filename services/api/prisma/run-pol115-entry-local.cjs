@@ -24,5 +24,5 @@ try {
   command("pnpm", ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...process.argv.slice(2).length ? process.argv.slice(2) : ["src/operating-takeover/operating-takeover-entry.http.pg.spec.ts", "src/database/approval-v6-independent-http-postgres.spec.ts", "src/expense-claim/expense-claim-entry.http.pg.spec.ts", "src/fund-execution/fund-execution-entry.http.pg.spec.ts", "src/database/draft-hard-deletion.pg.spec.ts", "src/database/draft-deletion-numbering.pg.spec.ts"]], env);
 } finally {
-  command("docker", ["rm", "--force", name]);
+  command("docker", ["rm", "--force", "--volumes", name]);
 }

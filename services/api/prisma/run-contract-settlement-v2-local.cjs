@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 "use strict";
 
-const { spawn } = require("node:child_process");
+const {
+  createCommandRuntime,
+  createRunnerCleanup,
+  runInterruption
+} = require("./money-bigint-runner-runtime.cjs");
 const { randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
@@ -15,22 +19,10 @@ const pnpm =
   process.env.PNPM_BIN?.trim() ||
   (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
 
-function run(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: options.cwd ?? root,
-      env: options.env ?? process.env,
-      stdio: options.forwardOutput ? "inherit" : ["ignore", "pipe", "pipe"]
-    });
-    let output = "";
-    child.stdout?.on("data", (chunk) => { output += String(chunk); });
-    child.stderr?.on("data", (chunk) => { output += String(chunk); });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) return resolve(output);
-      reject(new Error(`${command} ${args.join(" ")} exited ${code}: ${output}`));
-    });
-  });
+const commandRuntime = createCommandRuntime({ defaultCwd: root, defaultTimeoutMs: 0 });
+async function run(command, args, options = {}) {
+  const result = await commandRuntime.command(command, args, options);
+  return result.stdout;
 }
 
 function freePort() {
@@ -46,10 +38,10 @@ function freePort() {
   });
 }
 
-async function waitForPostgres(containerName) {
+async function waitForPostgres(containerName, dockerEnv) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await run(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", databaseName]);
+      await run(docker, ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", databaseName], { env: dockerEnv });
       return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -87,25 +79,62 @@ async function main() {
     RUN_CONTRACT_BILL_TRANSITION_CONFIRM_DATABASE: "1"
   };
 
+  let containerRunAttempted = false;
+  let dockerEnv;
+  const cleanup = createRunnerCleanup({
+    stopChildren: () => commandRuntime.stopAll(),
+    removeContainer: async () => {
+      if (!containerRunAttempted) return;
+      try {
+        await run(docker, ["rm", "--force", "--volumes", containerName], {
+          env: dockerEnv, timeoutMs: 60_000
+        });
+      } catch (error) {
+        if (!String(error?.message).includes("No such container")) throw error;
+      }
+    },
+    removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true })
+  });
+  let interruptionPromise;
+  const interrupt = (signal) => {
+    interruptionPromise ??= runInterruption({
+      signal, cleanup,
+      reportError: (message) => process.stderr.write(`${message}\n`),
+      exit: (code) => process.exit(code)
+    });
+  };
+  const onSigint = () => interrupt("SIGINT");
+  const onSigterm = () => interrupt("SIGTERM");
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
+
   try {
     const endpoint = await run(docker, ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]).then((value) => value.trim());
     assertLocalDockerEndpoint(endpoint);
+    if (!endpoint) throw new Error("无法确认本机 Docker endpoint");
+    dockerEnv = { PATH: runtimeEnv.PATH, HOME: runtimeEnv.HOME, DOCKER_HOST: endpoint };
+    containerRunAttempted = true;
     await run(docker, ["run", "--pull=never", "--detach", "--rm", "--name", containerName,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD", "--env", `POSTGRES_DB=${databaseName}`,
       "--publish", `127.0.0.1:${port}:5432`, "postgres:16"], {
-      env: { PATH: runtimeEnv.PATH, HOME: runtimeEnv.HOME, POSTGRES_PASSWORD: password }
+      env: { ...dockerEnv, POSTGRES_PASSWORD: password }
     });
-    await waitForPostgres(containerName);
+    await waitForPostgres(containerName, dockerEnv);
     await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "build"], { env: runtimeEnv });
     await run(process.execPath, [path.join(__dirname, "seed.cjs")], { cwd: temporaryRoot, env: runtimeEnv });
     await run(process.execPath, [path.join(root, "services/api/prisma/precheck-contract-settlement-v2.cjs"), "--output", path.resolve(evidencePath)], { env: runtimeEnv, forwardOutput: true });
     await run(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/contract-bill-batch-replace-concurrency.spec.ts", "src/database/contract-bill-transition-confirm-concurrency.spec.ts"], { env: runtimeEnv, forwardOutput: true });
+    await cleanup();
     process.stdout.write(JSON.stringify({ mode: "isolated_contract_settlement_v2", evidencePath: path.resolve(evidencePath), database: databaseName, concurrency: "contract_bill_batch_replace,contract_bill_transition_confirm" }) + "\n");
   } finally {
-    await run(docker, ["rm", "--force", containerName]).catch(() => undefined);
-    await rm(temporaryRoot, { recursive: true, force: true });
+    try {
+      await cleanup();
+    } finally {
+      process.removeListener("SIGINT", onSigint);
+      process.removeListener("SIGTERM", onSigterm);
+    }
   }
 }
 

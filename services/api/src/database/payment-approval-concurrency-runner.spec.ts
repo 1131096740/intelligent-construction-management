@@ -154,7 +154,7 @@ describe("payment approval PostgreSQL concurrency runner", () => {
     expect(stopAll).toHaveBeenCalledTimes(1);
     expect(command).toHaveBeenCalledWith(
       "docker",
-      ["rm", "--force", containerName],
+      ["rm", "--force", "--volumes", containerName],
       { timeoutMs: 60_000 }
     );
     expect(removeTemporaryRoot).toHaveBeenCalledWith(

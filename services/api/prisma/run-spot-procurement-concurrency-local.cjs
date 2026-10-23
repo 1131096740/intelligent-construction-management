@@ -127,7 +127,7 @@ function createSpotProcurementRunnerCleanup({
     stopChildren: () => commandRuntime.stopAll(),
     removeContainer: () =>
       dockerCommand(
-        ["rm", "--force", containerName],
+        ["rm", "--force", "--volumes", containerName],
         { timeoutMs: 60_000 }
       ).catch((error) => {
         if (!String(error?.message).includes("No such container")) {

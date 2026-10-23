@@ -887,7 +887,7 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
 
     expect(stopAll).toHaveBeenCalledTimes(1);
     expect(dockerCommand).toHaveBeenCalledWith(
-      ["rm", "--force", containerName],
+      ["rm", "--force", "--volumes", containerName],
       { timeoutMs: 60_000 }
     );
     expect(removeTemporaryRoot).toHaveBeenCalledWith(

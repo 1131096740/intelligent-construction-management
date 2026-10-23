@@ -369,7 +369,7 @@ async function main() {
     stopChildren: () => commandRuntime.stopAll(),
     removeContainer: () =>
       dockerEnvironment
-        ? command(docker, ["rm", "--force", containerName], {
+        ? command(docker, ["rm", "--force", "--volumes", containerName], {
             env: dockerEnvironment,
             timeoutMs: 60_000
           }).catch(
