@@ -349,6 +349,9 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
 });
 
 test("renders frozen settlement entry history on desktop and 390px", async ({ page }) => {
+  await page.route("**/api/approval-delegations/user-options", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify([])
+  }));
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -384,10 +387,27 @@ test("renders frozen settlement entry history on desktop and 390px", async ({ pa
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".business-entry-mobile-cards")).toHaveCount(2);
-  await expect(page.getByText("结算编号", { exact: true })).toBeVisible();
-  await expect(page.getByText("结算期间", { exact: true }).last()).toBeVisible();
-  await expect(page.locator(".business-entry-field__label", { hasText: "调整原因" })).toBeVisible();
+  const basicHistory = page.getByRole("region", { name: "结算基础信息移动业务卡片", exact: true });
+  const lineHistory = page.getByRole("region", { name: "结算明细·现场调整移动业务卡片", exact: true });
+  await expect(basicHistory.locator(".business-entry-field__label", { hasText: /^\s*结算编号\s*\*\s*$/ })).toBeVisible();
+  await expect(basicHistory.locator(".business-entry-field__label", { hasText: /^\s*结算期间\s*\*\s*$/ })).toBeVisible();
+  await expect(lineHistory.locator(".business-entry-field__label", { hasText: "调整原因" })).toBeVisible();
+  for (const [history, fieldKey, value] of [
+    [basicHistory, "code", "JS-UI-001"],
+    [basicHistory, "periodLabel", "2026年6月"],
+    [lineHistory, "name", "现场调整"],
+    [lineHistory, "amountYuan", "100.00"],
+    [lineHistory, "reason", "现场复核"]
+  ] as const) {
+    const field = history.locator(`[data-field="${fieldKey}"] input`);
+    await field.scrollIntoViewIfNeeded();
+    await expect(field).toBeVisible();
+    await expect(field).toBeInViewport();
+    await expect(field).toHaveValue(value);
+    await expect(field).toBeDisabled();
+  }
   await expectNoDocumentHorizontalOverflow(page);
+  await expectBusinessContentWithinViewport(page);
   await capture(page, "settlement-detail-entry-history-390x844.png");
 });
 
