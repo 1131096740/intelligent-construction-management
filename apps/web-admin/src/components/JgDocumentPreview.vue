@@ -109,14 +109,17 @@ function requestPreview() {
 </template>
 
 <style scoped>
-.jg-document-preview { display: grid; gap: var(--jg-space-md); }
+.jg-document-preview { display: grid; gap: var(--jg-space-md); min-width: 0; container-name: jg-document-preview; container-type: inline-size; }
 .jg-document-preview__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--jg-space-md); }
+.jg-document-preview__heading > div { min-width: 0; }
 .jg-document-preview__heading h3, .jg-document-preview__heading p { margin: 0; }
 .jg-document-preview__heading p, .jg-document-preview__meta small { color: var(--jg-color-text-secondary); }
 .jg-document-preview__actions, .jg-document-preview__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--jg-space-sm); }
-.jg-document-preview__versions { overflow-x: auto; white-space: nowrap; }
+.jg-document-preview__actions { flex-shrink: 0; }
+.jg-document-preview__versions { min-width: 0; max-width: 100%; overflow-x: auto; white-space: nowrap; }
 .jg-document-preview__meta { padding: var(--jg-space-sm) var(--jg-space-md); border-radius: var(--jg-radius-md); background: var(--jg-color-bg-secondary); }
+.jg-document-preview__meta > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .jg-document-preview__meta small { flex-basis: 100%; }
-.jg-document-preview__frame { width: 100%; min-height: 640px; border: 1px solid var(--jg-color-border); border-radius: var(--jg-radius-md); background: var(--jg-color-bg-page); }
-@media (max-width: 720px) { .jg-document-preview__heading { flex-direction: column; } .jg-document-preview__actions { width: 100%; } .jg-document-preview__actions :deep(.t-button) { flex: 1 1 auto; } .jg-document-preview__frame { min-height: 440px; } }
+.jg-document-preview__frame { box-sizing: border-box; width: 100%; min-height: min(640px, 70dvh); border: 1px solid var(--jg-color-border); border-radius: var(--jg-radius-md); background: var(--jg-color-bg-page); }
+@container jg-document-preview (max-width: 720px) { .jg-document-preview__heading { flex-direction: column; } .jg-document-preview__actions { width: 100%; } .jg-document-preview__actions :deep(.t-button) { flex: 1 1 auto; } .jg-document-preview__frame { min-height: min(440px, 60dvh); } }
 </style>

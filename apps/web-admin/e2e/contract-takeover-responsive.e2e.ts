@@ -388,6 +388,46 @@ function collectRuntimeErrors(page: Page) {
   return errors;
 }
 
+async function expectTakeoverContainerLayout(page: Page) {
+  const ledger = page.locator(".ledger-panel");
+  const detail = page.locator(".detail-panel");
+  await expect(ledger).toBeVisible();
+  await expect(detail).toBeVisible();
+  const container = await page.locator(".content-grid").evaluate((grid) => {
+    for (let ancestor = grid.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (!style.containerName.split(/\s+/u).includes("jg-page") || style.containerType === "normal") continue;
+      const bounds = ancestor.getBoundingClientRect();
+      const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+      const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
+      const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+      const inlineSize = Number.parseFloat(style.width) - (style.boxSizing === "border-box"
+        ? paddingLeft + paddingRight + borderLeft + borderRight : 0);
+      const left = bounds.left + paddingLeft + borderLeft;
+      return { inlineSize, left, right: left + inlineSize };
+    }
+    return null;
+  });
+  expect(container, "the content grid must resolve its named jg-page query container").not.toBeNull();
+  const [ledgerBox, detailBox] = await Promise.all([ledger.boundingBox(), detail.boundingBox()]);
+  expect(ledgerBox).not.toBeNull();
+  expect(detailBox).not.toBeNull();
+  for (const box of [ledgerBox!, detailBox!]) {
+    expect(box.x).toBeGreaterThanOrEqual(container!.left - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(container!.right + 1);
+  }
+  if (container!.inlineSize > 1120) {
+    expect(ledgerBox!.x).toBeLessThan(detailBox!.x);
+    expect(ledgerBox!.x + ledgerBox!.width).toBeLessThanOrEqual(detailBox!.x);
+    expect(Math.abs(detailBox!.y - ledgerBox!.y)).toBeLessThanOrEqual(1);
+  } else {
+    expect(Math.abs(detailBox!.x - ledgerBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(detailBox!.width - ledgerBox!.width)).toBeLessThanOrEqual(1);
+    expect(detailBox!.y).toBeGreaterThan(ledgerBox!.y + ledgerBox!.height);
+  }
+}
+
 test("历史接管未保存表单在站内离开时要求明确确认", async ({ page }) => {
   await loginWithMocks(page);
   await page.goto("/历史合同接管");
@@ -396,7 +436,9 @@ test("历史接管未保存表单在站内离开时要求明确确认", async ({
   await nameInput.fill("尚未保存的接管合同");
   await expect(nameInput).toHaveValue("尚未保存的接管合同");
   await nameInput.press("Tab");
-  await page.getByRole("button", { name: "首页", exact: true }).click();
+  const navigationToggle = page.getByRole("button", { name: "打开导航", exact: true });
+  if (await navigationToggle.isVisible()) await navigationToggle.click();
+  await page.getByRole("link", { name: "首页", exact: true }).click();
   await expect(page.getByText("放弃未保存的接管修改？", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "取消" }).last().click();
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/历史合同接管");
@@ -966,25 +1008,21 @@ test("延迟的基线确认响应在切换接管合同和项目后都不会污�
 
 test("keeps takeover details and upload controls inside a 1224px desktop viewport", async ({
   page
-}) => {
+}, testInfo) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 1224, height: 900 });
   await loginWithMocks(page);
   await page.goto("/历史合同接管");
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
 
-  const ledger = page.locator(".ledger-panel");
   const detail = page.locator(".detail-panel");
   await expect(detail.getByText("资料核验", { exact: true })).toBeVisible();
 
-  const [ledgerBox, detailBox] = await Promise.all([ledger.boundingBox(), detail.boundingBox()]);
-  expect(ledgerBox).not.toBeNull();
-  expect(detailBox).not.toBeNull();
-  expect(Math.abs(detailBox!.x - ledgerBox!.x)).toBeLessThanOrEqual(1);
-  expect(detailBox!.y).toBeGreaterThan(ledgerBox!.y + ledgerBox!.height);
+  await expectTakeoverContainerLayout(page);
 
+  const fileName = `建工智管-中文上传验收-20260713-${"A".repeat(80)}.pdf`;
   await detail.locator(".evidence-uploader").first().locator('input[type="file"]').setInputFiles({
-    name: "建工智管-中文上传验收-20260713.pdf",
+    name: fileName,
     mimeType: "application/pdf",
     buffer: Buffer.from("responsive-uploader-check")
   });
@@ -994,6 +1032,17 @@ test("keeps takeover details and upload controls inside a 1224px desktop viewpor
   const uploadButtonBox = await uploadButton.boundingBox();
   expect(uploadButtonBox).not.toBeNull();
   expect(uploadButtonBox!.x + uploadButtonBox!.width).toBeLessThanOrEqual(1224);
+  await uploadButton.click({ trial: true });
+  const fileInput = detail.locator('.evidence-uploader input[type="file"]').first();
+  expect(await fileInput.evaluate((element) => (element as HTMLInputElement).files?.[0]?.name)).toBe(fileName);
+  const [fileInputBox, detailBodyBox] = await Promise.all([
+    fileInput.boundingBox(), detail.locator(".detail-body").boundingBox()
+  ]);
+  expect(fileInputBox).not.toBeNull();
+  expect(detailBodyBox).not.toBeNull();
+  expect(fileInputBox!.x).toBeGreaterThanOrEqual(detailBodyBox!.x);
+  expect(fileInputBox!.x + fileInputBox!.width).toBeLessThanOrEqual(detailBodyBox!.x + detailBodyBox!.width);
+  await page.screenshot({ path: testInfo.outputPath("takeover-upload-long-name-1224.png") });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
   ).toBe(true);
@@ -1014,16 +1063,7 @@ test("keeps the takeover ledger as the only horizontal scroller across six deskt
     await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
 
     const ledger = page.locator(".ledger-panel");
-    const detail = page.locator(".detail-panel");
-    const [ledgerBox, detailBox] = await Promise.all([ledger.boundingBox(), detail.boundingBox()]);
-    expect(ledgerBox).not.toBeNull();
-    expect(detailBox).not.toBeNull();
-    if (viewport.width >= 1440) {
-      expect(ledgerBox!.x).toBeLessThan(detailBox!.x);
-    } else {
-      expect(Math.abs(detailBox!.x - ledgerBox!.x)).toBeLessThanOrEqual(1);
-      expect(detailBox!.y).toBeGreaterThan(ledgerBox!.y + ledgerBox!.height);
-    }
+    await expectTakeoverContainerLayout(page);
 
     await expectHorizontalScrollOwner(ledger.locator(".t-table__content"));
     await expectNoDocumentHorizontalOverflow(page);

@@ -41,6 +41,7 @@ test("桌面生成同源二维码并在手机端完成后刷新状态", async ({
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/系统配置");
 
+  await page.getByText("使用其他手机扫码签名", { exact: true }).click();
   await page.getByRole("button", { name: "生成手写签名二维码" }).click();
   await expect(page.getByAltText("手机手写签名二维码")).toBeVisible();
   await expect(page.getByText("手机端已完成手写签名，现在起可用于之后的审批。", { exact: true })).toBeVisible();

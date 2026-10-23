@@ -5,8 +5,8 @@ const source = readFileSync(new URL("./JgSignaturePanel.vue", import.meta.url), 
 
 describe("JgSignaturePanel", () => {
   it("captures pointer handwriting and crops the PNG before saving", () => {
-    expect(source).toContain("@pointerdown=\"startStroke\"");
-    expect(source).toContain("@pointermove=\"continueStroke\"");
+    expect(source).toContain("@pointerdown.prevent=\"startStroke\"");
+    expect(source).toContain("@pointermove.prevent=\"continueStroke\"");
     expect(source).toContain("output.toBlob");
     expect(source).toContain('new File([blob], "手写签名.png", { type: "image/png" })');
   });

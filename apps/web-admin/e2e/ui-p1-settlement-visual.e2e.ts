@@ -2,23 +2,16 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
-  expectHorizontalScrollOwner,
+  expectBusinessContentWithinViewport,
+  expectHorizontalScrollOwnerIfNeeded,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+import { responsiveViewports } from "./helpers/responsive-viewports";
 
 const screenshotDir = process.env.UI_P1_SETTLEMENT_SCREENSHOT_DIR
   ? resolve(process.env.UI_P1_SETTLEMENT_SCREENSHOT_DIR)
   : resolve("test-results/ui-p1-settlement-screenshots");
-
-const desktopViewports = [
-  { width: 1512, height: 982 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 800 },
-  { width: 1180, height: 820 },
-  { width: 1024, height: 768 },
-  { width: 900, height: 768 }
-];
 
 const ledgerBody = {
   rows: [
@@ -113,8 +106,16 @@ const archiveDetailBody = settlementDetail({
 });
 
 test("captures the settlement P1.1 ledger and detail states", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
   mkdirSync(screenshotDir, { recursive: true });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && /^(?:TypeError|ReferenceError|SyntaxError|RangeError|Error):/.test(message.text())) {
+      pageErrors.push(message.text());
+    }
+  });
 
   let ledgerMode: "normal" | "failure" | "empty" = "normal";
   let pendingLoadingRoute: Route | null = null;
@@ -310,11 +311,12 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   await page.getByText("结算明细", { exact: true }).click();
   await expect(page.getByText("¥2,831.86", { exact: true })).toBeVisible();
   await expect(page.getByText("¥36,814.16", { exact: true })).toBeVisible();
-  for (const viewport of desktopViewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
-    await expectHorizontalScrollOwner(page.locator(".table-panel .t-table__content"));
+    await expectBusinessContentWithinViewport(page);
+    await expectHorizontalScrollOwnerIfNeeded(page.locator(".table-panel .t-table__content"));
     await capture(
       page,
       `settlement-detail-tax-lines-${viewport.width}x${viewport.height}.png`
@@ -342,9 +344,14 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
     contentType: "application/json",
     body: JSON.stringify(approvalDetailBody)
   });
+  await expect(page.locator(".detail-loading-skeleton")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test("renders frozen settlement entry history on desktop and 390px", async ({ page }) => {
+  await page.route("**/api/approval-delegations/user-options", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify([])
+  }));
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -380,10 +387,27 @@ test("renders frozen settlement entry history on desktop and 390px", async ({ pa
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".business-entry-mobile-cards")).toHaveCount(2);
-  await expect(page.getByText("结算编号", { exact: true })).toBeVisible();
-  await expect(page.getByText("结算期间", { exact: true }).last()).toBeVisible();
-  await expect(page.locator(".business-entry-field__label", { hasText: "调整原因" })).toBeVisible();
+  const basicHistory = page.getByRole("region", { name: "结算基础信息移动业务卡片", exact: true });
+  const lineHistory = page.getByRole("region", { name: "结算明细·现场调整移动业务卡片", exact: true });
+  await expect(basicHistory.locator(".business-entry-field__label", { hasText: /^\s*结算编号\s*\*\s*$/ })).toBeVisible();
+  await expect(basicHistory.locator(".business-entry-field__label", { hasText: /^\s*结算期间\s*\*\s*$/ })).toBeVisible();
+  await expect(lineHistory.locator(".business-entry-field__label", { hasText: "调整原因" })).toBeVisible();
+  for (const [history, fieldKey, value] of [
+    [basicHistory, "code", "JS-UI-001"],
+    [basicHistory, "periodLabel", "2026年6月"],
+    [lineHistory, "name", "现场调整"],
+    [lineHistory, "amountYuan", "100.00"],
+    [lineHistory, "reason", "现场复核"]
+  ] as const) {
+    const field = history.locator(`[data-field="${fieldKey}"] input`);
+    await field.scrollIntoViewIfNeeded();
+    await expect(field).toBeVisible();
+    await expect(field).toBeInViewport();
+    await expect(field).toHaveValue(value);
+    await expect(field).toBeDisabled();
+  }
   await expectNoDocumentHorizontalOverflow(page);
+  await expectBusinessContentWithinViewport(page);
   await capture(page, "settlement-detail-entry-history-390x844.png");
 });
 
@@ -587,22 +611,24 @@ async function login(page: Page) {
 }
 
 async function captureRequiredViewports(page: Page, compactPrefix: string, widePrefix: string) {
-  for (const viewport of desktopViewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await page.evaluate(() => new Promise<void>((resolveFrame) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()));
     }));
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalScrollers(page);
+    await expectBusinessContentWithinViewport(page);
     const prefix = viewport.width === 1440 ? widePrefix : compactPrefix;
     await capture(page, `${prefix}-${viewport.width}x${viewport.height}.png`);
   }
 }
 
 async function capture(page: Page, fileName: string) {
+  mkdirSync(resolve(screenshotDir, test.info().project.name), { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: resolve(screenshotDir, fileName),
+    path: resolve(screenshotDir, test.info().project.name, fileName),
     animations: "disabled"
   });
 }

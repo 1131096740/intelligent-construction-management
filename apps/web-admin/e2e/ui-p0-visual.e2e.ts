@@ -1,23 +1,18 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ContractRelationshipLedger } from "@jiangkong/shared-domain";
+import type { OperatingProjectionAggregateReadModel, PaymentCreateCapabilityReadModel } from "../src/api/core-flow-read.api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
+  expectBusinessContentWithinViewport,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+import { responsiveViewports } from "./helpers/responsive-viewports";
 
 const screenshotDir = process.env.UI_P0_SCREENSHOT_DIR
   ? resolve(process.env.UI_P0_SCREENSHOT_DIR)
   : resolve("test-results/ui-p0-screenshots");
-
-const desktopViewports = [
-  { width: 1512, height: 982 },
-  { width: 1440, height: 900 },
-  { width: 1280, height: 800 },
-  { width: 1180, height: 820 },
-  { width: 1024, height: 768 },
-  { width: 900, height: 768 }
-];
 
 const normalWorkItems = {
   generatedAt: "2026-07-14T08:00:00.000Z",
@@ -397,8 +392,24 @@ const detailBody = {
 };
 
 test("captures the UI P0 enterprise sample and reproducible states", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
   mkdirSync(screenshotDir, { recursive: true });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && /^(?:TypeError|ReferenceError|SyntaxError|RangeError|Error):/.test(message.text())) {
+      pageErrors.push(message.text());
+    }
+  });
+
+  const unhandledApiRequests: string[] = [];
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.startsWith("/api/")) return route.continue();
+    unhandledApiRequests.push(`${route.request().method()} ${url.pathname}${url.search}`);
+    return route.fulfill({ status: 501, json: { message: "验收夹具未定义此公开接口" } });
+  });
 
   let ledgerMode: "normal" | "failure" = "normal";
   let pendingLoadingRoute: Route | null = null;
@@ -434,6 +445,42 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
       body: JSON.stringify([{ id: "project-ui-1", code: "P-UI-001", name: "科技园项目" }])
     })
   );
+  await page.route("**/api/payments/create-capability?projectId=project-ui-1", (route) => {
+    const capability = { projectId: "project-ui-1", availableActions: ["create_payment"] } satisfies PaymentCreateCapabilityReadModel;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(capability) });
+  });
+  await page.route("**/api/contract-relationship-ledger?*", (route) => {
+    expect(new URL(route.request().url()).searchParams.get("section")).toBe("payments");
+    const ledger = {
+      readAt: "2026-10-23T00:00:00.000Z", rows: [], totals: [], notice: "当前合成验收范围无补充分类记录"
+    } satisfies ContractRelationshipLedger;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(ledger) });
+  });
+  await page.route("**/api/operating-projections/as-of?*", (route) => {
+    const projection = {
+      scope: { label: "合成验收授权范围", projectCount: 1 },
+      asOf: { businessDate: "2026-10-23", readAt: "2026-10-23T00:00:00.000Z", retroactiveFactCount: 0 },
+      integrity: { statusLabel: "金额完整", moneyComplete: true, notices: [] },
+      commitments: { contractCommitmentCents: "0" },
+      operating: { confirmedIncomeCents: "0", confirmedCostCents: "0", receivableCents: "0", payableCents: "0" },
+      actualFunds: {
+        constructionEnterpriseFundsCents: "0", companyProjectFundsCents: "0", netProjectCashPositionCents: "0",
+        nonNegativeUsableCashStartCents: "0", confirmedProjectInflowsCents: "0", confirmedProjectOutflowsCents: "0",
+        companyAdvanceForProjectCents: "0", companyReturnableToProjectCents: "0", interSubjectBalanceCents: "0"
+      },
+      restrictions: {
+        estimatedClearingExpenseCents: "0", necessaryExpenseReserveCents: "0", projectDisputedFundsCents: "0",
+        constructionEnterpriseFrozenFundsCents: "0", openPendingReconciliationGrossCents: "0",
+        openCoveredReconciliationCents: "0", openUncoveredReconciliationCents: "0", continuedWithheldRetainedCents: "0",
+        temporaryProfitDistributionCents: "0", relationshipCompletenessLabel: "关系完整"
+      },
+      profitAndLoss: { currentOperatingProfitCents: "0", estimatedClearingExpenseCents: "0", currentEstimatedProfitCents: "0", finalConfirmedProfitCents: null, finalConfirmable: false },
+      distribution: { cashCeilingCents: "0", projectedProfitCeilingCents: "0", currentDistributableProfitCents: "0" },
+      evidence: { A: { factCount: 0, amountCents: "0" }, B: { factCount: 0, amountCents: "0" }, C: { factCount: 0, amountCents: "0" }, gapFactCount: 0, gapAmountCents: "0" },
+      sources: []
+    } satisfies OperatingProjectionAggregateReadModel;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(projection) });
+  });
   await page.route("**/api/contracts/payment-create-options?*", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify([contractOption]) })
   );
@@ -519,6 +566,9 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
     contentType: "application/json",
     body: JSON.stringify(detailBody)
   });
+  await expect(page.locator(".detail-loading-skeleton")).toHaveCount(0);
+  expect(unhandledApiRequests).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });
 
 async function login(page: Page) {
@@ -530,24 +580,26 @@ async function login(page: Page) {
 }
 
 async function captureRequiredViewports(page: Page, compactPrefix: string, widePrefix: string) {
-  for (const viewport of desktopViewports) {
+  for (const viewport of responsiveViewports) {
     await page.setViewportSize(viewport);
     await page.evaluate(() =>
       new Promise<void>((resolveFrame) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()));
       })
     );
-    await expectNoDocumentHorizontalOverflow(page);
-    await expectNoNestedHorizontalScrollers(page);
     const prefix = viewport.width === 1440 ? widePrefix : compactPrefix;
     await capture(page, `${prefix}-${viewport.width}x${viewport.height}.png`);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await expectBusinessContentWithinViewport(page);
   }
 }
 
 async function capture(page: Page, fileName: string) {
+  mkdirSync(resolve(screenshotDir, test.info().project.name), { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: resolve(screenshotDir, fileName),
+    path: resolve(screenshotDir, test.info().project.name, fileName),
     animations: "disabled"
   });
 }

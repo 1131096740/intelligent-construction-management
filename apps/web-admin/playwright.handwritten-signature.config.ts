@@ -4,7 +4,7 @@ const baseURL = "http://127.0.0.1:4176";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(?:handwritten-signature|signature-handoff|signature-storage-retry)\.e2e\.ts/,
+  testMatch: /(?:handwritten-signature(?:-responsive)?|signature-handoff|signature-storage-retry)\.e2e\.ts/,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   workers: 1,

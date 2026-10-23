@@ -28,7 +28,22 @@ describe("admin navigation accessibility and responsive boundary", () => {
     expect(layout).toContain("items.value.some((item) => item.path === explicitPath)");
     expect(layout).toContain('href="#main-content"');
     expect(layout).toContain('id="main-content"');
-    expect(layout).toContain('aria-label="打开全部业务"');
+    expect(layout).toContain('aria-label="打开导航"');
+    expect(navigation).toContain("<router-link");
+    expect(navigation).toContain(':to="item.path"');
+    expect(layout.match(/@navigate="closeNavigation"/g)).toHaveLength(2);
+  });
+
+  it("keeps compact navigation focus inside its dialog and returns it to the opener", () => {
+    expect(layout).toContain('window.matchMedia("(max-width: 1280px)")');
+    expect(layout).toContain('role="dialog"');
+    expect(layout).toContain(':inert="navigationOpen ? undefined : true"');
+    expect(layout).toContain(':inert="navigationOpen ? true : undefined"');
+    expect(layout).toContain("requestAnimationFrame(focusVisibleNavigationLink)");
+    expect(layout).toContain("cancelAnimationFrame");
+    expect(layout).toContain('event.key !== "Tab"');
+    expect(layout).toContain("controls[next]?.focus()");
+    expect(layout).toContain("navigationReturnTarget?.isConnected");
   });
 
   it("keeps mobile scroll and persistent navigation in separate regions", () => {

@@ -48,15 +48,20 @@ test("本人可在设置页直接手写并提交透明 PNG 签名", async ({ pag
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/系统配置");
   await expect(page.getByText("个人签名", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "全屏手写签名", exact: true }).click();
+  await page.getByRole("button", { name: "开始签名", exact: true }).click();
 
   const pad = page.getByLabel("横向手写签字板");
   await expect(pad).toBeVisible();
+  await pad.click({ trial: true });
   const box = await pad.boundingBox();
   expect(box).not.toBeNull();
-  await pad.dispatchEvent("pointerdown", { pointerId: 1, clientX: box!.x + 60, clientY: box!.y + 80 });
-  await pad.dispatchEvent("pointermove", { pointerId: 1, clientX: box!.x + 130, clientY: box!.y + 125 });
-  await pad.dispatchEvent("pointermove", { pointerId: 1, clientX: box!.x + 220, clientY: box!.y + 70 });
-  await pad.dispatchEvent("pointerup", { pointerId: 1, clientX: box!.x + 220, clientY: box!.y + 70 });
+  await pad.dispatchEvent("pointerdown", { pointerId: 1, isPrimary: true, clientX: box!.x + box!.width * 0.7, clientY: box!.y + box!.height * 0.2 });
+  await pad.dispatchEvent("pointermove", { pointerId: 1, clientX: box!.x + box!.width * 0.3, clientY: box!.y + box!.height * 0.5 });
+  await pad.dispatchEvent("pointermove", { pointerId: 1, clientX: box!.x + box!.width * 0.6, clientY: box!.y + box!.height * 0.8 });
+  await pad.dispatchEvent("pointerup", { pointerId: 1 });
+  await page.getByRole("button", { name: "预览签名" }).click();
+  await expect(page.getByAltText("待保存手写签名")).toBeVisible();
   await expect(page.getByRole("button", { name: "保存手写签名" })).toBeEnabled();
   await page.getByRole("button", { name: "保存手写签名" }).click();
   await expect.poll(() => saved).toBe(1);

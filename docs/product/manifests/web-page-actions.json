@@ -17,7 +17,7 @@
     "totalVueFileCount": 209,
     "parsedVueFileCount": 209,
     "reachableProductionModuleCount": 340,
-    "templateEventDirectiveCount": 1212,
+    "templateEventDirectiveCount": 1228,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 384,
     "candidateProductionMutationConsumerCount": 384,
@@ -23178,7 +23178,7 @@
         "event": "save",
         "handler": "complete",
         "kind": "event",
-        "sourceLine": 11,
+        "sourceLine": 12,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -23308,7 +23308,7 @@
         "event": "save",
         "handler": "submitCanvasSignature",
         "kind": "event",
-        "sourceLine": 126,
+        "sourceLine": 124,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -28083,7 +28083,7 @@
         "event": "call",
         "handler": "validateUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 491,
+        "sourceLine": 485,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28161,7 +28161,7 @@
         "event": "call",
         "handler": "commitUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 500,
+        "sourceLine": 494,
         "sourceColumn": 0
       },
       "semantic": "business_write",

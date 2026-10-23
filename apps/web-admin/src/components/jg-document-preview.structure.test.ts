@@ -14,7 +14,7 @@ describe("JgDocumentPreview", () => {
 
   it("keeps the document viewer responsive without a second visual system", () => {
     expect(source).toContain("var(--jg-space-md)");
-    expect(source).toContain("@media (max-width: 720px)");
+    expect(source).toContain("@container jg-document-preview (max-width: 720px)");
     expect(source).not.toContain("fetch(");
   });
 });
