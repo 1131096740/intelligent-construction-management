@@ -84,7 +84,7 @@ function runDedicatedDatabase({ id, database, flags, spec }) {
     command(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", spec], env);
   } finally {
     if (started) {
-      spawnSync(docker, ["--host", endpoint, "rm", "--force", name], {
+      spawnSync(docker, ["--host", endpoint, "rm", "--force", "--volumes", name], {
         cwd: root,
         env: dockerEnv,
         stdio: "ignore"

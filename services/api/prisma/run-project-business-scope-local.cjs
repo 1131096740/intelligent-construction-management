@@ -61,7 +61,7 @@ try {
 } finally {
   rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
-    docker(["rm", "--force", containerId], process.env, true);
+    docker(["rm", "--force", "--volumes", containerId], process.env, true);
     console.log(`PROJECT_BUSINESS_SCOPE 已清理自身容器：${name}`);
   }
 }

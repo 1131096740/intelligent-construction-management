@@ -165,7 +165,7 @@ async function removeContainerWithLateCreationGuard({
   ) {
     if (shouldRemove) {
       try {
-        await dockerCommand(["rm", "--force", containerName], {
+        await dockerCommand(["rm", "--force", "--volumes", containerName], {
           timeoutMs: 60_000
         });
       } catch (error) {

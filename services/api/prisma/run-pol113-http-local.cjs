@@ -42,7 +42,7 @@ try {
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/base-entry-http-postgres.spec.ts"], env, false, testTimeout);
 } finally {
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
-    docker(["rm", "--force", containerId], process.env, true);
+    docker(["rm", "--force", "--volumes", containerId], process.env, true);
     console.log(`POL113 已清理自身容器：${name}`);
   }
 }

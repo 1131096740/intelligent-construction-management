@@ -7,8 +7,12 @@ const { cp, mkdir, mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
+const {
+  createCommandRuntime,
+  createRunnerCleanup,
+  runInterruption
+} = require("./money-bigint-runner-runtime.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
@@ -405,34 +409,9 @@ function freePort() {
   });
 }
 
+const commandRuntime = createCommandRuntime({ defaultCwd: root, defaultTimeoutMs: 0 });
 function run(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: options.cwd ?? root,
-      env: options.env ?? process.env,
-      stdio: options.forwardOutput ? "inherit" : ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
-      if (code === 0) return resolve({ stdout, stderr });
-      const detail = `${stdout}\n${stderr}`.trim().slice(-2400);
-      reject(
-        new Error(
-          `${path.basename(command)} ${args.join(" ")} 失败（code=${
-            code ?? "none"
-          }, signal=${signal ?? "none"}）${detail ? `：${detail}` : ""}`
-        )
-      );
-    });
-  });
+  return commandRuntime.command(command, args, options);
 }
 
 async function assertRepositoryState(candidateSha) {
@@ -619,6 +598,32 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
   const startedAt = new Date();
   const receipts = [];
   let containerRunAttempted = false;
+  const cleanup = createRunnerCleanup({
+    stopChildren: () => commandRuntime.stopAll(),
+    removeContainer: async () => {
+      if (!containerRunAttempted) return;
+      try {
+        await run(docker, ["rm", "--force", "--volumes", containerName], {
+          env: dockerEnv, timeoutMs: 60_000
+        });
+      } catch (error) {
+        if (!String(error?.message).includes("No such container")) throw error;
+      }
+    },
+    removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true })
+  });
+  let interruptionPromise;
+  const interrupt = (signal) => {
+    interruptionPromise ??= runInterruption({
+      signal, cleanup,
+      reportError: (message) => process.stderr.write(`${message}\n`),
+      exit: (code) => process.exit(code)
+    });
+  };
+  const onSigint = () => interrupt("SIGINT");
+  const onSigterm = () => interrupt("SIGTERM");
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
 
   try {
     const context = await run(
@@ -650,6 +655,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
     });
     process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - preparationStarted) })}\n`);
 
+    containerRunAttempted = true;
     await run(
       docker,
       [
@@ -674,7 +680,6 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
         forwardOutput: true
       }
     );
-    containerRunAttempted = true;
     await waitForPostgres(containerName, initialDatabase);
 
     for (const group of selectedGroups) {
@@ -750,13 +755,16 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
       executedTests: selectedGroups.reduce((sum, group) => sum + group.pendingTests, 0),
       groups: receipts
     };
+    await cleanup();
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
     return receipt;
   } finally {
-    if (containerRunAttempted) {
-      await run(docker, ["rm", "--force", containerName], { env: dockerEnv }).catch(() => undefined);
+    try {
+      await cleanup();
+    } finally {
+      process.removeListener("SIGINT", onSigint);
+      process.removeListener("SIGTERM", onSigterm);
     }
-    await rm(temporaryRoot, { recursive: true, force: true });
   }
 }
 

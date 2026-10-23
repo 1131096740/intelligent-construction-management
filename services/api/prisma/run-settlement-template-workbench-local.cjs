@@ -44,7 +44,7 @@ try {
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/settlement/settlement-template-workbench.http.pg.spec.ts"], env);
 } finally {
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {
-    docker(["rm", "--force", containerId], process.env, true);
+    docker(["rm", "--force", "--volumes", containerId], process.env, true);
     console.log(`TEMPLATE_WORKBENCH 已清理自身容器：${name}`);
   }
   rmSync(storageRoot, { recursive: true, force: true });

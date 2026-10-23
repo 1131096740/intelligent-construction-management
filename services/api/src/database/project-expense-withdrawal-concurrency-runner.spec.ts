@@ -189,7 +189,7 @@ describe("project expense withdrawal PostgreSQL concurrency runner", () => {
 
     expect(stopAll).toHaveBeenCalledTimes(1);
     expect(dockerCommand).toHaveBeenCalledWith(
-      ["rm", "--force", containerName],
+      ["rm", "--force", "--volumes", containerName],
       { timeoutMs: 60_000 }
     );
     expect(removeAttempts).toBeGreaterThanOrEqual(2);

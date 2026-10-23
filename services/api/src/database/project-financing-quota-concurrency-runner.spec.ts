@@ -450,7 +450,7 @@ describe("project financing quota PostgreSQL runner", () => {
       .toBeLessThan(source.indexOf('await dockerCommand([\n        "run"'));
     expect(source).toContain('process.removeListener("SIGINT", onSigint)');
     expect(source).toContain('process.removeListener("SIGTERM", onSigterm)');
-    expect(source).toContain('["rm", "--force", containerName]');
+    expect(source).toContain('["rm", "--force", "--volumes", containerName]');
     expect(source).toContain("recursive: true");
     expect(source).toContain("force: true");
   });
@@ -508,7 +508,7 @@ describe("project financing quota PostgreSQL runner", () => {
     expect(dockerCommand).toHaveBeenCalledTimes(expectedDockerCalls);
     if (expectedDockerCalls === 1) {
       expect(dockerCommand).toHaveBeenCalledWith(
-        ["rm", "--force", "jiangkong-pfq-concurrency-exact-test"],
+        ["rm", "--force", "--volumes", "jiangkong-pfq-concurrency-exact-test"],
         { timeoutMs: 60_000 }
       );
     }

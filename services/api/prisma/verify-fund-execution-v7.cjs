@@ -215,7 +215,7 @@ function main() {
     );
   } finally {
     if (started) {
-      spawnSync(docker, ["rm", "--force", containerName], { encoding: "utf8" });
+      spawnSync(docker, ["rm", "--force", "--volumes", containerName], { encoding: "utf8" });
     }
   }
 }

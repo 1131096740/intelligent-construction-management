@@ -36,6 +36,7 @@
     "preinspect:whole-site-capability-matrix:ready": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:whole-site-capability-matrix:ready": "node scripts/inspect-whole-site-capability-matrix.mjs --check --require-ready",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
+    "verify:docker-cleanup:local": "node services/api/prisma/verify-disposable-postgres-cleanup.cjs",
     "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local",
     "verify:project-financing-quota-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:project-financing-quota-concurrency:local",
     "verify:settlement-approval-withdrawal-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:settlement-approval-withdrawal-concurrency:local",

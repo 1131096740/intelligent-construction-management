@@ -130,7 +130,7 @@ async function main() {
 
   const cleanup = createRunnerCleanup({
     stopChildren: () => commandRuntime.stopAll(),
-    removeContainer: () => command(docker, ["rm", "--force", containerName], { timeoutMs: 60_000 })
+    removeContainer: () => command(docker, ["rm", "--force", "--volumes", containerName], { timeoutMs: 60_000 })
       .catch((error) => {
         if (!String(error?.message).includes("No such container")) throw error;
       }),
