@@ -1,6 +1,7 @@
 import type { RoleKey } from "@jiangkong/shared-domain";
 import {
   GLOBAL_ORGANIZATION_ROLE_KEYS,
+  DUAL_SCOPE_ORGANIZATION_ROLE_KEYS,
   type CreateOrganizationUserPayload
 } from "../../api/organization.api";
 
@@ -8,6 +9,7 @@ export interface OrganizationUserCreationForm {
   phone: string;
   departmentId: string;
   initialRoleKey: RoleKey | "";
+  initialRoleScope?: "global" | "project" | "";
   projectId: string;
   confirmationPassword: string;
   passwordRecorded: boolean;
@@ -18,6 +20,7 @@ export function emptyOrganizationUserCreationForm(): OrganizationUserCreationFor
     phone: "",
     departmentId: "",
     initialRoleKey: "",
+    initialRoleScope: "",
     projectId: "",
     confirmationPassword: "",
     passwordRecorded: false
@@ -33,7 +36,9 @@ export function buildOrganizationUserCreatePayload(
   if (!departmentId) throw new Error("请选择启用部门");
   if (!form.initialRoleKey) throw new Error("请选择初始岗位");
   const projectId = form.projectId.trim();
-  const globalRole = GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey);
+  const dualScope = DUAL_SCOPE_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey);
+  if (dualScope && form.initialRoleScope !== "global" && form.initialRoleScope !== "project") throw new Error("请明确选择公司岗位或指定项目岗位");
+  const globalRole = dualScope ? form.initialRoleScope === "global" : GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey);
   if (!globalRole && !projectId) throw new Error("项目岗位必须选择项目");
   if (globalRole && projectId) throw new Error("全局岗位不需要安排项目");
   if (!form.confirmationPassword.trim()) throw new Error("请输入当前登录密码");
@@ -47,6 +52,7 @@ export function buildOrganizationUserCreatePayload(
     phone,
     departmentId,
     initialRoleKey: form.initialRoleKey,
+    ...(dualScope ? { initialRoleScope: form.initialRoleScope as "global" | "project" } : {}),
     ...(projectId ? { projectId } : {}),
     confirmationPassword: form.confirmationPassword
   };

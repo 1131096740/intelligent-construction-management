@@ -8360,7 +8360,8 @@
       "id": "organization.department.create",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
       "trigger": {
@@ -8384,7 +8385,8 @@
       "id": "organization.department.update",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
       "trigger": {
@@ -8408,7 +8410,8 @@
       "id": "organization.user.update",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
       "trigger": {
@@ -8432,7 +8435,8 @@
       "id": "organization.user.create",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
       "trigger": {
@@ -8456,7 +8460,8 @@
       "id": "organization.role-addition.preview",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
       "trigger": {
@@ -8480,7 +8485,8 @@
       "id": "organization.role-addition.apply",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
       "trigger": {
@@ -8504,7 +8510,8 @@
       "id": "organization.role-removal.preview",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
       "trigger": {
@@ -8528,7 +8535,8 @@
       "id": "organization.role-removal.apply",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
       "trigger": {
@@ -8722,7 +8730,8 @@
       "id": "employee.review",
       "usage": "background",
       "routePaths": [
-        "/组织权限"
+        "/组织权限",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
       "trigger": {
@@ -8747,7 +8756,8 @@
       "usage": "background",
       "routePaths": [
         "/组织权限",
-        "/系统配置"
+        "/系统配置",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
       "trigger": {
@@ -8772,7 +8782,8 @@
       "usage": "background",
       "routePaths": [
         "/组织权限",
-        "/系统配置"
+        "/系统配置",
+        "/员工管理"
       ],
       "sourceFile": "apps/web-admin/src/components/AccountCredentialDialog.vue",
       "trigger": {
@@ -9213,13 +9224,14 @@
       "id": "project.roster.preview",
       "usage": "background",
       "routePaths": [
-        "/项目花名册"
+        "/项目花名册",
+        "/员工管理"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "previewWithCapability"
+        "handler": "previewRosterWithCapability"
       },
       "semantic": "business_write",
       "capability": {
@@ -9237,13 +9249,14 @@
       "id": "project.roster.apply",
       "usage": "background",
       "routePaths": [
-        "/项目花名册"
+        "/项目花名册",
+        "/员工管理"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "applyWithCapability"
+        "handler": "applyRosterWithCapability"
       },
       "semantic": "business_write",
       "capability": {
@@ -9882,6 +9895,56 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "downloadApprovalForm"
+        }
+      ]
+    },
+    {
+      "id": "personnel.change.preview",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewPersonnelWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "previewPersonnelChange"
+        }
+      ]
+    },
+    {
+      "id": "personnel.change.apply",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyPersonnelWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/organization.api.ts",
+          "name": "applyPersonnelChange"
         }
       ]
     }

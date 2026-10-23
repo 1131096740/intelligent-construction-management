@@ -643,7 +643,7 @@ describe("ProjectService", () => {
       }
     ]);
     expect(prisma.project.findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
+      where: { isActive: true, id: { in: ["project-1", "project-2"] } },
       select: { id: true, code: true, name: true },
       orderBy: [{ code: "asc" }, { name: "asc" }]
     });

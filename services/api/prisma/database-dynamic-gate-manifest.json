@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 195,
-    "terminalMigration": "20261020160000_approval_fund_identity_metadata",
-    "terminalMigrationChecksum": "462ec8eb021f7287043742e97a437b6d9b88cbed8373307ff1176a0708d740c6",
+    "expectedDirectoryCount": 197,
+    "terminalMigration": "20261023100000_personnel_lifecycle",
+    "terminalMigrationChecksum": "3728120258fd924b194e8614760e5eac8d78c5c38c11b6ca6373c43c4945c662",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 73,
-    "fullyPendingSuites": 62,
+    "pendingFiles": 77,
+    "fullyPendingSuites": 66,
     "partiallyPendingSuites": 11,
-    "pendingTests": 473,
-    "coveredFiles": 73,
-    "coveredTests": 473,
+    "pendingTests": 510,
+    "coveredFiles": 77,
+    "coveredTests": 510,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -595,7 +595,7 @@
     },
     {
       "id": "employee_onboarding",
-      "pendingTests": 22,
+      "pendingTests": 59,
       "testFiles": [
         {
           "path": "services/api/src/database/employee-onboarding-http-postgres.spec.ts",
@@ -605,6 +605,26 @@
         {
           "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
           "pendingTests": 10,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/employee-role-consistency-http-postgres.spec.ts",
+          "pendingTests": 8,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/employee-phone-reuse-postgres.spec.ts",
+          "pendingTests": 7,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/personnel-roster-read-http-postgres.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/personnel-lifecycle-http-postgres.spec.ts",
+          "pendingTests": 20,
           "suiteStatus": "fully_pending"
         }
       ],

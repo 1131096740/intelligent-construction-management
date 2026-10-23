@@ -321,6 +321,10 @@ jobs:
             --candidate-sha "$candidate_sha" \
             --confirm LOCAL_PG16_DYNAMIC_GATE
 
+      - name: Verify personnel feedback and recovery on desktop and mobile
+        if: ${{ matrix.group == 'employee_onboarding' }}
+        run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.personnel-feedback.config.ts
+
       - name: Report sanitized roster failure timing
         if: ${{ failure() && matrix.group == 'employee_onboarding' }}
         run: |

@@ -78,6 +78,7 @@ describe("OrganizationController", () => {
     const controller = new OrganizationController(
       service as never,
       undefined as never,
+      undefined as never,
       undefined as never
     );
 
@@ -113,6 +114,7 @@ describe("OrganizationController", () => {
     const controller = new OrganizationController(
       service as never,
       undefined as never,
+      undefined as never,
       undefined as never
     ) as OrganizationController & {
       permissionIntegrity(): Promise<unknown>;
@@ -142,6 +144,7 @@ describe("OrganizationController", () => {
     };
     const controller = new OrganizationController(
       service as never,
+      undefined as never,
       undefined as never,
       undefined as never
     ) as OrganizationController &
@@ -255,7 +258,7 @@ describe("OrganizationController", () => {
       steps: []
     };
     const impacts = { previewRoleRemovalBatch: jest.fn().mockResolvedValue(readModel) };
-    const controller = new OrganizationController({} as never, impacts as never, {} as never) as
+    const controller = new OrganizationController({} as never, impacts as never, {} as never, {} as never) as
       OrganizationController & { previewRoleRemovalBatch(body: unknown): Promise<unknown> };
     const body = {
       targets: [
@@ -321,7 +324,7 @@ describe("OrganizationController", () => {
       previewRoleAddition: jest.fn().mockResolvedValue(previewResult),
       applyRoleAddition: jest.fn().mockResolvedValue(applyResult)
     };
-    const controller = new OrganizationController({} as never, impacts as never, roles as never) as
+    const controller = new OrganizationController({} as never, impacts as never, roles as never, {} as never) as
       OrganizationController & {
         previewRoleAddition(actor: unknown, body: unknown): Promise<unknown>;
         applyRoleAddition(actor: unknown, body: unknown): Promise<unknown>;

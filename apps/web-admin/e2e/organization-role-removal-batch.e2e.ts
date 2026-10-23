@@ -200,8 +200,8 @@ test("批量撤岗只手动预览累计阻断且切换目标清空结果", async
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
-  await page.getByText("组织权限", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
+  await page.getByText("员工管理", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "员工目录与办理" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "批量预览撤岗" }).click();
   await expect(page.getByText("这里只累计模拟 2 至 20 个正常岗位的撤销影响，不会执行任何岗位变更。")).toBeVisible();

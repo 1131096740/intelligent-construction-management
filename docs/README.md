@@ -16,6 +16,8 @@
 
 ## 当前规格索引
 
+- 人事精简重构以[精简人事V2已确认规则](specs/2026-10-23-lean-personnel-v2.md)为本轮范围；用户已授权隔离实现、提交推送、独立PR及完整CI，禁止合并或部署，生产迁移授权不沿用历史入职版本。
+
 - 基础资料统一维护（#318）见 [操作单](guides/2026-10-15-master-data-maintenance.md) 和 [发布执行说明](runbooks/2026-10-15-master-data-maintenance-release.md)：仅公司级综合部主管和董事长维护；空项目可停用恢复，有业务项目沿用结项。
 
 - 员工注册、分级审核及密码找回见 [员工入职规格](specs/2026-10-15-employee-onboarding.md)、[员工操作说明](guides/2026-10-15-employee-accounts.md) 和 [本轮发布执行说明](runbooks/2026-10-15-employee-onboarding-release.md)。

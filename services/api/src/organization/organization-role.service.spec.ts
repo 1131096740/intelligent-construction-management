@@ -77,6 +77,7 @@ function createHarness(input?: {
   actorAdminAssignment?: { id: string } | null;
 }) {
   const tx = {
+    personnelChange: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "personnel-fact" }) },
     user: {
       findUnique: jest.fn().mockResolvedValue(
         input && "actor" in input ? input.actor : { id: "actor-user", isActive: true }
@@ -148,6 +149,27 @@ function createHarness(input?: {
 }
 
 describe("OrganizationRoleService", () => {
+  it("统一录入不能把错误类型的项目坐标丢弃后默认为公司授岗", async () => {
+    const { tx } = createHarness();
+    const scoped = new OrganizationRoleService(tx as never, {} as never, {} as never, {} as never);
+    await expect(scoped.assertCanMaintainBusinessEntryRole("actor-user", "target-user", {
+      operation: "grant", scope: "global", projectId: 17, roleKey: "contract_staff"
+    })).rejects.toThrow("项目");
+  });
+
+  it.each(["contract_staff", "finance_staff"] as const)(
+    "统一录入允许明确项目范围的双范围岗位 %s，不升格公司范围",
+    async (roleKey) => {
+      const { tx } = createHarness();
+      const scoped = new OrganizationRoleService({ ...tx,
+        project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) }
+      } as never, {} as never, {} as never, {} as never);
+      await expect(scoped.assertCanMaintainBusinessEntryRole("actor-user", "target-user", {
+        operation: "grant", scope: "project", projectId: "project-1", roleKey
+      })).resolves.toBeUndefined();
+    }
+  );
+
   it("技术管理员不能借岗位管理入口批准财务或其他业务岗位", async () => {
     const { service, tx } = createHarness({ actorRole: "super_admin" });
     await expect(service.applyRoleAddition("actor-user", globalAdditionInput)).rejects.toBeInstanceOf(ForbiddenException);

@@ -2423,11 +2423,53 @@
     },
     {
       "method": "GET",
+      "path": "/organization/personnel-changes/results/:commandKey",
+      "normalizedKey": "GET /organization/personnel-changes/results/:param",
+      "controller": "OrganizationController",
+      "handler": "personnelResult",
+      "sourceFile": "services/api/src/organization/organization.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/organization/project-roster/options",
       "normalizedKey": "GET /organization/project-roster/options",
       "controller": "ProjectRosterManagementController",
       "handler": "options",
       "sourceFile": "services/api/src/organization/project-roster-management.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/organization/users/:userId/employment",
+      "normalizedKey": "GET /organization/users/:param/employment",
+      "controller": "OrganizationController",
+      "handler": "employment",
+      "sourceFile": "services/api/src/organization/organization.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
       "guardAuthorization": "positions",
@@ -8705,6 +8747,48 @@
       "requiredPositions": [
         "chairman",
         "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/organization/personnel-changes/apply",
+      "normalizedKey": "POST /organization/personnel-changes/apply",
+      "controller": "OrganizationController",
+      "handler": "applyPersonnel",
+      "sourceFile": "services/api/src/organization/organization.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/organization/personnel-changes/preview",
+      "normalizedKey": "POST /organization/personnel-changes/preview",
+      "controller": "OrganizationController",
+      "handler": "previewPersonnel",
+      "sourceFile": "services/api/src/organization/organization.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

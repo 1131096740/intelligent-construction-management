@@ -20,7 +20,7 @@ export class AccountSecurityService {
     if (input.purpose === "register") {
       const [user, application] = await Promise.all([
         this.prisma.user.findUnique({ where: { phone: input.phone }, select: { id: true } }),
-        this.prisma.employeeRegistration.findUnique({ where: { phone: input.phone }, select: { id: true } })
+        this.prisma.employeeRegistration.findFirst({ where: { phone: input.phone, status: { not: "approved" } }, select: { id: true } })
       ]);
       return this.sms.send(input.phone, "register", address, `register:${input.phone}`, !user && !application);
     }
@@ -33,7 +33,7 @@ export class AccountSecurityService {
     if (!user.isActive) throw new UnauthorizedException("账号已停用，请重新登录");
     const [existing, application] = await Promise.all([
       this.prisma.user.findUnique({ where: { phone }, select: { id: true } }),
-      this.prisma.employeeRegistration.findUnique({ where: { phone }, select: { userId: true } })
+      this.prisma.employeeRegistration.findFirst({ where: { phone, status: { not: "approved" } }, select: { userId: true } })
     ]);
     return this.sms.send(phone, "change_phone", address, `user:${actorId}:${user.sessionVersion}`,
       (!existing || existing.id === actorId) && (!application || application.userId === actorId));
@@ -66,7 +66,7 @@ export class AccountSecurityService {
     const user = await this.prisma.user.findUnique({ where: { phone } });
     if (user) return user.isActive ? { kind: "user" as const, id: user.id, version: user.sessionVersion,
       binding: `user:${user.id}:${user.sessionVersion}` } : null;
-    const row = await this.prisma.employeeRegistration.findUnique({ where: { phone } });
+    const row = await this.prisma.employeeRegistration.findFirst({ where: { phone, status: { not: "approved" } } });
     return row && row.status !== "approved" ? { kind: "application" as const, id: row.id, version: row.credentialVersion,
       binding: `application:${row.id}:${row.credentialVersion}` } : null;
   }

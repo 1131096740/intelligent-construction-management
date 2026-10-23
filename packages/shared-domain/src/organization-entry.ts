@@ -31,6 +31,9 @@ export const ORGANIZATION_USER_ENTRY_DEFINITION = definition("organization_user"
   field("phone", "手机号", "text", { format: { pattern: "^1[3-9]\\d{9}$" } }),
   field("departmentId", "所属部门"),
   field("initialRoleKey", "初始岗位"),
+  field("initialRoleScope", "岗位范围", "single_select", {
+    options: [{ value: "global", label: "公司岗位（适用全部项目）" }, { value: "project", label: "指定项目岗位" }]
+  }),
   field("projectId", "安排项目"),
   field("isActive", "是否启用", "boolean")
 ]);

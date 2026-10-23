@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 383,
+    "activeBusinessActionCount": 385,
     "technicalActionCount": 9,
-    "activeBindingCount": 442,
+    "activeBindingCount": 444,
     "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -1945,6 +1945,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/系统配置",
         "/组织权限"
       ],
@@ -2011,6 +2012,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/系统配置",
         "/组织权限"
       ],
@@ -2076,6 +2078,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
@@ -3166,6 +3169,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -3182,6 +3186,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -3198,6 +3203,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
@@ -3214,6 +3220,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
@@ -3230,6 +3237,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
@@ -3246,6 +3254,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
@@ -3262,6 +3271,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
@@ -3278,6 +3288,7 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -3607,6 +3618,40 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /payments"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "personnel.change.apply",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/personnel-changes/apply"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "personnel.change.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /organization/personnel-changes/preview"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -4418,9 +4463,10 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/项目花名册"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /organization/project-roster/apply"
@@ -4434,9 +4480,10 @@
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
+        "/员工管理",
         "/项目花名册"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue",
+      "sourceFile": "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /organization/project-roster/preview"

@@ -39,7 +39,7 @@ test("董事长新增部门、调整人员部门、停用并重新启用原账�
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Test@2026");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.getByText("组织权限", { exact: true }).click();
+  await page.getByText("员工管理", { exact: true }).click();
   await page.getByRole("button", { name: "新增部门", exact: true }).click();
   let drawer = page.locator(".t-drawer:visible");
   await drawer.getByPlaceholder("请选择或填写部门名称").fill("项目服务部");

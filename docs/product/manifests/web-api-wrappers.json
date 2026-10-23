@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 39,
-    "exportedFunctionCount": 664,
-    "transportWrapperCount": 642,
+    "exportedFunctionCount": 668,
+    "transportWrapperCount": 646,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 681,
+    "mainRequestBindingCount": 685,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 669,
-    "productionConsumerCount": 549,
+    "requestEdgeCount": 673,
+    "productionConsumerCount": 553,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 355,
-    "reachableProductionModuleCount": 334
+    "productionModuleCount": 361,
+    "reachableProductionModuleCount": 340
   },
   "wrappers": [
     {
@@ -869,6 +869,7 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractBasicSection.vue",
+        "apps/web-admin/src/pages/organization/components/PersonnelDetailsDrawer.vue",
         "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
       ],
@@ -6425,7 +6426,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7158,
+          "sourceLine": 7162,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -6457,7 +6458,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7142,
+          "sourceLine": 7146,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -6487,7 +6488,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7142,
+          "sourceLine": 7146,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -6517,7 +6518,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5571,
+          "sourceLine": 5575,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -6546,7 +6547,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7142,
+          "sourceLine": 7146,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -6576,7 +6577,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2708,
+          "sourceLine": 2712,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -6638,7 +6639,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5458,
+          "sourceLine": 5462,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -6669,7 +6670,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3615,
+          "sourceLine": 3619,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -6728,7 +6729,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7185,
+          "sourceLine": 7189,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -6757,7 +6758,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7172,
+          "sourceLine": 7176,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -6786,7 +6787,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7200,
+          "sourceLine": 7204,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -6815,7 +6816,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7142,
+          "sourceLine": 7146,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -14303,7 +14304,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/role-additions/apply",
           "normalizedPath": "/organization/role-additions/apply",
@@ -14333,7 +14334,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/role-changes/apply",
           "normalizedPath": "/organization/role-changes/apply",
@@ -14356,6 +14357,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "applyPersonnelChange",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 396,
+          "method": "POST",
+          "path": "/organization/personnel-changes/apply",
+          "normalizedPath": "/organization/personnel-changes/apply",
+          "normalizedKey": "POST /organization/personnel-changes/apply",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "applyPersonnelChange",
+              "sendJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "applyProjectRosterChange",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
@@ -14363,7 +14392,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/project-roster/apply",
           "normalizedPath": "/organization/project-roster/apply",
@@ -14378,7 +14407,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+        "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -14391,7 +14420,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/departments",
           "normalizedPath": "/organization/departments",
@@ -14421,7 +14450,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/users",
           "normalizedPath": "/organization/users",
@@ -14444,6 +14473,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchEmploymentHistory",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 385,
+          "method": "GET",
+          "path": "/organization/users/:param/employment",
+          "normalizedPath": "/organization/users/:param/employment",
+          "normalizedKey": "GET /organization/users/:param/employment",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchEmploymentHistory",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
+        "apps/web-admin/src/pages/organization/components/PersonnelDetailsDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchOrganizationDirectory",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
@@ -14451,7 +14509,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 376,
+          "sourceLine": 385,
           "method": "GET",
           "path": "/organization/directory",
           "normalizedPath": "/organization/directory",
@@ -14481,7 +14539,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 376,
+          "sourceLine": 385,
           "method": "GET",
           "path": "/organization/management-capabilities",
           "normalizedPath": "/organization/management-capabilities",
@@ -14502,7 +14560,8 @@
         "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
-        "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
+        "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
+        "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -14515,7 +14574,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 376,
+          "sourceLine": 385,
           "method": "GET",
           "path": "/organization/permission-integrity",
           "normalizedPath": "/organization/permission-integrity",
@@ -14538,6 +14597,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchPersonnelResult",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 385,
+          "method": "GET",
+          "path": "/organization/personnel-changes/results/:param",
+          "normalizedPath": "/organization/personnel-changes/results/:param",
+          "normalizedKey": "GET /organization/personnel-changes/results/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPersonnelResult",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/components/PersonnelDetailsDrawer.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchProjectRosterManagementOptions",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
@@ -14545,7 +14633,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 376,
+          "sourceLine": 385,
           "method": "GET",
           "path": "/organization/project-roster/options",
           "normalizedPath": "/organization/project-roster/options",
@@ -14560,8 +14648,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
-        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+        "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts",
+        "apps/web-admin/src/pages/projects/ProjectRosterPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -14586,7 +14674,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/role-additions/preview",
           "normalizedPath": "/organization/role-additions/preview",
@@ -14616,7 +14704,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/role-changes/preview",
           "normalizedPath": "/organization/role-changes/preview",
@@ -14646,7 +14734,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/role-changes/batch-preview",
           "normalizedPath": "/organization/role-changes/batch-preview",
@@ -14669,6 +14757,34 @@
       "productionConsumers": []
     },
     {
+      "name": "previewPersonnelChange",
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 396,
+          "method": "POST",
+          "path": "/organization/personnel-changes/preview",
+          "normalizedPath": "/organization/personnel-changes/preview",
+          "normalizedKey": "POST /organization/personnel-changes/preview",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "previewPersonnelChange",
+              "sendJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "previewProjectRosterChange",
       "apiFile": "apps/web-admin/src/api/organization.api.ts",
       "kind": "transport",
@@ -14676,7 +14792,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "POST",
           "path": "/organization/project-roster/preview",
           "normalizedPath": "/organization/project-roster/preview",
@@ -14691,7 +14807,7 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/ProjectRosterChangeDrawer.vue"
+        "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -14704,7 +14820,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "PATCH",
           "path": "/organization/departments/:param",
           "normalizedPath": "/organization/departments/:param",
@@ -14734,7 +14850,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 387,
+          "sourceLine": 396,
           "method": "PATCH",
           "path": "/organization/users/:param",
           "normalizedPath": "/organization/users/:param",

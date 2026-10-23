@@ -10,6 +10,8 @@ const protectedTables = Object.freeze({
   SpotPaymentAuditSource: "零采付款永久审计及资金流水来源",
   GeneralProcurement: "综合采购申请及归档审批历史，本轮保留不纳入旧业务清理",
   EmployeeRegistration: "员工入职申请及审核记录",
+  EmploymentPeriod: "员工多段任职历史，未知资料保留未知，已结束段不可改删",
+  PersonnelChange: "人员办理事实及原命令结果，仅追加且永久保护",
   AuthRateLimit: "账号认证限流记录",
   SmsChallenge: "短信验证码安全记录",
   ContractEndedApplicationRetentionPolicy: "合同结束申请保留策略",

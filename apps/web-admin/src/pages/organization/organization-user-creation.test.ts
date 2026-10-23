@@ -6,12 +6,22 @@ import {
 } from "./organization-user-creation";
 
 describe("organization user creation", () => {
+  it("keeps a finance initial assignment within the explicitly selected project", () => {
+    expect(buildOrganizationUserCreatePayload({
+      phone: "13900000001", departmentId: "department-1", initialRoleKey: "finance_staff",
+      initialRoleScope: "project", projectId: "project-1", confirmationPassword: "Synthetic-Current-01", passwordRecorded: true
+    } as OrganizationUserCreationForm)).toEqual({
+      phone: "13900000001", departmentId: "department-1", initialRoleKey: "finance_staff",
+      initialRoleScope: "project", projectId: "project-1", confirmationPassword: "Synthetic-Current-01"
+    });
+  });
   it("builds the company-wide contract staff payload without a project or initial password", () => {
     expect(
       buildOrganizationUserCreatePayload({
         phone: " 13800000001 ",
         departmentId: " department-1 ",
         initialRoleKey: "contract_staff",
+        initialRoleScope: "global",
         projectId: "",
         confirmationPassword: " current-password ",
         passwordRecorded: true
@@ -20,6 +30,7 @@ describe("organization user creation", () => {
       phone: "13800000001",
       departmentId: "department-1",
       initialRoleKey: "contract_staff",
+      initialRoleScope: "global",
       confirmationPassword: " current-password "
     });
   });
@@ -37,6 +48,7 @@ describe("organization user creation", () => {
         phone: "13800000001",
         departmentId: "department-1",
         initialRoleKey: "contract_staff",
+        initialRoleScope: "global",
         projectId: "",
         confirmationPassword: "current-password",
         passwordRecorded: true,
@@ -50,6 +62,7 @@ describe("organization user creation", () => {
       phone: "",
       departmentId: "",
       initialRoleKey: "",
+      initialRoleScope: "",
       projectId: "",
       confirmationPassword: "",
       passwordRecorded: false

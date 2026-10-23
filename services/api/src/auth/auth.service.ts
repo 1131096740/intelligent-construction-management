@@ -20,6 +20,7 @@ import type { UpdateMyProfileDto } from "./dto/update-my-profile.dto";
 import type { WxLoginDto } from "./dto/wx-login.dto";
 import { JwtTokenService } from "./jwt-token.service";
 import { SmsVerificationService } from "./sms-verification.service";
+import { recordPersonnelFact } from "../organization/personnel-fact";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
@@ -259,6 +260,10 @@ export class AuthService {
         businessId: user.id,
         metadata: { nameUpdated: Boolean(name) }
       });
+      if (name && name !== storedUser.name) await recordPersonnelFact(tx, {
+        actorUserId: user.id, userId: user.id, action: "profile_adjust", reason: "本人确认真实姓名",
+        before: { name: storedUser.name }, after: { name }
+      });
       return updated;
     }).catch((error: unknown) => {
       if (typeof error === "object" && error !== null && "code" in error && error.code === "P2025") {
@@ -294,7 +299,7 @@ export class AuthService {
       updatedUser = await this.prisma.$transaction(async (tx) => {
         if (input.phone !== storedUser.phone) {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-phone:${input.phone}`}))`;
-          const application = await tx.employeeRegistration.findUnique({ where: { phone: input.phone }, select: { userId: true } });
+          const application = await tx.employeeRegistration.findFirst({ where: { phone: input.phone, status: { not: "approved" } }, select: { userId: true } });
           if (application && application.userId !== user.id) {
             throw new ConflictException("该手机号已有入职申请，请联系综合部或董事长核对");
           }
@@ -320,6 +325,8 @@ export class AuthService {
             ]
           }
         });
+        await recordPersonnelFact(tx, { actorUserId: user.id, userId: user.id, action: "profile_adjust", reason: "本人修改资料",
+          before: { name: storedUser.name, phone: storedUser.phone }, after: { name, phone: input.phone } });
         return updated;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {

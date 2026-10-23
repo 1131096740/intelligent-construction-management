@@ -8,7 +8,9 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { ApplicationLoginDto, EmployeeRegistrationDto, ReviewEmployeeRegistrationDto, type EmployeeRoleDto, type ResubmitEmployeeRegistrationDto } from "./dto/employee-registration.dto";
 import { canApproveEmployeeRoles, employeeManagerRoles, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
-import { roleScope } from "./organization-management-policy";
+import { resolveRoleAssignmentScope } from "./organization-management-policy";
+import { assertEngineeringDirectorAvailable } from "./organization-role-assignment-policy";
+import { recordPersonnelFact, startUnverifiedEmployment } from "./personnel-fact";
 import { SmsVerificationService } from "../auth/sms-verification.service";
 
 function isConcurrentConflict(error: unknown) {
@@ -39,6 +41,9 @@ export class EmployeeOnboardingService {
         if (await tx.user.findUnique({ where: { phone: input.phone }, select: { id: true } })) {
           throw new ConflictException("该手机号已有账号，请直接登录或联系管理员处理");
         }
+        if (await tx.employeeRegistration.findFirst({ where: { phone: input.phone, status: { not: "approved" } }, select: { id: true } })) {
+          throw new ConflictException("该手机号已提交过申请，请使用原密码查看申请");
+        }
         const application = await tx.employeeRegistration.create({ data: {
           name: input.name.trim(), phone: input.phone, passwordHash, ...(smsEnabled ? { phoneVerifiedAt: new Date() } : {})
         } });
@@ -56,7 +61,7 @@ export class EmployeeOnboardingService {
   }
 
   async login(input: ApplicationLoginDto) {
-    const row = await this.prisma.employeeRegistration.findUnique({ where: { phone: input.phone } });
+    const row = await this.prisma.employeeRegistration.findFirst({ where: { phone: input.phone, status: { not: "approved" } } });
     if (!row || row.status === "approved" || (row.temporaryPasswordExpiresAt && row.temporaryPasswordExpiresAt <= new Date()) || !await bcrypt.compare(input.password, row.passwordHash)) {
       throw new UnauthorizedException("手机号或密码不正确，请重试或联系管理员");
     }
@@ -147,6 +152,9 @@ export class EmployeeOnboardingService {
             status = "chairman_review";
           } else {
             if (row.mustChangePassword) throw new BadRequestException("请先让员工登录设置本人密码，再开通账号");
+            if (roles.some(role => role.roleKey === "engineering_department_director")) {
+              await assertEngineeringDirectorAvailable(tx);
+            }
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-phone:${row.phone}`}))`;
             if (await tx.user.findUnique({ where: { phone: row.phone }, select: { id: true } })) {
               throw new ConflictException("该手机号已有账号，请联系董事长核对，不能重复开通");
@@ -155,8 +163,9 @@ export class EmployeeOnboardingService {
               passwordHash: row.passwordHash, departmentId: input.departmentId, mustChangePassword: false,
               requiresChairmanManagement: roles.some((role) => IMPORTANT_EMPLOYEE_ROLES.includes(role.roleKey)) } });
             userId = user.id;
+            await startUnverifiedEmployment(tx, userId);
             for (const role of roles) {
-              if (roleScope(role.roleKey) === "global") {
+              if (resolveRoleAssignmentScope(role.roleKey, role) === "global") {
                 const position = await tx.position.findUniqueOrThrow({ where: { key: role.roleKey } });
                 await tx.userPosition.create({ data: { userId, positionId: position.id } });
               } else {
@@ -182,6 +191,9 @@ export class EmployeeOnboardingService {
             form: { title: "员工入职审批单", code: row.name, projectId: null, companyName: "",
               summary: [{ label: "入职员工", value: row.name }, { label: "联系电话", value: row.phone }] }
           });
+          await recordPersonnelFact(tx, { userId, actorUserId: actorId, action: "onboarding_approve", reason: reason || "批准员工入职",
+            before: { registrationId: id, status: row.status }, after: { registrationId: id, departmentId: input.departmentId ?? null,
+              roles: roles.map(role => ({ roleKey: role.roleKey, scope: resolveRoleAssignmentScope(role.roleKey, role), projectId: role.projectId ?? null })) } });
         }
         await this.audit.record(tx, { actorUserId: actorId, action: `employee.registration.${input.decision}`,
           businessType: "employee_registration", businessId: id,
@@ -203,13 +215,12 @@ export class EmployeeOnboardingService {
     if (!roles.length || roles.some((role) => role.roleKey === "super_admin")) {
       throw new BadRequestException("请选择业务岗位，系统管理员不通过入职申请开通");
     }
-    const keys = roles.map((role) => `${role.roleKey}:${role.projectId ?? ""}`);
+    const keys = roles.map((role) => `${role.roleKey}:${resolveRoleAssignmentScope(role.roleKey, role)}:${role.projectId ?? ""}`);
     if (new Set(keys).size !== keys.length) throw new BadRequestException("同一岗位和项目不能重复安排");
     for (const role of roles) {
       if (!await tx.position.findUnique({ where: { key: role.roleKey } })) throw new BadRequestException("岗位配置不存在，请联系管理员");
-      if (roleScope(role.roleKey) === "global") {
-        if (role.projectId) throw new BadRequestException("全公司岗位无需选择项目");
-      } else if (!role.projectId || !await tx.project.findFirst({ where: { id: role.projectId, isActive: true } })) {
+      if (resolveRoleAssignmentScope(role.roleKey, role) === "project" &&
+        (!role.projectId || !await tx.project.findFirst({ where: { id: role.projectId, isActive: true } }))) {
         throw new BadRequestException("请为项目岗位选择启用的项目");
       }
     }

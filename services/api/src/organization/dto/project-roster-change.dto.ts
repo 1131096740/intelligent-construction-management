@@ -1,4 +1,4 @@
-import { IsIn, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
+import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from "class-validator";
 
 import { IsRequiredText } from "../../validation/static-field-validation";
 
@@ -21,6 +21,9 @@ export class ProjectRosterChangeDto {
 }
 
 export class ApplyProjectRosterChangeDto extends ProjectRosterChangeDto {
+  @IsOptional()
+  @IsUUID("4", { message: "请重新开始本次办理" })
+  commandKey?: string;
   @Matches(/^sha256:[a-f0-9]{64}$/, { message: "请先重新预览调整" })
   snapshotHash!: string;
 

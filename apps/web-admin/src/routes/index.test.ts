@@ -616,7 +616,7 @@ describe("web admin routes", () => {
       { label: "一般争议资金", path: "/一般争议资金" },
       { label: "工资承担工作台", path: "/工资承担工作台" },
       { label: "全局发票与清分分配", path: "/全局发票与清分分配" },
-      { label: "项目花名册", path: "/项目花名册" },
+      { label: "员工管理", path: "/员工管理" },
       { label: "合同工作台", path: "/合同工作台" },
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
@@ -638,7 +638,6 @@ describe("web admin routes", () => {
       { label: "审计日志", path: "/审计日志" },
       { label: "我方公司主体", path: "/我方公司主体" },
       { label: "合作单位档案", path: "/business-parties" },
-      { label: "组织权限", path: "/组织权限" },
       { label: "系统配置", path: "/系统配置" }
     ]);
   });
@@ -728,7 +727,7 @@ describe("web admin routes", () => {
     );
     expect(visibleAdminNavigationItems(["material_director"]).map((item) => item.path)).toContain("/项目经营");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/项目经营");
-    expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).toContain("/项目花名册");
+    expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).toContain("/员工管理");
   });
 
   it("shows historical contract takeover to the approved contract, finance and comprehensive readers", () => {
@@ -890,7 +889,7 @@ describe("web admin routes", () => {
     });
     expect(visibleAdminNavigationItems(["super_admin"]).map((item) => item.path)).not.toContain("/组织权限");
     expect(visibleAdminNavigationItems(["super_admin"], ["super_admin"]).map((item) => item.path)).toContain(
-      "/组织权限"
+      "/员工管理"
     );
     expect(visibleAdminNavigationItems(["general_manager"]).map((item) => item.path)).not.toContain("/组织权限");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/组织权限");

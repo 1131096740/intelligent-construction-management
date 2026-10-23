@@ -37,14 +37,55 @@ model User {
   fundMovementRelationshipsConfirmed FundMovementRelationshipEntry[]   @relation("FundMovementRelationshipConfirmedBy")
   createdAt                          DateTime                          @default(now())
   updatedAt                          DateTime                          @updatedAt
+  employmentPeriods                  EmploymentPeriod[]
+  personnelChanges                   PersonnelChange[]                 @relation("PersonnelChangeTarget")
+  personnelChangesExecuted           PersonnelChange[]                 @relation("PersonnelChangeActor")
 
   @@index([departmentId])
+}
+
+// 一人多段任职。旧员工日期未经核实保持为空，不以账号创建时间补造。
+model EmploymentPeriod {
+  id              String    @id @default(uuid())
+  userId          String
+  startedOn       DateTime? @db.Date
+  endedOn         DateTime? @db.Date
+  endedAt         DateTime?
+  verified        Boolean   @default(false)
+  companyEntityId String?
+  revision        Int       @default(1)
+  createdAt       DateTime   @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+// 办理事实兼作命令回执：同键同载荷重放结果，历史只追加。
+model PersonnelChange {
+  id                 String   @id @default(uuid())
+  sequence           Int      @unique @default(autoincrement())
+  commandKey         String   @unique
+  payloadFingerprint String
+  userId             String
+  actorUserId        String
+  action             String
+  reason             String
+  before             Json
+  after              Json
+  result             Json
+  previousChangeId   String?
+  createdAt          DateTime @default(now())
+  user               User     @relation("PersonnelChangeTarget", fields: [userId], references: [id], onDelete: Restrict)
+  actor              User     @relation("PersonnelChangeActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
 }
 
 // 未审核的入职申请不创建 User，不持有任何业务岗位。
 model EmployeeRegistration {
   id                String   @id @default(uuid())
-  phone             String   @unique
+  // 未批准申请仍独占手机号；已批准历史保留原号码，由迁移中的部分唯一索引约束。
+  phone             String
   name              String
   passwordHash      String
   mustChangePassword Boolean @default(false)

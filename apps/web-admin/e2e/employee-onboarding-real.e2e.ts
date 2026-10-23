@@ -23,7 +23,7 @@ test("真实注册、董事长批准、本人登录与管理员重置密码", as
     await manager.getByRole("button", { name: "登录", exact: true }).click();
     await expect(manager).not.toHaveURL(/login/);
     await manager.goto("http://127.0.0.1:5199/组织权限");
-    const row = manager.getByRole("row").filter({ hasText: phone });
+    const row = manager.locator("tr, article.employee-card, article.application-card, article.roster-card").filter({ hasText: phone });
     await row.getByRole("button", { name: "审核申请", exact: true }).click();
     const drawer = manager.locator(".t-drawer__content-wrapper");
     await drawer.locator('[data-field="departmentId"]').click();
@@ -34,9 +34,16 @@ test("真实注册、董事长批准、本人登录与管理员重置密码", as
     const financeOption = manager.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "财务经办" });
     await expect(financeOption).toHaveCount(1);
     await financeOption.click();
+    await drawer.locator('[data-field="initialRoleScope"]').click();
+    const scopeOption = manager.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "公司岗位（适用全部项目）" });
+    await expect(scopeOption).toHaveCount(1);
+    await scopeOption.click();
     await drawer.getByText("我已核对员工本人及手机号", { exact: true }).click();
     await drawer.getByPlaceholder("请输入本人当前登录密码").fill(password);
+    const reviewRequest = manager.waitForRequest((request) => request.method() === "POST"
+      && /\/api\/employee-onboarding\/applications\/[^/]+\/review$/.test(new URL(request.url()).pathname));
     await drawer.getByRole("button", { name: "批准开通", exact: true }).click();
+    expect((await reviewRequest).postDataJSON().roles).toEqual([{ roleKey: "finance_staff", scope: "global" }]);
     await expect(drawer).toHaveCount(0);
     await page.getByRole("button", { name: "刷新审核结果" }).click();
     await expect(page.getByText("审核通过，账号已开通", { exact: true })).toBeVisible();
@@ -47,7 +54,7 @@ test("真实注册、董事长批准、本人登录与管理员重置密码", as
     await expect(page).not.toHaveURL(/login|registration-status/);
     await expectNoDocumentHorizontalOverflow(page);
 
-    const employeeRow = manager.getByRole("row").filter({ hasText: phone }).filter({ has: manager.getByRole("button", { name: "重置密码", exact: true }) });
+    const employeeRow = manager.locator("tr, article.employee-card, article.application-card, article.roster-card").filter({ hasText: phone }).filter({ has: manager.getByRole("button", { name: "重置密码", exact: true }) });
     await employeeRow.getByRole("button", { name: "重置密码", exact: true }).click();
     const dialog = manager.locator(".t-dialog");
     await dialog.getByText("我已核对员工本人及手机号", { exact: true }).click();

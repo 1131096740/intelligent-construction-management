@@ -65,8 +65,14 @@ try {
   docker(["cp", path.join(__dirname, "employee-onboarding-runtime-grants.sql"), `${containerId}:/tmp/onboarding-grants.sql`], process.env, true);
   docker(["exec", "--env", `OPERATING_LEDGER_RUNTIME_ROLE=${runtime}`, containerId, "psql", "-v", "ON_ERROR_STOP=1",
     "-U", "jiangkong", "-d", "onboarding", "--file=/tmp/onboarding-grants.sql"], process.env, true);
+  const personnelPrivileges = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "onboarding", "-Atc",
+    `SELECT has_table_privilege('${runtime}', 'public."PersonnelChange"', 'INSERT'),
+      has_table_privilege('${runtime}', 'public."PersonnelChange"', 'UPDATE'),
+      has_table_privilege('${runtime}', 'public."PersonnelChange"', 'DELETE'),
+      has_table_privilege('${runtime}', 'public."EmploymentPeriod"', 'DELETE');`], process.env, true);
+  if (personnelPrivileges !== "t|f|f|f") throw new Error("人员历史运行身份权限越界或缺失");
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/onboarding`;
-  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts"], env);
+  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts", "src/database/personnel-lifecycle-http-postgres.spec.ts", "src/database/employee-role-consistency-http-postgres.spec.ts", "src/database/employee-phone-reuse-postgres.spec.ts", "src/database/personnel-roster-read-http-postgres.spec.ts"], env);
 } finally {
   rmSync(storageRoot, { recursive: true, force: true });
   if (containerId && /^[a-f0-9]{64}$/.test(containerId)) {

@@ -97,7 +97,9 @@ function createWriteHarness(options?: {
     : { id: "user-2", departmentId: "department-1", isActive: true };
   const tx = {
     $executeRaw: jest.fn().mockResolvedValue(0),
-    employeeRegistration: { findUnique: jest.fn().mockResolvedValue(null) },
+    employeeRegistration: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null) },
+    personnelChange: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "personnel-fact" }) },
+    employmentPeriod: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "employment" }) },
     department: {
       findUnique: jest
         .fn()
@@ -113,6 +115,7 @@ function createWriteHarness(options?: {
       )
     },
     user: {
+      findFirst: jest.fn<Promise<{ id: string } | null>, [unknown]>().mockResolvedValue(null),
       findUnique: jest
         .fn()
         .mockImplementation(({ where }: { where: { id: string } }) =>
@@ -176,8 +179,8 @@ function createWriteHarness(options?: {
     project: {
       findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
     },
-    approvalDelegation: { findFirst: jest.fn().mockResolvedValue(null) },
-    approvalInstance: { findFirst: jest.fn().mockResolvedValue(null) },
+    approvalDelegation: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+    approvalInstance: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     auditLog: { create: jest.fn() }
   };
@@ -269,7 +272,8 @@ describe("OrganizationService", () => {
       })
     ]);
     expect(result.users[0].rosterProjects).toEqual([
-      { projectId: "project-1", projectCode: "XM-001", projectName: "一号项目" }
+      { projectId: "project-1", projectCode: "XM-001", projectName: "一号项目",
+        needsReconciliation: true, legacySource: "user_position", legacyPositionKeys: ["contract_staff"], legacyPositionNames: ["合同员"] }
     ]);
     expect(result.positions).toEqual([
       { id: "position-director", key: "contract_director", name: "合同部主管" },
@@ -955,6 +959,52 @@ describe("OrganizationService permission integrity", () => {
 });
 
 describe("OrganizationService core writes", () => {
+  it("会签本人岗位已完成且仅另一岗位未办时，旧停用入口不继续占用已完成候选", async () => {
+    const harness = createWriteHarness();
+    harness.tx.approvalInstance.findMany.mockResolvedValue([{ applicantUserId: "applicant", currentNodeIndex: 0,
+      frozenNodes: [{ name: "合成会签", mode: "all", roleKeys: ["contract_staff", "budget_director"],
+        approvedRoleKeys: ["contract_staff"], candidateUserIds: ["user-2", "budget-user"],
+        candidateUserIdsByRole: { contract_staff: ["user-2"], budget_director: ["budget-user"] } }] }]);
+    await expect(harness.service.updateUser("user-2", "actor-1", {
+      isActive: false, confirmationPassword: "current-password"
+    })).resolves.toMatchObject({ id: "user-2", isActive: false });
+    expect(harness.tx.user.update).toHaveBeenCalled();
+  });
+
+  it("代建双范围岗位收到空白项目坐标时拒绝，不能静默升级为公司岗", async () => {
+    const harness = createWriteHarness();
+    await expect(harness.service.createUser("actor-1", {
+      phone: "13800000009", departmentId: "department-1", initialRoleKey: "contract_staff",
+      projectId: "  ", confirmationPassword: "current-password"
+    })).rejects.toThrow("请选择有效项目");
+    expect(harness.tx.user.create).not.toHaveBeenCalled();
+  });
+  it("恢复工程技术部主管账号时复核另一启用主管，冲突则不启用", async () => {
+    const harness = createWriteHarness({ user: { id: "user-2", departmentId: "department-1", isActive: false } });
+    harness.tx.userPosition.findFirst.mockImplementation(async ({ where }) =>
+      where.userId === "actor-1" ? { id: "actor-global-admin" } : { id: "inactive-director-assignment" });
+    harness.tx.user.findFirst.mockResolvedValue({ id: "other-active-director" });
+    await expect(harness.service.updateUser("user-2", "actor-1", {
+      isActive: true, confirmationPassword: "current-password"
+    })).rejects.toThrow("已有启用的公司工程技术部主管");
+    expect(harness.tx.user.update).not.toHaveBeenCalled();
+  });
+
+  it.each(["contract_staff", "finance_staff", "engineering_department_member"] as const)(
+    "代建 %s 可以仅安排指定项目，不能创建全公司岗位",
+    async initialRoleKey => {
+      const harness = createWriteHarness();
+      await expect(harness.service.createUser("actor-1", {
+        phone: "13800000009", departmentId: "department-1", initialRoleKey,
+        projectId: "project-1", confirmationPassword: "current-password"
+      })).resolves.toMatchObject({ id: "user-new" });
+      expect(harness.tx.projectMember.create).toHaveBeenCalledWith({ data: {
+        userId: "user-new", projectId: "project-1", positionKey: initialRoleKey
+      }, select: { id: true } });
+      expect(harness.tx.userPosition.create).not.toHaveBeenCalled();
+    }
+  );
+
   it("原子创建待本人确认账号与公司级合同员岗位", async () => {
     const harness = createWriteHarness({
       superAdminPosition: { id: "position-contract-staff" }
@@ -993,7 +1043,7 @@ describe("OrganizationService core writes", () => {
     );
   });
 
-  it.each(["super_admin", "engineering_department_member", "engineering_department_director"] as const)(
+  it.each(["super_admin"] as const)(
     "初始岗位 %s 必须走独立预览授岗流程",
     async (initialRoleKey) => {
       const harness = createWriteHarness();
@@ -1002,7 +1052,6 @@ describe("OrganizationService core writes", () => {
           phone: "13800000009",
           departmentId: "department-1",
           initialRoleKey,
-          ...(initialRoleKey === "engineering_department_member" ? { projectId: "project-1" } : {}),
           confirmationPassword: "current-password"
         })
       ).rejects.toThrow("该岗位必须通过独立岗位预览与授岗流程办理");

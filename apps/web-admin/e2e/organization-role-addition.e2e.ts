@@ -147,8 +147,8 @@ test("岗位新增手动预览后原样提交快照与密码并双刷新", async
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
   await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
-  await page.getByText("组织权限", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
+  await page.getByText("员工管理", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "员工目录与办理" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "新增岗位" }).click();
   const scopeSelect = page.getByPlaceholder("请选择或填写岗位范围").last();

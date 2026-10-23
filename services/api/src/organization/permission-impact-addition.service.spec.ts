@@ -378,7 +378,7 @@ describe("PermissionImpactService role addition", () => {
     );
   });
 
-  it("工程技术部成员必须按项目显式加入且已是同项目项目经理", async () => {
+  it("普通工程技术部成员按项目受任，不要求先成为项目经理", async () => {
     const missingManager = await evaluate(fixture(), {
       operation: "add",
       userId: "target",
@@ -386,9 +386,7 @@ describe("PermissionImpactService role addition", () => {
       projectId: "project-1",
       roleKey: "engineering_department_member"
     });
-    expect(missingManager.result.preview.blockingIssues).toContainEqual(
-      expect.objectContaining({ code: "engineering_member_requires_project_manager" })
-    );
+    expect(missingManager.result.preview).toMatchObject({ canApply: true, blockingIssues: [] });
 
     const eligible = fixture();
     eligible.projectMembers.push({
@@ -407,12 +405,8 @@ describe("PermissionImpactService role addition", () => {
     expect(result.result.preview).toMatchObject({ canApply: true, blockingIssues: [] });
   });
 
-  it("公司工程技术部部长必须来自成员且全公司仅一名启用人员", async () => {
+  it("公司工程技术部主管不要求成员或项目经理经历，仍限全公司一名启用人员", async () => {
     const eligible = fixture();
-    eligible.projectMembers.push(
-      { id: "target-manager", userId: "target", projectId: "project-1", positionKey: "project_manager" },
-      { id: "target-member", userId: "target", projectId: "project-1", positionKey: "engineering_department_member" }
-    );
     expect(
       (await evaluate(eligible, {
         operation: "add",

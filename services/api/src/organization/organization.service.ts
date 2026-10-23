@@ -21,12 +21,15 @@ import type { UpdateDepartmentDto } from "./dto/update-department.dto";
 import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
 import { configuredInitialUserTemporaryPassword } from "./initial-user-temporary-password";
 import { employeeManagerRoles, employeeTargetNeedsChairman, IMPORTANT_EMPLOYEE_ROLES } from "./employee-management-policy";
+import { recordPersonnelFact, startUnverifiedEmployment } from "./personnel-fact";
+import { evaluateEmployeeDeparture } from "./employee-departure-policy";
 import {
   canManageRole,
   ORGANIZATION_MANAGER_ROLE_KEYS,
   requiresDepartmentBoundary,
-  roleScope
+  resolveRoleAssignmentScope
 } from "./organization-management-policy";
+import { assertEngineeringDirectorAvailable } from "./organization-role-assignment-policy";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
@@ -70,11 +73,19 @@ export interface OrganizationDirectoryReadModel {
       projectName: string;
       keys: RoleKey[];
       names: string[];
+      needsReconciliation?: true;
+      legacySource?: "user_position";
+      legacyPositionKeys?: RoleKey[];
+      legacyPositionNames?: string[];
     }>;
     rosterProjects: Array<{
       projectId: string;
       projectCode: string;
       projectName: string;
+      needsReconciliation?: true;
+      legacySource?: "user_position";
+      legacyPositionKeys?: RoleKey[];
+      legacyPositionNames?: string[];
     }>;
   }>;
   positions: Array<{ id: string; key: RoleKey; name: string }>;
@@ -268,7 +279,7 @@ export class OrganizationService {
         async (tx) => {
           const actorRoles = await employeeManagerRoles(tx, actorUserId);
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-phone:${phone}`}))`;
-          if (await tx.employeeRegistration.findUnique({ where: { phone }, select: { id: true } })) {
+          if (await tx.employeeRegistration.findFirst({ where: { phone, status: { not: "approved" } }, select: { id: true } })) {
             throw new ConflictException("该手机号已有入职申请，请在入职审核中处理，不能重复代建");
           }
           const department = await tx.department.findUnique({
@@ -277,23 +288,18 @@ export class OrganizationService {
           });
           assertActiveDepartment(department, "部门");
           await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
-          if (
-            input.initialRoleKey === "super_admin" ||
-            input.initialRoleKey === "engineering_department_member" ||
-            input.initialRoleKey === "engineering_department_director"
-          ) {
+          if (input.initialRoleKey === "super_admin") {
             throw new BadRequestException("该岗位必须通过独立岗位预览与授岗流程办理");
           }
           if (input.initialRoleKey && !canManageRole(actorRoles, input.initialRoleKey)) {
             throw new ForbiddenException("当前岗位不能创建或授予该初始岗位");
           }
-          const scope = input.initialRoleKey ? roleScope(input.initialRoleKey) : null;
           const projectId = input.projectId?.trim() || null;
-          if (scope === "global" && projectId) {
-            throw new BadRequestException("全局岗位不需要安排项目");
-          }
-          if (scope === "project" && !projectId) {
-            throw new BadRequestException("项目岗位必须选择项目");
+          const scope = input.initialRoleKey ? resolveRoleAssignmentScope(input.initialRoleKey, {
+            scope: input.initialRoleScope, projectId: input.projectId
+          }) : null;
+          if (input.initialRoleKey === "engineering_department_director") {
+            await assertEngineeringDirectorAvailable(tx);
           }
           if (projectId) {
             const project = await tx.project.findUnique({
@@ -346,6 +352,10 @@ export class OrganizationService {
             });
             assignmentId = assignment.id;
           }
+          await startUnverifiedEmployment(tx, user.id);
+          await recordPersonnelFact(tx, { userId: user.id, actorUserId, action: "account_create", reason: "管理人员代建账号",
+            before: {}, after: { departmentId, isActive: true,
+              roles: input.initialRoleKey ? [{ roleKey: input.initialRoleKey, scope, projectId }] : [] } });
           await this.audit.record(tx, {
             actorUserId,
             action: "permission.user.create",
@@ -664,6 +674,8 @@ export class OrganizationService {
             if (activeApplication) {
               throw new BadRequestException("该人员仍有审批中的申请，请先完成或转交");
             }
+            const departureBlockingReasons = await evaluateEmployeeDeparture(tx, userId, mutationAt);
+            if (departureBlockingReasons.length) throw new BadRequestException(departureBlockingReasons.join("；"));
             const superAdminPosition = await tx.position.findUnique({
               where: { key: "super_admin" },
               select: { id: true }
@@ -687,6 +699,22 @@ export class OrganizationService {
             }
           }
 
+          if (data.isActive === true && !before.isActive) {
+            const [currentEmployment, endedEmployment] = await Promise.all([
+              tx.employmentPeriod.findFirst({ where: { userId, endedAt: null }, select: { id: true } }),
+              tx.employmentPeriod.findFirst({ where: { userId, endedAt: { not: null } }, select: { id: true } })
+            ]);
+            if (!currentEmployment && endedEmployment) {
+              throw new ConflictException("该员工已确认离职，请通过返聘重新安排任职");
+            }
+            const engineeringDirector = await tx.position.findUnique({
+              where: { key: "engineering_department_director" }, select: { id: true }
+            });
+            if (engineeringDirector && await tx.userPosition.findFirst({
+              where: { userId, positionId: engineeringDirector.id, projectId: null }, select: { id: true }
+            })) await assertEngineeringDirectorAvailable(tx, userId);
+          }
+
           const after = await tx.user.update({
             where: { id: userId },
             data: { ...data, sessionVersion: { increment: 1 } },
@@ -708,6 +736,8 @@ export class OrganizationService {
               after: userAuditSnapshot(after)
             }
           });
+          await recordPersonnelFact(tx, { actorUserId, userId, action: "account_adjust", reason: "调整人员部门或账号状态",
+            before: userAuditSnapshot(before), after: userAuditSnapshot(after) });
           return after;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
@@ -1240,6 +1270,19 @@ export class OrganizationService {
       projectIds.add(member.projectId);
       rosterProjectIdsByUser.set(member.userId, projectIds);
     }
+    const legacyByUserAndProject = new Map<string, { keys: Set<RoleKey>; names: Set<string> }>();
+    for (const assignment of userPositions) {
+      if (!assignment.projectId || !projectById.has(assignment.projectId)) continue;
+      const mapKey = `${assignment.userId}\u0000${assignment.projectId}`;
+      const legacy = legacyByUserAndProject.get(mapKey) ?? { keys: new Set<RoleKey>(), names: new Set<string>() };
+      const position = positionById.get(assignment.positionId);
+      if (position) legacy.keys.add(position.key);
+      legacy.names.add(position?.name ?? "未识别旧岗位");
+      legacyByUserAndProject.set(mapKey, legacy);
+      const projectIds = rosterProjectIdsByUser.get(assignment.userId) ?? new Set<string>();
+      projectIds.add(assignment.projectId);
+      rosterProjectIdsByUser.set(assignment.userId, projectIds);
+    }
 
     const globalRolesByUser = new Map<string, Set<RoleKey>>();
     const projectRolesByUserAndProject = new Map<string, Set<RoleKey>>();
@@ -1294,12 +1337,15 @@ export class OrganizationService {
               const rightName = positionByKey.get(right)?.name ?? right;
               return compareText(leftName, rightName);
             });
+            const legacy = legacyByUserAndProject.get(`${user.id}\u0000${project.id}`);
             return {
               projectId: project.id,
               projectCode: project.code,
               projectName: project.name,
               keys,
-              names: keys.map((key) => positionByKey.get(key)?.name ?? key)
+              names: keys.map((key) => positionByKey.get(key)?.name ?? key),
+              ...(legacy ? { needsReconciliation: true as const, legacySource: "user_position" as const,
+                legacyPositionKeys: [...legacy.keys].sort(), legacyPositionNames: [...legacy.names].sort() } : {})
             };
           })
           .filter((projectPosition) => projectPosition.keys.length > 0)
@@ -1311,11 +1357,12 @@ export class OrganizationService {
         const rosterProjects = [...(rosterProjectIdsByUser.get(user.id) ?? [])]
           .map((projectId) => projectById.get(projectId))
           .filter((project): project is NonNullable<typeof project> => Boolean(project))
-          .map((project) => ({
-            projectId: project.id,
-            projectCode: project.code,
-            projectName: project.name
-          }))
+          .map((project) => {
+            const legacy = legacyByUserAndProject.get(`${user.id}\u0000${project.id}`);
+            return { projectId: project.id, projectCode: project.code, projectName: project.name,
+              ...(legacy ? { needsReconciliation: true as const, legacySource: "user_position" as const,
+                legacyPositionKeys: [...legacy.keys].sort(), legacyPositionNames: [...legacy.names].sort() } : {}) };
+          })
           .sort(
             (left, right) =>
               compareText(left.projectCode, right.projectCode) ||

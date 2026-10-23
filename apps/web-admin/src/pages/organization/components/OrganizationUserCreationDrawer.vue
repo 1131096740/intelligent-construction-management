@@ -28,7 +28,12 @@
       />
 
       <t-form label-align="top">
-        <BusinessEntryForm v-model="entryDraft" :definition="entryDefinition" :readonly="submitting" :options-by-field="{ departmentId: departmentOptions, initialRoleKey: roleOptions, projectId: projectOptions }" />
+        <BusinessEntryForm
+          v-model="entryDraft"
+          :definition="entryDefinition"
+          :readonly="submitting"
+          :options-by-field="{ departmentId: departmentOptions, initialRoleKey: roleOptions, projectId: projectOptions }"
+        />
         <t-form-item>
           <t-checkbox
             v-model="form.passwordRecorded"
@@ -76,7 +81,8 @@ import { computed, reactive, ref, watch } from "vue";
 import {
   createOrganizationUser,
   fetchOrganizationManagementCapabilities,
-  GLOBAL_ORGANIZATION_ROLE_KEYS
+  GLOBAL_ORGANIZATION_ROLE_KEYS,
+  DUAL_SCOPE_ORGANIZATION_ROLE_KEYS
 } from "../../../api/organization.api";
 import {
   buildOrganizationUserCreatePayload,
@@ -99,21 +105,28 @@ const emit = defineEmits<{
 const form = reactive(emptyOrganizationUserCreationForm());
 const submitting = ref(false);
 const message = ref("");
+const dualScopeRole = computed(() => DUAL_SCOPE_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey as RoleKey));
 const requiresProject = computed(
   () =>
     Boolean(form.initialRoleKey) &&
-    !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey as RoleKey)
+    (dualScopeRole.value ? form.initialRoleScope === "project" : !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey as RoleKey))
 );
 
 const entryDefinition = computed(() => ({
   ...ORGANIZATION_USER_ENTRY_DEFINITION,
-  fields: ORGANIZATION_USER_ENTRY_DEFINITION.fields.filter((field) => ["phone", "departmentId", "initialRoleKey", ...(requiresProject.value ? ["projectId"] : [])].includes(field.key))
+  fields: ORGANIZATION_USER_ENTRY_DEFINITION.fields.filter((field) => ["phone", "departmentId", "initialRoleKey", ...(dualScopeRole.value ? ["initialRoleScope"] : []), ...(requiresProject.value ? ["projectId"] : [])].includes(field.key))
 }));
 const entryDraft = computed<BusinessEntryDraftPayload>({
-  get: () => ({ sceneKey: entryDefinition.value.key, values: { phone: form.phone, departmentId: form.departmentId, initialRoleKey: form.initialRoleKey, projectId: form.projectId } }),
-  set: ({ values }) => { form.phone = String(values.phone ?? ""); form.departmentId = String(values.departmentId ?? ""); form.initialRoleKey = String(values.initialRoleKey ?? "") as RoleKey | ""; form.projectId = String(values.projectId ?? ""); }
+  get: () => ({ sceneKey: entryDefinition.value.key, values: { phone: form.phone, departmentId: form.departmentId, initialRoleKey: form.initialRoleKey, initialRoleScope: form.initialRoleScope, projectId: form.projectId } }),
+  set: ({ values }) => {
+    form.phone = String(values.phone ?? ""); form.departmentId = String(values.departmentId ?? "");
+    form.initialRoleKey = String(values.initialRoleKey ?? "") as RoleKey | "";
+    form.initialRoleScope = values.initialRoleScope === "global" || values.initialRoleScope === "project" ? values.initialRoleScope : "";
+    form.projectId = String(values.projectId ?? "");
+  }
 });
 
+watch(() => form.initialRoleKey, () => { form.initialRoleScope = ""; form.projectId = ""; });
 watch(requiresProject, (required) => {
   if (!required) form.projectId = "";
 });

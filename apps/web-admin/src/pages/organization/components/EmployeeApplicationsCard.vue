@@ -17,7 +17,50 @@
         theme="error"
         :message="message"
       />
-      <div class="jg-table-region jg-table-region--standard">
+      <div
+        v-if="mobile"
+        class="application-cards"
+
+        aria-label="入职申请"
+      >
+        <article
+          v-for="row in applications"
+          :key="row.id"
+          class="application-card"
+        >
+          <strong>{{ row.name }} · {{ row.phone }}</strong>
+          <span>{{ statusText[row.status] }} · {{ row.phoneVerified ? '已通过短信验证' : '请核对本人手机号' }}</span>
+          <ApprovalDocumentDownload
+            business-type="employee_registration"
+            :business-id="row.id"
+            :refresh-key="row.status"
+          />
+          <div class="application-actions">
+            <t-button
+              v-if="canProcess(row) && ['pending', 'chairman_review'].includes(row.status)"
+              variant="text"
+              @click="open(row)"
+            >
+              审核申请
+            </t-button>
+            <t-button
+              v-if="canProcess(row) && row.status !== 'approved'"
+              variant="text"
+              @click="resetTarget = row"
+            >
+              重置申请密码
+            </t-button>
+            <span v-if="row.status === 'chairman_review' && !capabilities.canApproveImportantEmployees">待董事长处理</span>
+          </div>
+        </article>
+        <p v-if="!applications.length">
+          暂无入职申请
+        </p>
+      </div>
+      <div
+        v-else
+        class="jg-table-region jg-table-region--standard"
+      >
         <t-table
           row-key="id"
           :data="applications"
@@ -33,7 +76,11 @@
             {{ row.phoneVerified ? '已通过短信验证' : '请核对本人手机号' }}
           </template>
           <template #operation="{ row }">
-<ApprovalDocumentDownload  business-type="employee_registration" :business-id="row.id" :refresh-key="row.status" />
+            <ApprovalDocumentDownload
+              business-type="employee_registration"
+              :business-id="row.id"
+              :refresh-key="row.status"
+            />
             <div class="application-actions">
               <t-button
                 v-if="canProcess(row) && ['pending', 'chairman_review'].includes(row.status)"
@@ -103,7 +150,7 @@
         <t-button
           variant="outline"
           :disabled="busy || roles.length >= 20"
-          @click="roles.push({ roleKey: '', projectId: '' })"
+          @click="roles.push({ roleKey: '', scope: '', projectId: '' })"
         >
           再安排一个岗位
         </t-button>
@@ -179,16 +226,19 @@ import ApprovalDocumentDownload from "../../../components/approval/ApprovalDocum
 import { computed, onMounted, ref, watch } from "vue";
 import { ORGANIZATION_USER_ENTRY_DEFINITION, type BusinessEntryDraftPayload, type RoleKey } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
-import { GLOBAL_ORGANIZATION_ROLE_KEYS, fetchOrganizationManagementCapabilities, type OrganizationDirectory, type OrganizationManagementCapabilities } from "../../../api/organization.api";
+import { DUAL_SCOPE_ORGANIZATION_ROLE_KEYS, GLOBAL_ORGANIZATION_ROLE_KEYS, fetchOrganizationManagementCapabilities, type OrganizationDirectory, type OrganizationManagementCapabilities } from "../../../api/organization.api";
 import { fetchEmployeeApplications, reviewEmployeeApplication, type EmployeeApplication, type EmployeeReview } from "../../../api/employee-onboarding.api";
 import { formatUnknownApiError } from "../../../api/error-message";
+import { usePersonnelMobile } from "../use-personnel-mobile";
 import { flattenDepartmentTree } from "../organization.config";
 import AccountCredentialDialog from "../../../components/AccountCredentialDialog.vue";
+const mobile = usePersonnelMobile();
 const props = defineProps<{ directory: OrganizationDirectory; capabilities: OrganizationManagementCapabilities; refreshKey: number }>();
 const emit = defineEmits<{ approved: [] }>();
 const applications = ref<EmployeeApplication[]>([]); const pendingCount = ref(0); const loading = ref(false); const message = ref("");
 const selected = ref<EmployeeApplication | null>(null); const resetTarget = ref<EmployeeApplication | null>(null);
-const departmentId = ref(""); const roles = ref<Array<{ roleKey: RoleKey | ""; projectId: string }>>([]);
+type RoleArrangement = { roleKey: RoleKey | ""; scope: "global" | "project" | ""; projectId: string };
+const departmentId = ref(""); const roles = ref<RoleArrangement[]>([]);
 const identityVerified = ref(false); const reason = ref(""); const password = ref(""); const busy = ref(false); const reviewMessage = ref("");
 const columns = [{ colKey: "name", title: "姓名", width: 110 }, { colKey: "phone", title: "手机号", width: 140 }, { colKey: "status", title: "进度", width: 140 }, { colKey: "phoneVerified", title: "身份核验", width: 160 }, { colKey: "operation", title: "操作", minWidth: 200 }];
 const statusText = { pending: "待审核", chairman_review: "待董事长审核", returned: "已退回", approved: "已开通" };
@@ -198,30 +248,39 @@ const roleOptions = computed(() => props.directory.positions.filter((item) => it
 const departmentDefinition = { ...ORGANIZATION_USER_ENTRY_DEFINITION, fields: ORGANIZATION_USER_ENTRY_DEFINITION.fields.filter((field) => field.key === "departmentId") };
 const departmentDraft = computed<BusinessEntryDraftPayload>({ get: () => ({ sceneKey: departmentDefinition.key, values: { departmentId: departmentId.value } }), set: ({ values }) => { departmentId.value = String(values.departmentId ?? ""); } });
 const needsChairman = computed(() => roles.value.some((role) => role.roleKey && props.capabilities.importantEmployeeRoleKeys?.includes(role.roleKey)));
-const requiresProject = (role: { roleKey: RoleKey | "" }) => Boolean(role.roleKey) && !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(role.roleKey as RoleKey);
-const roleDefinition = (role: { roleKey: RoleKey | "" }) => ({ ...ORGANIZATION_USER_ENTRY_DEFINITION, fields: ORGANIZATION_USER_ENTRY_DEFINITION.fields.filter((field) => field.key === "initialRoleKey" || (field.key === "projectId" && requiresProject(role))) });
-const roleDraft = (role: { roleKey: RoleKey | ""; projectId: string }): BusinessEntryDraftPayload => ({ sceneKey: ORGANIZATION_USER_ENTRY_DEFINITION.key, values: { initialRoleKey: role.roleKey, projectId: role.projectId } });
+const isDualScope = (role: { roleKey: RoleKey | "" }) => DUAL_SCOPE_ORGANIZATION_ROLE_KEYS.includes(role.roleKey as RoleKey);
+const requiresProject = (role: RoleArrangement) => Boolean(role.roleKey)
+  && (isDualScope(role) ? role.scope === "project" : !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(role.roleKey as RoleKey));
+const roleDefinition = (role: RoleArrangement) => ({ ...ORGANIZATION_USER_ENTRY_DEFINITION, fields: ORGANIZATION_USER_ENTRY_DEFINITION.fields.filter((field) => field.key === "initialRoleKey"
+  || (field.key === "initialRoleScope" && isDualScope(role)) || (field.key === "projectId" && requiresProject(role))) });
+const roleDraft = (role: RoleArrangement): BusinessEntryDraftPayload => ({ sceneKey: ORGANIZATION_USER_ENTRY_DEFINITION.key,
+  values: { initialRoleKey: role.roleKey, initialRoleScope: role.scope, projectId: role.projectId } });
 function changeRole(index: number, draft: BusinessEntryDraftPayload) {
   const roleKey = String(draft.values.initialRoleKey ?? "") as RoleKey | "";
-  roles.value[index] = { roleKey, projectId: requiresProject({ roleKey }) ? String(draft.values.projectId ?? "") : "" };
+  const scope = roles.value[index]?.roleKey === roleKey && (draft.values.initialRoleScope === "global" || draft.values.initialRoleScope === "project") ? draft.values.initialRoleScope : "";
+  const role: RoleArrangement = { roleKey, scope, projectId: "" };
+  role.projectId = requiresProject(role) ? String(draft.values.projectId ?? "") : "";
+  roles.value[index] = role;
 }
 function canProcess(row: EmployeeApplication) { return row.status !== "chairman_review" || props.capabilities.canApproveImportantEmployees; }
 onMounted(load); watch(() => props.refreshKey, load);
 async function load() { if (loading.value) return; loading.value = true; try { const result = await fetchEmployeeApplications(); applications.value = result.applications; pendingCount.value = result.pendingCount; message.value = ""; } catch (error) { message.value = formatUnknownApiError(error, "读取入职申请失败"); } finally { loading.value = false; } }
 function open(row: EmployeeApplication) {
   selected.value = row; departmentId.value = row.departmentId ?? "";
-  roles.value = row.proposedRoles?.length ? row.proposedRoles.map((role) => ({ roleKey: role.roleKey, projectId: role.projectId ?? "" })) : [{ roleKey: "", projectId: "" }];
+  roles.value = row.proposedRoles?.length ? row.proposedRoles.map((role) => ({ roleKey: role.roleKey,
+    scope: role.scope ?? (role.projectId ? "project" as const : "global" as const), projectId: role.projectId ?? "" })) : [{ roleKey: "", scope: "", projectId: "" }];
   identityVerified.value = false; reason.value = ""; password.value = ""; reviewMessage.value = "";
 }
 function close() { if (busy.value) return; selected.value = null; password.value = ""; }
 async function review(decision: EmployeeReview["decision"]) {
   if (!selected.value || busy.value) return;
   if (!password.value || (decision === "return" && !reason.value.trim())) { reviewMessage.value = decision === "return" ? "请填写退回原因和本人当前密码" : "请输入本人当前密码"; return; }
-  if (decision !== "return" && (!departmentId.value || roles.value.some((role) => !role.roleKey || (requiresProject(role) && !role.projectId)))) { reviewMessage.value = "请安排部门、岗位及对应项目"; return; }
+  if (decision !== "return" && (!departmentId.value || roles.value.some((role) => !role.roleKey || (isDualScope(role) && !role.scope) || (requiresProject(role) && !role.projectId)))) { reviewMessage.value = "请安排部门、岗位范围及对应项目"; return; }
   busy.value = true;
   try {
     await reviewWithCapability(selected.value.id, { revision: selected.value.revision, decision,
-      ...(decision !== "return" ? { departmentId: departmentId.value, roles: roles.value.map((role) => ({ roleKey: role.roleKey as RoleKey, ...(requiresProject(role) ? { projectId: role.projectId } : {}) })), identityVerified: identityVerified.value } : {}),
+      ...(decision !== "return" ? { departmentId: departmentId.value, roles: roles.value.map((role) => ({ roleKey: role.roleKey as RoleKey,
+        ...(isDualScope(role) ? { scope: role.scope as "global" | "project" } : {}), ...(requiresProject(role) ? { projectId: role.projectId } : {}) })), identityVerified: identityVerified.value } : {}),
       reason: reason.value.trim(), confirmationPassword: password.value });
     selected.value = null; reviewMessage.value = ""; await load(); emit("approved");
   } catch (error) { reviewMessage.value = formatUnknownApiError(error, "审核未完成，请刷新申请后重试"); } finally { busy.value = false; password.value = ""; }
@@ -234,6 +293,8 @@ async function reviewWithCapability(id: string, input: EmployeeReview) {
 }
 </script>
 <style scoped>
+.application-cards, .application-card { display: grid; min-width: 0; gap: var(--jg-space-md); }
+.application-card { padding: var(--jg-space-md); border: var(--jg-border-width-base) solid var(--jg-border); border-radius: var(--jg-radius-md); overflow-wrap: anywhere; }
 .applications-content { display: grid; gap: var(--jg-space-md); min-width: 0; }
 .application-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--jg-space-sm); }
 .role-row { padding: var(--jg-space-sm); border: var(--jg-border-width-base) solid var(--jg-border); border-radius: var(--jg-radius-md); }
