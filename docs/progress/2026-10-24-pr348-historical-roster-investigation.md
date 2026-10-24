@@ -95,3 +95,33 @@ d671旧锁摘要仍为`0d86a063b957d98d1f1f3e81f74a8bceb00be405737631a10a21c2830
 历史实际runner镜像为Ubuntu24的`20261018.339.1`，当时workflow只使用浮动`ubuntu-latest`及Node20；本轮固定Ubuntu24.04及实际Node20.20.2不能证明完整host相同，NSS差异仍保留。历史手机调入失败位于确认click23返回后的drawer断言24，全局30秒届满；双浏览器合计45.8秒不能反推手机剩余预算。没有原请求阶段、trace或真实手机复现环境。
 
 本轮仅适配两份明确旧源的身份与d671生成摘要，保持原22项、30秒/120秒/180秒、零重试及业务断言。新补丁复审、一次准确原生运行及新准确提交完整CI均以后续本轮收据为准，不预填通过。若采到相同失败，先封存、缩小及验证因果再最小修复；其他失败单列，不猜测业务修复，不解除draft、不合并或部署。
+
+## 环境、执行顺序与预算的差异审计
+
+上述d671适配已提交为`cd55eee9c238ac76ca6654a0674dfc4664bf95d9`：[完整CI40100543319](https://github.com/1131096740/intelligent-construction-management/actions/runs/40100543319)终态26/26成功，[一次原生采证40100543313](https://github.com/1131096740/intelligent-construction-management/actions/runs/40100543313)原22项全过、零跳过、四条链均正常关闭，没有请求重跑。手机调入click后93毫秒完成apply正文解析、94毫秒关闭状态、402毫秒DOM归零；仍未命中历史line24失败。该资格只绑定cd55，不替代本节本地修正的新资格。
+
+本轮从准确主线`3d6736fb`新建干净worktree后承接cd55，仅对照两个历史失败与四个原生成功样本，不追加原业务绿跑。对照区分已证差异与缺证事项：
+
+| 维度 | 两次历史失败 | 四个原生成功样本 | 可支持的结论 |
+| --- | --- | --- | --- |
+| runner | image `20261018.339.1`、agent `2.337.0` | image `20261012.334.1`、agent `2.338.0` | 均为Ubuntu24.04.5，但整套host并非相同；不能笼统称当前镜像更新 |
+| 固定运行时 | Node20.20.2、pnpm9.15.9、PW1.64、Chromium1248、WebKit2370、PG16.15 | 版本/修订号一致，PG镜像与旧锁摘要一致 | 历史浏览器及生成Client的字节摘要未记录；当前pin不补证历史字节相同，版本对齐也不证明完整host相同 |
+| 系统包 | GLib `.9`、Mozilla NSS `.2` | GLib仍`.9`，准备阶段NSS `.2→.3` | NSPR及其他包是否连带变化缺少完整差分；NSS不能据相关性认定根因 |
+| 原门前置 | dynamic gate先generate、共享域prebuild和API build | 单独generate后直接启动旧employee runner | API build历史耗时约39.6/42.4秒，但测试加载源码AppModule；未找到消费API dist的直接路径，共享域在原pretest中会再次生成 |
+| 观察器顺序 | 没有额外setupFilesAfterEnv | backend观察器在测试文件import AppModule前require服务 | 预加载次序真实不同，尚无配置或业务状态差异证据；本轮不同时调整此变量 |
+| suite顺序 | 参数列onboarding再roster；完成日志先roster FAIL后onboarding PASS | 参数相同；现reporter只记录suite结束 | 固定结果数组不证明开始顺序；Jest缓存实际状态及suite开始先后未知 |
+| 预算 | 原30秒测试、120秒父用例、180秒外层命令，零重试；历史在全局30秒届满 | 同样预算与断言 | 历史click时已耗/剩余预算未知，45.7/45.8秒是双浏览器合计，不能反推单端余量 |
+
+在固定Linux镜像中仅以无网络、只读的私有容器运行readelf/ldd：准确WebKit2370的WPE MiniBrowser、WebProcess及NetworkProcess三份ELF依赖均完整解析，未含Mozilla NSS或NSPR。动态dlopen及实际进程maps未观测，不能完全排除，也不能把glibc nss混入。所有四个纯元数据容器均确认移除及清理自身卷。故本轮降低NSS A/B优先级；不造CPU负载、不同时更改系统包、前置build与观察器顺序。既有GLib单包对照已通过，本轮不重复。
+
+### 已执行的单因素验证：报告时长的测量契约
+
+Playwright1.64实际源码中最终`result.duration`为default slot与afterHooks slot已耗之和；worker/browser fixture、beforeAll/afterAll及trace停止可在另槽。`testBegin`墙钟也不是default槽计时器。现有安全记录缺少槽身份及完整fixture关联，实际30秒槽已耗/剩余应保持未知，不能用墙钟或最终报告时长相减补造。
+
+原采证把`result.duration`命名为`totalTimedSlotDurationMs`，私人离线分类器再要求其落在30000±500毫秒才接受历史边界，可能把body超时后清理较长的候选误排除。这是采证器错误，不是历史业务根因。由于字段含义已有固定版本源码定义，本轮直接校验测量契约，不进入尚无真实业务RED的因果修复阶段。
+
+一次公共Playwright API工具对照仅改变afterEach清理耗时：两个工具夹具均100毫秒body预算、1000毫秒afterEach预算、workers1和零重试；A清理20毫秒，报告122毫秒，B清理250毫秒，报告355毫秒，差233毫秒。两项均按预期timedOut，命令退出1是预期实验结果，非准备失败。未启动浏览器、应用或数据库；未改变或运行原22项，不能当历史业务RED。
+
+本地修正只把报告字段改成中性的`reportedTestDurationMs`，读取旧记录时归一legacy字段；新旧值冲突、非法或缺失保持不完整，不推断精确预算。私人分析器另存新副本，去掉按最终时长±500毫秒排除候选的做法；缺少timeout槽/触发证据时保持unknown，已观察到DOM归零且没有drawer断言失败的旧成功样本仍独立判为非匹配。原封存脚本、输出及失败日志不覆盖。
+
+首轮新增四项纯回归为35过4败，修正后三十九项通过，零跳过。本轮未改原E2E、业务、Schema、迁移、原预算、零重试或断言，未提交推送、触发新CI、合并或部署。独立复审及本地受影响检查以后续收据为准，不沿用cd55完整CI为本地增量背书。历史root仍未证明，draft阻断保持。
