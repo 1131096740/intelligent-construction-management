@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, mkdir, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -116,7 +116,7 @@ test("repository restores bounded CI beside the manual deploy workflow", async (
 
   assert.deepEqual(
     entries.filter((entry) => /\.ya?ml$/u.test(entry)).sort(),
-    ["ci.yml", "deploy-production.yml"]
+    ["ci.yml", "deploy-production.yml", "pr348-historical-replay.yml"]
   );
 
   const deployWorkflow = await readFile(
@@ -226,7 +226,7 @@ test("CI fans out independent static and database gates behind one stable summar
   const manifest = JSON.parse(manifestSource);
 
   assert.match(workflow, /pull_request:\s*\n\s+branches: \[main\]/u);
-  assert.match(workflow, /push:\s*\n\s+branches: \[main\]/u);
+  assert.match(workflow, /push:\s*\n\s+branches: \[main, codex\/pr348-historical-evidence-20261024\]/u);
   assert.match(
     workflow,
     /workflow_dispatch:\s*\n\s+inputs:\s*\n\s+target_sha:\s*\n\s+description: .+\n\s+required: true\s*\n\s+type: string/u
@@ -364,48 +364,208 @@ test("personnel feedback runs after its real PostgreSQL shard with both browsers
   assert.match(config, /devices\["iPhone 13"\]/u);
 });
 
-test("roster failure timing reports only whitelisted metadata from authenticated traces", async () => {
-  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
-  const step = /      - name: Report sanitized roster failure timing\n        if: (.+)\n        run: \|\n          python3 - <<'PY'\n([\s\S]*?)          PY\n/u.exec(workflow);
-  assert.ok(step, "missing failure timing evidence step");
-  assert.equal(step[1], "${{ failure() && matrix.group == 'employee_onboarding' }}");
-  const source = step[2].replace(/^          /gmu, "");
-  const roster = await readFile(join(root, "apps/web-admin/playwright.project-roster-real.config.ts"), "utf8");
-  const onboarding = await readFile(join(root, "apps/web-admin/playwright.employee-onboarding.config.ts"), "utf8");
-  const rosterOutput = /outputDir: "([^"]+)"/u.exec(roster)?.[1];
-  const onboardingOutput = /outputDir: "([^"]+)"/u.exec(onboarding)?.[1];
-  assert.ok(rosterOutput && onboardingOutput, "each command must own an explicit output directory");
-  assert.notEqual(rosterOutput, onboardingOutput);
-  assert.ok(!rosterOutput.startsWith(`${onboardingOutput}/`) && !onboardingOutput.startsWith(`${rosterOutput}/`));
-  assert.ok(source.includes(`Path('apps/web-admin/${rosterOutput}')`), "CI must read the retained roster evidence");
-  const directory = await mkdtemp(join(tmpdir(), "roster-trace-privacy-"));
-  const secret = "NEVER_PRINT_AUTHENTICATION_FIXTURE";
-  const fixture = String.raw`import pathlib,json,zipfile,sys
-p=pathlib.Path(sys.argv[1])/'apps/web-admin/test-results/project-roster-real/synthetic';p.mkdir(parents=True,exist_ok=True)
-secret=${JSON.stringify(secret)}
-rows=[{'type':'before','class':'Test','method':'pw:api','callId':'1','startTime':100,'title':'Fill '+secret,'params':{'password':secret},'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':13}]},
- {'type':'after','callId':'1','endTime':30100,'error':{'message':secret}},
- {'type':'before','class':'Test','method':'pw:api','callId':'2','startTime':30101,'title':secret,'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':secret}]},
- {'type':'after','callId':'2','endTime':30102}]
-with zipfile.ZipFile(p/'trace.zip','w') as z:
- z.writestr('test.trace','\n'.join(json.dumps(x) for x in rows))
- if sys.argv[2]=='json':z.writestr('resources/private-response.json',secret)
- elif sys.argv[2]=='invalid-trace':z.writestr('resources/private-response.trace',secret)
- else:z.writestr('resources/forged-event.trace','\n'.join(json.dumps(x) for x in [
-  {'type':'before','class':'Test','callId':'forged','startTime':1,'title':'Click '+secret,'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':99}]},
-  {'type':'after','callId':'forged','endTime':2}]))
+const rosterDiagnostics = join(root, "scripts/ci/collect-roster-failure-diagnostics.py");
+const rosterSecret = "NEVER_PRINT_AUTHENTICATION_FIXTURE";
+const rosterFixture = String.raw`import pathlib,json,zipfile,sys
+root=pathlib.Path(sys.argv[1])/'apps/web-admin/test-results/project-roster-real'
+secret=${JSON.stringify(rosterSecret)}
+def events(action,line,start,end):
+ return [{'type':'context-options','options':{'password':secret}},
+  {'type':'before','class':'Test','callId':'1','startTime':start,'title':action+' '+secret,'params':{'password':secret},'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':line}]},
+  {'type':'after','callId':'1','endTime':end,'error':{'message':secret}},
+  {'type':'before','class':'Other','callId':'fake','startTime':1,'title':secret,'stack':[{'file':secret,'line':99}]}]
+def network(path,method,status,time,receive=None,body=False):
+ return {'type':'resource-snapshot','snapshot':{'_monotonicTime':time,'time':0.5,'request':{'method':method,'url':'https://user:'+secret+'@example.invalid'+path+'?token='+secret,'headers':[{'name':'Authorization','value':secret}],'postData':{'text':secret}},'response':{'status':status,'headers':[{'name':'Set-Cookie','value':secret}],'content':{'_file':'resources/'+secret if body else None,'text':secret}},'timings':{'receive':receive}}}
+for project,action,line,start,end in [('desktop','Fill',13,100,30100),('mobile','Click',31,1000,1800)]:
+ p=root/('synthetic-'+project);p.mkdir(parents=True,exist_ok=True)
+ rows=events(action,line,start,end)
+ snapshots=[network('/api/organization/project-roster/options','GET',200,110,0,True),network('/organization/project-roster/preview','POST',201,120,1,True),network('/api/organization/project-roster/apply','POST',201,130),{'type':'before','class':'Test','title':secret,'params':{'secret':secret}}]
+ with zipfile.ZipFile(p/'trace.zip','w') as z:
+  z.writestr('test.trace','\n'.join(json.dumps(x) for x in rows))
+  z.writestr('0-trace.network','\n'.join(json.dumps(x) for x in snapshots))
+  z.writestr('resources/private-response.json',secret)
+  z.writestr('resources/forged-event.trace','\n'.join(json.dumps(x) for x in events('Click',99,1,2)))
+  z.writestr('resources/test.trace','\n'.join(json.dumps(x) for x in events('Click',99,1,2)))
+  z.writestr('resources/0-trace.network',json.dumps(network('/api/organization/project-roster/apply','POST',599,1)))
+  z.writestr('forged.trace',secret)
+  z.writestr('forged.network',json.dumps(network('/api/organization/project-roster/apply','POST',599,1)))
+`;
+
+function collectRosterDiagnostics(directory, args = []) {
+  return spawnSync("python3", [rosterDiagnostics, ...args], { cwd: directory, encoding: "utf8" });
+}
+
+test("roster failure diagnostics separate browser actions and preserve pending native network metadata safely", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "roster-diagnostics-"));
+  try {
+    const prepared = spawnSync("python3", ["-c", rosterFixture, directory], { encoding: "utf8" });
+    assert.equal(prepared.status, 0, prepared.stderr);
+    const result = collectRosterDiagnostics(directory);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.ok(!result.stdout.includes(rosterSecret));
+    const value = JSON.parse(result.stdout);
+    assert.ok(value.projects, "browser attribution and native network evidence must not be discarded");
+    assert.deepEqual(value.timing, {
+      actionsOrigin: "firstTestTraceStep", networkTimeBasis: "playwrightMonotonicTime", finishedSemantics: "unknown"
+    });
+    assert.deepEqual(Object.keys(value.projects), ["desktop", "mobile", "unknown"]);
+    assert.deepEqual(value.projects.desktop.actions, [
+      { action: "fill", sourceLine: 13, testElapsedAtStartMs: 0, durationMs: 30000, failed: true }
+    ]);
+    assert.deepEqual(value.projects.mobile.actions, [
+      { action: "click", sourceLine: 31, testElapsedAtStartMs: 0, durationMs: 800, failed: true }
+    ]);
+    for (const project of ["desktop", "mobile"]) {
+      assert.equal(value.projects[project].network.status, "collected");
+      assert.deepEqual(value.projects[project].network.requests, [
+        { method: "GET", path: "/api/organization/project-roster/options", status: 200, requestTime: 110, receiveTimingKnown: true, bodyArtifactPresent: true, finished: null },
+        { method: "POST", path: "/organization/project-roster/preview", status: 201, requestTime: 120, receiveTimingKnown: true, bodyArtifactPresent: true, finished: null },
+        { method: "POST", path: "/api/organization/project-roster/apply", status: 201, requestTime: 130, receiveTimingKnown: false, bodyArtifactPresent: false, finished: null }
+      ]);
+    }
+    assert.deepEqual(value.projects.unknown, { traces: 0, actions: [], network: { status: "unknown", requests: [] } });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("roster failure diagnostics reject a disguised symlink trace member without exposing its contents", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "roster-diagnostics-link-"));
+  const fixture = String.raw`import pathlib,json,zipfile,sys,stat
+p=pathlib.Path(sys.argv[1])/'apps/web-admin/test-results/project-roster-real/synthetic-mobile';p.mkdir(parents=True)
+rows=[{'type':'before','class':'Test','callId':'1','startTime':1,'title':'Click SECRET','stack':[{'file':'e2e/project-roster-real.e2e.ts','line':31}]},{'type':'after','callId':'1','endTime':2}]
+with zipfile.ZipFile(p/'trace.zip','w') as archive:
+ member=zipfile.ZipInfo('test.trace');member.create_system=3;member.external_attr=(stat.S_IFLNK|0o777)<<16
+ archive.writestr(member,'\n'.join(json.dumps(x) for x in rows))
 `;
   try {
-    for (const resource of ["json", "invalid-trace", "forged-trace"]) {
-      const prepared = spawnSync("python3", ["-c", fixture, directory, resource], { encoding: "utf8" });
+    assert.equal(spawnSync("python3", ["-c", fixture, directory], { encoding: "utf8" }).status, 0);
+    const result = collectRosterDiagnostics(directory);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).status, "unavailable");
+    assert.deepEqual(JSON.parse(result.stdout).projects.mobile.actions, []);
+    assert.equal(result.stderr, "");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("roster failure diagnostics keep unknown attribution and invalid numeric metadata private", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "roster-diagnostics-unknown-"));
+  const fixture = String.raw`import pathlib,json,zipfile,sys
+p=pathlib.Path(sys.argv[1])/'apps/web-admin/test-results/project-roster-real/private-${rosterSecret}';p.mkdir(parents=True)
+rows=[{'type':'before','class':'Test','callId':'SECRET','startTime':100,'title':'${rosterSecret}','params':{'password':'${rosterSecret}'},'stack':[{'file':'e2e/project-roster-real.e2e.ts','line':'${rosterSecret}'}]},{'type':'after','callId':'SECRET','endTime':200}]
+network={'type':'resource-snapshot','snapshot':{'_monotonicTime':float('nan'),'request':{'method':'POST','url':'https://example.invalid/organization/project-roster/apply?token=${rosterSecret}','headers':[{'value':'${rosterSecret}'}],'postData':{'text':'${rosterSecret}'}},'response':{'status':True,'content':{'_file':'resources/${rosterSecret}','text':'${rosterSecret}'}},'timings':{'receive':float('inf')}}}
+with zipfile.ZipFile(p/'trace.zip','w') as z:
+ z.writestr('test.trace','\n'.join(json.dumps(x) for x in rows));z.writestr('trace.network',json.dumps(network))
+`;
+  try {
+    assert.equal(spawnSync("python3", ["-c", fixture, directory], { encoding: "utf8" }).status, 0);
+    const result = collectRosterDiagnostics(directory);
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!result.stdout.includes(rosterSecret));
+    assert.doesNotMatch(result.stdout, /NaN|Infinity/u);
+    const value = JSON.parse(result.stdout);
+    assert.deepEqual(value.projects.unknown.actions, [
+      { action: "other", sourceLine: null, testElapsedAtStartMs: 0, durationMs: 100, failed: false }
+    ]);
+    assert.deepEqual(value.projects.unknown.network.requests, [
+      { method: "POST", path: "/organization/project-roster/apply", status: null, requestTime: null, receiveTimingKnown: false, bodyArtifactPresent: true, finished: null }
+    ]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("roster failure diagnostics handle missing, malformed, unsafe and bounded archives without raw errors", async () => {
+  const fixture = String.raw`import pathlib,json,zipfile,sys
+base=pathlib.Path(sys.argv[1]);root=base/'apps/web-admin/test-results/project-roster-real';scenario=sys.argv[2]
+rows=[{'type':'before','class':'Test','callId':'1','startTime':1,'title':'Click ${rosterSecret}','stack':[{'file':'e2e/project-roster-real.e2e.ts','line':31}]},{'type':'after','callId':'1','endTime':2}]
+data='\n'.join(json.dumps(x) for x in rows)
+if scenario!='missing':
+ projects=['desktop','mobile'] if scenario=='cumulative' else ['mobile']
+ for project in projects:
+  p=root/('synthetic-'+project);p.mkdir(parents=True,exist_ok=True)
+  if scenario=='bad-zip':(p/'trace.zip').write_text('${rosterSecret}');continue
+  if scenario=='root-link':
+   import shutil
+   shutil.rmtree(root);(base/'private-outside').mkdir();root.symlink_to(base/'private-outside');break
+  target=base/'outside.zip' if scenario=='file-link' else p/'trace.zip'
+  with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as z:
+   if scenario=='bad-json':z.writestr('test.trace','{${rosterSecret}')
+   elif scenario=='oversized':z.writestr('test.trace',' '*(16*1024*1024+1))
+   elif scenario=='cumulative':z.writestr('test.trace',data+'\n'+json.dumps({'type':'noise','ignored':'x'*(9*1024*1024)}))
+   else:z.writestr('test.trace',data)
+   if scenario=='unsafe-path':z.writestr('../test.trace','${rosterSecret}')
+  if scenario=='file-link':(p/'trace.zip').symlink_to(target)
+`;
+  for (const scenario of ["missing", "bad-zip", "bad-json", "unsafe-path", "oversized", "cumulative", "root-link", "file-link", "action-only"]) {
+    const directory = await mkdtemp(join(tmpdir(), "roster-diagnostics-boundary-"));
+    try {
+      const prepared = spawnSync("python3", ["-c", fixture, directory, scenario], { encoding: "utf8" });
       assert.equal(prepared.status, 0, prepared.stderr);
-      const result = spawnSync("python3", ["-c", source], { cwd: directory, encoding: "utf8" });
-      assert.equal(result.status, 0, result.stderr);
-      assert.ok(!result.stdout.includes(secret), "trace credentials must never be reported");
-      assert.deepEqual(JSON.parse(result.stdout), { status: "collected", traces: 1, actions: [
-        { action: "fill", sourceLine: 13, testElapsedAtStartMs: 0, durationMs: 30000, failed: true },
-        { action: "other", sourceLine: null, testElapsedAtStartMs: 30001, durationMs: 1, failed: false }
-      ] }, `${resource} resources must not affect test events`);
+      const result = collectRosterDiagnostics(directory);
+      assert.equal(result.status, 0, `${scenario}: ${result.stderr}`);
+      assert.equal(result.stderr, "");
+      assert.ok(!result.stdout.includes(rosterSecret));
+      const value = JSON.parse(result.stdout);
+      assert.equal(value.status, scenario === "action-only" ? "collected" : scenario === "cumulative" ? "partial" : "unavailable", scenario);
+      for (const group of Object.values(value.projects)) assert.equal(group.network.status, "unknown");
+      if (scenario === "cumulative") {
+        assert.equal(value.traces, 2);
+        assert.equal(value.projects.desktop.actions.length, 1);
+        assert.equal(value.projects.mobile.actions.length, 0, "the aggregate 16MiB budget must stop the second member");
+      }
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }
+});
+
+test("roster failure diagnostics write only the safe JSON atomically with private permissions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "roster-diagnostics-output-"));
+  try {
+    const output = join(directory, "safe-output", "summary.json");
+    await mkdir(dirname(output));
+    await writeFile(output, rosterSecret, { mode: 0o644 });
+    const result = collectRosterDiagnostics(directory, ["--output", output]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(await readFile(output, "utf8"), result.stdout);
+    assert.equal((await stat(output)).mode & 0o777, 0o600);
+    assert.deepEqual(await readdir(dirname(output)), ["summary.json"], "atomic temporary files must not remain");
+    for (const args of [["--output", "relative.json"], ["--trace-root", rosterSecret], ["--output", output, rosterSecret]]) {
+      const rejected = collectRosterDiagnostics(directory, args);
+      assert.equal(rejected.status, 2);
+      assert.equal(rejected.stderr, "");
+      assert.ok(!rejected.stdout.includes(rosterSecret));
+      assert.equal(JSON.parse(rejected.stdout).status, "unavailable");
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("roster failure diagnostics stay failure-only, upload only safe JSON and preserve original budgets", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const failure = "${{ failure() && matrix.group == 'employee_onboarding' }}";
+  const collect = /      - name: Report sanitized roster failure timing\n        if: (.+)\n        run: (.+)\n/u.exec(workflow);
+  assert.ok(collect);
+  assert.equal(collect[1], failure);
+  assert.equal(collect[2], 'python3 scripts/ci/collect-roster-failure-diagnostics.py --output "$RUNNER_TEMP/roster-failure-diagnostics/summary.json"');
+  const artifact = /      - name: Preserve sanitized roster failure diagnostics\n([\s\S]*?)(?=\n  [a-z]|\n      - name:|$)/u.exec(workflow)?.[1];
+  assert.ok(artifact);
+  assert.ok(artifact.includes(`if: ${failure}`));
+  assert.match(artifact, /uses: actions\/upload-artifact@v4/u);
+  assert.match(artifact, /name: roster-failure-\$\{\{ env\.CI_SOURCE_SHA \}\}-\$\{\{ github\.run_attempt \}\}/u);
+  assert.match(artifact, /path: \$\{\{ runner\.temp \}\}\/roster-failure-diagnostics\/summary\.json\n/u);
+  assert.match(artifact, /if-no-files-found: error/u);
+  assert.match(artifact, /retention-days: 7/u);
+  assert.doesNotMatch(artifact, /trace\.zip|test-results|\*|resources/u);
+  const [roster, onboarding, parent, runner] = await Promise.all([
+    readFile(join(root, "apps/web-admin/playwright.project-roster-real.config.ts"), "utf8"),
+    readFile(join(root, "apps/web-admin/playwright.employee-onboarding.config.ts"), "utf8"),
+    readFile(join(root, "services/api/src/database/project-roster-http-postgres.spec.ts"), "utf8"),
+    readFile(join(root, "services/api/prisma/run-employee-onboarding-local.cjs"), "utf8")
+  ]);
+  const rosterOutput = /outputDir: "([^"]+)"/u.exec(roster)?.[1];
+  const onboardingOutput = /outputDir: "([^"]+)"/u.exec(onboarding)?.[1];
+  assert.equal(rosterOutput, "test-results/project-roster-real");
+  assert.ok(onboardingOutput && !rosterOutput.startsWith(`${onboardingOutput}/`) && !onboardingOutput.startsWith(`${rosterOutput}/`));
+  assert.match(onboarding, /timeout: 30_000/u);
+  assert.match(roster, /timeout: 120_000/u);
+  assert.match(parent, /\}, 120_000\);/u);
+  assert.match(runner, /timeout = 180_000/u);
+  assert.doesNotMatch(onboarding + roster, /retries:\s*[1-9]/u);
 });

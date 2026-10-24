@@ -1,0 +1,54 @@
+name: PR348 historical failure evidence
+
+on:
+  push:
+    branches:
+      - codex/pr348-historical-evidence-20261024
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr348-historical-replay
+  cancel-in-progress: false
+
+jobs:
+  historical-original22:
+    name: Historical6ec native original22 diagnostic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PR348_CONTROL_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact reviewed control commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          persist-credentials: false
+
+      - name: Checkout isolated exact historical source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6ec31b9fabe9cfc4a91215c1476b773bb7d32224
+          path: historical
+          persist-credentials: false
+
+      - name: Setup historical Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20.20.2
+
+      - name: Replay one original22 with failure-only metadata
+        run: bash control/scripts/ci/pr348-historical-replay.sh "$GITHUB_WORKSPACE/historical"
+
+      - name: Preserve only sanitized historical diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr348-historical-safe-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pr348-historical-safe/summary.json
+            ${{ runner.temp }}/pr348-historical-safe/result.json
+          if-no-files-found: warn
+          retention-days: 7

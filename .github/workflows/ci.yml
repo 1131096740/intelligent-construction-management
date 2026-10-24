@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, codex/pr348-historical-evidence-20261024]
   workflow_dispatch:
     inputs:
       target_sha:
@@ -327,33 +327,16 @@ jobs:
 
       - name: Report sanitized roster failure timing
         if: ${{ failure() && matrix.group == 'employee_onboarding' }}
-        run: |
-          python3 - <<'PY'
-          import pathlib,json,zipfile,math
-          files=sorted(pathlib.Path('apps/web-admin/test-results/project-roster-real').rglob('trace.zip'));actions=[]
-          def numeric(value):return type(value) in (int,float) and math.isfinite(value)
-          try:
-            for file in files:
-              events=[]
-              with zipfile.ZipFile(file) as trace:
-                for member in trace.infolist():
-                  if member.filename=='test.trace' and member.file_size<=16*1024*1024:
-                    events.extend(json.loads(line) for line in trace.read(member).splitlines())
-              starts=[event for event in events if event.get('type')=='before' and event.get('class')=='Test' and numeric(event.get('startTime'))]
-              origin=min((event['startTime'] for event in starts),default=0);calls={event.get('callId'):event for event in starts}
-              for event in events:
-                if event.get('type')!='after' or event.get('callId') not in calls or not numeric(event.get('endTime')):continue
-                before=calls[event['callId']]
-                frames=[frame for frame in before.get('stack',[]) if str(frame.get('file','')).endswith('project-roster-real.e2e.ts')]
-                if not frames or event['endTime']<before['startTime']:continue
-                word=before.get('title','').split(' ',1)[0].lower()
-                action=word if word in {'navigate','fill','click','expect','create','close'} else 'other'
-                line=frames[0].get('line');line=line if type(line) is int and 0<line<=1000000 else None
-                actions.append({'action':action,'sourceLine':line,'testElapsedAtStartMs':round(before['startTime']-origin),'durationMs':round(event['endTime']-before['startTime']),'failed':'error' in event})
-            print(json.dumps({'status':'collected' if actions else 'unavailable','traces':len(files),'actions':actions}))
-          except (OSError,ValueError,zipfile.BadZipFile,TypeError,KeyError):
-            print(json.dumps({'status':'unavailable','traces':len(files),'actions':[]}))
-          PY
+        run: python3 scripts/ci/collect-roster-failure-diagnostics.py --output "$RUNNER_TEMP/roster-failure-diagnostics/summary.json"
+
+      - name: Preserve sanitized roster failure diagnostics
+        if: ${{ failure() && matrix.group == 'employee_onboarding' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: roster-failure-${{ env.CI_SOURCE_SHA }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/roster-failure-diagnostics/summary.json
+          if-no-files-found: error
+          retention-days: 7
 
   release-gates:
     name: Release gates
