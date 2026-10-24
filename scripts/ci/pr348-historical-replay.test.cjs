@@ -115,14 +115,14 @@ with zipfile.ZipFile(p/'trace.zip','w') as z:
   assert.equal(summary.projects.mobile.network.requests[0].bodyArtifactPresent, true);
 }));
 
-test("dedicated push workflow remains isolated and uploads only two fixed safe files", () => {
+test("dedicated push workflow remains isolated and uploads only three fixed safe files", () => {
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/pr348-historical-replay.yml"), "utf8");
   assert.match(workflow, /on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+- codex\/pr348-historical-evidence-20261024\s*\n\npermissions:/u);
   assert.doesNotMatch(workflow, /pull_request|workflow_dispatch|deploy|production|secrets\./u);
   assert.match(workflow, /contents: read/u); assert.match(workflow, /runs-on: ubuntu-24\.04/u);
   assert.match(workflow, /timeout-minutes: 20/u); assert.equal((workflow.match(/persist-credentials: false/gu) || []).length, 2);
   assert.match(workflow, /ref: 6ec31b9fabe9cfc4a91215c1476b773bb7d32224/u);
-  assert.match(workflow, /pr348-historical-safe\/summary\.json\n\s+\$\{\{ runner\.temp \}\}\/pr348-historical-safe\/result\.json/u);
+  assert.match(workflow, /pr348-historical-safe\/summary\.json\n\s+\$\{\{ runner\.temp \}\}\/pr348-historical-safe\/result\.json\n\s+\$\{\{ runner\.temp \}\}\/pr348-historical-safe\/chain\.json/u);
   assert.doesNotMatch(workflow, /path:.*(?:trace|private|\*|test-results)/u);
   const shell = fs.readFileSync(path.join(root, "scripts/ci/pr348-historical-replay.sh"), "utf8");
   assert.doesNotMatch(shell, /NODE_OPTIONS|--trace|--retries|--timeout|--bail|--with-deps/u);

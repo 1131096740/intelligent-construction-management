@@ -17,9 +17,10 @@ const digest = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
 const reject = () => { throw new Error("historical preparation rejected"); };
 const write = (file, value) => fs.writeFileSync(file, value, { flag: "wx", mode: 0o600 });
 
-function adaptText(original, reporter) {
-  const command = OLD_COMMAND.replace('"src/database/project-roster-http-postgres.spec.ts"], env);',
+function adaptText(original, reporter, setup) {
+  let command = OLD_COMMAND.replace('"src/database/project-roster-http-postgres.spec.ts"], env);',
     '"src/database/project-roster-http-postgres.spec.ts", "--reporters", "default", "--reporters", ' + JSON.stringify(reporter) + '], env);');
+  if (setup) command = command.replace('], env);', ', ' + JSON.stringify("--setupFilesAfterEnv=" + setup) + '], env);');
   const replacements = [['"postgres:16"', JSON.stringify(IMAGE)], [OLD_COMMAND, command]];
   let adapted = original;
   for (const [before, after] of replacements) {
@@ -35,7 +36,7 @@ function adaptText(original, reporter) {
   return adapted;
 }
 
-function prepare(sourceArg, roundArg) {
+function prepare(sourceArg, roundArg, observeChain = false) {
   const source = fs.realpathSync(sourceArg), round = fs.realpathSync(roundArg);
   if (source !== path.resolve(sourceArg) || round !== path.resolve(roundArg) || fs.lstatSync(sourceArg).isSymbolicLink() ||
       fs.lstatSync(roundArg).isSymbolicLink() || !fs.statSync(round).isDirectory() || fs.readdirSync(round).length) reject();
@@ -47,19 +48,21 @@ function prepare(sourceArg, roundArg) {
   if (migrations.length !== expected.migrations) reject();
   const filename = path.join(source, RUNNER), original = fs.readFileSync(filename, "utf8");
   if (digest(original) !== RUNNER_SHA256) reject();
+  const chain = observeChain ? require("./pr348-historical-chain.cjs").prepare(source, round) : null;
   const reporter = path.join(round, "suite-reporter.cjs"), adaptedFile = path.join(round, "runner.adapted.cjs");
-  const adapted = adaptText(original, reporter);
+  const adapted = adaptText(original, reporter, chain?.setup);
   fs.chmodSync(round, 0o700);
   write(reporter, fs.readFileSync(path.join(__dirname, "pr348-historical-suite-reporter.cjs")));
   write(adaptedFile, adapted);
   // The unchanged original filename supplies its __dirname and module lookup paths.
   const launcher = '"use strict";\nconst fs=require("node:fs"),Module=require("node:module"),path=require("node:path");\n' +
+    (chain ? 'process.env.PATH=' + JSON.stringify(chain.bin + path.delimiter) + '+process.env.PATH;\n' : "") +
     'const filename=' + JSON.stringify(filename) + ';const selected=new Module(filename,module);selected.filename=filename;selected.paths=Module._nodeModulePaths(path.dirname(filename));\n' +
     'selected._compile(fs.readFileSync(' + JSON.stringify(adaptedFile) + ',"utf8"),filename);\n';
   write(path.join(round, "launch.cjs"), launcher);
   const receipt = { status: "prepared", sourceSha: sha, sourceFiles: expected.files, migrations: expected.migrations,
     originalRunnerSha256: digest(original), adaptedRunnerSha256: digest(adapted), inverseRestoresExactOriginal: true,
-    changes: ["immutable PG image", "default plus synchronous suite reporter"],
+    changes: ["immutable PG image", "default plus synchronous suite reporter", ...(chain ? ["private full-chain observer; unchanged original22 and budgets"] : [])],
     originalSuiteCount: 2, originalTestCount: 22, originalTimeoutsMs: [30000, 120000, 180000], retries: 0,
     originalFilenamePreserved: true, applicationSourceModified: false };
   write(path.join(round, "adaptation.safe.json"), JSON.stringify(receipt) + "\n");
@@ -69,8 +72,8 @@ function prepare(sourceArg, roundArg) {
 module.exports = { HISTORY, IMAGE, OLD_COMMAND, RUNNER_SHA256, adaptText, prepare };
 if (require.main === module) {
   try {
-    if (process.argv.length !== 4) reject();
-    const result = prepare(process.argv[2], process.argv[3]);
+    if (![4,5].includes(process.argv.length) || (process.argv.length === 5 && process.argv[4] !== "--observe-chain")) reject();
+    const result = prepare(process.argv[2], process.argv[3], process.argv[4] === "--observe-chain");
     process.stdout.write(JSON.stringify({ status: result.status, sourceSha: result.sourceSha }) + "\n");
   } catch {
     process.stderr.write('{"status":"historical-preparation-rejected"}\n');

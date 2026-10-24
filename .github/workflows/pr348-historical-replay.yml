@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: 20.20.2
 
-      - name: Replay one original22 with failure-only metadata
+      - name: Replay one original22 with private chain observation
         run: bash control/scripts/ci/pr348-historical-replay.sh "$GITHUB_WORKSPACE/historical"
 
       - name: Preserve only sanitized historical diagnostics
@@ -50,5 +50,6 @@ jobs:
           path: |
             ${{ runner.temp }}/pr348-historical-safe/summary.json
             ${{ runner.temp }}/pr348-historical-safe/result.json
+            ${{ runner.temp }}/pr348-historical-safe/chain.json
           if-no-files-found: warn
           retention-days: 7

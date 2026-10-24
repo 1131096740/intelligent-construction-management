@@ -8,6 +8,8 @@ umask 077
 pr348_source="$(realpath "$1")"
 pr348_control="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 pr348_sha=6ec31b9fabe9cfc4a91215c1476b773bb7d32224
+[[ "$pr348_source" == "$(realpath "$GITHUB_WORKSPACE/historical")" &&
+   "$pr348_control" == "$(realpath "$GITHUB_WORKSPACE/control")" ]] || exit 20
 [[ "$(git -C "$pr348_source" rev-parse HEAD)" == "$pr348_sha" &&
    "$(git -C "$pr348_control" rev-parse HEAD)" == "${PR348_CONTROL_SHA:-}" &&
    "$(git -C "$pr348_source" status --porcelain=v1 --untracked-files=no)" == '' ]] || exit 20
@@ -77,7 +79,7 @@ docker pull --platform linux/amd64 "$pr348_image" >> "$pr348_log" 2>&1
 [[ "$(docker image inspect --format '{{.Os}} {{.Architecture}}' "$pr348_image")" == 'linux amd64' ]] || exit 20
 docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$pr348_image" | grep -Fxq 'PG_VERSION=16.15-1.pgdg13+2'
 pr348_round="$(mktemp -d "$pr348_private/round.XXXXXX")"
-node "$pr348_control/scripts/ci/pr348-historical-prepare-runner.cjs" "$pr348_source" "$pr348_round"
+node "$pr348_control/scripts/ci/pr348-historical-prepare-runner.cjs" "$pr348_source" "$pr348_round" --observe-chain
 mkdir -m 700 "$pr348_round/tmp" "$pr348_round/collector-root"
 if [[ -e "$pr348_source/apps/web-admin/test-results" || -L "$pr348_source/apps/web-admin/test-results" ]]; then
   [[ ! -L "$pr348_source/apps/web-admin/test-results" ]] || exit 20
@@ -91,6 +93,7 @@ env -i PATH="$PATH" HOME="$HOME" COREPACK_HOME="$COREPACK_HOME" CI=true NODE_ENV
   node "$pr348_round/launch.cjs" > "$pr348_round/runner.stdout.private.log" 2> "$pr348_round/runner.stderr.private.log" || pr348_code=$?
 chmod 600 "$pr348_round/runner.stdout.private.log" "$pr348_round/runner.stderr.private.log"
 pr348_phase=metadata_projection
+node "$pr348_control/scripts/ci/pr348-historical-chain.cjs" project "$pr348_round" "$pr348_safe/chain.json"
 (cd "$pr348_round/collector-root" && python3 "$pr348_control/scripts/ci/collect-roster-failure-diagnostics.py" --output "$pr348_safe/summary.json")
 pr348_phase=final_result
 node - "$pr348_source" "$pr348_round" "$pr348_code" "$pr348_safe/result.json" <<'JS'
