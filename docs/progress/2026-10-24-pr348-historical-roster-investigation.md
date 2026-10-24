@@ -125,3 +125,19 @@ Playwright1.64实际源码中最终`result.duration`为default slot与afterHooks
 本地修正只把报告字段改成中性的`reportedTestDurationMs`，读取旧记录时归一legacy字段；新旧值冲突、非法或缺失保持不完整，不推断精确预算。私人分析器另存新副本，去掉按最终时长±500毫秒排除候选的做法；缺少timeout槽/触发证据时保持unknown，已观察到DOM归零且没有drawer断言失败的旧成功样本仍独立判为非匹配。原封存脚本、输出及失败日志不覆盖。
 
 首轮新增四项纯回归为35过4败，修正后三十九项通过，零跳过。本轮未改原E2E、业务、Schema、迁移、原预算、零重试或断言，未提交推送、触发新CI、合并或部署。独立复审及本地受影响检查以后续收据为准，不沿用cd55完整CI为本地增量背书。历史root仍未证明，draft阻断保持。
+
+## 修正后A基线资格与初始化阶段B预注册
+
+上述5文件经所有者授权提交推送为`9eb419984552259d5efd684f95128f8f5e5cad0f`。[完整CI40103911227](https://github.com/1131096740/intelligent-construction-management/actions/runs/40103911227)的attempt1终态26/26任务全部成功；安全收据SHA256为`30c38d35541aa65f4e661f457fde69eaf7e5f63876ae7741d3884f36cb1eb68b`。同SHA的[原生A40103911225](https://github.com/1131096740/intelligent-construction-management/actions/runs/40103911225)只运行一次、原22项全过且完整链可用，ZIP摘要为`997354fca0029b72965c0b1998e1d8d2887e9366f5cd248186c2a53da49cd14b`。这些资格仅属于A，不证明历史根因，也不为B预填通过。
+
+A独立验收确认两个suite/两端collector与步骤完整，正确输出`reportedTestDurationMs`；31个apply中的14个201成功路径逐请求都有apply、confirmPassword、事务及evaluate的enter/returned/resolved，Audit只记录enter/returned，不订阅lazyPromise。A手机调入click后93毫秒正文解析、93毫秒关闭状态、400毫秒DOM归零；报告用例时长14.772秒不当作实际30秒槽已耗。A实际runner为image`20261012.334.1`、agent`2.338.0`，利用率与完整host仍未知。
+
+本轮候选按证据排序：①原观察器在测试文件导入AppModule前提前加载并包装服务，是可以隔离的初始化阶段扰动；②历史额外API build虽真实存在，但未找到API dist直接消费路径；③NSS差异缺少mobile实际加载路径。后两者本轮不同时改变，不造CPU负载或人为业务延迟。窄范围核对两HTTP spec没有顶层jest.mock/doMock/spyOn或方法引用快照；原beforeAll内的短信网关DI替换不在观察器服务列表，未找到直接绕过mock的证据，未据此宣称排除全部传递导入副作用。
+
+预注册的单一因素准确称为“服务观察器初始化阶段”：B将同一组service require和prototype wrap作为整体，从setup模块顶层推迟到setup注册的beforeAll。该hook在原测试文件模块评价之后、原suite beforeAll初始化应用之前执行。若B与A出现差异，不能直接归因require或wrap其中之一，须捕获同症状RED后再拆分。HTTP探针时机、方法表、包装/异常/Promise/清理语义、前端与步骤采证、准确d671源/旧锁/Client/浏览器/PG pins、原22项/动作/30秒/120秒/180秒/零重试/断言均保持不变。
+
+B代码只新增beforeAll包裹两行，逆移两行可逐字恢复A后端观察源。必要工具回归先39过2败，修正后41/41；真实Jest仅fake工具夹具先A0/1失败、后B1/1通过，证实setup评价时零服务加载、原测试文件评价后安装全部七模块包装，并保留异常身份和部分初始化失败清理。完整本地编排370/370、准确d671准备与两端测试发现通过；这些不是历史业务RED或B原生资格。
+
+B仅在A完整CI及安全基线封存后触发一次。B实际成功可比路径须核对上述服务阶段，不能仅因HTTP事件和完整summary就断言wrapper安装正确。失败请求可能停在enter/returned而尚无resolved，应保留为未完成边界；403/409等预期错误不能强制要求进入事务或审计。成功路径若只有HTTP或缺安装证据，标观察覆盖不完整。A/B分别保存实际runner image/agent等元数据，不称同一host；明显环境漂移限制比较结论。
+
+两轮都绿只能未支持本次初始化阶段假设，不排除偶发、不解除draft；同症状RED也只是候选，仍需最小化、拆分与撤销反证后才做最小业务修复。其他失败、初始化错误或采证不全单列，首失败封存，不重跑洗绿。B原生结果及其新准确SHA完整CI以后续收据为准，当前不预填。未合并、部署、访问生产或修改共享根与历史数据，#348原head及draft保持。

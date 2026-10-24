@@ -69,6 +69,7 @@ function wrap(prototype, name, label, settle) {
   Object.defineProperty(prototype, name, { ...descriptor, configurable: true, writable: true, value: replacement });
   restore.push(() => { if (descriptor) Object.defineProperty(prototype, name, descriptor); else delete prototype[name]; });
 }
+beforeAll(() => {
 for (const [modulePath, exported, methods] of [
   ["organization/project-roster-management.service.ts", "ProjectRosterManagementService", ["options", "preview", "apply", "evaluate"]],
   ["auth/auth.service.ts", "AuthService", ["confirmPassword"]],
@@ -82,6 +83,7 @@ for (const [modulePath, exported, methods] of [
   if (!type?.prototype) throw new Error("fixed backend observer export missing");
   for (const method of methods) wrap(type.prototype, method, exported + "." + method, exported !== "AuditService");
 }
+});
 afterAll(() => {
   try { fs.appendFileSync(FILE, JSON.stringify({ schemaVersion: 1, suite, phase: "observer-summary", rowLimit: 4000, rowsAttempted: attempted, rowsWritten: rows, rowsDropped: dropped, writeFailures, overflow: dropped > 0 }) + "\n", { mode: 0o600 }); } catch {}
   for (const undo of restore.reverse()) undo();
