@@ -228,3 +228,15 @@ B仅在A完整CI及安全基线封存后触发一次。B实际成功可比路径
 实际旧Jest配置烟测发现仅传argv.cwd会被normalize中的process.cwd覆盖，属于采证准备口径问题，不是业务RED。已在资源窗口之后临时切到准确API cwd读取配置、finally恢复，并让首次transform子进程使用同一API cwd；修正后的实际旧配置／JSON传输烟测通过，没有执行两HTTP spec。真实transform及末尾controls均在独立Node子进程，stdout/stderr直写私有0600日志；tiny真实子进程已验证两路输出不会回显到父进程。cache默认目录未覆盖，分阶段stat-only库存与cachePath摘要可连接，完整runtime key与build生产边仍明确unknown。
 
 以上资格仅属于本地未提交11文件补丁，不能沿用613c的26项CI为新补丁背书。新native任务及新提交完整CI均未执行，当前不预填；没有历史API build资源实采、实际两HTTP transform、原22运行或生产访问。提交推送仍待用户对这份具体补丁的新授权，#348原head与draft保持。所有工具准备失败、首轮门禁失败及修正后结果分别保留；本地工具资格不是历史故障复现、产品修复或draft解除证据。
+
+### 一次已授权 native 运行的实际结果与采证器缺陷
+
+上述11文件经用户明确授权，按封存补丁`b7b7c89cd9a25c575aff6ac6f8244631924e6295275d73ae5472a4268d4b196b`提交为`89d2d506ed6e6c5c6b70cf4f6c8812a37e01d247`并非强制推送到独立新诊断分支。[Native任务40113567526](https://github.com/1131096740/intelligent-construction-management/actions/runs/40113567526)仅attempt1，终态failure，未重跑；同SHA仅此push任务，未触发原22或完整26项CI。#348原head、旧诊断头613c与主线3d6736fb均未改。
+
+四文件白名单中实际只产出result/resources两份，ZIP原件SHA256为`77544f0a268a86cc36125c4708c1776d01b6b9d7ab2a6eceb547663bf2242d18`，与GitHub摘要相同。result为metadata-incomplete，停在owned-build-resource-observation，已完成退出后资源窗口和afterbuild库存，未到normal pretest、cache或controls。真实镜像为`20261023.334.3`，与历史及先前成功样本均不相同；runnerAgent字段缺失null，不补造。
+
+三个退出后样本中，8个已知身份均unknown/not_found，CPU/I/O为null，不能写成零或完整进程树清空。混合cgroup内存从末次运行约4460MiB回落到末尾约2051MiB；保留样本的OOM计数为0。退出首样本到末尾的混合CPU增量14.551毫秒、CPU PSI增量486微秒均不能归给build后代。共47次采样只保留11份，末次实际读区间为退出后998.255—1000.524毫秒，samplingIncomplete为true。没有形成可升级业务压力或原22A/B的已证持续工作信号，也不能排除漏采或内核状态。
+
+本次安全结果没有child退出码、signal或footprint，故不能区分build命令失败与其后的生命周期校验失败。只读源码／既有旧日志审计确认一处采证器拒真错误：准确d671共享域package脚本为`tsc`、封存日志同样为`> tsc`，controller却只接受现代`tsc -p tsconfig.json`。复算正常旧生命周期只有sharedTsc=false、其余四项true；前次审查漏掉了这个旧脚本契约。这证明采证器有错误，仍不能据缺失退出码的本次结果反推实际失败门，更不是历史手机根因。
+
+下一步仅本地最小修正该准确旧脚本契约，并在资源窗口结束后、任何拒绝之前投影退出码／signal／日志读取状态和大小／五项footprint／终止门枚举，禁止原始日志及自由错误。本地修正仅两份采证脚本／测试及两份状态文档：准确旧源／封存日志夹具先RED后GREEN，定向17/17、完整编排411/411零跳过，规范／规格复审各0项，语法／业务语言／diff通过。不可读日志的五标识保留null，非零退出仍拒绝，只有terminalGate=passed才放行；原sampler、cache探针与真实vendor控制路径未改，不重复其实际控制运行。新4文件尚未提交推送，未得到新native或完整CI资格；本次一次远程授权已用完，未经新增授权不推送或触发第二次native。原22、预算、零重试、断言和业务均不改，draft保持，不合并部署。

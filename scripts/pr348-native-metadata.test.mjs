@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
+import crypto from "node:crypto";
+import * as metadata from "./pr348-native-metadata.mjs";
 import { SOURCE_SHA, BRANCH, validateNativeContext, runnerIdentity, inventoryTmp, lifecycleFootprint, runPhases, completionReceipt, cacheLauncherText, cacheConfigText, startPrivate } from "./pr348-native-metadata.mjs";
 
 const env = { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "push", GITHUB_REF: BRANCH, GITHUB_RUN_ATTEMPT: "1",
@@ -51,13 +53,73 @@ test("pretest cannot start while the asynchronous owned-build tail is pending", 
   assert.deepEqual(events, ["tail-started", "tail-finished", "pretest"]);
 });
 
-test("build lifecycle is proved by fixed prebuild, shared tsc and nest markers only", () => {
-  const text = "> @jiangkong/api@0.1.0 prebuild /private/source/services/api\n> @jiangkong/shared-domain@0.1.0 build /private/source/packages/shared-domain\n> tsc -p tsconfig.json\n> @jiangkong/api@0.1.0 build /private/source/services/api\n> nest build\nPRIVATE_PAYLOAD";
-  const result = lifecycleFootprint(text);
-  assert.ok(Object.values(result).every(Boolean));
+// Exact d671 package blob; log markers project sealed log SHA256 5612f2370d2e2dd63b5e82c026dcf8893648927e48f9ab53f2ce1932ac95c376, lines 1597/1601/1602/1605/1606.
+const historicalSharedPackage = "{\n  \"name\": \"@jiangkong/shared-domain\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"commonjs\",\n  \"main\": \"dist/index.js\",\n  \"types\": \"dist/index.d.ts\",\n  \"scripts\": {\n    \"build\": \"tsc\",\n    \"test\": \"vitest run\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"lint\": \"eslint src --ext .ts\"\n  },\n  \"dependencies\": {},\n  \"devDependencies\": {\n    \"@types/node\": \"^20.14.0\",\n    \"@typescript-eslint/eslint-plugin\": \"^7.18.0\",\n    \"@typescript-eslint/parser\": \"^7.18.0\",\n    \"eslint\": \"^8.57.0\",\n    \"typescript\": \"^5.5.0\",\n    \"vitest\": \"^1.6.0\"\n  }\n}\n";
+const historicalBuildLog = "> @jiangkong/api@0.1.0 prebuild [source]\n> @jiangkong/shared-domain@0.1.0 build [source]\n> tsc\n> @jiangkong/api@0.1.0 build [source]\n> nest build\nPRIVATE_PAYLOAD";
+
+test("exact d671 source and sealed lifecycle markers accept shared tsc without modern arguments", () => {
+  assert.equal(SOURCE_SHA, "d6719ba2ad89f716f5d67dc0795cdccf98d9820f");
+  const blob = crypto.createHash("sha1").update(`blob ${Buffer.byteLength(historicalSharedPackage)}\0`).update(historicalSharedPackage).digest("hex");
+  assert.equal(blob, "7fde6f14389ebcfb3957d1ba5a5b6398cdd56b4e");
+  assert.equal(JSON.parse(historicalSharedPackage).scripts.build, "tsc");
+  const result = lifecycleFootprint(historicalBuildLog);
+  assert.deepEqual(result, { apiPrebuild: true, sharedDomainBuild: true, sharedTsc: true, apiBuild: true, nestBuild: true });
   assert.equal(JSON.stringify(result).includes("PRIVATE_PAYLOAD"), false);
-  assert.equal(lifecycleFootprint(text.replace("> tsc -p tsconfig.json", "> skipped")).sharedTsc, false);
+  assert.equal(lifecycleFootprint(historicalBuildLog.replace("> tsc\n", "> tsc -p tsconfig.json\n")).sharedTsc, false);
+  assert.equal(lifecycleFootprint(historicalBuildLog.replace("> tsc\n", "> skipped\n")).sharedTsc, false);
   assert.equal(lifecycleFootprint("> nest build\n").apiPrebuild, false);
+});
+
+test("build outcome preserves successful and failed child boundaries without raw diagnostics", () => {
+  assert.equal(typeof metadata.projectBuildOutcome, "function");
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "pr348-build-outcome-"));
+  fs.chmodSync(root, 0o700);
+  try {
+    const logFile = path.join(root, "build.private.log"); fs.writeFileSync(logFile, historicalBuildLog, { mode: 0o600 });
+    const project = input => metadata.projectBuildOutcome({ logFile, resourceObservationCompleted: true, ...input });
+    const good = project({ exit: { code: 0, signal: null } });
+    assert.equal(good.terminalGate, "passed"); assert.equal(good.childExitCode, 0);
+    assert.equal(good.logReadStatus, "read"); assert.equal(good.logBytes, Buffer.byteLength(historicalBuildLog));
+    assert.deepEqual(good.footprint, { apiPrebuild: true, sharedDomainBuild: true, sharedTsc: true, apiBuild: true, nestBuild: true });
+    for (const [input, gate, code, signal, spawnCode] of [
+      [{ exit: { code: 2, signal: null } }, "child-exit-nonzero", 2, null, null],
+      [{ exit: { code: null, signal: "SIGTERM" } }, "child-signaled", null, "SIGTERM", null],
+      [{ exit: { code: null, signal: "PRIVATE_SIGNAL" } }, "child-signaled", null, "unknown", null],
+      [{ spawnError: { code: "ENOENT", message: "PRIVATE_ERROR" } }, "child-start-error", null, null, "ENOENT"],
+      [{ spawnError: { code: "PRIVATE_CODE", message: "PRIVATE_ERROR" } }, "child-start-error", null, null, "unknown"],
+      [{ exit: { code: 0, signal: null }, resourceObservationCompleted: false }, "resource-observation-incomplete", 0, null, null],
+      [{ exit: { code: null, signal: null } }, "child-outcome-unknown", null, null, null]
+    ]) {
+      const result = project(input);
+      assert.equal(result.terminalGate, gate); assert.equal(result.childExitCode, code);
+      assert.equal(result.childSignal, signal); assert.equal(result.spawnErrorCode, spawnCode);
+      assert.equal(result.footprint.sharedTsc, true); assert.doesNotMatch(JSON.stringify(result), /PRIVATE|command|private\.log/u);
+    }
+    fs.writeFileSync(logFile, historicalBuildLog.replace("> tsc\n", "> skipped\n"));
+    assert.equal(project({ exit: { code: 0, signal: null } }).terminalGate, "lifecycle-footprint-rejected");
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+test("unreadable or oversized build logs keep footprint unknown rather than five false markers", () => {
+  assert.equal(typeof metadata.projectBuildOutcome, "function");
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "pr348-build-log-"));
+  fs.chmodSync(root, 0o700);
+  try {
+    const logFile = path.join(root, "build.private.log"), missing = path.join(root, "missing.private.log");
+    const project = file => metadata.projectBuildOutcome({ exit: { code: 0, signal: null }, resourceObservationCompleted: true, logFile: file });
+    const absent = project(missing);
+    assert.equal(absent.logReadStatus, "unreadable"); assert.equal(absent.logBytes, null);
+    assert.deepEqual(Object.values(absent.footprint), [null, null, null, null, null]); assert.equal(absent.terminalGate, "log-unavailable");
+    fs.writeFileSync(logFile, ""); fs.truncateSync(logFile, 8 * 1024 * 1024 + 1);
+    const oversized = project(logFile);
+    assert.equal(oversized.logReadStatus, "too-large"); assert.equal(oversized.logBytes, 8 * 1024 * 1024 + 1);
+    assert.deepEqual(Object.values(oversized.footprint), [null, null, null, null, null]);
+    fs.unlinkSync(logFile); fs.symlinkSync(missing, logFile);
+    assert.equal(project(logFile).logReadStatus, "unreadable");
+    const initial = metadata.projectBuildOutcome();
+    assert.equal(initial.terminalGate, "not-started"); assert.equal(initial.logReadStatus, "not-read");
+    assert.doesNotMatch(JSON.stringify([absent, oversized, initial]), /private\.log|PRIVATE/u);
+  } finally { fs.rmSync(root, { recursive: true }); }
 });
 
 test("metadata success preserves unknown resource coverage and does not claim CI or business proof", () => {

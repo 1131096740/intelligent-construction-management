@@ -70,10 +70,41 @@ export function lifecycleFootprint(text) {
   return {
     apiPrebuild: /^> @jiangkong\/api@\S+ prebuild /mu.test(log),
     sharedDomainBuild: /^> @jiangkong\/shared-domain@\S+ build /mu.test(log),
-    sharedTsc: /^> tsc -p tsconfig\.json\s*$/mu.test(log),
+    sharedTsc: /^> tsc\s*$/mu.test(log),
     apiBuild: /^> @jiangkong\/api@\S+ build /mu.test(log),
     nestBuild: /^> nest build\s*$/mu.test(log)
   };
+}
+
+export function projectBuildOutcome({ exit, spawnError, logFile, resourceObservationCompleted = false } = {}) {
+  let logReadStatus = "not-read", logBytes = null;
+  let footprint = { apiPrebuild: null, sharedDomainBuild: null, sharedTsc: null, apiBuild: null, nestBuild: null };
+  if (logFile) {
+    logReadStatus = "unreadable";
+    try {
+      const stat = fs.lstatSync(logFile);
+      if (stat.isFile() && !stat.isSymbolicLink() && Number.isSafeInteger(stat.size) && stat.size >= 0) {
+        logBytes = stat.size;
+        if (stat.size > 8 * 1024 * 1024) logReadStatus = "too-large";
+        else {
+          const bytes = fs.readFileSync(logFile);
+          logBytes = bytes.length;
+          if (bytes.length > 8 * 1024 * 1024) logReadStatus = "too-large";
+          else { footprint = lifecycleFootprint(bytes.toString("utf8")); logReadStatus = "read"; }
+        }
+      }
+    } catch { logReadStatus = "unreadable"; logBytes = null; }
+  }
+  const childExitCode = Number.isInteger(exit?.code) && exit.code >= 0 && exit.code <= 255 ? exit.code : null;
+  const signals = ["SIGABRT", "SIGBUS", "SIGFPE", "SIGHUP", "SIGILL", "SIGINT", "SIGKILL", "SIGPIPE", "SIGQUIT", "SIGSEGV", "SIGTERM", "SIGTRAP", "SIGXCPU", "SIGXFSZ", "SIGSYS"];
+  const childSignal = exit?.signal == null ? null : signals.includes(exit.signal) ? exit.signal : "unknown";
+  const codes = ["ENOENT", "EACCES", "EAGAIN", "EMFILE", "ENFILE", "ENOMEM", "ENOTDIR", "EINVAL", "EIO"];
+  const spawnErrorCode = spawnError == null ? null : codes.includes(spawnError.code) ? spawnError.code : "unknown";
+  const terminalGate = spawnErrorCode !== null ? "child-start-error" : !exit ? (logFile ? "child-outcome-unknown" : "not-started") :
+    childSignal !== null ? "child-signaled" : childExitCode === null ? "child-outcome-unknown" : childExitCode !== 0 ? "child-exit-nonzero" :
+    !resourceObservationCompleted ? "resource-observation-incomplete" : logReadStatus !== "read" ? "log-unavailable" :
+    !Object.values(footprint).every(value => value === true) ? "lifecycle-footprint-rejected" : "passed";
+  return { childExitCode, childSignal, spawnErrorCode, logReadStatus, logBytes, footprint, terminalGate };
 }
 
 // These fixed phases are also exercised with in-memory fakes; no business runner is called.
@@ -167,7 +198,7 @@ export async function main(sourceArg) {
   const pnpm = (args, label) => command("corepack", ["pnpm", "--dir", source, ...args], label);
   const readLog = log => { if (fs.statSync(log).size > 8 * 1024 * 1024) reject(); return fs.readFileSync(log, "utf8"); };
   const readJson = file => JSON.parse(readLog(file));
-  let buildFootprint;
+  let buildOutcome = projectBuildOutcome();
   try {
     const observed = await runPhases({
       prepare: async () => {
@@ -185,15 +216,20 @@ export async function main(sourceArg) {
         inventory("prebuild");
         const observer = createResourceObserver(), baseline = await observer.snapshot({ pid: null, phase: "baseline" });
         const log = path.join(privateRoot, "api-build.private.log");
-        const child = startPrivate("corepack", ["pnpm", "--dir", source, "--filter", "@jiangkong/api", "build"], { cwd: source, env, log });
-        if (!Number.isSafeInteger(child.pid)) { await child.exit; reject(); }
-        let resources;
-        try { resources = await observeOwnedBuild({ pid: child.pid, exitPromise: child.exit, observer }); }
-        finally { await child.exit; }
+        let resources, exit, spawnError, resourceObservationCompleted = false;
+        try {
+          const child = startPrivate("corepack", ["pnpm", "--dir", source, "--filter", "@jiangkong/api", "build"], { cwd: source, env, log });
+          const settled = child.exit.then(value => ({ exit: value }), error => ({ spawnError: error }));
+          try {
+            if (!Number.isSafeInteger(child.pid)) reject();
+            resources = await observeOwnedBuild({ pid: child.pid, exitPromise: child.exit, observer });
+            resourceObservationCompleted = true;
+          } finally { ({ exit, spawnError } = await settled); }
+        } catch (error) { if (!exit && !spawnError) spawnError = error; throw error; }
+        finally { buildOutcome = projectBuildOutcome({ exit, spawnError, logFile: log, resourceObservationCompleted }); }
         write(path.join(safe, "resources.json"), { ...resources, baseline });
         inventory("afterbuild-resource-window");
-        const result = await child.exit; if (result.code !== 0 || result.signal) reject();
-        buildFootprint = lifecycleFootprint(readLog(log)); if (!Object.values(buildFootprint).every(Boolean)) reject();
+        if (buildOutcome.terminalGate !== "passed") reject();
         return resources;
       },
       pretest: async () => {
@@ -250,7 +286,7 @@ export async function main(sourceArg) {
     const sourceClean = git(source, ["status", "--porcelain=v1", "--untracked-files=no"]) === "";
     if (!sourceClean) reject();
     write(path.join(safe, "result.json"), { ...completionReceipt({ controlSha: process.env.PR348_CONTROL_SHA, resources: observed.resources, sourceClean }),
-      runtime: { node: process.versions.node, pnpm: "9.15.9", prisma: "5.22.0" }, buildFootprint,
+      runtime: { node: process.versions.node, pnpm: "9.15.9", prisma: "5.22.0" }, buildOutcome, buildFootprint: buildOutcome.footprint,
       runnerIdentity: runnerIdentity(process.env), cacheInventory, buildProductionEdge: "unknown",
       cacheProcessCwd: "historical/services/api", normalizedConfigCwdMatched: true,
       samePrivateTmpForPreparationAndJest: true, cacheDirectoryOverride: false, rawArtifactsUploaded: false });
@@ -258,7 +294,7 @@ export async function main(sourceArg) {
   } catch {
     if (!fs.existsSync(path.join(safe, "result.json"))) write(path.join(safe, "result.json"), { schemaVersion: 1, status: "metadata-incomplete", phase,
       controlSha: process.env.PR348_CONTROL_SHA, sourceSha: SOURCE_SHA, runnerIdentity: runnerIdentity(process.env),
-      cacheInventory, buildProductionEdge: "unknown", original22Executed: false, historicalRootCauseProven: false });
+      cacheInventory, buildOutcome, buildProductionEdge: "unknown", original22Executed: false, historicalRootCauseProven: false });
     reject();
   }
 }
