@@ -15,6 +15,8 @@
 
 两份错误里的5000毫秒是 expect 配置，不是实际触发的独立接口超时。原日志没有每个动作耗时、请求阶段或响应完成事件，GitHub 未上传原失败 trace。因此不能由 click 返回推断 Vue 处理函数已经执行，也不能由缺少 apply 记录断言没有点击；提交前还会重新读取 options。
 
+已按本轮冻结的Playwright1.64源码核对：`toHaveCount`的one-shot、重试调度与日志压缩不同于`expect.poll`；日志重复计数不能直接当作固定轮询次数，也不能据此反推确认后的剩余预算。全局30秒结束测试等待后还会进入teardown，API日志可能随后才收束。当前只能确认全局期限触发，不能由3/5次计数观察断言此前耗时分布、后台卡住或预算不足就是历史根因。
+
 原始失败日志已分别封存，SHA256 为 `5612f2370d2e2dd63b5e82c026dcf8893648927e48f9ab53f2ce1932ac95c376`、`6103177edbdb42f599c3fc3b0bd48e0e1f6a0f6b0d8a7a48a0ba94c6b4c38b8a`。后续重跑未覆盖私有原件。
 
 ## 本轮验证及边界
@@ -24,6 +26,7 @@
 | 准确主线原 employee_onboarding 门 | 六套59/59及三组桌面/手机真实页面场景通过 | 当前基线可运行；不能证明历史故障根因 |
 | 原生 GitHub 准确 `6ec31b9f` | [CI 40069461199](https://github.com/1131096740/intelligent-construction-management/actions/runs/40069461199) 的员工分片22/22通过 | 整个历史 workflow 的 Quality gates 因旧依赖审计失败，Release gates 随之失败；不能称完整 CI 通过 |
 | 原生 GitHub 准确 `d6719ba2` | [原 CI attempt 2](https://github.com/1131096740/intelligent-construction-management/actions/runs/39308767811/attempts/2) 的员工分片22/22通过 | attempt 1 的故障仍成立；新绿灯只证明未复现 |
+| 原生 GitHub 保留GLib`.9`的准确`6ec31b9f` | 控制提交`cf21fdec`的[历史重放40077151994](https://github.com/1131096740/intelligent-construction-management/actions/runs/40077151994)：入职12/12、花名册10/10、零跳过，源码干净且清理成功 | GLib初终均`.9`，NSS仍由`.2`更新至`.3`；未复现、不称完整历史host等价 |
 | 全历史 `6ec31b9f` Linux 重放 | 原2692个源码文件、旧生成 Client、178个迁移及原22项通过 | 使用本轮隔离运行环境，不能称完整历史 runner 快照等价 |
 | GLib 单包对照 | `.9` 与 `.10` 各自原22项及额外观测22项均通过 | 未建立 GLib 与历史故障的因果关系 |
 
@@ -32,6 +35,8 @@ GLib 对照从同一个镜像派生，531个已装包仅 `libglib2.0-0t64:amd64`
 观测轮手机的关闭断言：旧库调入827毫秒、调出822毫秒；新库调入847毫秒、调出831毫秒。两端各有11条固定接口元数据、两次apply201，关闭与最终成员为零的原断言通过。状态码、HAR耗时及正文文件引用均不单独代表页面处理完成。步骤 wallclock 耗时与测试计时槽总耗时分开记录，不混算截止时间余量。
 
 公开环境对照还确认 runner/image、GLib、NSS及PG镜像索引有漂移；四次原生运行的实际 PG 版本均为16.15。相同多架构索引不代表本地arm64与GitHub amd64完全等价。GLib官方[变更记录](https://changelogs.ubuntu.com/changelogs/pool/main/g/glib2.0/glib2.0_2.80.0-6ubuntu3.10/changelog)和[补丁](https://git.launchpad.net/ubuntu/+source/glib2.0/plain/debian/patches/lp2165869-fix-gtask-run-in-thread.patch?h=applied/2.80.0-6ubuntu3.10)中的线程池锁死说明是一条已做对照的线索，不能冒称历史根因。
+
+GLib`.9`原生重放仅下载两个固定脱敏JSON工件，失败trace数为零，符合原`retain-on-failure`语义；没有下载原始trace。工件digest已匹配，私有证据manifest的SHA256为`0a4c214c7b8f60d0a61caf6e1948bb3d83bdcfb3937631e239462f21d1838242`。
 
 私有资格及对照收据分别为 `/private/tmp/jg-pr348-glib-contrast-20261024/final-qualified-runtime-receipt.json`、`paired-replay-result.json`，SHA256为 `b082b0626b01d593448f247e31d44852b80df1b3047fc00630d7a5a2341eb860`、`06e9b5600503a6bc7ba74da03be9fec67c56c3ee82243fdcdc4b10db637dff7a`。含认证的原始 trace、日志和合成账号信息仅留在0700/0600私有目录。
 
@@ -52,5 +57,17 @@ CI只持久保存脱敏JSON，禁止上传原始ZIP、正文、认证头或任�
 双轴首审各发现同一项P2：私有空APT配置会默认保存未压缩索引，正常官方索引即可超过事后100MB存储限制，导致原22项启动前失败。已明确`Acquire::GzipIndexes "true"`，将实际配置生成提取为纯函数；新增第19项前缀夹具先RED再GREEN，保持原限制和签名校验。这是重放环境准备修正，不是花名册历史根因。原生运行前仍须以新提交复审与完整CI为准。[APT官方说明](https://manpages.ubuntu.com/manpages/noble/en/man5/apt.conf.5.html)
 
 独立双轴审查与准确新SHA完整CI尚待完成，不预填通过；本次检查通过不代表历史根因已验证。
+
+## 首轮远端门禁新增阻断
+
+诊断控制提交`cf21fdec2008eeac6d0461c9dfc9af0b5c39de1f`的[完整CI40077151960](https://github.com/1131096740/intelligent-construction-management/actions/runs/40077151960)在原生产依赖审计门失败：既有body-parser1.20.6与multer2.3.0命中2026-10-22/23公布的两条高危公告。官方修复版本分别为[body-parser1.20.9](https://github.com/advisories/GHSA-27r3-jxmh-p828)、[multer2.5.0](https://github.com/advisories/GHSA-q7qp-rjg7-q26m)。原审计阈值保持high；只在本轮当前依赖的既有覆盖项修补，历史6ec源码、锁与生成Client不随之改变。
+
+该CI终态24项成功、Quality审计与Release汇总两项失败，完整收据SHA256为`50b352469897c35af07cb38b39323c215939e8fb506fbbb0f33dec7ba81b7605`。原Quality job120822866008日志私有封存SHA256为`d2cd678153cd3a03cff6647536977dd88cd3f146c9a1fc206271cb7ea987e7b3`，不重跑覆盖首次失败。
+
+当前依赖仅更新两处既有override、必要生成锁变更和Multer严格版本期望；Nest10.4.22、Express4.22.1与原high阈值保持。真实HTTP/DTO/18类multipart入口及Multer集成四套124/124通过，API类型与lint退出0，原`pnpm audit --prod --audit-level high`退出0，高危/严重均零，仍有1项既有Nest中危。当前Schema的Prisma Client在本worktree重新生成，未复制旧Client或写用户缓存。私有兼容验证收据SHA256为`e5a678fdd1a154f4cea0beea7b4364e0dabb9ee00e5f90d78f006232210fd058`。
+
+依赖更新后，原完整CI编排在同worktree的新冻结依赖上重新339/339、零跳过、退出0，日志SHA256为`f71479116fb17b23e870f76e696e38c17aa8bcb301e81f8990032b3943a50fdb`；未借用主线worktree的依赖验证新锁。
+
+审计失败与花名册历史故障无已证因果关系；依赖补修后的双轴复审及准确新提交完整CI须另行验证，不能沿用cf21结果。
 
 解除draft仍须取得与原症状匹配的失败现场，定位真实前后端因果链，并通过针对性反证、修复回归和准确新SHA完整CI。当前不满足该条件。
