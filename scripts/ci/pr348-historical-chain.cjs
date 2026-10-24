@@ -4,22 +4,23 @@ const {execFileSync}=require("node:child_process");
 const {PINS,transformOriginal,blob}=require("./pr348-chain/frontend-transform.cjs");
 const {sanitize}=require("./pr348-chain/browser-observer.cjs");
 const SHA="6ec31b9fabe9cfc4a91215c1476b773bb7d32224";
+const SOURCES=Object.freeze([SHA,"d6719ba2ad89f716f5d67dc0795cdccf98d9820f"]);
 const E2E="apps/web-admin/e2e/project-roster-real.e2e.ts",E2E_BLOB="80fcbeddffb81ae48a28431f79bb70ad43f17581";
 const digest=bytes=>crypto.createHash("sha256").update(bytes).digest("hex");
 const reject=()=>{throw Error("historical chain preparation rejected");};
 const write=(file,value,mode=0o600)=>fs.writeFileSync(file,value,{flag:"wx",mode});
 function canonical(directory){const result=fs.realpathSync(directory);if(result!==path.resolve(directory)||fs.lstatSync(directory).isSymbolicLink()||!fs.statSync(result).isDirectory())reject();return result;}
 function readFile(file){const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||fs.realpathSync(file)!==file)reject();return fs.readFileSync(file,"utf8");}
-function verifySource(source){source=canonical(source);const git=args=>execFileSync("git",["-C",source,...args],{encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim();if(git(["rev-parse","HEAD"])!==SHA||git(["status","--porcelain=v1","--untracked-files=no"]))reject();const proofs=[];for(const relative of Object.keys(PINS)){const result=transformOriginal(relative,readFile(path.join(source,"apps/web-admin",relative)));proofs.push({relative,originalBlob:result.originalBlob,restoredBlob:result.restoredBlob});}if(blob(readFile(path.join(source,E2E)))!==E2E_BLOB)reject();return proofs;}
+function verifySource(source){source=canonical(source);const git=args=>execFileSync("git",["-C",source,...args],{encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim();const sourceSha=git(["rev-parse","HEAD"]);if(!SOURCES.includes(sourceSha)||git(["status","--porcelain=v1","--untracked-files=no"]))reject();const proofs=[];for(const relative of Object.keys(PINS)){const result=transformOriginal(relative,readFile(path.join(source,"apps/web-admin",relative)));proofs.push({relative,originalBlob:result.originalBlob,restoredBlob:result.restoredBlob});}if(blob(readFile(path.join(source,E2E)))!==E2E_BLOB)reject();return{sourceSha,proofs};}
 function prepare(sourceArg,roundArg){
- const source=canonical(sourceArg),round=canonical(roundArg),proofs=verifySource(source);
+ const source=canonical(sourceArg),round=canonical(roundArg),{sourceSha,proofs}=verifySource(source);
  if(round===source||round.startsWith(source+path.sep)||source.startsWith(round+path.sep))reject();
  const directory=path.join(round,"chain"),events=path.join(directory,"events"),web=path.join(source,"apps/web-admin");
  if(fs.existsSync(directory))reject();
  const pnpm=execFileSync("which",["pnpm"],{encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim();
  if(!path.isAbsolute(pnpm)||/[\r\n\0]/.test(pnpm)||!fs.statSync(fs.realpathSync(pnpm)).isFile())reject();
  fs.mkdirSync(directory,{mode:0o700});fs.mkdirSync(events,{mode:0o700});fs.mkdirSync(path.join(directory,"bin"),{mode:0o700});fs.mkdirSync(path.join(directory,"specs"),{mode:0o700});
- write(path.join(directory,"context.json"),JSON.stringify({source,round,events,sourceSha:SHA})+"\n");
+ write(path.join(directory,"context.json"),JSON.stringify({source,round,events,sourceSha})+"\n");
  for(const name of["frontend-transform.cjs","browser-observer.cjs","backend-setup.cjs","step-reporter.cjs"])write(path.join(directory,name),fs.readFileSync(path.join(__dirname,"pr348-chain",name)));
  const wrapper='"use strict";\nconst {test}=require('+JSON.stringify(web+"/node_modules/@playwright/test")+');\nconst {installBrowserObserver,collectConsole,finishConsole}=require('+JSON.stringify(directory+"/browser-observer.cjs")+');\nconst observations=new WeakMap();\ntest.beforeEach(async({page},testInfo)=>{\n const project=["desktop","mobile"].includes(testInfo.project.name)?testInfo.project.name:"unknown",state={rows:0};\n const listener=message=>collectConsole(message,'+JSON.stringify(events)+'+"/"+project+".jsonl",state);\n page.on("console",listener);observations.set(page,{project,state,listener});\n await page.addInitScript(installBrowserObserver);\n});\ntest.afterEach(({page})=>{const observed=observations.get(page);if(!observed)return;page.off("console",observed.listener);finishConsole(' + JSON.stringify(events) + '+"/"+observed.project+"-collector.json",observed.state);});\n// Deliberately require after hooks; static imports would hoist.\nrequire('+JSON.stringify(path.join(source,E2E))+');\n';
  write(path.join(directory,"specs/project-roster-real.e2e.ts"),wrapper);
@@ -29,7 +30,7 @@ function prepare(sourceArg,roundArg){
  write(path.join(directory,"vite.config.mjs"),vite);
  const pnpmShim='#!/usr/bin/env node\n"use strict";\nconst {spawnSync}=require("node:child_process");\nconst expected=["--filter","@jiangkong/web-admin","exec","playwright","test","--config","playwright.project-roster-real.config.ts"],args=process.argv.slice(2);\nconst roster=args.length===expected.length&&args.every((value,index)=>value===expected[index]);\nconst selected=roster?[...args.slice(0,-1),'+JSON.stringify(directory+"/playwright.config.cjs")+']:args;\nconst child=spawnSync('+JSON.stringify(pnpm)+',selected,{env:process.env,stdio:"inherit"});\nif(child.error)process.exitCode=1;else if(child.signal){try{process.kill(process.pid,child.signal);}catch{process.exitCode=1;}}else process.exitCode=child.status??1;\n';
  write(path.join(directory,"bin/pnpm"),pnpmShim,0o700);
- const receipt={status:"prepared",sourceSha:SHA,proofs,e2eBlob:E2E_BLOB,originalTestFileAndAssertionsUnchanged:true,originalSuites:2,originalTests:22,playwrightEachTestMs:30000,parentMs:120000,atomicMs:180000,retries:0,workers:1,repeatEach:1,observationOnly:true,historicalRootCauseProven:false};
+ const receipt={status:"prepared",sourceSha,proofs,e2eBlob:E2E_BLOB,originalTestFileAndAssertionsUnchanged:true,originalSuites:2,originalTests:22,playwrightEachTestMs:30000,parentMs:120000,atomicMs:180000,retries:0,workers:1,repeatEach:1,observationOnly:true,historicalRootCauseProven:false};
  write(path.join(directory,"preparation.safe.json"),JSON.stringify(receipt)+"\n");
  return{directory,setup:path.join(directory,"backend-setup.cjs"),bin:path.join(directory,"bin"),receipt};
 }
@@ -37,7 +38,7 @@ function lines(file){try{const stat=fs.lstatSync(file);if(!stat.isFile()||stat.i
 const SERVICE=/^(?:ProjectRosterManagementService\.(?:options|preview|apply|evaluate)|AuthService\.confirmPassword|PermissionImpactService\.(?:evaluateRoleRemovalBatch|evaluateProjectRosterDeparture)|JwtAuthGuard\.canActivate|PermissionGuard\.canActivate|PrismaService\.\$transaction|AuditService\.record):(?:enter|returned|resolved|rejected|thrown)$/;
 function project(roundArg,output){
  const round=canonical(roundArg),directory=canonical(path.join(round,"chain")),context=JSON.parse(readFile(path.join(directory,"context.json")));
- if(context.round!==round||context.events!==path.join(directory,"events")||context.sourceSha!==SHA)reject();
+ if(context.round!==round||context.events!==path.join(directory,"events")||!SOURCES.includes(context.sourceSha))reject();
  const events=canonical(context.events),backend=lines(path.join(events,"backend.jsonl")),proofs=lines(path.join(events,"vite-proof.jsonl"));
  const safeBackend=backend.filter(row=>row.schemaVersion===1&&["onboarding","roster"].includes(row.suite)&&Number.isSafeInteger(row.serverRequestOrdinal)&&row.serverRequestOrdinal>0&&["options","preview","apply"].includes(row.route)&&["GET","POST"].includes(row.method)&&(SERVICE.test(row.phase)||/^http-(?:request(?:-(?:end|aborted|close))?|response-(?:finish|close))$/.test(row.phase))).map(row=>{const value={suite:row.suite,requestOrdinal:row.serverRequestOrdinal,route:row.route,method:row.method,phase:row.phase};for(const key of["serverMonotonicMs","serverEpochMs"])if(Number.isFinite(row[key]))value[key]=row[key];if(Number.isSafeInteger(row.status)&&row.status>=100&&row.status<=599)value.status=row.status;for(const key of["complete","aborted","writableEnded","writableFinished"])if(typeof row[key]==="boolean")value[key]=row[key];return value;});
  const backendSummary=backend.filter(row=>row.schemaVersion===1&&row.phase==="observer-summary");
@@ -59,9 +60,9 @@ function project(roundArg,output){
    const collectorComplete=collectorRows.length===1&&collector.schemaVersion===1&&collector.rowsWritten===browser.length&&collector.rowsAttempted===collector.rowsWritten&&collector.rowsDropped===0&&collector.writeFailures===0&&collector.overflow===false;
    return{project:name,browser,steps,flows,stepComplete,browserTruncated,maxSequenceObserved,collectorComplete,observationAvailable:browser.length>0&&!browserTruncated&&collectorComplete&&stepComplete&&steps.filter(row=>row.event==="testBegin").length===1&&steps.filter(row=>row.event==="testEnd").length===1};
  });
- const receipt={schemaVersion:1,status:sourceProof.every(row=>row.inverseVerified)&&projects.every(row=>row.observationAvailable)&&safeBackend.length>0&&backendComplete?"chain-observation-available":"chain-observation-incomplete",sourceSha:SHA,sourceProof,projects,backend:{events:safeBackend,rowLimitNotExceeded:backendComplete,integrityVerified:backendComplete,suites:backendSuites},
+ const receipt={schemaVersion:1,status:sourceProof.every(row=>row.inverseVerified)&&projects.every(row=>row.observationAvailable)&&safeBackend.length>0&&backendComplete?"chain-observation-available":"chain-observation-incomplete",sourceSha:context.sourceSha,sourceProof,projects,backend:{events:safeBackend,rowLimitNotExceeded:backendComplete,integrityVerified:backendComplete,suites:backendSuites},
    historicalRootCauseProven:false,observedFailureIsHistoricalRootProof:false,observationOverheadConsumesOriginalBudget:true,requestCorrelation:"endpoint/order/clock window only; overlapping requests remain unknown",httpSemantics:"HTTP finish does not prove browser delivery or JSON completion",rawTraceUploaded:false};
  const parent=canonical(path.dirname(output));if(path.join(parent,path.basename(output))!==path.resolve(output)||fs.existsSync(output)||fs.lstatSync(parent).isSymbolicLink())reject();write(output,JSON.stringify(receipt)+"\n");return receipt;
 }
-module.exports={SHA,E2E_BLOB,verifySource,prepare,project};
+module.exports={SHA,SOURCES,E2E_BLOB,verifySource,prepare,project};
 if(require.main===module){try{if(process.argv.length!==5||process.argv[2]!=="project")reject();const result=project(process.argv[3],process.argv[4]);process.stdout.write(JSON.stringify({status:result.status,historicalRootCauseProven:false})+"\n");}catch{process.stderr.write('{"status":"historical-chain-rejected"}\n');process.exitCode=1;}}

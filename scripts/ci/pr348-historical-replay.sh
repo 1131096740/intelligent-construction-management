@@ -7,7 +7,7 @@ umask 077
    "${GITHUB_REF:-}" == refs/heads/codex/pr348-historical-evidence-20261024 ]] || exit 20
 pr348_source="$(realpath "$1")"
 pr348_control="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
-pr348_sha=6ec31b9fabe9cfc4a91215c1476b773bb7d32224
+pr348_sha=d6719ba2ad89f716f5d67dc0795cdccf98d9820f
 [[ "$pr348_source" == "$(realpath "$GITHUB_WORKSPACE/historical")" &&
    "$pr348_control" == "$(realpath "$GITHUB_WORKSPACE/control")" ]] || exit 20
 [[ "$(git -C "$pr348_source" rev-parse HEAD)" == "$pr348_sha" &&
@@ -64,7 +64,7 @@ try {
  const client=api.resolve('@prisma/client/package.json'),generated=path.dirname(createRequire(client).resolve('.prisma/client/package.json'));
  if(JSON.parse(fs.readFileSync(client,'utf8')).version!=='5.22.0')throw new Error();
  const pins=[
-  [path.join(generated,'schema.prisma'),'445af160f911eb37a6b892ee41bcdecb0cd1a7bf7f9ae50c3d27fca3d0416da8'],
+  [path.join(generated,'schema.prisma'),'a909c04b8c85f3cc5fc810ec93b33f19d90ab18788ba58e657d29ee002aa93c8'],
   [path.join(browser,'chromium-1248/chrome-linux64/chrome'),'377a9fc07b495c3b8d0ab8ec1fdfd153641759f9756fea34d8dfce4de82f5025'],
   [path.join(browser,'chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell'),'4fa61f0ba0b4f89b7bec242c32ca16d3bccf69dbfef0651924a9ba8fede5f9d6'],
   [path.join(browser,'webkit-2370/pw_run.sh'),'a85baad3d8c07173ac387a59b41500c382b21ed692afe0964d29aac247ccc63b'],
@@ -96,16 +96,16 @@ pr348_phase=metadata_projection
 node "$pr348_control/scripts/ci/pr348-historical-chain.cjs" project "$pr348_round" "$pr348_safe/chain.json"
 (cd "$pr348_round/collector-root" && python3 "$pr348_control/scripts/ci/collect-roster-failure-diagnostics.py" --output "$pr348_safe/summary.json")
 pr348_phase=final_result
-node - "$pr348_source" "$pr348_round" "$pr348_code" "$pr348_safe/result.json" <<'JS'
+node - "$pr348_source" "$pr348_round" "$pr348_code" "$pr348_safe/result.json" "$pr348_sha" <<'JS'
 const fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path');
-const [source,round,code,output]=process.argv.slice(2);let result;
+const [source,round,code,output,sourceSha]=process.argv.slice(2);let result;
 try {
  const rows=['onboarding','roster'].map(s=>JSON.parse(fs.readFileSync(path.join(round,'suite-browser-artifacts',s+'.safe.json'),'utf8')));
  const sourceClean=cp.spawnSync('git',['-C',source,'diff','--quiet','HEAD','--']).status===0;
  const cleanupReported=/EMPLOYEE_ONBOARDING 已清理自身容器：jiangkong-onboarding-http-[a-f0-9-]+/.test(fs.readFileSync(path.join(round,'runner.stdout.private.log'),'utf8'));
  const counts=rows.map(r=>({suite:r.suite,registered:r.registered,passed:r.passed,failed:r.failed,skipped:r.skipped,capture:r.status}));
  const passed=Number(code)===0&&sourceClean&&cleanupReported&&rows.every((r,i)=>r.registered===[12,10][i]&&r.passed===r.registered&&r.failed===0&&r.skipped===0&&r.status==='captured');
- result={status:passed?'diagnostic_original22_passed':'diagnostic_incomplete_or_failed',sourceSha:'6ec31b9fabe9cfc4a91215c1476b773bb7d32224',originalChildExitCode:Number(code),sourceClean,cleanupReported,counts,
+ result={status:passed?'diagnostic_original22_passed':'diagnostic_incomplete_or_failed',sourceSha,originalChildExitCode:Number(code),sourceClean,cleanupReported,counts,
   runtime:{node:process.versions.node,pnpm:'9.15.9',postgres:'16.15-1.pgdg13+2',playwright:'1.64.0',chromium:1248,webkit:2370},historicalRootCauseProven:false};
 }catch{result={status:'diagnostic_incomplete_or_failed',originalChildExitCode:Number(code),historicalRootCauseProven:false};}
 fs.writeFileSync(output,JSON.stringify(result)+'\n',{flag:'wx',mode:0o600});

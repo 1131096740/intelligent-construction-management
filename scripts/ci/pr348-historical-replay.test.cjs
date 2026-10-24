@@ -121,7 +121,8 @@ test("dedicated push workflow remains isolated and uploads only three fixed safe
   assert.doesNotMatch(workflow, /pull_request|workflow_dispatch|deploy|production|secrets\./u);
   assert.match(workflow, /contents: read/u); assert.match(workflow, /runs-on: ubuntu-24\.04/u);
   assert.match(workflow, /timeout-minutes: 20/u); assert.equal((workflow.match(/persist-credentials: false/gu) || []).length, 2);
-  assert.match(workflow, /ref: 6ec31b9fabe9cfc4a91215c1476b773bb7d32224/u);
+  assert.match(workflow, /name: Historicald671 native original22 diagnostic/u);
+  assert.match(workflow, /ref: d6719ba2ad89f716f5d67dc0795cdccf98d9820f/u);
   assert.match(workflow, /pr348-historical-safe\/summary\.json\n\s+\$\{\{ runner\.temp \}\}\/pr348-historical-safe\/result\.json\n\s+\$\{\{ runner\.temp \}\}\/pr348-historical-safe\/chain\.json/u);
   assert.doesNotMatch(workflow, /path:.*(?:trace|private|\*|test-results)/u);
   const shell = fs.readFileSync(path.join(root, "scripts/ci/pr348-historical-replay.sh"), "utf8");
@@ -129,6 +130,9 @@ test("dedicated push workflow remains isolated and uploads only three fixed safe
   assert.match(shell, /env -i PATH=/u); assert.match(shell, /pr348-glib9-prefix\.py/u);
   assert.match(shell, /cd "\$pr348_round\/collector-root" && python3.*collect-roster-failure-diagnostics\.py.*--output "\$pr348_safe\/summary\.json"/u);
   assert.match(shell, /originalChildExitCode.*pr348_code/u);
+  assert.match(shell, /pr348_sha=d6719ba2ad89f716f5d67dc0795cdccf98d9820f/u);
+  assert.match(shell, /'a909c04b8c85f3cc5fc810ec93b33f19d90ab18788ba58e657d29ee002aa93c8'/u);
+  assert.doesNotMatch(shell, /445af160f911eb37a6b892ee41bcdecb0cd1a7bf7f9ae50c3d27fca3d0416da8|eb12dbf9800e2c014f3b78bb0348b0d9777f921b3087508d5083affb381d1282/u);
 });
 
 test("embedded Node blocks remain parseable without executing dependency or application code", () => {

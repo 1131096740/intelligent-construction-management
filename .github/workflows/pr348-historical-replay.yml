@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   historical-original22:
-    name: Historical6ec native original22 diagnostic
+    name: Historicald671 native original22 diagnostic
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout isolated exact historical source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6ec31b9fabe9cfc4a91215c1476b773bb7d32224
+          ref: d6719ba2ad89f716f5d67dc0795cdccf98d9820f
           path: historical
           persist-credentials: false
 
