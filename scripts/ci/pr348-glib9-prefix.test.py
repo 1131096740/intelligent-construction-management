@@ -132,6 +132,22 @@ class PrefixGuardTests(unittest.TestCase):
         self.assertIn('Package: src:glib2.0:any\nPin: version *\nPin-Priority: -1', value)
         self.assertNotIn('1001', value)  # This prefix must not authorize downgrades.
 
+    def test_private_apt_configuration_keeps_compressed_indexes_and_security_guards(self):
+        apt = Path('/private/task/apt')
+        settings = dict(line[:-1].split(' ', 1) for line in PREFIX.apt_configuration(apt).splitlines())
+        expected_paths = {'Dir::Etc::sourcelist': 'sources.list', 'Dir::Etc::sourceparts': 'sources',
+            'Dir::Etc::preferences': 'preferences', 'Dir::Etc::preferencesparts': 'preferences.d',
+            'Dir::Etc::parts': 'config.d', 'Dir::Etc::main': 'main.conf',
+            'Dir::State::lists': 'lists', 'Dir::Cache::archives': 'archives'}
+        self.assertEqual({key: value for key, value in settings.items() if key.startswith('Dir::')},
+                         {key: '"' + str(apt / value) + '"' for key, value in expected_paths.items()})
+        for key, value in {'Acquire::Check-Valid-Until': 'true', 'Acquire::AllowInsecureRepositories': 'false',
+                           'Acquire::https::Verify-Peer': 'true', 'Acquire::https::Verify-Host': 'true',
+                           'APT::Get::Remove': 'false', 'APT::Install-Recommends': 'false',
+                           'Acquire::Retries': '0', 'Acquire::https::Timeout': '20'}.items():
+            self.assertEqual(settings.get(key), '"' + value + '"', key)
+        self.assertEqual(settings.get('Acquire::GzipIndexes'), '"true"')
+
     def test_dependency_command_preserves_only_explicit_apt_config(self):
         args = PREFIX.dependency_command(PREFIX.NODE, '/work/playwright-core/cli.js', '/private/task.conf', '/private/home', 590)
         self.assertEqual(args[:5], ['/usr/bin/sudo', '-n', '/usr/bin/env', '-i', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'])

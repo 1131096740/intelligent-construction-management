@@ -195,6 +195,19 @@ def apt_preferences():
             '\nPin-Priority: 990\n\nPackage: src:glib2.0:any\nPin: version *\nPin-Priority: -1\n')
 
 
+def apt_configuration(apt):
+    settings = {'Dir::Etc::sourcelist': apt / 'sources.list', 'Dir::Etc::sourceparts': apt / 'sources',
+        'Dir::Etc::preferences': apt / 'preferences', 'Dir::Etc::preferencesparts': apt / 'preferences.d',
+        'Dir::Etc::parts': apt / 'config.d', 'Dir::Etc::main': apt / 'main.conf',
+        'Dir::State::lists': apt / 'lists', 'Dir::Cache::archives': apt / 'archives'}
+    return (''.join(key + ' "' + str(value) + '";\n' for key, value in settings.items()) +
+        'Acquire::Languages "none";\nAcquire::Retries "0";\nAcquire::https::Timeout "20";\n'
+        'Acquire::GzipIndexes "true";\n'
+        'Acquire::Check-Valid-Until "true";\nAcquire::AllowInsecureRepositories "false";\n'
+        'Acquire::https::Verify-Peer "true";\nAcquire::https::Verify-Host "true";\n'
+        'APT::Get::Remove "false";\nAPT::Install-Recommends "false";\n')
+
+
 def dependency_command(node, cli, config, home, seconds):
     require(all(Path(p).is_absolute() and '\n' not in str(p) for p in (node, cli, config, home)), 'COMMAND_PATH')
     require(Path(node) == NODE and Path(cli).name == 'cli.js', 'COMMAND_PATH')
@@ -281,15 +294,7 @@ def execute(args, root):
     (apt / 'sources/snapshot.sources').write_text(source_text(SNAPSHOT, ['noble-updates'], ['main']))
     (apt / 'preferences').write_text(apt_preferences())
     config = apt / 'task.conf'
-    settings = {'Dir::Etc::sourcelist': apt / 'sources.list', 'Dir::Etc::sourceparts': apt / 'sources',
-        'Dir::Etc::preferences': apt / 'preferences', 'Dir::Etc::preferencesparts': apt / 'preferences.d',
-        'Dir::Etc::parts': apt / 'config.d', 'Dir::Etc::main': apt / 'main.conf',
-        'Dir::State::lists': apt / 'lists', 'Dir::Cache::archives': apt / 'archives'}
-    config.write_text(''.join(key + ' "' + str(value) + '";\n' for key, value in settings.items()) +
-        'Acquire::Languages "none";\nAcquire::Retries "0";\nAcquire::https::Timeout "20";\n'
-        'Acquire::Check-Valid-Until "true";\nAcquire::AllowInsecureRepositories "false";\n'
-        'Acquire::https::Verify-Peer "true";\nAcquire::https::Verify-Host "true";\n'
-        'APT::Get::Remove "false";\nAPT::Install-Recommends "false";\n')
+    config.write_text(apt_configuration(apt))
     commands = dependency_command(node, cli, config, root, remaining() - 5)
     (root / 'dependency-command.json').write_text(json.dumps(commands) + '\n')
     run(commands, 'playwright-system-dependencies')
