@@ -141,3 +141,90 @@ B代码只新增beforeAll包裹两行，逆移两行可逐字恢复A后端观察
 B仅在A完整CI及安全基线封存后触发一次。B实际成功可比路径须核对上述服务阶段，不能仅因HTTP事件和完整summary就断言wrapper安装正确。失败请求可能停在enter/returned而尚无resolved，应保留为未完成边界；403/409等预期错误不能强制要求进入事务或审计。成功路径若只有HTTP或缺安装证据，标观察覆盖不完整。A/B分别保存实际runner image/agent等元数据，不称同一host；明显环境漂移限制比较结论。
 
 两轮都绿只能未支持本次初始化阶段假设，不排除偶发、不解除draft；同症状RED也只是候选，仍需最小化、拆分与撤销反证后才做最小业务修复。其他失败、初始化错误或采证不全单列，首失败封存，不重跑洗绿。B原生结果及其新准确SHA完整CI以后续收据为准，当前不预填。未合并、部署、访问生产或修改共享根与历史数据，#348原head及draft保持。
+
+## 历史额外 API build 的输入影响核查
+
+初始化阶段B已提交为`613c0f7c8590c8c635affa357dd527ef47f1c8be`：[完整CI40105798452](https://github.com/1131096740/intelligent-construction-management/actions/runs/40105798452)的attempt1终态26/26成功，[原生B40105798650](https://github.com/1131096740/intelligent-construction-management/actions/runs/40105798650)原22项全过、服务阶段覆盖与A一致；A/B各一次均正常关闭。该结果仅未支持本次初始化阶段假设，未排除偶发或证明历史根因。本轮不重复上述业务采样。
+
+**计时口径更正：** 前文将历史39.583/42.350秒简称为“API build耗时”不准确。准确代码中的`prepare.generate-and-build`计时从Prisma generate之前开始、在API prebuild/shared-domain tsc及nest build之后结束；原日志没有API build单项起止计时。后续不把整段时间归给新增API build变量，也不拿本机编译用时推断历史负载。
+
+### 可证伪预测与先行门槛
+
+本轮先列预测后决定是否追加原22项：①若额外build改变测试实现或输入，共同正常pretest后应有被已核对消费者读取的非重定位产物差异或解析/变换配置差异；②若影响缓存，应有具体持久cache写入及后续读边，单有目录名或路径派生projectId差异不够；③若build直接吃掉30/120/180秒预算，应发生在对应计时器创建之后；④若原因是持续资源占用，应有自有进程或native资源相关信号，不能仅凭历史耗时或无OOM记录猜测；OS页缓存热态可以未知，但不能以可能性本身进入业务压力试验。
+
+源码与准确旧日志确认的命令链为：generate→API build（prebuild共享域tsc→nest build）→旧employee runner→新PG/迁移/授限→API pretest（共享域build与generate）→Jest两套。前置使用净化NODE_ENV=test环境，动态门await spawn、workspace helper spawnSync，没有watch/detached/后台启动参数；子进程的环境修改不能回写父进程。
+
+额外build在旧runner启动前，不消耗尚未创建的Playwright30秒槽、两个Jest浏览器父用例各120秒、或runner每次command各自180秒计时器；它占GHA job总预算。pnpm test那次180秒包含正常pretest和两套Jest，不能误称整个PG流程共用180秒。Nest CLI10.4.9虽调用createIncrementalProgram，当前TS5.9.3配置未启用incremental/composite，不能据此声称存在持久tsbuildinfo；配置输出为API dist，未配置源码旁JS、plugins或watch服务。
+
+只有共同pretest后仍存在有具体消费者的非重定位输入差异/缓存读边，或有相关native持续资源信号，才值得原22项单因素A/B。若只新增未被已核对解析入口选中的dist、只有检出目录重定位，或缺少cache reader，则停止这一层，不盲目追加绿跑。
+
+### 仅产物级的实际对照
+
+在两份新建、完整准确d671（2811文件/192迁移、相同旧锁）的本机独立检出中冻结安装，初始均无API/shared-domain dist。双方使用Node20.20.2、同一固定5.22公共引擎，先做原native已有的共同generate；A只运行正常pretest，B增加精确`pnpm --filter @jiangkong/api build`生命周期后运行同样pretest。日志确认B执行了prebuild、共享域tsc和nest build。显式私有pnpm配置匹配历史已观察到的pre/post hook行为，不读取或改写共享根配置；净化环境不继承数据库目标，不重设用户HOME。
+
+首次探针因不存在的pnpm绝对路径，在任何build/pretest执行前终止，作为准备失败原样保留；修正到核实的pnpm路径后，五个generate/build/pretest命令均退出0。未启动Jest测试、真实AppModule、数据库、浏览器或原22项，也未触发新CI。此为macOS产物输入检查，不是native负载/历史业务RED。
+
+| 共同正常pretest后的检查 | A | B | 观察结论 |
+| --- | --- | --- | --- |
+| shared-domain dist | 64文件 | 64文件 | 相同相对文件名且原始字节摘要全部一致 |
+| 生成Client | 12文件 | 12文件 | 仅index.js与edge.js原始摘要不同；保留raw，并仅替换各自准确sourceRoot前缀后摘要一致，不能简称全raw相同 |
+| API dist | 无 | 新增1998文件 | Node modules之外B独有文件全部在此；已核对的Jest入口仍选src/app.module.ts，未找到直接消费该dist的路径 |
+| API源码旁JS/map/声明 | 无新增 | 无新增 | tracked源聚合摘要相同，旧源仍clean |
+| 已监视cache位置/任务tmp | 空 | 空 | 未找到具体持久cache写入/读取信号；不是完整历史缓存或OS热态证明 |
+
+独立纯解析进一步确认：两个HTTP spec在A/B均由实际Jest resolver选中相同字节的src/app.module.ts，B的API dist没有被选中；shared-domain在Node/Jest均选中相同raw字节的dist/index.js。Prisma vendor与generated default入口raw相同，后续generated index仅准确根目录差异；配置经显式路径重定位并剔除路径派生projectId后相同。纯resolve/showConfig没有执行模块或测试，不能扩张为已测得所有实际运行读取或缓存命中。
+
+原始hash、重定位视图、命令日志与前后快照分开保留。目录重定位是两份独立副本的受控差异，不是build产生的业务差异；哈希采集会暖OS页缓存，不能将这些已采集副本直接当作后续自然负载A/B。完整native资源利用率、OS热态及历史缓存内容仍未知。
+
+### 本轮决定
+
+本轮没有出现达到预注册门槛的产物/解析差异或具体cache/持续资源信号，**不追加原22项API build A/B**。这不是排除所有build间接影响，更不是根因证明；仅说明当前证据不足以用业务绿跑继续试探。原22项、预算、零重试及断言未改，未做业务修复、commit/push、合并或部署。历史一致失败、因果与撤销反证仍缺，#348原head和draft保持，共享根及历史数据不动。
+
+## Native 缓存与构建后资源的最小采证预注册（2026-10-25）
+
+本轮从同一准确主线`3d6736fb`新建独立干净worktree，承接诊断头`613c0f7c`及上节已审两份本地文档增量。只读刷新确认main仍为该SHA、原诊断分支仍为613c，#348保持open/draft。当前没有历史一致RED或根因证明，也没有native缓存命中、构建后持续资源的实际收据；以下为采证方案，不能提前登记为实测结论。
+
+固定旧锁中的Jest29.7、ts-jest29.4.11与TypeScript5.9.3分别存在不同缓存层：Jest的HasteMap、磁盘transform cache、ScriptTransformer进程内transformedFiles，以及ts-jest配置/编译器/解析依赖的进程内状态，不能混称一个cache。ts-jest的非isolatedModules路径还将resolved-module依赖的mtimeMs纳入getCacheKey。因此上节raw字节或明确重定位一致不推出实际cache key相同；额外build是独立进程，也不能直接暖后续Jest进程内编译器。
+
+### 四个预测与观测顺序
+
+| 预测 | 应观察到的证据 | 不足以支持该预测的结果 |
+| --- | --- | --- |
+| build留下被后续消费的缓存 | build前后具体条目生产边；首次真实transform通过key/checksum校验、走accepted-return并跳过对应transformer | 文件存在、read成功、强制暖正对照命中 |
+| 首次没有可复用条目 | 首次miss→transformer process／实际emit→成功写入；末尾新进程对同key暖读取accepted-return | 把process调用直接称完整编译；同进程第二次复用当磁盘hit |
+| build退出后仍有工作 | 已证归属且PID/starttime身份连续的后代，在退出通知后0/250/1000毫秒短窗继续累积自身CPU等指标 | 构建峰值、累计耗时、RSS或混合cgroup压力单独上涨 |
+| Jest初始化本身产生缓存或工作 | config读取／构造transformer前后才出现条目或计数，应单列初始化阶段 | 将初始化后的条目回填为API build产物 |
+
+首轮只准备一轮独立的native metadata-only job：准确d671完整旧源及冻结依赖，固定Ubuntu24.04、Node20.20.2、pnpm9.15.9和Prisma5.22生成；先共同generate，再运行准确API build，按退出通知后0/250/1000毫秒计划采资源，实际超窗明确标记，随后做相同正常pretest。资源窗口内不加载Jest/ts-jest、不transform、不广泛hash扫描。其后才依次读取实际配置、构造transformer，对原两HTTP spec各一次真实transform，不eval输出、不执行AppModule／测试；最后在独立私有cache和fresh process做冷／暖工具正对照。整个任务不准备数据库或浏览器，不运行原22项，不新增压力或业务延迟。
+
+磁盘命中必须来自固定vendor源码中的真实accepted-return；读取后checksum不符须另记rejected，写函数进入须与成功写入区分。cache key只留摘要，依赖mtime参与情况、初始化与transform阶段分列。输出只含固定目标、方法级计数、摘要及枚举，不上传源／编译结果／cache正文、自由错误、认证、环境变量或进程参数。探针必须保持原返回、异常、Promise及fallback语义，pin不符或观测不完整即拒绝作命中判断。
+
+这轮纯transform只覆盖声明配置与flags下的ScriptTransformer／ts-jest路径；若与完整Jest-runtime参与key的参数未能逐项对齐，实际原运行的同key消费边仍为unknown，不能据此升级业务A/B。HasteMap、test sequencer的perf-cache、完整runtime内存复用与OS页缓存未测，不用本轮miss排除这些层。fresh native检出与私有TMP中的状态也不反推历史缓存冷暖；强制冷暖控制只为验证工具。
+
+资源观察只沿已知自有PID发现后代、读前后复核starttime，祖先退出后继续追已见身份；快速fork或中间进程退出仍可漏采，因此“未观察到”不等于完整树为零。不汇总父子IO为物理总量，不叠加cutime/cstime，不将近似RSS当独占物理内存。cgroup只读指标标记为current-cgroup-mixed，可含runner及观察器；不可读、采样迟到、身份复用、截断与未知均显式记录。[Linux proc](https://docs.kernel.org/filesystems/proc.html)、[进程IO](https://man7.org/linux/man-pages/man5/proc_pid_io.5.html)、[cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html)。
+
+### 升级门与停止门
+
+只有明确build→entry→首次实际消费链，或已证归属、可关联实际后续阶段的native持续工作候选，并且工具正反对照有效，才另用全新条件讨论原22项的有界单因素验证。单独混合cgroup压力最多支持更小的资源补证，不能直接触发业务A/B；一秒残留也不证明持续到数十秒后的确认点击。
+
+若首次miss/transform/write、末尾暖正对照有效，而没有build消费边或持续资源信号，就停止本次额外API build到transform-cache／持续资源的验证分支，不靠追加业务绿跑补结论。这不排除上述未测缓存层；工具正对照及任何native metadata结果都不是历史RED、产品修复或解除draft证据。
+
+本地采证补丁与必要工具回归、独立审查完成后，新增native job仍按用户Personal Working Agreement取得明确提交推送授权。计划使用独立新诊断分支，避免现有分支push自动触发原22项。新工具job不冒称准确提交完整CI；本轮不改原E2E、业务、Schema、迁移、预算、重试或断言，不动共享根／历史数据，不合并或部署。
+
+### 本地工具级的实际资格
+
+仅用Node20.20.2、固定vendor和私有tiny TypeScript夹具，三个独立进程已得到如下结果，未执行原两HTTP spec或真实AppModule：
+
+| 工具条件 | disk accepted | transformer process | emit enter | atomic write returned |
+| --- | --- | --- | --- | --- |
+| 冷cache | 0 | 1 | 1 | 1 |
+| 新进程暖cache | 1 | 0 | 0 | 0 |
+| 只破坏私有工具cache的checksum | 0（validator rejected 1） | 1 | 1 | 1 |
+
+三个输出code摘要一致，模块执行标记始终未出现。暖态仍有compiler-created与dependency-resolution各1次，支持将“磁盘命中”和“零TypeScript工作”分开。atomic-write-returned只表示固定vendor的atomic写调用正常返回，不证明fsync或物理持久化。安全控制收据SHA256为`984a07e06264516c8be98eb4f4569d2ab3fa3284454501d8ddfb32b35efadcf8`。此前手工配置字段/形状不符的工具准备失败原件保留，不当作业务RED。
+
+资源工具纯夹具14/14、缓存纯回归10/10、元数据编排15/15，均零跳过；主控完整本地编排409/409、语法及业务语言检查通过，规范／规格最终复审各0项。首轮完整编排因新控制目录尚无TypeScript／Prisma Client／共享产物而336项中326过10败，原件保留；仅在该控制目录冻结安装、生成Client并构建共享域后复验，未用本地准备目录作native资源或历史时序样本。
+
+实际旧Jest配置烟测发现仅传argv.cwd会被normalize中的process.cwd覆盖，属于采证准备口径问题，不是业务RED。已在资源窗口之后临时切到准确API cwd读取配置、finally恢复，并让首次transform子进程使用同一API cwd；修正后的实际旧配置／JSON传输烟测通过，没有执行两HTTP spec。真实transform及末尾controls均在独立Node子进程，stdout/stderr直写私有0600日志；tiny真实子进程已验证两路输出不会回显到父进程。cache默认目录未覆盖，分阶段stat-only库存与cachePath摘要可连接，完整runtime key与build生产边仍明确unknown。
+
+以上资格仅属于本地未提交11文件补丁，不能沿用613c的26项CI为新补丁背书。新native任务及新提交完整CI均未执行，当前不预填；没有历史API build资源实采、实际两HTTP transform、原22运行或生产访问。提交推送仍待用户对这份具体补丁的新授权，#348原head与draft保持。所有工具准备失败、首轮门禁失败及修正后结果分别保留；本地工具资格不是历史故障复现、产品修复或draft解除证据。

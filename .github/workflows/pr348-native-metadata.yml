@@ -1,0 +1,59 @@
+name: PR348 native metadata evidence
+
+on:
+  push:
+    branches:
+      - codex/pr348-native-cache-evidence-20261025
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr348-native-metadata
+  cancel-in-progress: false
+
+jobs:
+  native-metadata:
+    name: Native cache and owned-build metadata only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PR348_CONTROL_SHA: ${{ github.sha }}
+    steps:
+      - name: Refuse repeated attempts
+        run: '[ "$GITHUB_RUN_ATTEMPT" = 1 ]'
+
+      - name: Checkout exact reviewed control
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          persist-credentials: false
+
+      - name: Checkout exact historical source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: d6719ba2ad89f716f5d67dc0795cdccf98d9820f
+          path: historical
+          persist-credentials: false
+
+      - name: Setup fixed Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20.20.2
+
+      - name: Collect one metadata-only observation
+        run: node control/scripts/pr348-native-metadata.mjs "$GITHUB_WORKSPACE/historical"
+
+      - name: Preserve only fixed safe receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr348-native-metadata-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/pr348-native-metadata-safe/result.json
+            ${{ runner.temp }}/pr348-native-metadata-safe/resources.json
+            ${{ runner.temp }}/pr348-native-metadata-safe/cache.json
+            ${{ runner.temp }}/pr348-native-metadata-safe/controls.json
+          if-no-files-found: warn
+          retention-days: 7

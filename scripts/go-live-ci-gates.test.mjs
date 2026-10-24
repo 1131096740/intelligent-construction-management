@@ -116,7 +116,7 @@ test("repository restores bounded CI beside the manual deploy workflow", async (
 
   assert.deepEqual(
     entries.filter((entry) => /\.ya?ml$/u.test(entry)).sort(),
-    ["ci.yml", "deploy-production.yml", "pr348-historical-replay.yml"]
+    ["ci.yml", "deploy-production.yml", "pr348-historical-replay.yml", "pr348-native-metadata.yml"]
   );
 
   const deployWorkflow = await readFile(
