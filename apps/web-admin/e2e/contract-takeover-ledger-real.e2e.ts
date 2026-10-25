@@ -57,6 +57,7 @@ test("真实历史接管提交复核、放弃后台账和详情恢复读取，�
   const evidencePath = process.env.REAL_BROWSER_EVIDENCE_PATH;
   const pdf = Buffer.from(process.env.LEDGER_TAKEOVER_PDF_BASE64 ?? "", "base64");
   expect(api, "只允许现有本机隔离UAT API").toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
+  expect(info.project.use.baseURL, "实际浏览器登录及业务请求也必须指向本机").toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
   expect(password).toBeTruthy();
   expect(projectId).toBeTruthy();
   expect(candidateSha).toMatch(/^[0-9a-f]{40}$/u);
