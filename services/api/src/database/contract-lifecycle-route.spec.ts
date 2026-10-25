@@ -24,6 +24,7 @@ import {
 } from "../contract-workbench/pristine-draft-deletion.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
+import { ContractTakeoverService } from "../contract-takeover/contract-takeover.service";
 import { ContractController } from "../contract/contract.controller";
 import { ContractAuthorizationService } from "../contract/contract-authorization.service";
 import { ContractApprovalRouteService } from "../contract/contract-approval-route.service";
@@ -1671,5 +1672,298 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       }
     },
     60_000
+  );
+});
+
+interface LedgerBody {
+  rows: Array<{
+    id: string;
+    contractVersionId: string;
+    amount: string;
+    currentNode: string;
+    nextAction: string;
+    workbenchEditable: boolean;
+    copyAvailable: boolean;
+    contractLifecycleStage: string;
+    contractLifecycleCapabilities: {
+      canEdit: boolean;
+      canSubmit: boolean;
+      canAbandon: boolean;
+      canPhysicallyDelete: boolean;
+    };
+  }>;
+}
+
+interface ContractDetailBody {
+  contractVersionId: string;
+  baseInfo: Array<{ label: string; value: string }>;
+  availableActions: Array<{ key: string; enabled: boolean }>;
+  availableActionKeys: string[];
+  primaryAction: string | null;
+  historyReadOnly: boolean;
+}
+
+describe("abandoned historical takeover Nest route and PostgreSQL regression", () => {
+  it("rejects non-local database targets", () => {
+    expect(() => localLifecycleDatabaseUrl(
+      "postgresql://local:local@example.com/production"
+    )).toThrow("合同生命周期路由测试拒绝非本机专用数据库");
+  });
+
+  const integrationTest = process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1"
+    ? it
+    : it.skip;
+
+  integrationTest(
+    "keeps contract ledgers readable after submitting and abandoning a historical takeover without ordinary approval records",
+    async () => {
+      const prisma = new PrismaClient({
+        datasources: { db: { url: localLifecycleDatabaseUrl(
+          process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+        ) } }
+      });
+      const suffix = randomUUID();
+      const ids = {
+        actor: `takeover-ledger-actor-${suffix}`,
+        project: `takeover-ledger-project-${suffix}`,
+        normalContract: `takeover-ledger-formal-${suffix}`,
+        normalVersion: `takeover-ledger-formal-version-${suffix}`,
+        historicalContract: `takeover-ledger-history-${suffix}`,
+        historicalVersion: `takeover-ledger-history-version-${suffix}`,
+        terms: `takeover-ledger-terms-${suffix}`,
+        takeover: `takeover-ledger-takeover-${suffix}`,
+        evidenceFile: `takeover-ledger-evidence-file-${suffix}`,
+        evidenceRecord: `takeover-ledger-evidence-record-${suffix}`
+      };
+      const historicalMoney = {
+        historicalSettledCents: 12000n,
+        historicalApprovalPendingPaymentCents: 700n,
+        historicalApprovedPendingPaymentCents: 800n,
+        historicalPaidCents: 3000n,
+        historicalProxyPaidCents: 500n,
+        historicalAdvancePaidCents: 600n,
+        historicalAdvanceDeductedCents: 200n,
+        historicalRetentionWithheldCents: 400n,
+        historicalRetentionReleasedCents: 100n,
+        otherConfirmedOccupancyCents: 900n
+      };
+      const readMoney = {
+        amountCents: "20000",
+        ...Object.fromEntries(Object.entries(historicalMoney).map(([key, value]) => [key, value.toString()]))
+      };
+      let app: INestApplication | undefined;
+      const createdPositionIds: string[] = [];
+      try {
+        await prisma.user.create({
+          data: { id: ids.actor, name: "历史接管台账本地测试用户", mustChangePassword: false }
+        });
+        await prisma.project.create({
+          data: { id: ids.project, code: `TAKEOVER-LEDGER-${suffix}`, name: "历史接管台账本地测试项目" }
+        });
+        await prisma.projectAffiliateAssignment.create({
+          data: {
+            id: `takeover-ledger-construction-enterprise-${suffix}`,
+            projectId: ids.project,
+            businessPartyId: `takeover-ledger-party-${suffix}`,
+            businessPartyVersionId: `takeover-ledger-party-version-${suffix}`,
+            affiliateNameSnapshot: "历史接管台账本地测试施工企业",
+            effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+            changeReason: "数据库回归测试夹具",
+            assignedByUserId: ids.actor
+          }
+        });
+        for (const [key, name, projectId] of [
+          ["contract_director", "合同部主管", null],
+          ["contract_staff", "合同员", ids.project]
+        ] as const) {
+          let position = await prisma.position.findUnique({ where: { key } });
+          if (!position) {
+            position = await prisma.position.create({ data: { key, name } });
+            createdPositionIds.push(position.id);
+          }
+          await prisma.userPosition.create({
+            data: { userId: ids.actor, positionId: position.id, projectId }
+          });
+        }
+        await prisma.contract.createMany({
+          data: [
+            { id: ids.normalContract, projectId: ids.project, source: "system", code: `FORMAL-${suffix}`, name: "正常正式合同", counterparty: "本地测试相对方", ownerUserId: ids.actor },
+            { id: ids.historicalContract, projectId: ids.project, source: "historical_takeover", code: `HISTORY-${suffix}`, name: "待放弃历史接管合同", counterparty: "本地测试相对方", ownerUserId: ids.actor }
+          ]
+        });
+        await prisma.contractVersion.createMany({
+          data: [
+            { id: ids.normalVersion, contractId: ids.normalContract, versionNo: 1, changeType: "original", status: "effective", amountCents: 10000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} },
+            { id: ids.historicalVersion, contractId: ids.historicalContract, versionNo: 1, changeType: "historical_takeover", status: "draft", amountCents: 20000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} }
+          ]
+        });
+        await prisma.paymentTermsVersion.createMany({
+          data: [
+            { contractId: ids.normalContract, contractVersionId: ids.normalVersion, versionNo: 1, status: "effective", originalText: "本地正常合同付款条款" },
+            { id: ids.terms, contractId: ids.historicalContract, contractVersionId: ids.historicalVersion, versionNo: 1, status: "draft", originalText: "本地历史接管付款条款" }
+          ]
+        });
+        await prisma.contractTakeover.create({
+          data: {
+            id: ids.takeover, projectId: ids.project, contractId: ids.historicalContract,
+            contractVersionId: ids.historicalVersion, paymentTermsVersionId: ids.terms,
+            takeoverLevel: "A", takeoverStatus: "draft", lifecycleStatus: "completed",
+            signedAt: new Date("2026-01-01T00:00:00.000Z"), createdByUserId: ids.actor,
+            ...historicalMoney
+          }
+        });
+        const pdf = await PDFDocument.create();
+        pdf.addPage();
+        const evidenceBytes = await pdf.save();
+        const evidenceFile = await prisma.fileObject.create({
+          data: {
+            id: ids.evidenceFile,
+            bucket: "test-private-bucket",
+            objectKey: `uploads/${ids.evidenceFile}.pdf`,
+            originalName: "本地历史合同扫描件.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: evidenceBytes.byteLength,
+            uploadedByUserId: ids.actor,
+            contentSha256: createHash("sha256").update(evidenceBytes).digest("hex")
+          }
+        });
+        const evidenceRecord = await prisma.archiveRecord.create({
+          data: {
+            id: ids.evidenceRecord,
+            businessType: "contract_takeover",
+            businessId: ids.takeover,
+            fileId: ids.evidenceFile,
+            departmentScope: "historical_contract_scan"
+          }
+        });
+        const normalBefore = await Promise.all([
+          prisma.contract.findUniqueOrThrow({ where: { id: ids.normalContract } }),
+          prisma.contractVersion.findUniqueOrThrow({ where: { id: ids.normalVersion } }),
+          prisma.paymentTermsVersion.findFirstOrThrow({ where: { contractVersionId: ids.normalVersion } })
+        ]);
+        const takeovers = new ContractTakeoverService(prisma as never, new AuditService());
+        const before = await takeovers.detail(ids.project, ids.takeover, ids.actor);
+        expect(before).toMatchObject(readMoney);
+        expect(before.evidenceFiles).toEqual([
+          expect.objectContaining({
+            recordId: ids.evidenceRecord,
+            fileId: ids.evidenceFile,
+            fileName: evidenceFile.originalName,
+            purpose: "historical_contract_scan",
+            mimeType: evidenceFile.mimeType,
+            sizeBytes: evidenceFile.sizeBytes,
+            canDownload: true
+          })
+        ]);
+        const submitted = await takeovers.submitReview(ids.project, ids.takeover, ids.actor);
+        expect(submitted).toMatchObject({ ...readMoney, takeoverStatus: "pending_review", submittedAt: expect.any(Date) });
+        expect(submitted.evidenceFiles).toEqual(before.evidenceFiles);
+        const closed = await takeovers.abandonDraft(ids.project, ids.takeover, {
+          expectedUpdatedAt: submitted.updatedAt.toISOString(), action: "abandon_application", reason: "0"
+        }, ids.actor);
+        expect(closed).toMatchObject({ status: "abandoned", action: "abandon_application" });
+        const abandoned = await takeovers.detail(ids.project, ids.takeover, ids.actor);
+        expect(abandoned).toMatchObject({
+          ...readMoney,
+          takeoverStatus: "abandoned", lifecycleKind: "formal_record", availableActions: []
+        });
+        expect(abandoned.evidenceFiles).toEqual(before.evidenceFiles);
+        // The dedicated review flow has its own submission fact, without creating
+        // an ordinary contract approval that would mask this regression.
+        expect(await prisma.approvalInstance.count({
+          where: { businessId: { in: [ids.historicalContract, ids.historicalVersion] } }
+        })).toBe(0);
+        expect(await prisma.contractVersion.findUnique({ where: { id: ids.historicalVersion } })).toMatchObject({
+          status: "abandoned", firstSubmittedAt: null, abandonReason: "0", amountCents: 20000n
+        });
+        expect(await prisma.paymentTermsVersion.findUnique({ where: { id: ids.terms } })).toMatchObject({ status: "voided" });
+
+        const visibility = new ProjectVisibilityService(prisma as never);
+        const read = new ContractReadService(prisma as never, visibility);
+        const moduleRef = await Test.createTestingModule({
+          controllers: [ContractController],
+          providers: [
+            { provide: ContractService, useValue: {} },
+            { provide: ContractReadService, useValue: read },
+            { provide: ContractWorkbenchService, useValue: {} },
+            { provide: ProjectVisibilityService, useValue: visibility },
+            { provide: PrismaService, useValue: prisma }
+          ]
+        }).compile();
+        app = moduleRef.createNestApplication();
+        app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+        app.useGlobalGuards(new PermissionGuard(new Reflector(), prisma as never));
+        app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
+        app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
+          request.user = { id: ids.actor, name: "历史接管台账本地测试用户", phone: null };
+          next();
+        });
+        await app.listen(0, "127.0.0.1");
+        const base = await app.getUrl();
+        const formalResponse = await fetch(`${base}/contracts/lifecycle-ledger?view=formal_ledger&pageSize=20`);
+        expect(formalResponse.status).toBe(200);
+        const formal = await formalResponse.json() as LedgerBody;
+        expect(formal.rows.map(row => row.contractVersionId)).toEqual([ids.normalVersion]);
+        expect(formal.rows[0]).toMatchObject({ contractVersionId: ids.normalVersion, amount: "¥100.00" });
+        const workbenchResponse = await fetch(`${base}/contracts/workbench?view=all&pageSize=20`);
+        expect(workbenchResponse.status).toBe(200);
+        const workbench = await workbenchResponse.json() as LedgerBody;
+        expect(workbench.rows.map(row => row.contractVersionId).sort()).toEqual([ids.normalVersion, ids.historicalVersion].sort());
+        expect(workbench.rows.find(row => row.contractVersionId === ids.normalVersion)).toMatchObject({ amount: "¥100.00" });
+        expect(workbench.rows.find(row => row.contractVersionId === ids.historicalVersion)).toMatchObject({
+          contractVersionId: ids.historicalVersion,
+          amount: "¥200.00",
+          currentNode: "已放弃", nextAction: "查看合同详情",
+          workbenchEditable: false, copyAvailable: false,
+          contractLifecycleStage: "protected_formal",
+          contractLifecycleCapabilities: { canEdit: false, canSubmit: false, canAbandon: false, canPhysicallyDelete: false }
+        });
+        // A real contract-staff assignment must still allow handling an ordinary
+        // effective contract, while the ended historical detail remains read-only.
+        const normalDetailResponse = await fetch(`${base}/contracts/FORMAL-${suffix}?versionId=${ids.normalVersion}`);
+        expect(normalDetailResponse.status).toBe(200);
+        const normalDetail = await normalDetailResponse.json() as ContractDetailBody;
+        expect(normalDetail.availableActionKeys).toContain("generate_pdf_archive");
+        expect(normalDetail.baseInfo).toContainEqual({ label: "合同金额", value: "¥100.00" });
+        const historicalDetailResponse = await fetch(`${base}/contracts/HISTORY-${suffix}?versionId=${ids.historicalVersion}`);
+        expect(historicalDetailResponse.status).toBe(200);
+        const historicalDetail = await historicalDetailResponse.json() as ContractDetailBody;
+        expect(historicalDetail.contractVersionId).toBe(ids.historicalVersion);
+        expect(historicalDetail.baseInfo).toContainEqual({ label: "合同金额", value: "¥200.00" });
+        expect(historicalDetail.availableActions.filter(action => action.enabled)).toEqual([]);
+        expect(historicalDetail.availableActionKeys).toEqual([]);
+        expect(historicalDetail.primaryAction).toBeNull();
+        expect(historicalDetail.historyReadOnly).toBe(true);
+        expect(await prisma.contractTakeover.findUnique({ where: { id: ids.takeover } })).toMatchObject(historicalMoney);
+        expect(await prisma.fileObject.findUnique({ where: { id: ids.evidenceFile } })).toEqual(evidenceFile);
+        expect(await prisma.archiveRecord.findUnique({ where: { id: ids.evidenceRecord } })).toEqual(evidenceRecord);
+        expect(await Promise.all([
+          prisma.contract.findUniqueOrThrow({ where: { id: ids.normalContract } }),
+          prisma.contractVersion.findUniqueOrThrow({ where: { id: ids.normalVersion } }),
+          prisma.paymentTermsVersion.findFirstOrThrow({ where: { contractVersionId: ids.normalVersion } })
+        ])).toEqual(normalBefore);
+      } finally {
+        try {
+          await app?.close();
+          await prisma.$transaction([
+            prisma.auditLog.deleteMany({ where: { businessId: ids.takeover } }),
+            prisma.archiveRecord.deleteMany({ where: { id: ids.evidenceRecord } }),
+            prisma.fileObject.deleteMany({ where: { id: ids.evidenceFile } }),
+            prisma.contractTakeover.deleteMany({ where: { id: ids.takeover } }),
+            prisma.paymentTermsVersion.deleteMany({ where: { contractId: { in: [ids.normalContract, ids.historicalContract] } } }),
+            prisma.contractVersion.deleteMany({ where: { id: { in: [ids.normalVersion, ids.historicalVersion] } } }),
+            prisma.contract.deleteMany({ where: { id: { in: [ids.normalContract, ids.historicalContract] } } }),
+            prisma.userPosition.deleteMany({ where: { userId: ids.actor } }),
+            prisma.project.deleteMany({ where: { id: ids.project } }),
+            prisma.projectAffiliateAssignment.deleteMany({ where: { projectId: ids.project } }),
+            prisma.user.deleteMany({ where: { id: ids.actor } })
+          ]);
+          await prisma.position.deleteMany({ where: { id: { in: createdPositionIds } } });
+        } finally {
+          await prisma.$disconnect();
+        }
+      }
+    },
+    60000
   );
 });

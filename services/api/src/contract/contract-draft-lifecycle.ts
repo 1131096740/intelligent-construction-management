@@ -436,6 +436,14 @@ export function classifyContractDraftLifecycle(
     Boolean(facts.firstSubmittedAt) ||
     facts.approvalInstanceCount > 0 ||
     facts.approvalActionCount > 0;
+  // Historical takeovers submit for review and close through their own workflow,
+  // which records abandonment without creating an ordinary contract approval.
+  const hasHistoricalTakeoverAbandonmentFacts =
+    isHistoricalTakeover &&
+    facts.status === "abandoned" &&
+    Boolean(facts.abandonedAt) &&
+    Boolean(facts.abandonedByUserId) &&
+    Boolean(facts.abandonReason?.trim());
   const legacyDeleteAuthorized =
     facts.status === "abandoned" &&
     !hasApprovalFacts &&
@@ -474,6 +482,7 @@ export function classifyContractDraftLifecycle(
   if (
     (facts.status === "approval_rejected" || facts.status === "abandoned") &&
     !hasApprovalFacts &&
+    !hasHistoricalTakeoverAbandonmentFacts &&
     !legacyDeleteAuthorized
   ) {
     throw new ConflictException({
