@@ -13,14 +13,67 @@ function listPostgresRunners() {
   return readdirSync(__dirname).filter((name) => {
     if (!/^(?:run-.*-local|verify-fund-execution-v7)\.cjs$/u.test(name)) return false;
     const source = readFileSync(path.join(__dirname, name), "utf8");
-    return source.includes('"postgres:16"') && source.includes('"--name"');
+    return /(["'])postgres:16\1/u.test(source) && /(["'])--name\1/u.test(source);
   });
+}
+
+const cleanupIdentifiers = new Set(["name", "containerName", "containerId", "endpoint"]);
+
+// Cleanup argv need only plain option literals and these per-run identifiers.
+// Reject expressions instead of evaluating JavaScript from a runner's source.
+function parseCleanupArray(source) {
+  if (typeof source !== "string") throw new Error("Missing cleanup array");
+  let offset = 0;
+  const values = [];
+  const skipWhitespace = () => {
+    while (/\s/u.test(source[offset] ?? "") && offset < source.length) offset += 1;
+  };
+  skipWhitespace();
+  if (source[offset++] !== "[") throw new Error("Unsupported cleanup array");
+  while (true) {
+    skipWhitespace();
+    if (source[offset] === "]") {
+      offset += 1;
+      break;
+    }
+    const rest = source.slice(offset);
+    const literal = /^(["'])([A-Za-z0-9_:/=.\-]+)\1/u.exec(rest);
+    const identifier = /^[A-Za-z_$][\w$]*/u.exec(rest);
+    if (literal) {
+      values.push({ literal: literal[2] });
+      offset += literal[0].length;
+    } else if (identifier && cleanupIdentifiers.has(identifier[0])) {
+      values.push({ identifier: identifier[0] });
+      offset += identifier[0].length;
+    } else {
+      throw new Error("Unsupported cleanup array argument");
+    }
+    skipWhitespace();
+    if (source[offset] === ",") offset += 1;
+    else if (source[offset] !== "]") throw new Error("Unsupported cleanup array expression");
+  }
+  skipWhitespace();
+  if (offset !== source.length) throw new Error("Unexpected cleanup array suffix");
+  return values;
 }
 
 function cleanupArrays(source) {
   return [...source.matchAll(/\[[^\[\]]*\]/gu)]
     .map(([array]) => array)
-    .filter((array) => /"rm"\s*,\s*"--force"/u.test(array));
+    .filter((array) => /(["'])rm\1\s*,\s*(["'])--force\2/u.test(array))
+    .map((array) => `[${parseCleanupArray(array).map((value) =>
+      "literal" in value ? JSON.stringify(value.literal) : value.identifier
+    ).join(", ")}]`);
+}
+
+function resolveCleanupArguments(source, variables) {
+  return parseCleanupArray(source).map((value) => {
+    if ("literal" in value) return value.literal;
+    if (!Object.hasOwn(variables, value.identifier) || typeof variables[value.identifier] !== "string") {
+      throw new Error(`Missing cleanup identifier: ${value.identifier}`);
+    }
+    return variables[value.identifier];
+  });
 }
 
 function main() {
@@ -54,7 +107,14 @@ function main() {
       assert(commands.length > 0, `${file}: missing container cleanup`);
       for (const command of commands) {
         const name = `jgzg-cleanup-regression-${checked}-${suffix}`;
-        const args = JSON.parse(command.replace(/\b(?:containerName|containerId|name)\b/gu, JSON.stringify(name)).replace(/\bendpoint\b/gu, JSON.stringify(endpoint)));
+        const args = resolveCleanupArguments(command, {
+          name, containerName: name, containerId: name, endpoint
+        });
+        assert.deepEqual(args.slice(-4), ["rm", "--force", "--volumes", name],
+          `${file}: cleanup must target only this regression container`);
+        const prefix = args.slice(0, -4);
+        assert(prefix.length === 0 || (prefix.length === 2 && prefix[0] === "--host" && prefix[1] === endpoint),
+          `${file}: cleanup must use the verified local endpoint`);
         let anonymous = [];
         try {
           run(["run", "--pull=never", "--detach", "--rm", "--network", "none",
@@ -95,4 +155,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { cleanupArrays, listPostgresRunners };
+module.exports = { cleanupArrays, listPostgresRunners, resolveCleanupArguments };

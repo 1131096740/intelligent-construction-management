@@ -135,6 +135,7 @@ Use real business positions, not old generic roles:
 - API business changes: run targeted Jest plus `typecheck` and `lint`.
 - Money, permission, status transition, archive, PDF, and audit changes require backend tests.
 - Production/trial-run work must follow the relevant runbook or verify script and update `PROGRESS.md`.
+- 本地一次性测试资源的创建、修改、任务收尾或硬退出遗留处理，先读 `docs/runbooks/local-development-docker-cleanup.md`。
 
 ## 进度跟踪
 
