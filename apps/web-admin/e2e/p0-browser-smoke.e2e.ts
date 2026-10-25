@@ -444,7 +444,10 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await expect(mobileItems).toBeHidden();
   await expect(desktopItems).toBeVisible();
 
-  await page.getByText("历史合同接管").click();
+  const navigationToggle = page.getByRole("button", { name: "打开导航", exact: true });
+  if (await navigationToggle.isVisible()) await navigationToggle.click();
+  await page.getByRole("navigation", { name: "业务导航", exact: true })
+    .getByRole("link", { name: "历史合同接管", exact: true }).click();
   await expect(page.getByRole("heading", { name: "历史合同接管" })).toBeVisible();
   await expect(page.getByRole("button", { name: "新增接管合同" })).toBeVisible();
   await expect(page.getByText("接管进度概览（只读）")).toBeVisible();
