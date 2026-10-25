@@ -177,6 +177,7 @@ describe("contract change UI state", () => {
     };
 
     expect(normalizeContractChangeVersions([historical])).toEqual([historical]);
+    expect(normalizeContractChangeVersions([{ ...historical, changeType: "original" }])).toBeNull();
     expect(normalizeContractChangeVersions([{ ...historical, status: "internal_status" }])).toBeNull();
     expect(normalizeContractChangeVersions([{ ...historical, amountCents: "020001" }])).toBeNull();
     expect(normalizeContractChangeVersions([{ ...historical, amountCents: "9223372036854775808" }])).toBeNull();

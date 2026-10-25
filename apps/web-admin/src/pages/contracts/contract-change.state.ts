@@ -314,7 +314,8 @@ export function normalizeContractChangeVersions(value: unknown): NormalizedContr
       : routeKeys(rawApprovalRoute);
     const normalizedApprovalRouteLabel = approvalRouteLabel(source["approvalRouteLabel"]);
     const archiveEffect = source["archiveEffect"] === null ? null : normalizeArchiveEffect(source["archiveEffect"]);
-    if (!versionNo || !CONTRACT_VERSION_STATUSES.has(String(status)) ||
+    const readableHistoricalAbandonment = status === "abandoned" && changeType === "historical_takeover";
+    if (!versionNo || (!CONTRACT_VERSION_STATUSES.has(String(status)) && !readableHistoricalAbandonment) ||
       !CHANGE_TYPES.has(String(changeType)) || changeReason === undefined ||
       !(changeDirection === null || CHANGE_DIRECTIONS.has(String(changeDirection))) ||
       !(changeAmountCents === null || isPostgresBigIntText(changeAmountCents)) ||

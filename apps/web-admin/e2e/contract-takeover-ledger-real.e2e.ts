@@ -234,7 +234,7 @@ test("真实历史接管提交复核、放弃后台账和详情恢复读取，�
 
     // The existing ledger deliberately opens abandoned records through the
     // ordinary read-only contract detail, not the active takeover list.
-    await page.goto(`/合同管理/${encodeURIComponent(historicalRow!.id)}?versionId=${encodeURIComponent(historicalRow!.contractVersionId)}`);
+    await page.goto(`/合同管理/${encodeURIComponent(historicalRow!.id)}`);
     const header = page.locator(".business-detail-header");
     await expect(header.locator(".business-detail-header__code")).toHaveText(code);
     await expect(header.locator(".t-tag")).toContainText("已放弃");
@@ -249,7 +249,7 @@ test("真实历史接管提交复核、放弃后台账和详情恢复读取，�
     checks.evidenceMetadataUnchanged = true;
     checks.evidenceBytesUnchanged = true;
     await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
-    const contractDetail = await read<{ availableActions: Array<{ key: string; enabled: boolean }> }>(`/contracts/${historicalRow!.id}?versionId=${historicalRow!.contractVersionId}`);
+    const contractDetail = await read<{ availableActions: Array<{ key: string; enabled: boolean }> }>(`/contracts/${historicalRow!.id}`);
     expect(contractDetail.availableActions.filter(action => action.enabled), "已放弃历史合同不得提供任何可执行办理动作，包括生成PDF归档").toEqual([]);
     const processPanel = page.getByRole("region", { name: "合同流程办理", exact: true });
     await expect(processPanel).toBeVisible();

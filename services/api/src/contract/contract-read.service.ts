@@ -1374,6 +1374,11 @@ export class ContractReadService {
     if (!draftLifecycle) {
       throw new NotFoundException("未找到合同版本生命周期，请刷新合同台账后重试");
     }
+    const readOnlyHistory = endedHistoryRead || (
+      version.status === "abandoned" &&
+      version.changeType === "historical_takeover" &&
+      draftLifecycle.lifecycleKind === "formal_record"
+    );
     if (
       actorUserId &&
       draftLifecycle.contractLifecycleStage === "unsubmitted_draft" &&
@@ -1382,7 +1387,7 @@ export class ContractReadService {
     ) {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
-    const currentApprovalReview = endedHistoryRead
+    const currentApprovalReview = readOnlyHistory
       ? emptyCurrentContractApprovalReview()
       : await this.canReviewCurrentApproval(
           "contract_version",
@@ -1404,7 +1409,7 @@ export class ContractReadService {
               currentApprovalReview.approval.updatedAt.toISOString()
           }
         : null;
-    const currentApprovalWithdrawal = endedHistoryRead
+    const currentApprovalWithdrawal = readOnlyHistory
       ? null
       : await this.currentApprovalWithdrawal(
           "contract_version",
@@ -1429,7 +1434,7 @@ export class ContractReadService {
     const activeFinal = signingFacts.formalFiles.find((item) =>
       item.purpose === "mutually_signed_final" && item.status === "active"
     ) ?? null;
-    const governedFinalAccess = endedHistoryRead
+    const governedFinalAccess = readOnlyHistory
       ? { canUpload: false, canConfirm: false, canSelfConfirm: false }
       : await this.governedFinalAccess(
           actorUserId,
@@ -1437,7 +1442,7 @@ export class ContractReadService {
           signingFacts.sealTask,
           activeFinal
         );
-    const canReportSigningMaterialChange = endedHistoryRead
+    const canReportSigningMaterialChange = readOnlyHistory
       ? false
       : await this.canReportSigningMaterialChange(
           actorUserId,
@@ -1449,7 +1454,7 @@ export class ContractReadService {
       contractVersion?: { findMany?: unknown };
     };
     const ownerContractRisk =
-      !endedHistoryRead &&
+      !readOnlyHistory &&
       typeof ownerRiskClient.projectOwnerContract?.findMany === "function" &&
       typeof ownerRiskClient.contract?.findMany === "function" &&
       typeof ownerRiskClient.contractVersion?.findMany === "function"
@@ -1457,7 +1462,7 @@ export class ContractReadService {
         : null;
 
     const status = this.statusView(version.status);
-    const availableActions = endedHistoryRead
+    const availableActions = readOnlyHistory
       ? []
       : this.contractActions(
       version.status,
@@ -1499,7 +1504,7 @@ export class ContractReadService {
     );
 
     if (
-      !endedHistoryRead &&
+      !readOnlyHistory &&
       draftLifecycle.expectedAction &&
       actorUserId && actorUserId === contract.ownerUserId
     ) {
@@ -1660,7 +1665,7 @@ export class ContractReadService {
         .map((action) => action.key),
       reviewApprovalContext,
       withdrawApprovalContext,
-      historyReadOnly: endedHistoryRead,
+      historyReadOnly: readOnlyHistory,
       contractLifecycleStage: draftLifecycle.contractLifecycleStage,
       contractLifecycleCapabilities: draftLifecycle.capabilities,
       lifecycleKind: draftLifecycle.lifecycleKind,
