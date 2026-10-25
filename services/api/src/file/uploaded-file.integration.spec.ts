@@ -90,7 +90,7 @@ describe("production dependency security through the private-file HTTP entry", (
       body: form
     });
 
-    expect(platformDependencyVersion("multer")).toBe("2.3.0");
+    expect(platformDependencyVersion("multer")).toBe("2.5.0");
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ id: "file-upload-1" });
     expect(uploadPrivateFile).toHaveBeenCalledWith({
