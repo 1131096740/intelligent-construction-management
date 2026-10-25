@@ -19,6 +19,7 @@ type Takeover = Record<string, unknown> & {
   availableActions: unknown[];
 };
 type LedgerRow = {
+  id: string;
   contractVersionId: string;
   contractNo: string;
   amount: string;
@@ -224,14 +225,21 @@ test("真实历史接管提交复核、放弃后台账和详情恢复读取，�
 
     const workbench = await read<{ rows: LedgerRow[] }>("/contracts/workbench?view=all&pageSize=100");
     expect(workbench.rows.find(item => item.contractVersionId === normal!.contractVersionId)).toMatchObject({ amount: normal!.amount });
-    expect(workbench.rows.find(item => item.contractNo === code)).toMatchObject({
+    const historicalRow = workbench.rows.find(item => item.contractNo === code);
+    expect(historicalRow).toMatchObject({
       amount: "¥200.01", currentNode: "已放弃", workbenchEditable: false, copyAvailable: false,
       contractLifecycleCapabilities: { canEdit: false, canSubmit: false, canAbandon: false, canPhysicallyDelete: false }
     });
     checks.workbenchReadableAndReadonly = true;
 
-    await page.goto(route);
-    await expect(page.locator(".detail-title")).toContainText(code);
+    // The existing ledger deliberately opens abandoned records through the
+    // ordinary read-only contract detail, not the active takeover list.
+    await page.goto(`/合同管理/${encodeURIComponent(historicalRow!.id)}?versionId=${encodeURIComponent(historicalRow!.contractVersionId)}`);
+    const header = page.locator(".business-detail-header");
+    await expect(header.locator(".business-detail-header__code")).toHaveText(code);
+    await expect(header.locator(".t-tag")).toContainText("已放弃");
+    await expect(header).toContainText("¥200.01");
+    checks.abandonedStatusDisplayed = true;
     const after = await read<Takeover>(detailPath);
     expect(after).toMatchObject({ takeoverStatus: "abandoned", lifecycleKind: "formal_record", availableActions: [] });
     expect(money(after)).toEqual(money(before));
@@ -240,19 +248,13 @@ test("真实历史接管提交复核、放弃后台账和详情恢复读取，�
     checks.moneyUnchanged = true;
     checks.evidenceMetadataUnchanged = true;
     checks.evidenceBytesUnchanged = true;
-    for (const name of ["编辑", "提交复核"]) {
-      const action = row.getByText(name, { exact: true });
-      await expect(action).toHaveCount(1);
-      expect(await action.evaluate(element => element.classList.contains("t-is-disabled") ||
-        element.getAttribute("aria-disabled") === "true" || element.hasAttribute("disabled"))).toBe(true);
-    }
-    await expect(page.locator(".business-draft-action button")).toHaveCount(0);
-    await expect(uploader.getByRole("button", { name: "上传接管资料", exact: true })).toBeDisabled();
+    await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
+    const contractDetail = await read<{ availableActions: Array<{ key: string; enabled: boolean }> }>(`/contracts/${historicalRow!.id}?versionId=${historicalRow!.contractVersionId}`);
+    expect(contractDetail.availableActions.filter(action => action.enabled), "已放弃历史合同不得提供任何可执行办理动作，包括生成PDF归档").toEqual([]);
+    const processPanel = page.getByRole("region", { name: "合同流程办理", exact: true });
+    await expect(processPanel).toBeVisible();
+    await expect(processPanel.locator("button:not([disabled]):not([aria-disabled='true'])")).toHaveCount(0);
     checks.historicalDetailReadonly = true;
-    // Keep this user-visible status assertion: an unknown label is not a passed abandoned-state check.
-    await expect(row).toContainText("已放弃");
-    await expect(row).not.toContainText("接管状态未读取");
-    checks.abandonedStatusDisplayed = true;
     await page.screenshot({ path: info.outputPath("已放弃历史详情只读且资料保留.png"), fullPage: true });
     expect(pageErrors).toBe(0);
     expect(consoleErrors).toBe(0);
