@@ -1679,6 +1679,7 @@ interface LedgerBody {
   rows: Array<{
     id: string;
     contractVersionId: string;
+    amount: string;
     currentNode: string;
     nextAction: string;
     workbenchEditable: boolean;
@@ -1721,7 +1722,25 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
         historicalContract: `takeover-ledger-history-${suffix}`,
         historicalVersion: `takeover-ledger-history-version-${suffix}`,
         terms: `takeover-ledger-terms-${suffix}`,
-        takeover: `takeover-ledger-takeover-${suffix}`
+        takeover: `takeover-ledger-takeover-${suffix}`,
+        evidenceFile: `takeover-ledger-evidence-file-${suffix}`,
+        evidenceRecord: `takeover-ledger-evidence-record-${suffix}`
+      };
+      const historicalMoney = {
+        historicalSettledCents: 12000n,
+        historicalApprovalPendingPaymentCents: 700n,
+        historicalApprovedPendingPaymentCents: 800n,
+        historicalPaidCents: 3000n,
+        historicalProxyPaidCents: 500n,
+        historicalAdvancePaidCents: 600n,
+        historicalAdvanceDeductedCents: 200n,
+        historicalRetentionWithheldCents: 400n,
+        historicalRetentionReleasedCents: 100n,
+        otherConfirmedOccupancyCents: 900n
+      };
+      const readMoney = {
+        amountCents: "20000",
+        ...Object.fromEntries(Object.entries(historicalMoney).map(([key, value]) => [key, value.toString()]))
       };
       let app: INestApplication | undefined;
       let createdPositionId: string | undefined;
@@ -1775,26 +1794,73 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
             id: ids.takeover, projectId: ids.project, contractId: ids.historicalContract,
             contractVersionId: ids.historicalVersion, paymentTermsVersionId: ids.terms,
             takeoverLevel: "A", takeoverStatus: "draft", lifecycleStatus: "completed",
-            signedAt: new Date("2026-01-01T00:00:00.000Z"), createdByUserId: ids.actor
+            signedAt: new Date("2026-01-01T00:00:00.000Z"), createdByUserId: ids.actor,
+            ...historicalMoney
           }
         });
+        const pdf = await PDFDocument.create();
+        pdf.addPage();
+        const evidenceBytes = await pdf.save();
+        const evidenceFile = await prisma.fileObject.create({
+          data: {
+            id: ids.evidenceFile,
+            bucket: "test-private-bucket",
+            objectKey: `uploads/${ids.evidenceFile}.pdf`,
+            originalName: "本地历史合同扫描件.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: evidenceBytes.byteLength,
+            uploadedByUserId: ids.actor,
+            contentSha256: createHash("sha256").update(evidenceBytes).digest("hex")
+          }
+        });
+        const evidenceRecord = await prisma.archiveRecord.create({
+          data: {
+            id: ids.evidenceRecord,
+            businessType: "contract_takeover",
+            businessId: ids.takeover,
+            fileId: ids.evidenceFile,
+            departmentScope: "historical_contract_scan"
+          }
+        });
+        const normalBefore = await Promise.all([
+          prisma.contract.findUniqueOrThrow({ where: { id: ids.normalContract } }),
+          prisma.contractVersion.findUniqueOrThrow({ where: { id: ids.normalVersion } }),
+          prisma.paymentTermsVersion.findFirstOrThrow({ where: { contractVersionId: ids.normalVersion } })
+        ]);
         const takeovers = new ContractTakeoverService(prisma as never, new AuditService());
+        const before = await takeovers.detail(ids.project, ids.takeover, ids.actor);
+        expect(before).toMatchObject(readMoney);
+        expect(before.evidenceFiles).toEqual([
+          expect.objectContaining({
+            recordId: ids.evidenceRecord,
+            fileId: ids.evidenceFile,
+            fileName: evidenceFile.originalName,
+            purpose: "historical_contract_scan",
+            mimeType: evidenceFile.mimeType,
+            sizeBytes: evidenceFile.sizeBytes,
+            canDownload: true
+          })
+        ]);
         const submitted = await takeovers.submitReview(ids.project, ids.takeover, ids.actor);
-        expect(submitted).toMatchObject({ takeoverStatus: "pending_review", submittedAt: expect.any(Date) });
+        expect(submitted).toMatchObject({ ...readMoney, takeoverStatus: "pending_review", submittedAt: expect.any(Date) });
+        expect(submitted.evidenceFiles).toEqual(before.evidenceFiles);
         const closed = await takeovers.abandonDraft(ids.project, ids.takeover, {
           expectedUpdatedAt: submitted.updatedAt.toISOString(), action: "abandon_application", reason: "0"
         }, ids.actor);
         expect(closed).toMatchObject({ status: "abandoned", action: "abandon_application" });
-        expect(await takeovers.detail(ids.project, ids.takeover, ids.actor)).toMatchObject({
+        const abandoned = await takeovers.detail(ids.project, ids.takeover, ids.actor);
+        expect(abandoned).toMatchObject({
+          ...readMoney,
           takeoverStatus: "abandoned", lifecycleKind: "formal_record", availableActions: []
         });
+        expect(abandoned.evidenceFiles).toEqual(before.evidenceFiles);
         // The dedicated review flow has its own submission fact, without creating
         // an ordinary contract approval that would mask this regression.
         expect(await prisma.approvalInstance.count({
           where: { businessId: { in: [ids.historicalContract, ids.historicalVersion] } }
         })).toBe(0);
         expect(await prisma.contractVersion.findUnique({ where: { id: ids.historicalVersion } })).toMatchObject({
-          status: "abandoned", firstSubmittedAt: null, abandonReason: "0"
+          status: "abandoned", firstSubmittedAt: null, abandonReason: "0", amountCents: 20000n
         });
         expect(await prisma.paymentTermsVersion.findUnique({ where: { id: ids.terms } })).toMatchObject({ status: "voided" });
 
@@ -1824,22 +1890,35 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
         expect(formalResponse.status).toBe(200);
         const formal = await formalResponse.json() as LedgerBody;
         expect(formal.rows.map(row => row.contractVersionId)).toEqual([ids.normalVersion]);
+        expect(formal.rows[0]).toMatchObject({ contractVersionId: ids.normalVersion, amount: "¥100.00" });
         const workbenchResponse = await fetch(`${base}/contracts/workbench?view=all&pageSize=20`);
         expect(workbenchResponse.status).toBe(200);
         const workbench = await workbenchResponse.json() as LedgerBody;
         expect(workbench.rows.map(row => row.contractVersionId).sort()).toEqual([ids.normalVersion, ids.historicalVersion].sort());
+        expect(workbench.rows.find(row => row.contractVersionId === ids.normalVersion)).toMatchObject({ amount: "¥100.00" });
         expect(workbench.rows.find(row => row.contractVersionId === ids.historicalVersion)).toMatchObject({
           contractVersionId: ids.historicalVersion,
+          amount: "¥200.00",
           currentNode: "已放弃", nextAction: "查看合同详情",
           workbenchEditable: false, copyAvailable: false,
           contractLifecycleStage: "protected_formal",
           contractLifecycleCapabilities: { canEdit: false, canSubmit: false, canAbandon: false, canPhysicallyDelete: false }
         });
+        expect(await prisma.contractTakeover.findUnique({ where: { id: ids.takeover } })).toMatchObject(historicalMoney);
+        expect(await prisma.fileObject.findUnique({ where: { id: ids.evidenceFile } })).toEqual(evidenceFile);
+        expect(await prisma.archiveRecord.findUnique({ where: { id: ids.evidenceRecord } })).toEqual(evidenceRecord);
+        expect(await Promise.all([
+          prisma.contract.findUniqueOrThrow({ where: { id: ids.normalContract } }),
+          prisma.contractVersion.findUniqueOrThrow({ where: { id: ids.normalVersion } }),
+          prisma.paymentTermsVersion.findFirstOrThrow({ where: { contractVersionId: ids.normalVersion } })
+        ])).toEqual(normalBefore);
       } finally {
         try {
           await app?.close();
           await prisma.$transaction([
             prisma.auditLog.deleteMany({ where: { businessId: ids.takeover } }),
+            prisma.archiveRecord.deleteMany({ where: { id: ids.evidenceRecord } }),
+            prisma.fileObject.deleteMany({ where: { id: ids.evidenceFile } }),
             prisma.contractTakeover.deleteMany({ where: { id: ids.takeover } }),
             prisma.paymentTermsVersion.deleteMany({ where: { contractId: { in: [ids.normalContract, ids.historicalContract] } } }),
             prisma.contractVersion.deleteMany({ where: { id: { in: [ids.normalVersion, ids.historicalVersion] } } }),
