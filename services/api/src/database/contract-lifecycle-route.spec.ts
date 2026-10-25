@@ -1694,6 +1694,15 @@ interface LedgerBody {
   }>;
 }
 
+interface ContractDetailBody {
+  contractVersionId: string;
+  baseInfo: Array<{ label: string; value: string }>;
+  availableActions: Array<{ key: string; enabled: boolean }>;
+  availableActionKeys: string[];
+  primaryAction: string | null;
+  historyReadOnly: boolean;
+}
+
 describe("abandoned historical takeover Nest route and PostgreSQL regression", () => {
   it("rejects non-local database targets", () => {
     expect(() => localLifecycleDatabaseUrl(
@@ -1743,7 +1752,7 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
         ...Object.fromEntries(Object.entries(historicalMoney).map(([key, value]) => [key, value.toString()]))
       };
       let app: INestApplication | undefined;
-      let createdPositionId: string | undefined;
+      const createdPositionIds: string[] = [];
       try {
         await prisma.user.create({
           data: { id: ids.actor, name: "历史接管台账本地测试用户", mustChangePassword: false }
@@ -1763,14 +1772,19 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
             assignedByUserId: ids.actor
           }
         });
-        let position = await prisma.position.findUnique({ where: { key: "contract_director" } });
-        if (!position) {
-          position = await prisma.position.create({ data: { key: "contract_director", name: "合同部主管" } });
-          createdPositionId = position.id;
+        for (const [key, name, projectId] of [
+          ["contract_director", "合同部主管", null],
+          ["contract_staff", "合同员", ids.project]
+        ] as const) {
+          let position = await prisma.position.findUnique({ where: { key } });
+          if (!position) {
+            position = await prisma.position.create({ data: { key, name } });
+            createdPositionIds.push(position.id);
+          }
+          await prisma.userPosition.create({
+            data: { userId: ids.actor, positionId: position.id, projectId }
+          });
         }
-        await prisma.userPosition.create({
-          data: { userId: ids.actor, positionId: position.id, projectId: null }
-        });
         await prisma.contract.createMany({
           data: [
             { id: ids.normalContract, projectId: ids.project, source: "system", code: `FORMAL-${suffix}`, name: "正常正式合同", counterparty: "本地测试相对方", ownerUserId: ids.actor },
@@ -1904,6 +1918,22 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
           contractLifecycleStage: "protected_formal",
           contractLifecycleCapabilities: { canEdit: false, canSubmit: false, canAbandon: false, canPhysicallyDelete: false }
         });
+        // A real contract-staff assignment must still allow handling an ordinary
+        // effective contract, while the ended historical detail remains read-only.
+        const normalDetailResponse = await fetch(`${base}/contracts/FORMAL-${suffix}?versionId=${ids.normalVersion}`);
+        expect(normalDetailResponse.status).toBe(200);
+        const normalDetail = await normalDetailResponse.json() as ContractDetailBody;
+        expect(normalDetail.availableActionKeys).toContain("generate_pdf_archive");
+        expect(normalDetail.baseInfo).toContainEqual({ label: "合同金额", value: "¥100.00" });
+        const historicalDetailResponse = await fetch(`${base}/contracts/HISTORY-${suffix}?versionId=${ids.historicalVersion}`);
+        expect(historicalDetailResponse.status).toBe(200);
+        const historicalDetail = await historicalDetailResponse.json() as ContractDetailBody;
+        expect(historicalDetail.contractVersionId).toBe(ids.historicalVersion);
+        expect(historicalDetail.baseInfo).toContainEqual({ label: "合同金额", value: "¥200.00" });
+        expect(historicalDetail.availableActions.filter(action => action.enabled)).toEqual([]);
+        expect(historicalDetail.availableActionKeys).toEqual([]);
+        expect(historicalDetail.primaryAction).toBeNull();
+        expect(historicalDetail.historyReadOnly).toBe(true);
         expect(await prisma.contractTakeover.findUnique({ where: { id: ids.takeover } })).toMatchObject(historicalMoney);
         expect(await prisma.fileObject.findUnique({ where: { id: ids.evidenceFile } })).toEqual(evidenceFile);
         expect(await prisma.archiveRecord.findUnique({ where: { id: ids.evidenceRecord } })).toEqual(evidenceRecord);
@@ -1928,7 +1958,7 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
             prisma.projectAffiliateAssignment.deleteMany({ where: { projectId: ids.project } }),
             prisma.user.deleteMany({ where: { id: ids.actor } })
           ]);
-          if (createdPositionId) await prisma.position.delete({ where: { id: createdPositionId } });
+          await prisma.position.deleteMany({ where: { id: { in: createdPositionIds } } });
         } finally {
           await prisma.$disconnect();
         }

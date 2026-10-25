@@ -168,6 +168,28 @@ describe("contract change UI state", () => {
     }, original])?.[0]?.approvalRouteLabel).toBe("合同变更");
   });
 
+  it("reads abandoned historical version facts without enabling change projections", () => {
+    const historical = {
+      versionNo: 1, status: "abandoned", changeType: "historical_takeover",
+      changeReason: null, changeDirection: null, changeAmountCents: null,
+      amountCents: "20001", approvalRoute: ["chairman_or_general_manager"],
+      approvalRouteLabel: "原合同", archiveEffect: null
+    };
+
+    expect(normalizeContractChangeVersions([historical])).toEqual([historical]);
+    expect(normalizeContractChangeVersions([{ ...historical, status: "internal_status" }])).toBeNull();
+    expect(normalizeContractChangeVersions([{ ...historical, amountCents: "020001" }])).toBeNull();
+    expect(normalizeContractChangeVersions([{ ...historical, amountCents: "9223372036854775808" }])).toBeNull();
+    expect(normalizeContractChangeVersions([{ ...historical, approvalRoute: ["internal_role"] }])).toBeNull();
+    expect(normalizeChangeVersion(projection({ status: "abandoned" }))).toBeNull();
+    expect(normalizeChangeEligibility({
+      eligible: true, availableActions: ["create_contract_change_draft"], reason: null,
+      currentEffective: projection({ id: "v1", versionNo: 1, changeType: "original", status: "abandoned",
+        baseVersionId: null, changeReason: null, changeDirection: null, changeAmountCents: null, originalBaseAmountCents: null }),
+      activeChange: null
+    }, "v1")).toBeNull();
+  });
+
   it("guards version/submission races and PostgreSQL bigint bounds", () => {
     expect(canApplyExpectedWorkbenchVersion("v3", "v2")).toBe(false);
     expect(isCurrentChangeSubmission(2, 2, "contract-a", "contract-a")).toBe(true);
