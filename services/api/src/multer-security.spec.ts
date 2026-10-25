@@ -8,9 +8,12 @@ const multerPath = platformRequire.resolve("multer");
 // error must fail the assertion below, rather than terminate the Jest worker.
 const childProgram = String.raw`
 const http = require("node:http");
-const { getDefaultHighWaterMark } = require("node:stream");
+const { setDefaultHighWaterMark } = require("node:stream");
 const multer = require(process.argv[2]);
 const scenario = process.argv[1];
+// Keep a one-byte file parked with a small HTTP body on Node 20 and 22 alike.
+// This public stream default is confined to the isolated security child.
+if (scenario === "late-filter") setDefaultHighWaterMark(false, 1);
 let resumePendingFilter;
 let nextCalls = 0;
 const watchdog = setTimeout(() => {
@@ -29,7 +32,12 @@ const upload = multer({
     }
     const reject = () => setImmediate(() => callback(new Error("rejected upload")));
     if (request.readableEnded) reject();
-    else request.once("end", reject);
+    else {
+      request.once("end", reject);
+      // The parser is parked on the first file. Explicitly drain the HTTP
+      // source so its end event cannot wait on that pending filter's backpressure.
+      setImmediate(() => request.resume());
+    }
   }
 }).any();
 
@@ -86,7 +94,7 @@ async function main() {
     ? [
       "--" + boundary,
       'Content-Disposition: form-data; name="pending"; filename="pending.txt"',
-      "Content-Type: text/plain", "", "a".repeat(getDefaultHighWaterMark(false) + 4096),
+      "Content-Type: text/plain", "", "a",
       "--" + boundary,
       'Content-Disposition: form-data; name="rejected"; filename="rejected.txt"',
       "Content-Type: text/plain", "", "b"
