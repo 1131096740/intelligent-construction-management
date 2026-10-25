@@ -29,9 +29,9 @@
     "pendingFiles": 77,
     "fullyPendingSuites": 66,
     "partiallyPendingSuites": 11,
-    "pendingTests": 510,
+    "pendingTests": 511,
     "coveredFiles": 77,
-    "coveredTests": 510,
+    "coveredTests": 511,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -398,7 +398,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 156,
+      "pendingTests": 157,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -427,7 +427,7 @@
         },
         {
           "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
-          "pendingTests": 1,
+          "pendingTests": 2,
           "suiteStatus": "partial_pending"
         },
         {

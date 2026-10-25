@@ -289,6 +289,30 @@ describe("contract draft lifecycle classification", () => {
     }));
   });
 
+  it("keeps an abandoned historical takeover on its dedicated read-only workflow without ordinary approval facts", () => {
+    expect(classifyContractDraftLifecycle({
+      ...pristineFacts,
+      changeType: "historical_takeover",
+      status: "abandoned",
+      abandonedAt: new Date("2026-10-20T01:02:00.000Z"),
+      abandonedByUserId: "takeover-owner",
+      abandonReason: "0"
+    })).toMatchObject({
+      contractLifecycleStage: "protected_formal",
+      lifecycleKind: "formal_record",
+      expectedAction: null,
+      capabilities: {
+        canView: true,
+        canEdit: false,
+        canSubmit: false,
+        canAbandon: false,
+        canPhysicallyDelete: false,
+        canDownload: true,
+        historyRetention: "active_process"
+      }
+    });
+  });
+
   it("keeps historical takeover records on their dedicated protected workflow", () => {
     expect(classifyContractDraftLifecycle({
       ...pristineFacts,
@@ -303,6 +327,30 @@ describe("contract draft lifecycle classification", () => {
         canPhysicallyDelete: false
       })
     });
+  });
+
+  it.each([
+    { changeType: "original" },
+    { status: "approval_rejected" as const },
+    { abandonedAt: null },
+    { abandonedByUserId: null },
+    { abandonReason: "" },
+    { abandonReason: "  " }
+  ])("keeps the missing-approval guard outside a complete historical abandonment: %j", (overrides) => {
+    expect(() => classifyContractDraftLifecycle({
+      ...pristineFacts,
+      changeType: "historical_takeover",
+      status: "abandoned",
+      abandonedAt: new Date("2026-10-20T01:02:00.000Z"),
+      abandonedByUserId: "takeover-owner",
+      abandonReason: "资料无法补齐",
+      ...overrides
+    })).toThrow(expect.objectContaining({
+      response: expect.objectContaining({
+        statusCode: 409,
+        code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION"
+      })
+    }));
   });
 
   it.each(["in_approval", "approved_pending_seal", "pending_archive_confirm"] as const)(
