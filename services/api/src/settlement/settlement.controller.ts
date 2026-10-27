@@ -1,4 +1,5 @@
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
+import { ApprovalProgressService } from "../approval/approval-progress.service";
 import {
   BadRequestException,
   Body,
@@ -67,7 +68,8 @@ export class SettlementController {
     private readonly submissions: SettlementSubmissionService,
     @Optional() private readonly signedDocuments?: SettlementSignedDocumentService,
     @Optional() private readonly recoveries?: SettlementRecoveryService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly approvalProgress?: ApprovalProgressService
   ) {}
 
   @Post()
@@ -268,10 +270,11 @@ export class SettlementController {
     return this.settlements.withdrawApproval(settlementId, user.id, body);
   }
 
-  // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。
+  // 旧 HTTP 入口由 RetiredWriteEntryGuard 返回 410；内部委托不构成公共办理入口。
   @Post(":settlementId/approval-reminder")
   remindApproval(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.settlements.remindApproval(settlementId, user.id);
+    if (!this.approvalProgress) throw new BadRequestException("审批催办服务暂不可用");
+    return this.approvalProgress.remindBusiness("settlement", settlementId, user.id);
   }
 
   @Post(":settlementId/approval-transfer")

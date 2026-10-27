@@ -1713,31 +1713,6 @@
       ]
     },
     {
-      "id": "contract-approval.remind",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "remindContractApprovalWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActionKeys",
-        "key": "remind_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "remindContractApproval"
-        }
-      ]
-    },
-    {
       "id": "contract-approval.transfer",
       "usage": "background",
       "routePaths": [
@@ -2864,31 +2839,6 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "recordPaymentPdfArchive"
-        }
-      ]
-    },
-    {
-      "id": "payment-detail.remind",
-      "usage": "background",
-      "routePaths": [
-        "/付款管理/:paymentId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "remindPaymentApprovalWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "remind_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "remindPaymentApproval"
         }
       ]
     },
@@ -5581,31 +5531,6 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "delegateSettlementApproval"
-        }
-      ]
-    },
-    {
-      "id": "settlement-detail.remind",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "remindSettlementApprovalWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "remind_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "remindSettlementApproval"
         }
       ]
     },
@@ -9945,6 +9870,37 @@
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
           "name": "applyPersonnelChange"
+        }
+      ]
+    },
+    {
+      "id": "approval-progress.remind-by-sms",
+      "usage": "background",
+      "routePaths": [
+        "/审批中心",
+        "/合同管理/:contractId",
+        "/结算管理/:settlementId",
+        "/付款管理/:paymentId",
+        "/费用与报销/:claimId",
+        "/项目支出/:projectId/:expenseRequestId",
+        "/零星采购/:procurementId",
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendReminderWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRemind"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+          "name": "remindApprovalBySms"
         }
       ]
     }

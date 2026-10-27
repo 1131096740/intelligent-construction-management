@@ -448,14 +448,7 @@
                 >
                   撤回
                 </t-button>
-                <t-button
-                  v-if="isPaymentActionEnabled('remind_approval')"
-                  variant="text"
-                  :loading="actionBusy === 'remindApproval'"
-                  @click="submitPaymentReminder"
-                >
-                  催办
-                </t-button>
+
                 <t-button
                   v-if="isPaymentActionEnabled('transfer_approval')"
                   variant="outline"
@@ -730,12 +723,18 @@
       @confirm="executeSensitiveAction"
       @cancel="sensitiveAction.error = ''"
     />
+    <ApprovalProgressPanel
+      business-type="payment_request"
+      :business-id="paymentDetail?.id"
+      :refresh-key="JSON.stringify(paymentDetail)"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone } from "@jiangkong/shared-domain";
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,
@@ -763,7 +762,6 @@ import {
   recordPaymentExecutionWithUpload,
   recordPaymentFinance,
   recordPaymentPdfArchive,
-  remindPaymentApproval,
   transferPaymentApproval,
   uploadPaymentPdfArchivePrivateFile,
   withdrawPaymentApproval,
@@ -2137,15 +2135,6 @@ async function recordPaymentPdfArchiveWithCapability(
   return recordPaymentPdfArchive(paymentId, { fileId: uploadedFile.id });
 }
 
-async function remindPaymentApprovalWithCapability(paymentId: string) {
-  const capability = await fetchPaymentActionCapability(paymentId);
-  const matchesRequestedPayment = capability.paymentId === paymentId;
-  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
-  const operationAllowed = capability.availableActions.includes("remind_approval");
-  if (!operationAllowed) throw new Error("当前用户不能催办该付款审批");
-  return remindPaymentApproval(paymentId);
-}
-
 async function transferPaymentApprovalWithCapability(
   paymentId: string,
   toUserId: string
@@ -2206,12 +2195,6 @@ function performPdfArchive() {
     paymentPdfArchiveFiles.value = [];
     return result;
   });
-}
-
-async function submitPaymentReminder() {
-  await runPaymentAction("remindApproval", () =>
-    remindPaymentApprovalWithCapability(currentPaymentId())
-  );
 }
 
 function performPaymentAssignment(kind: "transfer" | "delegate") {

@@ -6,6 +6,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { Prisma } from "@prisma/client";
 import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
+import { ApprovalProgressService } from "../approval/approval-progress.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
@@ -78,7 +79,8 @@ export class ExpenseClaimService {
     private readonly projectFunding?: ProjectFundingAvailabilityService,
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
-      missingOperatingSourceReplayService()
+      missingOperatingSourceReplayService(),
+    @Optional() private readonly approvalProgress?: ApprovalProgressService
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -138,9 +140,18 @@ export class ExpenseClaimService {
         : normalizedView === "pending_funds"
           ? ["approved_pending_payment", "partially_paid", "approved_pending_disbursement", "partially_disbursed"]
           : undefined;
+    const relatedIds: string[] = [];
+    if (this.approvalProgress && normalizedView !== "drafts") {
+      let cursor: string | undefined;
+      do {
+        const page = await this.approvalProgress.list(actorUserId, cursor, "expense_claim");
+        relatedIds.push(...page.items.map(item => item.businessId));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+    }
     const rows = await this.prisma.expenseClaim.findMany({
       where: {
-        OR: [{ applicantUserId: actorUserId }, { handledByUserId: actorUserId }],
+        OR: [{ applicantUserId: actorUserId }, { handledByUserId: actorUserId }, ...(relatedIds.length ? [{ id: { in: relatedIds }, status: { not: "draft" } }] : [])],
         ...(status ? { status: { in: status } } : {})
       },
       orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
@@ -338,7 +349,8 @@ export class ExpenseClaimService {
       roles.some((role) => PAYMENT_SUBJECT_ADJUSTMENT_ROLES.includes(role));
     const procurementActor = claim.generalProcurementId && claim.projectId ? await generalProcurementActor(this.prisma, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId) : null;
     const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "general_manager", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
-    if (!isOwner && !identity && !canAppendEvidence && !canReadProcurementPayment) throw new NotFoundException("费用申请不存在或当前账号无权读取");
+    const existingDetailAccess = isOwner || Boolean(identity) || canAppendEvidence || Boolean(canReadProcurementPayment);
+    if (!existingDetailAccess && !(claim.status !== "draft" && await this.approvalProgress?.canViewBusiness("expense_claim", claim.id, actorUserId))) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
@@ -405,24 +417,24 @@ export class ExpenseClaimService {
     ]);
     const fileById = new Map(files.map((file) => [file.id, file]));
     const uploaderNameById = new Map(attachmentUploaders.map((user) => [user.id, user.name]));
-    const loanAccount = claim.claimType === "loan" && claim.applicantUserId && claim.projectId
+    const loanAccount = existingDetailAccess && claim.claimType === "loan" && claim.applicantUserId && claim.projectId
       ? await this.prisma.employeeProjectLoanAccount.findUnique({
         where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey: `project:${claim.projectId}` } },
         select: { id: true, fundedAmountCents: true, offsetAmountCents: true, repaidAmountCents: true, reservedOffsetAmountCents: true, balanceAmountCents: true }
       })
       : null;
-    const [loanDisbursements, loanRepayments] = loanAccount
+    const [loanDisbursements, loanRepayments] = claim.claimType === "loan"
       ? await Promise.all([
         this.prisma.employeeProjectLoanEntry.findMany({
-          where: { loanAccountId: loanAccount.id, sourceExpenseClaimId: claim.id, entryType: "disbursement" },
+          where: { ...(loanAccount ? { loanAccountId: loanAccount.id } : {}), sourceExpenseClaimId: claim.id, entryType: "disbursement" },
           select: { id: true, amountCents: true, occurredAt: true, paymentMethod: true, voucherFileId: true, note: true },
           orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
         }),
-        this.prisma.employeeLoanRepayment.findMany({
+        loanAccount ? this.prisma.employeeLoanRepayment.findMany({
           where: { loanAccountId: loanAccount.id },
           select: { id: true, amountCents: true, repaidAt: true, paymentMethod: true, voucherFileId: true, status: true, confirmationNote: true, reversalReason: true, createdAt: true },
           orderBy: [{ repaidAt: "desc" }, { createdAt: "desc" }]
-        })
+        }) : Promise.resolve([])
       ])
       : [[], []];
     return {

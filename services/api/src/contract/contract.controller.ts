@@ -1,4 +1,6 @@
+import { ApprovalProgressService } from "../approval/approval-progress.service";
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -77,7 +79,8 @@ export class ContractController {
     @Optional() private readonly formalFiles?: ContractFormalFileService,
     @Optional() private readonly authorizations?: ContractAuthorizationService,
     @Optional() private readonly seals?: ContractSealService,
-    @Optional() private readonly pristineDeletion?: PristineDraftDeletionService
+    @Optional() private readonly pristineDeletion?: PristineDraftDeletionService,
+    @Optional() private readonly approvalProgress?: ApprovalProgressService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -335,13 +338,14 @@ export class ContractController {
     return this.contracts.withdrawApproval(contractVersionId, user.id, body);
   }
 
-  // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。
+  // 旧 HTTP 入口由 RetiredWriteEntryGuard 返回 410；内部委托不构成公共办理入口。
   @Post(":contractVersionId/approval-reminder")
   remindApproval(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.contracts.remindApproval(contractVersionId, user.id);
+    if (!this.approvalProgress) throw new BadRequestException("审批催办服务暂不可用");
+    return this.approvalProgress.remindBusiness("contract_version", contractVersionId, user.id);
   }
 
   @Post(":contractVersionId/seal-approval")

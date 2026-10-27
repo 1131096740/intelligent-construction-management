@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "verify:approval-progress:local": "pnpm build && node prisma/run-approval-progress-local.cjs",
     "predev": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "dev": "nest start --watch",
     "prebuild": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",

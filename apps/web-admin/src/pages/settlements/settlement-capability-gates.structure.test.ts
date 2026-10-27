@@ -24,11 +24,15 @@ describe("settlement capability gates", () => {
     expect(coreApi).toContain("`/settlements/${encodeURIComponent(settlementId)}/capability`");
   });
 
+  it("uses the shared participant-authorized SMS reminder panel", () => {
+    expect(detailPage).toContain("<ApprovalProgressPanel");
+    expect(detailPage).toContain('business-type="settlement"');
+  });
+
   it.each([
     ["review_approval", "reviewSettlementApprovalWithCapability"],
     ["transfer_approval", "transferSettlementApprovalWithCapability"],
     ["delegate_approval", "delegateSettlementApprovalWithCapability"],
-    ["remind_approval", "remindSettlementApprovalWithCapability"],
     ["download_approval_form", "downloadSettlementApprovalPdfWithCapability"],
     ["upload_archive", "uploadSettlementArchiveWithCapability"],
     ["confirm_archive", "confirmSettlementArchiveWithCapability"],

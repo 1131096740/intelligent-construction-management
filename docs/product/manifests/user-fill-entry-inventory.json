@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 385,
+    "activeBusinessActionCount": 383,
     "technicalActionCount": 9,
-    "activeBindingCount": 444,
-    "retiredWriteEntryCount": 85,
+    "activeBindingCount": 442,
+    "retiredWriteEntryCount": 88,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -62,6 +62,29 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /approval-forms/:param/:param/download"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-progress.remind-by-sms",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId",
+        "/合同管理/:contractId",
+        "/审批中心",
+        "/结算管理/:settlementId",
+        "/费用与报销/:claimId",
+        "/零星材料付款/:paymentId",
+        "/零星采购/:procurementId",
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /approval-progress/:param/remind"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -437,22 +460,6 @@
       ],
       "bindingCount": 1,
       "productionConsumerCount": 2,
-      "causalVerified": true
-    },
-    {
-      "id": "contract-approval.remind",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /contracts/:param/approval-reminder"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
       "causalVerified": true
     },
     {
@@ -3542,22 +3549,6 @@
       "causalVerified": true
     },
     {
-      "id": "payment-detail.remind",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/付款管理/:paymentId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /payments/:param/approval-reminder"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "payment-detail.transfer",
       "status": "unified_candidate",
       "usage": "background",
@@ -4712,22 +4703,6 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /settlements/:param/pdf-generation"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-detail.remind",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /settlements/:param/approval-reminder"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -6784,6 +6759,13 @@
     },
     {
       "method": "POST",
+      "path": "/contracts/:contractVersionId/approval-reminder",
+      "controller": "ContractController",
+      "handler": "remindApproval",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
       "path": "/contracts/:contractVersionId/approval-submission",
       "controller": "ContractController",
       "handler": "submitApproval",
@@ -6822,6 +6804,13 @@
       "path": "/organization/role-changes/batch-preview",
       "controller": "OrganizationController",
       "handler": "previewRoleRemovalBatch",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/payments/:paymentId/approval-reminder",
+      "controller": "PaymentController",
+      "handler": "remindApproval",
       "status": "gone"
     },
     {
@@ -6934,6 +6923,13 @@
       "path": "/settlements",
       "controller": "SettlementController",
       "handler": "create",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-reminder",
+      "controller": "SettlementController",
+      "handler": "remindApproval",
       "status": "gone"
     },
     {

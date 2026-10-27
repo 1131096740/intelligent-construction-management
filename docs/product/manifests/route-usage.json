@@ -10,17 +10,17 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 692,
-    "exactRouteCount": 692,
-    "normalizedRouteCount": 692,
-    "classificationOverrideCount": 219,
+    "routeCount": 695,
+    "exactRouteCount": 695,
+    "normalizedRouteCount": 695,
+    "classificationOverrideCount": 222,
     "consumerSurfaceOverrideCount": 38,
-    "classificationOverrideSha256": "30ef73f5d88d4e1468e36bec2117c9a36d5e9bc80f91b3801f6079a3a10999f5",
+    "classificationOverrideSha256": "7699a4b8cc0fd88e24bfc3300dcd67df59a5cdecdfccc6a9c0c206b76df37a26",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
     "derivedProductionPageCount": 473,
     "pageRouteCount": 489,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 96,
+    "exitCandidateCount": 99,
     "internalTaskCount": 37,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
@@ -29,7 +29,7 @@
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 107
+      "none": 110
     },
     "blockerCount": 0
   },
@@ -621,6 +621,89 @@
             "productionConsumers": [
               "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
               "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/approval-progress",
+      "normalizedKey": "GET /approval-progress",
+      "controller": "ApprovalProgressController",
+      "handler": "list",
+      "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+            "wrapper": "fetchRelatedApprovals",
+            "method": "GET",
+            "normalizedPath": "/approval-progress",
+            "normalizedKey": "GET /approval-progress",
+            "productionConsumers": [
+              "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+              "apps/web-admin/src/components/RelatedApprovalList.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/approval-progress/:instanceId",
+      "normalizedKey": "GET /approval-progress/:param",
+      "controller": "ApprovalProgressController",
+      "handler": "detail",
+      "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+            "wrapper": "fetchApprovalProgress",
+            "method": "GET",
+            "normalizedPath": "/approval-progress/:param",
+            "normalizedKey": "GET /approval-progress/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/components/ApprovalProgressPanel.vue"
             ]
           }
         ],
@@ -11643,6 +11726,47 @@
     },
     {
       "method": "POST",
+      "path": "/approval-progress/:instanceId/remind",
+      "normalizedKey": "POST /approval-progress/:param/remind",
+      "controller": "ApprovalProgressController",
+      "handler": "remind",
+      "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+            "wrapper": "remindApprovalBySms",
+            "method": "POST",
+            "normalizedPath": "/approval-progress/:param/remind",
+            "normalizedKey": "POST /approval-progress/:param/remind",
+            "productionConsumers": [
+              "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/auth/change-password",
       "normalizedKey": "POST /auth/change-password",
       "controller": "AuthController",
@@ -15007,29 +15131,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "remindContractApproval",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/approval-reminder",
-            "normalizedKey": "POST /contracts/:param/approval-reminder",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -19470,29 +19583,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "remindPaymentApproval",
-            "method": "POST",
-            "normalizedPath": "/payments/:param/approval-reminder",
-            "normalizedKey": "POST /payments/:param/approval-reminder",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -25477,29 +25579,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "remindSettlementApproval",
-            "method": "POST",
-            "normalizedPath": "/settlements/:param/approval-reminder",
-            "normalizedKey": "POST /settlements/:param/approval-reminder",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

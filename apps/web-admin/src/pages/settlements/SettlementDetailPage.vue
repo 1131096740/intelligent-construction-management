@@ -408,14 +408,7 @@
                 >
                   撤回
                 </t-button>
-                <t-button
-                  v-if="isSettlementActionEnabled('remind_approval')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'remindApproval'"
-                  @click="submitSettlementReminder"
-                >
-                  催办
-                </t-button>
+
                 <t-button
                   v-if="isSettlementActionEnabled('transfer_approval')"
                   variant="outline"
@@ -766,6 +759,11 @@
       :error="sensitiveAction.error"
       @confirm="executeSensitiveAction"
     />
+    <ApprovalProgressPanel
+      business-type="settlement"
+      :business-id="settlementDetail?.id"
+      :refresh-key="JSON.stringify(settlementDetail)"
+    />
   </section>
 </template>
 
@@ -776,6 +774,7 @@ import type {
   CoreFlowTone,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -794,7 +793,6 @@ import {
   fetchSettlementDetail,
   getPrivateFileDownloadTicketCapability,
   generateSettlementPdfArchive,
-  remindSettlementApproval,
   prepareSettlementApprovalWithdrawalAction,
   regenerateSettlementSignedDocument,
   retrySettlementSignedDocumentGeneration,
@@ -1310,15 +1308,6 @@ async function delegateSettlementApprovalWithCapability(
   const operationAllowed = capability.availableActions.includes("delegate_approval");
   if (!operationAllowed) throw new Error("当前用户不能委托该结算审批");
   return delegateSettlementApproval(settlementId, { toUserId });
-}
-
-async function remindSettlementApprovalWithCapability(settlementId: string) {
-  const capability = await fetchSettlementActionCapability(settlementId);
-  const matchesRequestedSettlement = capability.settlementId === settlementId;
-  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
-  const operationAllowed = capability.availableActions.includes("remind_approval");
-  if (!operationAllowed) throw new Error("当前用户不能催办该结算审批");
-  return remindSettlementApproval(settlementId);
 }
 
 async function downloadSettlementApprovalPdfWithCapability(
@@ -1946,12 +1935,6 @@ async function performSettlementFileDownload(values: { reason: string; password:
     });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
   });
-}
-
-async function submitSettlementReminder() {
-  await runArchiveAction("remindApproval", () =>
-    remindSettlementApprovalWithCapability(currentSettlementId())
-  );
 }
 
 async function submitSettlementPdfGeneration() {

@@ -138,3 +138,20 @@ describe("POL-19E retired write entry guard", () => {
     ).toBe(true);
   });
 });
+
+
+describe("unified approval reminder retirement", () => {
+  it.each(["ContractController", "PaymentController", "SettlementController"])("returns 410 for %s.remindApproval", controller => {
+    const guard = new RetiredWriteEntryGuard();
+    try {
+      guard.canActivate(contextFor({ controller, handler: "remindApproval" }));
+      throw new Error("expected old reminder to be retired");
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpException);
+      expect((error as HttpException).getStatus()).toBe(410);
+    }
+  });
+  it("keeps the current unified SMS reminder entry executable", () => {
+    expect(new RetiredWriteEntryGuard().canActivate(contextFor({ controller: "ApprovalProgressController", handler: "remind" }))).toBe(true);
+  });
+});

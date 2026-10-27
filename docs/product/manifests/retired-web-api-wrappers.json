@@ -124,6 +124,9 @@
         "recordProjectOwnerContract",
         "recordProjectProxyPayment",
         "recordProjectUpstreamSettlement",
+        "remindContractApproval",
+        "remindPaymentApproval",
+        "remindSettlementApproval",
         "requestSettlementExceptionQuota",
         "reviewSettlementExceptionQuota",
         "revokeApprovalDelegation"

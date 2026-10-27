@@ -161,6 +161,8 @@ function uniqueFrozenRole(
   userId: string,
   pendingRoles: RoleKey[]
 ): RoleKey | null {
+  // Standing delegation must represent the selected person, just like direct review and explicit assignment.
+  if (Object.prototype.hasOwnProperty.call(node, "selectedUserId") && node.selectedUserId !== userId) return null;
   const mapPresent = Object.prototype.hasOwnProperty.call(node, "candidateUserIdsByRole");
   if (mapPresent) {
     const byRole = candidateMap(node.candidateUserIdsByRole);

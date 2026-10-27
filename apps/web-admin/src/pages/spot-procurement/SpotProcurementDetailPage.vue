@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
 import {
@@ -2147,6 +2148,11 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="abnormalTerminationConfirmError"
       @confirm="confirmAbnormalTerminationAction"
+    />
+    <ApprovalProgressPanel
+      business-type="spot_procurement_version"
+      :business-id="detail?.currentVersion.id"
+      :refresh-key="JSON.stringify(detail)"
     />
   </section>
 </template>

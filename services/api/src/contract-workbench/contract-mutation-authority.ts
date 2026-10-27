@@ -54,6 +54,7 @@ const EXIT_CANDIDATE_TARGETS = new Set([
   "POST\u0000ContractWorkbenchController\u0000restoreCheckpoint",
   "POST\u0000ContractWorkbenchController\u0000void",
   "POST\u0000ContractController\u0000copyAbandonedDraft",
+  "POST\u0000ContractController\u0000remindApproval",
   "POST\u0000ContractController\u0000submitApproval",
   "PUT\u0000ContractBillController\u0000replaceRows"
 ]);

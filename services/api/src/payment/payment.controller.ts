@@ -1,4 +1,5 @@
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
+import { ApprovalProgressService } from "../approval/approval-progress.service";
 import {
   BadRequestException,
   Body,
@@ -42,7 +43,8 @@ export class PaymentController {
     private readonly paymentRead: PaymentReadService,
     private readonly payments: PaymentRequestService,
     private readonly projectVisibility: ProjectVisibilityService,
-    @Optional() private readonly files?: FileService
+    @Optional() private readonly files?: FileService,
+    @Optional() private readonly approvalProgress?: ApprovalProgressService
   ) {}
 
   @Post()
@@ -130,13 +132,14 @@ export class PaymentController {
     return this.payments.abandonReturnedRequest(paymentId, user.id, body);
   }
 
-  // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。
+  // 旧 HTTP 入口由 RetiredWriteEntryGuard 返回 410；内部委托不构成公共办理入口。
   @Post(":paymentId/approval-reminder")
   remindApproval(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.payments.remindApproval(paymentId, user.id);
+    if (!this.approvalProgress) throw new BadRequestException("审批催办服务暂不可用");
+    return this.approvalProgress.remindBusiness("payment_request", paymentId, user.id);
   }
 
   @Post(":paymentId/executions")

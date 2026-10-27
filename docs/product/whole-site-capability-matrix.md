@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f952c3ab8e38cd6bc5a7fa973e27923d1a0b12f52d0ccf36941403dd6ebf7fe2` |
-| webApiWrappers | ready | `2ec6a9d4fe27c2d196d9afc0aeb80707a51ae03eccab6ac13f338b90ccd17d56` |
-| webPageActions | ready | `865241478754226da95d878927487ee5060568ffdc43c2947cc46368d50b99e8` |
-| routeUsage | ready | `9dc81974ef1f3e601bcdb6e6e98ca335afe6412fcd4afce402d04e207cb08118` |
+| nestRoutes | ready | `48c012340c53a82081c55ceecbbdfa09233a13e182a9f612ea5f1337d6d30bb0` |
+| webApiWrappers | ready | `520198da309bc6126be03abe266b15eb05372f5b9da7ea9b7591979e00d1e604` |
+| webPageActions | ready | `7653178b171afd9f810862e06de37747a1f0c85419e8e1a1fab38f7175f08cab` |
+| routeUsage | ready | `44f164edc05438c727fa708f83777657498a442c9a259b65cb97bcaceb5e5bc0` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 692 |
+| routeCount | 695 |
 | pageRouteCount | 489 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 96 |
+| exitCandidateRouteCount | 99 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 685 |
+| mainRequestBindingCount | 688 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 394 |
-| actionBindingCount | 454 |
-| acceptedActionBindingCount | 417 |
+| registeredActionCount | 392 |
+| actionBindingCount | 452 |
+| acceptedActionBindingCount | 415 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 384 |
-| coveredProductionMutationConsumerPairCount | 384 |
+| productionMutationConsumerPairCount | 382 |
+| coveredProductionMutationConsumerPairCount | 382 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -54,6 +54,8 @@
 | GET | /approval-delegations/user-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationUserOptions | — | not_applicable | — |
 | GET | /approval-forms/:businessType/:businessId/capability | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#approvalDocumentCapability | — | not_applicable | — |
 | GET | /approval-forms | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#listApprovalDocuments | — | not_applicable | — |
+| GET | /approval-progress/:instanceId | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchApprovalProgress | — | not_applicable | — |
+| GET | /approval-progress | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchRelatedApprovals | — | not_applicable | — |
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
@@ -305,6 +307,7 @@
 | POST | /affiliate-clearing-authorities | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /approval-delegations | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | not_applicable | — |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | approval-documents.download-form<br>contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
+| POST | /approval-progress/:instanceId/remind | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#remindApprovalBySms | approval-progress.remind-by-sms | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/login | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |
@@ -394,7 +397,7 @@
 | POST | /contract-workbench/:contractId/void | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#voidContractDraft | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction | contract-draft.abandon-application | covered | — |
 | POST | /contracts/:contractVersionId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateContractApproval | contract-approval.delegate | covered | — |
-| POST | /contracts/:contractVersionId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindContractApproval | contract-approval.remind | covered | — |
+| POST | /contracts/:contractVersionId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindContractApproval | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/approval-submission | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferContractApproval | contract-approval.transfer | covered | — |
 | POST | /contracts/:contractVersionId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractApprovalWithdrawalAction | contract-approval.withdraw | covered | — |
@@ -503,7 +506,7 @@
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |
-| POST | /payments/:paymentId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | payment-detail.remind | covered | — |
+| POST | /payments/:paymentId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | — | not_applicable | — |
 | POST | /payments/:paymentId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval | payment-detail.transfer | covered | — |
 | POST | /payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval | payment-detail.withdraw | covered | — |
 | POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executePaymentApprovalReviewAction | payment-approval.approve<br>payment-approval.reject | covered | — |
@@ -654,7 +657,7 @@
 | POST | /settlement-workbench/projects/:projectId/imports/:importId/apply | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport | settlement-import.apply | covered | — |
 | POST | /settlements/:settlementId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateSettlementApproval | settlement-detail.delegate | covered | — |
 | POST | /settlements/:settlementId/approval-pdf/latest | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf | settlement-detail.approval-pdf | covered | — |
-| POST | /settlements/:settlementId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | settlement-detail.remind | covered | — |
+| POST | /settlements/:settlementId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | — | not_applicable | — |
 | POST | /settlements/:settlementId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval | settlement-detail.transfer | covered | — |
 | POST | /settlements/:settlementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeSettlementApprovalWithdrawalAction | settlement-approval.withdraw | covered | — |
 | POST | /settlements/:settlementId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval | settlement-detail.review | covered | — |
