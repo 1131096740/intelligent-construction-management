@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expectApprovalProgressLoaded, mockApprovalProgress } from "./helpers/approval-progress-mocks";
 
 async function loginWithMockedAuth(page: Page, roleKeys: string[]) {
   await page.route("**/api/approval-delegations/user-options", (route) =>
@@ -27,6 +28,11 @@ async function loginWithMockedAuth(page: Page, roleKeys: string[]) {
 }
 
 async function routeCoreDetailMocks(page: Page) {
+  await mockApprovalProgress(page, [
+    { businessType: "contract_version", businessId: "contract-version-e2e" },
+    { businessType: "settlement", businessId: "JS-E2E-001" },
+    { businessType: "payment_request", businessId: "FK-E2E-001" }
+  ]);
   await page.route("**/api/me/work-items", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -482,6 +488,7 @@ test("core detail pages expose flow summaries, actions, files, and timelines", a
 
   await page.goto("/contracts/HT-E2E-001");
   await expect(page.getByRole("heading", { name: "E2E 钢材采购合同" })).toBeVisible();
+  await expectApprovalProgressLoaded(page);
   await expect(page.locator(".business-detail-header")).toContainText("¥1,200,000.00");
   await expect(page.locator(".business-detail-header")).toContainText("确认归档");
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
@@ -494,6 +501,7 @@ test("core detail pages expose flow summaries, actions, files, and timelines", a
 
   await page.goto("/settlements/JS-E2E-001");
   await expect(page.getByRole("heading", { name: "E2E 结算单" })).toBeVisible();
+  await expectApprovalProgressLoaded(page);
   await expect(page.locator(".business-detail-header").filter({ hasText: "主管确认归档" })).toBeVisible();
   await expect(page.getByText("剩余可申请")).toBeVisible();
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
@@ -503,6 +511,7 @@ test("core detail pages expose flow summaries, actions, files, and timelines", a
 
   await page.goto("/payments/FK-E2E-001");
   await expect(page.getByRole("heading", { name: "E2E 付款申请" })).toBeVisible();
+  await expectApprovalProgressLoaded(page);
   await expect(page.locator(".business-detail-header").filter({ hasText: "出纳付款登记" })).toBeVisible();
   await expect(page.getByText("审批通过不等于实际付款完成")).toBeVisible();
   await page.locator(".detail-navigation").getByText("流程", { exact: true }).click();
@@ -541,6 +550,7 @@ test("RC-06 mocked contract detail remains operable on the configured mobile pro
   await expect(page.locator(".business-detail-header")).toContainText("确认归档");
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
   await expect(page.getByText("当前账号在此单据暂无可办理动作。")).toBeVisible();
+  await expectApprovalProgressLoaded(page);
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
