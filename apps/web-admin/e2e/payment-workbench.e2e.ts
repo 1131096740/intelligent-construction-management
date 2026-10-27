@@ -9,6 +9,7 @@ import {
   type TestInfo
 } from "@playwright/test";
 import { expectNoDocumentHorizontalOverflow } from "./helpers/responsive-assertions";
+import { expectApprovalProgressLoaded, mockApprovalProgress } from "./helpers/approval-progress-mocks";
 
 interface PaymentReviewRequest {
   paymentId: string;
@@ -290,6 +291,10 @@ async function mockPaymentExecutionRequests(
   page: Page,
   capture: PaymentExecutionRequestCapture
 ) {
+  await mockApprovalProgress(page, [
+    { businessType: "payment_request", businessId: "payment-execution-desktop" },
+    { businessType: "payment_request", businessId: "payment-execution-mobile" }
+  ]);
   await page.route(
     "**/api/payments/payment-execution-*/execution-voucher-file-uploads",
     async (route) => {
@@ -348,6 +353,10 @@ async function mockPaymentApprovalRequests(
   page: Page,
   requests: PaymentReviewRequest[]
 ) {
+  await mockApprovalProgress(page, [
+    { businessType: "payment_request", businessId: "payment-review-approve", pending: true },
+    { businessType: "payment_request", businessId: "payment-review-reject", pending: true }
+  ]);
   await page.route("**/api/payments/payment-review-**", async (route) => {
     const request = route.request();
     const segments = new URL(request.url()).pathname
@@ -438,6 +447,7 @@ function captureBrowserErrors(page: Page) {
 
 async function expectPaymentPageHealthy(page: Page) {
   await expect(page.locator("#main-content")).not.toBeEmpty();
+  await expectApprovalProgressLoaded(page);
   await expect(
     page.locator(
       "vite-error-overlay, #webpack-dev-server-client-overlay"
