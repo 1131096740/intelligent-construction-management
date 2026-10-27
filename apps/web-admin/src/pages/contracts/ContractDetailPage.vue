@@ -351,14 +351,7 @@
                 >
                   撤回
                 </t-button>
-                <t-button
-                  v-if="isContractActionEnabled('remind_approval')"
-                  variant="outline"
-                  :loading="archiveActionBusy === 'remindApproval'"
-                  @click="submitContractReminder"
-                >
-                  催办
-                </t-button>
+
                 <t-button
                   v-if="isContractActionEnabled('transfer_approval')"
                   :theme="buttonTheme('transfer_approval')"
@@ -1228,12 +1221,18 @@
         {{ changeError }}
       </p>
     </t-dialog>
+    <ApprovalProgressPanel
+      business-type="contract_version"
+      :business-id="contractDetail?.contractVersionId"
+      :refresh-key="JSON.stringify(contractDetail)"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -1259,7 +1258,6 @@ import {
   getPrivateFileDownloadTicketCapability,
   prepareContractApprovalWithdrawalAction,
   prepareContractApprovalReviewAction,
-  remindContractApproval,
   returnMutuallySignedContractForCorrection,
   transferContractApproval,
   uploadContractArchiveFile,
@@ -1352,20 +1350,6 @@ async function downloadContractApprovalFormWithCapability(
   const operationAllowed = capability.availableActionKeys.includes("download_approval_form");
   if (!operationAllowed) throw new Error("当前用户不能下载合同审批单");
   return requestApprovalFormDownload("contract_version", contractVersionId, body);
-}
-
-async function remindContractApprovalWithCapability(
-  contractId: string,
-  contractVersionId: string
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("remind_approval");
-  if (!operationAllowed) throw new Error("当前用户不能催办合同审批");
-  return remindContractApproval(contractVersionId);
 }
 
 async function transferContractApprovalWithCapability(
@@ -3934,21 +3918,6 @@ function confirmContractWithdrawal() {
     }
   });
   return execution;
-}
-
-async function submitContractReminder() {
-  const key = "remindApproval";
-  const contractId = routeContractId();
-  const contractVersionId = currentContractVersionId();
-  beginContractLifecycleAction(key);
-  try {
-    await remindContractApprovalWithCapability(contractId, contractVersionId);
-    await completeContractLifecycleAction();
-  } catch (error) {
-    failContractLifecycleAction(error);
-  } finally {
-    finishContractLifecycleAction(key);
-  }
 }
 
 async function submitContractPdfGeneration() {

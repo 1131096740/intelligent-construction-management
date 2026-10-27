@@ -24,6 +24,11 @@ describe("payment capability gates", () => {
     expect(workbenchPage).toContain('"create_payment"');
   });
 
+  it("uses the shared participant-authorized SMS reminder panel", () => {
+    expect(detailPage).toContain("<ApprovalProgressPanel");
+    expect(detailPage).toContain('business-type="payment_request"');
+  });
+
   it.each([
     ["abandon_application", "abandonPaymentRequestWithCapability"],
     ["delegate_approval", "delegatePaymentApprovalWithCapability"],
@@ -31,7 +36,6 @@ describe("payment capability gates", () => {
     ["archive_pdf", "generatePaymentPdfArchiveWithCapability"],
     ["record_finance", "recordPaymentFinanceWithCapability"],
     ["archive_pdf", "recordPaymentPdfArchiveWithCapability"],
-    ["remind_approval", "remindPaymentApprovalWithCapability"],
     ["transfer_approval", "transferPaymentApprovalWithCapability"],
     ["withdraw_approval", "withdrawPaymentApprovalWithCapability"]
   ])("rechecks the fresh %s payment action before mutation", (action, helper) => {

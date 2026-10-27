@@ -3,15 +3,15 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 692,
-    "classificationOverrideCount": 219,
+    "routeCount": 695,
+    "classificationOverrideCount": 222,
     "derivedProductionPageCount": 473,
-    "classificationOverrideSha256": "30ef73f5d88d4e1468e36bec2117c9a36d5e9bc80f91b3801f6079a3a10999f5",
+    "classificationOverrideSha256": "7699a4b8cc0fd88e24bfc3300dcd67df59a5cdecdfccc6a9c0c206b76df37a26",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
     "usageCounts": {
       "page": 489,
       "external_takeover": 70,
-      "exit_candidate": 96,
+      "exit_candidate": 99,
       "internal_task": 37,
       "unclassified": 0
     },
@@ -21,7 +21,7 @@
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 107
+      "none": 110
     }
   },
   "overrides": [
@@ -1338,6 +1338,24 @@
       "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
       "usage": "internal_task",
       "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/approval-reminder",
+      "usage": "exit_candidate",
+      "reason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/payments/:paymentId/approval-reminder",
+      "usage": "exit_candidate",
+      "reason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-reminder",
+      "usage": "exit_candidate",
+      "reason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization"
     }
   ],
   "consumerSurfaceOverrides": [

@@ -14,24 +14,24 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "f952c3ab8e38cd6bc5a7fa973e27923d1a0b12f52d0ccf36941403dd6ebf7fe2",
+      "sha256": "48c012340c53a82081c55ceecbbdfa09233a13e182a9f612ea5f1337d6d30bb0",
       "status": "ready",
       "summary": {
-        "routeCount": 692
+        "routeCount": 695
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "2ec6a9d4fe27c2d196d9afc0aeb80707a51ae03eccab6ac13f338b90ccd17d56",
+      "sha256": "520198da309bc6126be03abe266b15eb05372f5b9da7ea9b7591979e00d1e604",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 39,
-        "exportedFunctionCount": 668,
-        "transportWrapperCount": 646,
+        "apiModuleCount": 40,
+        "exportedFunctionCount": 671,
+        "transportWrapperCount": 649,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 685,
+        "mainRequestBindingCount": 688,
         "ticketFollowupCount": 4,
-        "requestEdgeCount": 673,
+        "requestEdgeCount": 676,
         "productionConsumerCount": 553,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
@@ -42,42 +42,42 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "865241478754226da95d878927487ee5060568ffdc43c2947cc46368d50b99e8",
+      "sha256": "7653178b171afd9f810862e06de37747a1f0c85419e8e1a1fab38f7175f08cab",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 394,
+        "registeredActionCount": 392,
         "pageActionCount": 56,
-        "backgroundActionCount": 338,
-        "reachableVueFileCount": 195,
+        "backgroundActionCount": 336,
+        "reachableVueFileCount": 197,
         "routeRootCount": 70,
-        "totalVueFileCount": 209,
-        "parsedVueFileCount": 209,
-        "reachableProductionModuleCount": 340,
-        "templateEventDirectiveCount": 1228,
+        "totalVueFileCount": 211,
+        "parsedVueFileCount": 211,
+        "reachableProductionModuleCount": 343,
+        "templateEventDirectiveCount": 1229,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 384,
-        "candidateProductionMutationConsumerCount": 384,
-        "acceptedProductionMutationConsumerCount": 384,
-        "productionMutationConsumerPairCount": 384,
+        "coveredProductionMutationConsumerCount": 382,
+        "candidateProductionMutationConsumerCount": 382,
+        "acceptedProductionMutationConsumerCount": 382,
+        "productionMutationConsumerPairCount": 382,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9dc81974ef1f3e601bcdb6e6e98ca335afe6412fcd4afce402d04e207cb08118",
+      "sha256": "44f164edc05438c727fa708f83777657498a442c9a259b65cb97bcaceb5e5bc0",
       "status": "ready",
       "summary": {
-        "routeCount": 692,
-        "exactRouteCount": 692,
-        "normalizedRouteCount": 692,
-        "classificationOverrideCount": 219,
+        "routeCount": 695,
+        "exactRouteCount": 695,
+        "normalizedRouteCount": 695,
+        "classificationOverrideCount": 222,
         "consumerSurfaceOverrideCount": 38,
-        "classificationOverrideSha256": "30ef73f5d88d4e1468e36bec2117c9a36d5e9bc80f91b3801f6079a3a10999f5",
+        "classificationOverrideSha256": "7699a4b8cc0fd88e24bfc3300dcd67df59a5cdecdfccc6a9c0c206b76df37a26",
         "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
         "derivedProductionPageCount": 473,
         "pageRouteCount": 489,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 96,
+        "exitCandidateCount": 99,
         "internalTaskCount": 37,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
@@ -86,30 +86,30 @@
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 35,
-          "none": 107
+          "none": 110
         },
         "blockerCount": 0
       }
     }
   },
   "summary": {
-    "routeCount": 692,
+    "routeCount": 695,
     "pageRouteCount": 489,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 96,
+    "exitCandidateRouteCount": 99,
     "internalTaskRouteCount": 37,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 685,
+    "mainRequestBindingCount": 688,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 394,
-    "actionBindingCount": 454,
-    "acceptedActionBindingCount": 417,
+    "registeredActionCount": 392,
+    "actionBindingCount": 452,
+    "acceptedActionBindingCount": 415,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 384,
-    "coveredProductionMutationConsumerPairCount": 384,
+    "productionMutationConsumerPairCount": 382,
+    "coveredProductionMutationConsumerPairCount": 382,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -873,6 +873,89 @@
             "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
           ],
           "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/approval-progress/:instanceId",
+        "normalizedKey": "GET /approval-progress/:param",
+        "controller": "ApprovalProgressController",
+        "handler": "detail",
+        "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+          "wrapper": "fetchApprovalProgress",
+          "method": "GET",
+          "path": "/approval-progress/:param",
+          "normalizedKey": "GET /approval-progress/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/approval-progress",
+        "normalizedKey": "GET /approval-progress",
+        "controller": "ApprovalProgressController",
+        "handler": "list",
+        "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+          "wrapper": "fetchRelatedApprovals",
+          "method": "GET",
+          "path": "/approval-progress?:param",
+          "normalizedKey": "GET /approval-progress",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+            "apps/web-admin/src/components/RelatedApprovalList.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/approval-progress.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -14115,6 +14198,74 @@
     {
       "route": {
         "method": "POST",
+        "path": "/approval-progress/:instanceId/remind",
+        "normalizedKey": "POST /approval-progress/:param/remind",
+        "controller": "ApprovalProgressController",
+        "handler": "remind",
+        "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+          "wrapper": "remindApprovalBySms",
+          "method": "POST",
+          "path": "/approval-progress/:param/remind",
+          "normalizedKey": "POST /approval-progress/:param/remind",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/approval-progress.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "approval-progress.remind-by-sms",
+          "bindingIndex": 0,
+          "identity": "approval-progress.remind-by-sms\u0000apps/web-admin/src/api/approval-progress.api.ts\u0000remindApprovalBySms\u0000POST\u0000POST /approval-progress/:param/remind\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canRemind",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+          "wrapper": "remindApprovalBySms",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/auth/change-password",
         "normalizedKey": "POST /auth/change-password",
         "controller": "AuthController",
@@ -19282,8 +19433,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -19292,44 +19443,15 @@
           "path": "/contracts/:param/approval-reminder",
           "normalizedKey": "POST /contracts/:param/approval-reminder",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "contract-approval.remind",
-          "bindingIndex": 0,
-          "identity": "contract-approval.remind\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000remindContractApproval\u0000POST\u0000POST /contracts/:param/approval-reminder\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActionKeys",
-            "key": "remind_approval",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "remindContractApproval",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -26948,8 +27070,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -26958,44 +27080,15 @@
           "path": "/payments/:param/approval-reminder",
           "normalizedKey": "POST /payments/:param/approval-reminder",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "payment-detail.remind",
-          "bindingIndex": 0,
-          "identity": "payment-detail.remind\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000remindPaymentApproval\u0000POST\u0000POST /payments/:param/approval-reminder\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "remind_approval",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "remindPaymentApproval",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -36771,8 +36864,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -36781,44 +36874,15 @@
           "path": "/settlements/:param/approval-reminder",
           "normalizedKey": "POST /settlements/:param/approval-reminder",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "settlement-detail.remind",
-          "bindingIndex": 0,
-          "identity": "settlement-detail.remind\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000remindSettlementApproval\u0000POST\u0000POST /settlements/:param/approval-reminder\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "remind_approval",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "remindSettlementApproval",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {

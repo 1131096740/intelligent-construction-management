@@ -301,3 +301,32 @@ describe("executive OR dual-role identity", () => {
     expect(resolveApprovalReviewIdentity({ node, actorUserId: "leader", actorRoleKeys: [] })).toBeNull();
   });
 });
+
+
+describe("standing delegation preserves the selected frozen person", () => {
+  const baseNode = {
+    roleKeys: ["finance_director"],
+    candidateUserIdsByRole: { finance_director: ["finance-a", "finance-b"] },
+    roleScopesByRole: { finance_director: "global" },
+    selectedUserId: "finance-b"
+  } as const;
+  const identityFor = (fromUserId: string, node: object = baseNode) => resolveApprovalReviewIdentity({
+    node, actorUserId: "delegate", actorRoleKeys: [],
+    actorRoleScopes: { globalRoleKeys: [], projectRoleKeys: [] },
+    activeDelegators: [{ userId: fromUserId, roleKeys: ["finance_director"], roleScopes: { globalRoleKeys: ["finance_director"], projectRoleKeys: [] } }]
+  });
+  it("rejects a standing delegate of an unselected candidate", () => {
+    expect(identityFor("finance-a")).toBeNull();
+  });
+  it("accepts a standing delegate of the selected candidate", () => {
+    expect(identityFor("finance-b")).toEqual({ approvedRoleKey: "finance_director", representedUserId: "finance-b", viaAssignment: false });
+  });
+  it.each([null, "", "missing-person"])("fails closed when selectedUserId is %s", selectedUserId => {
+    expect(identityFor("finance-a", { ...baseNode, selectedUserId })).toBeNull();
+    expect(identityFor("finance-b", { ...baseNode, selectedUserId })).toBeNull();
+  });
+  it("keeps role-only frozen candidates available when no person was selected", () => {
+    const node = { roleKeys: baseNode.roleKeys, candidateUserIdsByRole: baseNode.candidateUserIdsByRole, roleScopesByRole: baseNode.roleScopesByRole };
+    expect(identityFor("finance-a", node)).toEqual({ approvedRoleKey: "finance_director", representedUserId: "finance-a", viaAssignment: false });
+  });
+});

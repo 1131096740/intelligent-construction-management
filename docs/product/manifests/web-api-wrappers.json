@@ -7,13 +7,13 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 39,
-    "exportedFunctionCount": 668,
-    "transportWrapperCount": 646,
+    "apiModuleCount": 40,
+    "exportedFunctionCount": 671,
+    "transportWrapperCount": 649,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 685,
+    "mainRequestBindingCount": 688,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 673,
+    "requestEdgeCount": 676,
     "productionConsumerCount": 553,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 361,
-    "reachableProductionModuleCount": 340
+    "productionModuleCount": 364,
+    "reachableProductionModuleCount": 343
   },
   "wrappers": [
     {
@@ -79,6 +79,92 @@
         "apps/web-admin/src/pages/approval-center/ApprovalDocumentsPage.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchApprovalProgress",
+      "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 35,
+          "method": "GET",
+          "path": "/approval-progress/:param",
+          "normalizedPath": "/approval-progress/:param",
+          "normalizedKey": "GET /approval-progress/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchApprovalProgress"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchRelatedApprovals",
+      "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 31,
+          "method": "GET",
+          "path": "/approval-progress?:param",
+          "normalizedPath": "/approval-progress",
+          "normalizedKey": "GET /approval-progress",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchRelatedApprovals"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/approval-progress.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+        "apps/web-admin/src/components/RelatedApprovalList.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "remindApprovalBySms",
+      "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 39,
+          "method": "POST",
+          "path": "/approval-progress/:param/remind",
+          "normalizedPath": "/approval-progress/:param/remind",
+          "normalizedKey": "POST /approval-progress/:param/remind",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "remindApprovalBySms"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/approval-progress.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/ApprovalProgressPanel.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -9916,9 +10002,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -9946,9 +10030,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -9976,9 +10058,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -20624,6 +20704,24 @@
     {
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "wrapper": "recordProjectUpstreamSettlement",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "remindContractApproval",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "remindPaymentApproval",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "remindSettlementApproval",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },

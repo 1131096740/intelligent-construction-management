@@ -60,3 +60,11 @@ describe("contract mutation authority", () => {
     ).toEqual(["save_contract_draft"]);
   });
 });
+
+
+it("classifies the retired contract reminder as an exit candidate", () => {
+  expect(classifyContractMutationRoute({
+    method: "POST", controller: "ContractController", handler: "remindApproval",
+    contractCutoverSurface: true, contractCutoverLegacyWrite: false, contractCutoverTombstoneWrite: false
+  })).toEqual({ authority: "exit_candidate", authorityRule: "registered_exit_candidate" });
+});

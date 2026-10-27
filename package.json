@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "verify:approval-progress:local": "pnpm --filter @jiangkong/api verify:approval-progress:local",
     "dev:api": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api dev",
     "dev:web": "node scripts/pnpm-workspace.mjs --filter @jiangkong/web-admin dev",
     "lint": "node scripts/pnpm-workspace.mjs -r lint",

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -2368,6 +2369,11 @@ watch(
         @cancel="cancelConfirmation"
       />
     </template>
+    <ApprovalProgressPanel
+      business-type="spot_procurement_payment"
+      :business-id="payment?.id"
+      :refresh-key="JSON.stringify(detail)"
+    />
   </section>
 </template>
 

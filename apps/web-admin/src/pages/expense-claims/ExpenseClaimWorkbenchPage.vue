@@ -130,7 +130,7 @@ onMounted(() => void loadWorkbench());
   <JgWorkbenchShell
     class="expense-claim-workbench"
     title="费用与报销工作台"
-    description="只展示当前账号作为报销人、借款人或经办人的新版费用事实；旧项目支出继续作为历史兼容域单独保留。"
+    description="展示本人申请、经办及参与审批的费用，可查看完整流程并短信催办。"
   >
     <template #actions>
       <t-button

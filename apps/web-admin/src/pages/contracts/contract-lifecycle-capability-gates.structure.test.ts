@@ -17,6 +17,11 @@ describe("contract lifecycle capability gates", () => {
     );
   });
 
+  it("uses the shared participant-authorized SMS reminder panel", () => {
+    expect(detail).toContain("<ApprovalProgressPanel");
+    expect(detail).toContain('business-type="contract_version"');
+  });
+
   it.each([
     ["download_approval_form", "downloadContractApprovalFormWithCapability"],
     ["confirm_archive", "confirmContractArchiveWithCapability"],
@@ -27,7 +32,6 @@ describe("contract lifecycle capability gates", () => {
     ["confirm_final_contract", "confirmContractFinalFileWithCapability"],
     ["transfer_approval", "transferContractApprovalWithCapability"],
     ["delegate_approval", "delegateContractApprovalWithCapability"],
-    ["remind_approval", "remindContractApprovalWithCapability"],
     ["generate_pdf_archive", "generateContractPdfArchiveWithCapability"],
     ["upload_archive", "associateContractArchiveFileWithCapability"]
   ])("rechecks the fresh %s server action before mutation", (action, helper) => {

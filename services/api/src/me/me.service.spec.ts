@@ -802,6 +802,8 @@ describe("MeService", () => {
 
     expect(result.total).toBe(40);
     expect(result.items).toHaveLength(31);
+    expect(result.items.filter((item) => item.agingStatus === "current")).toHaveLength(30);
+    expect(result.items.filter((item) => item.agingStatus === "stale")).toHaveLength(1);
     expect(result.items).toContainEqual(expect.objectContaining({
       id: "settlement-draft:settlement-draft-0",
       agingStatus: "stale"

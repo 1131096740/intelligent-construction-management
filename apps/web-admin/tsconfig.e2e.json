@@ -8,6 +8,7 @@
   "include": [
     "src/env.d.ts",
     "e2e/**/*.ts",
+    "playwright.approval-progress.config.ts",
     "playwright.config.ts",
     "playwright.handwritten-signature.config.ts",
     "playwright.signature-real.config.ts",

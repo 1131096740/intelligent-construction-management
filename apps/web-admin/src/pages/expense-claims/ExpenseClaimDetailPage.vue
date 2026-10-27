@@ -4,6 +4,7 @@ import { GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import YuanMoneyInput from "../../components/YuanMoneyInput.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -530,7 +531,7 @@ onMounted(() => void loadDetail());
           :status="statusLabel(detail.status)"
           :status-tone="tone(detail.status)"
           :owner="detail.handledByNameSnapshot"
-          current-node="按冻结审批节点办理"
+          :current-node="detail.approval?.currentNodeName ?? (detail.status === 'draft' ? '待提交' : '流程已结束')"
           :next-step="detail.status === 'draft' ? '经办人提交' : '查看资金或审批进度'"
           :requested-amount="amount(detail.requestedAmountCents)"
         >
@@ -624,7 +625,7 @@ onMounted(() => void loadDetail());
           <div class="expense-claim-detail__review-form">
             <t-alert
               theme="info"
-              :message="`当前冻结节点：${detail.approval?.currentNodeName ?? '未知'}`"
+              :message="`当前审批环节：${detail.approval?.currentNodeName ?? '未知'}`"
             />
             <t-radio-group v-model="reviewForm.decision">
               <t-radio value="approve">
@@ -918,7 +919,7 @@ onMounted(() => void loadDetail());
               {{ detail.handledByNameSnapshot }}
             </t-descriptions-item>
             <t-descriptions-item label="事实证明人">
-              {{ detail.factWitnessNameSnapshot ?? '不适用' }}
+              {{ detail.factWitnessNameSnapshot ?? (detail.project ? '由项目经理审核' : '未记录') }}
             </t-descriptions-item>
             <t-descriptions-item label="提交时间">
               {{ date(detail.submittedAt) }}
@@ -1185,6 +1186,11 @@ onMounted(() => void loadDetail());
         </t-card>
       </template>
     </JgResultState>
+    <ApprovalProgressPanel
+      business-type="expense_claim"
+      :business-id="detail?.id"
+      :refresh-key="JSON.stringify(detail)"
+    />
   </section>
 </template>
 

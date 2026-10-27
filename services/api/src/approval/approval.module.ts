@@ -9,11 +9,16 @@ import { ApprovalDelegationService } from "./approval-delegation.service";
 import { ApprovalFormController } from "./approval-form.controller";
 import { ApprovalFormService } from "./approval-form.service";
 import { ApprovalFreezeService } from "./approval-freeze.service";
+import { ApprovalProgressController } from "./approval-progress.controller";
+import { ApprovalProgressService } from "./approval-progress.service";
+import { IndependentApprovalProgressService } from "./independent-approval-progress.service";
+import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
+import { ApprovalSmsService } from "./approval-sms.service";
 
 @Module({
   imports: [AuditModule, AuthModule, FileModule, SpotProcurementAccessModule],
-  controllers: [ApprovalDelegationController, ApprovalFormController],
-  providers: [ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService],
-  exports: [ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService]
+  controllers: [ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
+  providers: [ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
+  exports: [ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService]
 })
 export class ApprovalModule {}

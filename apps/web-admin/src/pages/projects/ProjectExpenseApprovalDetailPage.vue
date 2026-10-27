@@ -351,11 +351,17 @@
         <ApprovalTimeline :items="detail.approvalTimeline" />
       </t-card>
     </template>
+    <ApprovalProgressPanel
+      business-type="project_expense_request"
+      :business-id="String(route.params.expenseRequestId ?? '')"
+      :refresh-key="JSON.stringify(detail)"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { formatUnknownApiError } from "../../api/error-message";
+import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,

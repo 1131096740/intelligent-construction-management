@@ -16,6 +16,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ApprovalDelegationController: "approval",
   ApprovalFormController: "approval",
   AffiliateClearingAuthorityController: "finance",
+  ApprovalProgressController: "approval",
   AuthController: "account",
   BusinessEntryDefinitionController: "project",
   BusinessPartyController: "master_data",

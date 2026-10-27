@@ -25,6 +25,10 @@
       class="tab-bar"
     >
       <t-tab-panel
+        value="related"
+        label="我参与的流程"
+      />
+      <t-tab-panel
         v-for="view in approvalViews"
         :key="view.key"
         :value="view.key"
@@ -32,8 +36,9 @@
       />
     </t-tabs>
 
+    <RelatedApprovalList v-if="activeView === 'related'" />
     <div
-      v-if="loading && !workItems"
+      v-else-if="loading && !workItems"
       class="message"
     >
       正在读取审批任务...
@@ -72,6 +77,7 @@
 
 <script setup lang="ts">
 import { formatUnknownApiError } from "../../api/error-message";
+import RelatedApprovalList from "../../components/RelatedApprovalList.vue";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -99,7 +105,7 @@ const approvalViews: ApprovalView[] = [
 const router = useRouter();
 const loading = ref(false);
 const errorMessage = ref("");
-const activeView = ref<ApprovalCenterViewKey>("pendingApproval");
+const activeView = ref<ApprovalCenterViewKey | "related">("related");
 const workItems = ref<WorkItemsReadModel | null>(null);
 
 const emptyApprovalCenter = {
@@ -111,7 +117,7 @@ const emptyApprovalCenter = {
 } satisfies WorkItemsReadModel["approvalCenter"];
 
 const itemsByView = computed(() => workItems.value?.approvalCenter ?? emptyApprovalCenter);
-const activeItems = computed(() => itemsByView.value[activeView.value]);
+const activeItems = computed(() => activeView.value === "related" ? [] : itemsByView.value[activeView.value]);
 const activeViewMeta = computed(
   () => approvalViews.find((view) => view.key === activeView.value) ?? approvalViews[0]
 );
