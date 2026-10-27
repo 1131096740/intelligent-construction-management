@@ -114,7 +114,7 @@ export class IndependentApprovalProgressService {
     if (!cursor.startsWith(CURSOR_PREFIX) || cursor.length > 2048) throw new BadRequestException('审核列表位置无效，请重新加载');
     try {
       const value = object(JSON.parse(Buffer.from(cursor.slice(CURSOR_PREFIX.length), 'base64url').toString()));
-      if (typeof value.kind !== 'string' || !this.supports(value.kind) || (value.after !== undefined && typeof value.after !== 'string')) throw new Error('invalid cursor');
+      if (typeof value.kind !== 'string' || !this.supports(value.kind) || (value.after !== undefined && typeof value.after !== 'string')) throw new Error('审核列表位置无效');
       return { kind: value.kind, after: value.after as string | undefined };
     } catch { throw new BadRequestException('审核列表位置无效，请重新加载'); }
   }
