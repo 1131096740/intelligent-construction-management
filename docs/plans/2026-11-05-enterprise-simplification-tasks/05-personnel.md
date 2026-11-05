@@ -1,10 +1,10 @@
 # 05：统一岗位配置、自审和委托权限
 
-**状态：** `plan-confirmed` / `local-confirmed-boundary-integrated` / `github-open`；前置#385本地阶段和#386确认公开边界已关闭，已[领取#387](https://github.com/1131096740/intelligent-construction-management/issues/387#issuecomment-6656211089)。用户确认人员/项目岗位、委托、自审及权限的公开HTTP、公共服务与系统管理/审批UI边界，以合成数据库和短信网关覆盖跨项目权限、原因+本人密码、委托竞办及停用撤权；真实PG案例只准备。资源、迁移、真实短信、部署/生产写仍无授权，16/42/44硬门保留。
+**状态：** `plan-confirmed` / `local-confirmed-boundary-complete` / `pg-pending` / `github-closed`；前置#385本地阶段和#386确认公开边界已关闭，已[领取#387](https://github.com/1131096740/intelligent-construction-management/issues/387#issuecomment-6656211089)。用户确认人员/项目岗位、委托、自审及权限的公开HTTP、公共服务与系统管理/审批UI边界，以合成数据库和短信网关覆盖跨项目权限、原因+本人密码、委托竞办及停用撤权；真实PG案例只准备。资源、迁移、真实短信、部署/生产写仍无授权，16/42/44硬门保留。
 
 **本地补修阶段：** 首候选独审发现普通岗位敏感读取、无范围新委托、固定流程当前人员/缺岗与重复撤销列缺口，已按公开服务/HTTP/UI补修；本地受影响后端23组1129项、Web11组110项通过，仍待准确补修候选独立双轴复审，不提前关闭工单。公司岗位按领域本职与项目范围读取，普通项目岗位凭本人创建/提交/签批或合法当前待审职责读取敏感原单；新委托必须具体职责及期限，旧历史记录保留。详细阶段证据见[本地收据](../../progress/2026-11-05-enterprise-simplification-task05-local.md)。真实PG/SMS/存储送达均未验；42历史来源核对与16/42/44硬门不变。
 
-准确候选 `c37e0a7dac213e27420f32ee24f4edaf1fc35512` 独立双轴0项，已合中央 `6d7bd40a8f7a2f54d845320bf6c664d6dc3c7023` 并完成同树本地检查；详见[本地收据](../../progress/2026-11-05-enterprise-simplification-task05-local.md)。#387仍OPEN待父控准确封包、推送及收票；PG竞争/约束、真实历史来源和16/42/44硬门不计通过，07/11未提前领取。
+准确候选 `c37e0a7dac213e27420f32ee24f4edaf1fc35512` 独立双轴0项，已合中央 `6d7bd40a8f7a2f54d845320bf6c664d6dc3c7023` 并完成同树本地检查；详见[本地收据](../../progress/2026-11-05-enterprise-simplification-task05-local.md)。父控已推送准确945c2df4、完成源码封包核验并[关闭#387](https://github.com/1131096740/intelligent-construction-management/issues/387#issuecomment-6659753138)（2026-11-05T13:54:19Z）；PG竞争/约束、真实历史来源和16/42/44硬门不计通过。07/11源码前置已解除，待正式领取。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

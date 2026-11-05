@@ -1,6 +1,6 @@
 # 05 人员岗位、自审与职责委托：本地阶段收据
 
-本票为 #387。首候选 `b87be098730ecbf610d142541e72c4371c2c27bb` 保留首审历史；准确补修候选 `c37e0a7dac213e27420f32ee24f4edaf1fc35512` 已经独立[Standards](2026-11-05-enterprise-simplification-task05-standards.md)/[Spec](2026-11-05-enterprise-simplification-task05-spec.md)复核均0项。中央合并 `6d7bd40a8f7a2f54d845320bf6c664d6dc3c7023` 完整树与候选相同。本地确认边界已整合，#387仍OPEN待父控封包、推送及收票；没有迁移、真实PG资源、部署或生产写授权。
+本票为 #387。首候选 `b87be098730ecbf610d142541e72c4371c2c27bb` 保留首审历史；准确补修候选 `c37e0a7dac213e27420f32ee24f4edaf1fc35512` 已经独立[Standards](2026-11-05-enterprise-simplification-task05-standards.md)/[Spec](2026-11-05-enterprise-simplification-task05-spec.md)复核均0项。中央合并 `6d7bd40a8f7a2f54d845320bf6c664d6dc3c7023` 完整树与候选相同。父控已将准确945c2df4推送草稿PR并[关闭#387](https://github.com/1131096740/intelligent-construction-management/issues/387#issuecomment-6659753138)（2026-11-05T13:54:19Z），仅按本地确认公开边界收口；没有迁移、真实PG资源、部署或生产写授权。源码prepare/verify核3089文件/198份迁移源码，seal `7e125bf0ccc6c21d69aae7312f5b031910d87e99c20b179bf155c9d9fedc073a`，不代表执行迁移或PG通过。
 
 ## 中央准确合并验证
 
