@@ -17,6 +17,55 @@ TOOLS = Path("/private/tmp/jg-task08-docx4j-tools-20261105")
 
 
 class PublicExport(unittest.TestCase):
+    def test_mechanical_nine_point_layout_in_actual_public_cli_pdf(self):
+        from run_comparison import inspect
+        folder = Path("/private/tmp/jg-task08-document-receipts-20261105/mechanical-nine-point-single")
+        measured = inspect(folder / "actual.docx", folder / "actual.pdf")
+        self.assertEqual(measured["missingCharacterCounts"], {})
+        self.assertEqual(measured["missingTraceCharacterCounts"], {})
+        self.assertEqual(measured["physicalGlyphCandidates"], [])
+        self.assertEqual(len(measured["sourceContextCheckboxes"]), 2)
+        self.assertTrue(measured["allFontsEmbedded"] and measured["allPagesA4"])
+        self.assertEqual(measured["outOfPageText"], [])
+        receipt = json.loads((folder / "actual.export.json").read_text())
+        self.assertEqual(receipt["conversionCalls"], 1)
+        self.assertTrue(receipt["networkAndOutsideFileDenied"])
+        with pymupdf.open(folder / "actual.pdf") as document:
+            self.assertEqual(len(document), 12)
+            lines = [line for block in document[1].get_text("dict")["blocks"] for line in block.get("lines", [])]
+            quantities = [line for line in lines if "1.000" in "".join(s["text"] for s in line["spans"])]
+            self.assertEqual(len(quantities), 3)
+            for line in quantities:
+                self.assertEqual("".join(s["text"] for s in line["spans"]), "1.0000")
+                self.assertEqual([s["size"] for s in line["spans"]], [9.0])
+            table_box = document[1].get_drawings()[0]["rect"]
+            sizes = [s["size"] for line in lines for s in line["spans"] if table_box.contains(pymupdf.Rect(s["bbox"])) and s["text"].strip()]
+            self.assertGreaterEqual(min(sizes), 9.0)
+            body = re.sub(r"\s+", "", "".join(p.get_text() for p in document))
+            self.assertIn("合同金额（含税）：人民币75.0000元", body)
+            self.assertIn("表内不含税合计待确定", body)
+            self.assertNotIn("66.3717", body)
+            self.assertIn("单位名称（章）", document[-1].get_text())
+
+    def test_original_checkboxes_require_exact_source_context(self):
+        from run_comparison import inspect
+        folder = Path("/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before")
+        actual = inspect(folder / "actual.docx", folder / "actual.pdf")
+        self.assertEqual(actual["physicalGlyphCandidates"], [])
+        self.assertEqual(len(actual["sourceContextCheckboxes"]), 2)
+        self.assertTrue(all(item["glyph"] != 0 for item in actual["sourceContextCheckboxes"]))
+        with tempfile.TemporaryDirectory(prefix="task08-checkbox-negative-") as tmp:
+            mismatch = Path(tmp) / "different-source.docx"
+            with ZipFile(folder / "actual.docx") as original, ZipFile(mismatch, "w") as changed:
+                for name in original.namelist():
+                    data = original.read(name)
+                    if name == "word/document.xml":
+                        data = data.replace("□".encode(), b"", 1)
+                    changed.writestr(name, data)
+            rejected = inspect(mismatch, folder / "actual.pdf")
+            self.assertEqual(len(rejected["physicalGlyphCandidates"]), 2)
+            self.assertEqual(rejected["sourceContextCheckboxes"], [])
+
     def test_manifest_drift_and_external_relationships_are_rejected(self):
         source = TOOLS / "derived-layout-fix/labor-layout-fixed.docx"
         with tempfile.TemporaryDirectory(prefix="task08-export-reject-") as tmp:

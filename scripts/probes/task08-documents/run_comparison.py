@@ -37,7 +37,29 @@ def inspect(docx, pdf):
     pages, fonts, bad_boxes = [], {}, []
     extracted = "".join(page.get_text() for page in document)
     traced = "".join(chr(char[0]) for page in document for span in page.get_texttrace() for char in span["chars"])
+    # A literal checkbox is valid only at its original complete paragraph
+    # context and with an actual nonzero glyph. No blanket square whitelist.
+    trace_compact = compact(traced)
+    contexts = Counter(compact(p) for p in paragraphs if "□" in p)
+    allowed_squares = set()
+    for context, count in contexts.items():
+        matches = list(re.finditer(re.escape(context), trace_compact))
+        if len(matches) == count:
+            allowed_squares.update(match.start() + i for match in matches for i, c in enumerate(context) if c == "□")
+    physical, source_checkboxes, trace_index = [], [], 0
     for page in document:
+        for span in page.get_texttrace():
+            for char in span["chars"]:
+                value, glyph = char[:2]
+                character = chr(value)
+                if character.isspace():
+                    continue
+                item = {"page": page.number + 1, "unicode": hex(value), "glyph": glyph}
+                if value == 0xfffd or glyph == 0 or value == 0x25a1 and trace_index not in allowed_squares:
+                    physical.append(item)
+                elif value == 0x25a1:
+                    source_checkboxes.append(item)
+                trace_index += 1
         page_text = page.get_text()
         pages.append({"number": page.number + 1, "sizePt": list(page.rect)[2:], "characters": len(compact(page_text)), "rowMarkers": re.findall(r"样张行\d{3}", compact(page_text))})
         for font in page.get_fonts(full=True):
@@ -60,6 +82,8 @@ def inspect(docx, pdf):
     absent = [p for p in fragments if p not in actual]
     result = {"docxSha256": digest(docx), "pdfSha256": digest(pdf), "pages": pages, "fonts": list(fonts.values()), "outOfPageText": bad_boxes, "tablesCellCounts": tables, "docxTextCharacters": len(expected), "pdfTextCharacters": len(actual), "missingCharacterCounts": dict(missing), "missingTraceCharacterCounts": dict(Counter(expected) - Counter(compact(traced))), "paragraphsNotContiguousInPdf": absent, "manualClausePresent": "夜间作业须提前两天书面确认" in actual, "allFontsEmbedded": all(f["embeddedBytes"] > 0 for f in fonts.values()), "allPagesA4": all(abs(p["sizePt"][0] - 595.28) < 2 and abs(p["sizePt"][1] - 841.89) < 2 for p in pages)}
     document.close()
+    result["physicalGlyphCandidates"] = physical
+    result["sourceContextCheckboxes"] = source_checkboxes
     return result
 
 
@@ -117,7 +141,7 @@ def main():
     failures = []
     for result in results:
         for stage, inspection in result["inspections"].items():
-            if inspection["missingCharacterCounts"] or inspection["outOfPageText"] or not inspection["allFontsEmbedded"] or not inspection["allPagesA4"]:
+            if inspection["missingCharacterCounts"] or inspection["missingTraceCharacterCounts"] or inspection["physicalGlyphCandidates"] or inspection["outOfPageText"] or not inspection["allFontsEmbedded"] or not inspection["allPagesA4"]:
                 failures.append({"template": result["template"], "stage": stage, "missing": inspection["missingCharacterCounts"], "missingTrace": inspection["missingTraceCharacterCounts"], "a4": inspection["allPagesA4"]})
     (args.artifacts / "comparison.json").write_text(json.dumps({"overall": "needs-work" if failures else "measured-checks-only-pass", "limitations": ["same LibreOffice engine imports Word and exports PDF; native Microsoft Word pagination NOT VERIFIED", "character counts can be masked by repeated headers; never an exact full-text equivalence proof", "no legal or physical-device acceptance"], "failures": failures, "results": results}, ensure_ascii=False, indent=2) + "\n")
     if failures:

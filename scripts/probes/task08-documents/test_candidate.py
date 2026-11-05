@@ -13,6 +13,63 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 class CandidateCLI(unittest.TestCase):
+    def test_mechanical_totals_stay_short_and_context_syncs_outside_table(self):
+        import re
+        template = HERE / "samples/equipment-rental-real-v1.docx"
+        with ZipFile(template) as z:
+            source = ET.fromstring(z.read("word/document.xml"))
+            texts = "".join("".join(ET.fromstring(z.read(n)).itertext()) for n in z.namelist() if n.startswith("word/") and n.endswith(".xml"))
+            grid = ET.tostring(source.find(".//w:tbl/w:tblGrid", NS))
+        fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", texts)}
+        rows = [{"名称": f"样张行{i:03d}", "规格型号": "标准型", "数量": "1.0000", "单位": "台", "是否含燃油": "否", "是否带操作人员": "是", "不含税单价": "22.1239", "税率": "13", "含税单价": "25.0000", "备注": "验证"} for i in range(1, 4)]
+        with tempfile.TemporaryDirectory(prefix="task08-mechanical-") as tmp:
+            tmp = Path(tmp)
+            request = tmp / "request.json"
+            pricing = {"mode": "unit-price", "basis": "inclusive", "total": "75.0000", "uppercase": "人民币柒拾伍元整", "taxRate": "13%", "invoiceKind": "增值税专用发票"}
+            request.write_text(json.dumps({"fields": fields, "lists": {"机械租赁清单": rows}, "pricing": pricing, "printProfile": "a4-portrait"}))
+            first = tmp / "first.docx"
+            subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(template), "--request", str(request), "--output", str(first)], check=True)
+            with ZipFile(first) as z:xml = ET.fromstring(z.read("word/document.xml"))
+            table = xml.find(".//w:tbl", NS)
+            self.assertEqual(ET.tostring(table.find("w:tblGrid", NS)), grid)
+            for size in table.findall(".//w:rPr/w:sz", NS):
+                self.assertGreaterEqual(int(size.get("{" + NS["w"] + "}val")), 18)
+            self.assertNotIn("合同金额", "".join(table.itertext()))
+            controls = table.findall(".//w:sdt", NS)
+            numeric = next(c for c in controls if c.find("w:sdtPr/w:tag", NS).get("{" + NS["w"] + "}val") == "jg:key:语义.含税合计数值")
+            self.assertEqual("".join(numeric.itertext()), "75.0000")
+            net = next(c for c in controls if c.find("w:sdtPr/w:tag", NS).get("{" + NS["w"] + "}val") == "jg:key:语义.不含税合计数值")
+            self.assertEqual("".join(net.itertext()), "待确定")
+            body = xml.find("w:body", NS)
+            context = body[list(body).index(table) + 1]
+            self.assertEqual(context.tag, "{" + NS["w"] + "}p")
+            self.assertIn("合同金额（含税）：人民币75.0000元", "".join(context.itertext()))
+            for row in table.findall("w:tr", NS):
+                for cell in row.findall("w:tc", NS):
+                    if "".join(cell.itertext()) == "1.0000":
+                        for side in ["left", "right", "start", "end"]:
+                            self.assertEqual(cell.find("w:tcPr/w:tcMar/w:" + side, NS).get("{" + NS["w"] + "}w"), "40")
+            pricing.update({"basis": "exclusive", "total": "1.5340", "uppercase": "人民币壹元伍角叁分肆厘", "taxRate": None})
+            request.write_text(json.dumps({"pricing": pricing}))
+            after = tmp / "after.docx"
+            subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(first), "--request", str(request), "--output", str(after)], check=True)
+            with ZipFile(after) as z:xml = ET.fromstring(z.read("word/document.xml"))
+            numeric = next(c for c in xml.findall(".//w:tbl//w:sdt", NS) if c.find("w:sdtPr/w:tag", NS).get("{" + NS["w"] + "}val") == "jg:key:语义.含税合计数值")
+            self.assertEqual("".join(numeric.itertext()), "待确定")
+            net = next((c for c in xml.findall(".//w:tbl//w:sdt", NS) if c.find("w:sdtPr/w:tag", NS).get("{" + NS["w"] + "}val") == "jg:key:语义.不含税合计数值"), None)
+            self.assertIsNotNone(net, "net total must join the same authoritative pricing context")
+            self.assertEqual("".join(net.itertext()), "1.5340")
+            text = "".join(xml.itertext())
+            self.assertIn("合同金额（不含税）：人民币1.5340元", text)
+            self.assertIn("表内含税合计待确定", text)
+            self.assertNotIn("合同金额（含税）：人民币1.5340", text)
+            request.write_text(json.dumps({"fields": {"不含税总额": "9.9999"}}))
+            rejected = tmp / "rejected.docx"
+            result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(after), "--request", str(request), "--output", str(rejected)], capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b"one authoritative context", result.stderr)
+            self.assertFalse(rejected.exists())
+
     def test_ambiguous_table_loop_rejects_extra_unmapped_block(self):
         import re
         template = HERE / "samples/labor-subcontract-real-v1.docx"

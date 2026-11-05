@@ -3,7 +3,7 @@
   "task": "08",
   "status": "in-progress / candidate-not-accepted",
   "sourceBase": "f352d187b720a2e8231874775616c24e91eb3bd8",
-  "method": "DOCX-preserving field content controls + ordinary paragraph editing; native LibreOffice PDF/A-2b export",
+  "method": "DOCX-preserving candidate public CLI; historical default LibreOffice rejected; explicit pinned offline docx4j adapter under independent fidelity checks",
   "sourceManifestSha256": "c8790a0375224d3485695394eb059451cec07e1b148077980e77292a6ad6d56b",
   "versions": {
     "python": "3.11.15",
@@ -554,6 +554,50 @@
     {
       "path": "/private/tmp/task08-public-export-xd9ovvej/independent-inspection.json",
       "sha256": "c12834839edae153b02062f0ff69d851966386ee7462bfde2e021c8c0fb4f180"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/plan.json",
+      "sha256": "b603ab593fe2eb5783f98f3bffdadcfb7e8559e9854c89d043ecd60ee75641b2"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/results.json",
+      "sha256": "95afc1f24c3f5964456fd42402445c56bd3bbedd3741854ffd57addc205e0745"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/failure.json",
+      "sha256": "f6c5c25a48131c50524c3cc8c91a720fdc3a9f724a7ef26b3df54801c917f257"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/attempt-summary.json",
+      "sha256": "a574e65e61c2a76a3ad31d9d422fbf345b04f9b164799f66b28338ca3ccf33e6"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/actual.docx",
+      "sha256": "a49b105b272f4fa276511fcba8089d592d9423ea4c9b96d475bafbbda2eea995"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/actual.pdf",
+      "sha256": "5cd820bd9eb07cd6ade82a67f1942ae036d2f84ecb7582140f088f0c48f82554"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/actual.export.json",
+      "sha256": "cc126b19a68c86f7ddc1d172335f358c07cdeb13f3b38929df63aa59e1a6dc66"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/failure-inspection.json",
+      "sha256": "9cb4301cde7945c43318cd4da406cf44c42ac86093b13b4c6b2dd85a41643820"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/checkbox-cause.json",
+      "sha256": "3884ce0b4c0fc94283c51791f1afc56cb711d6be530cd9e415a094024217e64f"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/cell-layout-cause.json",
+      "sha256": "b59aeacca6cc1cff0637935a6110199b222606b81c3d94f8ca42d19827faae33"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/public-matrix18-20261105/01-equipment-rental-real-v1-before/visual-page-2.png",
+      "sha256": "3c0478883278801ea1773e1cea5ecd28e434dfb1a1e58b5cc14da5e3cb7ce0b1"
     }
   ],
   "followup": {
@@ -1409,6 +1453,120 @@
         "outOfPageText": []
       },
       "stillIncomplete": "new engine eight-template matrix18 exports not started; compact standards not accepted"
+    },
+    "publicMatrix18FirstAttempt": {
+      "status": "STOPPED_NOT_ACCEPTED_LAYOUT",
+      "exportsPlanned": 18,
+      "actualExports": 1,
+      "laterExportsNotExecuted": 17,
+      "candidateSha": "584b8ce087b854eebb2d1395bf28494814f696a6",
+      "firstCase": "equipment-rental-real-v1 before 3 rows",
+      "engineExit": 0,
+      "pdfPages": 12,
+      "textAndTraceMissingCharacters": {},
+      "allFontsEmbedded": true,
+      "allPagesA4": true,
+      "outOfPageTextCount": 0,
+      "automatedStop": "matrix erroneously marked literal U+25A1 as missing candidate",
+      "readOnlyCheckboxCause": {
+        "sourceLiteralCheckboxContexts": [
+          "含税单价中：（1）已含燃油费□（②燃油由乙方自行购买承担，不扣除，不调整单价）□；（2）进场费由甲方负责；（3）出场费由乙方负责；（4）场内机械转移费由甲方负责。"
+        ],
+        "sourceU25A1Count": 2,
+        "pdfU25A1Count": 2,
+        "observedGlyphIds": [
+          127,
+          127
+        ],
+        "assessment": "all-U25A1-is-missing predicate is overbroad; validate exact source checkbox context and nonzero glyph before classifying, no DOCX/engine/font/flags change"
+      },
+      "actualLayoutNotAccepted": [
+        "whole semantic pricing context occupies narrow numeric gross total cell, making total row excessively tall",
+        "quantity1.0000 wraps into1.000 plus0; no precision dropped but presentation unsuitable"
+      ],
+      "sourceOrParameterChangesAfterFailure": false,
+      "rerunPerformed": false,
+      "nextProposedScope": "source-aware checkbox validation, mechanical scalar numeric cell plus independent full-width semantic context, bounded quantity cell padding; first structure RED/GREEN then separately scoped real PDF"
+    },
+    "mechanicalSourceLayoutCheckpoint": {
+      "status": "single-nine-point-mechanical-measured-pass; task08-open; other17-hold",
+      "artifactDirectory": "/private/tmp/jg-task08-document-receipts-20261105/mechanical-nine-point-single",
+      "sourceSha256": "3b6d91cb09bd35ca5a97bc2e97d3deaa3e7fa08c299f735e4482f2f06a742714",
+      "pdfSha256": "a87a36b6ad44b3ec2713e21f7afbfb505d391e53ef9eca4be943a1c9705905a9",
+      "rendererSha256": "a017c17bed98b9e2985552f0f93ada03717c9e9a9ca5217161713046a9c901f3",
+      "inspectionSha256": "f8a36dff53ff249a207d673eb54a3471c08ab900240a1c82ac3ab67f303b2fc0",
+      "layoutMeasurementSha256": "1d4f94370d66e9d7bfb66462ddbdd77896960d34b8388b551500fa146eeab7c3",
+      "exportReceipt": {
+        "status": "EXPORTED_REQUIRES_INDEPENDENT_FIDELITY_CHECKS",
+        "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+        "scratch": "/private/tmp/jg-task08-docx4j-tools-20261105/public-cli-runs/export-oqynwmlb",
+        "sourceSha256": "3b6d91cb09bd35ca5a97bc2e97d3deaa3e7fa08c299f735e4482f2f06a742714",
+        "runtimeManifestSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+        "policySha256": "f5994c32ed5148a02bc9ceda500e67d35fbe16c7b3a365fdd3f931a1a6407010",
+        "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "conversionCalls": 1,
+        "childEnvironmentKeys": [
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR"
+        ],
+        "exitCode": 0,
+        "networkAndOutsideFileDenied": true,
+        "pdfSha256": "a87a36b6ad44b3ec2713e21f7afbfb505d391e53ef9eca4be943a1c9705905a9",
+        "usedFontNames": [
+          "FZXBSJW--GB1-0",
+          "FangSong_GB2312",
+          "SimHei",
+          "TimesNewRomanPS-BoldMT",
+          "TimesNewRomanPSMT"
+        ],
+        "sourceAndPinnedFilesUnchanged": true
+      },
+      "checks": {
+        "noMissingText": true,
+        "noBadGlyphs": true,
+        "exactSourceCheckboxes": true,
+        "embedded": true,
+        "a4": true,
+        "noOutpageText": true,
+        "threeSingleLineFourDecimalQuantities": true,
+        "tableMinimumNinePoint": true,
+        "shortTotalRow": true,
+        "signaturePreserved": true,
+        "noEmptyLastPage": true,
+        "sourceAssetsUnchanged": true,
+        "ordinarySourcePreserved": true,
+        "gridUnchanged": true
+      },
+      "pages": 12,
+      "originalTotalRowHeightPt": 193.604,
+      "newTotalRowHeightPt": 17.129,
+      "quantityFontPt": 9,
+      "quantityLines": 3,
+      "signatureRelativeGeometryPreserved": true,
+      "signatureSourceC14nIdentical": true,
+      "sourceTemplatesUnchanged": true,
+      "ordinarySourceParagraphsC14nRetained": true,
+      "checkboxRule": "only exact complete original source paragraph context + nonzero glyph; extra square, U+FFFD and glyph0 still rejected",
+      "pricingRule": "same authority supplies selected-basis numeric total; opposite-basis cell pending without inference; full context immediately after table; raw net/gross writes blocked on sync",
+      "fontCorrection": "previous9pt causal estimate incorrect; old source/PDF8.5pt retained. First source-fidelity correction8.5pt is NOT minimum-size-standard pass; subsequent authorized derived list table only promotes <9pt to9, larger fonts/families/body/signatures preserved",
+      "redGreenLogs": [
+        "20-mechanical-context-red.log",
+        "21-mechanical-structure-green.log",
+        "22-checkbox-source-context-green.log",
+        "23-mechanical-nine-point-red.log",
+        "24-mechanical-nine-point-structure-green.log",
+        "25-mechanical-net-sync-red.log",
+        "26-mechanical-net-sync-green.log (capture-group wiring error retained)",
+        "27-mechanical-net-sync-green.log",
+        "28-mechanical-nine-point-full-structure.log (wrong test method selector retained)",
+        "29-mechanical-nine-point-full-structure-green.log",
+        "30-mechanical-checkpoint-tests.log (10 passed, no new PDF conversion)"
+      ],
+      "scopeLimit": "one source-fidelity mechanical8.5pt then one separately authorized9pt actual public CLI PDF; rest17 paused; compact standards/full8/nativeWord and formal adoption not accepted"
     }
   }
 }

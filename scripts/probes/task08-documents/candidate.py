@@ -148,7 +148,7 @@ def wrap(node):
     return container
 
 
-def pricing_values(pricing):
+def pricing_values(pricing, mechanical_total=False):
     modes = {"framework": "框架按单价", "lumpsum": "包干", "unit-price": "按清单单价计价"}
     bases = {"inclusive": "含税", "exclusive": "不含税"}
     if pricing.get("mode") not in modes or pricing.get("basis") not in bases:
@@ -173,12 +173,23 @@ def pricing_values(pricing):
     display += "；发票类型：" + (invoice if invoice is not None else "待补充")
     if rate is None:
         display += "（不推算另一金额口径）"
-    return {"语义.金额展示": display, "计价方式": modes[pricing["mode"]], "税率": rate if rate is not None else "待补充", "发票类型": invoice if invoice is not None else "待补充"}
+    values = {"语义.金额展示": display, "计价方式": modes[pricing["mode"]], "税率": rate if rate is not None else "待补充", "发票类型": invoice if invoice is not None else "待补充"}
+    if mechanical_total:
+        # The existing narrow column is specifically tax-inclusive. A caller's
+        # exclusive contract total must never be relabelled as its gross value.
+        values["语义.含税合计数值"] = total if pricing["basis"] == "inclusive" and total is not None else "待确定"
+        values["语义.不含税合计数值"] = total if pricing["basis"] == "exclusive" and total is not None else "待确定"
+        if pricing["basis"] == "exclusive":
+            values["语义.金额展示"] += "；表内含税合计待确定"
+        else:
+            values["语义.金额展示"] += "；表内不含税合计待确定"
+    return values
 
 
 def render(parts, request, source_name=None):
     values = dict(request["fields"])
-    semantic = pricing_values(request["pricing"]) if "pricing" in request else None
+    mechanical = source_name == "equipment-rental-real-v1.docx"
+    semantic = pricing_values(request["pricing"], mechanical) if "pricing" in request else None
     if semantic:
         values.update(semantic)
     for name in list(parts):
@@ -189,7 +200,56 @@ def render(parts, request, source_name=None):
             literal = SEMANTIC_TOTAL_SOURCE.get(source_name)
             if not literal or text(root).count(literal) != 1:
                 raise ValueError("reviewed semantic total mapping must match exactly once")
-            substitute(root, {literal: "{语义.金额展示}"}, False, re.compile("(" + re.escape(literal) + ")"))
+            if mechanical:
+                paragraph = next(p for p in root.iter(W + "p") if literal in text(p))
+                table = next(paragraph.iterancestors(W + "tbl"))
+                if table.getparent().tag != W + "body":
+                    raise ValueError("mechanical pricing requires reviewed top-level table")
+                if text(table).count("{不含税总额}") != 1:
+                    raise ValueError("reviewed mechanical net total must match exactly once")
+                substitute(root, {literal: "{语义.含税合计数值}"}, False, re.compile("(" + re.escape(literal) + ")"))
+                substitute(table, {"{不含税总额}": "{语义.不含税合计数值}"}, False, re.compile("(" + re.escape("{不含税总额}") + ")"))
+                context = E.Element(W + "p")
+                props = E.SubElement(context, W + "pPr")
+                E.SubElement(props, W + "pStyle").set(W + "val", "Normal")
+                run = E.SubElement(context, W + "r")
+                rp = E.SubElement(run, W + "rPr")
+                E.SubElement(rp, W + "rFonts", {W + "ascii": "Times New Roman", W + "hAnsi": "Times New Roman", W + "eastAsia": "仿宋_GB2312"})
+                E.SubElement(rp, W + "sz").set(W + "val", "28")
+                E.SubElement(run, W + "t").text = "{语义.金额展示}"
+                table.addnext(context)
+            else:
+                substitute(root, {literal: "{语义.金额展示}"}, False, re.compile("(" + re.escape(literal) + ")"))
+        if name == "word/document.xml" and mechanical and request.get("printProfile") == "a4-portrait":
+            tables = [t for t in root.findall(W + "body/" + W + "tbl") if "暂估数量" in text(t)]
+            if len(tables) != 1:
+                raise ValueError("reviewed mechanical quantity column missing or ambiguous")
+            # Confirmed print standard: this reviewed list table has a 9pt
+            # minimum. Keep larger type, font families and every other table.
+            for size in tables[0].xpath(".//w:rPr/w:sz | .//w:rPr/w:szCs", namespaces=NS):
+                if int(size.get(W + "val")) < 18:
+                    size.set(W + "val", "18")
+            for row in tables[0].findall(W + "tr"):
+                before = row.find(W + "trPr/" + W + "gridBefore")
+                column = int(before.get(W + "val")) if before is not None else 0
+                for cell in row.findall(W + "tc"):
+                    span = cell.find(W + "tcPr/" + W + "gridSpan")
+                    width = int(span.get(W + "val")) if span is not None else 1
+                    if column == 2 and width == 1:
+                        props = cell.find(W + "tcPr")
+                        if props is None:
+                            props = E.Element(W + "tcPr")
+                            cell.insert(0, props)
+                        margins = props.find(W + "tcMar")
+                        if margins is None:
+                            margins = E.SubElement(props, W + "tcMar")
+                        for side in ["left", "right", "start", "end"]:
+                            edge = margins.find(W + side)
+                            if edge is None:
+                                edge = E.SubElement(margins, W + side)
+                            edge.set(W + "w", "40")
+                            edge.set(W + "type", "dxa")
+                    column += width
         expand(root, request.get("lists", {}))
         substitute(root, values)
         if name == "word/document.xml" and request.get("printProfile") == "a4-portrait":
@@ -226,10 +286,13 @@ def revise(parts, request):
     root = E.fromstring(parts["word/document.xml"], E.XMLParser(resolve_entities=False, no_network=True))
     updates = dict(request.get("fields", {}))
     tags = set(root.xpath(".//w:sdtPr/w:tag/@w:val", namespaces=NS))
-    if "jg:key:语义.金额展示" in tags and set(updates).intersection({"合同金额", "合同金额大写", "语义.金额展示", "计价方式", "税率", "发票类型"}):
+    dependent = {"合同金额", "合同金额大写", "语义.金额展示", "语义.含税合计数值", "语义.不含税合计数值", "计价方式", "税率", "发票类型"}
+    if "jg:key:语义.不含税合计数值" in tags:
+        dependent.add("不含税总额")
+    if "jg:key:语义.金额展示" in tags and set(updates).intersection(dependent):
         raise ValueError("semantic pricing must be synchronized as one authoritative context")
     if "pricing" in request:
-        semantic = pricing_values(request["pricing"])
+        semantic = pricing_values(request["pricing"], "jg:key:语义.含税合计数值" in tags)
         if "jg:key:语义.金额展示" not in tags:
             raise ValueError("pricing sync requires a reviewed semantic anchor")
         updates.update({key: value for key, value in semantic.items() if "jg:key:" + key in tags})
