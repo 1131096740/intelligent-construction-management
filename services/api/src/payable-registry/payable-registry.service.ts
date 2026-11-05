@@ -1543,8 +1543,10 @@ export class PayableRegistryService {
           nameSnapshot: contractVersion.companyEntityNameSnapshot,
           creditCodeSnapshot: contractVersion.companyEntityCreditCodeSnapshot }, approvedVersion);
       }
-      // An inactive actual payer must be an already recorded execution with a
-      // still verified bank-holder attestation. Authorization checks below remain mandatory.
+    }
+    // Every stopped-company exception needs reliable bank authority, whether
+    // the stopped entity is the original debtor, approved payer or actual payer.
+    if (companies.some(company => !company.isActive)) {
       if (!payerVerification || !payerAttestation || !actorUserId || !payerVerification.sourceRecordId.trim()) {
         throw new ConflictException("停用付款主体缺少原实付的有效银行账户核验依据");
       }

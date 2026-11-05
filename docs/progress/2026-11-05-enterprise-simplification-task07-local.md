@@ -94,3 +94,17 @@
 
 
 r2最终原metadata write/ready全链与contract-mutation check退出0：702 routes/656 wrappers/695 bindings/397 actions/0 blockers、86 retired，原369/369无失败跳过（jg-task07-r2-static369.log）；重派生物与ae65逐字节不变。r2仅四份付款/核销源码和公开测试改变；其余48份非Markdown路径（含Web、共享、guard、PG与全部派生物）逐项SHA-256等于ae65测时冻结。新source指纹7e34adc1ad2a6645d9d491c9b0bff7aa4ccbb2751f1b44ed0e6307d31cb10b76，外部jg-task07-r2-fingerprints.json。没有为状态MD合并重跑无影响UI，也未将旧独审0项继承为新候选审查通过。
+
+
+## 514独立复审后的r3共同例外门（2026-11-06）
+
+514aabf04c50606a62c7d7355f360c53a68db022的Standards0、Spec仍1P1原报告与r2完整证据保留。缺口是原批准A停用、实际B在用时，空银行sourceRecordId尚能进入已实付核销。本轮不再按具体停用者分别检查权威，而在本次解析的原债务/批准/实际公司任一目录停用时统一要求可靠银行authority、有效历史时间及当前证据active/hash一致；原合同冻结与实际主体身份校验、跨主体重新授权仍各自保留。全在用旧链规则不因本票泛改，无新TTL/银行模型/金融算法。
+
+公开confirm先运行63组合：同主体全在用/停用两状态，异主体A/B的四种active组合，以及原债务C单独停用，共7个真实状态（同一实体不能一边active一边inactive）；乘9种来源/签注/status/type/证据/hash/时间事实。61项正确，2项错误resolve：diff_01 missing_bank_source与diff_original_only missing_bank_source，RED日志/private/tmp/jg-task07-r3-payer-matrix-red.log。后补authority记录不存在负控，最终70组合（7×10）；负控明确case状态、往来、command receipt与audit均零写。
+
+组合正控保留同主体历史有效核验、A停用/B在用合法代付、A在用/B停用已实际冻结付款、A/B双停用及债务C单独停用；原B≠A已实际固定来源仍可办。status撤销/错误sourceType与证据异常按原规则验证。全在用组合是原链兼容控制：本票不扩大其历史source/证据门；仍按其既有同/异主体校验判断，不把未改旧链冒充新的停用例外证明。
+
+最终显式4文件完整Jest361/361，/private/tmp/jg-task07-r3-financial-final.log；API类型/lint/build为r3-api-types/lint/build.log。仅PayableRegistryService及公开spec变化，其余50份非Markdown路径（包括PaymentRequest的r2修复、Web、共享、委托guard、PG准备与派生物）逐SHA-256等于514。源指纹61d64a8c2ab2213193f22c63bcd94c6d5e152817a762dde23e6c1bfe3529cc28，外部r3-fingerprints.json；metadata/原369最终退出码与准确新候选由r3交接绑定。#387/#389保持OPEN，需完整双轴重审，真实PG和全部资源仍NOT RUN。
+
+
+r3原metadata全链检查退出0，702 routes/656 wrappers/695 bindings/397 actions/0 blockers/86 retired，contract-mutation 80 routes/22 advertised actions就绪；原静态编排369/369，0失败0跳过（jg-task07-r3-static369.log）。检查未豁免，派生物无需改写，PG库存523逻辑/CI522/manual1不变且未执行。精确新SHA、命令和日志SHA-256见/private/tmp/jg-task07-r3-handoff.json与.md。
