@@ -10,6 +10,8 @@ import { publishMappedSelectionLayout } from "./template-selection.test-support"
 
 describe("task09 true new contract to published Word selection in desktop and mobile", () => {
   it("uses real create, save, selectors, queue and downloadable DOCX with all production guards", async () => {
+    const fontDir = process.env.TASK09_PDF_FONT_DIR;
+    if (!fontDir) throw new Error("任务09完整PDF门需要主控确认的私有锁定字体目录，不能以文本提取代替物理字形检查");
     const server = await createTemplateTestServer({ draftWorkbench: true });
     const directory = await mkdtemp(join(tmpdir(), "jg-task09-new-selection-browser-"));
     try {
@@ -32,10 +34,19 @@ describe("task09 true new contract to published Word selection in desktop and mo
         expect(xml).toContain("新建手选"); expect(xml).toContain("实际合同");
         expect(xml.match(/新建当前甲方/gu)).toHaveLength(2); expect(xml.match(/新建当前乙方/gu)).toHaveLength(2);
         expect(xml).toContain("本项普通约定按原文保留"); expect(xml).not.toContain("样张核对");
-        receipts.push(receipt);
+        const physicalDirectory = join(folder, "pdf-physical");
+        const inspected = await promisify(execFile)(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", [
+          resolve(__dirname, "task09-pdf-physical-inspector.py"), "--docx", receipt.docxPath,
+          "--pdf", receipt.pdfPath, "--font-dir", fontDir, "--out-dir", physicalDirectory
+        ], { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
+        await writeFile(join(folder, "pdf-physical-inspection.log"), inspected.stdout + inspected.stderr);
+        const physical = JSON.parse(await readFile(join(physicalDirectory, "receipt.json"), "utf8"));
+        expect(physical.verdict).toBe("GREEN"); expect(physical.failures).toEqual([]);
+        expect(physical.pdfSha256).toBe(receipt.pdfSha256);
+        receipts.push({ ...receipt, pdfVisualGate: "Physical glyph predicates GREEN; raster pending human review", physicalReceipt: join(physicalDirectory, "receipt.json") });
       }
       expect(receipts).toHaveLength(2);
-      await writeFile(join(directory, "receipt.json"), JSON.stringify({ receipts, pdfVisualGate: "FAILED in current formal renderer; no font or renderer changes by task09", scope: "real desktop/mobile create and published Word selector, guarded API, actual DOCX; synthetic DB/storage" }, null, 2));
+      await writeFile(join(directory, "receipt.json"), JSON.stringify({ receipts, pdfVisualGate: "Physical glyph predicates GREEN for both public PDF downloads; rasters require human review", runtimeScope: "child FONTCONFIG_FILE plus task-owned pinned fonts/cache only; product renderer and source DOCX unchanged", scope: "real desktop/mobile create and published Word selector, guarded API, actual DOCX/PDF; synthetic DB/storage" }, null, 2));
       console.info(`任务09新建手选桌面手机实际文书证据：${directory}`);
     } catch (cause) {
       const failure = cause as { stdout?: string; stderr?: string };

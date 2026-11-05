@@ -63,5 +63,9 @@ test("真实新建、独立业务类型、手选已发布Word模板并保存生�
   expect(ticket.status()).toBe(201);
   const download = await page.request.get("/api" + (await ticket.json()).downloadUrl); expect(download.status()).toBe(200);
   const docx = await download.body(); await writeFile(testInfo.outputPath("generated.docx"), docx);
-  await writeFile(testInfo.outputPath("receipt.json"), JSON.stringify({ versionId: draft.version.id, output, docxPath: testInfo.outputPath("generated.docx"), docxSha256: createHash("sha256").update(docx).digest("hex"), pdfVisualGate: "FAILED (formal local renderer Chinese glyph failure); not asserted as usable PDF" }, null, 2));
+  const pdfTicket = await page.request.post(`/api/files/${output.pdfFileId}/download-ticket`, { headers, data: { confirmationPassword: input.staff.password, downloadReason: "核对新建手选合同实际PDF字形" } });
+  expect(pdfTicket.status()).toBe(201);
+  const pdfDownload = await page.request.get("/api" + (await pdfTicket.json()).downloadUrl); expect(pdfDownload.status()).toBe(200);
+  const pdf = await pdfDownload.body(); await writeFile(testInfo.outputPath("generated.pdf"), pdf);
+  await writeFile(testInfo.outputPath("receipt.json"), JSON.stringify({ versionId: draft.version.id, output, docxPath: testInfo.outputPath("generated.docx"), pdfPath: testInfo.outputPath("generated.pdf"), docxSha256: createHash("sha256").update(docx).digest("hex"), pdfSha256: createHash("sha256").update(pdf).digest("hex"), pdfVisualGate: "PENDING independent physical glyph inspection" }, null, 2));
 });
