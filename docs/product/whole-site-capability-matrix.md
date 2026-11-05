@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `991a11b8cee7334d9f62f0797a1b684d990b7f4720a140ef72e38a53efcfd69c` |
-| webApiWrappers | ready | `d3c886704f136a16d23502568689bc5dc5d309c8d8973858c9547e5230fe15a3` |
-| webPageActions | ready | `4dba32b4bc5a6d57c911e7a097bc786e541fa1bd75d0c2288333f73860754567` |
-| routeUsage | ready | `99d402c4f96e24b2c6551e4224dc21022009bc9a95df96decea7c08b7b50261d` |
+| nestRoutes | ready | `6fd6ae4daa872b9a88240581fc9b4e5dea78f77d2624c8d089ae8c1ca9d55ce3` |
+| webApiWrappers | ready | `10ceea90c2de755b9844cfff040e1ab522537457ec74c92538b59069bc2ab52d` |
+| webPageActions | ready | `87b566ddb8643595ccf417442139b41c01dffa7aec0d07053262fe3ea25b96f3` |
+| routeUsage | ready | `93375955fcd931e9b408fa3edddbd85b7ce9a354060d847d380c0934981c1884` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 703 |
-| pageRouteCount | 499 |
+| routeCount | 709 |
+| pageRouteCount | 514 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 97 |
+| exitCandidateRouteCount | 88 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 696 |
+| mainRequestBindingCount | 702 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 397 |
-| actionBindingCount | 457 |
-| acceptedActionBindingCount | 420 |
+| registeredActionCount | 407 |
+| actionBindingCount | 469 |
+| acceptedActionBindingCount | 432 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 387 |
-| coveredProductionMutationConsumerPairCount | 387 |
+| productionMutationConsumerPairCount | 398 |
+| coveredProductionMutationConsumerPairCount | 398 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -93,9 +93,13 @@
 | GET | /contract-economic-reviews | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchEconomicReviews | — | not_applicable | — |
 | GET | /contract-economic-reviews/counterparties | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchContractCounterparties | — | not_applicable | — |
 | GET | /contract-ended-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#fetchContractEndedApplicationRetentionPreview | — | not_applicable | — |
-| GET | /contract-layout-template-versions/:versionId/preview-generation | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
+| GET | /contract-layout-template-versions/:versionId/maintenance-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutVersionMaintenanceCapability | — | not_applicable | — |
+| GET | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
+| GET | /contract-layout-template-versions/:versionId/source-positions | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutSourcePositions | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
 | GET | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedLayoutTemplates | — | not_applicable | — |
+| GET | /contract-layout-templates/creation-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutCreationCapability | — | not_applicable | — |
+| GET | /contract-layout-templates/maintenance | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#listMaintainedLayouts | — | not_applicable | — |
 | GET | /contract-number-rules | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listContractNumberRules<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchActiveContractNumberRules | — | not_applicable | — |
 | GET | /contract-proxy-executions/bank-options | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#fetchCompanyBankEvents | — | not_applicable | — |
 | GET | /contract-proxy-executions | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#fetchContractProxyExecutions | — | not_applicable | — |
@@ -275,7 +279,8 @@
 | PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | company-entity.update | covered | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |
 | PATCH | /contract-business-scenarios/:scenarioId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario | — | not_applicable | — |
-| PATCH | /contract-layout-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | — | not_applicable | — |
+| PATCH | /contract-layout-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | layout-template.save | covered | — |
+| PATCH | /contract-layout-template-versions/:versionId/source-mapping | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#saveLayoutSourceMapping | layout-template.mapping-save | covered | — |
 | PATCH | /contract-number-rules/:ruleId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractNumberRule | — | not_applicable | — |
 | PATCH | /contract-scenario-template-mappings/:mappingId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractScenarioMapping | — | not_applicable | — |
 | PATCH | /contract-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion | — | not_applicable | — |
@@ -367,15 +372,16 @@
 | POST | /contract-economic-reviews/settlement-coverage | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#prepareEconomicSettlement | contract-economic-review.prepareEconomicSettlement | covered | — |
 | POST | /contract-ended-retention/:contractVersionId/hold-release | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#releaseContractEndedApplicationRetentionHold | contract-ended-retention.release-hold | covered | — |
 | POST | /contract-ended-retention/:contractVersionId/holds | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#createContractEndedApplicationRetentionHold | contract-ended-retention.create-hold | covered | — |
-| POST | /contract-layout-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | — | not_applicable | — |
+| POST | /contract-layout-template-versions/:versionId/clone | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | layout-template.clone | covered | — |
 | POST | /contract-layout-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#discardLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/inspection | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/preview-generation | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#queueLayoutTemplatePreview | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/publication | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion | — | not_applicable | — |
+| POST | /contract-layout-template-versions/:versionId/inspection | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion | layout-template.inspect | covered | — |
+| POST | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueLayoutTemplatePreview | layout-template.preview | covered | — |
+| POST | /contract-layout-template-versions/:versionId/publication | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion | layout-template.publish | covered | — |
 | POST | /contract-layout-template-versions/:versionId/revoke | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#revokeLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/stop | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/submission | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-templates | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate | — | not_applicable | — |
+| POST | /contract-layout-template-versions/:versionId/source-mapping-confirmation | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#confirmLayoutSourceMapping | layout-template.mapping-confirm | covered | — |
+| POST | /contract-layout-template-versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | layout-template.stop | covered | — |
+| POST | /contract-layout-template-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion | layout-template.submit | covered | — |
+| POST | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate | layout-template.create | covered | — |
 | POST | /contract-negotiation-rounds/:roundId/close | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#closeContractNegotiationRound | — | not_applicable | — |
 | POST | /contract-number-rules/:ruleId/stop | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#stopContractNumberRule | — | not_applicable | — |
 | POST | /contract-number-rules | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createContractNumberRule | — | not_applicable | — |
@@ -455,7 +461,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
 | POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
