@@ -153,8 +153,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 511 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 512);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 515 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 516);
 });
 
 test("manual task01 operator cannot run automatically on GitHub Actions", () => {
@@ -417,7 +417,7 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest preserves original 511 tests and registers one separately invoked task01 operator", () => {
+test("manifest preserves prior cases plus four parallel cases and one separately invoked task01 operator", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -426,16 +426,16 @@ test("manifest preserves original 511 tests and registers one separately invoked
     pendingFiles: 78,
     fullyPendingSuites: 67,
     partiallyPendingSuites: 11,
-    pendingTests: 512,
+    pendingTests: 516,
     coveredFiles: 78,
-    coveredTests: 512,
+    coveredTests: 516,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 511);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 515);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -519,7 +519,7 @@ test("POL-109 readiness ignores the Unix-only initialization server until TCP Po
   }
 });
 
-test("canonical manifest executes all 172 entry tests including the template workbench", () => {
+test("canonical manifest executes all 176 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -527,7 +527,7 @@ test("canonical manifest executes all 172 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 172,
+    pendingTests: 176,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -551,7 +551,7 @@ test("canonical manifest executes all 172 entry tests including the template wor
       },
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-        pendingTests: 3,
+        pendingTests: 7,
         suiteStatus: "fully_pending"
       },
       {
@@ -845,7 +845,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=512/u
+    /inventory\.coveredTests=26，派生值=516/u
   );
 });
 
