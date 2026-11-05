@@ -1,6 +1,16 @@
 # 05 人员岗位、自审与职责委托：本地阶段收据
 
-本票为 #387。首候选 `b87be098730ecbf610d142541e72c4371c2c27bb` 保留首审历史；本收据与补修源码一并提交，准确补修 SHA、逐文件摘要及日志由外部交接收据绑定。当前等待独立双轴复审，未关闭工单，不具有迁移、真实资源、部署或生产写授权。
+本票为 #387。首候选 `b87be098730ecbf610d142541e72c4371c2c27bb` 保留首审历史；准确补修候选 `c37e0a7dac213e27420f32ee24f4edaf1fc35512` 已经独立[Standards](2026-11-05-enterprise-simplification-task05-standards.md)/[Spec](2026-11-05-enterprise-simplification-task05-spec.md)复核均0项。中央合并 `6d7bd40a8f7a2f54d845320bf6c664d6dc3c7023` 完整树与候选相同。本地确认边界已整合，#387仍OPEN待父控封包、推送及收票；没有迁移、真实PG资源、部署或生产写授权。
+
+## 中央准确合并验证
+
+Node `v20.20.2`、pnpm `9.15.9`；以下检查均在准确合并SHA `6d7bd40a8f7a2f54d845320bf6c664d6dc3c7023` 执行，之后本提交仅变更状态/收据MD，不把后续文档提交冒称为完整产品验收：
+
+- API23套1129项、Web11套110项全部通过；两包typecheck/lint、Web `check:ui`、API build退出0。API测试显式移除全局 `SKIP_DATABASE_CONNECT`，不进入合同示例数据分支。Web lint保留759 warnings、0 errors。
+- 原严格路线/包装器/动作/用途/能力矩阵check/ready链全部退出0：702路由、656 wrappers/695绑定、396动作、0阻塞。原4套治理unit整次210/210通过，包括本次准确仓库基线golden，不以作者209+定向1拼成中央整次结果。
+- 原静态CI编排整次369/369通过；原库存validator明确 `executed:false`，23组78文件521逻辑场景（CI22组77文件520，人工1组1文件1）。只检查迁移基线源码198份，未执行迁移或PG。
+- 中央日志：`/private/tmp/jg-enterprise-task05-integrated-api.log`、`...-web.log`、`...-governance-unit.log`、`...-ci-orchestration.log`，包检查及治理逐命令日志/哈希记录于 `...-api-package.json`、`...-web-package.json`、`...-governance.json`、`...-governance-unit.json`；最终合并JSON收据由父控交接保存。
+- 受影响公开服务/合成HTTP不是实际PG竞争或真实网关验收；首审、旧497计数、旧CI516及其他失败日志仍保留。753旧代理deadline失败亦未被此次369通过解释为因果修复。
 
 ## 补修与公开行为
 
@@ -57,4 +67,4 @@ pnpm run inspect:whole-site-capability-matrix:ready
 
 未运行PG spec、SQL、`--execute`、Prisma migrate、Docker、Task01执行driver/helper、真实短信/对象存储、实际浏览器资源runner、部署或生产操作。静态校验明确按父控授权使用原validator/原unit/原CI静态编排，不启动真实资源。16/42/44硬门、真实竞态与送达、真实历史来源核对全部仍待另行验证。
 
-07项目/单位的公开HTTP、公共服务及现有管理UI边界已确认，只使用合成数据库；真实PG仅准备。07继续等待05经复审正式关闭后领取实施。
+07项目/单位的公开HTTP、公共服务及现有管理UI边界已确认，只使用合成数据库；真实PG仅准备。07及11公开测试边界均已确认，继续等待05由父控正式关闭后领取实施。
