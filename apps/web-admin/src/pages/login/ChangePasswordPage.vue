@@ -3,7 +3,7 @@
     <section class="password-panel">
       <div class="brand-block">
         <h1>修改初始密码</h1>
-        <p>试运行账号首次登录后需设置个人密码</p>
+        <p>首次登录或管理员重置后，请设置与当前密码不同的本人密码</p>
       </div>
 
       <form

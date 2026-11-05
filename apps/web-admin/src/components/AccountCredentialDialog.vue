@@ -9,13 +9,13 @@
     @close="close"
   >
     <div class="credential-content">
-      <template v-if="secret">
+      <template v-if="secret || resetComplete">
         <t-alert
           theme="success"
-          :message="recovery ? '恢复码仅显示这一次。请保存到你本人保管的位置，使用后立即失效。' : '临时密码仅显示这一次，24小时内有效。请通过私下渠道转交本人，登录后必须修改。'"
+          :message="recovery ? '恢复码仅显示这一次。请保存到你本人保管的位置，使用后立即失效。' : '已恢复受控初始密码，请按既定安全方式告知本人。首次登录必须修改；旧密码与原会话已失效。'"
         />
-        <label>
-          {{ recovery ? '一次性恢复码' : '临时密码' }}
+        <label v-if="recovery">
+          一次性恢复码
           <t-input
             :model-value="secret"
             readonly
@@ -25,7 +25,7 @@
           block
           @click="close"
         >
-          {{ recovery ? '我已妥善保存' : '我已记录并将转交本人' }}
+          {{ recovery ? '我已妥善保存' : '知道了' }}
         </t-button>
       </template>
       <form
@@ -71,6 +71,7 @@ import { formatUnknownApiError } from "../api/error-message";
 import { fetchOrganizationManagementCapabilities } from "../api/organization.api";
 const props = defineProps<{ recovery?: boolean; id?: string; kind?: "users" | "applications"; name?: string }>();
 const emit = defineEmits<{ close: []; saved: [] }>();
+const resetComplete = ref(false);
 const password = ref(""); const verified = ref(false); const busy = ref(false); const secret = ref(""); const message = ref("");
 function close() { if (busy.value) return; password.value = ""; secret.value = ""; emit("close"); }
 async function submit() {
@@ -81,7 +82,8 @@ async function submit() {
     if (props.recovery) secret.value = (await generateRecoveryCodeWithCapability()).recoveryCode;
     else {
       if (!props.id || !props.kind) throw new Error("请重新选择要重置密码的人员");
-      secret.value = (await resetEmployeePasswordWithCapability(props.id, props.kind, password.value)).temporaryPassword;
+      await resetEmployeePasswordWithCapability(props.id, props.kind, password.value);
+      resetComplete.value = true;
     }
     message.value = ""; emit("saved");
   } catch (error) { message.value = formatUnknownApiError(error, "操作未完成，请重试"); }

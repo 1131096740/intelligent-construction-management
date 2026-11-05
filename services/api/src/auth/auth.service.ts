@@ -4,7 +4,8 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
-  Optional
+  Optional,
+  ServiceUnavailableException
 } from "@nestjs/common";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
@@ -231,6 +232,10 @@ export class AuthService {
       throw new BadRequestException("当前密码不正确，请重新输入");
     }
 
+    if (await bcrypt.compare(input.newPassword, storedUser.passwordHash)) {
+      throw new BadRequestException("新密码不能与当前密码相同，请设置本人新密码");
+    }
+
     const name = input.name?.trim();
     if (storedUser.mustChangePassword && !name) {
       throw new BadRequestException("首次登录时请输入真实姓名");
@@ -291,7 +296,10 @@ export class AuthService {
     }
 
     const name = input.name.trim();
-    if (input.phone !== storedUser.phone && this.sms?.enabled()) {
+    if (input.phone !== storedUser.phone) {
+      const pending = await this.prisma.employeeRegistration.findFirst({ where: { phone: input.phone, status: { not: "approved" } }, select: { userId: true } });
+      if (pending && pending.userId !== user.id) throw new ConflictException("该手机号已有入职申请，请联系综合部或董事长核对");
+      if (!this.sms) throw new ServiceUnavailableException("短信验证暂未开通，请联系管理员");
       await this.sms.verify(input.phone, "change_phone", input.code, `user:${storedUser.id}:${storedUser.sessionVersion}`);
     }
     let updatedUser;
