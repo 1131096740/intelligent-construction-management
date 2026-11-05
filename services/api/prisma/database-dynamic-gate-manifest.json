@@ -693,7 +693,7 @@
         "invocation": "task01_explicit_inputs",
         "resourceHelper": "services/api/prisma/enterprise-task01-resources.cjs",
         "imageId": "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
-        "sourceSha256": "b1f04a17b80bc534e34686261aea2674350b6505e0e175916568842c0caa8a7f",
+        "sourceSha256": "b1c59989cbfe5c1a9f4c065702c804164bb4b56191151707fcd7f9e905e4e89b",
         "resourceHelperSha256": "d7a6c11b13058881106c61cf608addc3aa4cc3e086985bc29071fb0106e7cb40"
       },
       "state": "executable_local_runner",
