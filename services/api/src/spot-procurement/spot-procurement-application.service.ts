@@ -1,3 +1,5 @@
+import { delegatedSpotApprovalIdentity } from "../approval/spot-approval-duty-access";
+import { AuthService } from "../auth/auth.service";
 import { loadEffectiveProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
@@ -21,7 +23,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { assertOrdinaryApplicantCannotReview, confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -213,7 +215,8 @@ export class SpotProcurementApplicationService {
     private readonly balances?: SpotProcurementBalanceService,
     private readonly entryTransactions?: BusinessEntryTransactionService,
     private readonly entryDefinitions?: BusinessEntryDefinitionService,
-    @Optional() private readonly notifications?: SpotProcurementApprovalNotificationService
+    @Optional() private readonly notifications?: SpotProcurementApprovalNotificationService,
+    @Optional() private readonly auth?: AuthService
   ) {}
 
   getCreateEntryDefinitions(actorUserId: string, projectId: string) {
@@ -560,11 +563,6 @@ export class SpotProcurementApplicationService {
         }
         const approval = await this.requireLockedApprovalInstance(tx, version.id, "approval_pending");
         const parallel = isParallelApprovalRound(approval.frozenNodes);
-        if (parallel && (actorUserId === procurement.applicantUserId || actorUserId === approval.applicantUserId)) {
-          // Creation and submission both require this original applicant in requireDraftOwnerRole.
-          // Task05 will replace this closed gate with explicit reason/password confirmation.
-          throw new ForbiddenException("本单由你创建或提交，当前职责请由其他有权人员办理");
-        }
         const reviewNodeIndex = parallel ? input.expectedNodeIndex : approval.currentNodeIndex;
         if (!activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).includes(reviewNodeIndex)) {
           throw new ConflictException("该审批职责已处理或坐标已变化，请刷新页面后重试");
@@ -576,14 +574,17 @@ export class SpotProcurementApplicationService {
         const actorRoles = parallel
           ? (await loadEffectiveProjectApprovalAssignments(tx, procurement.projectId, pendingRoles, actorUserId)).filter(row => row.userIsActive && row.userId === actorUserId && row.projectId === procurement.projectId).map(row => row.roleKey as RoleKey)
           : await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
-        const approvedRoleKey = pendingRoles.find((roleKey) => actorRoles.includes(roleKey));
+        const delegation = parallel && !pendingRoles.some(role => actorRoles.includes(role))
+          ? await delegatedSpotApprovalIdentity(tx, {instanceId: approval.id, nodeIndex: reviewNodeIndex, actorUserId, projectId: procurement.projectId, pendingRoleKeys: pendingRoles}) : null;
+        const approvedRoleKey = pendingRoles.find((roleKey) => actorRoles.includes(roleKey)) ?? delegation?.approvedRoleKey;
+        const reviewRoleKeys = delegation && approvedRoleKey ? [...actorRoles, approvedRoleKey] : actorRoles;
         if (!approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本审批节点处理人");
         }
         assertOrdinaryApplicantCannotReview({
           applicantUserId: approval.applicantUserId,
           actorUserId,
-          actorRoleKeys: actorRoles,
+          actorRoleKeys: reviewRoleKeys,
           approvedRoleKey
         });
         if (
@@ -604,6 +605,11 @@ export class SpotProcurementApplicationService {
         if (input.decision !== "approve" && !comment) {
           throw new BadRequestException("驳回或退回采购申请时必须填写审批意见");
         }
+        const selfReview = await confirmApprovalSelfReview({
+          applicantUserId: approval.applicantUserId, actorUserId, actorRoleKeys: reviewRoleKeys, approvedRoleKey,
+          selfReviewReason: input.selfReviewReason, confirmationPassword: input.confirmationPassword,
+          ...(this.auth ? {confirmPassword: (password: string) => this.auth!.confirmPassword(actorUserId, password, tx)} : {})
+        });
         const revisionFacts =
           await this.requireCanonicalRealApplicationFacts(
             tx,
@@ -624,7 +630,7 @@ export class SpotProcurementApplicationService {
             actorUserId,
             comment,
             approvedRoleKey,
-            representedUserId: actorUserId,
+            representedUserId: delegation?.representedUserId ?? actorUserId,
             ...(signature
               ? {
                   signatureFileIdSnapshot: signature.fileId,
@@ -632,7 +638,7 @@ export class SpotProcurementApplicationService {
                   signatureVersionIdSnapshot: signature.versionId
                 }
               : {}),
-            metadata: { reviewRoleKey: approvedRoleKey }
+            metadata: { reviewRoleKey: approvedRoleKey, ...(delegation ? {delegationId: delegation.delegationId} : {}), ...selfReview.metadata }
           }, signature)
         });
         if (input.decision === "reject" && !parallel) {

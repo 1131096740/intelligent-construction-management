@@ -1,3 +1,4 @@
+import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
 import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
 import {companyTransferRoles} from "../company-transfer/company-transfer.access";
@@ -2529,12 +2530,8 @@ export class FileService {
 
       if (
         settlement &&
-        (await this.hasProjectRole(
-          tx,
-          actorUserId,
-          settlement.projectId,
-          ARCHIVE_FILE_DOWNLOAD_ROLES
-        ))
+        (await sensitiveBusinessReadAllowed(tx, "settlement", settlement.id, actorUserId,
+          await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId), settlement.preparedByUserId))
       ) {
         return;
       }
@@ -2550,7 +2547,7 @@ export class FileService {
 
       if (
         payment &&
-        (await this.hasProjectRole(tx, actorUserId, payment.projectId, PAYMENT_FILE_DOWNLOAD_ROLES))
+        (await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorUserId, await this.loadActorRoleKeys(tx, actorUserId, payment.projectId)))
       ) {
         return;
       }
@@ -3016,6 +3013,8 @@ export class FileService {
     // The preparer must be able to deliver their frozen copy to the counterparty,
     // including project engineers who are not archive administrators.
     if (preparerUserId === actorUserId) return true;
+    if (document.settlementId) return sensitiveBusinessReadAllowed(tx, "settlement", document.settlementId, actorUserId,
+      await this.loadActorRoleKeys(tx, actorUserId, projectId), preparerUserId);
     return this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES);
   }
 

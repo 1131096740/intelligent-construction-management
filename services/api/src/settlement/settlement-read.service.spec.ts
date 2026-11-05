@@ -54,7 +54,7 @@ describe("SettlementReadService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
 
     expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
-      unbounded: true
+      unbounded: true, actorUserId: "finance-user"
     });
     expect(result.fileName).toMatch(/^结算台账-\d{8}\.xlsx$/);
     expect(workbook.getWorksheet("结算台账")?.getRow(2).getCell(1).value).toBe(
@@ -1262,7 +1262,7 @@ describe("SettlementReadService", () => {
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new SettlementReadService(prisma as never);
+    const service = new SettlementReadService(prisma as never, {effectiveRoleKeys: async () => ["contract_director"]} as never);
     const result = await service.lifecycleLedger("my_drafts", 1, 20, ["p1"], "u1");
 
     expect(result.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 1, ended: 2 });
@@ -1403,7 +1403,7 @@ describe("SettlementReadService", () => {
         { businessType: "settlement", businessId: "archive" }
       ])
     };
-    const service = new SettlementReadService(prisma as never, undefined, undefined, me as never);
+    const service = new SettlementReadService(prisma as never, {effectiveRoleKeys: async () => ["contract_director"]} as never, undefined, me as never);
 
     const pending = await service.workbenchLedger("pending_action", 1, 20, ["p1"], "u1");
     expect(pending.rows).toEqual(expect.arrayContaining([

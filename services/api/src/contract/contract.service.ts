@@ -24,6 +24,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
+import { resolveContractOriginators } from "./contract-originators";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
@@ -104,6 +105,7 @@ interface ContractApprovalAssignment {
 }
 
 interface ContractApprovalNode {
+  originatorUserIds?: string[];
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
@@ -2052,12 +2054,13 @@ export class ContractService {
           } as unknown as Prisma.JsonValue;
         }
 
-        const frozenNodes = await this.approvalNodesForSubmission(
+        const originatorUserIds = await resolveContractOriginators(tx, version.id);
+        const frozenNodes = (await this.approvalNodesForSubmission(
           tx,
           version,
           contract,
           actorUserId
-        );
+        )).map(node => ({ ...node, originatorUserIds }));
 
         if (!formalCode) {
           if (!this.businessNumbers) {
@@ -2788,23 +2791,7 @@ export class ContractService {
       }
       const approvedRoleKey = identity.approvedRoleKey;
 
-      const selfReview = await confirmApprovalSelfReview({
-        applicantUserId: expectedInstance.applicantUserId,
-        actorUserId,
-        actorRoleKeys: identity.representedUserId === actorUserId &&
-          !identity.viaAssignment
-          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
-          : actorRoleKeys,
-        approvedRoleKey,
-        representedUserId: identity.representedUserId,
-        viaAssignment: identity.viaAssignment,
-        allowContractDirectorSelfReview: true,
-        selfReviewReason: input.selfReviewReason,
-        confirmationPassword: input.confirmationPassword,
-        confirmPassword: this.auth
-          ? (password) => this.auth!.confirmPassword(actorUserId, password)
-          : undefined
-      });
+
 
       const activeInstance = activeInstances.length === 1
         ? activeInstances[0]
@@ -2823,6 +2810,25 @@ export class ContractService {
         throw contractApprovalReviewConflict();
       }
       const instance = expectedInstance;
+
+      const selfReview = await confirmApprovalSelfReview({
+        applicantUserId: expectedInstance.applicantUserId,
+        originatorUserIds: expectedInstance.applicantUserId === actorUserId ? [] : await resolveContractOriginators(tx, version.id, expectedInstance.frozenNodes),
+        actorUserId,
+        actorRoleKeys: identity.representedUserId === actorUserId &&
+          !identity.viaAssignment
+          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+          : actorRoleKeys,
+        approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
+        allowContractDirectorSelfReview: true,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
+      });
 
       const auditCoordinates = {
         expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),

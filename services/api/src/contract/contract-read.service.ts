@@ -71,6 +71,7 @@ import {
   type ContractDraftLifecycleClassification,
   type ContractDraftLifecycleFacts
 } from "./contract-draft-lifecycle";
+import { resolveContractOriginators } from "./contract-originators";
 import { loadContractOwnerRisk } from "./contract-owner-risk";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
@@ -2214,13 +2215,23 @@ export class ContractReadService {
       return emptyCurrentContractApprovalReview();
     }
     const instance = instances[0];
+    let selfReviewApplicantUserId = instance.applicantUserId;
+    if (actorUserId !== instance.applicantUserId) {
+      try {
+        const originators = await resolveContractOriginators(this.prisma as never, businessId, instance.frozenNodes);
+        if (originators.includes(actorUserId)) selfReviewApplicantUserId = actorUserId;
+      } catch {
+        // Unknown historical provenance restricts this write capability, never historical reads.
+        return emptyCurrentContractApprovalReview();
+      }
+    }
 
     const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
       actorUserId,
-      instance.applicantUserId,
+      selfReviewApplicantUserId,
       false,
       true,
       actorRoleScopes,
@@ -2246,7 +2257,7 @@ export class ContractReadService {
       instance.currentNodeIndex,
       roleKeys,
       actorUserId,
-      instance.applicantUserId,
+      selfReviewApplicantUserId,
       activeDelegators,
       true,
       actorRoleScopes,

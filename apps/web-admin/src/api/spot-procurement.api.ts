@@ -891,6 +891,8 @@ export interface CreateSpotProcurementVersionPayload extends SpotProcurementDraf
 }
 
 export interface SpotProcurementReviewDecisionPayload {
+  selfReviewReason?: string;
+  confirmationPassword?: string;
   decision: SpotProcurementReviewDecision;
   comment?: string;
 }
@@ -908,6 +910,9 @@ export type SpotProcurementReviewActionDecision =
   | "return_to_applicant";
 
 export interface SpotProcurementReviewActionContext {
+  requiresSelfReviewConfirmation?: boolean;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
   ownerScope: string;
   routeGeneration: number;
   detailEpoch: number;
@@ -1823,6 +1828,7 @@ function reviewSpotProcurementActionPayload(
   return {
     decision,
     ...(decision !== "approve" ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation ? {selfReviewReason: context.selfReviewReason, confirmationPassword: context.confirmationPassword} : {}),
     expectedVersionId: context.expectedVersionId,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex
@@ -1837,6 +1843,10 @@ function normalizeSpotProcurementReviewAction(
   const expectedVersionId = input.expectedVersionId.trim();
   const expectedApprovalInstanceId =
     input.expectedApprovalInstanceId.trim();
+  const requiresSelfReviewConfirmation = input.requiresSelfReviewConfirmation === true;
+  const selfReviewReason = requiresSelfReviewConfirmation ? input.selfReviewReason?.trim() : undefined;
+  const confirmationPassword = requiresSelfReviewConfirmation ? input.confirmationPassword : undefined;
+  if (requiresSelfReviewConfirmation && (!selfReviewReason || !confirmationPassword?.trim())) throw new Error("请填写自审原因并输入本人当前密码");
   const comment =
     input.decision !== "approve" ? input.comment?.trim() ?? "" : undefined;
   if (
@@ -1862,6 +1872,7 @@ function normalizeSpotProcurementReviewAction(
     );
   }
   return Object.freeze({
+    ...(requiresSelfReviewConfirmation ? {requiresSelfReviewConfirmation, selfReviewReason, confirmationPassword} : {}),
     ownerScope,
     routeGeneration: input.routeGeneration,
     detailEpoch: input.detailEpoch,
@@ -1888,6 +1899,7 @@ function assertSpotProcurementReviewPreflight(
     preflight.procurement.id !== context.procurementId ||
     preflight.currentVersion.id !== context.expectedVersionId ||
     enabledReviewActions.length !== 1 ||
+    Boolean(enabledReviewActions[0]?.requiresSelfReviewConfirmation) !== Boolean(context.requiresSelfReviewConfirmation) ||
     coordinates?.expectedVersionId !== context.expectedVersionId ||
     coordinates.expectedApprovalInstanceId !==
       context.expectedApprovalInstanceId ||

@@ -60,6 +60,7 @@ export interface FundExecutionCaseAction {
   label: string;
   enabled: boolean;
   disabledReason: string | null;
+  requiresSelfReviewConfirmation?: boolean;
 }
 
 export interface FundExecutionCaseListItem {
@@ -247,14 +248,16 @@ export function confirmFundExecutionCase(
 
 export function reviewFundExecutionCase(
   caseRef: string,
-  input: { action: "approve" | "return_to_applicant"; comment?: string }
+  input: { action: "approve" | "return_to_applicant"; comment?: string; selfReviewReason?: string; confirmationPassword?: string }
 ) {
   const comment = input.comment?.trim();
   return post(
     `/fund-executions/cases/${encodeURIComponent(caseRef)}/approval-actions`,
     {
       action: input.action,
-      ...(comment ? { comment } : {})
+      ...(comment ? { comment } : {}),
+      ...(input.selfReviewReason ? { selfReviewReason: input.selfReviewReason } : {}),
+      ...(input.confirmationPassword ? { confirmationPassword: input.confirmationPassword } : {})
     },
     input.action === "approve" ? "审批资金执行案件失败" : "退回资金执行审批失败"
   );

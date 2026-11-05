@@ -3,19 +3,25 @@
     <div class="page-head">
       <div>
         <h1>审批委托台账</h1>
-        <p>常驻委托：在窗口期内，受托人可代你完成你岗位有权审批的合同 / 结算 / 付款节点</p>
+        <p>临时委托明确到单据和职责；本人和受托人均可办理，任何一人完成后该职责待办同步结束。</p>
       </div>
+      <t-button
+        :disabled="!duties.length"
+        @click="openCreate"
+      >
+        新建临时委托
+      </t-button>
     </div>
 
     <t-alert
       theme="info"
-      title="上线准备期间暂为只读"
-      message="当前可查看审批委托及生效状态；创建和撤销入口将在权限治理完成后重新开放。"
+      title="委托范围"
+      message="当前支持零星材料申请的并联职责。其他流程的已有委托仍保留原记录；不能转交无关业务或再委托收到的职责。"
       class="readonly-alert"
     />
     <t-alert
       v-if="message"
-      theme="error"
+      :theme="messageTheme"
       :message="message"
       class="readonly-alert"
     />
@@ -33,6 +39,16 @@
         :horizontal-scroll-affixed-bottom="true"
         empty="暂无委托记录"
       >
+        <template #actions="{ row }">
+          <t-button
+            v-if="row.fromUserId === auth.user?.id && row.enabled"
+            variant="text"
+            :disabled="saving"
+            @click="revoke(row.id)"
+          >
+            撤销委托
+          </t-button>
+        </template>
         <template #enabled="{ row }">
           <t-tag
             size="small"
@@ -53,13 +69,74 @@
         </template>
       </t-table>
     </t-card>
+    <t-dialog
+      v-if="createVisible"
+      v-model:visible="createVisible"
+      header="新建临时委托"
+      :close-on-overlay-click="false"
+      :close-btn="!saving"
+      width="560px"
+    >
+      <div class="delegation-form">
+        <label><span>待审批职责</span><t-select
+          v-model="draft.resourceId"
+          :options="duties"
+          placeholder="选择待审批职责"
+          :disabled="saving"
+          @change="loadRecipients"
+        /></label>
+        <label><span>受托人</span><t-select
+          v-model="draft.toUserId"
+          :options="recipients"
+          placeholder="选择受托人"
+          :disabled="saving || !draft.resourceId"
+        /></label>
+        <label><span>生效时间（北京时间）</span><t-date-picker
+          v-model="draft.startsAt"
+          enable-time-picker
+          format="YYYY-MM-DD HH:mm"
+          value-type="YYYY-MM-DD HH:mm"
+          :disabled="saving"
+        /></label>
+        <label><span>失效时间（北京时间）</span><t-date-picker
+          v-model="draft.endsAt"
+          enable-time-picker
+          format="YYYY-MM-DD HH:mm"
+          value-type="YYYY-MM-DD HH:mm"
+          :disabled="saving"
+        /></label>
+        <t-alert
+          v-if="createError"
+          theme="error"
+          :message="createError"
+        />
+      </div>
+      <template #footer>
+        <t-button
+          variant="outline"
+          :disabled="saving"
+          @click="createVisible = false"
+        >
+          取消
+        </t-button><t-button
+          :loading="saving"
+          @click="saveDelegation"
+        >
+          确认委托
+        </t-button>
+      </template>
+    </t-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import {
   listApprovalDelegations,
+  fetchApprovalDelegationDutyOptions,
+  fetchApprovalDelegationUserOptions,
+  createApprovalDelegation,
+  revokeApprovalDelegation,
   type ApprovalDelegationReadModel
 } from "../../api/core-flow-read.api";
 import { useAuthStore } from "../../auth/auth.store";
@@ -69,16 +146,48 @@ import {
 } from "./delegation-list.config";
 
 const auth = useAuthStore();
-const columns = delegationLedgerColumns;
+const columns = [...delegationLedgerColumns, {colKey: "actions", title: "操作", width: 112}];
 const rawRows = ref<ApprovalDelegationReadModel[]>([]);
 const rows = computed(() => mapDelegationLedgerRows(rawRows.value, auth.user?.id));
 const loading = ref(false);
 const message = ref("");
 
+const duties = ref<Array<{value: string; label: string}>>([]);
+const recipients = ref<Array<{value: string; label: string}>>([]);
+const draft = reactive({resourceId: "", toUserId: "", startsAt: "", endsAt: ""});
+const createVisible = ref(false);
+const saving = ref(false);
+const createError = ref("");
+const messageTheme = ref<"success" | "error">("error");
+let recipientGeneration = 0;
+function openCreate() {Object.assign(draft, {resourceId: "", toUserId: "", startsAt: "", endsAt: ""}); recipients.value=[]; createError.value=""; createVisible.value=true;}
+async function loadRecipients() {
+  const own = ++recipientGeneration; const dutyId = draft.resourceId; draft.toUserId=""; recipients.value=[];
+  try {const rows = await fetchApprovalDelegationUserOptions(dutyId); if (own === recipientGeneration && dutyId === draft.resourceId) recipients.value=rows.map(row=>({value:row.id,label:row.name}));}
+  catch(error) {if(own===recipientGeneration) createError.value=error instanceof Error?error.message:"受托人读取失败，请重试";}
+}
+async function saveDelegation() {
+  if(saving.value)return; createError.value="";
+  try {
+    if(!draft.resourceId||!draft.toUserId)throw new Error("请选择明确职责和受托人");
+    const chinaTime=(value:string)=> {if(!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value))throw new Error("请填写正确的起止时间"); const time=new Date(`${value.replace(" ","T")}:00+08:00`);if(!Number.isFinite(time.getTime()))throw new Error("请填写正确的起止时间");return time.toISOString();};
+    const startsAt=chinaTime(draft.startsAt);const endsAt=chinaTime(draft.endsAt);if(endsAt<=startsAt)throw new Error("失效时间必须晚于生效时间");
+    saving.value=true;
+    await createApprovalDelegation({toUserId:draft.toUserId,startsAt,endsAt,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:draft.resourceId});
+    createVisible.value=false;messageTheme.value="success";message.value="委托已保存，本人与受托人均可办理当前职责。";await loadDelegations();
+  } catch(error){createError.value=error instanceof Error?error.message:"委托保存失败，请重试";}finally{saving.value=false;}
+}
+async function revoke(id:string) {
+  if(saving.value)return;saving.value=true;
+  try{await revokeApprovalDelegation(id);messageTheme.value="success";message.value="委托已撤销，受托人不能再办理该职责。";await loadDelegations();}
+  catch(error){messageTheme.value="error";message.value=error instanceof Error?error.message:"撤销失败，请重试";}finally{saving.value=false;}
+}
+
 async function loadDelegations() {
   loading.value = true;
   try {
-    rawRows.value = await listApprovalDelegations();
+    const [records, options] = await Promise.all([listApprovalDelegations(), fetchApprovalDelegationDutyOptions()]);
+    rawRows.value = records; duties.value = options;
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载委托失败";
   } finally {
@@ -90,6 +199,9 @@ onMounted(() => void loadDelegations());
 </script>
 
 <style scoped>
+.delegation-form, .delegation-form label {display:grid;gap:var(--jg-space-sm);}
+.delegation-form {gap:var(--jg-space-md);}
+
 .delegation-page {
   width: 100%;
   min-width: 0;

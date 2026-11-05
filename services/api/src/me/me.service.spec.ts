@@ -1884,6 +1884,67 @@ describe("MeService", () => {
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
 
+  it("shows only the currently delegated parallel duty and closes it after either person acts", async () => {
+    const prisma = {
+      $queryRaw: jest.fn(async (query: {strings: readonly string[]; values: readonly unknown[]}) => query.strings.join("").includes('FROM "ApprovalDelegation"') ? (query.values.includes("flow-1:1") ? [{id:"mandate",fromUserId:"original",toUserId:"delegate"}] : []) : query.strings.join("").includes("WITH members") ? [{projectId:"project-1",userId:"original",roleKey:"project_manager",userIsActive:true}] : []),
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { projectId: "project-1", positionKey: "employee" }
+        ])
+      },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "flow-1", status: "approval_pending", applicantUserId: "applicant",
+            businessType: "spot_procurement_version",
+            businessId: "spot-version-1",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              { mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel" },
+              { mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" }
+            ]
+          }
+        ])
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "spot-version-1", procurementId: "spot-procurement-1" }
+        ])
+      },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "spot-procurement-1", projectId: "project-1" }
+        ])
+      },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: { findMany: jest.fn(), findFirst: jest.fn().mockResolvedValue({id:"mandate"}) },
+      contractTakeover: { count: jest.fn() }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    const result = await service.getWorkbenchSummary("delegate");
+
+    expect(result.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "approval_todo",
+        count: 1,
+        description: "合同 0 · 结算 0 · 付款 0 · 支出 0 · 零星采购 1 · 零星付款 0",
+        targetPath: "/零星采购工作台"
+      })
+    ]));
+    prisma.approvalInstance.findMany.mockResolvedValue([]);
+    const after = await service.getWorkbenchSummary("delegate");
+    expect(after.cards.find(card=>card.id==="approval_todo")?.count).toBe(0);
+  });
+
   it("reuses canonical pending work-item sources for the untruncated funds queue", async () => {
     const service = new MeService({$queryRaw:jest.fn().mockResolvedValue([])} as never, {} as never) as unknown as {
       getFundsPendingWorkItems(userId: string): Promise<WorkItem[]>;

@@ -3668,7 +3668,7 @@ describe("SpotProcurementReadService", () => {
 });
 
 
-it("项目经理详情直接取得自己的并联职责坐标并关闭本人自审", async () => {
+it("项目经理详情直接取得自己的并联职责坐标并提示本人自审确认", async () => {
   const fixture = buildFixture();
   fixture.prisma.spotProcurement.findUnique.mockResolvedValue(realProcurementRow({ status: "approval_pending" }));
   fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([realVersionRow({ status: "approval_pending", approvedAt: null })]);
@@ -3687,6 +3687,6 @@ it("项目经理详情直接取得自己的并联职责坐标并关闭本人自�
   expect(detail.approval.currentRoleKeys).toEqual(["material_director", "project_manager"]);
   expect(detail.availableActions.find(action => action.key === "download_application_pdf")).toMatchObject({enabled: true});
   const owner = await service.getProcurement("procurement-1", "applicant-1");
-  expect(owner.reviewApprovalContext).toBeNull();
-  expect(owner.availableActions.find(action => action.key === "review_approval")).toMatchObject({enabled: false, disabledReason: "本单由你创建或提交，当前职责请由其他有权人员办理"});
+  expect(owner.reviewApprovalContext).toEqual({expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1});
+  expect(owner.availableActions.find(action => action.key === "review_approval")).toMatchObject({enabled: true, requiresSelfReviewConfirmation: true});
 });

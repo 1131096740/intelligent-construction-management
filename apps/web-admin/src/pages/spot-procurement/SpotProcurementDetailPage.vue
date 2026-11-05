@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import {buildApprovalSelfReviewPayload} from "../../components/approval-self-review.config";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
@@ -825,6 +827,11 @@ function reviewContextIsCurrent(
   );
 }
 
+const reviewSelfReviewReason = ref("");
+const reviewConfirmationPassword = ref("");
+const reviewRequiresSelfConfirmation = computed(() => Boolean(spotProcurementCapability.value?.availableActions.find(action => action.key === "review_approval" && action.enabled)?.requiresSelfReviewConfirmation));
+watch(() => confirmation.visible, visible => {if (!visible) {reviewSelfReviewReason.value = ""; reviewConfirmationPassword.value = "";}});
+
 function captureReviewContext(
   decision: SpotProcurementReviewActionDecision,
   reason: string
@@ -860,7 +867,11 @@ function captureReviewContext(
     confirmation.error = "当前审批正在提交，请等待本次操作完成";
     return null;
   }
+  let selfReview: {selfReviewReason?: string; confirmationPassword?: string};
+  try {selfReview = buildApprovalSelfReviewPayload(reviewRequiresSelfConfirmation.value, {selfReviewReason: reviewSelfReviewReason.value, confirmationPassword: reviewConfirmationPassword.value});}
+  catch (error) {confirmation.error = error instanceof Error ? error.message : "请完成本人自审确认"; return null;}
   const context = Object.freeze({
+    ...(reviewRequiresSelfConfirmation.value ? {requiresSelfReviewConfirmation: true, ...selfReview} : {}),
     ownerScope: reviewOwnerScope,
     routeGeneration: detailRouteGeneration,
     detailEpoch,
@@ -2065,7 +2076,13 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="confirmation.error"
       @confirm="confirmReviewApprove"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="reviewSelfReviewReason"
+        v-model:confirmation-password="reviewConfirmationPassword"
+        :required="reviewRequiresSelfConfirmation"
+      />
+    </SensitiveActionDialog>
     <SensitiveActionDialog
       v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_reject'"
       v-model="confirmation.visible"
@@ -2079,7 +2096,13 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="confirmation.error"
       @confirm="confirmReviewReject"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="reviewSelfReviewReason"
+        v-model:confirmation-password="reviewConfirmationPassword"
+        :required="reviewRequiresSelfConfirmation"
+      />
+    </SensitiveActionDialog>
     <SensitiveActionDialog
       v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_return'"
       v-model="confirmation.visible"
@@ -2093,7 +2116,13 @@ onBeforeUnmount(() => {
       :loading="actionBusy"
       :error="confirmation.error"
       @confirm="confirmReviewReturn"
-    />
+    >
+      <ApprovalSelfReviewFields
+        v-model:self-review-reason="reviewSelfReviewReason"
+        v-model:confirmation-password="reviewConfirmationPassword"
+        :required="reviewRequiresSelfConfirmation"
+      />
+    </SensitiveActionDialog>
     <SensitiveActionDialog
       v-if="withdrawalApprovalActionEnabled('withdraw_approval') && confirmation.kind === 'withdraw'"
       v-model="confirmation.visible"

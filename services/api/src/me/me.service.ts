@@ -1,3 +1,4 @@
+import {scopedSpotDutyNodeIndexes, SPOT_APPROVAL_DUTY_RESOURCE} from "../approval/spot-approval-duty-access";
 import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {companyTransferWorkItems} from "../company-transfer/company-transfer-workitems";
 import {contractHandlingWorkItems} from "../contract-ledger/contract-handling-workitems";
@@ -490,7 +491,11 @@ export class MeService {
       "spot_procurement.approve",
       "spot_procurement.payment.approve"
     ]);
-    if (approvalProjects.length) {
+    const scopedSpotMandate = typeof this.prisma.approvalDelegation?.findFirst === "function" ? await this.prisma.approvalDelegation.findFirst({where: {
+      toUserId: userId, enabled: true, actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE,
+      startsAt: {lte: new Date()}, endsAt: {gt: new Date()}
+    }, select: {id: true}}) : null;
+    if (approvalProjects.length || scopedSpotMandate) {
       const approvalCounts = await this.countApprovalTodos(scopes, userId);
       cards.push({
         id: "approval_todo",
@@ -2176,7 +2181,8 @@ export class MeService {
 
     for (const instance of instances) {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
-      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []);
+      const scopedDelegateNode = detail ? await this.scopedSpotDelegateNode(instance, detail.projectId, userId) : null;
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []) ?? scopedDelegateNode;
       if (!detail || !node) {
         continue;
       }
@@ -2188,17 +2194,17 @@ export class MeService {
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
-      const hasDelegatedTodo =
+      const hasDelegatedTodo = Boolean(scopedDelegateNode) || (
         mode === "started" || !supportsIndirect || hasDirectTodo
           ? false
-          : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node, evaluatedAt);
+          : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node, evaluatedAt));
       if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
       if (mode === "delegated" && !this.hasAssignmentTodo(node, userId) && !hasDelegatedTodo) {
         continue;
       }
-      if (mode === "delegated" && !supportsIndirect) {
+      if (mode === "delegated" && !supportsIndirect && !scopedDelegateNode) {
         continue;
       }
 
@@ -2519,11 +2525,12 @@ export class MeService {
       }
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
 
+      const scopedDelegateNode = await this.scopedSpotDelegateNode(instance, projectId, userId);
       const currentNode = this.currentApprovalNode(
         instance.frozenNodes,
         instance.currentNodeIndex,
         roleKeys
-      );
+      ) ?? scopedDelegateNode;
       if (!currentNode) {
         continue;
       }
@@ -2534,7 +2541,7 @@ export class MeService {
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, currentNode, roleKeys, userId);
-      const hasDelegatedTodo =
+      const hasDelegatedTodo = Boolean(scopedDelegateNode) || (
         supportsIndirect && !hasDirectTodo
           ? await this.hasDelegatedApprovalTodo(
               userId,
@@ -2542,7 +2549,7 @@ export class MeService {
               currentNode,
               evaluatedAt
             )
-          : false;
+          : false);
       if (!hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
@@ -2670,6 +2677,12 @@ export class MeService {
     return ids;
   }
 
+  private async scopedSpotDelegateNode(instance: {id: string; businessType: string; status: string; frozenNodes: unknown; currentNodeIndex: number}, projectId: string, userId: string): Promise<ApprovalNode | null> {
+    if (instance.businessType !== "spot_procurement_version") return null;
+    const indexes = await scopedSpotDutyNodeIndexes(this.prisma as never, instance, projectId, userId);
+    return indexes.length && Array.isArray(instance.frozenNodes) ? instance.frozenNodes[indexes[0]] as ApprovalNode : null;
+  }
+
   private currentApprovalNode(frozenNodes: unknown, index: number, roleKeys: RoleKey[] = []): ApprovalNode | null {
     if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) return null;
     if (isParallelApprovalRound(frozenNodes)) {
@@ -2725,7 +2738,6 @@ export class MeService {
     roleKeys: RoleKey[],
     userId: string
   ) {
-    if (instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.applicantUserId === userId) return false;
     if (
       !SPOT_APPROVAL_TYPES.includes(
         instance.businessType as (typeof SPOT_APPROVAL_TYPES)[number]

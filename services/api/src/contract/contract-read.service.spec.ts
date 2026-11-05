@@ -2557,7 +2557,7 @@ describe("ContractReadService", () => {
         findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           applicantUserId: "applicant-1",
-          frozenNodes: [{ name: "合同部主管", roleKeys: ["contract_director"] }],
+          frozenNodes: [{ name: "合同部主管", roleKeys: ["contract_director"], originatorUserIds: ["applicant-1"] }],
           currentNodeIndex: 0,
           updatedAt: new Date("2026-08-02T01:00:01.000Z")
         }])
@@ -2612,6 +2612,7 @@ describe("ContractReadService", () => {
           frozenNodes: [
             {
               roleKeys: ["contract_director"],
+              originatorUserIds: ["applicant-1"],
               assignments: [{ fromRoleKey: "contract_director", toUserId: "assigned-1" }]
             }
           ],
