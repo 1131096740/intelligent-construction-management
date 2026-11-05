@@ -132,6 +132,26 @@ A09修复在**本票派生文档**明确映射关键语义金额范围，不改�
 
 当前只是单样张安全检查点，任务08仍open；原18矩阵的后17份继续NOT RUN。八模板编辑同步、两张45行长表及三个简版的封面/字体标准未据此通过。后续矩阵必须采用新来源感知glyph检查，不能复用原外部脚本的全□误判；须主控冻结核完准确新SHA后明确下一运行范围。本票没有运行PG/SQL/迁移/部署。
 
+### 八包元数据全面核查与矩阵第二停点
+
+中央文档40b3b0c6已合入。本轮固定18项矩阵开始：机械真实基线与已验9pt样张的请求、生成器指纹、每个OOXML part及固定运行时均严格核对后复用；机械编辑同步版新增/修改普通条款、同步甲乙方/合同名/付款条款后实际导出12页，手改保留且内容检查通过。该矩阵金额仍75.0000，金额值变化由独立A09/公开DOCX案例覆盖，不能宣称本矩阵改了总额。
+
+第3项机械简版在load时发生styles `ClassCastException`，toFO调用0次。其原包缺styles MIME Override，落到generic application/xml。经公开render行为RED/GREEN，仅在两已知派生包补styles声明后的单次重验，旧cast消失却遇`Null InputStream`，仍在toFO前；进一步全面只读核8包全部parts/内容类型/内部关系，确认三简版还存在缺settings.xml的可选关系、五非real包fontTable缺MIME声明。不是随机参数/字体试跑。两次失败、无PDF及完整包清单保留在`public-matrix18-source-aware-02-20261105/`和`compact-style-package-fix-single/`。
+
+主控逐项批准、并在公开render结构RED/GREEN后固定如下**派生包元数据**修复清单，原8文件不动：
+
+| 已知样张 | 允许修复 | 必须成立的条件 |
+| --- | --- | --- |
+| equipment-rental-v1、labor-subcontract-v1 | 补`/word/styles.xml`标准styles Override | 唯一标准styles关系、target恰为styles.xml、part存在且根w:styles；已有冲突拒绝 |
+| 上述两份及material-purchase-v1 | 删除精确可选悬空settings关系 | Id=rIdSettings、标准settings类型、内部target=settings.xml、part实际缺失、所有XML无r命名空间引用；已有settings/其它关系不动，不造默认settings |
+| 上述三份及generic-contract-v1、professional-subcontract-v1 | 补`/word/fontTable.xml`标准fontTable Override | 唯一标准fontTable关系、同路径part存在且根w:fonts；已有冲突拒绝，不改字体表/字名 |
+
+完整一次只读包清单：`compact-style-package-fix-single/all-eight-source-package-audit.json`；记录全部part哈希/声明及关系解析目标，未知类型期望null，不假称所有未知语义已校验。未列样张/路径不自动修复，必需缺part、冲突或歧义不由本修复删除求通过。
+
+合并这三种已批准元数据修复后，机械简版唯一获批新单次输出实际1页PDF；与原失败派生包比较仅`[Content_Types].xml`和`word/_rels/document.xml.rels`变化，document/styles/fontTable字节相同。独立文字/trace缺失0、glyph异常0、嵌入/A4/页外0，真实字体仅FangSong/Times。**仍NOT_ACCEPTED标准**：源简版缺正式封面和确认标题字体；嵌入只证明其原字形，不等于完整标准通过。
+
+安全检查点证据在`compact-known-package-fix-single/`，含实际DOCX/PDF、一次标记、侧车、inspection及逐页PNG。4项公开包修复检查通过（含坏根/缺part/重复关系/类型冲突拒绝、引用的缺settings拒绝、既有settings字节保留）。按主控为05双轴复审腾窗口的调度，在此停机，无转换子进程；矩阵后15项尚未开始，任务08仍open，不启动下一项、不把旧失败覆盖为成功。依赖/许可限制及三个compact版式差异继续保留。
+
 ## 依赖、许可及后续约束
 
 Python3.11.15；隔离工具环境按 [requirements.txt](requirements.txt) 固定版本，没有改pnpm依赖/锁文件。首次误用Python3.9安装PyMuPDF1.26.7失败，改用已存在Python3.11另建独立环境后成功，未升级包。工具说明：

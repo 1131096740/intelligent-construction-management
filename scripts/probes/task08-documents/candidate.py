@@ -187,6 +187,59 @@ def pricing_values(pricing, mechanical_total=False):
 
 
 def render(parts, request, source_name=None):
+    if source_name in {"equipment-rental-v1.docx", "labor-subcontract-v1.docx", "material-purchase-v1.docx"} and "word/settings.xml" not in parts:
+        parser = E.XMLParser(resolve_entities=False, no_network=True)
+        rels = E.fromstring(parts["word/_rels/document.xml.rels"], parser)
+        optional = [item for item in rels if item.get("Type") == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings"]
+        if optional:
+            if len(optional) != 1 or optional[0].get("Id") != "rIdSettings" or optional[0].get("Target") != "settings.xml" or optional[0].get("TargetMode", "Internal") != "Internal":
+                raise ValueError("unreviewed dangling settings relationship")
+            relationship_ns = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+            for name, data in parts.items():
+                if name.endswith(".xml"):
+                    xml = E.fromstring(data, parser)
+                    if any(key.startswith(relationship_ns) and value == "rIdSettings" for node in xml.iter() for key, value in node.attrib.items()):
+                        raise ValueError("referenced settings part missing")
+            rels.remove(optional[0])
+            parts["word/_rels/document.xml.rels"] = E.tostring(rels, xml_declaration=True, encoding="UTF-8", standalone=True)
+    if source_name in {"equipment-rental-v1.docx", "labor-subcontract-v1.docx"}:
+        # These two reviewed source packages omit the styles content type.
+        # Repair package metadata only; never rewrite styles to satisfy an engine.
+        parser = E.XMLParser(resolve_entities=False, no_network=True)
+        rel_type = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+        relationships = E.fromstring(parts["word/_rels/document.xml.rels"], parser)
+        styles = [item for item in relationships if item.get("Type") == rel_type]
+        if len(styles) != 1 or styles[0].get("Target") != "styles.xml" or styles[0].get("TargetMode", "Internal") != "Internal" or "word/styles.xml" not in parts:
+            raise ValueError("reviewed compact styles relationship missing or ambiguous")
+        if E.fromstring(parts["word/styles.xml"], parser).tag != W + "styles":
+            raise ValueError("reviewed compact styles part has wrong root")
+        ct = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+        types = E.fromstring(parts["[Content_Types].xml"], parser)
+        declared = [item for item in types if item.get("PartName") == "/word/styles.xml"]
+        expected = "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"
+        if types.tag != ct + "Types" or len(declared) > 1 or declared and (declared[0].tag != ct + "Override" or declared[0].get("ContentType") != expected):
+            raise ValueError("reviewed compact styles content type conflicts")
+        if not declared:
+            E.SubElement(types, ct + "Override", {"PartName": "/word/styles.xml", "ContentType": expected})
+            parts["[Content_Types].xml"] = E.tostring(types, xml_declaration=True, encoding="UTF-8", standalone=True)
+    if source_name in {"equipment-rental-v1.docx", "labor-subcontract-v1.docx", "material-purchase-v1.docx", "generic-contract-v1.docx", "professional-subcontract-v1.docx"}:
+        parser = E.XMLParser(resolve_entities=False, no_network=True)
+        relationships = E.fromstring(parts["word/_rels/document.xml.rels"], parser)
+        rel_type = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable"
+        font_tables = [item for item in relationships if item.get("Type") == rel_type]
+        if len(font_tables) != 1 or font_tables[0].get("Target") != "fontTable.xml" or font_tables[0].get("TargetMode", "Internal") != "Internal" or "word/fontTable.xml" not in parts:
+            raise ValueError("reviewed font table relationship missing or ambiguous")
+        if E.fromstring(parts["word/fontTable.xml"], parser).tag != W + "fonts":
+            raise ValueError("reviewed font table part has wrong root")
+        ct = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+        types = E.fromstring(parts["[Content_Types].xml"], parser)
+        declared = [item for item in types if item.get("PartName") == "/word/fontTable.xml"]
+        expected = "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"
+        if types.tag != ct + "Types" or len(declared) > 1 or declared and (declared[0].tag != ct + "Override" or declared[0].get("ContentType") != expected):
+            raise ValueError("reviewed font table content type conflicts")
+        if not declared:
+            E.SubElement(types, ct + "Override", {"PartName": "/word/fontTable.xml", "ContentType": expected})
+            parts["[Content_Types].xml"] = E.tostring(types, xml_declaration=True, encoding="UTF-8", standalone=True)
     values = dict(request["fields"])
     mechanical = source_name == "equipment-rental-real-v1.docx"
     semantic = pricing_values(request["pricing"], mechanical) if "pricing" in request else None

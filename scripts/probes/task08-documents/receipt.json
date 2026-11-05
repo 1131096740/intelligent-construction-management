@@ -1567,6 +1567,149 @@
         "30-mechanical-checkpoint-tests.log (10 passed, no new PDF conversion)"
       ],
       "scopeLimit": "one source-fidelity mechanical8.5pt then one separately authorized9pt actual public CLI PDF; rest17 paused; compact standards/full8/nativeWord and formal adoption not accepted"
+    },
+    "knownPackageRepairCheckpoint": {
+      "status": "CLEAN_CHECKPOINT_TASK08_OPEN_MATRIX_PAUSED",
+      "matrix": "public-matrix18-source-aware-02-20261105",
+      "matrixSourceSha": "ad31c731c4fbc9f4156403482af082d8498275d0",
+      "matrixMeasuredContentCases": 2,
+      "exactReusedMechanicalBaselines": 1,
+      "newMechanicalAfterPdf": 1,
+      "case3InitialFailure": "ClassCastException styles typed as genericapplication/xml; beforetoFO",
+      "case3StylesOnlyRepairFailure": "Null InputStream due absent optionalsettings relation target; beforetoFO",
+      "case3AllKnownPackageFix": "one new actual1page PDF content-measured-pass; inheritedcompactstandard NOT_ACCEPTED",
+      "unstartedCases": 15,
+      "sourcePackageAudit": {
+        "path": "/private/tmp/jg-task08-document-receipts-20261105/compact-style-package-fix-single/all-eight-source-package-audit.json",
+        "sha256": "7bdcbddc84517a957fcfbc19f1da56f2a3f3026c80e9bceb8225a8afaaa1dd43",
+        "sourceCount": 8,
+        "scope": "all ZIPparts/hashes and declared content types; all internal relationship target presence; standardWML/theme content-type checks; unknown expected type explicitlynull",
+        "knownFindingsByTemplate": {
+          "equipment-rental-real-v1.docx": [],
+          "equipment-rental-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/styles.xml"
+            },
+            {
+              "kind": "danglingInternalRelationship",
+              "part": "word/settings.xml"
+            },
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "generic-contract-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "labor-subcontract-real-v1.docx": [],
+          "labor-subcontract-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/styles.xml"
+            },
+            {
+              "kind": "danglingInternalRelationship",
+              "part": "word/settings.xml"
+            },
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "material-purchase-real-v1.docx": [],
+          "material-purchase-v1.docx": [
+            {
+              "kind": "danglingInternalRelationship",
+              "part": "word/settings.xml"
+            },
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ],
+          "professional-subcontract-v1.docx": [
+            {
+              "kind": "relationshipContentTypeMismatch",
+              "part": "word/fontTable.xml"
+            }
+          ]
+        }
+      },
+      "approvedDerivedRepairs": {
+        "stylesOverrideOnly": [
+          "equipment-rental-v1.docx",
+          "labor-subcontract-v1.docx"
+        ],
+        "unreferencedAbsentOptionalSettingsRelationshipOnly": [
+          "equipment-rental-v1.docx",
+          "labor-subcontract-v1.docx",
+          "material-purchase-v1.docx"
+        ],
+        "fontTableOverrideOnly": [
+          "equipment-rental-v1.docx",
+          "labor-subcontract-v1.docx",
+          "material-purchase-v1.docx",
+          "generic-contract-v1.docx",
+          "professional-subcontract-v1.docx"
+        ]
+      },
+      "repairGuards": "exactknownsource names only; unique standard samepath relation + actual w:styles/w:fonts root + existingpart required; conflicting declaration rejects; optionalsettings removal requires precise rIdSettings/type/target/internal, missingpart, no r:namespace reference; existingsettings/allotherrels retained; no speculativeparts/defaults/fontnames",
+      "stylesAndDocumentAndFontTableBytesPreserved": true,
+      "originalEightSampleHashesUnchanged": true,
+      "artifactDirectory": "/private/tmp/jg-task08-document-receipts-20261105/compact-known-package-fix-single",
+      "attemptSha256": "e34f0cca5c3ca22687e6a5a68a89a3829b2778b828ec007f391b611bcfeb33ec",
+      "rendererSha256": "c7ef5a82622e2f0be1f61a76ee61835284a8a7ce1b837d4a56ac51600e65b2ae",
+      "docxSha256": "87e66eaf9e3b7cecc2e03161ee843317179c02ccd457298b5867e8c8c297c641",
+      "pdfSha256": "be4707441814ad3161753145a88a8197361a3f5d3685afa305b2bb5e266a21fc",
+      "exportReceipt": {
+        "status": "EXPORTED_REQUIRES_INDEPENDENT_FIDELITY_CHECKS",
+        "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+        "scratch": "/private/tmp/jg-task08-docx4j-tools-20261105/public-cli-runs/export-10h_bqqo",
+        "sourceSha256": "87e66eaf9e3b7cecc2e03161ee843317179c02ccd457298b5867e8c8c297c641",
+        "runtimeManifestSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+        "policySha256": "bc518d8bf35a98cdea74df8f70b2c6c563ab80989808092d3e187561c2042bd5",
+        "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "conversionCalls": 1,
+        "childEnvironmentKeys": [
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR"
+        ],
+        "exitCode": 0,
+        "networkAndOutsideFileDenied": true,
+        "pdfSha256": "be4707441814ad3161753145a88a8197361a3f5d3685afa305b2bb5e266a21fc",
+        "usedFontNames": [
+          "FangSong_GB2312",
+          "TimesNewRomanPSMT"
+        ],
+        "sourceAndPinnedFilesUnchanged": true
+      },
+      "independentInspection": {
+        "missingCharacterCounts": {},
+        "missingTraceCharacterCounts": {},
+        "physicalGlyphCandidates": [],
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageText": []
+      },
+      "actualPdfFonts": [
+        "EAAAAA+FangSong_GB2312",
+        "EAAAAB+TimesNewRomanPSMT"
+      ],
+      "pageCount": 1,
+      "standardStatus": "NOT_ACCEPTED_INHERITED_MISSING_FORMAL_COVER_AND_TITLE_FONT; embedded FangSong/Times proves those source glyphs only",
+      "tests": "4 public render tests pass; valid package repairs, badroot/missingpart/duplicate styles/typeconflict refusal, r:id-refused removal, existingsettings exactpreservation, fontTable metadata typed with bytes unchanged",
+      "testLog": "/private/tmp/jg-task08-document-receipts-20261105/40-package-repair-checkpoint-tests.log",
+      "testLogSha256": "f83e8ee93128c895aaed36c3a7ed7a2d6d1c2316d9423ca2654fd83b50864db4",
+      "remaining": "matrix15 notstarted per root scheduling; no next conversion; task08 notcomplete; no PG/SQL/deploy/production"
     }
   }
 }

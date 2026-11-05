@@ -13,6 +13,130 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 class CandidateCLI(unittest.TestCase):
+    def test_five_known_font_tables_get_typed_metadata_without_font_changes(self):
+        import re
+        ct = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+        for name in ["equipment-rental-v1.docx", "labor-subcontract-v1.docx", "material-purchase-v1.docx", "generic-contract-v1.docx", "professional-subcontract-v1.docx"]:
+            with self.subTest(template=name), tempfile.TemporaryDirectory(prefix="task08-fonttable-package-") as tmp:
+                tmp = Path(tmp)
+                with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
+                texts = "".join("".join(ET.fromstring(data).itertext()) for n, data in parts.items() if n.startswith("word/") and n.endswith(".xml"))
+                request = tmp / "request.json"
+                request.write_text(json.dumps({"fields": {k: "合成值" for k in re.findall(r"\{([^{}#/]+)\}", texts)}, "lists": {k: [] for k in re.findall(r"\{#([^{}]+)\}", texts)}}))
+                output = tmp / "actual.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(request), "--output", str(output)], check=True)
+                with ZipFile(output) as z:
+                    declared = [x for x in ET.fromstring(z.read("[Content_Types].xml")) if x.get("PartName") == "/word/fontTable.xml"]
+                    self.assertEqual(len(declared), 1)
+                    self.assertEqual(declared[0].get("ContentType"), "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml")
+                    self.assertEqual(z.read("word/fontTable.xml"), parts["word/fontTable.xml"])
+                types = ET.fromstring(parts["[Content_Types].xml"])
+                ET.SubElement(types, ct + "Override", {"PartName": "/word/fontTable.xml", "ContentType": "application/xml"})
+                conflict = tmp / name
+                with ZipFile(conflict, "w") as z:
+                    for n, data in parts.items():z.writestr(n, ET.tostring(types) if n == "[Content_Types].xml" else data)
+                rejected = tmp / "rejected.docx"
+                result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(conflict), "--request", str(request), "--output", str(rejected)], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b"font table content type conflicts", result.stderr)
+                self.assertFalse(rejected.exists())
+
+    def test_only_known_unreferenced_dangling_settings_are_removed(self):
+        import re
+        for name in ["equipment-rental-v1.docx", "labor-subcontract-v1.docx", "material-purchase-v1.docx"]:
+            with self.subTest(template=name), tempfile.TemporaryDirectory(prefix="task08-settings-package-") as tmp:
+                tmp = Path(tmp)
+                with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
+                texts = "".join("".join(ET.fromstring(data).itertext()) for n, data in parts.items() if n.startswith("word/") and n.endswith(".xml"))
+                request = tmp / "render.json"
+                request.write_text(json.dumps({"fields": {k: "合成值" for k in re.findall(r"\{([^{}#/]+)\}", texts)}, "lists": {k: [] for k in re.findall(r"\{#([^{}]+)\}", texts)}}))
+                output = tmp / "actual.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(request), "--output", str(output)], check=True)
+                original_rels = ET.fromstring(parts["word/_rels/document.xml.rels"])
+                expected = [x.attrib for x in original_rels if x.get("Id") != "rIdSettings"]
+                with ZipFile(output) as z:
+                    self.assertEqual([x.attrib for x in ET.fromstring(z.read("word/_rels/document.xml.rels"))], expected)
+                    self.assertNotIn("word/settings.xml", z.namelist())
+                # An actual r:id reference cannot be silently dropped.
+                xml = ET.fromstring(parts["word/document.xml"])
+                xml.set("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id", "rIdSettings")
+                referenced = tmp / name
+                with ZipFile(referenced, "w") as z:
+                    for n, data in parts.items():z.writestr(n, ET.tostring(xml) if n == "word/document.xml" else data)
+                rejected = tmp / "rejected.docx"
+                result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(referenced), "--request", str(request), "--output", str(rejected)], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b"referenced settings part missing", result.stderr)
+                self.assertFalse(rejected.exists())
+                # Existing settings are outside this repair and remain exact.
+                settings = b'<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:zoom w:percent="85"/></w:settings>'
+                with ZipFile(referenced, "w") as z:
+                    for n, data in parts.items():z.writestr(n, data)
+                    z.writestr("word/settings.xml", settings)
+                preserved = tmp / "preserved.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(referenced), "--request", str(request), "--output", str(preserved)], check=True)
+                with ZipFile(preserved) as z:
+                    self.assertEqual(z.read("word/settings.xml"), settings)
+                    self.assertEqual(z.read("word/_rels/document.xml.rels"), parts["word/_rels/document.xml.rels"])
+
+    def test_compact_package_repair_rejects_conflicts_and_unproved_style_parts(self):
+        ct = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+        name = "equipment-rental-v1.docx"
+        with ZipFile(HERE / "samples" / name) as z:original = {n: z.read(n) for n in z.namelist()}
+        for variant in ["content-type-conflict", "wrong-root", "missing-part", "duplicate-relationship"]:
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory(prefix="task08-package-reject-") as tmp:
+                tmp = Path(tmp)
+                parts = dict(original)
+                if variant == "content-type-conflict":
+                    types = ET.fromstring(parts["[Content_Types].xml"])
+                    ET.SubElement(types, ct + "Override", {"PartName": "/word/styles.xml", "ContentType": "application/xml"})
+                    parts["[Content_Types].xml"] = ET.tostring(types)
+                elif variant == "wrong-root":parts["word/styles.xml"] = b"<notStyles/>"
+                elif variant == "missing-part":parts.pop("word/styles.xml")
+                else:
+                    rel = ET.fromstring(parts["word/_rels/document.xml.rels"])
+                    style = next(item for item in rel if item.get("Type", "").endswith("/styles"))
+                    ET.SubElement(rel, style.tag, {**style.attrib, "Id": "duplicateStyles"})
+                    parts["word/_rels/document.xml.rels"] = ET.tostring(rel)
+                source = tmp / name
+                with ZipFile(source, "w") as z:
+                    for n, data in parts.items():z.writestr(n, data)
+                request = tmp / "request.json"
+                request.write_text('{"fields":{}}')
+                output = tmp / "rejected.docx"
+                result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(source), "--request", str(request), "--output", str(output)], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b"reviewed compact styles", result.stderr)
+                self.assertFalse(output.exists())
+
+    def test_known_compact_style_package_declaration_is_repaired_without_style_change(self):
+        import re
+        ct = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+        style_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"
+        for name in ["equipment-rental-v1.docx", "labor-subcontract-v1.docx"]:
+            with self.subTest(template=name), tempfile.TemporaryDirectory(prefix="task08-style-package-") as tmp:
+                tmp = Path(tmp)
+                with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
+                texts = "".join("".join(ET.fromstring(data).itertext()) for n, data in parts.items() if n.startswith("word/") and n.endswith(".xml"))
+                request = tmp / "render.json"
+                request.write_text(json.dumps({"fields": {key: "合成值" for key in re.findall(r"\{([^{}#/]+)\}", texts)}, "lists": {key: [] for key in re.findall(r"\{#([^{}]+)\}", texts)}}))
+                actual = tmp / "actual.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(request), "--output", str(actual)], check=True)
+                with ZipFile(actual) as z:
+                    declarations = [item for item in ET.fromstring(z.read("[Content_Types].xml")) if item.get("PartName") == "/word/styles.xml"]
+                    self.assertEqual(len(declarations), 1)
+                    self.assertEqual(declarations[0].get("ContentType"), style_type)
+                    self.assertEqual(z.read("word/styles.xml"), parts["word/styles.xml"])
+                    document = z.read("word/document.xml")
+                declared = ET.fromstring(parts["[Content_Types].xml"])
+                ET.SubElement(declared, ct + "Override", {"PartName": "/word/styles.xml", "ContentType": style_type})
+                fixed = tmp / name
+                with ZipFile(fixed, "w") as z:
+                    for n, data in parts.items():z.writestr(n, ET.tostring(declared) if n == "[Content_Types].xml" else data)
+                control = tmp / "control.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(fixed), "--request", str(request), "--output", str(control)], check=True)
+                with ZipFile(control) as z:self.assertEqual(z.read("word/document.xml"), document)
+
     def test_mechanical_totals_stay_short_and_context_syncs_outside_table(self):
         import re
         template = HERE / "samples/equipment-rental-real-v1.docx"
