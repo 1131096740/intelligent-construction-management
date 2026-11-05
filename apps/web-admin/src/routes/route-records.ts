@@ -351,6 +351,16 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         }
       },
       {
+        path: "合同模板库/主管维护",
+        component: () => import("../pages/contract-templates/LayoutTemplateManagementPage.vue"),
+        meta: { requiredGlobalRoleKeys: ["contract_director"], title: "维护合同模板" }
+      },
+      {
+        path: "合同模板库/版式/:layoutTemplateId/维护",
+        component: () => import("../pages/contract-templates/LayoutTemplateEditorPage.vue"),
+        meta: { requiredGlobalRoleKeys: ["contract_director"], title: "维护 Word 模板" }
+      },
+      {
         path: "合同模板库/:templateId",
         component: () => import("../pages/contract-templates/ContractTemplateReadonlyDetailPage.vue")
       },

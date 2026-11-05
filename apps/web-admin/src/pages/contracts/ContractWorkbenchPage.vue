@@ -577,6 +577,7 @@
                 <ContractDocumentsSection
                   :workbench="workbench"
                   :layout-template-version-id="model.layoutTemplateVersionId"
+                  :draft-business-type="currentDraftBusinessType"
                   @update:layout-template-version-id="updateLayoutTemplateVersion"
                   :disabled="editorDisabled"
                   :prepare-mutation="prepareGovernanceMutation"
@@ -1411,8 +1412,11 @@ const contractId = computed(() => {
 const isNewDraft = computed(() => !contractId.value);
 const currentDraftBusinessType = computed(() => {
   const data = model.extraDraftData.contractBasics;
-  return workbench.value?.version.status === "draft" && data && typeof data === "object" && !Array.isArray(data) && typeof (data as Record<string, unknown>).businessType === "string"
-    ? (data as Record<string, unknown>).businessType as string : workbench.value?.contract.contractTypeKey;
+  if (workbench.value?.version.status !== "draft") return workbench.value?.contract.contractTypeKey;
+  const rawType = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>).businessType : undefined;
+  if (typeof rawType === "string" && ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"].includes(rawType)) return rawType;
+  if (rawType !== undefined || workbench.value?.version.signingSubjectType === "draft_unconfirmed") return null;
+  return workbench.value?.contract.contractTypeKey;
 });
 const editable = computed(() => {
   const status = workbench.value?.version.status;

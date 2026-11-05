@@ -330,7 +330,7 @@ export interface ContractDraftFieldsPayload {
   manualAmountCents?: string;
   estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
   taxFacts: {
     invoiceType: ContractInvoiceType | null;
     taxMode: ContractTaxMode;

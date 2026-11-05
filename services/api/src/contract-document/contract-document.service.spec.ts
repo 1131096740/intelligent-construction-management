@@ -1,3 +1,6 @@
+import { syntheticWordSource } from "../contract-template/template-management.test-support";
+import { readLayoutSourcePositions, prepareLayoutSourceMapping } from "../contract-template/layout-field-mapping";
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
@@ -9,8 +12,16 @@ describe("ContractDocumentService", () => {
     documentContentRevision: 3,
     documentContentFingerprint
   };
+  // A valid confirmed source is this service fixture's selection precondition;
+  // actual manual confirmation and file conversion are covered through HTTP.
+  const source = syntheticWordSource();
+  const parsed = readLayoutSourcePositions(source);
+  const keys = ["contract.name", "party.owner.name", "party.counterparty.name", "contract.temporaryCode", "document.watermark"];
+  const { mapping } = prepareLayoutSourceMapping(source, "layout-file-1", 2, parsed.positions.slice(0, 5).map((position, index) => ({ positionId: position.positionId, start: index === 0 ? 5 : index === 4 ? 0 : 3, end: position.text.length, fieldKey: keys[index] })));
+  const sourceMapping = { ...mapping, confirmation: { sourceFileId: mapping.sourceFileId, sourceSha256: mapping.sourceSha256, draftRevision: 2, mappingFingerprint: mapping.fingerprint, previewJobId: "confirmed-preview", previewPdfFileId: "confirmed-pdf" } };
   const audit = { record: jest.fn() };
   const files = {
+    getFileBuffer: jest.fn().mockResolvedValue({ buffer: source, file: { id: "layout-file-1", storageStatus: "active", contentSha256: createHash("sha256").update(source).digest("hex") } }),
     assertCanDownloadFile: jest.fn(),
     linkFileReplacement: jest.fn()
   };
@@ -134,7 +145,9 @@ describe("ContractDocumentService", () => {
           layoutTemplateId: "layout-template-1",
           status: "published",
           docxFileId: "layout-file-1",
+          draftRevision: 2,
           placeholderSchema: {
+            sourceMapping,
             required: ["field.deliveryLocation"],
             fields: [{ key: "deliveryDate", required: true }],
             bills: []
@@ -1069,6 +1082,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           ...documentContentCoordinates,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: "vat_general",
           defaultTaxRatePercent: { toString: () => "9" },
@@ -1118,6 +1132,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           ...documentContentCoordinates,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: "vat_special",
           defaultTaxRatePercent: { toString: () => "13" },
@@ -1356,6 +1371,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           ...documentContentCoordinates,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: null,
           defaultTaxRatePercent: null,

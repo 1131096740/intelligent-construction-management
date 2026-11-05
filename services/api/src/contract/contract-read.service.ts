@@ -127,6 +127,33 @@ export class ContractReadService {
     private readonly me?: MeService
   ) {}
 
+  /** The existing sensitive contract read decision, evaluated on the file transaction.
+   * This is not summary visibility and never looks at the template's current status.
+   */
+  async assertCanReadVersionFile(tx: Prisma.TransactionClient, versionId: string, actorUserId: string): Promise<void> {
+    const denied = () => new NotFoundException("未找到有权读取的合同文档");
+    const user = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!user?.isActive || !this.projectVisibility) throw denied();
+    const version = await tx.contractVersion.findUnique({ where: { id: versionId } });
+    const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+    if (!version || !contract) throw denied();
+    const visible = await this.projectVisibility.visibleRequestedProjectIdsInTransaction(tx, actorUserId, [contract.projectId]);
+    if (!visible.includes(contract.projectId)) throw denied();
+    const actor = await this.actorRoles(actorUserId, contract.projectId, tx);
+    const roles = actor.roleKeys;
+    const lifecycle = (await this.contractDraftLifecycleByVersion([version], tx)).get(version.id);
+    if (!lifecycle || lifecycle.contractLifecycleStage === "deleting" || !this.canReadContractVersionDraft(version, contract.ownerUserId, actorUserId, roles)) throw denied();
+    const retainedHistory = lifecycle.contractLifecycleStage === "ended_retained";
+    if (retainedHistory && this.getContractVisibilityLevel(roles) !== "full") throw denied();
+    if (lifecycle.contractLifecycleStage === "unsubmitted_draft" && contract.ownerUserId !== actorUserId && !roles.some(role => CONTRACT_DRAFT_PRIVATE_READ_ROLES.has(role))) throw denied();
+    const review = retainedHistory ? emptyCurrentContractApprovalReview() : await this.canReviewCurrentApproval("contract_version", version.id, contract.projectId, roles, actorUserId, actor.roleScopes, tx);
+    if (!review.access.canAct) {
+      const versions = await tx.contractVersion.findMany({ where: { contractId: contract.id, status: { not: "deleting" } }, orderBy: { versionNo: "desc" } });
+      const participants = await this.contractParticipantIds([contract], versions, new Map([[contract.projectId, roles]]), actorUserId, tx);
+      if (this.resolveLedgerVisibility(roles, contract, actorUserId, participants) !== "full") throw denied();
+    }
+  }
+
   private async confirmedHistoricalBalanceForContract(contractId: string) {
     const takeoverClient = (this.prisma as unknown as {
       contractTakeover?: {
@@ -476,13 +503,14 @@ export class ContractReadService {
       abandonReason?: string | null;
     }
   >(
-    versions: V[]
+    versions: V[],
+    readClient: PrismaService | Prisma.TransactionClient = this.prisma
   ): Promise<Map<string, ContractDraftLifecycleClassification>> {
     const versionIds = versions.map((version) => version.id);
     if (!versionIds.length) return new Map();
 
     type VersionFact = { contractVersionId?: string };
-    const client = this.prisma as unknown as {
+    const client = readClient as unknown as {
       approvalInstance?: {
         findMany(args: unknown): Promise<Array<{ id?: string; businessId?: string }>>;
       };
@@ -2133,7 +2161,7 @@ export class ContractReadService {
     return roles;
   }
 
-  private async actorRoles(actorUserId: string | undefined, projectId: string): Promise<{
+  private async actorRoles(actorUserId: string | undefined, projectId: string, readClient?: Prisma.TransactionClient): Promise<{
     roleKeys: RoleKey[];
     roleScopes?: ApprovalActorRoleScopes;
   }> {
@@ -2147,7 +2175,9 @@ export class ContractReadService {
       ) => Promise<ApprovalActorRoleScopes>;
     };
     if (scopedVisibility.effectiveRoleScopes) {
-      const roleScopes = await scopedVisibility.effectiveRoleScopes(actorUserId, projectId);
+      const roleScopes = readClient
+        ? await this.projectVisibility.effectiveRoleScopesInTransaction(readClient, actorUserId, projectId)
+        : await scopedVisibility.effectiveRoleScopes(actorUserId, projectId);
       return {
         roleKeys: [...resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys),
           ...(roleScopes.globalRoleKeys.includes("super_admin") ? ["super_admin" as const] : [])],
@@ -2176,13 +2206,14 @@ export class ContractReadService {
     projectId: string,
     roleKeys: RoleKey[],
     actorUserId?: string,
-    actorRoleScopes?: ApprovalActorRoleScopes
+    actorRoleScopes?: ApprovalActorRoleScopes,
+    readClient: PrismaService | Prisma.TransactionClient = this.prisma
   ): Promise<CurrentContractApprovalReview> {
     if (!actorUserId) {
       return emptyCurrentContractApprovalReview();
     }
 
-    const approvalClient = (this.prisma as unknown as {
+    const approvalClient = (readClient as unknown as {
       approvalInstance?: {
         findMany(args: {
           where: {
@@ -2238,7 +2269,7 @@ export class ContractReadService {
     let selfReviewApplicantUserId = instance.applicantUserId;
     if (actorUserId !== instance.applicantUserId) {
       try {
-        const originators = await resolveContractOriginators(this.prisma as never, businessId, instance.frozenNodes);
+        const originators = await resolveContractOriginators(readClient as never, businessId, instance.frozenNodes);
         if (originators.includes(actorUserId)) selfReviewApplicantUserId = actorUserId;
       } catch {
         // Unknown historical provenance restricts this write capability, never historical reads.
@@ -2270,7 +2301,8 @@ export class ContractReadService {
 
     const activeDelegators = await this.activeDelegatedApprovalIdentities(
       actorUserId,
-      projectId
+      projectId,
+      readClient
     );
     const delegatedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
@@ -2354,7 +2386,8 @@ export class ContractReadService {
 
   private async activeDelegatedApprovalIdentities(
     actorUserId: string,
-    projectId: string
+    projectId: string,
+    readClient: PrismaService | Prisma.TransactionClient = this.prisma
   ): Promise<Array<{
     userId: string;
     roleKeys: RoleKey[];
@@ -2362,14 +2395,14 @@ export class ContractReadService {
   }>> {
     if (!this.projectVisibility) return [];
 
-    const delegatorIds = await activeApprovalDelegatorIds(this.prisma, actorUserId, new Date());
+    const delegatorIds = await activeApprovalDelegatorIds(readClient, actorUserId, new Date());
     const identities: Array<{
       userId: string;
       roleKeys: RoleKey[];
       roleScopes?: ApprovalActorRoleScopes;
     }> = [];
     for (const delegatorId of delegatorIds) {
-      const roles = await this.actorRoles(delegatorId, projectId);
+      const roles = await this.actorRoles(delegatorId, projectId, readClient === this.prisma ? undefined : readClient);
       identities.push({
         userId: delegatorId,
         roleKeys: roles.roleKeys,
@@ -3248,14 +3281,15 @@ export class ContractReadService {
     contracts: Array<{id: string; projectId: string; ownerUserId?: string | null; contractTypeKey?: string | null}>,
     versions: Array<{id: string; contractId: string; status: string}>,
     roles: ReadonlyMap<string, readonly RoleKey[]>,
-    actorId?: string
+    actorId?: string,
+    readClient: PrismaService | Prisma.TransactionClient = this.prisma
   ): Promise<Set<string>> {
     const result = new Set<string>();
     if (!actorId) return result;
     const restricted = contracts.filter(contract => this.getContractVisibilityLevel(roles.get(contract.projectId) ?? []) !== "full");
     if (!restricted.length) return result;
-    if (typeof this.prisma.$queryRaw === "function") {
-      const rows = await this.prisma.$queryRaw<Array<{contractId: string}>>(Prisma.sql`
+    if (typeof readClient.$queryRaw === "function") {
+      const rows = await readClient.$queryRaw<Array<{contractId: string}>>(Prisma.sql`
         SELECT DISTINCT v."contractId" FROM "ContractVersion" v
         WHERE v."contractId" IN (${Prisma.join(restricted.map(contract => contract.id))}) AND (
           EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."actorUserId" = ${actorId} AND
@@ -3273,7 +3307,7 @@ export class ContractReadService {
       if (contract.ownerUserId === actorId) { result.add(contract.id); continue; }
       if (result.has(contract.id)) continue;
       const current = versions.find(version => version.contractId === contract.id && version.status === "in_approval");
-      if (current && (await this.canReviewCurrentApproval("contract_version", current.id, contract.projectId, [...(roles.get(contract.projectId) ?? [])], actorId)).access.canAct) result.add(contract.id);
+      if (current && (await this.canReviewCurrentApproval("contract_version", current.id, contract.projectId, [...(roles.get(contract.projectId) ?? [])], actorId, undefined, readClient)).access.canAct) result.add(contract.id);
     }
     return result;
   }
