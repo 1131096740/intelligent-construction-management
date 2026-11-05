@@ -6,10 +6,13 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as accountApi from "../api/employee-onboarding.api";
-import * as organizationApi from "../api/organization.api";
+import { resetEmployeePassword, generateRecoveryCode, fetchAccountOptions, sendAccountSms, sendPhoneChangeSms, sendAdminPhoneChangeSms, changeUserPhone } from "../api/employee-onboarding.api";
+import { fetchOrganizationManagementCapabilities } from "../api/organization.api";
 import * as errors from "../api/error-message";
 import { useAuthStore } from "../auth/auth.store";
+
+const accountApi = { resetEmployeePassword, generateRecoveryCode, fetchAccountOptions, sendAccountSms, sendPhoneChangeSms, sendAdminPhoneChangeSms, changeUserPhone };
+const organizationApi = { fetchOrganizationManagementCapabilities };
 
 type Node = { tag: string; text: string; props: Record<string, unknown>; children: Node[]; parent: Node | null };
 const node = (tag: string, text = ""): Node => ({ tag, text, props: {}, children: [], parent: null });

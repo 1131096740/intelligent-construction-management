@@ -40,9 +40,12 @@ async function sendCode() {
   if (sending.value || remaining.value > 0) return;
   sending.value = true; message.value = ""; error.value = false;
   try {
-    const result = props.purpose === "change_phone"
-      ? await sendPhoneChangeWithCapability(props.phone)
-      : await sendWithCapability(props.phone, props.purpose);
+    let result;
+    if (props.purpose === "change_phone") {
+      result = props.targetUserId
+        ? await sendAdminPhoneChangeWithCapability(props.targetUserId, props.phone)
+        : await sendPhoneChangeWithCapability(props.phone);
+    } else result = await sendWithCapability(props.phone, props.purpose);
     remaining.value = result.retryAfterSeconds;
     clearInterval(interval);
     interval = setInterval(() => { remaining.value = Math.max(0, remaining.value - 1); if (!remaining.value) clearInterval(interval); }, 1000);
@@ -60,7 +63,13 @@ async function sendPhoneChangeWithCapability(phone: string) {
   const capability = await fetchAccountOptions();
   const operationAllowed = capability.smsEnabled;
   if (!operationAllowed) throw new Error("短信验证尚未开通，请联系综合部或董事长");
-  return props.targetUserId ? sendAdminPhoneChangeSms(props.targetUserId, phone) : sendPhoneChangeSms(phone);
+  return sendPhoneChangeSms(phone);
+}
+async function sendAdminPhoneChangeWithCapability(id: string, phone: string) {
+  const capability = await fetchAccountOptions();
+  const operationAllowed = capability.smsEnabled;
+  if (!operationAllowed) throw new Error("短信验证尚未开通，请联系综合部或董事长");
+  return sendAdminPhoneChangeSms(id, phone);
 }
 </script>
 <style scoped>

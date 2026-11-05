@@ -5308,6 +5308,48 @@
     },
     {
       "method": "POST",
+      "path": "/account-security/users/:id/change-phone",
+      "normalizedKey": "POST /account-security/users/:param/change-phone",
+      "controller": "AccountSecurityController",
+      "handler": "changeUserPhone",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/users/:id/phone-change-sms",
+      "normalizedKey": "POST /account-security/users/:param/phone-change-sms",
+      "controller": "AccountSecurityController",
+      "handler": "adminPhoneChangeSms",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
       "path": "/account-security/users/:id/reset-password",
       "normalizedKey": "POST /account-security/users/:param/reset-password",
       "controller": "AccountSecurityController",
