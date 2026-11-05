@@ -38,4 +38,24 @@ $identity$;
 
 REVOKE ALL ON FUNCTION public.jg_task01_connection_identity() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.jg_task01_connection_identity() TO jg_task01_runtime, jg_task01_observer;
+DO $effective$
+BEGIN
+  IF NOT has_function_privilege('jg_task01_runtime','public.jg_task01_connection_identity()','EXECUTE')
+     OR NOT has_function_privilege('jg_task01_observer','public.jg_task01_connection_identity()','EXECUTE')
+     OR EXISTS (
+       SELECT 1 FROM pg_catalog.pg_proc p,
+         LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+       WHERE p.oid='public.jg_task01_connection_identity()'::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE'
+     ) OR EXISTS (
+       SELECT 1 FROM pg_catalog.pg_proc p,
+         LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+       WHERE p.oid='public.jg_task01_connection_identity()'::regprocedure
+         AND (a.grantee NOT IN (p.proowner,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_runtime'),
+                               (SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_observer'))
+              OR (a.grantee<>p.proowner AND a.is_grantable))
+     ) THEN
+    RAISE EXCEPTION 'TASK01_IDENTITY_EFFECTIVE_ACL_REJECTED';
+  END IF;
+END;
+$effective$;
 COMMIT;

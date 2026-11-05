@@ -25,6 +25,7 @@ export async function prepareTask01OwnerFixture(input: Readonly<{
     || url.protocol !== "postgresql:" || url.hostname !== "127.0.0.1" || !url.port || url.username !== "jg_task01_owner"
     || url.pathname !== `/jg_task01_${input.runId}` || url.searchParams.get("sslmode") !== "require"
     || (url.searchParams.get("schema") ?? "public") !== "public"
+    || url.searchParams.get("connection_limit") !== "1"
     || url.searchParams.get("sslaccept") !== "strict" || !url.searchParams.get("sslcert")
     || url.hash || new Set(keys).size !== keys.length || keys.some(key => !allowed.includes(key))
     || input.actorPassword.length < 32 || input.writeSecret.length < 32

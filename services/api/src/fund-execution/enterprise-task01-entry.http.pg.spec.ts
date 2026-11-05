@@ -3,6 +3,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 
 import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
@@ -15,7 +16,7 @@ import {
 } from "../database/enterprise-task01-entry.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
-// PREPARED / NOT EXECUTED: no resource or migration runner enables this suite yet.
+// PREPARED / NOT EXECUTED: the controlled resource run awaits separate authorisation.
 // This is a funds CASE-entry smoke test, not a FundExecution posting acceptance.
 const enabled = process.env.RUN_ENTERPRISE_TASK01_ENTRY_PG16 === "1";
 type CaseBody = {
@@ -32,6 +33,8 @@ describe("任务01受限连接的公开资金案件入口", () => {
   let context: Task01EntryContext;
   let baseUrl: string;
   let token: string;
+  let httpMetadataFile: string | undefined;
+  let apiPort: number | undefined;
 
   beforeAll(async () => {
     if (!enabled) return;
@@ -45,10 +48,14 @@ describe("任务01受限连接的公开资金案件入口", () => {
       datasources: { db: { url: process.env.JG_TASK01_OBSERVER_DATABASE_URL } }
     });
     await observer.$connect();
-    await app.listen(0, "127.0.0.1");
-    baseUrl = await app.getUrl();
+    await app.init();
     await verifyTask01Connection(runtime, context, "jg_task01_runtime");
     await verifyTask01Connection(observer, context, "jg_task01_observer");
+    await app.listen(0, "127.0.0.1");
+    baseUrl = await app.getUrl();
+    apiPort = Number(new URL(baseUrl).port);
+    httpMetadataFile = process.env.JG_TASK01_HTTP_METADATA_FILE!;
+    writeFileSync(httpMetadataFile, JSON.stringify({ apiPort, closed: false }), { flag: "wx", mode: 0o600 });
     const login = await fetch(`${baseUrl}/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -62,8 +69,10 @@ describe("任务01受限连接的公开资金案件入口", () => {
   }, 45_000);
 
   afterAll(async () => {
-    await app?.close();
-    await observer?.$disconnect();
+    const closed = await Promise.allSettled([app?.close(), observer?.$disconnect()]);
+    const succeeded = closed.every(result => result.status === "fulfilled");
+    if (httpMetadataFile) writeFileSync(httpMetadataFile, JSON.stringify({ apiPort, closed: succeeded }), { mode: 0o600 });
+    if (!succeeded) throw new Error("任务01运行连接或HTTP关闭未完成");
   });
 
   async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
@@ -103,14 +112,18 @@ describe("任务01受限连接的公开资金案件入口", () => {
     expect(detail.entrySnapshots[0]!.valuesSnapshot).toMatchObject({ amountCents: "12500", direction: "inflow", reason: "任务01公司项目资金到账" });
 
     if (!observer) throw new Error("任务01独立观察连接未建立");
-    const rows = await observer.$queryRaw<Array<{ cases: number; receipts: number; snapshots: number }>>`
+    const rows = await observer.$queryRaw<Array<{ executionFacts: number; bankClaims: number; cases: number; receipts: number; snapshots: number }>>`
       SELECT
+        (SELECT count(*)::integer FROM public."FundExecution" WHERE "idempotencyKey" = ${createKey}) AS "executionFacts",
+        (SELECT count(*)::integer FROM public."BankTransactionClaim" b
+           JOIN public."FundExecution" f ON f.id = b."fundExecutionId"
+          WHERE f."idempotencyKey" = ${createKey}) AS "bankClaims",
         (SELECT count(*)::integer FROM public."FundExecutionCase" WHERE "idempotencyKey" = ${createKey}) AS cases,
         (SELECT count(*)::integer FROM public."FundExecutionCommandReceipt" WHERE "idempotencyKey" = ${createKey}) AS receipts,
         (SELECT count(*)::integer FROM public."FundExecutionEntrySnapshot" s
            JOIN public."FundExecutionCase" c ON c.id = s."fundExecutionCaseId"
           WHERE c."caseKey" = ${created.caseId}) AS snapshots`;
-    expect(rows).toEqual([{ cases: 1, receipts: 1, snapshots: 1 }]);
+    expect(rows).toEqual([{ executionFacts: 1, bankClaims: 1, cases: 1, receipts: 1, snapshots: 1 }]);
     await verifyTask01Connection(runtime, context, "jg_task01_runtime");
     expect((await task01ConnectionIdentity(runtime)).backendPid).toBe(initialRuntime.backendPid);
     await runtime.$disconnect();

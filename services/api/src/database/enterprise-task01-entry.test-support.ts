@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 export type Task01EntryContext = Readonly<{
   schemaVersion: 1;
@@ -27,18 +27,20 @@ export function loadTask01EntryContext(): Task01EntryContext {
     throw new Error("任务01运行进程不得持有owner连接");
   }
   const file = process.env.JG_TASK01_ENTRY_CONTEXT_FILE;
-  if (!file || !file.startsWith("/private/tmp/")) throw new Error("任务01缺少专属输入文件");
+  if (!file || !file.startsWith("/private/tmp/")) throw new Error("任务01缺少专属输入清单");
+  const httpMetadata = process.env.JG_TASK01_HTTP_METADATA_FILE;
+  if (!httpMetadata || dirname(httpMetadata) !== dirname(file) || existsSync(httpMetadata)) throw new Error("任务01HTTP身份清单必须是本票新文件");
   const stat = lstatSync(file);
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || stat.size > 16_384 || realpathSync(file) !== resolve(file)) {
     throw new Error("任务01输入文件身份或权限不符合要求");
   }
   let value: Task01EntryContext;
   try { value = JSON.parse(readFileSync(file, "utf8")) as Task01EntryContext; }
-  catch { throw new Error("任务01输入文件不是有效合同"); }
-  if (!value || typeof value !== "object") throw new Error("任务01输入合同不完整");
+  catch { throw new Error("任务01输入清单格式无效"); }
+  if (!value || typeof value !== "object") throw new Error("任务01输入清单不完整");
   if (value.schemaVersion !== 1 || !/^[a-f0-9]{32}$/u.test(value.runId) || !/^\d+$/u.test(value.databaseOid) || !/^\d+$/u.test(value.systemIdentifier)
     || typeof value.actor?.phone !== "string" || typeof value.actor?.password !== "string" || value.actor.password.length < 32) {
-    throw new Error("任务01输入合同不完整");
+    throw new Error("任务01输入清单不完整");
   }
   for (const [key, role] of [["DATABASE_URL", "jg_task01_runtime"], ["JG_TASK01_OBSERVER_DATABASE_URL", "jg_task01_observer"]] as const) {
     const raw = process.env[key];
@@ -78,7 +80,7 @@ export async function verifyTask01Connection(client: PrismaClient, context: Task
     throw new Error("任务01实际连接身份、只读状态或TLS不匹配");
   }
   const flags = await client.$queryRaw<Array<{ unsafe: boolean; memberships: number }>>`
-    SELECT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit) AS unsafe,
+    SELECT (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit OR NOT rolcanlogin OR rolconnlimit<>1) AS unsafe,
            (SELECT count(*)::integer FROM pg_catalog.pg_auth_members WHERE member = r.oid) AS memberships
       FROM pg_catalog.pg_roles AS r WHERE rolname = current_user`;
   if (flags.length !== 1 || flags[0]!.unsafe || flags[0]!.memberships !== 0) {
