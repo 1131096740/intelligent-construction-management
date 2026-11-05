@@ -147,7 +147,7 @@ export class AccountSecurityService {
         throw new ForbiddenException("管理层和财务账号仅由董事长重置密码");
       }
       await tx.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: true,
-        temporaryPasswordExpiresAt: null, sessionVersion: { increment: 1 }, recoveryCodeHash: null } });
+        temporaryPasswordExpiresAt: new Date(Date.now() + 86_400_000), sessionVersion: { increment: 1 }, recoveryCodeHash: null } });
       await this.revokeAndAudit(tx, userId, actorId, "auth.password.admin_reset");
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch(this.rejectStaleAccount);
     return { ok: true, mustChangePassword: true };
@@ -162,7 +162,7 @@ export class AccountSecurityService {
       if (!row || row.status === "approved") throw new BadRequestException("申请已变化，请刷新；已开通账号请在人员列表重置");
       if (row.status === "chairman_review" && !roles.includes("chairman")) throw new ForbiddenException("此申请请由董事长重置");
       await tx.employeeRegistration.update({ where: { id }, data: { passwordHash, mustChangePassword: true,
-        temporaryPasswordExpiresAt: null, credentialVersion: { increment: 1 }, revision: { increment: 1 } } });
+        temporaryPasswordExpiresAt: new Date(Date.now() + 86_400_000), credentialVersion: { increment: 1 }, revision: { increment: 1 } } });
       await this.audit.record(tx, { actorUserId: actorId, action: "employee.registration.password_reset", businessType: "employee_registration", businessId: id });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch(this.rejectStaleAccount);
     return { ok: true, mustChangePassword: true };

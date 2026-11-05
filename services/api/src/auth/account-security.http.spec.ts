@@ -317,4 +317,14 @@ describe("任务04公开账号安全接口（内存持久层、模拟短信，�
     expect((await login()).status).toBe(201);
   });
 
+  it("管理员重置的初始凭据保留24小时有效期，到期不能再登录", async () => {
+    process.env.INITIAL_USER_TEMPORARY_PASSWORD = "synthetic-controlled-initial";
+    const manager = await login("13800000002");
+    expect((await request("/account-security/users/employee/reset-password", { identityVerified: true, confirmationPassword: "synthetic-current-password" }, manager.body.tokens.accessToken)).status).toBe(201);
+    expect((await login("13800000001", "synthetic-controlled-initial")).status).toBe(201);
+    jest.useFakeTimers({ doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "performance", "hrtime"] });
+    jest.setSystemTime(Date.now() + 86_400_001);
+    expect((await login("13800000001", "synthetic-controlled-initial")).status).toBe(401);
+  });
+
 });
