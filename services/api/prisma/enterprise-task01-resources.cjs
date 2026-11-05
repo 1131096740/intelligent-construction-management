@@ -4,7 +4,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
-const { createHash } = require("node:crypto");
+const { createHash, X509Certificate } = require("node:crypto");
+const net = require("node:net");
+const tls = require("node:tls");
 
 const ENDPOINT = "unix:///Users/leoyang/.docker/run/docker.sock";
 const IMAGE = "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d";
@@ -65,6 +67,7 @@ async function prepareTask01Postgres(options = {}) {
   fs.mkdirSync(bundle, { mode: 0o700 });
   const files = new Set();
   const children = new Set();
+  const metadataSockets = new Set();
   const endAt = Date.now() + deadlineMs;
   let cleanupEndAt;
   let closePromise;
@@ -78,7 +81,8 @@ async function prepareTask01Postgres(options = {}) {
     runId, sourceSha, endpoint, daemonId, imageId, databaseName,
     phase: "preparing", status: "preparing", containerName: name, containerId: null, networkId: null, port: null, attempts: { network: false, container: false },
     volumes: [], limits: { cpu: 2, memoryBytes: 1073741824, pids: 256, pgdataBytes: 536870912, totalDeadlineMs: deadlineMs },
-    tls: null, requestedCertificateMode: "correct", reloadState: "not-requested",
+    tls: null, requestedCertificateMode: "correct", reloadState: "not-requested", presentedCertificate: null,
+    hostOwnerCredentialFilesErased: false, hostPrivateKeyFilesErased: false, hostPrivateMaterialsErased: false,
     topology: "UNVERIFIED_HOST_PUBLISHED_TLS", cleanup: { status: "pending" }
   };
   function getReceipt() { return JSON.parse(JSON.stringify(receipt)); }
@@ -176,10 +180,14 @@ async function prepareTask01Postgres(options = {}) {
     if (closePromise) return closePromise;
     closePromise = (async () => {
       cleanupEndAt = Date.now() + 60000;
-      receipt.cleanup = { status: "running" }; persist();
+      receipt.cleanup = { status: "running" };
       let cleanupFailure = null;
+      let journalFailure = false;
+      try { persist(); } catch { journalFailure = true; }
+
       try {
         // This independent cleanup budget ignores the aborted execution signal.
+        for (const socket of metadataSockets) socket.destroy();
         const pending = [...children];
         const killTimers = [];
         let waitTimer;
@@ -233,9 +241,14 @@ async function prepareTask01Postgres(options = {}) {
         }
         for (const directory of [bundle, dockerConfig, privateDir]) fs.rmdirSync(directory);
       } catch { cleanupFailure ||= "TASK01_RESOURCE_PRIVATE_CLEANUP_FAILED"; }
+      if (journalFailure) cleanupFailure ||= "TASK01_RESOURCE_RECEIPT_WRITE_FAILED";
       receipt.cleanup = cleanupFailure ? { status: "failed", code: cleanupFailure } : { status: "completed", containerAbsent: true, volumesAbsent: true, networkAbsent: true };
       receipt.status = cleanupFailure ? "cleanup_failed" : "closed";
-      try { persist(); } catch { throw fault("TASK01_RESOURCE_RECEIPT_WRITE_FAILED"); }
+      try { persist(); } catch {
+        receipt.cleanup = { status: "failed", code: "TASK01_RESOURCE_RECEIPT_WRITE_FAILED" };
+        receipt.status = "cleanup_failed";
+        throw fault("TASK01_RESOURCE_RECEIPT_WRITE_FAILED");
+      }
       if (cleanupFailure) throw fault("TASK01_RESOURCE_CLEANUP_FAILED");
     })();
     return closePromise;
@@ -274,6 +287,7 @@ async function prepareTask01Postgres(options = {}) {
     receipt.tls = {
       caSha256: sha(fs.readFileSync(material("ca.crt"))), wrongCaSha256: sha(fs.readFileSync(material("wrong-ca.crt"))),
       correctCertificateSha256: sha(fs.readFileSync(material("correct.crt"))), wrongSanCertificateSha256: sha(fs.readFileSync(material("wrong-san.crt"))),
+      correctCertificateDerSha256: sha(new X509Certificate(fs.readFileSync(material("correct.crt"))).raw), wrongSanCertificateDerSha256: sha(new X509Certificate(fs.readFileSync(material("wrong-san.crt"))).raw),
       correctChainVerified: true, correctSanVerified: true, wrongCaChainRejected: true,
       wrongSanChainVerified: true, wrongSanMismatchVerified: true
     };
@@ -289,6 +303,83 @@ async function prepareTask01Postgres(options = {}) {
     receipt.configuration = { postgresSha256: sha(config), hbaSha256: sha(hba), localIdentityMapSha256: sha(`jg_task01_init postgres ${OWNER}\n`) };
     ownerPassword = null;
     persist();
+  }
+  function eraseHostPrivateMaterials() {
+    const credentials = [path.join(bundle, "owner-password"), path.join(bundle, "owner.pgpass")];
+    const keys = [material("ca.key"), material("wrong-ca.key"), material("server.key"), path.join(bundle, "server.key")];
+    for (const file of [...credentials, ...keys]) {
+      const stat = fs.lstatSync(file);
+      requireThat(files.has(file) && stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid() && (stat.mode & 0o077) === 0, "TASK01_RESOURCE_PRIVATE_PATH_CHANGED");
+      fs.unlinkSync(file);
+      files.delete(file);
+      requireThat(!fs.existsSync(file), "TASK01_RESOURCE_PRIVATE_ERASURE_FAILED");
+    }
+    receipt.hostOwnerCredentialFilesErased = true;
+    receipt.hostPrivateKeyFilesErased = true;
+    receipt.hostPrivateMaterialsErased = true;
+    persist();
+  }
+  function observeLeafOnce() {
+    const remaining = Math.min(2000, endAt - Date.now());
+    requireThat(remaining > 0 && !signal?.aborted && !closePromise, "TASK01_RESOURCE_ABORTED_OR_TIMEOUT");
+    // Public certificate metadata channel only. Deliberately no startup/auth/SQL
+    // bytes are ever sent; business/role probes must independently verify TLS.
+    return new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host: "127.0.0.1", port: receipt.port });
+      metadataSockets.add(socket);
+      let secure, completed = false;
+      const finish = (error, hash) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        secure?.destroy(); socket.destroy();
+        if (error) reject(fault(error)); else resolve(hash);
+      };
+      const onAbort = () => finish("TASK01_RESOURCE_ABORTED");
+      const timer = setTimeout(() => finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_TIMEOUT"), remaining);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+      socket.once("close", () => { metadataSockets.delete(socket); if (!completed) finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"); });
+      socket.on("error", () => finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"));
+      socket.once("connect", () => {
+        const request = Buffer.alloc(8); request.writeInt32BE(8, 0); request.writeInt32BE(80877103, 4);
+        socket.write(request);
+      });
+      socket.once("data", data => {
+        if (completed) return;
+        if (data.length !== 1 || data[0] !== 83) { finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"); return; }
+        secure = tls.connect({ socket, rejectUnauthorized: false, minVersion: "TLSv1.2" }, () => {
+          if (completed) return;
+          try {
+            const leaf = secure.getPeerCertificate(true)?.raw;
+            if (!Buffer.isBuffer(leaf) || leaf.length === 0) finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED");
+            else finish(null, sha(leaf));
+          } catch { finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"); }
+        });
+        metadataSockets.add(secure);
+        secure.once("close", () => metadataSockets.delete(secure));
+        secure.on("error", () => finish("TASK01_RESOURCE_CERTIFICATE_OBSERVATION_FAILED"));
+      });
+    });
+  }
+  async function observePresentedCertificate(mode = receipt.requestedCertificateMode) {
+    requireThat(!closePromise && receipt.port !== null && ["correct", "wrong-san"].includes(mode) && mode === receipt.requestedCertificateMode, "TASK01_RESOURCE_CERTIFICATE_MODE_INVALID");
+    const expected = mode === "correct" ? receipt.tls.correctCertificateDerSha256 : receipt.tls.wrongSanCertificateDerSha256;
+    receipt.presentedCertificate = null;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await verifyDaemon(); await inspectOwned();
+      let observed;
+      try { observed = await observeLeafOnce(); }
+      catch (error) { if (signal?.aborted || closePromise || Date.now() >= endAt) throw error; }
+      if (observed === expected) {
+        receipt.presentedCertificate = { mode, derSha256: observed, attempts: attempt };
+        receipt.reloadState = "OBSERVED_PEER_CERTIFICATE_MATCHED"; persist();
+        return { ...receipt.presentedCertificate };
+      }
+      if (attempt !== 5) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    throw fault("TASK01_RESOURCE_CERTIFICATE_NOT_OBSERVED");
   }
   async function execOwnerSql(sql, phase) {
     requireThat(!closePromise && typeof sql === "string" && Buffer.byteLength(sql) <= 16 * 1024 * 1024 && typeof phase === "string" && /^[A-Za-z0-9._-]{1,128}$/u.test(phase), "TASK01_RESOURCE_SQL_INPUT_INVALID");
@@ -321,8 +412,10 @@ async function prepareTask01Postgres(options = {}) {
     await mutate(["exec", "--user", "root", containerId, "chmod", "600", "/jg-task01/server.crt"], { timeoutMs: 10000 });
     await inspectOwned();
     requireThat((await docker(["exec", containerId, "cat", "/proc/1/comm"], { timeoutMs: 10000 })).stdout.toString().trim() === "postgres", "TASK01_RESOURCE_PID1_INVALID");
+    receipt.requestedCertificateMode = mode; receipt.presentedCertificate = null;
+    receipt.reloadState = "REQUESTED_NOT_YET_PROVEN_LOADED"; persist();
     await mutate(["kill", "--signal", "HUP", containerId], { timeoutMs: 10000 });
-    receipt.requestedCertificateMode = mode; receipt.reloadState = "REQUESTED_NOT_YET_PROVEN_LOADED"; persist();
+    return observePresentedCertificate(mode);
   }
   try {
     writePrivate(path.join(dockerConfig, "config.json"), '{"auths":{}}\n');
@@ -340,6 +433,8 @@ async function prepareTask01Postgres(options = {}) {
     requireThat(/^[0-9a-f]{64}$/u.test(containerId), "TASK01_RESOURCE_CONTAINER_ID_UNKNOWN");
     receipt.containerId = containerId; persist(); await inspectOwned();
     await mutate(["cp", bundle, `${containerId}:/jg-task01`]);
+    await inspectOwned();
+    eraseHostPrivateMaterials();
     receipt.phase = "starting"; persist();
     await mutate(["container", "start", containerId]);
     const readyUntil = Math.min(endAt, Date.now() + 60000);
@@ -362,8 +457,10 @@ async function prepareTask01Postgres(options = {}) {
     const state = await inspectOwned();
     const ports = state.NetworkSettings?.Ports;
     requireThat(Object.keys(ports || {}).join(",") === "5432/tcp" && ports["5432/tcp"]?.length === 1 && ports["5432/tcp"][0].HostIp === "127.0.0.1" && ports["5432/tcp"][0].HostPort === String(port), "TASK01_RESOURCE_PORT_CHANGED");
-    receipt.port = port; receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
-    return { containerId, networkId, port, databaseName, caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256 }, execOwnerSql: safeOperation(execOwnerSql), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
+    receipt.port = port;
+    await observePresentedCertificate("correct");
+    receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
+    return { containerId, networkId, port, databaseName, caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), execOwnerSql: safeOperation(execOwnerSql), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
   } catch (error) {
     receipt.phase = "failed"; receipt.status = "failed";
     receipt.failureCode = typeof error.code === "string" && error.code.startsWith("TASK01_RESOURCE_") ? error.code : "TASK01_RESOURCE_START_FAILED";
