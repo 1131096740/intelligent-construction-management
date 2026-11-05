@@ -1,6 +1,6 @@
 ## 当前执行（2026-11-05，业务简化整套实施，父工单 #382）
 
-- [~] 用户已明确授权整套193条规格、45项任务实施及 GitHub 工单推进；父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 和子工单 #383～#427 已发布。任务01 [#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 已按确认的 `--prepare / --verify` 及输出清单边界关闭；02/#384、04/#386、08/#390已在独立工作树领取实施，03/#385已就绪等待并行名额，其余依原阻塞图等待。用户已确认02/04/08的公共适配器、HTTP/服务/UI及真实文书CLI输出测试边界。
+- [~] 用户已明确授权整套193条规格、45项任务实施及 GitHub 工单推进；父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 和子工单 #383～#427 已发布。任务01 [#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 已按确认的 `--prepare / --verify` 及输出清单边界关闭；04/#386已在确认的公开HTTP/服务/UI边界关闭，02/#384、03/#385、08/#390继续在独立工作树实施，其余依原阻塞图等待。用户已确认02/04/08的公共适配器、HTTP/服务/UI及真实文书CLI输出测试边界，并补充02文书金额/日期与03并联审批公开边界；真实PG竞争仍只准备。
 - [~] 已从主线 `2f474055bd018b3e454b458038d91080203ad5dc` 建立干净集成分支 `codex/enterprise-simplification-integration-20261105-r2`，已加入确认文档和任务01准备工具；旧根及旧候选保留，未吸收旧业务代码、模板或迁移。主线197/旧根146迁移差额及457份承接候选按范围逐域决定承接或排除，旧差异默认不纳入主线。
 - [x] 有界生产只读查询核实197项完成迁移，与准确主线197份SQL名称/校验值逐项一致，迁移登记差额0。独立精确 `0893dd16b50c595b0d99761bd33bcd388c16ac3c` 源码冻结构建一次，重现本轮生产快照API四组件及Web dist全部2662份文件、41,895,003字节；完整树摘要一致。只证明已采集PID/cwd所指磁盘代码组件的来源，不证明生产依赖闭包、内存模块或原构建签名。[独立重建收据](docs/progress/2026-11-05-enterprise-simplification-independent-build-repro.json)。
 - [~] PID2502628的5个稳定数据库TCP socket，按inode/源端口/地址逐一匹配PG backend：实际角色均为 `jiangkong_runtime`、数据库 `jiangkong`、ssl=true。两次collector失败保留，父控仅追加一次已定位CIDR修正的同范围查询后成功；没有后续查询。仅证明当时5条实际连接，不证明CA/SAN、未来连接或完整有效ACL；Schema、数据/文件分布仍未核齐。[实际会话收据](docs/progress/2026-11-05-enterprise-simplification-runtime-db-session-binding.json)。
@@ -9,6 +9,8 @@
 - [~] 首条案件入口、owner夹具、初始权限清单与运行器准备源码 `842f9e5e48a1335017e3e07c19b1b3a959670e5f`，资源helper后续 `566567061e19f653b4c91880954050d07a408c9f`，已形成可核验准备产物并完成范围内静态复审，真实执行仍NOT RUN；首条真实HTTP/PG案例1项尚未执行，不计通过，不能由既有资金案件测试推定实际FundExecution提交。
 - [x] 任务01准确收口提交 `f352d187b720a2e8231874775616c24e91eb3bd8`：检查前后树干净，本机编排369通过、0失败、0跳过；prepare/verify核对3032文件、197迁移，seal `c62afb390f0aab4044e2f44f2eba48603d16398da20110d18c856f0f892a3f81`，规范/需求复审余项0/0。已推送草稿PR #428并[关闭#383](https://github.com/1131096740/intelligent-construction-management/issues/383#issuecomment-6651228720)，未合入main。b09的356/3、5b的365/1失败日志及一次误调用driver的入场前拒绝记录保留，修复后未重演。真实HTTP/PG/Web、实际ACL/TLS/池绑定和清理仍NOT RUN、独立授权后验。本轮未创建PG/Docker资源、执行写入SQL或迁移、部署、修改生产或办理真实业务；任务16/42/44真实门保留。详见[准备交接](docs/progress/2026-11-05-enterprise-simplification-task01-prepared.md)及[任务图](docs/plans/2026-11-05-enterprise-simplification-tasks/README.md)。
 
+- [x] 任务04已在准确集成 `899afb9538fe01be54ff264c48c7037794d3be2a` 完成本地确认边界并[关闭#386](https://github.com/1131096740/intelligent-construction-management/issues/386#issuecomment-6653441151)：本人/管理员换号均验证新号、统一受控初始及重置密码、强改与会话撤销；身份引用不变。API186项绑定83271且相关API字节在899保持；899新组件5/5、Web类型/lint/UI、原治理就绪链与本机编排369/369通过，prepare/verify核对3035文件/197迁移。独立复审余项0；真实PG、真实短信、浏览器持久链及生产验收未执行。[任务04收口记录](docs/progress/2026-11-05-enterprise-simplification-task04-local.md)。任务05仍被03阻塞。
+- [~] 任务03源候选及治理准备继续独立复核；4项新真实PG竞争案例已接入既有选择器，尚未执行，不计通过或关闭。任务08的单次PDF导出参数对照仍缺3处逗号，原样张及失败证据保留，文书验证尚未通过。
 - [~] 本轮源码发布不启动含真实PG迁移的远程CI（`ci.yml` 的pull_request同步可自动触发PG组）；最新推送HEAD使用 `[skip ci]` 并保持draft及合并阻塞。这不是检查豁免或CI通过，迁移获独立授权后须在准确SHA重新取得正式CI。
 
 ## 当前执行（2026-10-27，审批进度浏览器测试补修新候选）

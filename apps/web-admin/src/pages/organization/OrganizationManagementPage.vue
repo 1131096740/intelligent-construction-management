@@ -215,6 +215,7 @@
               @add="openRole(row, 'add')"
               @remove="openRole(row, 'remove')"
               @reset="passwordResetUser = row"
+              @phone="phoneChangeUser = row"
             />
           </article>
           <p v-if="!filteredUsers.length">
@@ -243,6 +244,7 @@
               @add="openRole(row, 'add')"
               @remove="openRole(row, 'remove')"
               @reset="passwordResetUser = row"
+              @phone="phoneChangeUser = row"
             />
           </template>
           <template #status="{ row }">
@@ -318,6 +320,13 @@
       @close="passwordResetUser = undefined"
       @saved="loadDirectory"
     />
+    <AccountPhoneChangeDialog
+      v-if="phoneChangeUser"
+      :id="phoneChangeUser.id"
+      :name="phoneChangeUser.name"
+      @close="phoneChangeUser = undefined"
+      @saved="loadDirectory"
+    />
     <OrganizationDetailsDrawer
       v-if="detailsVisible"
       :directory="directory"
@@ -359,6 +368,7 @@ import OrganizationDetailsDrawer from "./components/OrganizationDetailsDrawer.vu
 import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
 import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
 import EmployeeApplicationsCard from "./components/EmployeeApplicationsCard.vue";
+import AccountPhoneChangeDialog from "../../components/AccountPhoneChangeDialog.vue";
 import AccountCredentialDialog from "../../components/AccountCredentialDialog.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
@@ -410,6 +420,7 @@ const isTechnicalAdmin = computed(
 const capabilities = ref<OrganizationManagementCapabilities | null>(null);
 const applicationRefreshKey = ref(0);
 const passwordResetUser = ref<OrganizationDirectoryUser>();
+const phoneChangeUser = ref<OrganizationDirectoryUser>();
 const createUserVisible = ref(false);
 const detailsVisible = ref(false);
 const selectedDepartment = ref<FlatOrganizationDepartment>();

@@ -1,6 +1,6 @@
 # 04：手机号账号与首次改密自助闭环
 
-**状态：** `plan-confirmed` / `in-progress`；前置#383已关闭，本票已在独立工作树领取实施。用户已确认账号公开HTTP、账户服务公共方法及登录/设置UI测试边界；不发送真实短信、不连接真实PG。[#386](https://github.com/1131096740/intelligent-construction-management/issues/386) 归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `local-confirmed-boundary-complete` / `github-closed`；准确集成899afb9538fe01be54ff264c48c7037794d3be2a已按本页确认边界[关闭#386](https://github.com/1131096740/intelligent-construction-management/issues/386#issuecomment-6653441151)。[收口证据](../../progress/2026-11-05-enterprise-simplification-task04-local.md)。用户已确认账号公开HTTP、账户服务公共方法及登录/设置UI测试边界；不发送真实短信、不连接真实PG。[#386](https://github.com/1131096740/intelligent-construction-management/issues/386) 归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

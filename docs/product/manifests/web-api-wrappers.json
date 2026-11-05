@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 40,
-    "exportedFunctionCount": 671,
-    "transportWrapperCount": 649,
+    "exportedFunctionCount": 673,
+    "transportWrapperCount": 651,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 688,
+    "mainRequestBindingCount": 690,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 676,
-    "productionConsumerCount": 553,
+    "requestEdgeCount": 678,
+    "productionConsumerCount": 555,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 364,
-    "reachableProductionModuleCount": 343
+    "productionModuleCount": 365,
+    "reachableProductionModuleCount": 344
   },
   "wrappers": [
     {
@@ -11383,6 +11383,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "changeUserPhone",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/account-security/users/:param/change-phone",
+          "normalizedPath": "/account-security/users/:param/change-phone",
+          "normalizedKey": "POST /account-security/users/:param/change-phone",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "changeUserPhone",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/AccountPhoneChangeDialog.vue"
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "clearApplicationSession",
       "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
       "kind": "pure",
@@ -11424,7 +11454,9 @@
         "apps/web-admin/src/pages/login/LoginPage.vue",
         "apps/web-admin/src/pages/settings/SettingsPage.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -11508,7 +11540,9 @@
       "productionConsumers": [
         "apps/web-admin/src/components/AccountCredentialDialog.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -11635,7 +11669,9 @@
       "productionConsumers": [
         "apps/web-admin/src/components/AccountCredentialDialog.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -11761,7 +11797,39 @@
       "productionConsumers": [
         "apps/web-admin/src/components/SmsCodeField.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "sendAdminPhoneChangeSms",
+      "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 53,
+          "method": "POST",
+          "path": "/account-security/users/:param/phone-change-sms",
+          "normalizedPath": "/account-security/users/:param/phone-change-sms",
+          "normalizedKey": "POST /account-security/users/:param/phone-change-sms",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "sendAdminPhoneChangeSms",
+              "userRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/SmsCodeField.vue"
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -11789,7 +11857,9 @@
       "productionConsumers": [
         "apps/web-admin/src/components/SmsCodeField.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -14635,6 +14705,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/components/AccountCredentialDialog.vue",
+        "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
         "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
         "apps/web-admin/src/pages/organization/components/EmployeeApplicationsCard.vue",
         "apps/web-admin/src/pages/organization/components/OrganizationDetailsDrawer.vue",
@@ -14643,7 +14714,9 @@
         "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
         "apps/web-admin/src/pages/organization/personnel-authorized-actions.ts"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/components/account-security.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {

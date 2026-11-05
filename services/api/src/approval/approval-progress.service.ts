@@ -1,3 +1,4 @@
+import { activeApprovalNodeIndexes, isParallelApprovalRound, isApprovalDutyComplete, isParallelDutyNotificationEvent } from "./parallel-approval-protocol";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma, type ApprovalInstance } from "@prisma/client";
 import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
@@ -242,7 +243,9 @@ export class ApprovalProgressService {
       return { ...node, assignments: Array.isArray(node.assignments) ? node.assignments.filter(assignment => validAssignment(node, assignment)) : [] };
     }) : [];
     const legacyCandidates = (node: FrozenApprovalNode) => users.filter(u => u.isActive && resolveApprovalReviewIdentity({ node: { ...node, approvedRoleKeys: [] }, actorUserId: u.id, actorRoleKeys: allRoles(u.id), actorRoleScopes: roles.get(u.id), legacyContractRoute: instance.businessType === "contract_version" })).map(u => u.id);
-    const nodeIds = rawNodes.map(node => [...new Set([
+    const nodeIds = rawNodes.map(node => isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
+      ? [...new Set(logs.filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId))]
+      : [...new Set([
       ...(isGovernedFrozenApprovalNode(node) ? (typeof node.selectedUserId === "string" ? [node.selectedUserId] : frozenCandidateUserIds(node)) : legacyCandidates(node)),
       ...node.assignments.flatMap(a => [object(a).fromUserId, object(a).toUserId].filter((v): v is string => typeof v === "string")),
       ...users.filter(user => user.isActive && activeDelegatorsFor(user.id).length > 0 && resolveApprovalReviewIdentity({
@@ -262,17 +265,18 @@ export class ApprovalProgressService {
     if ("applicantUserId" in business && typeof business.applicantUserId === "string") participants.add(business.applicantUserId);
     if ("handledByUserId" in business && typeof business.handledByUserId === "string") participants.add(business.handledByUserId);
     if (!participants.has(actorId)) throw new NotFoundException("审批流程不存在或无权查看");
+    const activeIndexes = activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
     const current = rawNodes[instance.currentNodeIndex];
     const businessUnavailable = (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const pending = !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
-      if (!user.isActive) return false;
+      if (!user.isActive || (instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.applicantUserId === user.id)) return false;
       const actorRoleKeys = allRoles(user.id);
-      const identity = resolveApprovalReviewIdentity({
-        node: current, actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), legacyContractRoute: instance.businessType === "contract_version",
+      const identity = activeIndexes.map(index => resolveApprovalReviewIdentity({
+        node: rawNodes[index], actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), legacyContractRoute: instance.businessType === "contract_version",
         activeDelegators: activeDelegatorsFor(user.id)
-      });
+      })).find(Boolean);
       if (!identity || (instance.businessType === "general_procurement" && identity.viaAssignment)) return false;
       if (instance.businessType === "company_transfer" && instance.applicantUserId === user.id) return false;
       if (instance.businessType === "fund_execution_case") return true;
@@ -303,24 +307,33 @@ export class ApprovalProgressService {
     const last = requests.at(-1);
     const nextRemindAt = last ? new Date(last.createdAt.getTime() + COOLDOWN_MS).toISOString() : null;
     const active = ACTIVE.has(instance.status);
+    const parallel = isParallelApprovalRound(instance.frozenNodes);
     return {
       id: instance.id, businessType: instance.businessType, businessId: instance.businessId,
       title: LABELS[instance.businessType], businessCode: "code" in business ? business.code : "额度申请",
       projectName: project?.name ?? "非项目费用", applicant: person(instance.applicantUserId), status: instance.status,
       createdAt: instance.createdAt.toISOString(), currentNodeIndex: instance.currentNodeIndex,
-      currentNodeName: active ? String(rawNodes[instance.currentNodeIndex]?.name ?? "待核对审批节点") : "流程已结束",
+      currentNodeName: active ? (parallel ? "并联审批" : String(rawNodes[instance.currentNodeIndex]?.name ?? "待核对审批节点")) : "流程已结束",
       nodes: rawNodes.map((node, index) => ({
         name: typeof node.name === "string" ? node.name : "审批节点", mode: node.mode === "all" ? "会签" : "或签",
-        status: index < instance.currentNodeIndex || instance.status === "approved" ? "已通过" : index === instance.currentNodeIndex ? (active ? "处理中" : instance.status === "rejected" ? "已驳回" : "已结束") : (active ? "未开始" : "未执行"),
-        participants: nodeIds[index].map(person), legacyRoster: !isGovernedFrozenApprovalNode(node),
-        pending: index === instance.currentNodeIndex ? pending.map(u => person(u.id)) : []
+        status: parallel ? (isApprovalDutyComplete(node as unknown as Record<string, unknown>) ? "已通过" : !active ? "已结束" : nodeIds[index].length ? (nodeIds[index].some(id => pending.some(user => user.id === id)) ? "处理中" : "待其他有权人员") : "待配置") : index < instance.currentNodeIndex || instance.status === "approved" ? "已通过" : index === instance.currentNodeIndex ? (active ? "处理中" : instance.status === "rejected" ? "已驳回" : "已结束") : (active ? "未开始" : "未执行"),
+        participants: nodeIds[index].map(id => {
+          const evidence = parallel && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
+            ? logs.find(log => log.action === "approve" && log.actorUserId === id && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")) : null;
+          const frozenName = object(evidence?.metadata).approverName;
+          return {id, name: typeof frozenName === "string" && frozenName.trim() ? frozenName : person(id).name};
+        }), legacyRoster: !parallel && !isGovernedFrozenApprovalNode(node),
+        pending: (parallel || index === instance.currentNodeIndex) ? pending.filter(user => nodeIds[index].includes(user.id) && (!parallel || !isApprovalDutyComplete(node as unknown as Record<string, unknown>))).map(u => person(u.id)) : []
       })),
       pendingRecipients: pending.map(u => person(u.id)),
       canRemind: active && pending.length > 0 && this.sms.available() && (!nextRemindAt || Date.parse(nextRemindAt) <= Date.now()),
       reminderUnavailableReason: !active ? "流程已结束" : context.businessUnavailable ? (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? "本项目尚未启用零采试点，暂不能催办" : "当前业务未处于可审批状态，暂不能催办") : !pending.length ? "当前没有有效待审批人" : !this.sms.available() ? "短信服务尚未启用" : nextRemindAt && Date.parse(nextRemindAt) > Date.now() ? "刚刚已催办，请稍后再试" : null,
       nextRemindAt,
       reminderToken: createHash("sha256").update(JSON.stringify([instance.id, instance.status, instance.currentNodeIndex, instance.updatedAt.toISOString(), pending.map(user => user.id).sort()])).digest("hex"),
-      history: logs.filter(log => !["sms_result", "sms_recipient_result"].includes(String(object(log.metadata).kind))).map(log => ({ id: log.id, actor: person(log.actorUserId), action: ({ approve: "同意", reject: "驳回", reject_previous: "退回上一节点", return_to_applicant: "退回申请人", withdraw: "撤回", transfer: "转审", delegate: "委托", remind: "催办", node_skipped: "节点跳过" } as Record<string, string>)[log.action] ?? "流程记录", comment: log.comment, createdAt: log.createdAt.toISOString() })),
+      history: logs.filter(log => !["sms_result", "sms_recipient_result"].includes(String(object(log.metadata).kind)) &&
+        !(isParallelDutyNotificationEvent(log) && ["queued", "dispatch_claimed"].includes(String(object(log.metadata).event)))).map(log => ({ id: log.id,
+        actor: isParallelDutyNotificationEvent(log) ? {id: "system", name: "系统"} : person(log.actorUserId), action: isParallelDutyNotificationEvent(log)
+          ? ({accepted: "已提交审批通知", failed: "审批通知发送失败", unknown: "审批通知结果待核对", cancelled: "审批通知已取消"} as Record<string, string>)[String(object(log.metadata).event)] ?? "审批通知" : ({ approve: "同意", reject: "驳回", reject_previous: "退回上一节点", return_to_applicant: "退回申请人", withdraw: "撤回", transfer: "转审", delegate: "委托", remind: "催办", node_skipped: "节点跳过" } as Record<string, string>)[log.action] ?? "流程记录", comment: isParallelDutyNotificationEvent(log) ? `${String(object(log.metadata).dutyName)} · ${person(String(object(log.metadata).recipientId)).name}` : log.comment, createdAt: log.createdAt.toISOString() })),
       reminders: requests.map(request => {
         const result = logs.find(log => log.action === "remind" && object(log.metadata).kind === "sms_result" && object(log.metadata).requestId === request.id);
         const partial = logs.filter(log => object(log.metadata).kind === "sms_recipient_result" && object(log.metadata).requestId === request.id).map(log => {

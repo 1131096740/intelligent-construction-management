@@ -705,7 +705,7 @@ function openConfirmation(kind: ActionKind) {
   > = {
     review_approve: {
       title: "确认通过采购审批",
-      description: "通过后审批流进入下一节点或完成，并冻结本次采购审批单。",
+      description: "同意后保留本职责的手写签名，全部必需职责完成后审批才通过。",
       confirmText: "确认通过",
       confirmTheme: "primary",
       requireReason: false,
