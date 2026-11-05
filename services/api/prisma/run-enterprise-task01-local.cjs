@@ -38,6 +38,11 @@ async function main() {
     && inputs.sourceSha === packet.candidateSha && inputs.nodeVersion === process.version && inputs.prismaClientVersion === "5.22.0"
     && inputs.prismaEngineVersion === ENGINE && Array.isArray(packet.migrations) && packet.migrations.length === 197,
   "TASK01_INPUT_BINDING_REJECTED");
+  // Optional for the original direct invocation, whose packet/inputs/source
+  // identities are already cross-checked. The dispatcher always supplies its
+  // requested SHA in a fresh allowlisted environment; it grants no authority.
+  requireThat(!process.env.JG_TASK01_EXPECTED_SOURCE_SHA || process.env.JG_TASK01_EXPECTED_SOURCE_SHA === packet.candidateSha,
+    "TASK01_DISPATCH_SOURCE_MISMATCH");
   requireThat(path.isAbsolute(artifactsDir) && artifactsDir.startsWith("/private/tmp/") && path.normalize(artifactsDir) === artifactsDir
     && fs.realpathSync(path.dirname(artifactsDir)) === path.dirname(artifactsDir) && !fs.existsSync(artifactsDir)
     && path.relative(root, artifactsDir).startsWith(`..${path.sep}`), "TASK01_ARTIFACTS_REJECTED");
@@ -77,6 +82,7 @@ async function main() {
   let resource;
   let resourceFailure;
   let completed = false;
+  let interrupted = false;
   let failureCode;
   let processCleanupSucceeded = true;
   let privateDir;
@@ -95,9 +101,10 @@ async function main() {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
     }
   };
-  const onInterrupt = () => { controller.abort(); for (const child of active) kill(child); };
+  const abortOwned = () => { controller.abort(); for (const child of active) kill(child); };
+  const onInterrupt = () => { interrupted = true; abortOwned(); };
   process.once("SIGINT", onInterrupt); process.once("SIGTERM", onInterrupt);
-  const totalTimer = setTimeout(onInterrupt, 900000);
+  const totalTimer = setTimeout(() => { failureCode ||= "TASK01_TOTAL_TIMEOUT"; abortOwned(); }, 900000);
   const command = (stage, executable, commandArgs, control = {}) => new Promise((resolve, reject) => {
     if (controller.signal.aborted || Date.now() >= endAt) return reject(fault("TASK01_ABORTED_OR_TIMEOUT"));
     const started = Date.now();
@@ -393,6 +400,8 @@ async function main() {
     }
     process.removeListener("SIGINT", onInterrupt); process.removeListener("SIGTERM", onInterrupt);
     process.umask(initialUmask);
+    receipt.interrupted = interrupted;
+    if (interrupted) failureCode ||= "TASK01_INTERRUPTED";
     requireThat(!fs.existsSync(artifactsDir) || fs.realpathSync(artifactsDir) === artifactsDir, "TASK01_ARTIFACTS_CHANGED");
     receipt.status = completed && !failureCode && processCleanupSucceeded ? "passed-first-case-tracer-only" : "failed-closed";
     receipt.failureCode = failureCode ?? (processCleanupSucceeded ? null : "TASK01_OWNED_PROCESS_REMAINS");

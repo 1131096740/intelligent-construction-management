@@ -30,10 +30,10 @@
     "fullyPendingSuites": 67,
     "partiallyPendingSuites": 11,
     "pendingTests": 512,
-    "coveredFiles": 77,
-    "coveredTests": 511,
-    "remainingFiles": 1,
-    "remainingTests": 1
+    "coveredFiles": 78,
+    "coveredTests": 512,
+    "remainingFiles": 0,
+    "remainingTests": 0
   },
   "coveredGroups": [
     {
@@ -676,22 +676,31 @@
         "path": "services/api/prisma/run-contract-classification-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "enterprise_task01_entry",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/fund-execution/enterprise-task01-entry.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-enterprise-task01-local.cjs",
+        "invocation": "task01_explicit_inputs",
+        "resourceHelper": "services/api/prisma/enterprise-task01-resources.cjs",
+        "imageId": "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
+        "sourceSha256": "b1f04a17b80bc534e34686261aea2674350b6505e0e175916568842c0caa8a7f",
+        "resourceHelperSha256": "d7a6c11b13058881106c61cf608addc3aa4cc3e086985bc29071fb0106e7cb40"
+      },
+      "state": "executable_local_runner",
+      "issue": 383,
+      "executionStatus": "NOT_EXECUTED",
+      "scope": "first-case-tracer-only; explicit separate authorization and immutable inputs required"
     }
   ],
-  "remainingFiles": [
-    {
-      "path": "services/api/src/fund-execution/enterprise-task01-entry.http.pg.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_ENTERPRISE_TASK01_ENTRY_PG16",
-      "databaseEnv": [
-        "DATABASE_URL",
-        "JG_TASK01_OBSERVER_DATABASE_URL"
-      ],
-      "reason": "missing_disposable_pg16_orchestration",
-      "issue": 383,
-      "preparationStatus": "prepared-not-executed",
-      "explanation": "任务01受控入口尚待独立资源与迁移授权；未登记为现有runner覆盖或通过。"
-    }
-  ]
+  "remainingFiles": []
 }
