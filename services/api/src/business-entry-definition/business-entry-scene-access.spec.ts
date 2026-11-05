@@ -59,7 +59,7 @@ describe("BusinessEntrySceneAccessRegistry", () => {
               roleScope: "project"
             }
           : ["project_rename", "project_create"].includes(definition.key)
-          ? { kind: "role_keys", roleKeys: ["comprehensive_director", "chairman"], roleScope: "effective" }
+          ? { kind: "role_keys", roleKeys: ["comprehensive_director", "chairman", "general_manager"], roleScope: "effective" }
           : ["project_construction_enterprise", "project_participating_company_add", "project_participating_company_deactivate"].includes(definition.key)
           ? { kind: "business_action", action: "project.master_data.manage", roleScope: "effective" }
           : definition.key === "project_operating_profile"

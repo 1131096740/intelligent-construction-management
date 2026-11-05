@@ -2666,7 +2666,7 @@ export interface ProjectActionCapabilityReadModel {
 }
 
 export function validateProjectCreation(body: CreateProjectPayload) {
-  return postJson<BusinessEntryValidationResult>("/projects/create-validation", body);
+  return postJson<BusinessEntryValidationResult & { warnings: string[] }>("/projects/create-validation", body);
 }
 
 export function fetchProjectCreateCapability() {

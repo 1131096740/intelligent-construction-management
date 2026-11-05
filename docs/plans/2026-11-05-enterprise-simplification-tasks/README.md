@@ -1,14 +1,18 @@
 # 业务简化重构已确认任务与依赖图
 
-> 2026-11-05，`plan-confirmed`；用户已确认全部技术方案、任务粒度及验收边界，并明确授权整套实施和 GitHub 工单推进。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 #383～#427已发布；本地01～45编号稳定。01已按准备边界关闭#383，04按确认公开边界关闭#386；用户最新确认02/#384、03/#385按“本地阶段完成、PG待验”收口，已关闭。05已按本地确认公开边界推送并关闭#387（真实PG待验），06继续补修；08已在确认CLI技术边界完成、推送并关闭#390（6/45项分别按准备/本地/技术边界关闭）；其余依原图。
+> 2026-11-05，`plan-confirmed`；用户已确认全部技术方案、任务粒度及验收边界，并明确授权整套实施和 GitHub 工单推进。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 #383～#427已发布；本地01～45编号稳定。01已按准备边界关闭#383，04按确认公开边界关闭#386；用户最新确认02/#384、03/#385按“本地阶段完成、PG待验”收口，已关闭。05已按本地确认公开边界推送并关闭#387（真实PG待验），06继续补修；08已在确认CLI技术边界完成、推送并关闭#390（6/45项分别按准备/本地/技术边界关闭）；07/#389、11/#393已按确认边界领取，其余依原图。
+
+> **2026-11-06 当前修正：** [05/#387已重开](https://github.com/1131096740/intelligent-construction-management/issues/387#issuecomment-6662884329)。全新派生与真实HTTP证明委托创建/撤销仍被全局退役守卫拒绝；最窄补修已取得本地GREEN，待独立复审、合中央及新收据后再关。当前关闭数为5/45，本文旧6/45与05完成记录仅代表此前里程碑。07/11原合法领取，继续已有收尾与前置补修，不领取新下游。任务依赖边、193条需求与45票编号不变，真实PG未运行。
 
 来源：[193条完整规格](../../specs/2026-11-05-enterprise-simplification-spec.md)、[技术方案](../2026-11-05-enterprise-simplification-technical-plan.md)、[差距依据](../2026-11-05-enterprise-simplification-evidence-and-gaps.md)、[验收边界](../2026-11-05-enterprise-simplification-acceptance.md)。每个票据写明交付、阻塞关系、逐条需求验收、技术决定及测试情景。
 
 工单逐项映射与源码指纹见 [Issue 映射](../2026-11-05-enterprise-simplification-issue-map.json)，当前基线与停止条件见[集成起步交接](../../progress/2026-11-05-enterprise-simplification-integration-start.md)。
 
+07隔离树已完成本地实现与PG源码准备，待准确候选双审及中央整合，#389仍OPEN；前置05全局旧入口guard的create/revoke残留410已公开RED并最窄补修，#387仍重开待新SHA复验收口。真实PG、账户/银行与16/42/44门不计通过，09/15不因此提前启动。[07收据](../../progress/2026-11-05-enterprise-simplification-task07-local.md)。
+
 ## 执行原则
 
-业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05为local-confirmed-boundary-complete/pg-pending/github-closed，06为in-progress，08为technical-cli-complete/github-closed；07/11测试边界已确认且所有源码前置已满足，待正式领取。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。
+业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05为local-confirmed-boundary-complete/pg-pending/github-closed，06为in-progress，08为technical-cli-complete/github-closed；07/11测试边界已确认且所有源码前置已满足，已正式领取、in-progress。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。
 
 用户希望最终整体可用，因此实现可以逐片验证，用户侧统一切新机制；不提供旧结算/新结算双模式。最终资金提交、数据恢复、文书与权限有任何硬门未过，不宣布可上线。
 

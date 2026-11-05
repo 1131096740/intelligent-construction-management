@@ -745,7 +745,29 @@ name: "签批人甲",
     });
   });
 
-  it("routes a claimed PaymentExecution through the shared allocator in the same transaction and forces deferred contracts", async () => {
+  it.each([
+    { name: "原A停用实际B在用合法代付", directoryActive: false, fault: "active_proxy_", error: "" },
+    { name: "原A停用实际B在用仍拒缺冻结版本", directoryActive: false, fault: "active_proxy_missing", error: "冻结主体" },
+    { name: "原A停用实际B在用仍拒冻结冲突", directoryActive: false, fault: "active_proxy_mismatch", error: "冻结依据" },
+    { name: "原A停用实际B在用仍拒草稿合同", directoryActive: false, fault: "active_proxy_draft_source", error: "合同未生效" },
+    { name: "原A停用实际B在用仍拒作废合同", directoryActive: false, fault: "active_proxy_voided_source", error: "合同未生效" },
+    { name: "原A停用实际B在用仍拒项目冲突", directoryActive: false, fault: "active_proxy_project_source", error: "项目来源不一致" },
+    { name: "在用目录原路径", directoryActive: true, fault: "", error: "" },
+    { name: "停用目录可靠冻结原单及有效账户HTTP", directoryActive: false, fault: "", error: "" },
+    { name: "停用公司缺原版本", directoryActive: false, fault: "missing", error: "冻结主体" },
+    { name: "停用公司冻结身份冲突", directoryActive: false, fault: "mismatch", error: "冻结依据" },
+    { name: "旧单不得新选其它停用公司", directoryActive: false, fault: "foreign", error: "不能新选" },
+    { name: "账户核验已撤销", directoryActive: false, fault: "revoked", error: "已失效" },
+    { name: "失去本项目财务职责", directoryActive: false, fault: "scope", error: "当前项目财务" },
+    { name: "原合同仍是草稿", directoryActive: false, fault: "draft_source", error: "合同未生效" },
+    { name: "原合同项目冲突", directoryActive: false, fault: "project_source", error: "项目来源不一致" },
+    { name: "无可选签注也不得绕过原账户依据", directoryActive: false, fault: "no_attestation", error: "当前银行账户依据" },
+    { name: "原单尚未批准", directoryActive: false, fault: "request_pending", error: "审批" },
+    { name: "曾生效合同已被补充版本替代的已批准旧付款", directoryActive: false, fault: "superseded_source", error: "" },
+    { name: "作废版本不能充当曾生效来源", directoryActive: false, fault: "voided_source", error: "合同未生效" }
+  ])("存量公司付款公开路径 $name", async ({ directoryActive, fault: scenario, error }) => {
+    const activeProxy = scenario.startsWith("active_proxy_");
+    const fault = activeProxy ? scenario.slice("active_proxy_".length) : scenario;
     const fixture = hardenedPaymentExecutionFixture();
     const tx = fixture.tx as typeof fixture.tx & {
       $executeRawUnsafe: jest.Mock;
@@ -756,6 +778,7 @@ name: "签批人甲",
       };
       paymentExecutionPayerVerification: { findUnique: jest.Mock };
       companyEntity: { findUnique: jest.Mock };
+      companyEntityVersion: { findUnique: jest.Mock };
       fileObject: { findUnique: jest.Mock };
       paymentExecutionPayerAttestation: { create: jest.Mock };
     };
@@ -804,7 +827,7 @@ name: "签批人甲",
       findUnique: jest.fn().mockResolvedValue({
         id: "payer-verification-1",
         reference: "server-payer-verification-reference",
-        holderCompanyEntityId: "company-1",
+        holderCompanyEntityId: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1",
         holderNameSnapshot: "建工智管建设有限公司",
         holderCreditCodeSnapshot: "91310000TEST000001",
         verificationReference: "verification-record-1",
@@ -812,7 +835,7 @@ name: "签批人甲",
         verifiedAt,
         verificationEvidenceFileId: "verification-evidence-1",
         verificationEvidenceContentSha256: "a".repeat(64),
-        status: "verified",
+        status: fault === "revoked" ? "revoked" : "verified",
         sourceType: "bank_account_legal_holder",
         sourceRecordId: "bank-source-record-1"
       })
@@ -821,7 +844,7 @@ name: "签批人甲",
     tx.userPosition.findMany = jest.fn(
       ({ where }: { where: { userId: string; projectId?: string | null } }) =>
         Promise.resolve(
-          where.userId === "finance-director-1" && where.projectId === null
+          ["finance-director-1", "reauthorizer"].includes(where.userId) && where.projectId === null
             ? [{ positionId: "finance-director-position" }]
             : []
         )
@@ -830,8 +853,12 @@ name: "签批人甲",
       { id: "finance-director-position", key: "finance_director" }
     ]);
     tx.companyEntity = {
-      findUnique: jest.fn().mockResolvedValue({ id: "company-1", isActive: true, name: "签批人甲" })
+      findUnique: jest.fn().mockResolvedValue({ id: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1", isActive: activeProxy || directoryActive, name: "签批人甲" })
     };
+    tx.companyEntityVersion = { findUnique: jest.fn().mockResolvedValue({ id: "company-version-1", companyEntityId: fault === "mismatch" ? "conflicting-company" : "company-1", name: "建工智管建设有限公司", unifiedSocialCreditCode: "91310000TEST000001", isActive: true }) };
+    Object.assign(fixture.payment, { contractVersionStatus: fault === "draft_source" ? "draft" : fault === "superseded_source" ? "superseded" : fault === "voided_source" ? "voided" : "effective", contractProjectId: fault === "project_source" ? "other-project" : fixture.payment.projectId, companyDirectoryIsActive: directoryActive, companyEntityVersionId: fault === "missing" ? null : "company-version-1" });
+    if (fault === "scope") tx.projectMember.findMany.mockResolvedValue([]);
+    if (fault === "request_pending") fixture.payment.status = "approval_pending";
     tx.fileObject = {
       findUnique: jest.fn().mockResolvedValue({
         id: "verification-evidence-1",
@@ -843,6 +870,13 @@ name: "签批人甲",
     tx.paymentExecutionPayerAttestation = {
       create: jest.fn().mockResolvedValue({})
     };
+    if (activeProxy) {
+      Object.assign(tx, {
+        approvalActionLog: { findUnique: jest.fn().mockResolvedValue({ id: "reauth-action", approvalInstanceId: "reauth-round", action: "approve", actorUserId: "reauthorizer", approvedRoleKey: "finance_director", createdAt: new Date("2026-06-20T00:00:00Z"), metadata: { paymentRequestId: "payment-1", contractVersionId: "contract-version-1" } }) },
+        approvalInstance: { findUnique: jest.fn().mockResolvedValue({ id: "reauth-round", businessType: "payment_request", businessId: "payment-1", status: "approved" }) }
+      });
+      tx.fileObject.findUnique.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id, uploadedByUserId: where.id === "authorization-evidence" ? "reauthorizer" : "finance-director-1", storageStatus: "active", contentSha256: "a".repeat(64) }));
+    }
     const sharedAllocations = {
       materializeInTransaction: jest.fn().mockResolvedValue({
         allocationLineCount: 1
@@ -866,15 +900,17 @@ name: "签批人甲",
       sharedAllocations as never
     );
 
-    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+    const payload = {
       ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password",
-      observationSelectionRef: "server-signed-observation-selection",
-      payerAttestation: {
-        bankAccountReference: "server-payer-verification-reference"
+      observationSelectionRef: fault === "no_attestation" ? undefined : "server-signed-observation-selection",
+      bankReceiptReference: fault === "no_attestation" ? "server-bank-reference" : undefined,
+      payerAttestation: fault === "no_attestation" ? undefined : {
+        bankAccountReference: "server-payer-verification-reference",
+        ...(activeProxy ? { authorization: { reason: "已有批准的跨主体代付", evidenceFileId: "authorization-evidence", reauthorizationReference: "reauth-action", reauthorizedByUserId: "reauthorizer", reauthorizedAt: "2026-06-20T00:00:00Z" } } : {})
       },
       wagePayableBindings: [
         {
@@ -882,13 +918,33 @@ name: "签批人甲",
           amountCents: "30000"
         }
       ]
-    });
+    };
+    if (error) {
+      await expect(paymentService.recordExecution("FK-2026-012", "cashier-1", payload)).rejects.toThrow(error);
+      expect(sharedAllocations.materializeInTransaction).not.toHaveBeenCalled();
+      expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+      if (activeProxy) {
+        expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+        expect(tx.paymentExecutionPayerAttestation.create).not.toHaveBeenCalled();
+      }
+      return;
+    }
+    if (!directoryActive) {
+      const module = await Test.createTestingModule({ controllers: [PaymentController], providers: [{ provide: PaymentRequestService, useValue: paymentService }, { provide: PaymentReadService, useValue: {} }, { provide: ProjectVisibilityService, useValue: {} }, { provide: FileService, useValue: fileAccess }] }).compile();
+      const app = module.createNestApplication({ logger: false });
+      app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+      try {
+        await app.listen(0,"127.0.0.1");
+        const response = await fetch(`${await app.getUrl()}/payments/FK-2026-012/executions`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+        expect(response.status).toBe(201);expect(await response.json()).toMatchObject({amountCents:"30000",paymentSubjectType:"our_company"});
+      } finally { await app.close(); }
+    } else await paymentService.recordExecution("FK-2026-012", "cashier-1", payload);
 
     expect(tx.paymentExecutionPayerAttestation.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         paymentExecutionId: "execution-hardened-1",
         payerVerificationId: "payer-verification-1",
-        holderCompanyEntityId: "company-1",
+        holderCompanyEntityId: activeProxy ? "company-active-proxy" : "company-1",
         verifiedByUserId: "finance-director-1",
         verificationEvidenceContentSha256: "a".repeat(64)
       })

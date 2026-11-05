@@ -1,3 +1,4 @@
+import { assertFrozenCompanyIdentity } from "../company-entity/frozen-company-identity";
 import {transferRepaymentUsage} from "../company-transfer/company-transfer-legacy";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -682,7 +683,7 @@ export class PayableRegistryService {
         execution.paymentSubjectType !== "our_company" ||
         !["paid", "partially_paid"].includes(request.status) ||
         contract.contractTypeKey !== "labor_subcontract" ||
-        contractVersion.status !== "effective" ||
+        !["effective", "superseded"].includes(contractVersion.status) ||
         contractVersion.signingSubjectType !== "our_company" ||
         !contractVersion.companyEntityIdSnapshot ||
         !contractVersion.companyEntityVersionId ||
@@ -1443,7 +1444,7 @@ export class PayableRegistryService {
   ) {
     if (
       request.paymentSubjectType !== "our_company" ||
-      contractVersion.status !== "effective" ||
+      !["effective", "superseded"].includes(contractVersion.status) ||
       contractVersion.signingSubjectType !== "our_company" ||
       !contractVersion.companyEntityIdSnapshot ||
       !contractVersion.companyEntityVersionId ||
@@ -1528,8 +1529,41 @@ export class PayableRegistryService {
     const companyById = new Map(companies.map((company) => [company.id, company]));
     const approved = companyById.get(approvedPayerCompanyId);
     const actual = companyById.get(actualPayerCompanyId);
-    if (!approved || !actual || !approved.isActive || !actual.isActive) {
+    if (!approved || !actual) {
       throw new ConflictException("批准付款主体或实际付款主体档案不完整");
+    }
+    if (!approved.isActive) {
+      assertFrozenCompanyIdentity({ companyEntityId: approvedPayerCompanyId,
+        nameSnapshot: contractVersion.companyEntityNameSnapshot,
+        creditCodeSnapshot: contractVersion.companyEntityCreditCodeSnapshot }, approvedVersion);
+    }
+    if (!actual.isActive) {
+      if (actualPayerCompanyId === approvedPayerCompanyId) {
+        assertFrozenCompanyIdentity({ companyEntityId: approvedPayerCompanyId,
+          nameSnapshot: contractVersion.companyEntityNameSnapshot,
+          creditCodeSnapshot: contractVersion.companyEntityCreditCodeSnapshot }, approvedVersion);
+      }
+    }
+    // Every stopped-company exception needs reliable bank authority, whether
+    // the stopped entity is the original debtor, approved payer or actual payer.
+    if (companies.some(company => !company.isActive)) {
+      if (!payerVerification || !payerAttestation || !actorUserId || !payerVerification.sourceRecordId.trim()) {
+        throw new ConflictException("停用付款主体缺少原实付的有效银行账户核验依据");
+      }
+      // This confirms an already recorded payment, not a new bank payment:
+      // retain historical verification dates but reject revoked or altered proof.
+      if (!/^[0-9a-f]{64}$/u.test(payerAttestation.verificationEvidenceContentSha256) ||
+          !Number.isFinite(payerAttestation.verifiedAt.getTime()) || payerAttestation.verifiedAt.getTime() > Date.now()) {
+        throw new ConflictException("银行账户核验证据无效或尚未生效");
+      }
+      const verificationEvidence = await tx.fileObject.findUnique({
+        where: { id: payerAttestation.verificationEvidenceFileId },
+        select: { id: true, storageStatus: true, contentSha256: true }
+      });
+      if (!verificationEvidence || verificationEvidence.storageStatus !== "active" ||
+          verificationEvidence.contentSha256 !== payerAttestation.verificationEvidenceContentSha256) {
+        throw new ConflictException("银行账户核验证据不存在、已失效或内容已变化");
+      }
     }
     const original = originalDebtorCompanyId?.trim() || approvedPayerCompanyId;
     const authorizationRequired = requiresPayerAuthorization({

@@ -327,9 +327,9 @@ export class CompanyEntityService {
           return { entity: current, unchanged: true };
         }
 
-        if (!rawIsActive && await hasCompanyBusiness(tx, companyEntityId)) {
-          throw new ConflictException("该公司已有项目、合同或其他业务引用，请保持启用以继续办理历史业务和尾款");
-        }
+        // Inactivity stops new selections; immutable business references remain valid.
+        // Keep the authoritative reference check and audit its outcome under the same parent lock.
+        const hasExistingBusinessReferences = await hasCompanyBusiness(tx, companyEntityId);
         const versionNo = current.currentVersionNo + 1;
         const action = rawIsActive ? "enable" : "disable";
         const entity = await tx.companyEntity.update({
@@ -354,7 +354,7 @@ export class CompanyEntityService {
           action: `company_entity.${action}`,
           businessType: "company_entity",
           businessId: companyEntityId,
-          metadata: { versionNo, actorRoleKey }
+          metadata: { versionNo, actorRoleKey, hasExistingBusinessReferences }
         });
         return { entity, unchanged: false };
       });

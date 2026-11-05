@@ -1,6 +1,8 @@
 # 11：合同模板主管维护与版本隔离
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#393](https://github.com/1131096740/intelligent-construction-management/issues/393) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置#390技术CLI及#387本地确认边界已关闭，已[领取#393](https://github.com/1131096740/intelligent-construction-management/issues/393#issuecomment-6659886831)。本轮用户已授权整套实施及 GitHub 工单推进；[#393](https://github.com/1131096740/intelligent-construction-management/issues/393) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+
+**已确认公开验证边界：** 模板上传、解析、人工映射确认、版本维护/停用与新草稿选用的公开HTTP、公共服务及管理/选用UI；实际DOCX与真实浏览器连接合成数据库/私有文件适配器，覆盖主管维护、合同员选用、未确认映射不生效和历史正文/PDF下载隔离。真实PG约束仅准备，不执行；资源、迁移、真实短信、部署与生产写仍另需授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

@@ -15,17 +15,19 @@ export {
 
 type CompanyEntityAccessClient = Pick<
   Prisma.TransactionClient,
-  "userPosition" | "position" | "projectMember"
+  "user" | "userPosition" | "position" | "projectMember"
 >;
 
 @Injectable()
 export class CompanyEntityAccess {
   constructor(private readonly prisma: PrismaService) {}
 
-  assertCanMaintain(
+  async assertCanMaintain(
     userId: string,
     client: CompanyEntityAccessClient = this.prisma
   ) {
+    const user = await client.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+    if (!user?.isActive) throw new ForbiddenException("当前账号不可用，不能维护公司基础资料");
     return this.assertAllowed(
       userId,
       COMPANY_ENTITY_MAINTAINER_ROLES,
