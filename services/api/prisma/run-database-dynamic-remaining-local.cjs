@@ -52,7 +52,7 @@ const GROUPS = [
       CONTRACT_DRAFT_AGGREGATE_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 19
+    pendingTests: 20
   },
   {
     id: "project_funding_availability",

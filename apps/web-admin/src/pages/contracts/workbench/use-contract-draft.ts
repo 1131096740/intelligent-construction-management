@@ -123,6 +123,9 @@ async function assertCurrentContractDraftOperationCapability(
       "合同草稿能力响应版本不一致，请刷新后重试"
     );
   }
+  if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
+    throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
+  }
   if (operationCapabilities.version.draftRevision !== expectedRevision) {
     if (operation === "save_contract_draft" && Number.isInteger(operationCapabilities.version.draftRevision) && operationCapabilities.version.draftRevision > expectedRevision && operationCapabilities.draftOperationAvailableActions.includes(operation)) {
       throw Object.assign(new Error("合同草稿已在其他页面更新"), { code: "DRAFT_REVISION_CONFLICT" });
@@ -130,9 +133,6 @@ async function assertCurrentContractDraftOperationCapability(
     throw new ContractDraftAuthorityRefreshRequiredError(
       "合同草稿能力响应修订不一致，请刷新后重试"
     );
-  }
-  if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
-    throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
   }
 }
 

@@ -9,11 +9,14 @@ defineProps<{
   remove: (index: number) => void;
   move: (index: number, offset: -1 | 1) => void;
 }>();
+function stopCellClick() {
+  return undefined;
+}
 </script>
 <template>
   <span
     class="grid-row-actions"
-    @click.stop
+    @click.stop="stopCellClick"
   >
     <t-button
       size="small"

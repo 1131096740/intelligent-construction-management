@@ -26,6 +26,9 @@ function onSelectionKey(event: KeyboardEvent) {
     props.toggle(props.rowIndex ?? 0, false);
   }
 }
+function stopCellClick() {
+  return undefined;
+}
 </script>
 
 <template>
@@ -33,7 +36,7 @@ function onSelectionKey(event: KeyboardEvent) {
     class="grid-selection"
     @keydown="onSelectionKey"
     @click.capture="shiftSelection = $event.shiftKey"
-    @click.stop
+    @click.stop="stopCellClick"
   >
     <Checkbox
       :checked="header ? allSelected : model?.__selected === 'true'"

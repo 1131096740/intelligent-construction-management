@@ -153,8 +153,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 522 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 523);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 523 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 524);
 });
 
 test("manual task01 operator cannot run automatically on GitHub Actions", () => {
@@ -426,16 +426,16 @@ test("manifest preserves source inventory and one separately invoked task01 oper
     pendingFiles: 78,
     fullyPendingSuites: 67,
     partiallyPendingSuites: 11,
-    pendingTests: 523,
+    pendingTests: 524,
     coveredFiles: 78,
-    coveredTests: 523,
+    coveredTests: 524,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 522);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 523);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -845,7 +845,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=523/u
+    /inventory\.coveredTests=26，派生值=524/u
   );
 });
 
