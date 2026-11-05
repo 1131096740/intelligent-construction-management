@@ -1,6 +1,6 @@
 # 03：先打通零星申请的并联职责办理
 
-**状态：** `plan-confirmed` / `in-progress`；前置#383已关闭，本票已在独立工作树领取实施。用户已确认零星申请并联审批公开HTTP、服务公共方法和现有详情UI边界；真实PG竞争案例只准备、不执行。[#385](https://github.com/1131096740/intelligent-construction-management/issues/385) 归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `local-stage-complete` / `pg-pending` / `github-closed`。用户最新明确确认本票按“本地阶段完成、PG待验”收口，已[关闭#385](https://github.com/1131096740/intelligent-construction-management/issues/385#issuecomment-6656204421)并继续05/06。公开HTTP/服务/现有详情UI已按确认边界验证，真实PG竞争案例只准备；16/42/44发布前硬门不解除。资源、迁移、短信及部署仍单独授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
