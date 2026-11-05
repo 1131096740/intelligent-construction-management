@@ -1545,8 +1545,22 @@ export class PayableRegistryService {
       }
       // An inactive actual payer must be an already recorded execution with a
       // still verified bank-holder attestation. Authorization checks below remain mandatory.
-      if (!payerVerification || !payerAttestation || !actorUserId) {
+      if (!payerVerification || !payerAttestation || !actorUserId || !payerVerification.sourceRecordId.trim()) {
         throw new ConflictException("停用付款主体缺少原实付的有效银行账户核验依据");
+      }
+      // This confirms an already recorded payment, not a new bank payment:
+      // retain historical verification dates but reject revoked or altered proof.
+      if (!/^[0-9a-f]{64}$/u.test(payerAttestation.verificationEvidenceContentSha256) ||
+          !Number.isFinite(payerAttestation.verifiedAt.getTime()) || payerAttestation.verifiedAt.getTime() > Date.now()) {
+        throw new ConflictException("银行账户核验证据无效或尚未生效");
+      }
+      const verificationEvidence = await tx.fileObject.findUnique({
+        where: { id: payerAttestation.verificationEvidenceFileId },
+        select: { id: true, storageStatus: true, contentSha256: true }
+      });
+      if (!verificationEvidence || verificationEvidence.storageStatus !== "active" ||
+          verificationEvidence.contentSha256 !== payerAttestation.verificationEvidenceContentSha256) {
+        throw new ConflictException("银行账户核验证据不存在、已失效或内容已变化");
       }
     }
     const original = originalDebtorCompanyId?.trim() || approvedPayerCompanyId;

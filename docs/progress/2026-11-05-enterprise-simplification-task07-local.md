@@ -2,6 +2,8 @@
 
 执行日期为2026-11-05～2026-11-06（Asia/Shanghai）；任务/证据文件名沿既定20261105。工单[#389](https://github.com/1131096740/intelligent-construction-management/issues/389)，从准确中央cd156be31f542baf62d43f2deb0b5fd6f9558882建立独立工作树，已快进合入中央054bcce73419e02e841d3c57c36a46fcdcf65ed4（纯状态文档，不改业务测试字节）；候选准确SHA由外部交接指纹登记。本地实现待独立Standards/Spec复审、主控整合；本收据不宣称GitHub已关闭、远程CI通过或发布资格。
 
+以下主体记录及首轮检查属于ae65原始本地证据，独立Spec指出的2P1及后续修复以末尾r2节为准；旧来源不可用的组合不能凭首轮计数称已闭合。
+
 ## 范围与逐项验收
 
 | 规则 | 实现与公开证据 |
@@ -79,3 +81,16 @@
 ## 执行事故
 
 本轮曾遗漏workdir并对原根两份payment-request文件read_text/write_text，确实触碰mtime/ctime。主控独立核当前两文件SHA-256/Git blob等于更早基线；没有即时beforeimage或原mtime，不能说原根从未写入/完全未变。没有逆改原根、恢复时间戳、吸收其业务diff。详见[事故与独立证据](2026-11-05-enterprise-simplification-task07-workdir-incident.md)，独立JSON SHA-256为6127833b16e68712db0aa85ac94b693521c572c3dc2947775834e1b3c60723c7。恢复后每次写/build/日志均明确私有cwd断言、绝对目标，Git显式-C。
+
+
+## ae65独立复审后的r2补修（2026-11-06）
+
+旧候选ae65ead9a87a268f78bb9b714bbda2ffe621f1d5的Standards0、Spec2个P1原报告及全部旧RED/GREEN保留；本节不覆盖旧证据。#387/#389仍OPEN，补修候选需两轴重审与主控合中央后才可收口。已合中央a4b325df8f2565222f1e6a9671f3d7122ee96b84的单行风险台账，未混入11模板guard恢复。
+
+1. 停用原主体A与在用实际付款主体B分离验证。真实PaymentRequestService/PaymentController公开路径：合法代付B正控201；缺冻结版本/冻结身份冲突/draft/voided/项目不符5项原先错误resolve，RED日志jg-task07-r2-original-company-red.log。现A目录停用总是先校验原批准状态、原合同/项目及CompanyEntityVersion冻结身份，B银行账户核验与实际B停用限制仍独立。实际B在用不能替代原A来源。负控在paymentExecution、attestation、共享分配及PaymentRequest更新前失败，原金额/余额/状态/分录算法不改。
+2. 同主体停用核销仍校验证据。公开confirm（有效历史核验含HTTP201）：同主体历史核验正控原已通过，但证据撤销/缺失/hash变化、未来核验、空银行source5项原错误确认，RED日志jg-task07-r2-same-payer-evidence-red.log。现停用实际付款主体无论是否跨主体，均要求未撤销权威、明确银行来源、有效时间及当前active证据/hash一致；跨主体原有重新授权分支未弱化，原本有效的跨主体证据撤销/缺失与authority撤销负控保留。负控不写核销状态或关系分录。现authority没有TTL，本补修只沿既有非未来规则，不新增核验年限或要求旧实付重新付款；2026-08历史有效核验仍通过，不因目录停用误认成新支付。
+
+最新受影响验证：显式4文件Jest291/291（两个完整公开服务spec、Fund存量候选、原payer-attestation域规则），日志/private/tmp/jg-task07-r2-financial-final.log；API类型/lint/build见r2-api-types/lint/build.log。Web/共享类型/guard/PG准备源码未变，沿ae65对应逐字节证据，不无故重跑UI或真实资源。必要原metadata派生与ready及原369结果、准确新SHA/逐路径指纹见外部r2交接，不将ae65审查结果迁作r2通过。PG仍只准备，库存与198迁移源码不变，真实门NOT RUN。
+
+
+r2最终原metadata write/ready全链与contract-mutation check退出0：702 routes/656 wrappers/695 bindings/397 actions/0 blockers、86 retired，原369/369无失败跳过（jg-task07-r2-static369.log）；重派生物与ae65逐字节不变。r2仅四份付款/核销源码和公开测试改变；其余48份非Markdown路径（含Web、共享、guard、PG与全部派生物）逐项SHA-256等于ae65测时冻结。新source指纹7e34adc1ad2a6645d9d491c9b0bff7aa4ccbb2751f1b44ed0e6307d31cb10b76，外部jg-task07-r2-fingerprints.json。没有为状态MD合并重跑无影响UI，也未将旧独审0项继承为新候选审查通过。

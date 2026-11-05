@@ -3342,6 +3342,10 @@ export class PaymentRequestService {
           throw new ForbiddenException("付款凭证必须由当前登记人上传");
         }
 
+        // The original obligation and the actual bank holder are independent authorities.
+        if (payment.companyDirectoryIsActive === false) {
+          await this.assertInactiveOriginalCompanyReference(tx, payment);
+        }
         const bankEvent = observationSelectionRef ? null : await requireContractBankEvent(tx, {projectId:payment.projectId,reference:input.bankReceiptReference,companyId:payerAttestation?(await tx.paymentExecutionPayerVerification.findUniqueOrThrow({where:{reference:payerAttestation.bankAccountReference}})).holderCompanyEntityId:companyEntityIdSnapshot!,amountCents,occurredAt:paidAt,direction:"outflow"});
         if (payment.companyDirectoryIsActive === false && !payerAttestation) {
           if (!bankEvent?.payerVerificationId) {
@@ -3608,23 +3612,30 @@ export class PaymentRequestService {
     }
   }
 
+  private async assertInactiveOriginalCompanyReference(tx: Prisma.TransactionClient, payment: PaymentExecutionLockRow) {
+    if (!["effective", "superseded"].includes(payment.contractVersionStatus) || payment.contractProjectId !== payment.projectId ||
+        !["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+      throw new ConflictException("原单尚未批准、合同未生效或项目来源不一致，不能沿停用主体继续付款");
+    }
+    if (!payment.companyEntityVersionId) {
+      throw new ConflictException("原单缺少可核实的冻结主体版本");
+    }
+    const frozen = await tx.companyEntityVersion.findUnique({ where: { id: payment.companyEntityVersionId } });
+    assertFrozenCompanyIdentity({ companyEntityId: payment.companyEntityIdSnapshot,
+      nameSnapshot: payment.companyEntityNameSnapshot, creditCodeSnapshot: payment.companyEntityCreditCodeSnapshot }, frozen);
+    return frozen!;
+  }
+
   private async assertInactiveDirectoryContinuation(
     tx: Prisma.TransactionClient,
     payment: PaymentExecutionLockRow,
     authority: { holderCompanyEntityId: string; holderNameSnapshot: string; holderCreditCodeSnapshot: string }
   ) {
-    // These coordinates come from the locked original payment/contract and a server bank observation.
-    if (!["effective", "superseded"].includes(payment.contractVersionStatus) || payment.contractProjectId !== payment.projectId ||
-        !["approved_pending_payment", "partially_paid"].includes(payment.status)) {
-      throw new ConflictException("原单尚未批准、合同未生效或项目来源不一致，不能沿停用主体继续付款");
-    }
-    if (authority.holderCompanyEntityId !== payment.companyEntityIdSnapshot || !payment.companyEntityVersionId) {
+    const frozen = await this.assertInactiveOriginalCompanyReference(tx, payment);
+    if (authority.holderCompanyEntityId !== payment.companyEntityIdSnapshot) {
       throw new ConflictException("停用公司只能沿原单冻结主体继续办理，不能新选为付款主体");
     }
-    const frozen = await tx.companyEntityVersion.findUnique({ where: { id: payment.companyEntityVersionId } });
-    assertFrozenCompanyIdentity({ companyEntityId: payment.companyEntityIdSnapshot,
-      nameSnapshot: payment.companyEntityNameSnapshot, creditCodeSnapshot: payment.companyEntityCreditCodeSnapshot }, frozen);
-    if (authority.holderNameSnapshot !== frozen!.name || authority.holderCreditCodeSnapshot !== frozen!.unifiedSocialCreditCode) {
+    if (authority.holderNameSnapshot !== frozen.name || authority.holderCreditCodeSnapshot !== frozen.unifiedSocialCreditCode) {
       throw new ConflictException("银行账户持有人与原单冻结公司身份不一致");
     }
   }

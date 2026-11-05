@@ -795,6 +795,15 @@ describe("PayableRegistryService", () => {
   });
 
   it.each([
+    { name: "同主体停用历史有效核验仍可核销", directoryActive: false, fault: "same_", error: "" },
+    { name: "同主体停用核验证据撤销", directoryActive: false, fault: "same_evidence_inactive", error: "核验证据" },
+    { name: "同主体停用核验证据缺失", directoryActive: false, fault: "same_evidence_missing", error: "核验证据" },
+    { name: "同主体停用核验证据hash变化", directoryActive: false, fault: "same_evidence_hash", error: "核验证据" },
+    { name: "同主体停用核验记录撤销", directoryActive: false, fault: "same_revoked", error: "账户权威" },
+    { name: "同主体停用核验时间在未来", directoryActive: false, fault: "same_future_verification", error: "核验证据" },
+    { name: "同主体停用缺银行来源", directoryActive: false, fault: "same_missing_bank_source", error: "银行账户核验" },
+    { name: "跨主体停用核验证据撤销", directoryActive: false, fault: "evidence_inactive", error: "核验证据" },
+    { name: "跨主体停用核验证据缺失", directoryActive: false, fault: "evidence_missing", error: "核验证据" },
     { name: "在用原路径", directoryActive: true, fault: "", error: "" },
     { name: "原批准公司停用且合法跨主体代付HTTP", directoryActive: false, fault: "", error: "" },
     { name: "已冻结实付主体停用且账户仍有效", directoryActive: false, fault: "actual_inactive", error: "" },
@@ -803,7 +812,10 @@ describe("PayableRegistryService", () => {
     { name: "账户核验撤销", directoryActive: false, fault: "revoked", error: "账户权威" },
     { name: "补充新版本后仍可核销原曾生效版本的已实付", directoryActive: false, fault: "superseded_source", error: "" },
     { name: "作废合同版本不可作为核销来源", directoryActive: false, fault: "voided_source", error: "付款主体事实" }
-  ])("存量公司应付代付公开路径 $name", async ({ directoryActive, fault, error }) => {
+  ])("存量公司应付代付公开路径 $name", async ({ directoryActive, fault: scenario, error }) => {
+    const samePayer = scenario.startsWith("same_");
+    const fault = samePayer ? scenario.slice("same_".length) : scenario;
+    const verifiedAt = fault === "future_verification" ? new Date("2999-01-01T00:00:00Z") : new Date("2026-08-27T08:00:00.000Z");
     const tx = createTransitionHarness({
       paymentExecutorUserId: "executor",
       payableAmountCents: 10_000n
@@ -812,10 +824,10 @@ describe("PayableRegistryService", () => {
       id: "contract-version-1",
       status: fault === "superseded_source" ? "superseded" : fault === "voided_source" ? "voided" : "effective",
       signingSubjectType: "our_company",
-      companyEntityIdSnapshot: "company-2",
-      companyEntityVersionId: "company-version-2",
-      companyEntityNameSnapshot: "批准公司",
-      companyEntityCreditCodeSnapshot: "credit-2",
+      companyEntityIdSnapshot: samePayer ? "company-1" : "company-2",
+      companyEntityVersionId: samePayer ? "company-version-1" : "company-version-2",
+      companyEntityNameSnapshot: samePayer ? "甲公司" : "批准公司",
+      companyEntityCreditCodeSnapshot: samePayer ? "credit-1" : "credit-2",
       affiliateBusinessPartyVersionId: null
     });
     tx.paymentExecution.findUnique.mockResolvedValue({
@@ -823,7 +835,7 @@ describe("PayableRegistryService", () => {
       paymentRequestId: "request-1",
       paymentSubjectType: "our_company",
       amountCents: 10_000n,
-      companyEntityIdSnapshot: "company-3",
+      companyEntityIdSnapshot: samePayer ? "company-1" : "company-3",
       companyEntityNameSnapshot: "代付公司",
       companyEntityCreditCodeSnapshot: "credit-3",
       executedByUserId: "executor",
@@ -832,15 +844,15 @@ describe("PayableRegistryService", () => {
     tx.paymentExecutionPayerAttestation.findUnique.mockResolvedValue({
       payerVerificationId: "verification-3",
       bankAccountReference: "bank-account-3",
-      holderCompanyEntityId: "company-3",
-      holderNameSnapshot: "代付公司",
-      holderCreditCodeSnapshot: "credit-3",
+      holderCompanyEntityId: samePayer ? "company-1" : "company-3",
+      holderNameSnapshot: samePayer ? "甲公司" : "代付公司",
+      holderCreditCodeSnapshot: samePayer ? "credit-1" : "credit-3",
       verificationReference: "bank-check-3",
       verifiedByUserId: "verifier",
-      verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
+      verifiedAt,
       verificationEvidenceFileId: "verification-file-3",
       verificationEvidenceContentSha256: "a".repeat(64),
-      proxyAuthorizationReason: "跨主体付款授权",
+      proxyAuthorizationReason: samePayer ? null : "跨主体付款授权",
       proxyAuthorizationEvidenceFileId: "authorization-file-3",
       proxyAuthorizationEvidenceSha256: "b".repeat(64),
       reauthorizationReference: "reauth-3",
@@ -854,26 +866,26 @@ describe("PayableRegistryService", () => {
     tx.paymentExecutionPayerVerification.findUnique.mockResolvedValue({
       id: "verification-3",
       reference: "bank-account-3",
-      holderCompanyEntityId: "company-3",
-      holderNameSnapshot: "代付公司",
-      holderCreditCodeSnapshot: "credit-3",
+      holderCompanyEntityId: samePayer ? "company-1" : "company-3",
+      holderNameSnapshot: samePayer ? "甲公司" : "代付公司",
+      holderCreditCodeSnapshot: samePayer ? "credit-1" : "credit-3",
       verificationReference: "bank-check-3",
       verifiedByUserId: "verifier",
-      verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
+      verifiedAt,
       verificationEvidenceFileId: "verification-file-3",
       verificationEvidenceContentSha256: "a".repeat(64),
       status: fault === "revoked" ? "revoked" : "verified",
       sourceType: "bank_account_legal_holder",
-      sourceRecordId: "bank-record-3"
+      sourceRecordId: fault === "missing_bank_source" ? "" : "bank-record-3"
     });
     tx.fileObject.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
-      Promise.resolve({
+      Promise.resolve(fault === "evidence_missing" && where.id === "verification-file-3" ? null : {
         id: where.id,
-        storageStatus: "active",
-        contentSha256: where.id === "authorization-file-3" ? "b".repeat(64) : "a".repeat(64)
+        storageStatus: fault === "evidence_inactive" && where.id === "verification-file-3" ? "deleted" : "active",
+        contentSha256: where.id === "authorization-file-3" ? "b".repeat(64) : fault === "evidence_hash" ? "c".repeat(64) : "a".repeat(64)
       })
     );
-    tx.companyEntity.findMany.mockImplementation(({ where }: { where: { id: { in: string[] } } }) => Promise.resolve(where.id.in.map(id => ({ id, name: id, unifiedSocialCreditCode: null, isActive: (id === "company-2" || fault === "actual_inactive" && id === "company-3") ? directoryActive : true }))));
+    tx.companyEntity.findMany.mockImplementation(({ where }: { where: { id: { in: string[] } } }) => Promise.resolve(where.id.in.map(id => ({ id, name: id, unifiedSocialCreditCode: null, isActive: (samePayer && id === "company-1" || id === "company-2" || fault === "actual_inactive" && id === "company-3") ? directoryActive : true }))));
     if (fault === "missing") tx.companyEntityVersion.findUnique.mockResolvedValue(null as never);
     if (fault === "mismatch") tx.companyEntityVersion.findUnique.mockResolvedValue({companyEntityId:"conflicting-company",name:"批准公司",unifiedSocialCreditCode:"credit-2",isActive:true});
     const prisma = {
@@ -889,6 +901,7 @@ describe("PayableRegistryService", () => {
     if (error) {
       await expect(service.confirm("director",payload)).rejects.toThrow(error);
       expect(tx.interEntityRelationshipEntry.create).not.toHaveBeenCalled();
+      expect(tx.payableSettlementCase.update).not.toHaveBeenCalled();
       return;
     }
     if (!directoryActive && !fault) {
@@ -901,6 +914,11 @@ describe("PayableRegistryService", () => {
         expect(response.status).toBe(201);expect(await response.json()).toMatchObject({status:"confirmed",revision:4});
       } finally {await app.close();}
     } else await expect(service.confirm("director",payload)).resolves.toEqual(expect.objectContaining({status:"confirmed",revision:4}));
+    if (samePayer) {
+      expect(tx.interEntityRelationshipEntry.create).not.toHaveBeenCalled();
+      expect(tx.payableSettlementCase.update).toHaveBeenCalled();
+      return;
+    }
     expect(tx.interEntityRelationshipEntry.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         entryKind: "proxy_payment",
