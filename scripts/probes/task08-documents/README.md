@@ -32,7 +32,7 @@ TASK08_PY=/private/tmp/jg-task08-document-tools311-20261105/bin/python
 "$TASK08_PY" scripts/probes/task08-documents/test_candidate.py CandidateCLI.test_explicit_print_profile_keeps_fullwidth_comma_in_actual_pdf
 ```
 
-该测试需要本机应用转换权限。沙箱内LibreOffice退出-6的失败另保留；获批本机转换才取得真实文件。此命令会打开新的独立转换profile，不是当前允许反复重跑的许可。当前父控已暂停再次转换，后续操作以其指令为准。
+该测试需要本机应用转换权限。沙箱内LibreOffice退出-6的失败另保留；获批本机转换才取得真实文件。此命令会打开新的独立转换profile，不是当前允许反复重跑的许可。后续转换按主控当前调度执行；不自动重跑已保留的历史LO红项。
 
 ## 真实产物与未通过项
 
@@ -95,6 +95,20 @@ A09修复在**本票派生文档**明确映射关键语义金额范围，不改�
 唯一获批的新源转换使用f56203e2…派生DOCX：比f938仅合并重复表头并裁掉6末空段；3条数据行、两张签署表及最终节属性的C14N相同，手改条款保留。引擎、10字库、policy和flags均与v4相同，离线拒绝与输入前后哈希检查成立。实际PDF为15页，无空末页；末页仅1头+3行，已真实渲染核对。全字符/trace缺失0、.notdef候选0，3个原逗号存在，精确字库嵌入、A4及页面坐标检查通过。第11/14页签署正文固定区域像素与v4完全相同（页脚总页数在区域外）。
 
 此结论仅为单样张测量通过，尚未固定整套方案或完成任务08；新引擎八模板/45行批量及简版封面/字体标准仍待验证。`derived-layout-fix/`与`tracer-v5-derived-layout-fix/`保存新源、生成器快照、因果清单、PDF和独立检查；旧f938、v4反例及全部原8样张字节保留。本轮没有追加第二次转换。
+
+### 已验证引擎接入公开export-pdf
+
+`candidate.py export-pdf --engine docx4j --runtime-manifest <清单>`已接入本票离线adapter，不是将外部tracer成功冒充默认LO能力。[Task08Fo.java](docx4j/Task08Fo.java)与[runtime-lock.json](docx4j/runtime-lock.json)可复核；仓库没有JDK、jar、class或字库二进制。运行清单必须与此精确锁一致，逐次核完整JDK树456项、两个jar、两个已核class及10份指定字库，adapter源码也核哈希。不安装工具、不跨目录找字体、不接受任意命令或shell。
+
+每次创建新的自有scratch，只复制已核class和输入DOCX。生成的policy仅允许此scratch读写、固定JDK/jar/字体读取；真实Socket/DNS/目录外拒绝、独立cwd、外部关系/实体/外部域拒绝和一次120秒导出均在原公开输出缝内。失败保留scratch日志/侧车收据，不回退或重试；输出字体未嵌入或不在固定名单也拒绝。默认`--engine libreoffice`仍是历史比较基线，其已知反例未宣称修复。
+
+公开接口先RED（原CLI不认识engine/manifest参数），后实际GREEN：v5劳务DOCX通过同一CLI输出15页PDF，3个原逗号、精确FZX/FangSong/SimHei/Times字库、嵌入、单头3行及非空末页检查通过；侧车`.export.json`记录实际三个拒绝与一次转换。证据 `/private/tmp/task08-public-export-pqyq_i_r/`。解冻后运行清单漂移、外部关系、禁止隐式LO三类拒绝测试通过；继承JVM选项的不存在agent负例先红后绿，Java子进程只使用PATH/LANG/LC_ALL/TMPDIR新白名单，未改变全局HOME或环境。最终公开测试2项通过，实际结果保留在 `/private/tmp/task08-public-export-xd9ovvej/`；完整18份矩阵尚未开始。
+
+```sh
+"$TASK08_PY" scripts/probes/task08-documents/candidate.py export-pdf --engine docx4j --runtime-manifest /private/tmp/jg-task08-docx4j-tools-20261105/public-runtime-manifest.json --document /private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/labor-layout-fixed.docx --output /private/tmp/新的任务输出目录/labor.pdf
+```
+
+此为任务专用可重建临时工具清单，不是跨机器安装器或正式服务依赖。字库/运行时变化必须明确重新核定，不能改清单绕过锁；每次PDF仍须独立核验文字、版式、签署与分页，不能只凭EXPORTED状态算任务08完成。
 
 ## 依赖、许可及后续约束
 

@@ -278,12 +278,25 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--confirm-discard-manual-clauses", action="store_true")
     parser.add_argument("--converter", default="/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    parser.add_argument("--engine", choices=["libreoffice", "docx4j"], default="libreoffice")
+    parser.add_argument("--runtime-manifest", type=Path)
     args = parser.parse_args()
+    if args.runtime_manifest and args.engine != "docx4j":
+        parser.error("runtime manifest requires explicit docx4j engine; no fallback")
     if args.output.exists():
         parser.error("output exists; use a new revision path")
     if args.operation == "export-pdf":
         if not args.document:
             parser.error("document required")
+        if args.converter != "/Applications/LibreOffice.app/Contents/MacOS/soffice":
+            parser.error("only the pinned local converter is allowed")
+        if args.engine == "docx4j":
+            if not args.runtime_manifest:
+                parser.error("explicit pinned runtime manifest required")
+            from docx4j_export import export_pdf
+            export_pdf(args.document, args.output, args.runtime_manifest)
+            print(json.dumps({"output": args.output.name, "operation": args.operation, "engine": args.engine}))
+            return
         with tempfile.TemporaryDirectory(prefix="task08-convert-") as tmp:
             tmp = Path(tmp)
             shutil.copyfile(args.document, tmp / "input.docx")

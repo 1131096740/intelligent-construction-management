@@ -526,6 +526,34 @@
     {
       "path": "/private/tmp/jg-task08-document-receipts-20261105/15-layout-source-final-green.log",
       "sha256": "1facbabd3b54d02cbc73681c07145683097fe6b193d40c223a0a856a5a998833"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/16-public-docx4j-cli-red.log",
+      "sha256": "8ece67ce983f53bf05c3f1df44c473d9cf1d0614591e99b78683a440508f31ea"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/17-public-docx4j-cli-green-attempt.log",
+      "sha256": "6fd9c7c3c4b878a1406ec487fa4a0e04506ee2a373c42c38efe7693884ce24fd"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/18-inherited-jvm-options-red.log",
+      "sha256": "a620b0d0fbb2d4a1fc5ebeb4a2eea321db72d7b752477477b5b14a064a73a8cb"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/19-public-cli-guards-green.log",
+      "sha256": "2ba5a21435285a938fb16f40ab7ac47b37317b65d74ead0ca166dbaf2c84668a"
+    },
+    {
+      "path": "/private/tmp/task08-public-export-xd9ovvej/labor.pdf",
+      "sha256": "1a809cad0d766985f2f8db13eb3a4f16170e2f68d748a5f8f9fac971efa7ee3c"
+    },
+    {
+      "path": "/private/tmp/task08-public-export-xd9ovvej/labor.export.json",
+      "sha256": "78315739155cc4e60574571d3ece269d31bf449210c4ae16ef53233feb8f7617"
+    },
+    {
+      "path": "/private/tmp/task08-public-export-xd9ovvej/independent-inspection.json",
+      "sha256": "c12834839edae153b02062f0ff69d851966386ee7462bfde2e021c8c0fb4f180"
     }
   ],
   "followup": {
@@ -1332,6 +1360,55 @@
       },
       "currentRendererSha256": "9ac5d318fc883bdfd8942be7bb4d7cb4cfbf8d95f20a7c05cb8bd063cca1fd1c",
       "scopeLimit": "one sample measured pass; full task08 not complete, compact standards and eight-template batch not verified under new engine"
+    },
+    "publicCliDocx4j": {
+      "status": "single-sample-cli-pass; full matrix not yet run",
+      "arguments": "export-pdf --engine docx4j --runtime-manifest <exact lock>",
+      "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+      "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+      "runtimeJdkTreeEntries": 456,
+      "noBinariesAddedToRepository": true,
+      "childEnvironment": "new PATH/LANG/LC_ALL/TMPDIR whitelist; global HOME unchanged; no inherited JVM, CLASSPATH or dynamic-loader variables",
+      "publicTests": "2 pass: positive real15-page export with nonexistent-agent hostile parent option; negative manifest drift/external relation/implicit LO rejected",
+      "pdfReceipt": {
+        "status": "EXPORTED_REQUIRES_INDEPENDENT_FIDELITY_CHECKS",
+        "engine": "docx4j17.3.5-jdk17.0.17+10-offline",
+        "scratch": "/private/tmp/jg-task08-docx4j-tools-20261105/public-cli-runs/export-pqb7iwwn",
+        "sourceSha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "runtimeManifestSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "runtimeLockSha256": "8b36b95ee17c157971169ffe04d9834d0de6765984c5527dac82d626c67e8769",
+        "jdkTreeSha256": "d4de1f2ca0d8a374a7538ef538ba0588da979266db2575c14aa1d06387307469",
+        "policySha256": "885d1d8346430f44f95ee844b8a0d57351df21637041b69ee8e2f1b870e04434",
+        "adapterSourceSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "conversionCalls": 1,
+        "childEnvironmentKeys": [
+          "LANG",
+          "LC_ALL",
+          "PATH",
+          "TMPDIR"
+        ],
+        "exitCode": 0,
+        "networkAndOutsideFileDenied": true,
+        "pdfSha256": "1a809cad0d766985f2f8db13eb3a4f16170e2f68d748a5f8f9fac971efa7ee3c",
+        "usedFontNames": [
+          "FZXBSJW--GB1-0",
+          "FangSong_GB2312",
+          "SimHei",
+          "TimesNewRomanPS-BoldMT",
+          "TimesNewRomanPSMT"
+        ],
+        "sourceAndPinnedFilesUnchanged": true
+      },
+      "independentInspectionSummary": {
+        "docxSha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "pdfSha256": "1a809cad0d766985f2f8db13eb3a4f16170e2f68d748a5f8f9fac971efa7ee3c",
+        "missingCharacterCounts": {},
+        "missingTraceCharacterCounts": {},
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageText": []
+      },
+      "stillIncomplete": "new engine eight-template matrix18 exports not started; compact standards not accepted"
     }
   }
 }
