@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { fetchBusinessEntryDefinition, validateBusinessEntryDraft } from "../../../api/business-entry.api";
+import { fetchProjectUpdateCapability, validateProjectCreation } from "../../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../../api/error-message";
 
-const props = defineProps<{ projectId: string; name: string; saving: boolean }>();
+const props = defineProps<{ projectId: string; code: string; name: string; saving: boolean }>();
 const emit = defineEmits<{ save: [name: string] }>();
 const definition = shallowRef<BusinessEntrySceneDefinition | null>(null);
 const draft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_rename", values: { name: props.name } });
+const warnings = ref<string[]>([]);
+const pendingConfirmation = ref("");
+watch(() => draft.value.values, () => { warnings.value = []; pendingConfirmation.value = ""; }, { deep: true });
 const errors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const message = ref("");
 const busy = ref(false);
@@ -26,6 +30,13 @@ onMounted(async () => {
   try { await loadDefinition(); }
   catch (error) { if (active) message.value = formatUnknownApiError(error, "加载项目名称填写规则失败"); }
 });
+
+async function validateProjectNameWithCapability(projectId: string, name: string) {
+  const capability = await fetchProjectUpdateCapability(projectId);
+  const operationAllowed = capability.availableActions.includes("update_project");
+  if (!operationAllowed) throw new Error("当前用户不能修改项目名称");
+  return validateProjectCreation({ code: props.code, name });
+}
 
 async function submit() {
   if (busy.value || props.saving || !definition.value) return;
@@ -52,7 +63,20 @@ async function submit() {
     }, "edit");
     if (!active) return;
     errors.value = validation.errors;
-    if (validation.valid && typeof validation.values.name === "string") emit("save", validation.values.name);
+    if (validation.valid && typeof validation.values.name === "string") {
+      const precheck = await validateProjectNameWithCapability(projectId, validation.values.name);
+      if (!active) return;
+      warnings.value = precheck.warnings;
+      if (precheck.valid) {
+        const signature = JSON.stringify({ projectId, name: validation.values.name });
+        if (warnings.value.length && pendingConfirmation.value !== signature) {
+          pendingConfirmation.value = signature;
+          return;
+        }
+        pendingConfirmation.value = "";
+        emit("save", validation.values.name);
+      }
+    }
   } catch (error) {
     if (active) message.value = formatUnknownApiError(error, "项目名称预检失败，请稍后重试");
   } finally { if (active) busy.value = false; }
@@ -74,11 +98,18 @@ async function submit() {
     >
       {{ message }}
     </p>
+    <p
+      v-for="warning in warnings"
+      :key="warning"
+      role="status"
+    >
+      {{ warning }}
+    </p>
     <t-button
       :disabled="!definition || busy || saving"
       @click="submit"
     >
-      {{ busy || saving ? "保存中" : "保存名称" }}
+      {{ busy || saving ? "保存中" : pendingConfirmation ? "确认同名并保存名称" : "保存名称" }}
     </t-button>
   </div>
 </template>

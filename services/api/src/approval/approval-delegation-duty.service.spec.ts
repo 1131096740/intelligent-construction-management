@@ -1,3 +1,6 @@
+import { Test } from "@nestjs/testing";
+import { ApprovalDelegationController } from "./approval-delegation.controller";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
 import { ApprovalDelegationService } from "./approval-delegation.service";
 import { AuditService } from "../audit/audit.service";
 import {SPOT_APPROVAL_DUTY_RESOURCE} from "./spot-approval-duty-access";
@@ -76,4 +79,37 @@ it("当前职责办理或失岗即撤销新建委托能力，撤销能力只属�
  Object.assign(round.frozenNodes[1],{approvedRoleKeys:["project_manager"]});
  await expect(service.dutyCapability("manager","round-1:1")).rejects.toThrow("该审批职责已结束");
  await expect(fixture(false).service.dutyCapability("manager","round-1:1")).rejects.toThrow("不是该职责的有效审批人");
+});
+
+
+it.each(["create", "revoke"] as const)("当前精确职责委托公开HTTP %s可通过真实全局旧入口守卫，业务拒绝仍生效", async (operation) => {
+  const { service, grants } = fixture();
+  if (operation === "revoke") await service.create("manager", input());
+  const module = await Test.createTestingModule({ controllers: [ApprovalDelegationController], providers: [{ provide: ApprovalDelegationService, useValue: service }] }).compile();
+  const app = module.createNestApplication({ logger: false });
+  app.use((req: { user?: unknown; headers: Record<string, string | undefined> }, _res: unknown, next: () => void) => { req.user = { id: req.headers["x-test-actor"] ?? "manager" }; next(); });
+  app.useGlobalGuards(new RetiredWriteEntryGuard());
+  await app.listen(0, "127.0.0.1");
+  try {
+    const base = await app.getUrl();
+    if (operation === "create") {
+      const response = await fetch(`${base}/approval-delegations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input()) });
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ fromUserId: "manager", toUserId: "delegate", resourceId: "round-1:1" });
+      const expired = await fetch(`${base}/approval-delegations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...input(), endsAt: new Date(Date.now() - 2000).toISOString() }) });
+      expect(expired.status).toBe(400);
+      const outsider = await fetch(`${base}/approval-delegations`, { method: "POST", headers: { "content-type": "application/json", "x-test-actor": "outsider" }, body: JSON.stringify(input()) });
+      expect(outsider.status).toBe(403);
+      expect(grants.size).toBe(1);
+    } else {
+      const response = await fetch(`${base}/approval-delegations/mandate-1`, { method: "DELETE" });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ id: "mandate-1", enabled: false });
+      const denied = await fetch(`${base}/approval-delegations/mandate-1`, { method: "DELETE", headers: { "x-test-actor": "outsider" } });
+      expect(denied.status).toBe(403);
+      expect(grants.get("mandate-1")?.enabled).toBe(false);
+      expect((await fetch(`${base}/approval-delegations/mandate-1`, { method: "DELETE" })).status).toBe(400);
+      expect(grants.size).toBe(1);
+    }
+  } finally { await app.close(); }
 });

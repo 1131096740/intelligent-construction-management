@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 366,
-    "reachableProductionModuleCount": 345
+    "productionModuleCount": 367,
+    "reachableProductionModuleCount": 346
   },
   "wrappers": [
     {
@@ -216,7 +216,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/business-entry.api.test.ts"
+        "apps/web-admin/src/api/business-entry.api.test.ts",
+        "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/business-parties/BusinessPartyCreatePage.vue",
@@ -477,7 +478,8 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/business-entry.api.test.ts"
+        "apps/web-admin/src/api/business-entry.api.test.ts",
+        "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
@@ -8131,7 +8133,9 @@
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -8305,9 +8309,12 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectRosterPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectPersonnelPanel.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -8365,9 +8372,12 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
+        "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -11386,9 +11396,12 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+        "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue",
+        "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
       ],
-      "testConsumers": [],
+      "testConsumers": [
+        "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+      ],
       "unreachableConsumers": []
     },
     {

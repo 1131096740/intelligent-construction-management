@@ -30,9 +30,15 @@ const view = ref(route.query.view === "projects" ? "projects" : "people");
         />
       </t-tabs>
       <OrganizationManagementPage v-if="view === 'people'" />
-      <ProjectRosterPage v-else />
+      <ProjectRosterPage
+        v-else
+        :initial-project-id="typeof route.query.projectId === 'string' ? route.query.projectId : undefined"
+      />
     </template>
-    <ProjectRosterPage v-else />
+    <ProjectRosterPage
+      v-else
+      :initial-project-id="typeof route.query.projectId === 'string' ? route.query.projectId : undefined"
+    />
   </section>
 </template>
 

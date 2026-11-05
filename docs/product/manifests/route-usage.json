@@ -8080,7 +8080,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -8099,7 +8099,8 @@
             "normalizedKey": "GET /projects/:param/update-capability",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-              "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
+              "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue",
+              "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
             ]
           }
         ],
@@ -8361,7 +8362,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -8400,13 +8401,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "comprehensive_director"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -8465,7 +8463,8 @@
             "normalizedPath": "/projects/roster",
             "normalizedKey": "GET /projects/roster",
             "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectRosterPage.vue"
+              "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
+              "apps/web-admin/src/pages/projects/components/ProjectPersonnelPanel.vue"
             ]
           }
         ],
@@ -10862,7 +10861,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -20335,7 +20334,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -24806,7 +24805,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -24824,7 +24823,8 @@
             "normalizedPath": "/projects/create-validation",
             "normalizedKey": "POST /projects/create-validation",
             "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+              "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue",
+              "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
             ]
           }
         ],

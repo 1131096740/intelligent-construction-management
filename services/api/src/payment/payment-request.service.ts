@@ -1,3 +1,4 @@
+import { assertFrozenCompanyIdentity } from "../company-entity/frozen-company-identity";
 import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
 import { contractProxyPaid, contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
@@ -148,6 +149,10 @@ interface PaymentApprovalNode {
 }
 
 interface PaymentExecutionLockRow {
+  companyDirectoryIsActive: boolean;
+  contractVersionStatus: string;
+  contractProjectId: string;
+  companyEntityVersionId: string | null;
   id: string;
   code: string;
   projectId: string;
@@ -1811,12 +1816,18 @@ export class PaymentRequestService {
         version."signingSubjectType",
         version."companyEntityIdSnapshot",
         version."companyEntityNameSnapshot",
-        version."companyEntityCreditCodeSnapshot"
+        version."companyEntityCreditCodeSnapshot",
+        version."companyEntityVersionId",
+        company."isActive" AS "companyDirectoryIsActive",
+        version."status" AS "contractVersionStatus",
+        contract."projectId" AS "contractProjectId"
       FROM "PaymentRequest" payment
       INNER JOIN "ContractVersion" version
-        ON version."id" = payment."contractVersionId"
+        ON version."id" = payment."contractVersionId" AND version."contractId" = payment."contractId"
       INNER JOIN "Contract" contract
         ON contract."id" = payment."contractId"
+      INNER JOIN "CompanyEntity" company
+        ON company."id" = version."companyEntityIdSnapshot"
       WHERE payment."id" = ${paymentId} OR payment."code" = ${paymentId}
       LIMIT 1
       FOR UPDATE OF payment, version
@@ -3331,7 +3342,27 @@ export class PaymentRequestService {
           throw new ForbiddenException("付款凭证必须由当前登记人上传");
         }
 
+        // The original obligation and the actual bank holder are independent authorities.
+        if (payment.companyDirectoryIsActive === false) {
+          await this.assertInactiveOriginalCompanyReference(tx, payment);
+        }
         const bankEvent = observationSelectionRef ? null : await requireContractBankEvent(tx, {projectId:payment.projectId,reference:input.bankReceiptReference,companyId:payerAttestation?(await tx.paymentExecutionPayerVerification.findUniqueOrThrow({where:{reference:payerAttestation.bankAccountReference}})).holderCompanyEntityId:companyEntityIdSnapshot!,amountCents,occurredAt:paidAt,direction:"outflow"});
+        if (payment.companyDirectoryIsActive === false && !payerAttestation) {
+          if (!bankEvent?.payerVerificationId) {
+            throw new ConflictException("停用公司原单缺少可核实的当前银行账户依据");
+          }
+          const authority = await tx.paymentExecutionPayerVerification.findUnique({ where: { id: bankEvent.payerVerificationId } });
+          if (!authority || authority.status !== "verified" || authority.sourceType !== "bank_account_legal_holder" || !authority.sourceRecordId?.trim() || authority.verifiedAt.getTime() > Date.now()) {
+            throw new ConflictException("原单银行账户核验已失效或来源不明确");
+          }
+          if (authority.verifiedByUserId === actorUserId) throw new ConflictException("银行账户核验人与付款执行登记人必须职责分离");
+          await this.assertInactiveDirectoryContinuation(tx, payment, authority);
+          await this.assertGlobalFinanceDirectorUser(tx, authority.verifiedByUserId, "银行账户核验人必须是有效的全系统财务负责人");
+          const evidence = await tx.fileObject.findUnique({ where: { id: authority.verificationEvidenceFileId } });
+          if (!evidence || evidence.storageStatus !== "active" || evidence.uploadedByUserId !== authority.verifiedByUserId || evidence.contentSha256 !== authority.verificationEvidenceContentSha256) {
+            throw new ConflictException("原单银行账户核验证据已失效或身份不一致");
+          }
+        }
         const executionId = randomUUID();
         const execution = await paymentExecutionClient.create({
           data: {
@@ -3359,7 +3390,8 @@ export class PaymentRequestService {
             payment.id,
             payment.contractVersionId,
             actorUserId,
-            payerAttestation
+            payerAttestation,
+            payment
           );
         }
         if(bankEvent)await claimContractBankEvent(tx,bankEvent.id,"payment_execution",execution.id,actorUserId);
@@ -3580,13 +3612,42 @@ export class PaymentRequestService {
     }
   }
 
+  private async assertInactiveOriginalCompanyReference(tx: Prisma.TransactionClient, payment: PaymentExecutionLockRow) {
+    if (!["effective", "superseded"].includes(payment.contractVersionStatus) || payment.contractProjectId !== payment.projectId ||
+        !["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+      throw new ConflictException("原单尚未批准、合同未生效或项目来源不一致，不能沿停用主体继续付款");
+    }
+    if (!payment.companyEntityVersionId) {
+      throw new ConflictException("原单缺少可核实的冻结主体版本");
+    }
+    const frozen = await tx.companyEntityVersion.findUnique({ where: { id: payment.companyEntityVersionId } });
+    assertFrozenCompanyIdentity({ companyEntityId: payment.companyEntityIdSnapshot,
+      nameSnapshot: payment.companyEntityNameSnapshot, creditCodeSnapshot: payment.companyEntityCreditCodeSnapshot }, frozen);
+    return frozen!;
+  }
+
+  private async assertInactiveDirectoryContinuation(
+    tx: Prisma.TransactionClient,
+    payment: PaymentExecutionLockRow,
+    authority: { holderCompanyEntityId: string; holderNameSnapshot: string; holderCreditCodeSnapshot: string }
+  ) {
+    const frozen = await this.assertInactiveOriginalCompanyReference(tx, payment);
+    if (authority.holderCompanyEntityId !== payment.companyEntityIdSnapshot) {
+      throw new ConflictException("停用公司只能沿原单冻结主体继续办理，不能新选为付款主体");
+    }
+    if (authority.holderNameSnapshot !== frozen.name || authority.holderCreditCodeSnapshot !== frozen.unifiedSocialCreditCode) {
+      throw new ConflictException("银行账户持有人与原单冻结公司身份不一致");
+    }
+  }
+
   private async persistPayerAttestation(
     tx: Prisma.TransactionClient,
     paymentExecutionId: string,
     paymentRequestId: string,
     contractVersionId: string,
     actorUserId: string,
-    attestation: NormalizedPayerAttestation
+    attestation: NormalizedPayerAttestation,
+    payment: PaymentExecutionLockRow
   ): Promise<void> {
     const now = new Date();
     const authorityClient = (tx as unknown as {
@@ -3636,7 +3697,9 @@ export class PaymentRequestService {
       where: { id: authority.holderCompanyEntityId },
       select: { id: true, isActive: true }
     });
-    if (!holder?.isActive) throw new ConflictException("银行账户法定持有人主体不存在或已停用");
+    if (!holder) throw new ConflictException("银行账户法定持有人主体不存在");
+    if (!holder.isActive) await this.assertInactiveDirectoryContinuation(tx, payment, authority);
+
     const verificationEvidence = await tx.fileObject.findUnique({
       where: { id: authority.verificationEvidenceFileId },
       select: { id: true, uploadedByUserId: true, storageStatus: true, contentSha256: true }
