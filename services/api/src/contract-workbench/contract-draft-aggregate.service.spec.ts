@@ -673,9 +673,16 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     };
   }
 
-  it.each(["1.23456", ""])("rejects an invalid new default tax rate %j on an empty v2 bill before writes over HTTP", async (rate) => {
+  it.each([
+    { rate: "1.23456", stored: null },
+    { rate: "", stored: null },
+    { rate: "1.23450", stored: "1.2345" },
+    { rate: "1.234500", stored: "1.2345" }
+  ])("rejects an invalid new default tax rate %j on an empty v2 bill before writes over HTTP", async ({ rate, stored }) => {
     const { service, tx, audit } = makeSaveService({ realWorkbench: true, persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: 1,
       defaultTaxRatePercent: new Prisma.Decimal("1.23456"), taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n }] });
+    const originalVersion = await tx.contractVersion.findUnique({ where: { id: "cv-1" } });
+    if (stored !== null) Object.assign(originalVersion, { defaultTaxRatePercent: new Prisma.Decimal(stored) });
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractDraftAggregateService, useValue: service },
       ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
