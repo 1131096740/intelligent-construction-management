@@ -19,6 +19,8 @@ export type ApprovalSignature = {
 export interface SpotApprovalRow { name: string; position: string; signedAt: string; comment: string; relationship: string; signature: Buffer | null; }
 
 export type SpotProcurementApplicationFormInput = {
+  approvalPending?: boolean;
+  frozenDutySlots?: Array<{position: string; approval: SpotApprovalRow | null}>;
   approvals: SpotApprovalRow[];
   kind: "application";
   projectName: string;
@@ -72,7 +74,8 @@ export type SpotProcurementApprovalFormInput =
   | SpotProcurementPaymentFormInput;
 
 export async function renderSpotProcurementApprovalForm(input: SpotProcurementApprovalFormInput): Promise<Buffer> {
-  if (!input.approvals.length || input.approvals.some(row => !row.name || !row.position || !row.signedAt || !row.signature)) {
+  const preview = input.kind === "application" && input.approvalPending === true;
+  if ((!preview && !input.approvals.length) || input.approvals.some(row => !row.name || !row.position || !row.signedAt || !row.signature)) {
     throw new BadRequestException("实际签批记录及签名不完整，不能生成正式审批单");
   }
   const margin = 24;
@@ -82,6 +85,9 @@ export async function renderSpotProcurementApprovalForm(input: SpotProcurementAp
   const done = new Promise<Buffer>((resolve, reject) => { doc.on("data", chunk => chunks.push(chunk)); doc.on("end", () => resolve(Buffer.concat(chunks))); doc.on("error", reject); });
   const width = doc.page.width - 2 * margin;
   doc.fontSize(16).text(input.kind === "application" ? "零星材料采购申请单" : "零星材料付款审批单", margin, margin, { width, align: "center" });
+  const frozenSlots = input.kind === "application" ? input.frozenDutySlots : undefined;
+  if (frozenSlots) doc.fontSize(11).text(preview ? "审批未完成 · 仅供查看办理进度，空白职责仍待办理" : "审批已完成 · 本轮全部必需职责已同意", { align: "center" });
+  else if (preview) doc.fontSize(11).text("审批未完成 · 仅供查看办理进度，空白职责仍待办理", { align: "center" });
   const summary = input.kind === "application" ? [
     ["单号", input.procurementCode], ["所属项目", input.projectName],
     ["申请人 / 部门", `${input.applicationName} / ${input.applicationDepartment}`],
@@ -99,10 +105,20 @@ export async function renderSpotProcurementApprovalForm(input: SpotProcurementAp
       [{ header: "材料名称", width: 130 }, { header: "规格", width: 100 }, { header: "单位", width: 40 }, { header: "数量", width: 55 }, { header: "备注", width: width - 325 }],
       input.lines.map(line => [line.materialName, line.specification ?? "", line.unit, line.quantity, line.note ?? ""]));
   }
-  drawApprovalTable(doc, margin, y + 10,
+  const signatureRows = frozenSlots
+    ? frozenSlots.map(slot => [slot.position, slot.approval?.name ?? "", slot.approval?.signedAt ?? "", slot.approval && (slot.approval.comment || slot.approval.relationship) ? "见下方审批意见" : slot.approval ? "" : "待办理", ""])
+    : input.approvals.map(row => [row.position, row.name, row.signedAt, [row.relationship, row.comment].filter(Boolean).join("\n"), ""]);
+  const signatureBottom = drawApprovalTable(doc, margin, y + 10,
     [{ header: "实际岗位", width: 75 }, { header: "审批人", width: 65 }, { header: "签批时间", width: 88 }, { header: "意见 / 代批关系", width: width - 300 }, { header: "签名", width: 72 }],
-    input.approvals.map(row => [row.position, row.name, row.signedAt, [row.relationship, row.comment].filter(Boolean).join("\n"), ""]),
-    { minRowHeight: 32, imageColumn: 4, rowImages: input.approvals.map(row => row.signature) });
+    signatureRows,
+    { minRowHeight: 32, ...(frozenSlots ? {fixedRowHeight: 64} : {}), imageColumn: 4,
+      rowImages: frozenSlots ? frozenSlots.map(slot => slot.approval?.signature ?? null) : input.approvals.map(row => row.signature) });
+  if (frozenSlots) {
+    const opinions = frozenSlots.flatMap(slot => slot.approval && (slot.approval.comment || slot.approval.relationship)
+      ? [[slot.position, [slot.approval.relationship, slot.approval.comment].filter(Boolean).join("\n")]] : []);
+    if (opinions.length) drawApprovalTable(doc, margin, signatureBottom + 10,
+      [{header: "审批职责", width: 100}, {header: "审批意见 / 代批关系", width: width - 100}], opinions);
+  }
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
