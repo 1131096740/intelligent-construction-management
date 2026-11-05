@@ -1,6 +1,6 @@
 # 业务简化重构已确认任务与依赖图
 
-> 2026-11-05，`plan-confirmed`；用户已确认全部技术方案、任务粒度及验收边界，并明确授权整套实施和 GitHub 工单推进。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 #383～#427已发布；本地01～45编号稳定。01已按准备边界关闭#383，04按确认公开边界关闭#386；用户最新确认02/#384、03/#385按“本地阶段完成、PG待验”收口，已关闭。05/06继续补修；08已在确认CLI技术边界完成并合中央、待父控核验推送与#390收口；其余依原图。
+> 2026-11-05，`plan-confirmed`；用户已确认全部技术方案、任务粒度及验收边界，并明确授权整套实施和 GitHub 工单推进。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 #383～#427已发布；本地01～45编号稳定。01已按准备边界关闭#383，04按确认公开边界关闭#386；用户最新确认02/#384、03/#385按“本地阶段完成、PG待验”收口，已关闭。05/06继续补修；08已在确认CLI技术边界完成、推送并关闭#390（5/45项分别按准备/本地/技术边界关闭）；其余依原图。
 
 来源：[193条完整规格](../../specs/2026-11-05-enterprise-simplification-spec.md)、[技术方案](../2026-11-05-enterprise-simplification-technical-plan.md)、[差距依据](../2026-11-05-enterprise-simplification-evidence-and-gaps.md)、[验收边界](../2026-11-05-enterprise-simplification-acceptance.md)。每个票据写明交付、阻塞关系、逐条需求验收、技术决定及测试情景。
 
@@ -8,7 +8,7 @@
 
 ## 执行原则
 
-业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05/06为in-progress，08为technical-cli-complete/github-open-pending-root；07测试边界已确认但仍等待05，11仍等待05及08工单收口。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。
+业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05/06为in-progress，08为technical-cli-complete/github-closed；07测试边界已确认但仍等待05，11已满足08前置但仍等待05。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。
 
 用户希望最终整体可用，因此实现可以逐片验证，用户侧统一切新机制；不提供旧结算/新结算双模式。最终资金提交、数据恢复、文书与权限有任何硬门未过，不宣布可上线。
 
@@ -422,4 +422,4 @@ flowchart TD
 
 ## 确认结论与下一步
 
-用户已确认技术方案、45项任务及依赖，193条业务规则不变，不重复访谈。01/04及02/03本地阶段已按确认边界关闭；05/06/08为当前实施前沿。05/06公开HTTP/服务/UI、实际Excel、真实本地浏览器及合成服务端数据边界已确认，PG案例只准备。后续依原边推进，执行前读PROGRESS；本地阶段收口不等于真实PG、恢复或发布门通过，也不授予迁移/资源/部署权限。
+用户已确认技术方案、45项任务及依赖，193条业务规则不变，不重复访谈。01/04及02/03本地阶段已按确认边界关闭，08已按技术CLI边界[关闭#390](https://github.com/1131096740/intelligent-construction-management/issues/390#issuecomment-6658759687)；5/45项分属准备/本地/技术完成，05/06继续补修。05/06公开HTTP/服务/UI、实际Excel、真实本地浏览器及合成服务端数据边界已确认，PG案例只准备。后续依原边推进，执行前读PROGRESS；本地阶段收口不等于真实PG、恢复或发布门通过，也不授予迁移/资源/部署权限。

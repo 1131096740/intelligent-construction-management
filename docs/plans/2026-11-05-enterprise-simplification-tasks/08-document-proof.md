@@ -1,6 +1,6 @@
 # 08：用既有样张验证可编辑合同文书方案
 
-**状态：** `plan-confirmed` / `technical-cli-complete` / `github-open-pending-root`；准确候选`76837c2015148e29619e2d3d3cb3b41cfb1ec9b5`独立双轴0/0，已合中央`75a83b95dece7cc6485b6f8d3060786e515c5bdd`且同树17项聚焦检查通过。[#390](https://github.com/1131096740/intelligent-construction-management/issues/390)仍待父控推送核验收口。用户确认的真实DOCX/字段条款编辑CLI→实际DOCX/PDF及独立文字/版式/字体/分页边界完成，18项有效矩阵及三简版双方P1补修见[本地记录](../../progress/2026-11-05-enterprise-simplification-task08-local.md)。这是可丢弃技术验证，不是正式模板、产品API/UI、原生Word或合同部母版签认；迁移、资源、部署/生产仍另行授权。
+**状态：** `plan-confirmed` / `technical-cli-complete` / `github-closed`；准确候选`76837c2015148e29619e2d3d3cb3b41cfb1ec9b5`独立双轴0/0，已合中央`75a83b95dece7cc6485b6f8d3060786e515c5bdd`且同树17项聚焦检查通过。父控已推送`c3fc172ac743176f5eabfb76b94aad6799c8fabe`并按确认技术CLI边界[关闭#390](https://github.com/1131096740/intelligent-construction-management/issues/390#issuecomment-6658759687)（2026-11-05T13:06:55Z）。用户确认的真实DOCX/字段条款编辑CLI→实际DOCX/PDF及独立文字/版式/字体/分页边界完成，18项有效矩阵及三简版双方P1补修见[本地记录](../../progress/2026-11-05-enterprise-simplification-task08-local.md)。这是可丢弃技术验证，不是正式模板、产品API/UI、原生Word或合同部母版签认；迁移、资源、部署/生产仍另行授权。
 
 **类型：** 技术验证片（必须先证明后固定实现）。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
