@@ -2,6 +2,8 @@
 
 适用[任务01 #383](https://github.com/1131096740/intelligent-construction-management/issues/383)。本页区分**准备产物验收**与**独立授权后的运行验证**；任务状态以工单及 `PROGRESS.md` 为准，不由本文预填完成或全绿。跨会话输入映射见[任务01准备产物交接](../progress/2026-11-05-enterprise-simplification-task01-prepared.md)，历史及新增只读证据见[集成交接](../progress/2026-11-05-enterprise-simplification-integration-start.md)。
 
+当前状态：任务01在已确认的source-only公开边界内准备产物已完成；GitHub待主控取得最终新SHA编排/重封包收据后收口，02/03/04/08须待#383实际关闭。真实PG/HTTP/Web、TLS/角色及清理仍NOT RUN、独立授权后验；本页不预填最终新SHA全绿。
+
 ## 当前确认的测试边界
 
 用户已确认 `--prepare` / `--verify` 与输出清单为任务01测试边界。任务01是验证前置片，按原票“以其可核验产物验收”“不启动未获准实验”核齐准备产物；不要求为了准备验收先运行未授权PostgreSQL、迁移或部署。真实HTTP/PG/Web、TLS、角色和清理的执行结果须另行取得，不能记成通过，也不能由源码封存推定。

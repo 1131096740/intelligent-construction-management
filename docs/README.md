@@ -16,7 +16,7 @@
 
 ## 当前规格索引
 
-- 业务简化整套实施以[193条已确认规格](specs/2026-11-05-enterprise-simplification-spec.md)、[45项任务图](plans/2026-11-05-enterprise-simplification-tasks/README.md)和[父工单 #382](https://github.com/1131096740/intelligent-construction-management/issues/382)为当前范围；用户已授权实施及 GitHub 工单推进，任务01仍在基线准备，其余保持阻塞。[集成起步交接](progress/2026-11-05-enterprise-simplification-integration-start.md)列精确主线、迁移差额与未通过门禁；不构成迁移、受控实验、部署或生产变更授权。
+- 业务简化整套实施以[193条已确认规格](specs/2026-11-05-enterprise-simplification-spec.md)、[45项任务图](plans/2026-11-05-enterprise-simplification-tasks/README.md)和[父工单 #382](https://github.com/1131096740/intelligent-construction-management/issues/382)为当前范围；用户已授权实施及 GitHub 工单推进，任务01准备产物已完成，GitHub待主控最终新SHA编排/封包后收口；02/03/04/08须待#383实际关闭才可启动，其余依原阻塞图。[集成起步交接](progress/2026-11-05-enterprise-simplification-integration-start.md)列精确主线、迁移差额与未通过门禁；不构成迁移、受控实验、部署或生产变更授权。
 
 - 人事精简重构以[精简人事V2已确认规则](specs/2026-10-23-lean-personnel-v2.md)为本轮范围；用户已授权隔离实现、提交推送、独立PR及完整CI，禁止合并或部署，生产迁移授权不沿用历史入职版本。
 
