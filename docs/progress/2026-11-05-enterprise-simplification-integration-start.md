@@ -4,7 +4,7 @@
 
 用户本轮明确确认：“是，执行这套规格并按技能发布、推进关联工单”。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 #383～#427 已发布；任务01 [#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 已领取、仍进行中，其余保持阻塞。当前交付限任务01的部分基线与受控入口准备，不关闭任务01、不宣称整个规格或可信集成基线完成。
 
-实现、GitHub工单推进按本轮授权执行；迁移、受控TLS/权限/提交故障实验、部署及生产变更仍需具体范围与对应授权。文档起步与生产只读核查阶段未执行上述操作，也未启动或清理容器、数据库、监听或旧任务资源；后续合成网络协议测试仅启动并关闭自有loopback监听及socket，见下文构件记录。
+实现、GitHub工单推进按本轮授权执行；迁移、受控TLS/权限/提交故障实验、部署及生产变更仍需具体范围与对应授权。文档起步与生产只读核查阶段未执行上述操作，也未启动或清理容器、数据库、监听或旧任务资源；后续合成网络协议测试以及经固定范围工具审批的TLS传输诊断仅使用自有loopback监听、socket和临时自签证书，见下文记录，不能将该范围继承为真实PG、权限或提交故障实验授权。
 
 ## 精确集成基线
 
@@ -54,20 +54,54 @@ GitHub发布执行器保留 `/private/tmp/jg-enterprise-publication-20261105/sou
 
 ## 后续生产运行元数据与目录投影（只读）
 
-新增[运行元数据收据](2026-11-05-enterprise-simplification-runtime-metadata-readonly.json)的SHA-256为 `efd7e7b09912ee8762a41d3795c977d19eac5ca6c2828f950da78b7d250122bc`：API PID `2502628` 前后稳定，cwd `/srv/jiangkong/apps/api`、exe `/usr/bin/node`；实际dist不是链接，node_modules指向0893保留release。只核对两份API编译文件 `dist/main.js/app.module.js` 和Web `dist/index.html`，它们与0893保留release同相对文件的字节SHA-256相同。没有核完整运行树、实际HTTP bundle或可信source→build→installed→PID链，不把依赖路径或样本相同认作运行源码SHA。
+初次样本补核的[运行元数据收据](2026-11-05-enterprise-simplification-runtime-metadata-readonly.json)的SHA-256为 `efd7e7b09912ee8762a41d3795c977d19eac5ca6c2828f950da78b7d250122bc`：API PID `2502628` 前后稳定，cwd `/srv/jiangkong/apps/api`、exe `/usr/bin/node`；实际dist不是链接，node_modules指向0893保留release。只核对两份API编译文件 `dist/main.js/app.module.js` 和Web `dist/index.html`，它们与0893保留release同相对文件的字节SHA-256相同。该次没有核完整运行树、实际HTTP bundle或可信source→build→installed→PID链，不能只从依赖路径或三份样本认作运行源码SHA；后续完整代码及独立重建的新增证据见下文。
 
-新增[配置连接角色与public目录摘要](2026-11-05-enterprise-simplification-role-catalog-readonly.json)的SHA-256为 `09ceea3a3f94b0b143bc888542ddd8db65a797620c1587c2f3d146235636cd1b`：只读事务，PG160014；当前api.env内部解析连接角色 `jiangkong_runtime` 可登录，superuser/createDatabase/createRole/inherit/replication/bypassRls均false、直接成员关系空。未读进程环境，故不独立证明实际PID池连接使用同配置。
+新增[配置连接角色与public目录摘要](2026-11-05-enterprise-simplification-role-catalog-readonly.json)的SHA-256为 `09ceea3a3f94b0b143bc888542ddd8db65a797620c1587c2f3d146235636cd1b`：只读事务，PG160014；当前api.env内部解析连接角色 `jiangkong_runtime` 可登录，superuser/createDatabase/createRole/inherit/replication/bypassRls均false、直接成员关系空。该次未读进程环境，也没有绑定实际PID池连接；后续socket/backend关联另取证，不把此配置查询单独升级为实际连接证明。
 
 public目录限定投影计数为6656列、2137约束、324函数、1394索引、1697关系、1schema、495非内部触发器；关系包含索引，不能称1697业务表。只输出服务器内聚合MD5，不输出定义/潜在字面值或业务行。摘要含OID/owner等本库标识，不是跨恢复库无条件可比的完整Schema指纹，也未比对候选恢复结构。零行policy组未出现在结果中；其他schema、类型/扩展/default ACL和完整有效权限仍未证明。
 
 两次补核均使用可信 `jgzg-prod`、StrictHostKeyChecking/BatchMode、有界命令和 `python3 -B`，未写生产文件、改权限、运行迁移、重启或调用业务接口。脚本/完整边界记录在 `/private/tmp/jg-enterprise-task01-current-baseline-followup-20261105.md`；本次只提交脱敏投影，不提交连接配置或凭据。
 
+## 运行代码独立重建、实际会话及TLS传输新增证据
+
+### 0893源码重现已采集磁盘代码组件
+
+生产只读元数据确认API PID `2502628` 前后稳定，cwd `/srv/jiangkong/apps/api`、exe `/usr/bin/node`，只从argv投影白名单入口 `dist/main.js`，不输出原cmdline/environ。依赖链接指向 `/srv/jiangkong/releases/0893dd16b50c595b0d99761bd33bcd388c16ac3c/services/api/node_modules`；该active release的Git HEAD准确为0893、tracked status为0。仅查看已知active release代码布局与受信控制位置，未为找证明漫游主机、业务storage或旧候选；旧controlled-launch日志未读取。
+
+随后只在本机新detached工作树 `/private/tmp/jg-enterprise-prod-source-repro-20261105`，以精确0893源码/冻结锁进行一次安装（ignoreScripts）、Prisma5.22生成、API build及Web build，均首次退出0。API/Web各自原prebuild照常构建shared-domain，没有失败后改源码、环境或重试追绿。环境为Node22.23.0、pnpm9.15.9、darwin/arm64、TS5.9.3；生产原构建Node/环境未核实相同，但本次输出确实相同。
+
+沿用同一只读capture算法，五个完整代码树的相对路径、条目种类、mode及文件SHA-256摘要全部一致：API dist2055文件/19,251,430字节，prisma282/3,705,737，scripts49/1,000,935，assets12/8,737,448，Web dist264/9,199,453，合计**2662文件、41,895,003字节**。不仅核入口样本，也覆盖Web完整bundle。构建后Git tracked/untracked状态0，未再次查询生产。
+
+[独立重建机器收据](2026-11-05-enterprise-simplification-independent-build-repro.json)记录完整组件摘要及日志哈希。可以据此绑定“精确0893源码独立重建→本轮已采集PID/cwd所指全部已知磁盘代码组件”；仍未核生产node_modules完整内容、进程已加载内存模块，亦非原构建签名/不可变attestation，不把两端构建环境假称相同。该证据绑定采集时点，不长期冒充未经刷新的运行状态；旧 `/opt/jiangkong` checkout `6bf...` 不能当运行版本。
+
+### 实际Node数据库TCP会话角色与加密
+
+此前配置角色查询不足以证明真实连接，新增[实际会话绑定收据](2026-11-05-enterprise-simplification-runtime-db-session-binding.json)补核：从PID自身FD只提取socket inode，在其net/tcp/tcp6中只选目标为配置本机数据库端口的已建立出站连接，再以客户端地址/端口关联固定 `pg_stat_activity` / `pg_stat_ssl` 字段，不读取query文本或业务行。
+
+首次两次collector失败原样保留；第二次定位为关联阶段ValueError：`client_addr::text`的CIDR后缀与裸IP解析不兼容。父控将其自定“两次”上限明确扩展为仅一次相同范围追加查询，SSH前独占创建attempt3 marker；唯一修正为SQL固定投影 `pg_catalog.host(a.client_addr)`，未改目标、列集合、权限或环境。第三次预测得到验证，之后没有更多生产查询。
+
+该次 `transactionReadOnly=on`、PG160014、PID2502628稳定，5个Node所属socket的inode/源地址/端口前后稳定，并各自唯一匹配PG backend；**5/5实际角色 `jiangkong_runtime`、数据库 `jiangkong`、ssl=true**，采集耗时0.079秒。该证明超出api.env配置角色，但只覆盖当时观测到的5条TCP连接，不证明所有未来连接、其他路径、CA/SAN验证或完整有效ACL；未读取进程秘密、原cmdline/environ、其他主机连接或业务值，也未新增catalog授权。
+
+### 合成TLS传输对照不能冒充真实PG正负控
+
+[传输诊断收据](2026-11-05-enterprise-simplification-tls-transport.json)绑定Prisma5.22.0及引擎 `605197351a3c8bdd595af2d2a9bc3025bca48ea2` 的一次固定范围工具审批运行。只新建本票随机loopback TCP/TLS适配器和自签证书，没有启动PostgreSQL、Docker、SQL、角色或业务链。
+
+正确CA/正确SAN完成1次TLS握手、1次PG startup，随后适配器按设计拒绝认证并返回P1010；它不是健康SQL或真实PG正控。错误CA和错误SAN均在握手前拒绝，均为 `PrismaClientInitializationError.errorCode=P1011`、`code=null`，已知诊断词及完整消息SHA-256完全相同（`bef0fc58...`）；不能靠消息文本可靠区分两者。因此没有新增假分类probe，也不放宽未知原因失败关闭规则。三条连接均断开，自有socket和临时证书目录清理确认，错误原文、URL、随机凭据与私钥没有进入收据。
+
+以上三份JSON均为人工复核的非秘密固定投影，只含代码摘要、版本、受限技术元数据、诊断类别和既有失败，没有连接串、原环境、凭据、query文本或业务行；本次源码提交不包含collector执行、生产写入或新增执行授权。
+
+| 新收据 | SHA-256 |
+| --- | --- |
+| `2026-11-05-enterprise-simplification-independent-build-repro.json` | `2982ed297baf541a2fc6751a94b94aa1801970e042f87f2450dcd5e3f1c53093` |
+| `2026-11-05-enterprise-simplification-runtime-db-session-binding.json` | `6cb65b1305a4e1d0efb17d1f8d22670bd870c17dc930267167e83a7b1ec100d6` |
+| `2026-11-05-enterprise-simplification-tls-transport.json` | `b7ac444ea294a55ba2133ff69f6cddd9b6036324f7a3ccafa45a1da3a36f97d0` |
+
 ## 尚未通过的基线与验收门
 
 1. 旧应用、模板和迁移候选默认排除；按当前任务范围逐域核实归属与依赖后决定承接或排除，选定承接才做三方重放。保留候选不要求把全部457份都重放为基线门槛；新干净分支也不等于可信集成基线。
-2. 主控经可信本机 SSH 别名 `jgzg-prod`、BatchMode 和 StrictHostKeyChecking 取得只读元数据：`/opt/jiangkong` checkout 为 `6bf7820c0d925e5804ad7d03ae8b983a9220b5e3`，API/Nginx active，API PID `2502628` 的 cwd/WorkingDirectory 为 `/srv/jiangkong/apps/api`，回环 health 返回 `status=ok, service=jiangkong-api`。checkout 不独立证明运行二进制SHA。生产迁移登记已由前述第二次只读查询核实；运行二进制SHA、完整Schema、数据/文件分布及角色有效权限仍 `UNVERIFIED`，不能把迁移登记一致扩展为这些事实已证明。
+2. 主控经可信本机 SSH 别名 `jgzg-prod`、BatchMode 和 StrictHostKeyChecking 取得只读元数据：`/opt/jiangkong` checkout 为 `6bf7820c0d925e5804ad7d03ae8b983a9220b5e3`，API/Nginx active，API PID `2502628` 的 cwd/WorkingDirectory 为 `/srv/jiangkong/apps/api`，回环 health 返回 `status=ok, service=jiangkong-api`。checkout 不独立证明运行二进制SHA。生产迁移登记已由前述第二次只读查询核实；0893已知磁盘代码组件由独立重建对应，实际5个Node会话角色/ssl也另有固定投影。生产依赖闭包/内存模块、完整Schema、数据/文件分布及完整有效权限仍未证明，不能把迁移登记或这些有限新增事实扩展为全部运行/业务安全通过。
 3. 旧模板资产4失败和动作清单漂移只保留原候选历史诊断，不能算新主线失败或已修复；禁止通过放宽断言或重生成ready清单遮盖。
-4. 当前只准备源码封包CLI，公开HTTP/真实PG/Web验收入口、一次性资源身份、owner/runtime/observer有效权限、所有连接池绑定、TLS正负控与故障分类、超时及按身份清理尚未闭合。旧固定入口所需隔离依赖副本已清理；不能直接重启旧入口或删除关闭门。
+4. 源码封包CLI、合成响应丢失代理及部分首条入口/资源支持源码已经准备；完整公开HTTP/真实PG/Web验收、一次性资源身份、owner/runtime/observer实际有效权限、受控池绑定、真实PG TLS正负控/故障分类及按身份清理尚未闭合。旧固定入口所需隔离依赖副本已清理；不能直接重启旧入口或删除关闭门。
 5. 资金延迟提交误报、断连、响应丢失及重试防重等真实链仍未证明；离线mock不替代A16。真实副本恢复/迁移A36及最终固定候选A38仍待对应阶段具体授权和证据。
 
 只读审查确认现有 `fund-execution-entry.http.pg.spec.ts` 只覆盖资金案件创建、分类、提交和冻结快照，并继续下游审批/PDF；它不证明最终 `FundExecution` 实付提交，也不能原样作为本票owner/runtime分离的最小入口。独立新入口仍需owner夹具、受限AppModule/observer、真实HTTP案件回读、Web展示、资源身份与TLS/故障/清理支持；只有这些准备成实际可运行候选后才申请具体资源执行授权。
@@ -86,8 +120,20 @@ CLI实现提交 `792d55370a82a0b76c71e55a7447bcbfbba8cab7`：19项专用公开CL
 
 这31项定向检查（19项CLI、12项网络协议）没有启动AppModule或PostgreSQL，不包含真实资金提交、回执防重或延迟COMMIT/P2034矩阵；实际资金提交安全仍未通过，不从协议、旧mock或案件测试推定。代理与文档集成后源码SHA变化，工具提交的旧packet不作为最终候选，须在最终干净SHA重封包。
 
+## 78a6f7b6准备构件里程碑与未运行的首条入口
+
+在准确 `78a6f7b6f83a017f0b274223a00fb4c166b74d36`，独立反例发现的Git replacement refs错误身份及半截请求头截止问题已修正：所有源码Git调用禁用replacement objects；合成代理从connection建立开始使用唯一、不续期的总截止预算，每连接只接一个请求并关闭keep-alive，避免头阶段或流水线额外获得预算。未增加deadline、重试或弱化原断言，初始“未启动监听”文案已限定为初始文档/只读阶段。
+
+该准确SHA取得35项定向通过（CLI20、真实合成HTTP协议15），Node语法与差异检查通过；Standards/Spec独立闭合复审原问题关闭、未闭合项0/0，范围只含这些准备构件。主控随后冻结同一HEAD，前后SHA相同且工作区干净，取得现有 `pnpm test:ci-orchestration` **359/359通过、0失败、0跳过**。更早355通过的运行与文档合并重叠，仅保留环境诊断，不当作冻结SHA证据；首次264通过/10依赖缺失失败也保留。
+
+同一78a6f7b6的 `--prepare/--verify` 成功封存3018份已跟踪文件及197份迁移，sealSha256为 `89b8619286b6366448d2da7882c2288eff7dd42c0cbc9d813890d844ffceb265`，外部packet文件SHA-256为 `49d84de8c3ffa9b8418615f0f8d98e74731c8cf56cc2f22d7d9f1f1479f709d3`。这是源码校验和，不是批准或签名；新文档/新入口提交会改变候选，不能沿用78的包当最终候选。
+
+准确里程碑原始收据在本机：`/private/tmp/jg-enterprise-task01-ci-orchestration-78a6f7b6-frozen.json`、`...review-fixes-78a6f7b6.json`、`...standards-rereview-78a6f7b6.md`、`...spec-rereview-78a6f7b6.md`及 `...source-78a6f7b6.json`；工单/PR继续登记后续精确SHA。本节并未把359项编排、35项组件或source seal视为真实PG、资金或发布门通过。
+
+另有首条案件入口、独立owner夹具、初始访问清单/SQL、身份辅助及运行器准备源码 `842f9e5e48a1335017e3e07c19b1b3a959670e5f`，资源helper后续 `566567061e19f653b4c91880954050d07a408c9f`。这些属于仍在审查的准备材料，**NOT RUN**；首条真实case HTTP/PG测试1项尚未执行，不计通过。它们既不是实际FundExecution实付矩阵，也没有证明真实ACL、TLS、池重连、Web和清理的完整闭合，不由静态准备解除任务01或后续票据阻塞。本次文档不写可执行批准命令或候选/授权占位值；固定执行材料由主控在完成集成、核验与对应授权后另行提供。
+
 ## 本次验证与下一步
 
-文档起步阶段仅做文档验证：检查50份来源指纹匹配；规格193条ID唯一、逐条需求内容与原始源一致；45票据验收条件及需求归属未变；README依赖表、Mermaid边和工单映射一致且无环；新增范围内Markdown相对文件链接存在；补入状态不改变主线历史正文。独立校验脚本 `/private/tmp/jg-enterprise-doc-bootstrap-verify.py` 退出0：50份源指纹一致、193条逐项内容与唯一ID及主票归属一致、45票业务正文保持、99条依赖边与工单一致且无环，仅01无前置，相关Markdown文件链接存在。提交前 `git diff --check` 退出0；同名 `.json` 收据保留机器结果。未运行或引用本轮API/Web产品测试、typecheck、lint或真实浏览器/PG结果作为通过。
+文档起步阶段仅做文档验证：检查50份来源指纹匹配；规格193条ID唯一、逐条需求内容与原始源一致；45票据验收条件及需求归属未变；README依赖表、Mermaid边和工单映射一致且无环；新增范围内Markdown相对文件链接存在；补入状态不改变主线历史正文。独立校验脚本 `/private/tmp/jg-enterprise-doc-bootstrap-verify.py` 退出0：50份源指纹一致、193条逐项内容与唯一ID及主票归属一致、45票业务正文保持、99条依赖边与工单一致且无环，仅01无前置，相关Markdown文件链接存在。提交前 `git diff --check` 退出0；同名 `.json` 收据保留机器结果。该文档起步阶段未运行或引用API/Web产品测试、typecheck、lint或真实浏览器/PG结果作为通过；后续新增的准确源码构件检查、一次独立构建和限定只读证据均在各节分别说明，未混为产品业务验收。
 
-下一步审查并集成本票准备构件，在最终干净提交上重新封包/校验，再完成独立运行入口、fixture、角色/TLS/故障及清理闭环；按当前任务范围逐域决定旧实现承接或排除。生产只读残余和具体实验执行材料可独立准备。全部任务01验收条件有新鲜证据后才解除02、03、04、08的阻塞。任何必要实验执行前先形成可审阅的具体候选与范围，再通过正式授权通道执行。
+下一步审查并集成尚未运行的入口/资源准备源码，在最终干净提交上重新封包/校验，再完成受控真实PG入口、fixture、角色/TLS/故障及清理验证；按当前任务范围逐域决定旧实现承接或排除。生产只读残余和具体实验执行材料可独立准备。全部任务01验收条件有新鲜证据后才解除02、03、04、08的阻塞。任何必要实验执行前先形成可审阅的具体候选与范围，再通过正式授权通道执行。
