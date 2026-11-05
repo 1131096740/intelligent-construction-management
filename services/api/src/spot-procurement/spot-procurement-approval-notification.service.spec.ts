@@ -82,3 +82,11 @@ it("发送前再次核验当前岗位，旧收件人取消，新收件人接未�
   expect([...notices.values()].filter(row => row.metadata.event === "accepted")).toHaveLength(1);
   expect([...notices.values()].filter(row => row.metadata.event === "queued")).toHaveLength(2);
 });
+
+
+it("自审确认未开放时不给本人推送不可办理的职责", async () => {
+  const {service, round, sent} = fixture();
+  round.applicantUserId = "materials-1";
+  await service.reconcilePending();
+  expect(sent).toEqual([]);
+});

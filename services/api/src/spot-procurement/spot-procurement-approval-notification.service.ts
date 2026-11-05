@@ -36,7 +36,7 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
     const nodes = round.frozenNodes;
     const indexes = activeApprovalNodeIndexes(nodes, 0);
     const assignments = await loadEffectiveProjectApprovalAssignments(tx, projectId, indexes.flatMap(index => nodes[index].roleKeys as string[]));
-    const intents = indexes.flatMap(index => assignments.filter(row => row.userIsActive && (nodes[index].roleKeys as string[]).includes(row.roleKey)).map(row => ({
+    const intents = indexes.flatMap(index => assignments.filter(row => row.userIsActive && row.userId !== round.applicantUserId && (nodes[index].roleKeys as string[]).includes(row.roleKey)).map(row => ({
       id: createHash("sha256").update(JSON.stringify([KIND, round.id, index, row.userId])).digest("hex"),
       approvalInstanceId: round.id, actorUserId: round.applicantUserId, action: "system_notification",
       metadata: { kind: KIND, event: "queued", nodeIndex: index, recipientId: row.userId, projectId, businessCode, dutyName: String(nodes[index].name ?? "审批职责") }
@@ -96,7 +96,7 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
         const business = round ? await this.currentBusiness(tx, round) : null;
         const index = Number(data.nodeIndex);
         const node = round && isParallelApprovalRound(round.frozenNodes) ? round.frozenNodes[index] : null;
-        const eligible = Boolean(round && business && node && activeApprovalNodeIndexes(round.frozenNodes, 0).includes(index));
+        const eligible = Boolean(round && data.recipientId !== round.applicantUserId && business && node && activeApprovalNodeIndexes(round.frozenNodes, 0).includes(index));
         const assignments = eligible ? await loadEffectiveProjectApprovalAssignments(tx, business!.projectId, node!.roleKeys as string[], String(data.recipientId)) : [];
         const user = assignments.some(row => row.userIsActive && row.userId === data.recipientId && (node!.roleKeys as string[]).includes(row.roleKey))
           ? await tx.user.findUnique({where: {id: String(data.recipientId)}, select: {id: true, phone: true, isActive: true}}) : null;

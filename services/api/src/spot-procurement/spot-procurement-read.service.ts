@@ -2786,7 +2786,9 @@ export class SpotProcurementReadService {
     const canMutateCurrentApplicationRevision =
       input.canonicalRealRevisionSource &&
       !hasRevisionDownstreamFacts;
-    const canReview =
+    const selfReviewClosed = Boolean(input.currentApproval && isParallelApprovalRound(input.currentApproval.frozenNodes) &&
+      (input.actorUserId === input.procurement.applicantUserId || input.actorUserId === input.currentApproval.applicantUserId));
+    const canReview = !selfReviewClosed &&
       canMutateCurrentApplicationRevision &&
       Boolean(reviewAccess?.canReview);
     const canWithdraw =
@@ -2927,7 +2929,9 @@ export class SpotProcurementReadService {
               ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
             : hasRevisionDownstreamFacts
               ? "当前采购已存在付款或收货事实，不能处理审批"
-            : "当前账号不是本审批节点处理人"
+            : selfReviewClosed
+              ? "本人自审确认尚未开放，请由其他有权人员办理本职责"
+              : "当前账号不是本审批节点处理人"
       }),
       detailAction({
         key: "withdraw_approval",

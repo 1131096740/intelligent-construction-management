@@ -560,6 +560,11 @@ export class SpotProcurementApplicationService {
         }
         const approval = await this.requireLockedApprovalInstance(tx, version.id, "approval_pending");
         const parallel = isParallelApprovalRound(approval.frozenNodes);
+        if (parallel && (actorUserId === procurement.applicantUserId || actorUserId === approval.applicantUserId)) {
+          // Creation and submission both require this original applicant in requireDraftOwnerRole.
+          // Task05 will replace this closed gate with explicit reason/password confirmation.
+          throw new ForbiddenException("本人自审确认尚未开放，请由其他有权人员办理本职责");
+        }
         const reviewNodeIndex = parallel ? input.expectedNodeIndex : approval.currentNodeIndex;
         if (!activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).includes(reviewNodeIndex)) {
           throw new ConflictException("该审批职责已处理或坐标已变化，请刷新页面后重试");

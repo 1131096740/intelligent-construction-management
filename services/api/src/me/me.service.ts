@@ -2720,11 +2720,12 @@ export class MeService {
   }
 
   private canShowSpotApplicantTodo(
-    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId">,
+    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId" | "frozenNodes">,
     node: ApprovalNode,
     roleKeys: RoleKey[],
     userId: string
   ) {
+    if (instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.applicantUserId === userId) return false;
     if (
       !SPOT_APPROVAL_TYPES.includes(
         instance.businessType as (typeof SPOT_APPROVAL_TYPES)[number]

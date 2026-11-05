@@ -271,7 +271,7 @@ export class ApprovalProgressService {
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const pending = !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
-      if (!user.isActive) return false;
+      if (!user.isActive || (instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.applicantUserId === user.id)) return false;
       const actorRoleKeys = allRoles(user.id);
       const identity = activeIndexes.map(index => resolveApprovalReviewIdentity({
         node: rawNodes[index], actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), legacyContractRoute: instance.businessType === "contract_version",
@@ -316,7 +316,7 @@ export class ApprovalProgressService {
       currentNodeName: active ? (parallel ? "并联审批" : String(rawNodes[instance.currentNodeIndex]?.name ?? "待核对审批节点")) : "流程已结束",
       nodes: rawNodes.map((node, index) => ({
         name: typeof node.name === "string" ? node.name : "审批节点", mode: node.mode === "all" ? "会签" : "或签",
-        status: parallel ? (isApprovalDutyComplete(node as unknown as Record<string, unknown>) ? "已通过" : !active ? "已结束" : nodeIds[index].length ? "处理中" : "待配置") : index < instance.currentNodeIndex || instance.status === "approved" ? "已通过" : index === instance.currentNodeIndex ? (active ? "处理中" : instance.status === "rejected" ? "已驳回" : "已结束") : (active ? "未开始" : "未执行"),
+        status: parallel ? (isApprovalDutyComplete(node as unknown as Record<string, unknown>) ? "已通过" : !active ? "已结束" : nodeIds[index].length ? (nodeIds[index].some(id => pending.some(user => user.id === id)) ? "处理中" : "待其他有权人员") : "待配置") : index < instance.currentNodeIndex || instance.status === "approved" ? "已通过" : index === instance.currentNodeIndex ? (active ? "处理中" : instance.status === "rejected" ? "已驳回" : "已结束") : (active ? "未开始" : "未执行"),
         participants: nodeIds[index].map(id => {
           const evidence = parallel && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
             ? logs.find(log => log.action === "approve" && log.actorUserId === id && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")) : null;
