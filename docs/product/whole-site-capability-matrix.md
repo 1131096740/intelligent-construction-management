@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `48c012340c53a82081c55ceecbbdfa09233a13e182a9f612ea5f1337d6d30bb0` |
-| webApiWrappers | ready | `520198da309bc6126be03abe266b15eb05372f5b9da7ea9b7591979e00d1e604` |
-| webPageActions | ready | `7653178b171afd9f810862e06de37747a1f0c85419e8e1a1fab38f7175f08cab` |
-| routeUsage | ready | `44f164edc05438c727fa708f83777657498a442c9a259b65cb97bcaceb5e5bc0` |
+| nestRoutes | ready | `0d23568fb0790c1504498b84da96d164f3cef990cdbc80624693896983defc0b` |
+| webApiWrappers | ready | `38334f3fe11a7b00549103295396dfb0fdbc0e5fa239c1a69cea86ec57f976ab` |
+| webPageActions | ready | `c2d4c53db4a7bcc1ff172027cb87f7a2690879934c2474f1bb8927f585e5029a` |
+| routeUsage | ready | `8281c455acfb0eb79171f8da0a9e2daf79592fabefa6d240ceed17b26307ca68` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 695 |
-| pageRouteCount | 489 |
+| routeCount | 697 |
+| pageRouteCount | 491 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 99 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 688 |
+| mainRequestBindingCount | 690 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 392 |
-| actionBindingCount | 452 |
-| acceptedActionBindingCount | 415 |
+| registeredActionCount | 394 |
+| actionBindingCount | 454 |
+| acceptedActionBindingCount | 417 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 382 |
-| coveredProductionMutationConsumerPairCount | 382 |
+| productionMutationConsumerPairCount | 384 |
+| coveredProductionMutationConsumerPairCount | 384 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -300,6 +300,8 @@
 | POST | /account-security/recovery-code | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#generateRecoveryCode | employee.generate-recovery | covered | — |
 | POST | /account-security/reset-with-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetPasswordWithSms | employee.sms-reset | covered | — |
 | POST | /account-security/sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendAccountSms | employee.sms | covered | — |
+| POST | /account-security/users/:id/change-phone | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#changeUserPhone | employee.admin-phone-change | covered | — |
+| POST | /account-security/users/:id/phone-change-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendAdminPhoneChangeSms | employee.admin-phone-change-sms | covered | — |
 | POST | /account-security/users/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
 | POST | /affiliate-clearing-authorities/:authorityId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/return | internal_task | operator_endpoint | — | — | not_applicable | — |

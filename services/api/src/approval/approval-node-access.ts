@@ -1,3 +1,4 @@
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { requiresApprovalSelfReviewConfirmation } from "./approval-self-review";
 import {
@@ -31,6 +32,14 @@ export function approvalReviewAccessOnFrozenNode(
   actorRoleScopes?: ApprovalActorRoleScopes,
   legacyContractRoute = false
 ): ApprovalReviewAccess {
+  if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) {
+    return {canAct: false, canReview: false, requiresSelfReviewConfirmation: false};
+  }
+  if (isParallelApprovalRound(frozenNodes)) {
+    currentNodeIndex = activeApprovalNodeIndexes(frozenNodes, currentNodeIndex).find(index =>
+      resolveApprovalReviewIdentity({ node: frozenNodes[index], actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes })
+    ) ?? -1;
+  }
   const node = approvalNodeAt(frozenNodes, currentNodeIndex);
   const identity = node
     ? resolveApprovalReviewIdentity({
@@ -78,6 +87,11 @@ export function canActOnFrozenApprovalNode(
     return false;
   }
 
+  if (hasVersionedApprovalNodes(frozenNodes)) {
+    return activeApprovalNodeIndexes(frozenNodes, currentNodeIndex).some(index => Boolean(resolveApprovalReviewIdentity({
+      node: frozenNodes[index] as ApprovalNode, actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes
+    })));
+  }
   const node = frozenNodes[currentNodeIndex] as ApprovalNode | undefined;
   if (!node) {
     return false;

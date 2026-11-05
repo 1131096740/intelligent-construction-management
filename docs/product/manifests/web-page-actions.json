@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 392,
+    "registeredActionCount": 394,
     "pageActionCount": 56,
-    "backgroundActionCount": 336,
-    "reachableVueFileCount": 197,
+    "backgroundActionCount": 338,
+    "reachableVueFileCount": 198,
     "routeRootCount": 70,
-    "totalVueFileCount": 211,
-    "parsedVueFileCount": 211,
-    "reachableProductionModuleCount": 343,
-    "templateEventDirectiveCount": 1229,
+    "totalVueFileCount": 212,
+    "parsedVueFileCount": 212,
+    "reachableProductionModuleCount": 344,
+    "templateEventDirectiveCount": 1234,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 382,
-    "candidateProductionMutationConsumerCount": 382,
-    "acceptedProductionMutationConsumerCount": 382,
-    "productionMutationConsumerPairCount": 382,
+    "coveredProductionMutationConsumerCount": 384,
+    "candidateProductionMutationConsumerCount": 384,
+    "acceptedProductionMutationConsumerCount": 384,
+    "productionMutationConsumerPairCount": 384,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 364,
-    "reachableProductionModuleCount": 343,
-    "totalVueFileCount": 211,
-    "parsedVueFileCount": 211
+    "totalProductionModuleCount": 365,
+    "reachableProductionModuleCount": 344,
+    "totalVueFileCount": 212,
+    "parsedVueFileCount": 212
   },
   "actions": [
     {
@@ -8728,6 +8728,147 @@
       ]
     },
     {
+      "id": "employee.admin-phone-change",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "changeUserPhoneWithCapability",
+        "kind": "background_call",
+        "sourceLine": 98,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "changeUserPhone",
+          "method": "POST",
+          "path": "/account-security/users/:param/change-phone",
+          "normalizedKey": "POST /account-security/users/:param/change-phone",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/users/:id/change-phone",
+            "normalizedKey": "POST /account-security/users/:param/change-phone",
+            "controller": "AccountSecurityController",
+            "handler": "changeUserPhone",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/AccountPhoneChangeDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/AccountPhoneChangeDialog.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "changeUserPhoneWithCapability",
+              "changeUserPhone"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "employee.admin-phone-change-sms",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "ownerRoutePaths": [
+        "/forgot-password",
+        "/register",
+        "/员工管理",
+        "/系统配置",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendAdminPhoneChangeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 68,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "wrapper": "sendAdminPhoneChangeSms",
+          "method": "POST",
+          "path": "/account-security/users/:param/phone-change-sms",
+          "normalizedKey": "POST /account-security/users/:param/phone-change-sms",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/account-security/users/:id/phone-change-sms",
+            "normalizedKey": "POST /account-security/users/:param/phone-change-sms",
+            "controller": "AccountSecurityController",
+            "handler": "adminPhoneChangeSms",
+            "sourceFile": "services/api/src/auth/account-security.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "comprehensive_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/SmsCodeField.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "sendAdminPhoneChangeWithCapability",
+              "sendAdminPhoneChangeSms"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "employee.admin-reset",
       "usage": "background",
       "routePaths": [
@@ -8746,7 +8887,7 @@
         "event": "call",
         "handler": "resetEmployeePasswordWithCapability",
         "kind": "background_call",
-        "sourceLine": 96,
+        "sourceLine": 98,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9048,7 +9189,7 @@
         "event": "call",
         "handler": "generateRecoveryCodeWithCapability",
         "kind": "background_call",
-        "sourceLine": 90,
+        "sourceLine": 92,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9108,7 +9249,9 @@
       "ownerRoutePaths": [
         "/forgot-password",
         "/register",
-        "/系统配置"
+        "/员工管理",
+        "/系统配置",
+        "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
       "trigger": {
@@ -9116,7 +9259,7 @@
         "event": "call",
         "handler": "sendPhoneChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 59,
+        "sourceLine": 62,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9373,7 +9516,9 @@
       "ownerRoutePaths": [
         "/forgot-password",
         "/register",
-        "/系统配置"
+        "/员工管理",
+        "/系统配置",
+        "/组织权限"
       ],
       "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
       "trigger": {
@@ -9381,7 +9526,7 @@
         "event": "call",
         "handler": "sendWithCapability",
         "kind": "background_call",
-        "sourceLine": 53,
+        "sourceLine": 56,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23191,7 +23336,7 @@
         "event": "save",
         "handler": "submitCanvasSignature",
         "kind": "event",
-        "sourceLine": 124,
+        "sourceLine": 129,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -27966,7 +28111,7 @@
         "event": "call",
         "handler": "validateUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 485,
+        "sourceLine": 490,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28044,7 +28189,7 @@
         "event": "call",
         "handler": "commitUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 494,
+        "sourceLine": 499,
         "sourceColumn": 0
       },
       "semantic": "business_write",

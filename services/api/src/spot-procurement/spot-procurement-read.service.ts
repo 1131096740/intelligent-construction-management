@@ -1,3 +1,4 @@
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -848,7 +849,9 @@ export class SpotProcurementReadService {
         ? {
             expectedVersionId: currentVersion.id,
             expectedApprovalInstanceId: currentApproval.id,
-            expectedNodeIndex: currentApproval.currentNodeIndex
+            expectedNodeIndex: activeApprovalNodeIndexes(currentApproval.frozenNodes, currentApproval.currentNodeIndex).find(index =>
+              pendingRoleKeysForFrozenApprovalNode(currentApproval.frozenNodes, index).some(role => roleKeys.includes(role))
+            ) ?? currentApproval.currentNodeIndex
           }
         : null;
     const withdrawApprovalContext =
@@ -2783,7 +2786,9 @@ export class SpotProcurementReadService {
     const canMutateCurrentApplicationRevision =
       input.canonicalRealRevisionSource &&
       !hasRevisionDownstreamFacts;
-    const canReview =
+    const selfReviewClosed = Boolean(input.currentApproval && isParallelApprovalRound(input.currentApproval.frozenNodes) &&
+      (input.actorUserId === input.procurement.applicantUserId || input.actorUserId === input.currentApproval.applicantUserId));
+    const canReview = !selfReviewClosed &&
       canMutateCurrentApplicationRevision &&
       Boolean(reviewAccess?.canReview);
     const canWithdraw =
@@ -2924,7 +2929,9 @@ export class SpotProcurementReadService {
               ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
             : hasRevisionDownstreamFacts
               ? "当前采购已存在付款或收货事实，不能处理审批"
-            : "当前账号不是本审批节点处理人"
+            : selfReviewClosed
+              ? "本单由你创建或提交，当前职责请由其他有权人员办理"
+              : "当前账号不是本审批节点处理人"
       }),
       detailAction({
         key: "withdraw_approval",
@@ -3011,9 +3018,11 @@ export class SpotProcurementReadService {
         label: "下载采购审批单",
         kind: "normal",
         roleKeys: input.roleKeys,
-        enabled:
-          input.currentApproval?.status === "approved" &&
-          input.currentPdfExists,
+        enabled: Boolean(input.currentApproval && (
+          isParallelApprovalRound(input.currentApproval.frozenNodes)
+            ? ["approved", "approval_pending"].includes(input.currentApproval.status)
+            : input.currentApproval.status === "approved" && input.currentPdfExists
+        )),
         disabledReason:
           input.currentApproval?.status === "approved"
             ? "正式采购审批单尚未生成，请稍后重试"
@@ -3453,10 +3462,8 @@ function approvalSummary(
   }
   const currentRoleKeys =
     approval.status === "approval_pending"
-      ? pendingRoleKeysForFrozenApprovalNode(
-          approval.frozenNodes,
-          approval.currentNodeIndex
-        )
+      ? activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).flatMap(index =>
+          pendingRoleKeysForFrozenApprovalNode(approval.frozenNodes, index))
       : [];
   const currentNodeName =
     approval.status === "approval_pending"
@@ -3676,6 +3683,7 @@ function paymentAmountSummary(
 }
 
 function frozenNodeName(approval: ApprovalInstance) {
+  if (isParallelApprovalRound(approval.frozenNodes)) return "并联审批";
   if (!Array.isArray(approval.frozenNodes)) return "审批节点未读取";
   const node = approval.frozenNodes[approval.currentNodeIndex];
   if (!node || typeof node !== "object" || Array.isArray(node)) {
