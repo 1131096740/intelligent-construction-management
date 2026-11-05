@@ -1,6 +1,6 @@
 <template>
   <t-card title="原文自动填写位置" class="panel">
-    <p>逐项选择原文段落，输入其中需自动填写的准确文字。系统不自动猜测；重复文字请先拆分原文。</p>
+    <p>逐项选择原文段落，输入其中需自动填写的准确文字。系统不自动猜测；重复文字请明确选择第几处，并核对前后文。</p>
     <t-alert v-if="message" theme="error" :message="message" />
     <t-loading :loading="loading">
       <section v-if="source" aria-label="Word实际原文" class="source-text">
@@ -8,8 +8,9 @@
       </section>
       <section v-for="row in rows" :key="row.rowId" :aria-label="`${row.label}填写位置`" class="mapping-row">
         <h3>{{ row.label }}{{ row.required ? '（必选）' : '（可选）' }}</h3>
-        <t-select v-model="row.positionId" :options="positionOptions" :disabled="!editable || busy" placeholder="选择原文段落" clearable />
-        <t-input v-model="row.selectedText" :disabled="!editable || busy" placeholder="输入需自动填写的原文" />
+        <t-select v-model="row.positionId" :options="positionOptions" :disabled="!editable || busy" placeholder="选择原文段落" clearable @update:model-value="row.occurrenceStart = null" />
+        <t-input v-model="row.selectedText" :disabled="!editable || busy" placeholder="输入需自动填写的原文" @update:model-value="row.occurrenceStart = null" />
+        <t-select v-if="occurrences(row).length > 1" v-model="row.occurrenceStart" :options="occurrences(row)" :disabled="!editable || busy" placeholder="选择出现位置" clearable />
         <t-input v-model="sampleValues[row.key]" :disabled="!editable || busy" placeholder="填写预览样例值" />
         <t-button v-if="!row.required" variant="text" :disabled="!editable || busy" @click="rows = rows.filter(value => value.rowId !== row.rowId)">移除此位置</t-button>
       </section>
@@ -31,7 +32,7 @@ import { getLayoutSourcePositions, saveLayoutSourceMapping, confirmLayoutSourceM
 import { formatUnknownApiError } from "../../api/error-message";
 const props = defineProps<{ versionId: string; revision: number; editable: boolean; inspectionCurrent: boolean; previewSucceeded: boolean; previewJobId?: string }>();
 const emit = defineEmits<{ (event: "changed"): void; (event: "dirty-change", value: boolean): void; (event: "confirmation-state", value: boolean): void }>();
-type MappingRow = { rowId: number; key: string; label: string; required: boolean; positionId: string; selectedText: string };
+type MappingRow = { rowId: number; key: string; label: string; required: boolean; positionId: string; selectedText: string; occurrenceStart: number | null };
 const source = ref<LayoutSourcePositions | null>(null);
 const rows = ref<MappingRow[]>([]);
 const sampleValues = ref<Record<string, string>>({});
@@ -44,7 +45,7 @@ let generation = 0;
 let nextRowId = 1;
 const additionalField = ref("");
 const fieldOptions = computed(() => source.value?.fields.map(field => ({ label: field.label, value: field.key })) ?? []);
-const serialized = computed(() => JSON.stringify(rows.value.map(row => [row.key, row.positionId, row.selectedText])));
+const serialized = computed(() => JSON.stringify(rows.value.map(row => [row.key, row.positionId, row.selectedText, row.occurrenceStart])));
 const dirty = computed(() => Boolean(baseline.value) && serialized.value !== baseline.value);
 const positionOptions = computed(() => source.value?.positions.map(position => ({ label: `${position.part.includes("header") ? "页眉" : position.part.includes("footer") ? "页脚" : "正文"}第${position.paragraphIndex + 1}段：${position.text}`, value: position.positionId })) ?? []);
 watch(dirty, value => { emit("dirty-change", value); emit("confirmation-state", !value && confirmed.value); });
@@ -65,7 +66,7 @@ async function load() {
       if (!bindings.length && !field.required) return [];
       return (bindings.length ? bindings : [undefined]).map((binding, index) => {
         const position = result.positions.find(value => value.positionId === binding?.positionId);
-        return { ...field, rowId: nextRowId++, required: field.required && index === 0, positionId: position?.positionId ?? "", selectedText: position && binding ? position.text.slice(binding.start, binding.end) : "" };
+        return { ...field, rowId: nextRowId++, required: field.required && index === 0, positionId: position?.positionId ?? "", selectedText: position && binding ? position.text.slice(binding.start, binding.end) : "", occurrenceStart: binding?.start ?? null };
       });
     });
     baseline.value = serialized.value;
@@ -79,7 +80,7 @@ async function load() {
 function addPosition() {
   const field = source.value?.fields.find(value => value.key === additionalField.value);
   if (!field) return;
-  rows.value.push({ ...field, rowId: nextRowId++, required: false, positionId: "", selectedText: "" });
+  rows.value.push({ ...field, rowId: nextRowId++, required: false, positionId: "", selectedText: "", occurrenceStart: null });
   additionalField.value = "";
 }
 async function saveMappingWithCapability(versionId: string, body: Parameters<typeof saveLayoutSourceMapping>[1]) {
@@ -104,6 +105,19 @@ async function confirmMappingWithCapability(versionId: string, body: Parameters<
   return confirmLayoutSourceMapping(versionId, body);
 }
 
+function occurrences(row: MappingRow) {
+  const text = source.value?.positions.find(position => position.positionId === row.positionId)?.text;
+  if (!text || !row.selectedText) return [];
+  const result: Array<{ value: number; label: string }> = [];
+  let start = text.indexOf(row.selectedText);
+  while (start >= 0) {
+    const end = start + row.selectedText.length;
+    result.push({ value: start, label: `第${result.length + 1}处：${start > 12 ? "…" : ""}${text.slice(Math.max(0, start - 12), start)}【${row.selectedText}】${text.slice(end, end + 12)}${end + 12 < text.length ? "…" : ""}` });
+    start = text.indexOf(row.selectedText, start + 1);
+  }
+  return result;
+}
+
 async function save() {
   const current = source.value;
   if (!current?.availableActions.some(action => action.key === "map_source" && action.enabled)) return;
@@ -112,8 +126,9 @@ async function save() {
   try {
     const bindings = rows.value.map(row => {
       const position = current.positions.find(value => value.positionId === row.positionId);
-      const start = position?.text.indexOf(row.selectedText) ?? -1;
-      if (!position || !row.selectedText || start < 0 || position.text.indexOf(row.selectedText, start + 1) >= 0) throw new Error(`请为${row.label}选择一处准确且唯一的原文`);
+      const choices = occurrences(row);
+      const start = choices.length === 1 ? choices[0].value : row.occurrenceStart;
+      if (!position || !row.selectedText || start === null || !choices.some(choice => choice.value === start)) throw new Error(`请为${row.label}选择准确的原文出现位置`);
       return { fieldKey: row.key, positionId: position.positionId, start, end: start + row.selectedText.length };
     });
     await saveMappingWithCapability(props.versionId, { expectedRevision: current.draftRevision, sourceFileId: current.sourceFileId, sourceSha256: current.sourceSha256, bindings });

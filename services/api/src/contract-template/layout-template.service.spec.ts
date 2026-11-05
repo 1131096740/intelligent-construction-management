@@ -42,8 +42,8 @@ describe("LayoutTemplateService", () => {
     const sourceSha256 = "a".repeat(64);
     const fingerprint = "b".repeat(64);
     return { docxFileId: sourceFileId, placeholderSchema: { sourceMapping: {
-      protocolVersion: 1, sourceFileId, sourceSha256, draftRevision: revision, fingerprint,
-      confirmation: { sourceFileId, sourceSha256, draftRevision: revision, mappingFingerprint: fingerprint }
+      protocolVersion: 1, sourceFileId, sourceSha256, draftRevision: revision, fingerprint, bindings: [],
+      confirmation: { sourceFileId, sourceSha256, draftRevision: revision, mappingFingerprint: fingerprint, previewJobId: "confirmed-preview", previewPdfFileId: "file-preview" }
     } } };
   }
 

@@ -163,10 +163,10 @@ export class LayoutTemplateService {
   }
 
   private assertMappingConfirmed(version: { docxFileId: string; draftRevision: number; placeholderSchema: Prisma.JsonValue }) {
-    const schema = version.placeholderSchema as Record<string, unknown>;
-    const mapping = schema?.sourceMapping as Record<string, unknown> | undefined;
-    const confirmation = mapping?.confirmation as Record<string, unknown> | undefined;
-    if (!mapping || !confirmation || mapping.sourceFileId !== version.docxFileId || mapping.draftRevision !== version.draftRevision || confirmation.sourceFileId !== mapping.sourceFileId || confirmation.sourceSha256 !== mapping.sourceSha256 || confirmation.draftRevision !== version.draftRevision || confirmation.mappingFingerprint !== mapping.fingerprint) throw new BadRequestException("请由合同主管预览并确认当前原文的自动填写位置");
+    try {
+      if (confirmedLayoutSourceMapping(version)) return;
+    } catch { /* Preserve this publication gate's existing Chinese guidance. */ }
+    throw new BadRequestException("请由合同主管预览并确认当前原文的自动填写位置");
   }
 
   async listMaintainedLayouts(actorUserId: string) {
