@@ -42,10 +42,20 @@ GitHub发布执行器保留 `/private/tmp/jg-enterprise-publication-20261105/sou
 | `/private/tmp/jg-enterprise-baseline-audit-20261105.md` | `b1c616587639a6d744e3ea7c3d9b9fa67ee7915d80fdeaa5d0f75425b8249796` |
 | `/private/tmp/jg-enterprise-acceptance-audit-20261105.md` | `564e17e00572c91bd32b24ea6d1f49732ab06dfb38bda35c241c0de745d019f9` |
 
+## 生产迁移登记只读核对（第二次有界尝试）
+
+首次限定迁移字段的SSH+sudo查询连接关闭，未得到JSON收据，无法证明当次查询执行；失败证据和随后的有界健康复核 active/ok 保留，未修复或重启生产。主控随后第二次有界只读尝试成功；使用固定脚本 `/private/tmp/jg-prod-baseline-readonly-20261105.py`，只在服务器内部读取 `DATABASE_URL`，限定本机数据库目标，显式只读事务及迁移元数据字段，不输出连接URL、配置或凭据。
+
+新收据显示 `transactionReadOnly=on`、PostgreSQL `serverVersionNum=160014`，迁移登记197行全部已完成且无回滚。文档实施代理独立读取准确主线 `2f474055bd018b3e454b458038d91080203ad5dc` 的197份 `migration.sql` Git对象计算SHA-256，与这197行逐项对比：主线独有0、生产独有0、名称/校验不一致0。由此只证明该主线与本次生产迁移登记的差额为0，没有执行迁移或生产写入。
+
+脱敏[逐项比较收据](2026-11-05-enterprise-simplification-production-migrations-readonly.json)仅包含版本、计数、差集和来源哈希；该文件SHA-256为 `4baebd93cb8a8b4abed298fdfee7992adb59d3ea1da0da8d557c8f0b36042ff7`。原始字段白名单收据 `/private/tmp/jg-prod-migrations-readonly-20261105-second.json` 的SHA-256为 `7d1bde7c486b19931f46140045466748a12b3e005d2e584b5ef319b72ea0cb8b`，只含 `transactionReadOnly`、`serverVersionNum` 及每项 `migration_name/checksum/finished_at/rolled_back_at`；本次未提交连接配置、原始环境或凭据。
+
+迁移登记校验一致不证明运行构建来源、完整Schema无漂移、角色/ACL、真实数据质量或资金提交安全；任务01仍进行中，其他票据不因此解除阻塞。
+
 ## 尚未通过的基线与验收门
 
 1. 旧应用、模板和迁移候选默认排除；按当前任务范围逐域核实归属与依赖后决定承接或排除，选定承接才做三方重放。保留候选不要求把全部457份都重放为基线门槛；新干净分支也不等于可信集成基线。
-2. 主控经可信本机 SSH 别名 `jgzg-prod`、BatchMode 和 StrictHostKeyChecking 取得只读元数据：`/opt/jiangkong` checkout 为 `6bf7820c0d925e5804ad7d03ae8b983a9220b5e3`，API/Nginx active，API PID `2502628` 的 cwd/WorkingDirectory 为 `/srv/jiangkong/apps/api`，回环 health 返回 `status=ok, service=jiangkong-api`。checkout 不独立证明运行二进制SHA。限定迁移字段、内部读取连接配置且不输出凭据的只读查询在 SSH+sudo 阶段连接关闭，未得到JSON收据，无法证明查询执行；随后有界只读健康复核仍 active/ok，未修复或重启。已应用迁移、Schema及部署差额仍 `UNVERIFIED`，不据197/146推定生产状态。
+2. 主控经可信本机 SSH 别名 `jgzg-prod`、BatchMode 和 StrictHostKeyChecking 取得只读元数据：`/opt/jiangkong` checkout 为 `6bf7820c0d925e5804ad7d03ae8b983a9220b5e3`，API/Nginx active，API PID `2502628` 的 cwd/WorkingDirectory 为 `/srv/jiangkong/apps/api`，回环 health 返回 `status=ok, service=jiangkong-api`。checkout 不独立证明运行二进制SHA。生产迁移登记已由下述第二次只读查询核实；运行二进制SHA、完整Schema、数据/文件分布及角色有效权限仍 `UNVERIFIED`，不能把迁移登记一致扩展为这些事实已证明。
 3. 旧模板资产4失败和动作清单漂移只保留原候选历史诊断，不能算新主线失败或已修复；禁止通过放宽断言或重生成ready清单遮盖。
 4. 公开HTTP/真实PG/Web验收入口、一次性资源身份、owner/runtime/observer有效权限、所有连接池绑定、TLS正负控与故障分类、超时及按身份清理尚未闭合。旧固定入口所需隔离依赖副本已清理；不能直接重启旧入口或删除关闭门。
 5. 资金延迟提交误报、断连、响应丢失及重试防重等真实链仍未证明；离线mock不替代A16。真实副本恢复/迁移A36及最终固定候选A38仍待对应阶段具体授权和证据。
