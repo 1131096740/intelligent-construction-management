@@ -27,6 +27,7 @@ vi.mock("@revolist/vue3-datagrid", async () => {
         return () => h("div");
       }
     }),
+    TextEditor: class {},
     VGridVueEditor: vi.fn(() => "business-select-editor")
   };
 });

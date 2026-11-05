@@ -33,6 +33,7 @@ export interface ContractDraftLocalRecovery<T> {
   savedAt: number;
   expiresAt: number;
   snapshot: T;
+  saveIntent?: unknown;
 }
 
 export interface ContractDraftLocalRecoveryMatch<T> {
@@ -61,14 +62,16 @@ export function writeContractDraftLocalRecovery<T>(
   storage: Storage,
   identity: ContractDraftRecoveryIdentity,
   snapshot: T,
-  now = Date.now()
+  now = Date.now(),
+  saveIntent?: unknown
 ): boolean {
   const recovery: ContractDraftLocalRecovery<T> = {
     schemaVersion: SCHEMA_VERSION,
     identity: { ...identity },
     savedAt: now,
     expiresAt: now + CONTRACT_DRAFT_LOCAL_RECOVERY_TTL_MS,
-    snapshot: sanitizeContractDraftRecoverySnapshot(snapshot)
+    snapshot: sanitizeContractDraftRecoverySnapshot(snapshot),
+    ...(saveIntent === undefined ? {} : { saveIntent: sanitizeContractDraftRecoverySnapshot(saveIntent) })
   };
   try {
     storage.setItem(recoveryKey(identity), JSON.stringify(recovery));
@@ -216,7 +219,8 @@ function readRecovery<T>(
       identity: { ...value.identity },
       savedAt: value.savedAt,
       expiresAt: value.expiresAt,
-      snapshot: value.snapshot as T
+      snapshot: value.snapshot as T,
+      ...(value.saveIntent === undefined ? {} : { saveIntent: value.saveIntent })
     };
   } catch {
     safeRemove(storage, key);

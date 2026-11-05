@@ -100,6 +100,7 @@ async function ensureOk(
   }
 
   const error = new Error(message) as Error & {
+    status?: number;
     code?: string;
     conflictReason?: string;
     projectId?: string;
@@ -113,6 +114,7 @@ async function ensureOk(
       status: "document_invalidated" | "unchanged" | "refresh_required";
     };
   };
+  error.status = response.status;
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
   if (projectId) error.projectId = projectId;
@@ -386,6 +388,9 @@ export interface SaveContractDraftAggregatePayload {
 }
 
 export interface SaveContractDraftAggregateResult {
+  requestFingerprint?: string;
+  billRowKeys?: Record<string, Array<{ clientRowKey: string; rowKey: string }>>;
+  deletedRowRestoreRefs?: Record<string, Array<{ saveIntentKey: string; oldRowKey: string; originalValues: Record<string, unknown> }>>;
   contractVersionId: string;
   draftRevision: number;
   serverRevision: number;
@@ -419,6 +424,13 @@ export interface SaveContractDraftAggregateResult {
 export function fetchContractWorkbench(contractId: string) {
   return readJson<ContractWorkbenchReadModel>(
     `/contract-workbench/${encodeURIComponent(contractId)}`, false, { "x-contract-numeric-protocol": "2" }
+  );
+}
+
+export function fetchContractDraftSaveResult(contractVersionId: string, idempotencyKey: string) {
+  return readJson<{ status: "unknown" } | { status: "saved"; result: SaveContractDraftAggregateResult; latestRevision: number }>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/save-requests/${encodeURIComponent(idempotencyKey)}`, false,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -2258,6 +2270,8 @@ async function downloadBillExcelTemplateFromPath(
 }
 
 export interface ContractDraftBillExcelImportPreview {
+  sourceColumns?: Array<{ key: string; label: string; column: string }>;
+  sourceRows?: Array<{ sheet: string; row: number; values: Record<string, string> }>;
   billKey: string;
   targetBillRevision: number;
   rows: ContractBillCandidateRowInput[];
@@ -2276,7 +2290,7 @@ export interface ContractDraftBillExcelImportPreview {
 export function previewContractDraftBillExcelImport(
   contractVersionId: string,
   billKey: string,
-  body: { fileId: string }
+  body: { fileId: string; mode?: "append" | "replace" }
 ) {
   return postJson<ContractDraftBillExcelImportPreview>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/import-preview`,

@@ -229,7 +229,7 @@ function billFixture(options: {
   } as unknown as PrismaService;
 
   const audit = { record: jest.fn().mockResolvedValue({}) };
-  const fileService = { getFileBuffer: jest.fn() } as unknown as FileService;
+  const fileService = { getFileBuffer: jest.fn(), assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined) } as unknown as FileService;
 
   const service = new ContractBillExcelService(
     prisma,

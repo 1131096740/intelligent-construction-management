@@ -19,7 +19,7 @@ import { bumpContractAggregateRevision } from "../contract-workbench/contract-re
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { moneyCentsToApi } from "../money/decimal-money";
-import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
+import { ContractBillRowFactsValidationException, resolveContractBillRowFacts } from "./contract-bill-row-rules";
 import {
   assertContractBillDerivedUnitPrices,
   recalculateBillAndContractAmount
@@ -47,6 +47,7 @@ export interface ContractBillExcelImportDto {
 
 export interface ContractDraftBillExcelImportPreviewDto {
   fileId: string;
+  mode?: "append" | "replace";
   numericProtocolVersion?: number;
 }
 
@@ -106,7 +107,12 @@ export interface BillImportCandidateRow {
   customData: Record<string, unknown>;
 }
 
-export interface BillImportPreview {
+interface BillImportSourcePreview {
+  sourceColumns: Array<{ key: string; label: string; column: string }>;
+  sourceRows: Array<{ sheet: string; row: number; values: Record<string, string> }>;
+}
+
+export interface BillImportPreview extends Partial<BillImportSourcePreview> {
   added: number;
   updated: number;
   removed: number;
@@ -209,7 +215,35 @@ export class ContractBillExcelService {
     return version === 2 ? { ...bill, numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4 } : bill;
   }
 
+  private async buildChineseDraftTemplate(bill: BillContext) {
+    const columns = this.templateColumns(bill).filter(column => column.code !== ROW_KEY_CODE);
+    const workbook = new ExcelJS.Workbook();
+    const instructions = workbook.addWorksheet(INSTRUCTION_SHEET);
+    instructions.addRow(["合同清单填写说明"]);
+    instructions.addRow(["在『清单数据』第 2 行起填写；第 1 行为中文表头，请勿修改。"]);
+    instructions.addRow(["数量、含税单价和税率最多保留 4 位小数；不明确的数值留空，明确为零请填写 0。"]);
+    instructions.addRow(["数值列为文本格式，保留四位精度及大数原文；不含税单价由系统计算，无需填写。"]);
+    instructions.addRow([bill.taxMode === "single_rate"
+      ? `税率继承合同草稿：${bill.defaultTaxRatePercent?.toString() ?? "待确定"}%；无需填写。`
+      : "税率留空继承合同默认税率，填写时须在 0 到 100 之间。"]);
+    instructions.addRow(["上传后先预检并确认，只保存合同草稿，不会提交审批或入账。"]);
+    instructions.getColumn(1).width = 90;
+    for (const field of bill.businessEntryDefinition?.fields ?? []) instructions.addRow([field.label, field.description, field.example]);
+    const sheet = workbook.addWorksheet(DATA_SHEET);
+    sheet.addRow(columns.map(column => column.label));
+    columns.forEach((column, index) => {
+      const target = sheet.getColumn(index + 1);
+      target.width = 20;
+      target.numFmt = "@";
+      target.protection = { locked: column.readonly === true || (column.code === "taxRatePercent" && bill.taxMode === "single_rate") };
+      sheet.getRow(1).getCell(index + 1).protection = { locked: true };
+    });
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    return { buffer: Buffer.from(await workbook.xlsx.writeBuffer()), fileName: `${this.safeBillName(bill.name)}-清单导入模板.xlsx` };
+  }
+
   private async buildTemplateWorkbook(bill: BillContext) {
+    if (bill.numericProtocolVersion === 2) return this.buildChineseDraftTemplate(bill);
     const columns = this.templateColumns(bill);
     const workbook = new ExcelJS.Workbook();
 
@@ -306,6 +340,7 @@ export class ContractBillExcelService {
       if (sourceFile && sourceFile.storageStatus !== "active") {
         throw new BadRequestException("导入文件不存在或不可用，请重新上传后预检");
       }
+      await this.files.assertCanDownloadFileById(fileId, actorUserId);
       const buffer = (await this.files.getFileBuffer(fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
         where: { contractBillId: bill.id },
@@ -361,6 +396,8 @@ export class ContractBillExcelService {
     input: ContractDraftBillExcelImportPreviewDto
   ) {
     const fileId = this.parseDraftImportInput(input);
+    if (input.mode !== undefined && input.mode !== "append" && input.mode !== "replace") throw new BadRequestException("请选择追加或替换导入方式");
+    const mode = input.mode ?? (input.numericProtocolVersion === 2 ? "append" : "replace");
     return this.prisma.$transaction(async (tx) => {
       const { bill } = await this.loadDraftBillContext(
         tx,
@@ -375,6 +412,7 @@ export class ContractBillExcelService {
       if (sourceFile && sourceFile.storageStatus !== "active") {
         throw new BadRequestException("导入文件不存在或不可用，请重新上传后预检");
       }
+      await this.files.assertCanDownloadFileById(fileId, actorUserId);
       const buffer = (await this.files.getFileBuffer(fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
         where: { contractBillId: bill.id },
@@ -383,7 +421,7 @@ export class ContractBillExcelService {
       assertContractBillDerivedUnitPrices(existingRows);
       const preview = await this.buildPreview(
         this.draftNumericContext(bill, input.numericProtocolVersion),
-        "replace",
+        mode,
         buffer,
         existingRows,
         randomUUID()
@@ -396,7 +434,8 @@ export class ContractBillExcelService {
         skipped: preview.skipped,
         beforeAmountCents: preview.beforeAmountCents,
         afterAmountCents: preview.afterAmountCents,
-        errors: preview.errors
+        errors: preview.errors,
+        ...(preview.sourceColumns ? { sourceColumns: preview.sourceColumns, sourceRows: preview.sourceRows } : {})
       };
     });
   }
@@ -449,6 +488,7 @@ export class ContractBillExcelService {
       )) {
         throw new BadRequestException("导入文件已变化或不可用，请重新预检后再应用");
       }
+      await this.files.assertCanDownloadFileById(record.fileId, actorUserId);
       const buffer = (await this.files.getFileBuffer(record.fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
         where: { contractBillId: bill.id },
@@ -612,11 +652,12 @@ export class ContractBillExcelService {
       skipped: plan.skipped,
       beforeAmountCents: moneyCentsToApi(beforeAmountCents),
       afterAmountCents: moneyCentsToApi(afterAmountCents),
+      ...(bill.numericProtocolVersion === 2 ? { sourceColumns: plan.sourceColumns, sourceRows: plan.sourceRows } : {}),
       rows: plan.previewRows,
       errors: plan.errors,
       diffs,
       candidateRows:
-        mode === "replace" && plan.errors.length === 0
+        (mode === "replace" || (bill.numericProtocolVersion === 2 && mode === "append")) && plan.errors.length === 0
           ? plan.adds.map((row, index) => this.toCandidateRow(row, importId, index))
           : []
     };
@@ -648,11 +689,28 @@ export class ContractBillExcelService {
     const manualReviews: Array<{ source: ExistingRow; incoming: ResolvedRow }> = [];
     let skipped = 0;
 
-    const columnDefs = this.templateColumns(bill);
-    const codes = this.readFieldCodes(sheet);
-    this.assertTemplateColumns(codes, columnDefs, errors);
+    let columnDefs = this.templateColumns(bill);
+    let codes = this.readFieldCodes(sheet);
+    let headerRows = HEADER_ROWS;
+    // Old downloaded templates retain their exact code row. A new v2
+    // workbook is identified solely by its visible Chinese header contract.
+    const legacyCodes = columnDefs.map(column => column.code);
+    const legacyTemplate = codes.length === legacyCodes.length && codes.every((code, index) => code === legacyCodes[index]);
+    if (bill.numericProtocolVersion === 2 && !legacyTemplate) {
+      columnDefs = columnDefs.filter(column => column.code !== ROW_KEY_CODE);
+      const labels: string[] = [];
+      sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => { labels[column - 1] = this.rawCellText(cell); });
+      if (labels.length !== columnDefs.length) errors.push({ sheet: DATA_SHEET, row: 1, column: "A", message: "中文表头列数与当前清单不一致，请重新下载填写模板" });
+      columnDefs.forEach((column, index) => {
+        if (labels[index] !== column.label) errors.push({ sheet: DATA_SHEET, row: 1, column: this.columnLetter(index + 1), message: `此列表头应为“${column.label}”，请保留模板中文表头` });
+      });
+      codes = columnDefs.map(column => column.code);
+      headerRows = 1;
+    } else this.assertTemplateColumns(codes, columnDefs, errors);
+    const sourceColumns = columnDefs.flatMap((column, index) => column.code === ROW_KEY_CODE ? [] : [{ key: column.code, label: column.label, column: this.columnLetter(index + 1) }]);
+    const sourceRows: BillImportSourcePreview["sourceRows"] = [];
     if (errors.length > 0) {
-      return { adds, updates, manualReviews, removeKeys: [], skipped, errors, previewRows };
+      return { adds, updates, manualReviews, removeKeys: [], skipped, errors, previewRows, sourceColumns, sourceRows };
     }
 
     const codeIndex = new Map(codes.map((code, index) => [code, index + 1]));
@@ -662,9 +720,10 @@ export class ContractBillExcelService {
     const sheetKeys = new Set<string>();
 
     sheet.eachRow((excelRow: Row, rowNumber: number) => {
-      if (rowNumber <= HEADER_ROWS) return;
+      if (rowNumber <= headerRows) return;
       if (this.isBlankRow(excelRow, codes)) return;
 
+      sourceRows.push({ sheet: DATA_SHEET, row: rowNumber, values: Object.fromEntries(sourceColumns.map(column => [column.key, this.rawCellText(excelRow.getCell(codes.indexOf(column.key) + 1))])) });
       const rowErrorsBefore = errors.length;
       this.assertNoMergedCells(sheet, rowNumber, codes.length, errors);
 
@@ -677,6 +736,10 @@ export class ContractBillExcelService {
           continue;
         }
         const cell = excelRow.getCell(column);
+        if (bill.numericProtocolVersion === 2 && ["quantity", "unitPrice", "taxRatePercent"].includes(def.code) && typeof cell.value === "number" && Number.isFinite(cell.value)) {
+          const digits = new Prisma.Decimal(cell.value).toFixed().replace(/^[+-]/u, "").replace(".", "").replace(/^0+/u, "");
+          if (digits.length > 15) errors.push(this.fieldError(rowNumber, def.code, "Excel数值单元格超过15位有效数字，无法确认原输入精度；请将该格改为文本格式后重新填写并上传"));
+        }
         if (def.code !== "taxRatePercent") {
           raw[def.code] = this.rawCellText(cell);
           continue;
@@ -796,7 +859,11 @@ export class ContractBillExcelService {
       }
     }
 
-    return { adds, updates, manualReviews, removeKeys, skipped, errors, previewRows };
+    if (bill.numericProtocolVersion === 2) for (const error of errors) {
+      const column = codeIndex.get(error.column);
+      if (column) error.column = this.columnLetter(column);
+    }
+    return { adds, updates, manualReviews, removeKeys, skipped, errors, previewRows, sourceColumns, sourceRows };
   }
 
   private resolveRow(
@@ -888,7 +955,9 @@ export class ContractBillExcelService {
       } catch (error) {
         const message =
           error instanceof BadRequestException ? error.message : "合同清单行计价信息无效";
-        const column = message.startsWith("数量")
+        const column = bill.numericProtocolVersion === 2 && error instanceof ContractBillRowFactsValidationException && error.field !== "row"
+          ? error.field
+          : message.startsWith("数量")
           ? "quantity"
           : message.startsWith("含税单价")
             ? "unitPrice"
@@ -1492,7 +1561,7 @@ interface ExistingRow {
   taxExclusiveUnitPrice: Prisma.Decimal | null;
 }
 
-interface ResolvedPlan {
+interface ResolvedPlan extends BillImportSourcePreview {
   adds: ResolvedRow[];
   updates: ResolvedRow[];
   manualReviews: Array<{ source: ExistingRow; incoming: ResolvedRow }>;
