@@ -1,6 +1,6 @@
 # 01：固定现状与受控公开验收入口
 
-**状态：** `plan-confirmed` / `in-progress`；基线及受控入口未完成。本轮用户已授权整套实施及 GitHub 工单推进；[#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。 当前起步与阻断见[集成交接](../../progress/2026-11-05-enterprise-simplification-integration-start.md)。
+**状态：** `plan-confirmed` / `prepared-complete` / `github-close-pending`；按用户确认的 `--prepare / --verify` 及输出清单边界，任务01准备产物完成；GitHub待主控最终新SHA编排及重封包后收口，真实运行仍NOT RUN。本轮用户已授权整套实施及 GitHub 工单推进；[#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。 当前起步与阻断见[集成交接](../../progress/2026-11-05-enterprise-simplification-integration-start.md)。
 
 **类型：** 验证前置片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
@@ -14,10 +14,12 @@
 
 ## 验收条件
 
-- [ ] BAS-01：Vue 3、TypeScript、TDesign 与 --jg-*；NestJS、PostgreSQL；通过电脑、手机浏览器及微信链接使用；不新建 App、小程序或通用工作流/低代码平台。
-- [ ] 记录混合工作区归属与指纹，既有修改完整保留；核146与244迁移来源/校验值及实际部署差距，不直接合并迁移目录。
-- [ ] 固定一次性资源身份、依赖、受限角色、故障入口、超时与按身份清理；现有失败关闭门保持，未获实验授权不启动资源。
-- [ ] 形成资金提交问题复现/修复验证所需入口及停止条件；既有通过/失败/未执行分别登记。
+> 以下勾选仅表示本验证前置票的**准备产物**已核齐，原验收条目正文不变。栈/真实Web复用指针、源码/迁移/保留基线、受控资源/权限/故障及清理的输入合同和停止条件见[准备产物交接](../../progress/2026-11-05-enterprise-simplification-task01-prepared.md)；不表示真实HTTP/PG/Web、ACL/TLS、迁移或清理已运行。未知来源和数据未核项仍如实保留，独立授权后验及任务16/42/44真实门不豁免。
+
+- [x] BAS-01：Vue 3、TypeScript、TDesign 与 --jg-*；NestJS、PostgreSQL；通过电脑、手机浏览器及微信链接使用；不新建 App、小程序或通用工作流/低代码平台。
+- [x] 记录混合工作区归属与指纹，既有修改完整保留；核146与244迁移来源/校验值及实际部署差距，不直接合并迁移目录。
+- [x] 固定一次性资源身份、依赖、受限角色、故障入口、超时与按身份清理；现有失败关闭门保持，未获实验授权不启动资源。
+- [x] 形成资金提交问题复现/修复验证所需入口及停止条件；既有通过/失败/未执行分别登记。
 
 ## 验证与边界
 

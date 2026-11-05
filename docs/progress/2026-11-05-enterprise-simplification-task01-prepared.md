@@ -1,6 +1,12 @@
 # 任务01准备产物与执行输入交接（2026-11-05）
 
-本文是[任务01 #383](https://github.com/1131096740/intelligent-construction-management/issues/383)的跨会话输入交接：把已确认的源码输出清单、已有运行准备源码、真实Web复用入口和保留基线逐项对应，不作为普通测试进度日志、执行批准或真实业务验收收据。详尽历史见[集成交接](2026-11-05-enterprise-simplification-integration-start.md)，字段合同及实际源码链接见[准备runbook](../runbooks/enterprise-simplification-acceptance.md)。本文不修改规格、票据验收规则或 `PROGRESS.md` 状态。
+本文是[任务01 #383](https://github.com/1131096740/intelligent-construction-management/issues/383)的跨会话输入交接：把已确认的源码输出清单、已有运行准备源码、真实Web复用入口和保留基线逐项对应，不作为普通测试进度日志、执行批准或真实业务验收收据。详尽历史见[集成交接](2026-11-05-enterprise-simplification-integration-start.md)，字段合同及实际源码链接见[准备runbook](../runbooks/enterprise-simplification-acceptance.md)。本文只同步准备产物状态与边界，不修改规格或原验收条目正文。
+
+## 当前结论：准备产物完成，GitHub待主控收口
+
+按用户确认的 `--prepare / --verify` 输出清单边界，准备产物映射、真实Web复用入口与保留约束已核齐；bff源码规范/需求复审0/0及34文档需求补核0项。主控在准确干净 `13058cab9c524b1a036c26add614342fca127c75` 取得prepare/verify通过，3032文件、197迁移，sealSha256为 `4d33cf16e699ce46d841b2dfb3a0b2bb26c687680795c62d2089ab422fb9385f`。这是已取得的阶段收据，本次状态提交后须重新封包；最终新SHA现有编排及封包收据由主控后续外部/Issue绑定，尚未取得的不写全绿。
+
+本地任务01标 prepared-complete / github-close-pending，GitHub尚未关闭；02/03/04/08须待#383实际关闭后才可启动，依赖边不变。真实HTTP/PG/Web、TLS/ACL/池与清理依旧NOT RUN、独立授权后验；任务16/A16、42/A36、44/A38真实验收不由准备完成解除。以下b09的356/3及已修接线作为历史保留，不冒充当前失败或最终新候选通过。
 
 ## 本次准备边界与阶段收据
 
@@ -8,7 +14,7 @@
 
 已知阶段 `b09c629cee3466f9d3bc4fc4555617378b14c055` 的source packet：3031份文件、197份迁移，`sealSha256=97c0f5f96bc0697e0b7247b9c9e9275a979852bf76a09111be7ac733e8c60c5a`；packet文件SHA-256为 `0624aea376c2987da7ed1ab134f449e04b6683f8a1a1f484216a1bf254152056`。这是已存在的阶段收据，不是本交接提交后的最终包；任何新提交须重封。
 
-同一b09阶段新增准备测试的库存接线尚有既有编排356通过/3失败，作者正在修复，不能宣称全绿。较早78a6f7b6冻结359通过、35项组件、复审0/0只按其准确SHA使用；没有把它们拼接成b09或未来候选通过。首条真实HTTP/PG案例1项未执行，资源/迁移/角色SQL、真实TLS正负控、实际清理及Web串接全部NOT RUN。
+同一b09阶段新增准备测试的库存接线曾有既有编排356通过/3失败；接线及继承stdout解析问题已由后续bff修补并静态复审闭合，原失败保留，静态闭合不替代最终新SHA编排收据。较早78a6f7b6冻结359通过、35项组件、复审0/0只按其准确SHA使用；没有把它们拼接成b09或未来候选通过。首条真实HTTP/PG案例1项未执行，资源/迁移/角色SQL、真实TLS正负控、实际清理及Web串接全部NOT RUN。
 
 ## 从source packet到运行材料
 
@@ -28,7 +34,7 @@
 
 新增五个参数是 `--task01-packet`、`--task01-inputs`、`--task01-inputs-sha256`、`--task01-artifacts`、`--task01-confirm`，对应source packet、runtime inputs及其文件哈希、新私有artifacts与独立确认；另保留原候选/全局确认合同。dispatcher把请求候选注入 `JG_TASK01_EXPECTED_SOURCE_SHA`，driver再比packet SHA，缺项/错候选/错源码先拒绝。没有把参数本身当批准，也未在本文给可执行资源命令或确认值。
 
-7cb候选仍有后续审查修补，本节只核对其真实输入合同，不引用为最终通过证据。b09失败历史不删除；准确新源码和清单由主控最终重封。
+7cb候选后续修补已在bff静态复审闭合，本节只按原接线合同交接，不引用为最终新SHA通过证据。b09失败历史不删除；准确新源码和清单由主控最终重封。
 
 ## 准备覆盖、复用入口与后验归属
 
