@@ -136,6 +136,15 @@ export class CreateFundExecutionReversalCaseDto {
 }
 
 export class ReviewFundExecutionApprovalDto {
+  @IsOptional()
+  @IsString({message: "自审原因格式不正确"})
+  @MaxLength(500, {message: "自审原因不能超过500字"})
+  selfReviewReason?: string;
+
+  @IsOptional()
+  @IsString({message: "确认密码格式不正确"})
+  @MaxLength(256, {message: "确认密码长度不正确"})
+  confirmationPassword?: string;
   @IsIn(["approve", "return_to_applicant"], {
     message: "资金执行审批动作无效"
   })

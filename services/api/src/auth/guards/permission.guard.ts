@@ -1,3 +1,4 @@
+import { scopedSpotDutyNodeIndexes } from "../../approval/spot-approval-duty-access";
 import {
   CanActivate,
   ExecutionContext,
@@ -137,6 +138,7 @@ export class PermissionGuard implements CanActivate {
           : false;
         const delegatedApprovalAllowed =
           scopedClearingAllowed ||
+          (requiredAction === "spot_procurement.approve" && projectId && await this.scopedSpotDutyAccess(request, request.user.id, projectId)) ||
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&
             projectId &&
@@ -163,6 +165,19 @@ export class PermissionGuard implements CanActivate {
   async loadEffectiveRoleKeys(userId: string, projectId?: string): Promise<RoleKey[]> {
     const roleScopes = await this.loadRoleScopes(userId, projectId);
     return resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
+  }
+
+  private async scopedSpotDutyAccess(request: AuthenticatedRequest, actorUserId: string, projectId: string) {
+    if (typeof this.prisma.approvalInstance?.findUnique !== "function") return false;
+    const instanceId = request.body?.expectedApprovalInstanceId;
+    const index = request.body?.expectedNodeIndex;
+    if (typeof instanceId !== "string" || typeof index !== "number" || !Number.isInteger(index)) return false;
+    const round = await this.prisma.approvalInstance.findUnique({where: {id: instanceId}});
+    if (!round || round.businessType !== "spot_procurement_version") return false;
+    const version = await this.prisma.spotProcurementVersion.findUnique({where: {id: round.businessId}});
+    const application = version ? await this.prisma.spotProcurement.findUnique({where: {id: version.procurementId}}) : null;
+    if (!application || application.id !== request.params?.procurementId || application.projectId !== projectId || application.currentVersionId !== round.businessId) return false;
+    return (await scopedSpotDutyNodeIndexes(this.prisma as never, round, projectId, actorUserId)).includes(index);
   }
 
   private async loadRoleScopes(

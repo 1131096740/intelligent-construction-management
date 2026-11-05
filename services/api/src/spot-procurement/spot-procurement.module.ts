@@ -1,4 +1,3 @@
-import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -50,7 +49,6 @@ import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment
     SpotProcurementReceiptController
   ],
   providers: [
-    SpotProcurementApprovalNotificationService,
     ReceiptWatermarkService,
     SpotProcurementApplicationService,
     SpotProcurementInvoiceService,

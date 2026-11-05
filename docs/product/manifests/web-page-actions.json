@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 394,
+    "registeredActionCount": 396,
     "pageActionCount": 56,
-    "backgroundActionCount": 338,
-    "reachableVueFileCount": 198,
+    "backgroundActionCount": 340,
+    "reachableVueFileCount": 199,
     "routeRootCount": 70,
-    "totalVueFileCount": 212,
-    "parsedVueFileCount": 212,
-    "reachableProductionModuleCount": 344,
-    "templateEventDirectiveCount": 1235,
+    "totalVueFileCount": 213,
+    "parsedVueFileCount": 213,
+    "reachableProductionModuleCount": 345,
+    "templateEventDirectiveCount": 1240,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 384,
-    "candidateProductionMutationConsumerCount": 384,
-    "acceptedProductionMutationConsumerCount": 384,
-    "productionMutationConsumerPairCount": 384,
+    "coveredProductionMutationConsumerCount": 386,
+    "candidateProductionMutationConsumerCount": 386,
+    "acceptedProductionMutationConsumerCount": 386,
+    "productionMutationConsumerPairCount": 386,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 365,
-    "reachableProductionModuleCount": 344,
-    "totalVueFileCount": 212,
-    "parsedVueFileCount": 212
+    "totalProductionModuleCount": 366,
+    "reachableProductionModuleCount": 345,
+    "totalVueFileCount": 213,
+    "parsedVueFileCount": 213
   },
   "actions": [
     {
@@ -206,6 +206,134 @@
             "localCallChain": [
               "submitRecord",
               "recordProjectAffiliateCompanyContractWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "approval-delegation.create",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "ownerRoutePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createDelegationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 171,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDelegate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createApprovalDelegation",
+          "method": "POST",
+          "path": "/approval-delegations",
+          "normalizedKey": "POST /approval-delegations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/approval-delegations",
+            "normalizedKey": "POST /approval-delegations",
+            "controller": "ApprovalDelegationController",
+            "handler": "create",
+            "sourceFile": "services/api/src/approval/approval-delegation.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createDelegationWithCapability",
+              "createApprovalDelegation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "approval-delegation.revoke",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "ownerRoutePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "revokeDelegationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 177,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRevoke",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "revokeApprovalDelegation",
+          "method": "DELETE",
+          "path": "/approval-delegations/:param",
+          "normalizedKey": "DELETE /approval-delegations/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "DELETE",
+            "path": "/approval-delegations/:delegationId",
+            "normalizedKey": "DELETE /approval-delegations/:param",
+            "controller": "ApprovalDelegationController",
+            "handler": "revoke",
+            "sourceFile": "services/api/src/approval/approval-delegation.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "revokeDelegationWithCapability",
+              "revokeApprovalDelegation"
             ]
           },
           "ticketFollowups": []
@@ -10994,7 +11122,7 @@
         "event": "call",
         "handler": "confirmFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 457,
+        "sourceLine": 466,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11061,7 +11189,7 @@
         "event": "call",
         "handler": "createFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 391,
+        "sourceLine": 400,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11128,7 +11256,7 @@
         "event": "call",
         "handler": "returnFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 445,
+        "sourceLine": 454,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11193,7 +11321,7 @@
         "event": "call",
         "handler": "approveFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 469,
+        "sourceLine": 478,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11259,7 +11387,7 @@
         "event": "call",
         "handler": "returnFundExecutionApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 481,
+        "sourceLine": 491,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11325,7 +11453,7 @@
         "event": "call",
         "handler": "submitFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 433,
+        "sourceLine": 442,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11393,7 +11521,7 @@
         "event": "call",
         "handler": "updateFundExecutionCaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 409,
+        "sourceLine": 418,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11461,7 +11589,7 @@
         "event": "call",
         "handler": "createFundExecutionReversalWithCapability",
         "kind": "background_call",
-        "sourceLine": 400,
+        "sourceLine": 409,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11528,7 +11656,7 @@
         "event": "call",
         "handler": "updateFundExecutionReversalReasonWithCapability",
         "kind": "background_call",
-        "sourceLine": 421,
+        "sourceLine": 430,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25398,7 +25526,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2150,
+        "sourceLine": 2179,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -25463,7 +25591,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2137,
+        "sourceLine": 2166,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -25528,7 +25656,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1327,
+        "sourceLine": 1338,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25723,7 +25851,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1345,
+        "sourceLine": 1356,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25788,7 +25916,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 1277,
+        "sourceLine": 1288,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25854,7 +25982,7 @@
         "event": "call",
         "handler": "deletePristineSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1258,
+        "sourceLine": 1269,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25920,7 +26048,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1217,
+        "sourceLine": 1228,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26187,7 +26315,7 @@
         "event": "call",
         "handler": "recreateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1296,
+        "sourceLine": 1307,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26317,7 +26445,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2067,
+        "sourceLine": 2078,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26383,7 +26511,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2081,
+        "sourceLine": 2098,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26449,7 +26577,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2095,
+        "sourceLine": 2118,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26515,7 +26643,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1814,
+        "sourceLine": 1825,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -26580,7 +26708,7 @@
         "event": "call",
         "handler": "createSpotProcurementVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1233,
+        "sourceLine": 1244,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26645,7 +26773,7 @@
         "event": "call",
         "handler": "voidSpotProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1311,
+        "sourceLine": 1322,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26710,7 +26838,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2109,
+        "sourceLine": 2138,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -28111,7 +28239,7 @@
         "event": "call",
         "handler": "validateUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 490,
+        "sourceLine": 443,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28189,7 +28317,7 @@
         "event": "call",
         "handler": "commitUserSelfProfileWithDefinition",
         "kind": "background_call",
-        "sourceLine": 499,
+        "sourceLine": 452,
         "sourceColumn": 0
       },
       "semantic": "business_write",

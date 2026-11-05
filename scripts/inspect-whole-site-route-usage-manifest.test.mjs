@@ -997,7 +997,7 @@ test("renders deterministically without wall-clock evidence", () => {
   assert.doesNotMatch(rendered, /generatedAt|timestamp/i);
 });
 
-test("locks the repository baseline to 497 routes and no route-usage blockers", async () => {
+test("locks the repository baseline to 702 routes and no route-usage blockers", async () => {
   const manifest = await inspectWholeSiteRouteUsageManifest({
     root: REPOSITORY_ROOT
   });
@@ -1131,29 +1131,29 @@ test("locks the repository baseline to 497 routes and no route-usage blockers", 
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 497);
-  assert.equal(manifest.summary.classificationOverrideCount, 183);
+  assert.equal(manifest.summary.routeCount, 702);
+  assert.equal(manifest.summary.classificationOverrideCount, 222);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "5426c4732c67c8be80ec75173a9377393550c324b51c3cf1681e821152e6e575"
+    "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
-    "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1"
+    "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 314);
-  assert.equal(manifest.summary.pageRouteCount, 316);
+  assert.equal(manifest.summary.derivedProductionPageCount, 480);
+  assert.equal(manifest.summary.pageRouteCount, 498);
   assert.equal(manifest.summary.externalTakeoverCount, 70);
-  assert.equal(manifest.summary.exitCandidateCount, 108);
-  assert.equal(manifest.summary.internalTaskCount, 3);
+  assert.equal(manifest.summary.exitCandidateCount, 97);
+  assert.equal(manifest.summary.internalTaskCount, 37);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 368,
+    web_api_wrapper: 551,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 2,
-    operator_endpoint: 1,
-    none: 120
+    operator_endpoint: 35,
+    none: 108
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>

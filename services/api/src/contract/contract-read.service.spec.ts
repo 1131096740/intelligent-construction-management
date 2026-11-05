@@ -30,7 +30,7 @@ describe("ContractReadService", () => {
       settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) }, paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }, approvalInstance: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) }
     };
-    const visibility = { visibleProjectIds: async () => ["project-1"], effectiveRoleKeys: async () => ["contract_director"], effectiveRoleKeysByProject: async () => new Map([["project-1", ["contract_director"]]]) };
+    const visibility = { visibleProjectIds: async () => ["project-1"], effectiveRoleKeys: async () => ["contract_director", "finance_staff"], effectiveRoleKeysByProject: async () => new Map([["project-1", ["contract_director", "finance_staff"]]]) };
     const service = new ContractReadService(prisma as never, visibility as never);
     const module = await Test.createTestingModule({ controllers: [ContractController], providers: [
       { provide: ContractReadService, useValue: service }, { provide: ContractService, useValue: {} },
@@ -1567,7 +1567,7 @@ describe("ContractReadService", () => {
     ).rejects.toThrow("未找到合同");
   });
 
-  it("builds contract detail from persisted contract version and payment terms", async () => {
+  function contractDetailDatabaseFixture() {
     const prisma = {
       contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
       contract: {
@@ -1760,6 +1760,44 @@ describe("ContractReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
+    return prisma;
+  }
+
+  it.each(["employee","material_staff","budget_staff","engineering_tech","engineering_foreman"])("无实际参与的%s不能读取合同敏感详情", async role => {
+    const db = contractDetailDatabaseFixture();
+    const scopeDb = {userPosition:{findMany:async({where}:{where:{projectId:unknown}})=>where.projectId===null?[]:[{projectId:"project-1",positionId:"role"}]},position:{findMany:async()=>[{id:"role",key:role}]},projectMember:{findMany:async()=>[]}};
+    const service = new ContractReadService(db as never,new ProjectVisibilityService(scopeDb as never));
+    await expect(service.getDetail("HT-2026-009",["project-1"],"reader")).rejects.toThrow("未找到合同");
+  });
+
+  it("真实创建提交或签批参与事实保留本人合同敏感读取",async()=>{
+    const db=contractDetailDatabaseFixture();
+    Object.assign(db,{$queryRaw:async(query:{strings:readonly string[]})=>query.strings.join("").includes('SELECT DISTINCT v."contractId"')?[{contractId:"contract-1"}]:[]});
+    const scopes={userPosition:{findMany:async({where}:{where:{projectId:unknown}})=>where.projectId===null?[]:[{projectId:"project-1",positionId:"employee"}]},position:{findMany:async()=>[{id:"employee",key:"employee"}]},projectMember:{findMany:async()=>[]}};
+    await expect(new ContractReadService(db as never,new ProjectVisibilityService(scopes as never)).getDetail("HT-2026-009",["project-1"],"reader")).resolves.toMatchObject({id:"HT-2026-009",settlementPayment:{summary:[],calculationNote:expect.stringContaining("不展示汇总余额")}});
+  });
+
+  it("真实全局技术管理员保留合同读取但不补成业务审批身份",async()=>{
+    const db=contractDetailDatabaseFixture();
+    const scopes={userPosition:{findMany:async({where}:{where:{projectId:unknown}})=>where.projectId===null?[{positionId:"admin",projectId:null}]:[]},position:{findMany:async()=>[{id:"admin",key:"super_admin"}]},projectMember:{findMany:async()=>[]}};
+    const result=await new ContractReadService(db as never,new ProjectVisibilityService(scopes as never)).getDetail("HT-2026-009",["project-1"],"technical-reader");
+    expect(result.id).toBe("HT-2026-009");
+    expect(result.availableActions.filter(action=>action.enabled&&["review_approval","approve"].includes(action.key))).toEqual([]);
+    expect(result.settlementPayment.summary).toEqual([]);
+  });
+
+  it("已冻结给当前合法受托人的待审批合同可在签批前读取原单", async()=>{
+    const db=contractDetailDatabaseFixture();
+    const prior=db.contractVersion.findMany.getMockImplementation()!;
+    db.contractVersion.findMany.mockImplementation(async args=>(await prior(args)).map((row:{id?:string;[key:string]:unknown})=>row.id==="contract-version-2"?{...row,status:"in_approval",supersedesVersionId:null}:row.id==="contract-version-1"?{...row,status:"effective"}:row));
+    Object.assign(db,{approvalInstance:{findFirst:async()=>null,findMany:async({where}:{where:{status?:string}})=>where.status==="in_progress"?[{id:"approval-current",applicantUserId:"applicant",status:"in_progress",currentNodeIndex:0,updatedAt:new Date(),frozenNodes:[{name:"合同主管",mode:"any",roleKeys:["contract_director"],originatorUserIds:["applicant"],assignments:[{kind:"delegate",fromUserId:"director",fromRoleKey:"contract_director",toUserId:"reader"}]}]}]:[]},approvalActionLog:{findMany:async()=>[]},$queryRaw:async()=>[]});
+    const scopes={userPosition:{findMany:async({where}:{where:{projectId:unknown}})=>where.projectId===null?[]:[{projectId:"project-1",positionId:"employee"}]},position:{findMany:async()=>[{id:"employee",key:"employee"}]},projectMember:{findMany:async()=>[]}};
+    const service=new ContractReadService(db as never,new ProjectVisibilityService(scopes as never));
+    await expect(service.getDetail("HT-2026-009",["project-1"],"reader")).resolves.toMatchObject({id:"HT-2026-009"});
+  });
+
+  it("builds contract detail from persisted contract version and payment terms", async () => {
+    const prisma = contractDetailDatabaseFixture();
     const service = new ContractReadService(prisma as never);
 
     const detail = await service.getDetail("HT-2026-009");
@@ -2557,7 +2595,7 @@ describe("ContractReadService", () => {
         findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           applicantUserId: "applicant-1",
-          frozenNodes: [{ name: "合同部主管", roleKeys: ["contract_director"] }],
+          frozenNodes: [{ name: "合同部主管", roleKeys: ["contract_director"], originatorUserIds: ["applicant-1"] }],
           currentNodeIndex: 0,
           updatedAt: new Date("2026-08-02T01:00:01.000Z")
         }])
@@ -2612,6 +2650,7 @@ describe("ContractReadService", () => {
           frozenNodes: [
             {
               roleKeys: ["contract_director"],
+              originatorUserIds: ["applicant-1"],
               assignments: [{ fromRoleKey: "contract_director", toUserId: "assigned-1" }]
             }
           ],
@@ -2722,7 +2761,7 @@ describe("ContractReadService", () => {
       contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
       contractVersionAuthorizationLink: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new ContractReadService(prisma as never);
+    const service = new ContractReadService(prisma as never, {effectiveRoleKeysByProject:async()=>new Map([["p1",["contract_staff"]]])} as never);
 
     const ended = await service.lifecycleLedger("ended", 1, 10, ["p1"], "u1");
     expect(ended.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 0, ended: 5 });
@@ -2769,7 +2808,7 @@ describe("ContractReadService", () => {
       paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
       project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) }
     };
-    const service = new ContractReadService(prisma as never, undefined, undefined, {
+    const service = new ContractReadService(prisma as never, {effectiveRoleKeysByProject:async()=>new Map([["p1",["contract_staff"]]])} as never, undefined, {
       getContractPendingWorkItems: jest.fn().mockResolvedValue([
         { businessType: "contract_version", businessId: "c4-v1" }
       ])
@@ -3392,8 +3431,8 @@ describe("ContractReadService", () => {
     };
 
     it.each([
-      ...CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS.map((role) => [role, "full"] as const),
-      ...CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS.map((role) => [role, "full"] as const),
+      ...CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS.map((role) => [role, ["chairman","general_manager","contract_director","contract_staff","finance_director","finance_staff","comprehensive_director","super_admin"].includes(role) ? "full" : "summary"] as const),
+      ...CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS.map((role) => [role, ["contract_staff","project_manager"].includes(role) ? "full" : "summary"] as const),
       ...CONTRACT_SUMMARY_VIEW_ROLE_KEYS.map((role) => [role, "summary"] as const)
     ])("resolves %s to %s visibility", (role, expected) => {
       const service = new ContractReadService({} as never) as unknown as {
@@ -3444,7 +3483,7 @@ describe("ContractReadService", () => {
       expect(result.rows).toHaveLength(expected);
     });
 
-    it("returns only the 7-field public summary to an employee", async () => {
+    it.each(["employee", "material_staff", "budget_staff", "engineering_tech", "engineering_foreman"])("returns only the 7-field public summary to unrelated %s", async (role) => {
       const formalContracts = [
         { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "正式合同", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" },
         { id: "c2", projectId: "p1", code: null, temporaryCode: "CG-2", name: "他人草稿", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
@@ -3453,7 +3492,7 @@ describe("ContractReadService", () => {
         ledgerVersion("c1", "c1-v1", 1, "effective", { effectiveAt: now }),
         ledgerVersion("c2", "c2-v1", 1, "draft")
       ];
-      const service = makeLedgerService(formalContracts, formalVersions, ["employee"]);
+      const service = makeLedgerService(formalContracts, formalVersions, [role]);
       const result = await service.lifecycleLedger("formal_ledger", 1, 10, ["p1"], "emp");
       expect(result.summary).toEqual({
         formal_ledger: 1,

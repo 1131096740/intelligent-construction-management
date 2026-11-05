@@ -1,3 +1,5 @@
+import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
+import { Prisma } from "@prisma/client";
 import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
 import {
@@ -71,6 +73,7 @@ import {
   type ContractDraftLifecycleClassification,
   type ContractDraftLifecycleFacts
 } from "./contract-draft-lifecycle";
+import { resolveContractOriginators } from "./contract-originators";
 import { loadContractOwnerRisk } from "./contract-owner-risk";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
@@ -361,12 +364,10 @@ export class ContractReadService {
         where: { id: { in: projectIds } }
       }),
       internalOptions?.actorUserId
-        ? this.projectVisibility?.effectiveRoleKeysByProject(
-            internalOptions.actorUserId,
-            projectIds
-          ) ?? Promise.resolve(new Map<string, RoleKey[]>())
+        ? this.contractReadRolesByProject(internalOptions.actorUserId, projectIds)
         : Promise.resolve(new Map<string, RoleKey[]>())
     ]);
+    const participantIds = await this.contractParticipantIds(contracts, versions, roleKeysByProject, internalOptions?.actorUserId);
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
       this.contractDraftLifecycleByVersion(versions)
@@ -408,7 +409,7 @@ export class ContractReadService {
       const version = versionByContractId.get(contract.id);
       if (!version) return [];
       const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
-      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys, contract, internalOptions?.actorUserId, participantIds);
       if (visibility === "none") return [];
       if (visibility === "summary") {
         if (
@@ -719,9 +720,9 @@ export class ContractReadService {
         ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
         : Promise.resolve([]),
       this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds),
-      this.projectVisibility?.effectiveRoleKeysByProject(actorUserId, visibleProjectIds) ??
-        Promise.resolve(new Map<string, RoleKey[]>())
+      this.contractReadRolesByProject(actorUserId, visibleProjectIds)
     ]);
+    const participantIds = await this.contractParticipantIds(contracts, versions, roleKeysByProject, actorUserId);
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
       this.contractDraftLifecycleByVersion(versions)
@@ -740,7 +741,7 @@ export class ContractReadService {
     );
     const classified = contracts.flatMap<Record<string, unknown>>((contract) => {
       const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
-      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys, contract, actorUserId, participantIds);
       if (visibility === "none") return [];
       const all = versionsByContract.get(contract.id) ?? [];
       const lifecycle = projectContractDraftLifecycleViews(
@@ -803,7 +804,8 @@ export class ContractReadService {
         lifecycleByVersion,
         actorUserId,
         "formal_ledger",
-        roleKeysByProject
+        roleKeysByProject,
+        participantIds
       ),
       my_drafts: this.lifecycleCount(
         contracts,
@@ -811,7 +813,8 @@ export class ContractReadService {
         lifecycleByVersion,
         actorUserId,
         "my_drafts",
-        roleKeysByProject
+        roleKeysByProject,
+        participantIds
       ),
       returned_for_revision: this.lifecycleCount(
         contracts,
@@ -819,7 +822,8 @@ export class ContractReadService {
         lifecycleByVersion,
         actorUserId,
         "returned_for_revision",
-        roleKeysByProject
+        roleKeysByProject,
+        participantIds
       ),
       ended: this.lifecycleCount(
         contracts,
@@ -827,7 +831,8 @@ export class ContractReadService {
         lifecycleByVersion,
         actorUserId,
         "ended",
-        roleKeysByProject
+        roleKeysByProject,
+        participantIds
       )
     };
     const start = (page - 1) * pageSize;
@@ -878,14 +883,14 @@ export class ContractReadService {
         : Promise.resolve([]),
       this.me?.getContractPendingWorkItems(actorUserId) ?? Promise.resolve([]),
       this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds),
-      this.projectVisibility?.effectiveRoleKeysByProject(actorUserId, visibleProjectIds) ??
-        Promise.resolve(new Map<string, RoleKey[]>()),
+      this.contractReadRolesByProject(actorUserId, visibleProjectIds),
     ]);
     const pendingVersionIds = new Set(
       pendingWorkItems
         .map((item) => item.businessId)
         .filter((businessId): businessId is string => Boolean(businessId))
     );
+    const participantIds = await this.contractParticipantIds(contracts, versions, roleKeysByProject, actorUserId);
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
       this.contractDraftLifecycleByVersion(versions)
@@ -910,7 +915,7 @@ export class ContractReadService {
       const draftLifecycle = lifecycleByVersion.get(version.id);
       if (!draftLifecycle) return [];
       const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
-      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys, contract, actorUserId, participantIds);
       // The legacy workbench endpoint only serves full-view positions;
       // employee summary rows belong on the lifecycle ledger, never here.
       if (visibility !== "full") return [];
@@ -965,7 +970,7 @@ export class ContractReadService {
       const draftLifecycle = lifecycleByVersion.get(version.id);
       if (!draftLifecycle) return false;
       const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
-      if (this.resolveLedgerVisibility(projectRoleKeys) !== "full") return false;
+      if (this.resolveLedgerVisibility(projectRoleKeys, contract, actorUserId, participantIds) !== "full") return false;
       return this.matchesWorkbenchView(
         targetView,
         version,
@@ -1324,8 +1329,8 @@ export class ContractReadService {
 
     const [
       stages,
-      settlements,
-      paymentRequests,
+      allSettlements,
+      allPaymentRequests,
       contractArchiveFiles,
       approvalTimeline,
       signingFacts,
@@ -1369,6 +1374,12 @@ export class ContractReadService {
         }
       }) ?? Promise.resolve([])
     ]);
+    const settlements = actorUserId ? (await Promise.all(allSettlements.map(async row =>
+      await sensitiveBusinessReadAllowed(this.prisma, "settlement", row.id, actorUserId, roleKeys, row.preparedByUserId) ? row : null
+    ))).filter((row): row is NonNullable<typeof row> => row !== null) : allSettlements;
+    const paymentRequests = actorUserId ? (await Promise.all(allPaymentRequests.map(async row =>
+      await sensitiveBusinessReadAllowed(this.prisma, "payment_request", row.id, actorUserId, roleKeys) ? row : null
+    ))).filter((row): row is NonNullable<typeof row> => row !== null) : allPaymentRequests;
     const paymentIds = paymentRequests.map((payment) => payment.id);
     const settlementIds = settlements.map((settlement) => settlement.id);
     const [paymentExecutions, settlementArchiveFiles, projectProxyPayments] = await Promise.all([
@@ -1414,6 +1425,10 @@ export class ContractReadService {
           actorUserId,
           actorRoles.roleScopes
         );
+    if (actorUserId && !currentApprovalReview.access.canAct) {
+      const participantIds = await this.contractParticipantIds([contract], versions, new Map([[contract.projectId, roleKeys]]), actorUserId);
+      if (this.resolveLedgerVisibility(roleKeys, contract, actorUserId, participantIds) !== "full") throw new NotFoundException("未找到合同，请刷新合同台账后重试");
+    }
     const candidateReviewApprovalContext =
       currentApprovalReview.access.canReview &&
       version.updatedAt instanceof Date &&
@@ -1612,6 +1627,16 @@ export class ContractReadService {
         }];
       });
     });
+    const precisionDraft = version.numericProtocolVersion === 2 && version.status === "draft";
+    const financialReadModel = precisionDraft ? {
+      summary: [], settlementRows: [], paymentRows: [],
+      calculationNote: "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
+    } : this.settlementPayment(version.amountCents, settlements, settlementArchiveFiles,
+      paymentRequests, paymentExecutions, projectProxyPayments, historicalBalance);
+    if (!precisionDraft && actorUserId && (!hasSensitiveLedgerReadRole("settlement", roleKeys) || !hasSensitiveLedgerReadRole("payment_request", roleKeys))) {
+      financialReadModel.summary = [];
+      financialReadModel.calculationNote = "仅展示本人发起或参与的结算及付款记录；因资料权限范围有限，不展示汇总余额，请由有权岗位核对。";
+    }
     return {
       businessEntrySubmissions,
       id: contractCode,
@@ -1660,18 +1685,7 @@ export class ContractReadService {
         advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps
       })),
       settlementBlockMessage: this.settlementBlockMessage(version.status, contract.contractTypeKey),
-      settlementPayment: version.numericProtocolVersion === 2 && version.status === "draft" ? {
-        summary: [], settlementRows: [], paymentRows: [],
-        calculationNote: "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
-      } : this.settlementPayment(
-        version.amountCents,
-        settlements,
-        settlementArchiveFiles,
-        paymentRequests,
-        paymentExecutions,
-        projectProxyPayments,
-        historicalBalance
-      ),
+      settlementPayment: financialReadModel,
       archiveFiles: contractArchiveFiles,
       formalFiles: signingFacts.formalFiles,
       ...(ownerContractRiskReadModel
@@ -2110,6 +2124,15 @@ export class ContractReadService {
     };
   }
 
+  private async contractReadRolesByProject(actorId: string, projectIds: string[]): Promise<Map<string, RoleKey[]>> {
+    const roles = await this.projectVisibility?.effectiveRoleKeysByProject(actorId, projectIds) ?? new Map<string, RoleKey[]>();
+    if (projectIds.length && this.projectVisibility?.effectiveRoleScopes) {
+      const scopes = await this.projectVisibility.effectiveRoleScopes(actorId, projectIds[0]);
+      if (scopes.globalRoleKeys.includes("super_admin")) for (const id of projectIds) roles.set(id, [...new Set([...(roles.get(id) ?? []), "super_admin" as const])]);
+    }
+    return roles;
+  }
+
   private async actorRoles(actorUserId: string | undefined, projectId: string): Promise<{
     roleKeys: RoleKey[];
     roleScopes?: ApprovalActorRoleScopes;
@@ -2126,10 +2149,8 @@ export class ContractReadService {
     if (scopedVisibility.effectiveRoleScopes) {
       const roleScopes = await scopedVisibility.effectiveRoleScopes(actorUserId, projectId);
       return {
-        roleKeys: resolveEffectiveRoleKeys(
-          roleScopes.globalRoleKeys,
-          roleScopes.projectRoleKeys
-        ),
+        roleKeys: [...resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys),
+          ...(roleScopes.globalRoleKeys.includes("super_admin") ? ["super_admin" as const] : [])],
         roleScopes
       };
     }
@@ -2214,13 +2235,23 @@ export class ContractReadService {
       return emptyCurrentContractApprovalReview();
     }
     const instance = instances[0];
+    let selfReviewApplicantUserId = instance.applicantUserId;
+    if (actorUserId !== instance.applicantUserId) {
+      try {
+        const originators = await resolveContractOriginators(this.prisma as never, businessId, instance.frozenNodes);
+        if (originators.includes(actorUserId)) selfReviewApplicantUserId = actorUserId;
+      } catch {
+        // Unknown historical provenance restricts this write capability, never historical reads.
+        return emptyCurrentContractApprovalReview();
+      }
+    }
 
     const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
       actorUserId,
-      instance.applicantUserId,
+      selfReviewApplicantUserId,
       false,
       true,
       actorRoleScopes,
@@ -2246,7 +2277,7 @@ export class ContractReadService {
       instance.currentNodeIndex,
       roleKeys,
       actorUserId,
-      instance.applicantUserId,
+      selfReviewApplicantUserId,
       activeDelegators,
       true,
       actorRoleScopes,
@@ -3209,23 +3240,50 @@ export class ContractReadService {
   /**
    * Resolves a user's contract read visibility from their role keys.
    *
-   * Spec 9 groups: global full-view positions see every project's full rows;
-   * project full-view positions see full rows inside their own projects;
-   * `employee` sees only the 7-field public summary of archived formal
-   * contracts; any unconfigured role resolves to `none`.
+   * IAM03 narrows sensitive reads to explicit contract duties. Other known
+   * positions receive only the seven-field public summary unless this exact
+   * contract has ownership, participation or a currently authorized review.
    */
+  private async contractParticipantIds(
+    contracts: Array<{id: string; projectId: string; ownerUserId?: string | null; contractTypeKey?: string | null}>,
+    versions: Array<{id: string; contractId: string; status: string}>,
+    roles: ReadonlyMap<string, readonly RoleKey[]>,
+    actorId?: string
+  ): Promise<Set<string>> {
+    const result = new Set<string>();
+    if (!actorId) return result;
+    const restricted = contracts.filter(contract => this.getContractVisibilityLevel(roles.get(contract.projectId) ?? []) !== "full");
+    if (!restricted.length) return result;
+    if (typeof this.prisma.$queryRaw === "function") {
+      const rows = await this.prisma.$queryRaw<Array<{contractId: string}>>(Prisma.sql`
+        SELECT DISTINCT v."contractId" FROM "ContractVersion" v
+        WHERE v."contractId" IN (${Prisma.join(restricted.map(contract => contract.id))}) AND (
+          EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."actorUserId" = ${actorId} AND
+            ((a."businessType" = 'contract' AND a."businessId" = v."contractId" AND a."action" IN ('contract.draft.create','contract.draft.copy')) OR
+             (a."businessType" = 'contract_version' AND a."businessId" = v."id" AND a."action" = 'contract.change_draft.create'))) OR
+          EXISTS (SELECT 1 FROM "ApprovalInstance" i WHERE i."businessType" = 'contract_version' AND i."businessId" = v."id" AND
+            (i."applicantUserId" = ${actorId} OR EXISTS (SELECT 1 FROM "ApprovalActionLog" a WHERE a."approvalInstanceId" = i."id"
+              AND a."action" IN ('approve','reject','reject_previous','return_to_applicant','transfer','delegate')
+              AND (a."actorUserId" = ${actorId} OR a."representedUserId" = ${actorId}))))
+        )
+      `);
+      for (const row of rows ?? []) result.add(row.contractId);
+    }
+    for (const contract of restricted) {
+      if (contract.ownerUserId === actorId) { result.add(contract.id); continue; }
+      if (result.has(contract.id)) continue;
+      const current = versions.find(version => version.contractId === contract.id && version.status === "in_approval");
+      if (current && (await this.canReviewCurrentApproval("contract_version", current.id, contract.projectId, [...(roles.get(contract.projectId) ?? [])], actorId)).access.canAct) result.add(contract.id);
+    }
+    return result;
+  }
+
   private getContractVisibilityLevel(
     roleKeys: readonly RoleKey[]
   ): ContractVisibilityLevel {
-    if (roleKeys.some((role) => CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS.some((candidate) => candidate === role))) {
-      return "full";
-    }
-    if (roleKeys.some((role) => CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS.some((candidate) => candidate === role))) {
-      return "full";
-    }
-    if (roleKeys.some((role) => CONTRACT_SUMMARY_VIEW_ROLE_KEYS.some((candidate) => candidate === role))) {
-      return "summary";
-    }
+    const fullRoles = ["chairman", "general_manager", "contract_director", "contract_staff", "finance_director", "finance_staff", "comprehensive_director", "project_manager", "super_admin"];
+    if (roleKeys.some(role => fullRoles.includes(role))) return "full";
+    if (roleKeys.some(role => [...CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS, ...CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS, ...CONTRACT_SUMMARY_VIEW_ROLE_KEYS].some(candidate => candidate === role))) return "summary";
     return "none";
   }
 
@@ -3235,9 +3293,14 @@ export class ContractReadService {
    * rows behavior is kept instead of hiding every row.
    */
   private resolveLedgerVisibility(
-    projectRoleKeys: readonly RoleKey[]
+    projectRoleKeys: readonly RoleKey[],
+    contract?: {id: string; ownerUserId?: string | null; contractTypeKey?: string | null},
+    actorId?: string,
+    participantIds: ReadonlySet<string> = new Set()
   ): ContractVisibilityLevel {
-    if (this.ledgerRoleResolutionAvailable()) {
+    if (contract && actorId && (contract.ownerUserId === actorId || participantIds.has(contract.id))) return "full";
+    if (contract && projectRoleKeys.includes("material_director") && ["material_purchase", "equipment_rental"].includes(contract.contractTypeKey ?? "")) return "full";
+    if (actorId || this.ledgerRoleResolutionAvailable()) {
       return this.getContractVisibilityLevel(projectRoleKeys);
     }
     this.warnRoleResolutionFallback();
@@ -3335,6 +3398,7 @@ export class ContractReadService {
       projectId: string;
       ownerUserId: string | null;
       voidedAt: Date | null;
+      contractTypeKey?: string | null;
     }>,
     versionsByContract: Map<string, Array<{ id: string; status: string }>>,
     lifecycleByVersion: ReadonlyMap<
@@ -3343,11 +3407,12 @@ export class ContractReadService {
     >,
     actorUserId: string,
     view: DraftLedgerView,
-    roleKeysByProject: ReadonlyMap<string, readonly RoleKey[]>
+    roleKeysByProject: ReadonlyMap<string, readonly RoleKey[]>,
+    participantIds: ReadonlySet<string> = new Set()
   ) {
     return contracts.filter((contract) => {
       const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
-      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys, contract, actorUserId, participantIds);
       if (visibility === "none") return false;
       const views = projectContractDraftLifecycleViews(
         contract,

@@ -142,50 +142,7 @@
       </div>
     </t-card>
 
-    <t-card
-      title="审批规则只读配置"
-      :bordered="true"
-      class="settings-card approval-settings-card"
-    >
-      <p class="hint">
-        此处展示新提交单据的核心审批规则；已有单据以提交时冻结的实际流程和审批人为准，不开放在线编辑。发起人兼任审批岗位或一人兼任多岗时，均须本人逐节点审批并签名，不跳过节点。正式审批单仅在最终通过后生成，签名取自对应实际审批记录。
-      </p>
-      <div class="approval-flow-grid">
-        <article
-          v-for="rule in approvalFlowRules"
-          :key="rule.id"
-          class="approval-flow"
-        >
-          <header>
-            <div>
-              <strong>{{ rule.title }}</strong>
-              <span>{{ rule.businessType }}</span>
-            </div>
-            <small>只读</small>
-          </header>
-          <ol>
-            <li
-              v-for="node in rule.nodes"
-              :key="`${rule.id}-${node.name}`"
-            >
-              <span class="node-index">{{ rule.nodes.indexOf(node) + 1 }}</span>
-              <div>
-                <strong>{{ node.name }}</strong>
-                <p>{{ modeLabel(node.mode) }} · {{ node.participantLabel || roleNames(node.roleKeys) }}</p>
-              </div>
-            </li>
-          </ol>
-          <ul class="guardrail-list">
-            <li
-              v-for="item in rule.guardrails"
-              :key="item"
-            >
-              {{ item }}
-            </li>
-          </ul>
-        </article>
-      </div>
-    </t-card>
+    <ApprovalFlowReadonlyPanel />
 
     <t-card
       title="业务字典只读页"
@@ -321,11 +278,7 @@ import AccountCredentialDialog from "../../components/AccountCredentialDialog.vu
 import { fetchAccountOptions } from "../../api/employee-onboarding.api";
 import JgSignaturePanel from "../../components/JgSignaturePanel.vue";
 import JgSignatureHandoff from "../../components/JgSignatureHandoff.vue";
-import {
-  approvalFlowRules,
-  modeLabel,
-  roleNames
-} from "./approval-flow-readonly.config";
+import ApprovalFlowReadonlyPanel from "./ApprovalFlowReadonlyPanel.vue";
 import {
   readonlyConfigGroups,
   readonlyDictionaryGroups

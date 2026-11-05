@@ -4,7 +4,7 @@ import { ContractDraftAggregateService } from "../contract-workbench/contract-dr
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
 import { PristineDraftDeletionService } from "../contract-workbench/pristine-draft-deletion.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
-import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
+import { attachApprovalSignatureFixture as attachBaseApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), lockEconomicProject: jest.fn().mockResolvedValue(undefined), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import {
   BadRequestException,
@@ -24,6 +24,20 @@ import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/b
 import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
 import { CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 
+// Each legacy synthetic contract has one explicit creation audit; negative provenance cases override it.
+function attachContractCreationAuditFixture(transaction: object) {
+  const tx = transaction as { $queryRaw?: jest.Mock };
+  const prior = tx.$queryRaw?.bind(tx);
+  tx.$queryRaw = jest.fn(async (query: { strings?: readonly string[] }, ...args: unknown[]) =>
+    query.strings?.join("").includes('"AuditLog"')
+      ? [{ actorUserId: "original-contract-creator" }]
+      : prior ? prior(query, ...args) : []);
+}
+function attachApprovalSignatureFixture(transaction: Parameters<typeof attachBaseApprovalSignatureFixture>[0]) {
+  attachBaseApprovalSignatureFixture(transaction);
+  attachContractCreationAuditFixture(transaction);
+}
+
 // Keep the production definition, ownership, authorization and snapshot services.
 // These legacy unit fixtures replace only the database boundary.
 function connectBusinessEntryFixture(
@@ -41,6 +55,7 @@ function connectBusinessEntryFixture(
     return candidate;
   };
   completeCommercialFixture(version as unknown as Record<string, unknown>);
+  attachContractCreationAuditFixture(transaction);
   const tx = transaction as Prisma.TransactionClient;
   const previousQueryRaw = tx.$queryRaw.bind(tx) as (...args: unknown[]) => Promise<unknown>;
   Object.assign(tx, { $queryRaw: jest.fn(async (...args: unknown[]) => {
@@ -2419,7 +2434,7 @@ name: "签批人甲",
         businessId: "contract-version-1",
         status: "in_progress",
         currentNodeIndex: 0,
-        frozenNodes: frozenRoute,
+        frozenNodes: frozenRoute.map(node => ({ ...node, originatorUserIds: ["original-contract-creator"] })),
         applicantUserId: "user-contract-staff"
       })
     });
@@ -3691,7 +3706,7 @@ name: "签批人甲",
       "staff-1"
     );
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ frozenNodes: frozenRoute })
+      data: expect.objectContaining({ frozenNodes: frozenRoute.map(node => ({ ...node, originatorUserIds: ["original-contract-creator"] })) })
     });
   });
 
@@ -4380,6 +4395,7 @@ name: "签批人甲",
       )
     } as unknown as PrismaService;
     const seals = { ensurePendingTask: jest.fn().mockResolvedValue({ id: "seal-1" }) };
+    attachContractCreationAuditFixture(tx);
     const service = new ContractService(
       prisma,
       audit as never,
@@ -4517,6 +4533,7 @@ name: "签批人甲",
       generateForInstance: jest.fn().mockRejectedValue(new Error("PDF renderer unavailable"))
     };
     const seals = { ensurePendingTask: jest.fn().mockResolvedValue({ id: "seal-1" }) };
+    attachContractCreationAuditFixture(tx);
     const service = new ContractService(
       prisma,
       audit as never,
@@ -4804,6 +4821,30 @@ name: "签批人甲",
     const service = new ContractService(prisma, audit as never, auth as never);
     return { service, tx };
   }
+
+  it("合同转交后原创建人审批仍须自审确认", async () => {
+    const { service, tx } = contractLeaderSelfReviewFixture();
+    const instance = await tx.approvalInstance.findFirst();
+    tx.approvalInstance.findFirst.mockResolvedValue({ ...instance, applicantUserId: "receiver" });
+    tx.$queryRaw.mockImplementation(async (query: { strings: string[] }) => query.strings.join("").includes('"AuditLog"') ? [{ actorUserId: "leader-1" }] : []);
+    await expect(service.reviewApproval("contract-version-1", "leader-1", {
+      ...contractReviewCoordinates(), decision: "approve"
+    })).rejects.toThrow("请填写自审原因");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it.each([[], [{ actorUserId: "a" }, { actorUserId: "b" }]])("合同创建来源缺失或多义时拒绝审批且零写入", async (...rows) => {
+    const { service, tx } = contractLeaderSelfReviewFixture();
+    const instance = await tx.approvalInstance.findFirst();
+    tx.approvalInstance.findFirst.mockResolvedValue({ ...instance, applicantUserId: "receiver" });
+    tx.$queryRaw.mockImplementation(async (query: { strings: string[] }) => query.strings.join("").includes('"AuditLog"') ? rows : []);
+    await expect(service.reviewApproval("contract-version-1", "leader-1", {
+      ...contractReviewCoordinates(), decision: "approve"
+    })).rejects.toThrow("联系合同主管核实");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
 
   it.each([
     [
@@ -5866,6 +5907,7 @@ name: "签批人甲",
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
+    attachContractCreationAuditFixture(tx);
     const service = new ContractService(prisma as never, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "transfer-user-1", {

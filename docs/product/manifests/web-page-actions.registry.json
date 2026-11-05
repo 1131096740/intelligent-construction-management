@@ -9953,6 +9953,54 @@
           "name": "sendAdminPhoneChangeSms"
         }
       ]
+    },
+    {
+      "id": "approval-delegation.create",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createDelegationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDelegate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createApprovalDelegation"
+        }
+      ]
+    },
+    {
+      "id": "approval-delegation.revoke",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "revokeDelegationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRevoke"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "revokeApprovalDelegation"
+        }
+      ]
     }
   ]
 }

@@ -599,6 +599,79 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     await runPreparedParallelPgHttpCases(preparedParallelHttp(), "last-decision");
   }, 60_000);
 
+  // Task05 PREPARED / NOT RUN. These cases remain under the existing explicit PG16 opt-in.
+  async function createManagerMandate(id: string) {
+    const detail = expectHttpStatus("指定职责详情", await json(`/spot-procurements/${id}`, manager), 200).body!;
+    const coordinates = detail.reviewApprovalContext!;
+    const targetUserId = (refundFinance.user as { id: string }).id;
+    const mandate = expectHttpStatus("创建精确临时委托", await json("/approval-delegations", manager, "POST", {
+      toUserId: targetUserId, startsAt: new Date(Date.now() - 1000).toISOString(), endsAt: new Date(Date.now() + 60000).toISOString(),
+      actionKey: "spot_procurement.approve", resourceType: "spot_procurement_approval_duty", resourceId: `${coordinates.expectedApprovalInstanceId}:1`
+    }), 201);
+    return { coordinates, mandateId: (mandate.body as unknown as { id: string }).id };
+  }
+
+  (enabled ? it : it.skip)("人员PG竞争：原岗位和精确受托人同时办理仅生效一次", async () => {
+    const id = await preparedParallelHttp().createSubmittedApplication("personnel-delegate-race");
+    const { coordinates } = await createManagerMandate(id);
+    // Controlled fixture signature through the public private-file boundary.
+    const signature = new FormData();
+    signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], {type: "image/png"}), "合成受托签名.png");
+    expect((await fetch(`${baseUrl}/me/signature/canvas`, {method: "POST", headers: {authorization: `Bearer ${refundFinance.tokens.accessToken}`}, body: signature})).status).toBe(201);
+    const results = await Promise.all([manager, refundFinance].map(session => json(`/spot-procurements/${id}/approval`, session, "POST", {...coordinates, decision: "approve"})));
+    expect(results.filter(result => result.status === 201)).toHaveLength(1);
+    expect(results.filter(result => [403,409].includes(result.status))).toHaveLength(1);
+    const after = expectHttpStatus("竞争后回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+    expect(after.approvalTimeline.filter(log => log.action === "approve")).toHaveLength(1);
+    expect(after.payments).toHaveLength(0);
+    expect([403,409]).toContain((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "approve"})).status);
+    for (const actor of [manager, refundFinance]) {
+      const work = expectHttpStatus("竞办结束后待办回读", await json("/me/work-items", actor), 200).body as unknown as {queues:{pending:Array<{businessId:string}>}};
+      expect(work.queues.pending.filter(item=>item.businessId===coordinates.expectedVersionId)).toHaveLength(0);
+    }
+    const stable = expectHttpStatus("拒绝重复后状态回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+    expect(stable.approvalTimeline.filter(log=>log.action==="approve")).toHaveLength(1);
+  }, 60_000);
+
+  (enabled ? it : it.skip)("人员PG撤销：旧受托链接即时失权且不影响原岗位", async () => {
+    const id = await preparedParallelHttp().createSubmittedApplication("personnel-delegate-revoke");
+    const { coordinates, mandateId } = await createManagerMandate(id);
+    expectHttpStatus("撤销精确委托", await json(`/approval-delegations/${mandateId}`, manager, "DELETE"), 200);
+    expect((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "return_to_applicant", comment: "过期链接不得写入"})).status).toBe(403);
+    expectHttpStatus("原岗位仍可办理", await reviewCurrent(id, manager, "return_to_applicant", "原岗位继续办理"), 201);
+  }, 60_000);
+
+  (enabled ? it : it.skip)("人员PG到期：半开期限结束后受托读取和办理均拒绝", async () => {
+    const id = await preparedParallelHttp().createSubmittedApplication("personnel-delegate-expiry");
+    const { coordinates, mandateId } = await createManagerMandate(id);
+    await app.get(PrismaService).approvalDelegation.update({where: {id: mandateId}, data: {startsAt: new Date(Date.now()-2000), endsAt: new Date(Date.now()-1000)}});
+    expect((await json(`/spot-procurements/${id}`, refundFinance)).status).toBe(403);
+    expect((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "return_to_applicant", comment: "已到期"})).status).toBe(403);
+  }, 60_000);
+
+  (enabled ? it : it.skip)("人员PG自审：同一创建人兼两职责每次均验证本人密码并分别签批", async () => {
+    const db = app.get(PrismaService);
+    const userId = (applicant.user as {id: string}).id;
+    const positions = await db.position.findMany({where: {key: {in: ["material_director", "project_manager"]}}});
+    const assignmentIds: string[] = [];
+    try {
+      for (const position of positions) assignmentIds.push((await db.userPosition.create({data: {userId, positionId: position.id, projectId: projectIds.api}})).id);
+      const signature = new FormData();
+      signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], {type:"image/png"}), "合成本人签名.png");
+      expect((await fetch(`${baseUrl}/me/signature/canvas`, {method:"POST",headers:{authorization:`Bearer ${applicant.tokens.accessToken}`},body:signature})).status).toBe(201);
+      const id = await preparedParallelHttp().createSubmittedApplication("personnel-self-two-duties");
+      for (const index of [0, 1]) {
+        const detail = expectHttpStatus("本人职责回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+        const coordinates = {...detail.reviewApprovalContext!, expectedNodeIndex: index};
+        expect((await json(`/spot-procurements/${id}/approval`, applicant, "POST", {...coordinates, decision:"approve"})).status).toBe(400);
+        expectHttpStatus("本人逐职责确认", await json(`/spot-procurements/${id}/approval`, applicant, "POST", {...coordinates, decision:"approve",selfReviewReason:`本人核对第${index+1}项职责`,confirmationPassword:accountPassword}), 201);
+      }
+      const after = expectHttpStatus("逐职责通过回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+      expect(after.approvalTimeline.filter(log=>log.action==="approve")).toHaveLength(2);
+      expect(after.payments).toHaveLength(1);
+    } finally { await db.userPosition.deleteMany({where:{id:{in:assignmentIds}}}); }
+  }, 60_000);
+
   (enabled ? it : it.skip)("并联PG通知：两个消费者只领取并发送同一职责一次", async () => {
     const http = preparedParallelHttp();
     const id = await http.createSubmittedApplication("parallel-notification-claim");

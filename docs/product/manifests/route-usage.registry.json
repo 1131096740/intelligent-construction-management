@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 698,
+    "routeCount": 702,
     "classificationOverrideCount": 222,
-    "derivedProductionPageCount": 476,
-    "classificationOverrideSha256": "7699a4b8cc0fd88e24bfc3300dcd67df59a5cdecdfccc6a9c0c206b76df37a26",
+    "derivedProductionPageCount": 480,
+    "classificationOverrideSha256": "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
     "usageCounts": {
-      "page": 492,
+      "page": 498,
       "external_takeover": 70,
-      "exit_candidate": 99,
+      "exit_candidate": 97,
       "internal_task": 37,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 545,
+      "web_api_wrapper": 551,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 110
+      "none": 108
     }
   },
   "overrides": [
@@ -64,8 +64,8 @@
     {
       "method": "DELETE",
       "path": "/approval-delegations/:delegationId",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "task05_exact_duty_delegation_active_page_with_fresh_server_capability_and_transactional_authorization"
     },
     {
       "method": "DELETE",
@@ -334,8 +334,8 @@
     {
       "method": "POST",
       "path": "/approval-delegations",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+      "usage": "page",
+      "reason": "task05_exact_duty_delegation_active_page_with_fresh_server_capability_and_transactional_authorization"
     },
     {
       "method": "POST",

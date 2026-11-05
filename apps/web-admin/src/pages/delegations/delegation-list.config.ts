@@ -24,7 +24,8 @@ export const delegationLedgerColumns: PrimaryTableCol<DelegationLedgerRow>[] = [
   { colKey: "startsAt", title: "生效时间", width: 176 },
   { colKey: "endsAt", title: "失效时间", width: 176 },
   { colKey: "deadlineLabel", title: "到期提醒", width: 112 },
-  { colKey: "enabled", title: "状态", width: 96 }
+  { colKey: "enabled", title: "状态", width: 96 },
+  { colKey: "actions", title: "操作", width: 100 }
 ];
 
 export function mapDelegationLedgerRows(
@@ -34,7 +35,7 @@ export function mapDelegationLedgerRows(
 ): DelegationLedgerRow[] {
   return rows.map((row) => ({
     ...row,
-    scopeLabel: "合同/结算/付款审批",
+    scopeLabel: row.scopeLabel ?? (row.resourceType === "spot_procurement_approval_duty" ? "指定零星申请审批职责" : "历史合同/结算/付款审批"),
     actingLabel: formatActingLabel(row, currentUserId),
     ...formatDeadline(row, now)
   }));

@@ -7300,6 +7300,10 @@ export function generateSettlementPdfArchive(
 }
 
 export interface ApprovalDelegationReadModel {
+  actionKey?: string | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  scopeLabel?: string;
   id: string;
   fromUserId: string;
   fromUserName?: string;
@@ -7317,6 +7321,9 @@ export interface UserOptionReadModel {
 }
 
 export interface CreateApprovalDelegationPayload {
+  actionKey?: "spot_procurement.approve";
+  resourceType?: "spot_procurement_approval_duty";
+  resourceId?: string;
   toUserId: string;
   startsAt: string;
   endsAt: string;
@@ -7326,8 +7333,12 @@ export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
 }
 
-export function fetchApprovalDelegationUserOptions() {
-  return readJson<UserOptionReadModel[]>("/approval-delegations/user-options");
+export function fetchApprovalDelegationDutyOptions() {
+  return readJson<Array<{value: string; label: string}>>("/approval-delegations/duty-options");
+}
+
+export function fetchApprovalDelegationUserOptions(dutyId?: string) {
+  return readJson<UserOptionReadModel[]>(`/approval-delegations/user-options${dutyId ? `?dutyId=${encodeURIComponent(dutyId)}` : ""}`);
 }
 
 export function createApprovalDelegation(body: CreateApprovalDelegationPayload) {
@@ -7346,4 +7357,20 @@ export function fetchContractFinancialBalances(input:{projectId?:string;companyE
  if(input.companyEntityId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/company/${encodeURIComponent(input.companyEntityId)}?${query}`);
  query.set("scopeKind","projects");
  return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/as-of?${query}`);
+}
+
+export interface ApprovalRuleAssignmentsReadModel {
+  projects: Array<{id: string; name: string}>;
+  projectId: string | null;
+  roles: Array<{roleKey: string; people: Array<{id: string; name: string}>; missing: boolean}>;
+}
+export function fetchApprovalRuleAssignments(projectId?: string) {
+  return readJson<ApprovalRuleAssignmentsReadModel>(`/approval-rule-assignments${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
+}
+
+export function fetchApprovalDelegationDutyCapability(dutyId: string) {
+  return readJson<{canDelegate: boolean}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
+}
+export function fetchApprovalDelegationRevokeCapability(id: string) {
+  return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);
 }

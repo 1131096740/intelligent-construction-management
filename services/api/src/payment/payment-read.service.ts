@@ -1,3 +1,4 @@
+import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import type { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
@@ -385,11 +386,14 @@ export class PaymentReadService {
     options?: { all?: boolean; actorUserId?: string }
   ) {
     const take = this.limit(rawLimit);
-    const payments = await this.prisma.paymentRequest.findMany({
+    const allPayments = await this.prisma.paymentRequest.findMany({
       ...(visibleProjectIds ? { where: { projectId: { in: visibleProjectIds } } } : {}),
       ...(options?.all ? {} : { take }),
       orderBy: { updatedAt: "desc" }
     });
+    const payments = options?.actorUserId ? (await Promise.all(allPayments.map(async row =>
+      await sensitiveBusinessReadAllowed(this.prisma, "payment_request", row.id, options.actorUserId!, await this.actorRoleKeys(options.actorUserId, row.projectId)) ? row : null
+    ))).filter((row): row is NonNullable<typeof row> => row !== null) : allPayments;
     const historicalClient = this.prisma as unknown as {
       contractTakeover?: {
         findMany(args: unknown): Promise<Array<{
@@ -429,7 +433,7 @@ export class PaymentReadService {
       Boolean(
         historicalClient.contractTakeoverHistoricalPaymentVoucher?.findMany
       );
-    const historicalTakeovers = canReadHistoricalTakeoverPayments
+    const allHistoricalTakeovers = canReadHistoricalTakeoverPayments
       ? await historicalClient.contractTakeover!.findMany({
           where: {
             ...(visibleProjectIds
@@ -447,6 +451,9 @@ export class PaymentReadService {
           orderBy: { activatedAt: "desc" }
         })
       : [];
+    const historicalTakeovers = options?.actorUserId ? (await Promise.all(allHistoricalTakeovers.map(async row =>
+      hasSensitiveLedgerReadRole("payment_request", await this.actorRoleKeys(options.actorUserId, row.projectId)) ? row : null
+    ))).filter((row): row is NonNullable<typeof row> => row !== null) : allHistoricalTakeovers;
     const takeoverIds = historicalTakeovers.map(
       (takeover) => takeover.id
     );
@@ -831,6 +838,9 @@ export class PaymentReadService {
       roleKeys,
       actorUserId
     );
+    if (actorUserId && !currentApprovalReview.access.canAct && !(await sensitiveBusinessReadAllowed(this.prisma, "payment_request", payment.id, actorUserId, roleKeys))) {
+      throw new NotFoundException("未找到付款申请，请刷新付款台账后重试");
+    }
     const ledgerVisible =
       visibleProjectIds === undefined ||
       visibleProjectIds.includes(payment.projectId);

@@ -1,3 +1,4 @@
+import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
   BadRequestException,
@@ -810,7 +811,9 @@ export class SpotProcurementReadService {
       SPOT_PROCUREMENT_BUSINESS_TYPES.application,
       currentVersion.id
     );
+    const delegatedReviewIndexes = currentApproval ? await scopedSpotDutyNodeIndexes(this.prisma as never, currentApproval, procurement.projectId, actorUserId) : [];
     const availableActions = this.procurementActions({
+      delegatedReviewIndexes,
       procurement,
       currentVersion,
       currentApproval,
@@ -850,7 +853,7 @@ export class SpotProcurementReadService {
             expectedVersionId: currentVersion.id,
             expectedApprovalInstanceId: currentApproval.id,
             expectedNodeIndex: activeApprovalNodeIndexes(currentApproval.frozenNodes, currentApproval.currentNodeIndex).find(index =>
-              pendingRoleKeysForFrozenApprovalNode(currentApproval.frozenNodes, index).some(role => roleKeys.includes(role))
+              pendingRoleKeysForFrozenApprovalNode(currentApproval.frozenNodes, index).some(role => roleKeys.includes(role)) || delegatedReviewIndexes.includes(index)
             ) ?? currentApproval.currentNodeIndex
           }
         : null;
@@ -2732,6 +2735,7 @@ export class SpotProcurementReadService {
     currentVersion: SpotProcurementVersion;
     currentApproval: ApprovalInstance | null;
     currentPendingApprovalCount: number;
+    delegatedReviewIndexes?: number[];
     roleKeys: RoleKey[];
     actorUserId: string;
     activePayments: SpotProcurementPayment[];
@@ -2786,11 +2790,9 @@ export class SpotProcurementReadService {
     const canMutateCurrentApplicationRevision =
       input.canonicalRealRevisionSource &&
       !hasRevisionDownstreamFacts;
-    const selfReviewClosed = Boolean(input.currentApproval && isParallelApprovalRound(input.currentApproval.frozenNodes) &&
-      (input.actorUserId === input.procurement.applicantUserId || input.actorUserId === input.currentApproval.applicantUserId));
-    const canReview = !selfReviewClosed &&
+    const canReview =
       canMutateCurrentApplicationRevision &&
-      Boolean(reviewAccess?.canReview);
+      Boolean(reviewAccess?.canReview || input.delegatedReviewIndexes?.length);
     const canWithdraw =
       input.pilotEnabled &&
       canMutateCurrentApplicationRevision &&
@@ -2922,6 +2924,7 @@ export class SpotProcurementReadService {
         requiredAction: "spot_procurement.approve",
         skipRoleCheck: true,
         enabled: canReview,
+        requiresSelfReviewConfirmation: canReview && input.currentApproval?.applicantUserId === input.actorUserId,
         disabledReason:
           input.currentPendingApprovalCount > 1
             ? "当前采购存在多个待审批实例，请联系管理员处理"
@@ -2929,9 +2932,7 @@ export class SpotProcurementReadService {
               ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
             : hasRevisionDownstreamFacts
               ? "当前采购已存在付款或收货事实，不能处理审批"
-            : selfReviewClosed
-              ? "本单由你创建或提交，当前职责请由其他有权人员办理"
-              : "当前账号不是本审批节点处理人"
+            : "当前账号不是本审批职责处理人"
       }),
       detailAction({
         key: "withdraw_approval",

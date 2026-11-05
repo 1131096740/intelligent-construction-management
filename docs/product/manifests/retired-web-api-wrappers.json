@@ -110,7 +110,6 @@
         "confirmProjectOwnerContract",
         "confirmProjectUpstreamSettlement",
         "copyAbandonedContractDraft",
-        "createApprovalDelegation",
         "createSettlementDraft",
         "fetchActiveContractNumberRules",
         "fetchContractWorkbenchLedger",
@@ -128,8 +127,7 @@
         "remindPaymentApproval",
         "remindSettlementApproval",
         "requestSettlementExceptionQuota",
-        "reviewSettlementExceptionQuota",
-        "revokeApprovalDelegation"
+        "reviewSettlementExceptionQuota"
       ]
     },
     {

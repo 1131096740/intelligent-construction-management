@@ -1,3 +1,4 @@
+import {SPOT_APPROVAL_DUTY_RESOURCE, spotApprovalDutyId} from "./spot-approval-duty-access";
 import { activeApprovalNodeIndexes, isParallelApprovalRound, isApprovalDutyComplete, isParallelDutyNotificationEvent } from "./parallel-approval-protocol";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma, type ApprovalInstance } from "@prisma/client";
@@ -203,6 +204,7 @@ export class ApprovalProgressService {
       db.approvalActionLog.findMany({ where: { approvalInstanceId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
       db.approvalDelegation.findMany({ where: { enabled: true, startsAt: { lte: new Date() }, endsAt: { gt: new Date() }, OR: [
         { actionKey: null, resourceType: null, resourceId: null },
+        ...(instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).map(index => ({actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE, resourceId: spotApprovalDutyId(instance.id, index)})) : []),
         ...(instance.businessType === "fund_execution_case" ? [{ actionKey: "fund_execution_case.approve", resourceType: "fund_execution_case", resourceId: instance.businessId }] : [])
       ] } }),
       projectId ? db.project.findUnique({ where: { id: projectId }, select: { name: true, isActive: true } }) : Promise.resolve(null)
@@ -217,8 +219,11 @@ export class ApprovalProgressService {
     });
     const allRoles = (userId: string) => ["project_expense_request", "spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? resolveEffectiveRoleKeys(roles.get(userId)?.globalRoleKeys ?? [], roles.get(userId)?.projectRoleKeys ?? []) : [...(roles.get(userId)?.globalRoleKeys ?? []), ...(roles.get(userId)?.projectRoleKeys ?? [])];
     const supportsGlobalDelegation = ["contract_version", "settlement", "payment_request", "fund_execution_case"].includes(instance.businessType);
-    const activeDelegatorsFor = (userId: string) => supportsGlobalDelegation ? delegations
-      .filter(d => d.toUserId === userId && ((d.actionKey == null && d.resourceType == null && d.resourceId == null) || (instance.businessType === "fund_execution_case" && d.actionKey === "fund_execution_case.approve" && d.resourceType === "fund_execution_case" && d.resourceId === instance.businessId)) && byId.get(d.fromUserId)?.isActive)
+    const parallelSpot = instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes);
+    const activeDelegatorsFor = (userId: string, nodeIndex = instance.currentNodeIndex) => supportsGlobalDelegation || parallelSpot ? delegations
+      .filter(d => d.toUserId === userId && byId.get(d.fromUserId)?.isActive && (parallelSpot
+        ? d.actionKey === "spot_procurement.approve" && d.resourceType === SPOT_APPROVAL_DUTY_RESOURCE && d.resourceId === spotApprovalDutyId(instance.id, nodeIndex)
+        : ((d.actionKey == null && d.resourceType == null && d.resourceId == null) || (instance.businessType === "fund_execution_case" && d.actionKey === "fund_execution_case.approve" && d.resourceType === "fund_execution_case" && d.resourceId === instance.businessId))))
       .map(d => ({ userId: d.fromUserId, roleKeys: allRoles(d.fromUserId), roleScopes: roles.get(d.fromUserId) })) : [];
     const hasAssignmentReceipt = (assignment: Record<string, unknown>) => logs.some(log => {
       const metadata = object(log.metadata);
@@ -243,14 +248,14 @@ export class ApprovalProgressService {
       return { ...node, assignments: Array.isArray(node.assignments) ? node.assignments.filter(assignment => validAssignment(node, assignment)) : [] };
     }) : [];
     const legacyCandidates = (node: FrozenApprovalNode) => users.filter(u => u.isActive && resolveApprovalReviewIdentity({ node: { ...node, approvedRoleKeys: [] }, actorUserId: u.id, actorRoleKeys: allRoles(u.id), actorRoleScopes: roles.get(u.id), legacyContractRoute: instance.businessType === "contract_version" })).map(u => u.id);
-    const nodeIds = rawNodes.map(node => isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
+    const nodeIds = rawNodes.map((node, nodeIndex) => isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
       ? [...new Set(logs.filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId))]
       : [...new Set([
       ...(isGovernedFrozenApprovalNode(node) ? (typeof node.selectedUserId === "string" ? [node.selectedUserId] : frozenCandidateUserIds(node)) : legacyCandidates(node)),
       ...node.assignments.flatMap(a => [object(a).fromUserId, object(a).toUserId].filter((v): v is string => typeof v === "string")),
-      ...users.filter(user => user.isActive && activeDelegatorsFor(user.id).length > 0 && resolveApprovalReviewIdentity({
+      ...users.filter(user => user.isActive && activeDelegatorsFor(user.id, nodeIndex).length > 0 && resolveApprovalReviewIdentity({
         node: { ...node, approvedRoleKeys: [] }, actorUserId: user.id, actorRoleKeys: allRoles(user.id), actorRoleScopes: roles.get(user.id),
-        activeDelegators: activeDelegatorsFor(user.id), legacyContractRoute: instance.businessType === "contract_version"
+        activeDelegators: activeDelegatorsFor(user.id, nodeIndex), legacyContractRoute: instance.businessType === "contract_version"
       })).map(user => user.id)
     ])]);
     const participants = new Set([instance.applicantUserId, ...nodeIds.flat(), ...logs.filter(l => ["approve", "reject", "reject_previous", "return_to_applicant", "transfer", "delegate"].includes(l.action)).map(l => l.actorUserId)]);
@@ -271,15 +276,15 @@ export class ApprovalProgressService {
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const pending = !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
-      if (!user.isActive || (instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.applicantUserId === user.id)) return false;
+      if (!user.isActive) return false;
       const actorRoleKeys = allRoles(user.id);
       const identity = activeIndexes.map(index => resolveApprovalReviewIdentity({
         node: rawNodes[index], actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), legacyContractRoute: instance.businessType === "contract_version",
-        activeDelegators: activeDelegatorsFor(user.id)
+        activeDelegators: activeDelegatorsFor(user.id, index)
       })).find(Boolean);
       if (!identity || (instance.businessType === "general_procurement" && identity.viaAssignment)) return false;
       if (instance.businessType === "company_transfer" && instance.applicantUserId === user.id) return false;
-      if (instance.businessType === "fund_execution_case") return true;
+      if (instance.businessType === "fund_execution_case" || parallelSpot) return true;
       if (instance.applicantUserId !== user.id) return true;
       // Mirror each domain's existing self-review eligibility, without performing its confirmation step.
       if (["expense_claim", "general_procurement"].includes(instance.businessType)) return identity.representedUserId === user.id && !identity.viaAssignment;
