@@ -3666,3 +3666,24 @@ describe("SpotProcurementReadService", () => {
     ]);
   });
 });
+
+
+it("项目经理详情直接取得自己的并联职责坐标", async () => {
+  const fixture = buildFixture();
+  fixture.prisma.spotProcurement.findUnique.mockResolvedValue(realProcurementRow({ status: "approval_pending" }));
+  fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([realVersionRow({ status: "approval_pending", approvedAt: null })]);
+  fixture.prisma.spotProcurementLine.findMany.mockResolvedValue([canonicalRealApplicationLine()]);
+  fixture.prisma.spotProcurementPayment.findMany.mockResolvedValue([]);
+  fixture.prisma.spotProcurementPaymentExecution.findMany.mockResolvedValue([]);
+  fixture.prisma.approvalInstance.findMany.mockResolvedValue([{ id: "approval-1", flowType: "spot_procurement.approve", businessType: "spot_procurement_version", businessId: "version-1", status: "approval_pending", currentNodeIndex: 0,
+    frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ], applicantUserId: "applicant-1", createdAt: now, updatedAt: now }]);
+  fixture.visibility.effectiveRoleKeys.mockResolvedValue(["project_manager"]);
+  const service = new SpotProcurementReadService(fixture.prisma as never, fixture.visibility as never, fixture.access as never, fixture.pilot as never);
+  const detail = await service.getProcurement("procurement-1", "manager-1");
+  expect(detail.reviewApprovalContext).toEqual({expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1});
+  expect(detail.approval.currentRoleKeys).toEqual(["material_director", "project_manager"]);
+  expect(detail.availableActions.find(action => action.key === "download_application_pdf")).toMatchObject({enabled: true});
+});

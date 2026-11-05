@@ -3253,3 +3253,70 @@ getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.include
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });
+
+function parallelFormFixture() {
+  const instance = { id: "parallel-1", businessType: "spot_procurement_version", businessId: "version-1", status: "approval_pending", applicantUserId: "applicant-1", currentNodeIndex: 0, updatedAt: new Date("2026-11-05T00:00:00Z"), frozenNodes: [
+    {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[]},
+    {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[]}
+  ] };
+  const logs: Array<Record<string, unknown>> = [];
+  const procurement = { id: "procurement-1", projectId: "project-1", code: "LXCG-001", currentVersionId: "version-1" };
+  const prisma = buildPrisma({
+    approvalInstance: { findFirst: jest.fn(async () => instance), findUnique: jest.fn(async () => instance) },
+    approvalActionLog: { findMany: jest.fn(async () => logs), findFirst: jest.fn(async () => logs.at(-1) ?? null) },
+    spotProcurementVersion: { findUnique: jest.fn(async () => ({ id: "version-1", procurementId: "procurement-1", versionNo: 1, reason: "现场补料", requestedArrivalAt: new Date(), totalAmountCents: null })) },
+    spotProcurement: { findUnique: jest.fn(async () => procurement) },
+    spotProcurementLine: { findMany: jest.fn(async () => []) },
+    fileObject: { findUnique: jest.fn(async () => ({ id: "signature-1", objectKey: "signatures/1.png", storageStatus: "active", contentSha256: createHash("sha256").update(PNG_1X1).digest("hex") })) }
+  });
+  const files = new FileService(prisma as never, {} as never, {read: async () => PNG_1X1} as never);
+  const service = new ApprovalFormService(prisma as never, files, {record: async () => ({})} as never,
+    {confirmPassword: async () => ({})} as never, {resolveBusinessDownloadAccess: async () => "allowed"} as never);
+  return { service, instance, logs, procurement };
+}
+
+it("并联办理中下载当前轮未完成审批单，不读取旧缓存", async () => {
+  const { service } = parallelFormFixture();
+  const result = await service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "查看办理进度");
+  expect(result.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(result.fileName).toContain("审批未完成");
+});
+
+it("并联最终审批单按职责冻结逆序签字，个人签名后来变化不改已有签字", async () => {
+  const { service, instance, logs } = parallelFormFixture();
+  instance.status = "approved";
+  for (const node of instance.frozenNodes) node.approvedRoleKeys = [...node.roleKeys];
+  for (const [index, role] of ["project_manager", "material_director"].entries()) logs.push({
+    id: `log-${index}`, action: "approve", actorUserId: `user-${role}`, approvedRoleKey: role,
+    signatureFileIdSnapshot: "signature-1", signatureVersionIdSnapshot: `frozen-${role}`, signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"),
+    metadata: {approverName: role === "project_manager" ? "原项目经理" : "原物资主管"}, createdAt: new Date("2026-11-05T00:00:00Z")
+  });
+  const result = await service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核对最终职责签字");
+  expect(result.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(result.fileName).not.toContain("审批未完成");
+});
+
+it.each(["missing", "duplicate", "unknown"])("并联签字%s时公开下载拒绝替代完整职责证明", async (kind) => {
+  const { service, instance, logs } = parallelFormFixture();
+  instance.status = "approved";
+  instance.frozenNodes[0].approvedRoleKeys = ["material_director"];
+  instance.frozenNodes[1].approvedRoleKeys = ["project_manager"];
+  if (kind !== "missing") {
+    for (const role of kind === "duplicate" ? ["material_director", "material_director"] : ["chairman"]) logs.push({
+      id: `log-${logs.length}`, action: "approve", actorUserId: "actor-1", approvedRoleKey: role, createdAt: new Date()
+    });
+  }
+  await expect(service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核对签字")).rejects.toThrow(/并联/);
+});
+
+it("旧轮公开下载在后台拒绝，不会重用已生成PDF", async () => {
+  const { service, procurement } = parallelFormFixture();
+  procurement.currentVersionId = "version-2";
+  await expect(service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "旧链接")).rejects.toThrow("该审批轮已失效");
+});
+
+it("未知并联协议版本不能回退为旧串联证明", async () => {
+  const {service, instance} = parallelFormFixture();
+  instance.frozenNodes[0].protocolVersion = 2;
+  await expect(service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核验协议")).rejects.toThrow("审批职责协议版本无效");
+});

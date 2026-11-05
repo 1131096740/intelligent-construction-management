@@ -1,0 +1,84 @@
+import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
+
+function fixture() {
+  const round = {id: "round-1", businessId: "version-1", businessType: "spot_procurement_version", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "applicant-1", frozenNodes: [
+    {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[]},
+    {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[]}
+  ]};
+  let assignments = [{projectId: "project-1", userId: "materials-1", roleKey: "material_director", userIsActive: true}];
+  const notices = new Map<string, {id: string; actorUserId: string; approvalInstanceId: string; action: string; metadata: Record<string, unknown>}>();
+  const db = {
+    approvalInstance: {findMany: async () => [round], findUnique: async () => round},
+    spotProcurementVersion: {findUnique: async () => ({id: "version-1", procurementId: "procurement-1"})},
+    spotProcurement: {findUnique: async () => ({id: "procurement-1", currentVersionId: "version-1", projectId: "project-1", code: "LXCG-001", status: "approval_pending"})},
+    approvalActionLog: {
+      createMany: async ({data}: {data: Array<NonNullable<ReturnType<typeof notices.get>>>}) => {let count = 0; for (const item of data) if (!notices.has(item.id)) {notices.set(item.id, item); count++;} return {count};},
+      findMany: async () => [...notices.values()],
+      findUnique: async ({where}: {where: {id: string}}) => notices.get(where.id) ?? null,
+    },
+    user: {findUnique: async ({where}: {where: {id: string}}) => ({id: where.id, isActive: true, phone: "13800000001"})},
+    $queryRaw: async (query: {strings: string[]}) => {
+      const sql = query.strings.join("");
+      if (sql.includes("WITH members")) return assignments;
+      if (sql.includes("SELECT queued.*")) return [...notices.values()].filter(row => row.metadata.event === "queued" && ![...notices.values()].some(receipt => receipt.metadata.intentId === row.id));
+      return [];
+    }
+  };
+  const prisma = {...db, $transaction: async <T>(operation: (tx: typeof db) => Promise<T>) => operation(db)};
+  const sent: string[] = [];
+  const sms = {available: () => true, send: async (_phone: string, _label: string, duty: string) => {sent.push(duty); return {status: "accepted", message: "已提交"};}};
+  const service = new SpotProcurementApprovalNotificationService(prisma as never, sms as never);
+  return {service, round, sent, notices, sms, db, removeMaterials: () => {assignments = [];}, replaceMaterials: () => {assignments = [{projectId: "project-1", userId: "materials-new", roleKey: "material_director", userIsActive: true}];}, addManager: () => {assignments = [...assignments, {projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}];}};
+}
+
+it("自动消费已配职责，缺岗补齐后只发新职责新收件人一次", async () => {
+  const {service, sent, addManager} = fixture();
+  await service.reconcilePending();
+  expect(sent).toEqual(["物资主管"]);
+  addManager();
+  await service.reconcilePending();
+  await service.reconcilePending();
+  expect(sent).toEqual(["物资主管", "项目经理"]);
+});
+
+it("发送结果不明永久保留待核对，不自动重发", async () => {
+  const {service, sent, sms, notices} = fixture();
+  sms.send = async (_phone, _label, duty) => { sent.push(duty); return {status: "unknown", message: "结果待确认"}; };
+  await service.reconcilePending();
+  await service.reconcilePending();
+  expect(sent).toEqual(["物资主管"]);
+  expect([...notices.values()].filter(row => row.metadata.event === "unknown")).toHaveLength(1);
+});
+
+it("已办职责补换人员不再产生新通知", async () => {
+  const {service, sent, round, addManager} = fixture();
+  await service.reconcilePending();
+  round.frozenNodes[1].approvedRoleKeys = ["project_manager"];
+  addManager();
+  await service.reconcilePending();
+  expect(sent).toEqual(["物资主管"]);
+});
+
+it("测试环境生命周期不启动自动查库和发送", async () => {
+  const {service, sent, notices} = fixture();
+  service.onModuleInit();
+  await Promise.resolve();
+  service.onModuleDestroy();
+  expect(sent).toEqual([]);
+  expect(notices.size).toBe(0);
+});
+
+
+it("发送前再次核验当前岗位，旧收件人取消，新收件人接未办通知", async () => {
+  const {service, db, round, sent, notices, removeMaterials, replaceMaterials} = fixture();
+  await service.queueInTransaction(db as never, round as never, "project-1", "LXCG-001");
+  removeMaterials();
+  await service.dispatchQueued();
+  expect(sent).toEqual([]);
+  expect([...notices.values()].filter(row => row.metadata.event === "cancelled")).toHaveLength(1);
+  replaceMaterials();
+  await service.reconcilePending();
+  expect(sent).toEqual(["物资主管"]);
+  expect([...notices.values()].filter(row => row.metadata.event === "accepted")).toHaveLength(1);
+  expect([...notices.values()].filter(row => row.metadata.event === "queued")).toHaveLength(2);
+});

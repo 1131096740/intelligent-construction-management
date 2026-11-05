@@ -1,3 +1,4 @@
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
 import { approvalDate as formatDate, approvalDateTime as formatDateTime } from "./approval-date";
 import { drawApprovalTable as drawTable } from "./approval-pdf-table";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "./approval-business-facts";
@@ -521,13 +522,14 @@ export class ApprovalFormService {
       const instance = await this.prisma.approvalInstance.findFirst({
         where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      if (!instance || instance.status !== "approved") return { available: false };
+      if (!instance || (instance.status !== "approved" && !(businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.status === "approval_pending"))) return { available: false };
+      if (isParallelApprovalRound(instance.frozenNodes)) await this.currentParallelApplication(businessType, businessId);
       const logs = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
       finalApprovalEvidence(instance.status, instance.frozenNodes, logs);
       await additionalApprovalFacts(this.prisma, businessType, businessId, logs, instance.id);
       return { available: true };
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof ForbiddenException) return { available: false };
+      if (error instanceof BadRequestException || error instanceof ForbiddenException || error instanceof ConflictException) return { available: false };
       throw error;
     }
   }
@@ -1067,6 +1069,24 @@ export class ApprovalFormService {
       );
     }
 
+    const parallel = await this.currentParallelApplication(businessType, businessId);
+    if (parallel) {
+      const token = await this.loadApprovalFormFreezeToken(this.prisma, parallel);
+      const downloader = await this.prisma.user.findUnique({ where: { id: downloaderUserId } });
+      const incomplete = parallel.status !== "approved";
+      const watermark = ["建工智管", ...(incomplete ? ["审批未完成 · 仅供查看办理进度"] : []), `下载人：${downloader?.name ?? "下载人未读取"}`, formatDateTime(new Date())];
+      const input = await this.buildSpotProcurementApprovalFormInput(parallel, watermark);
+      let buffer = await renderSpotProcurementApprovalForm(input);
+      if (!incomplete) buffer = await markFormalApprovalPdf(buffer);
+      const current = await this.currentParallelApplication(businessType, businessId);
+      if (!current || current.status !== parallel.status || !this.sameApprovalFormFreezeToken(token, await this.loadApprovalFormFreezeToken(this.prisma, current))) {
+        throw new ConflictException("审批轮或签名记录已变化，请刷新后重新下载");
+      }
+      await this.audit.record(this.prisma, { actorUserId: downloaderUserId, action: "approval.form.download", businessType, businessId,
+        metadata: { approvalInstanceId: parallel.id, downloadReason, incomplete } });
+      return { buffer, fileName: `${incomplete ? "审批未完成-" : ""}${spotProcurementApprovalFileName(input)}` };
+    }
+
     // 复用归档 PdfDocument 做权限锚点与幂等；其字节为无水印存档件，下载件按下载人重渲染。
     const pdfDocument = await this.getOrCreateByBusiness(
       businessType,
@@ -1161,6 +1181,20 @@ export class ApprovalFormService {
     });
 
     return { buffer, fileName };
+  }
+
+  private async currentParallelApplication(businessType: string, businessId: string) {
+    if (businessType !== "spot_procurement_version" || !this.prisma) return null;
+    const instance = await this.prisma.approvalInstance.findFirst({ where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    if (!instance) return null;
+    if (hasVersionedApprovalNodes(instance.frozenNodes) && !isParallelApprovalRound(instance.frozenNodes)) throw new BadRequestException("审批职责协议版本无效，请联系管理员核对");
+    if (!isParallelApprovalRound(instance.frozenNodes)) return null;
+    const version = await this.prisma.spotProcurementVersion.findUnique({ where: { id: businessId } });
+    const procurement = version ? await this.prisma.spotProcurement.findUnique({ where: { id: version.procurementId } }) : null;
+    if (!version || !procurement || procurement.currentVersionId !== businessId || !["approved", "approval_pending"].includes(instance.status)) {
+      throw new ConflictException("该审批轮已失效，请查看当前采购申请");
+    }
+    return instance;
   }
 
   // 收集渲染审批单所需的全部数据（业务摘要、我方主体、签批人姓名/职位/签名图）。
@@ -1350,6 +1384,10 @@ export class ApprovalFormService {
         : null;
       return {
         kind: "application",
+        ...(isParallelApprovalRound(instance.frozenNodes) && instance.status === "approval_pending" ? {
+          approvalPending: true,
+          pendingDutyNames: activeApprovalNodeIndexes(instance.frozenNodes, 0).map(index => String((instance.frozenNodes as Array<Record<string, unknown>>)[index].name ?? "待审批职责"))
+        } : {}),
         approvals: rendered.logs,
         projectName: project?.name ?? "项目名称未读取",
         procurementCode: procurement?.code ?? version.id,

@@ -1,11 +1,14 @@
+import { loadEffectiveProjectApprovalAssignments } from "../approval/project-approval-assignments";
+import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
-import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import {
   Prisma,
@@ -209,7 +212,8 @@ export class SpotProcurementApplicationService {
     private readonly archives?: SpotProcurementPaymentArchiveService,
     private readonly balances?: SpotProcurementBalanceService,
     private readonly entryTransactions?: BusinessEntryTransactionService,
-    private readonly entryDefinitions?: BusinessEntryDefinitionService
+    private readonly entryDefinitions?: BusinessEntryDefinitionService,
+    @Optional() private readonly notifications?: SpotProcurementApprovalNotificationService
   ) {}
 
   getCreateEntryDefinitions(actorUserId: string, projectId: string) {
@@ -405,7 +409,7 @@ export class SpotProcurementApplicationService {
         );
         const now = new Date();
         const frozenNodes = procurementApprovalNodes(actorRoles);
-        await assertProjectApprovalNodesConfigured(tx, procurement.projectId, frozenNodes, procurement.applicantUserId);
+
         const approval = await tx.approvalInstance.create({
           data: {
             flowType: "spot_procurement.approve",
@@ -417,6 +421,7 @@ export class SpotProcurementApplicationService {
             applicantUserId: procurement.applicantUserId
           }
         });
+        await this.notifications?.queueInTransaction(tx, approval, procurement.projectId, procurement.code);
         await tx.spotProcurementVersion.update({
           where: { id: version.id },
           data: { status: "approval_pending", submittedAt: now }
@@ -441,6 +446,7 @@ export class SpotProcurementApplicationService {
           { ...version, status: "approval_pending" }
         );
       });
+      await this.notifications?.dispatchQueued().catch(() => undefined);
       if (approvalBusinessId) {
         await this.approvalForms.tryRefreshLatestForBusiness(
           SPOT_PROCUREMENT_BUSINESS_TYPES.application,
@@ -553,11 +559,18 @@ export class SpotProcurementApplicationService {
           throw new ConflictException("当前采购版本不在审批中");
         }
         const approval = await this.requireLockedApprovalInstance(tx, version.id, "approval_pending");
-        const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
+        const parallel = isParallelApprovalRound(approval.frozenNodes);
+        const reviewNodeIndex = parallel ? input.expectedNodeIndex : approval.currentNodeIndex;
+        if (!activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).includes(reviewNodeIndex)) {
+          throw new ConflictException("该审批职责已处理或坐标已变化，请刷新页面后重试");
+        }
         const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
           approval.frozenNodes,
-          approval.currentNodeIndex
+          reviewNodeIndex
         );
+        const actorRoles = parallel
+          ? (await loadEffectiveProjectApprovalAssignments(tx, procurement.projectId, pendingRoles, actorUserId)).filter(row => row.userIsActive && row.userId === actorUserId && row.projectId === procurement.projectId).map(row => row.roleKey as RoleKey)
+          : await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
         const approvedRoleKey = pendingRoles.find((roleKey) => actorRoles.includes(roleKey));
         if (!approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本审批节点处理人");
@@ -578,7 +591,7 @@ export class SpotProcurementApplicationService {
         if (
           input.expectedVersionId !== version.id ||
           input.expectedApprovalInstanceId !== approval.id ||
-          input.expectedNodeIndex !== approval.currentNodeIndex
+          input.expectedNodeIndex !== reviewNodeIndex
         ) {
           throw new ConflictException("采购审批坐标已变化，请刷新页面后重试");
         }
@@ -617,15 +630,15 @@ export class SpotProcurementApplicationService {
             metadata: { reviewRoleKey: approvedRoleKey }
           }, signature)
         });
-        if (input.decision === "reject") {
+        if (input.decision === "reject" && !parallel) {
           await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: "rejected" } });
           await tx.spotProcurementVersion.update({ where: { id: version.id }, data: { status: "rejected" } });
           await tx.spotProcurement.update({ where: { id: procurement.id }, data: { status: "draft" } });
           await this.recordReviewAudit(tx, actorUserId, version.id, procurement.id, input.decision, approvedRoleKey);
           return this.applicationReadModel({ ...procurement, status: "draft" }, { ...version, status: "rejected" });
         }
-        if (input.decision === "return_to_applicant") {
-          await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: "returned_to_applicant" } });
+        if (input.decision === "return_to_applicant" || (input.decision === "reject" && parallel)) {
+          await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: input.decision === "reject" ? "rejected" : "returned_to_applicant" } });
           const draft = await this.createRevisionFromVersion(
             tx,
             procurement,
@@ -641,13 +654,14 @@ export class SpotProcurementApplicationService {
           });
           return this.applicationReadModel({ ...procurement, status: "draft" }, draft);
         }
-        const nextNodes = this.approveCurrentNode(approval.frozenNodes, approval.currentNodeIndex, approvedRoleKey);
-        const isFinalNode = approval.currentNodeIndex >= nextNodes.length - 1;
+        const nextNodes = this.approveCurrentNode(approval.frozenNodes, reviewNodeIndex, approvedRoleKey);
+        const remaining = activeApprovalNodeIndexes(nextNodes, approval.currentNodeIndex + 1);
+        const isFinalNode = parallel ? remaining.length === 0 : approval.currentNodeIndex >= nextNodes.length - 1;
         if (!isFinalNode) {
           await tx.approvalInstance.update({
             where: { id: approval.id },
             data: {
-              currentNodeIndex: approval.currentNodeIndex + 1,
+              currentNodeIndex: parallel ? remaining[0] : approval.currentNodeIndex + 1,
               frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
             }
           });
