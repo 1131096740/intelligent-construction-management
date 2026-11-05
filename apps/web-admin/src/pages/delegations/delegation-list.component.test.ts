@@ -51,8 +51,8 @@ it("从委托台账选择具体职责、受托人及期限后只提交该范围"
  const posted: unknown[]=[];
  vi.stubGlobal("fetch",async(url:string,init?:RequestInit)=>{
   let value:unknown=[];
-  if(url.includes("capability"))value={canDelegate:true,canRevoke:true};
-  else if(url.includes("duty-options"))value=[{value:"round-1:1",label:"一号项目 · LXCG-001 · 项目经理"}];
+  if(url.includes("capability"))value={canDelegate:true,canRevoke:true,resourceId:"round-1:1",actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty"};
+  else if(url.includes("duty-options"))value=[{value:"round-1:1",label:"一号项目 · LXCG-001 · 项目经理",actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty"}];
   else if(url.includes("user-options"))value=[{id:"delegate",name:"临时接收人"}];
   else if(init?.method==="POST"){posted.push(JSON.parse(String(init.body)));value={id:"delegation-1"};}
   return new Response(JSON.stringify(value),{status:200});
@@ -91,4 +91,43 @@ it("服务端已撤回撤销能力时保留记录并禁止DELETE",async()=>{
  });
  const root=mount();await flush();const button=all(root).find(n=>n.tag==="button"&&text(n).includes("撤销委托"))!;
  (button.props.onClick as()=>void)();await flush();expect(deletes).toEqual([]);expect(text(root)).toContain("当前无权撤销该委托");
+});
+
+it("从实际资金职责选项提交精确资金委托而不误提交为零星申请",async()=>{
+ const posted: unknown[]=[];
+ vi.stubGlobal("fetch",async(url:string,init?:RequestInit)=>{
+  let value:unknown=[];
+  if(url.includes("capability"))value={canDelegate:true,canRevoke:true,resourceId:"fund-round-1:0",actionKey:"fund_account.balance.review",resourceType:"fund_account_balance_review_duty"};
+  else if(url.includes("duty-options"))value=[{value:"fund-round-1:0",label:"甲公司 · 余额核对更正 · 财务主管复核",actionKey:"fund_account.balance.review",resourceType:"fund_account_balance_review_duty"}];
+  else if(url.includes("user-options"))value=[{id:"delegate",name:"临时接收人"}];
+  else if(init?.method==="POST"){posted.push(JSON.parse(String(init.body)));value={id:"delegation-1"};}
+  return new Response(JSON.stringify(value),{status:200});
+ });
+ const root=mount();await flush();
+ const open=all(root).find(n=>n.tag==="button"&&text(n).includes("新建临时委托"));expect(open).toBeDefined();
+ (open!.props.onClick as ()=>void)();await flush();
+ const select=(placeholder:string,value:string)=>{const control=all(root).find(n=>n.tag==="select"&&n.props.placeholder===placeholder)!;(control.props["onUpdate:modelValue"] as (v:string)=>void)(value); (control.props.onChange as ((v:string)=>void)|undefined)?.(value);};
+ select("选择待审批职责","fund-round-1:0");await flush();expect(all(root).find(n=>n.tag==="select"&&n.props.placeholder==="选择受托人")!.props.options).toEqual([{value:"delegate",label:"临时接收人"}]);select("选择受托人","delegate");
+ for(const [i,date]of all(root).filter(n=>n.tag==="date").entries())(date.props["onUpdate:modelValue"] as (v:string)=>void)(i?"2099-01-02 10:00":"2099-01-01 10:00");
+ await nextTick();(all(root).find(n=>n.tag==="button"&&text(n).includes("确认委托"))!.props.onClick as ()=>void)();await flush();
+ expect(posted).toEqual([{toUserId:"delegate",startsAt:"2099-01-01T02:00:00.000Z",endsAt:"2099-01-02T02:00:00.000Z",actionKey:"fund_account.balance.review",resourceType:"fund_account_balance_review_duty",resourceId:"fund-round-1:0"}]);
+ expect(text(root)).toContain("委托已保存");
+});
+
+it.each(["missing", "unknown", "changed"])("资金委托对%s职责选项失败关闭，等待权限回执时不偷换目标", async kind => {
+ const posted:unknown[]=[];let resolveCapability:((value:Response)=>void)|undefined;
+ vi.stubGlobal("fetch",async(url:string,init?:RequestInit)=>{
+  if(init?.method==="POST"){posted.push(JSON.parse(String(init.body)));return new Response("{}",{status:200});}
+  if(url.includes("duty-options"))return new Response(JSON.stringify(kind==="missing"?[]:[{value:"fund-round-1:0",label:"甲公司余额核对",actionKey:kind==="unknown"?"unknown.action":"fund_account.balance.review",resourceType:"fund_account_balance_review_duty"}]),{status:200});
+  if(url.includes("user-options"))return new Response(JSON.stringify([{id:"delegate",name:"临时接收人"},{id:"another",name:"另一同事"}]),{status:200});
+  if(url.includes("duty-capability")&&kind==="changed")return new Promise<Response>(resolve=>{resolveCapability=resolve;});
+  return new Response("[]",{status:200});
+ });
+ const root=mount();await flush();(all(root).find(n=>n.tag==="button"&&text(n).includes("新建临时委托"))!.props.onClick as()=>void)();await flush();
+ const select=(placeholder:string,value:string)=>{const control=all(root).find(n=>n.tag==="select"&&n.props.placeholder===placeholder)!;(control.props["onUpdate:modelValue"] as(v:string)=>void)(value);(control.props.onChange as((v:string)=>void)|undefined)?.(value);};
+ select("选择待审批职责","fund-round-1:0");await flush();select("选择受托人","delegate");
+ for(const [i,date]of all(root).filter(n=>n.tag==="date").entries())(date.props["onUpdate:modelValue"] as(v:string)=>void)(i?"2099-01-02 10:00":"2099-01-01 10:00");
+ await nextTick();(all(root).find(n=>n.tag==="button"&&text(n).includes("确认委托"))!.props.onClick as()=>void)();await flush();
+ if(kind==="changed"){expect(resolveCapability).toBeDefined();select("选择受托人","another");resolveCapability!(new Response(JSON.stringify({canDelegate:true,resourceId:"fund-round-1:0",actionKey:"fund_account.balance.review",resourceType:"fund_account_balance_review_duty"}),{status:200}));await flush();}
+ expect(posted).toEqual([]);expect(text(root)).toMatch(/重选|变化/);
 });

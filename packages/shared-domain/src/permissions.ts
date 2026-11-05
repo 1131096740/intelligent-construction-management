@@ -7,6 +7,7 @@ import { GLOBAL_BUSINESS_ROLE_KEYS, RoleKey } from "./roles";
  * 这些是后端写接口真正要守的关口。
  */
 export const BUSINESS_ACTIONS = [
+  "fund_account.balance.review",
   "business_party.create",
   "contract.create",
   "contract.draft.delete",
@@ -163,6 +164,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  * - `settlement.approve` / `payment.approve` 这里只做粗放行；具体节点顺序、会签与路由由后端审批实例校验。
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
+  "fund_account.balance.review": ["finance_director"],
   "business_party.create": ["comprehensive_director", "chairman"],
   "contract.create": ["contract_staff", "contract_director"],
   "contract.draft.delete": ["contract_staff", "contract_director"],

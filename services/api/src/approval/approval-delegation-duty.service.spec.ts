@@ -40,7 +40,7 @@ it("未迁入的任意资源作用域不能伪装成新并联委托", async () =
 });
 it("仅列出本人仍未办理的具体职责，已办职责不再可委托", async () => {
   const {service,round}=fixture();
-  await expect(service.listDutyOptions("manager")).resolves.toEqual([{value:"round-1:1",label:"一号项目 · LXCG-001 · 项目经理"}]);
+  await expect(service.listDutyOptions("manager")).resolves.toEqual([{value:"round-1:1",label:"一号项目 · LXCG-001 · 项目经理",actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty"}]);
   Object.assign(round.frozenNodes[1], {approvedRoleKeys:["project_manager"]});
   await expect(service.listDutyOptions("manager")).resolves.toEqual([]);
   await expect(service.create("manager",input())).rejects.toThrow("该审批职责已结束");
@@ -70,7 +70,7 @@ it("新建委托省略全部scope也拒绝，不新增历史无界standing授权
 });
 it("当前职责办理或失岗即撤销新建委托能力，撤销能力只属本人未撤销记录",async()=>{
  const {service,round}=fixture();
- await expect(service.dutyCapability("manager","round-1:1")).resolves.toEqual({canDelegate:true});
+ await expect(service.dutyCapability("manager","round-1:1")).resolves.toEqual({canDelegate:true,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:"round-1:1"});
  await service.create("manager",input());
  await expect(service.revokeCapability("other-user","mandate-1")).resolves.toEqual({canRevoke:false});
  await expect(service.revokeCapability("manager","mandate-1")).resolves.toEqual({canRevoke:true});

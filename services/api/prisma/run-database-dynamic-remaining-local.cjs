@@ -161,7 +161,8 @@ const GROUPS = [
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
       "src/database/project-affiliate-subject-db.spec.ts",
-      "src/database/operating-takeover-constraints.spec.ts"
+      "src/database/operating-takeover-constraints.spec.ts",
+      "src/database/fund-account-postgres.spec.ts"
     ],
     flags: {
       DATABASE_URL: "databaseUrl",
@@ -180,9 +181,10 @@ const GROUPS = [
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1",
-      RUN_POL215_DATABASE: "1"
+      RUN_POL215_DATABASE: "1",
+      RUN_REGISTERED_FUND_ACCOUNT_DATABASE: "1"
     },
-    pendingTests: 30,
+    pendingTests: 39,
     requiresOperatingLedgerWriteSecret: true
   },
   {

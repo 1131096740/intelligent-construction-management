@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 40,
-    "exportedFunctionCount": 678,
-    "transportWrapperCount": 656,
+    "apiModuleCount": 41,
+    "exportedFunctionCount": 687,
+    "transportWrapperCount": 665,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 695,
+    "mainRequestBindingCount": 704,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 683,
-    "productionConsumerCount": 562,
+    "requestEdgeCount": 692,
+    "productionConsumerCount": 571,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 367,
-    "reachableProductionModuleCount": 346
+    "productionModuleCount": 369,
+    "reachableProductionModuleCount": 348
   },
   "wrappers": [
     {
@@ -12758,6 +12758,249 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmFundCorrection",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/confirm",
+          "normalizedPath": "/fund-accounts/registrations/:param/confirm",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmFundCorrection"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundAccount",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/fund-accounts/:param",
+          "normalizedPath": "/fund-accounts/:param",
+          "normalizedKey": "GET /fund-accounts/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundAccount"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundAccounts",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/fund-accounts",
+          "normalizedPath": "/fund-accounts",
+          "normalizedKey": "GET /fund-accounts",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundAccounts"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundBalanceRegistration",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 81,
+          "method": "GET",
+          "path": "/fund-accounts/registrations/:param",
+          "normalizedPath": "/fund-accounts/registrations/:param",
+          "normalizedKey": "GET /fund-accounts/registrations/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundBalanceRegistration"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFundReview",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 84,
+          "method": "GET",
+          "path": "/fund-accounts/registrations/:param/review",
+          "normalizedPath": "/fund-accounts/registrations/:param/review",
+          "normalizedKey": "GET /fund-accounts/registrations/:param/review",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFundReview"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "registerFundOpening",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 77,
+          "method": "POST",
+          "path": "/fund-accounts/openings",
+          "normalizedPath": "/fund-accounts/openings",
+          "normalizedKey": "POST /fund-accounts/openings",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "registerFundOpening"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "requestFundCorrection",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 78,
+          "method": "POST",
+          "path": "/fund-accounts/corrections",
+          "normalizedPath": "/fund-accounts/corrections",
+          "normalizedKey": "POST /fund-accounts/corrections",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestFundCorrection"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "returnFundCorrection",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 82,
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/return",
+          "normalizedPath": "/fund-accounts/registrations/:param/return",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnFundCorrection"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "withdrawFundCorrection",
+      "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 83,
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/withdraw",
+          "normalizedPath": "/fund-accounts/registrations/:param/withdraw",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "withdrawFundCorrection"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []

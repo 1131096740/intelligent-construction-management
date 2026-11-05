@@ -621,6 +621,7 @@ describe("web admin routes", () => {
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
       { label: "结算工作台", path: "/结算工作台" },
+      { label: "资金账户", path: "/资金账户" },
       { label: "资金办理工作台", path: "/统一资金办理工作台" },
       { label: "资金执行案件", path: "/资金执行案件" },
       { label: "公司互转台账", path: "/公司互转台账" },
@@ -691,6 +692,14 @@ describe("web admin routes", () => {
         .find((group) => group.label === "付款")
         ?.items.map((item) => item.label)
     ).toEqual(["资金办理工作台", "公司互转台账"]);
+  });
+
+  it("shows the fixed funds account entry to company finance and comprehensive directors only", () => {
+    for (const role of ["finance_staff", "finance_director", "comprehensive_director"] as const) {
+      expect(visibleAdminNavigationGroups([role], [role]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(true);
+      expect(visibleAdminNavigationGroups([role], []).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
+    }
+    expect(visibleAdminNavigationGroups(["super_admin"], ["super_admin"]).flatMap(group => group.items).some(item => item.path === "/资金账户")).toBe(false);
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {

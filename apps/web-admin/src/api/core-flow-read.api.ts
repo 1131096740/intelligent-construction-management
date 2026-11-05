@@ -7300,6 +7300,7 @@ export function generateSettlementPdfArchive(
 }
 
 export interface ApprovalDelegationReadModel {
+  reviewPath?: string;
   actionKey?: string | null;
   resourceType?: string | null;
   resourceId?: string | null;
@@ -7321,8 +7322,8 @@ export interface UserOptionReadModel {
 }
 
 export interface CreateApprovalDelegationPayload {
-  actionKey?: "spot_procurement.approve";
-  resourceType?: "spot_procurement_approval_duty";
+  actionKey?: "spot_procurement.approve" | "fund_account.balance.review";
+  resourceType?: "spot_procurement_approval_duty" | "fund_account_balance_review_duty";
   resourceId?: string;
   toUserId: string;
   startsAt: string;
@@ -7334,7 +7335,7 @@ export function listApprovalDelegations() {
 }
 
 export function fetchApprovalDelegationDutyOptions() {
-  return readJson<Array<{value: string; label: string}>>("/approval-delegations/duty-options");
+  return readJson<Array<{value: string; label: string; actionKey?: CreateApprovalDelegationPayload["actionKey"]; resourceType?: CreateApprovalDelegationPayload["resourceType"]}>>("/approval-delegations/duty-options");
 }
 
 export function fetchApprovalDelegationUserOptions(dutyId?: string) {
@@ -7369,7 +7370,7 @@ export function fetchApprovalRuleAssignments(projectId?: string) {
 }
 
 export function fetchApprovalDelegationDutyCapability(dutyId: string) {
-  return readJson<{canDelegate: boolean}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
+  return readJson<{canDelegate: boolean; actionKey?: CreateApprovalDelegationPayload["actionKey"]; resourceType?: CreateApprovalDelegationPayload["resourceType"]; resourceId?: string}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
 }
 export function fetchApprovalDelegationRevokeCapability(id: string) {
   return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);

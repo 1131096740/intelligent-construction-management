@@ -41,6 +41,13 @@
       >
         <template #actions="{ row }">
           <t-button
+            v-if="row.reviewPath && /^\/资金余额复核\/[^/]+$/.test(row.reviewPath)"
+            variant="text"
+            @click="$router.push(row.reviewPath)"
+          >
+            办理本次余额复核
+          </t-button>
+          <t-button
             v-if="row.fromUserId === auth.user?.id && row.enabled"
             variant="text"
             :disabled="saving"
@@ -154,24 +161,47 @@ const rows = computed(() => mapDelegationLedgerRows(rawRows.value, auth.user?.id
 const loading = ref(false);
 const message = ref("");
 
-const duties = ref<Array<{value: string; label: string}>>([]);
+const duties = ref<Awaited<ReturnType<typeof fetchApprovalDelegationDutyOptions>>>([]);
 const recipients = ref<Array<{value: string; label: string}>>([]);
 const draft = reactive({resourceId: "", toUserId: "", startsAt: "", endsAt: ""});
 const createVisible = ref(false);
 const saving = ref(false);
 const createError = ref("");
 const messageTheme = ref<"success" | "error">("error");
-let recipientGeneration = 0;
-function openCreate() {Object.assign(draft, {resourceId: "", toUserId: "", startsAt: "", endsAt: ""}); recipients.value=[]; createError.value=""; createVisible.value=true;}
+const recipientGeneration = ref(0);
+function openCreate() {recipientGeneration.value++;Object.assign(draft, {resourceId: "", toUserId: "", startsAt: "", endsAt: ""}); recipients.value=[]; createError.value=""; createVisible.value=true;}
 async function loadRecipients() {
-  const own = ++recipientGeneration; const dutyId = draft.resourceId; draft.toUserId=""; recipients.value=[];
-  try {const rows = await fetchApprovalDelegationUserOptions(dutyId); if (own === recipientGeneration && dutyId === draft.resourceId) recipients.value=rows.map(row=>({value:row.id,label:row.name}));}
-  catch(error) {if(own===recipientGeneration) createError.value=error instanceof Error?error.message:"受托人读取失败，请重试";}
+  const own = ++recipientGeneration.value; const dutyId = draft.resourceId; draft.toUserId=""; recipients.value=[];
+  try {const rows = await fetchApprovalDelegationUserOptions(dutyId); if (own === recipientGeneration.value && dutyId === draft.resourceId) recipients.value=rows.map(row=>({value:row.id,label:row.name}));}
+  catch(error) {if(own===recipientGeneration.value) createError.value=error instanceof Error?error.message:"受托人读取失败，请重试";}
 }
 async function createDelegationWithCapability(input: Parameters<typeof createApprovalDelegation>[0] & {resourceId: string}) {
+  const selectionGeneration = recipientGeneration.value;
+  const optionReceipt = duties.value;
+  const startsAtReceipt = draft.startsAt;
+  const endsAtReceipt = draft.endsAt;
   const capability = await fetchApprovalDelegationDutyCapability(input.resourceId);
   const operationAllowed = capability.canDelegate;
   if (!operationAllowed) throw new Error("当前职责已不能委托，请刷新后重试");
+  const dialogOpen = createVisible.value;
+  const currentGeneration = recipientGeneration.value;
+  const currentOptions = duties.value;
+  const selectedResource = input.resourceId; const currentResource = draft.resourceId;
+  const selectedRecipient = input.toUserId; const currentRecipient = draft.toUserId;
+  const currentStarts = draft.startsAt; const currentEnds = draft.endsAt;
+  const authorizedResource = capability.resourceId;
+  const authorizedAction = capability.actionKey; const selectedAction = input.actionKey;
+  const authorizedType = capability.resourceType; const selectedType = input.resourceType;
+  if (!dialogOpen) throw new Error("本次委托窗口已关闭，请重新确认");
+  if (selectionGeneration !== currentGeneration) throw new Error("职责选择已变化，请重新确认");
+  if (optionReceipt !== currentOptions) throw new Error("职责清单已变化，请刷新后重选");
+  if (selectedResource !== currentResource) throw new Error("职责选择已变化，请重新确认");
+  if (selectedRecipient !== currentRecipient) throw new Error("受托人已变化，请重新确认");
+  if (startsAtReceipt !== currentStarts) throw new Error("生效时间已变化，请重新确认");
+  if (endsAtReceipt !== currentEnds) throw new Error("失效时间已变化，请重新确认");
+  if (authorizedResource !== selectedResource) throw new Error("职责范围已变化，请刷新后重选");
+  if (authorizedAction !== selectedAction) throw new Error("职责范围已变化，请刷新后重选");
+  if (authorizedType !== selectedType) throw new Error("职责范围已变化，请刷新后重选");
   return createApprovalDelegation(input);
 }
 async function revokeDelegationWithCapability(id: string) {
@@ -180,14 +210,22 @@ async function revokeDelegationWithCapability(id: string) {
   if (!operationAllowed) throw new Error("当前无权撤销该委托，请刷新后重试");
   return revokeApprovalDelegation(id);
 }
+const delegationInput = computed(() => {
+  if(!draft.resourceId||!draft.toUserId)throw new Error("请选择明确职责和受托人");
+  const chinaTime=(value:string)=> {if(!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value))throw new Error("请填写正确的起止时间"); const time=new Date(`${value.replace(" ","T")}:00+08:00`);if(!Number.isFinite(time.getTime()))throw new Error("请填写正确的起止时间");return time.toISOString();};
+  const startsAt=chinaTime(draft.startsAt);const endsAt=chinaTime(draft.endsAt);if(endsAt<=startsAt)throw new Error("失效时间必须晚于生效时间");
+  const selected = duties.value.find(option => option.value === draft.resourceId);
+  if (!selected) throw new Error("所选职责已不在当前可委托清单，请刷新后重选");
+  const { actionKey, resourceType } = selected;
+  if (!((actionKey === "spot_procurement.approve" && resourceType === "spot_procurement_approval_duty") || (actionKey === "fund_account.balance.review" && resourceType === "fund_account_balance_review_duty"))) throw new Error("所选职责范围不完整或不受支持，请刷新后重选");
+  return {toUserId:draft.toUserId,startsAt,endsAt,actionKey,resourceType,resourceId:selected.value};
+});
 async function saveDelegation() {
   if(saving.value)return; createError.value="";
   try {
-    if(!draft.resourceId||!draft.toUserId)throw new Error("请选择明确职责和受托人");
-    const chinaTime=(value:string)=> {if(!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value))throw new Error("请填写正确的起止时间"); const time=new Date(`${value.replace(" ","T")}:00+08:00`);if(!Number.isFinite(time.getTime()))throw new Error("请填写正确的起止时间");return time.toISOString();};
-    const startsAt=chinaTime(draft.startsAt);const endsAt=chinaTime(draft.endsAt);if(endsAt<=startsAt)throw new Error("失效时间必须晚于生效时间");
+    const input = delegationInput.value;
     saving.value=true;
-    await createDelegationWithCapability({toUserId:draft.toUserId,startsAt,endsAt,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:draft.resourceId});
+    await createDelegationWithCapability(input);
     createVisible.value=false;messageTheme.value="success";message.value="委托已保存，本人与受托人均可办理当前职责。";await loadDelegations();
   } catch(error){createError.value=error instanceof Error?error.message:"委托保存失败，请重试";}finally{saving.value=false;}
 }

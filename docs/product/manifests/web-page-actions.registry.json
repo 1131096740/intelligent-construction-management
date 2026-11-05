@@ -10026,6 +10026,129 @@
           "name": "revokeApprovalDelegation"
         }
       ]
+    },
+    {
+      "id": "fund-account.confirm-correction",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/资金余额复核/:registrationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirm"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "review.canConfirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "confirmFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.registerFundOpening",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitOpeningBalance"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "editing.canRegisterBalance"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "registerFundOpening"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.requestFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitCorrectionBalance"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "editing.canRegisterBalance"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "requestFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.returnFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/资金余额复核/:registrationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "returnBalanceCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "review.canConfirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "returnFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.withdrawFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/资金余额复核/:registrationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "withdrawBalanceCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "withdrawal.canWithdraw"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "withdrawFundCorrection"
+        }
+      ]
     }
   ]
 }

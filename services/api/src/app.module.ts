@@ -23,6 +23,7 @@ import { ContractEndedApplicationRetentionModule } from "./contract-ended-retent
 import { ContractEndedApplicationPurgeModule } from "./contract-ended-purge/contract-ended-application-purge.module";
 import { GeneralProcurementModule } from "./general-procurement/general-procurement.module";
 import { ExpenseClaimModule } from "./expense-claim/expense-claim.module";
+import { FundAccountModule } from "./fund-account/fund-account.module";
 import { FundsWorkbenchModule } from "./funds-workbench/funds-workbench.module";
 import { FundMovementModule } from "./fund-movement/fund-movement.module";
 import { FundExecutionModule } from "./fund-execution/fund-execution.module";
@@ -73,6 +74,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ExpenseClaimModule,
     GeneralProcurementModule,
     FundsWorkbenchModule,
+    FundAccountModule,
     FundMovementModule,
     CompanyTransferModule,
     FundExecutionModule,

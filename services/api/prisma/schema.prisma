@@ -159,7 +159,62 @@ model HandwrittenSignatureHandoff {
 }
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
+model RegisteredFundAccount {
+  id String @id @default(uuid())
+  scopeKey String @unique
+  kind String
+  companyEntityId String? @unique
+  company CompanyEntity? @relation(fields: [companyEntityId], references: [id], onDelete: Restrict)
+  registrations FundAccountBalanceRegistration[]
+  createdAt DateTime @default(now())
+}
+
+model FundAccountBalanceRegistration {
+  id String @id @default(uuid())
+  accountId String
+  version Int
+  kind String
+  status String
+  previousRegistrationId String?
+  approvalInstanceId String? @unique
+  balanceYuan Decimal? @db.Decimal(24,4)
+  asOfDate String
+  evidenceReference String
+  reconciliationNote String
+  reason String
+  idempotencyKey String @unique
+  payloadFingerprint String
+  createdByUserId String
+  confirmedByUserId String?
+  confirmedAt DateTime?
+  reviewNote String?
+  closedByUserId String?
+  closedAt DateTime?
+  closeReason String?
+  createdAt DateTime @default(now())
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  sources FundAccountSourceBatch[]
+  @@unique([accountId, version])
+  @@unique([id, accountId])
+  @@index([accountId, status])
+}
+
+model FundAccountSourceBatch {
+  id String @id @default(uuid())
+  registrationId String
+  lineNo Int
+  amountYuan Decimal @db.Decimal(24,4)
+  sourceStatus String
+  sourceName String?
+  projectStatus String
+  projectId String?
+  previousSourceBatchId String?
+  registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  @@unique([registrationId, lineNo])
+}
+
 model CompanyEntity {
+  registeredFundAccount RegisteredFundAccount?
   id                                  String                          @id @default(uuid())
   name                                String
   unifiedSocialCreditCode             String?

@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "562d835fc0bb56cfdb67797de6f40be7ced2e24c0b8bbe212352b9cbcc29ac04",
+      "sha256": "a2921606fff6afd2cd0429544433ad22a99dd5fdf54dc9141a6daf45c8c457d3",
       "status": "ready",
       "summary": {
-        "routeCount": 702
+        "routeCount": 711
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "49de057bead1e949ad66738805ee4d324e1ed752d788145d9c4b335752cb5bd0",
+      "sha256": "da72abfe4ccbecfce4a3eae75b79eaa3b2a43bf6f2ac9e0c9c56620fbb13706c",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 40,
-        "exportedFunctionCount": 678,
-        "transportWrapperCount": 656,
+        "apiModuleCount": 41,
+        "exportedFunctionCount": 687,
+        "transportWrapperCount": 665,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 695,
+        "mainRequestBindingCount": 704,
         "ticketFollowupCount": 4,
-        "requestEdgeCount": 683,
-        "productionConsumerCount": 562,
+        "requestEdgeCount": 692,
+        "productionConsumerCount": 571,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "70a5d126c86476a031a0fa63241f3f513c16a31f3bc363033177c0866c1cf710",
+      "sha256": "b5789a71746678c30bcd58c10af3f953a4768975aa4c89077a5828949b416144",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 397,
-        "pageActionCount": 56,
+        "registeredActionCount": 402,
+        "pageActionCount": 61,
         "backgroundActionCount": 341,
-        "reachableVueFileCount": 200,
-        "routeRootCount": 70,
-        "totalVueFileCount": 214,
-        "parsedVueFileCount": 214,
-        "reachableProductionModuleCount": 346,
-        "templateEventDirectiveCount": 1240,
+        "reachableVueFileCount": 201,
+        "routeRootCount": 72,
+        "totalVueFileCount": 215,
+        "parsedVueFileCount": 215,
+        "reachableProductionModuleCount": 348,
+        "templateEventDirectiveCount": 1258,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 387,
-        "candidateProductionMutationConsumerCount": 387,
-        "acceptedProductionMutationConsumerCount": 387,
-        "productionMutationConsumerPairCount": 387,
+        "coveredProductionMutationConsumerCount": 392,
+        "candidateProductionMutationConsumerCount": 392,
+        "acceptedProductionMutationConsumerCount": 392,
+        "productionMutationConsumerPairCount": 392,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "234e1afeb31971eb921cc78857685aa523c3885e21ae3616d859f8e4122a323d",
+      "sha256": "0a6da5467d4317b19541a3702faf1aeaad8f3d7f2e83f7b36886ca296a36d268",
       "status": "ready",
       "summary": {
-        "routeCount": 702,
-        "exactRouteCount": 702,
-        "normalizedRouteCount": 702,
+        "routeCount": 711,
+        "exactRouteCount": 711,
+        "normalizedRouteCount": 711,
         "classificationOverrideCount": 222,
         "consumerSurfaceOverrideCount": 38,
         "classificationOverrideSha256": "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df",
         "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-        "derivedProductionPageCount": 480,
-        "pageRouteCount": 498,
+        "derivedProductionPageCount": 489,
+        "pageRouteCount": 507,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 97,
         "internalTaskCount": 37,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 551,
+          "web_api_wrapper": 560,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 702,
-    "pageRouteCount": 498,
+    "routeCount": 711,
+    "pageRouteCount": 507,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 97,
     "internalTaskRouteCount": 37,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 695,
+    "mainRequestBindingCount": 704,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 397,
-    "actionBindingCount": 457,
-    "acceptedActionBindingCount": 420,
+    "registeredActionCount": 402,
+    "actionBindingCount": 462,
+    "acceptedActionBindingCount": 425,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 387,
-    "coveredProductionMutationConsumerPairCount": 387,
+    "productionMutationConsumerPairCount": 392,
+    "coveredProductionMutationConsumerPairCount": 392,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -4696,6 +4696,178 @@
       "usage": "page",
       "consumerSurface": "signed_ticket_delivery",
       "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-accounts/:scopeKey",
+        "normalizedKey": "GET /fund-accounts/:param",
+        "controller": "FundAccountController",
+        "handler": "readAccount",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "fetchFundAccount",
+          "method": "GET",
+          "path": "/fund-accounts/:param",
+          "normalizedKey": "GET /fund-accounts/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-accounts",
+        "normalizedKey": "GET /fund-accounts",
+        "controller": "FundAccountController",
+        "handler": "list",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "fetchFundAccounts",
+          "method": "GET",
+          "path": "/fund-accounts",
+          "normalizedKey": "GET /fund-accounts",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-accounts/registrations/:registrationId",
+        "normalizedKey": "GET /fund-accounts/registrations/:param",
+        "controller": "FundAccountController",
+        "handler": "readRegistration",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "fetchFundBalanceRegistration",
+          "method": "GET",
+          "path": "/fund-accounts/registrations/:param",
+          "normalizedKey": "GET /fund-accounts/registrations/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-accounts/registrations/:registrationId/review",
+        "normalizedKey": "GET /fund-accounts/registrations/:param/review",
+        "controller": "FundAccountController",
+        "handler": "readReview",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "fund_account.balance.review",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "fetchFundReview",
+          "method": "GET",
+          "path": "/fund-accounts/registrations/:param/review",
+          "normalizedKey": "GET /fund-accounts/registrations/:param/review",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -23795,6 +23967,346 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/components/UpwardContractAmountPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-accounts/corrections",
+        "normalizedKey": "POST /fund-accounts/corrections",
+        "controller": "FundAccountController",
+        "handler": "requestCorrection",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "requestFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/corrections",
+          "normalizedKey": "POST /fund-accounts/corrections",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-account.requestFundCorrection",
+          "bindingIndex": 0,
+          "identity": "fund-account.requestFundCorrection\u0000apps/web-admin/src/api/fund-account.api.ts\u0000requestFundCorrection\u0000POST\u0000POST /fund-accounts/corrections\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "editing.canRegisterBalance",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "requestFundCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-accounts/openings",
+        "normalizedKey": "POST /fund-accounts/openings",
+        "controller": "FundAccountController",
+        "handler": "registerOpening",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "registerFundOpening",
+          "method": "POST",
+          "path": "/fund-accounts/openings",
+          "normalizedKey": "POST /fund-accounts/openings",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-account.registerFundOpening",
+          "bindingIndex": 0,
+          "identity": "fund-account.registerFundOpening\u0000apps/web-admin/src/api/fund-account.api.ts\u0000registerFundOpening\u0000POST\u0000POST /fund-accounts/openings\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "editing.canRegisterBalance",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "registerFundOpening",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-accounts/registrations/:registrationId/confirm",
+        "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+        "controller": "FundAccountController",
+        "handler": "confirmCorrection",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "fund_account.balance.review",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "confirmFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/confirm",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-account.confirm-correction",
+          "bindingIndex": 0,
+          "identity": "fund-account.confirm-correction\u0000apps/web-admin/src/api/fund-account.api.ts\u0000confirmFundCorrection\u0000POST\u0000POST /fund-accounts/registrations/:param/confirm\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "review.canConfirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "confirmFundCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-accounts/registrations/:registrationId/return",
+        "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+        "controller": "FundAccountController",
+        "handler": "returnCorrection",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "fund_account.balance.review",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "returnFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/return",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-account.returnFundCorrection",
+          "bindingIndex": 0,
+          "identity": "fund-account.returnFundCorrection\u0000apps/web-admin/src/api/fund-account.api.ts\u0000returnFundCorrection\u0000POST\u0000POST /fund-accounts/registrations/:param/return\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "review.canConfirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "returnFundCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/fund-accounts/registrations/:registrationId/withdraw",
+        "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+        "controller": "FundAccountController",
+        "handler": "withdrawCorrection",
+        "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "withdrawFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/withdraw",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "fund-account.withdrawFundCorrection",
+          "bindingIndex": 0,
+          "identity": "fund-account.withdrawFundCorrection\u0000apps/web-admin/src/api/fund-account.api.ts\u0000withdrawFundCorrection\u0000POST\u0000POST /fund-accounts/registrations/:param/withdraw\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "withdrawal.canWithdraw",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "withdrawFundCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

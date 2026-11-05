@@ -104,6 +104,12 @@ onMounted(() => void loadWorkbench());
     <template #actions>
       <t-button
         variant="outline"
+        @click="router.push('/资金账户')"
+      >
+        资金账户
+      </t-button>
+      <t-button
+        variant="outline"
         :loading="loading"
         @click="loadWorkbench"
       >

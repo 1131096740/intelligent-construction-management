@@ -1,3 +1,5 @@
+import { createFundReviewDelegation, fundReviewDelegationCapability, fundReviewDutyOptions, isFundReviewDuty } from "../fund-account/fund-account-delegation";
+import { FUND_REVIEW_RESOURCE } from "../fund-account/fund-account-duty";
 import {SpotProcurementApprovalNotificationService} from "../spot-procurement/spot-procurement-approval-notification.service";
 import {Prisma} from "@prisma/client";
 import {activeApprovalNodeIndexes, isParallelApprovalRound} from "./parallel-approval-protocol";
@@ -31,6 +33,7 @@ export class ApprovalDelegationService {
       throw new Error("Prisma service is required to create approval delegation");
     }
 
+    if (input.resourceType === FUND_REVIEW_RESOURCE) return createFundReviewDelegation(this.prisma, this.audit, fromUserId, input);
     if (input.resourceType === SPOT_APPROVAL_DUTY_RESOURCE) return this.createDutyDelegation(fromUserId, input);
     const scope = delegationScope(input);
     // Retain the existing clearing creation contract; other historical consumers remain read-compatible.
@@ -134,8 +137,9 @@ export class ApprovalDelegationService {
 
   async dutyCapability(userId: string, resourceId: string) {
     if (!this.prisma) return {canDelegate: false};
+    if (await isFundReviewDuty(this.prisma, resourceId)) { await fundReviewDelegationCapability(this.prisma as never, userId, resourceId); return { canDelegate: true, actionKey: "fund_account.balance.review", resourceType: FUND_REVIEW_RESOURCE, resourceId }; }
     await this.duty(this.prisma as never, userId, resourceId, false);
-    return {canDelegate: true};
+    return {canDelegate: true, actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE, resourceId};
   }
 
   async revokeCapability(userId: string, id: string) {
@@ -146,12 +150,12 @@ export class ApprovalDelegationService {
   async listDutyOptions(userId: string) {
     if (!this.prisma) return [];
     const rounds = await this.prisma.approvalInstance.findMany({where: {businessType: "spot_procurement_version", status: "approval_pending"}, orderBy: {createdAt: "desc"}});
-    const result: Array<{value: string; label: string}> = [];
+    const result: Array<{value: string; label: string; actionKey?: string; resourceType?: string}> = await fundReviewDutyOptions(this.prisma as never, userId);
     for (const round of rounds) {
       if (!isParallelApprovalRound(round.frozenNodes)) continue;
       for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {
         const value = `${round.id}:${index}`;
-        try { const duty = await this.duty(this.prisma as never, userId, value, false); result.push({value, label: duty.label}); }
+        try { const duty = await this.duty(this.prisma as never, userId, value, false); result.push({value, label: duty.label, actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE}); }
         catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
       }
     }
@@ -177,7 +181,7 @@ export class ApprovalDelegationService {
         })
       : [];
     const nameById = new Map(users.map((user) => [user.id, user.name]));
-    const scopedIds = delegations.filter(row => row.resourceType === SPOT_APPROVAL_DUTY_RESOURCE).map(row => row.id);
+    const scopedIds = delegations.filter(row => row.resourceType === SPOT_APPROVAL_DUTY_RESOURCE || row.resourceType === FUND_REVIEW_RESOURCE).map(row => row.id);
     const creationFacts = scopedIds.length ? await this.prisma.auditLog.findMany({where: {action: "approval.delegation.create", businessType: "approval_delegation", businessId: {in: scopedIds}}, orderBy: {createdAt: "asc"}, select: {businessId: true, metadata: true}}) : [];
     const labelById = new Map<string, string>();
     for (const fact of creationFacts) {
@@ -186,8 +190,21 @@ export class ApprovalDelegationService {
     }
 
 
+    const reviewPathById = new Map<string, string>();
+    for (const delegation of delegations) {
+      if (delegation.resourceType !== FUND_REVIEW_RESOURCE || delegation.toUserId !== userId || !delegation.resourceId) continue;
+      try {
+        const { resolveFundReviewIdentity } = await import("../fund-account/fund-account-duty");
+        const roundId = delegation.resourceId.replace(/:0$/, "");
+        const round = await this.prisma.approvalInstance.findUnique({ where: { id: roundId } });
+        if (!round) continue;
+        await resolveFundReviewIdentity(this.prisma as never, round.businessId, userId, round.id);
+        reviewPathById.set(delegation.id, `/资金余额复核/${encodeURIComponent(round.businessId)}`);
+      } catch { /* Expired, closed or revoked duties convey no entry. */ }
+    }
     return delegations.map((delegation) => ({
       ...delegation,
+      ...(reviewPathById.has(delegation.id) ? {reviewPath: reviewPathById.get(delegation.id)} : {}),
       ...(labelById.has(delegation.id) ? {scopeLabel: labelById.get(delegation.id)} : {}),
       fromUserName: nameById.get(delegation.fromUserId) ?? "委托人未读取",
       toUserName: nameById.get(delegation.toUserId) ?? "受托人未读取"
@@ -200,6 +217,10 @@ export class ApprovalDelegationService {
     }
 
     if (dutyId) {
+      if (await isFundReviewDuty(this.prisma, dutyId)) {
+        await fundReviewDelegationCapability(this.prisma as never, userId, dutyId);
+        return this.prisma.user.findMany({ where: { isActive: true, id: { not: userId } }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+      }
       await this.duty(this.prisma as never, userId, dutyId, false);
       return this.prisma.user.findMany({where: {isActive: true, id: {not: userId}}, orderBy: {name: "asc"}, select: {id: true, name: true}});
     }
@@ -222,7 +243,7 @@ export class ApprovalDelegationService {
       throw new Error("审批委托记录不存在或已被删除");
     }
 
-    if (delegation.resourceType === SPOT_APPROVAL_DUTY_RESOURCE) {
+    if (delegation.resourceType === SPOT_APPROVAL_DUTY_RESOURCE || delegation.resourceType === FUND_REVIEW_RESOURCE) {
       return this.prisma.$transaction(async tx => {
         const instanceId = delegation.resourceId?.split(":")[0];
         if (instanceId) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${instanceId} FOR UPDATE`);

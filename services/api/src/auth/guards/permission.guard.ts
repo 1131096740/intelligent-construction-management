@@ -1,3 +1,5 @@
+import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
+import { FUND_REVIEW_ACTION, resolveFundReviewIdentity } from "../../fund-account/fund-account-duty";
 import { scopedSpotDutyNodeIndexes } from "../../approval/spot-approval-duty-access";
 import {
   CanActivate,
@@ -63,6 +65,12 @@ export class PermissionGuard implements CanActivate {
 
     if (!request.user) {
       throw new ForbiddenException("未获取到登录用户，请重新登录");
+    }
+    if (context.getClass().name === "FundAccountController") {
+      const handler = context.getHandler().name;
+      const receiptAction: FundReviewDecision | null = handler === "confirmCorrection" ? "approve" : handler === "returnCorrection" ? "reject" : handler === "withdrawCorrection" ? "withdraw" : null;
+      const registrationId = request.params?.registrationId;
+      if (receiptAction && registrationId && await matchesOwnFundReviewReceipt(this.prisma as never, request.user.id, registrationId, request.body, receiptAction)) return true;
     }
     const requiredAction = await this.resolveRequiredAction(request, declaredAction);
 
@@ -138,6 +146,7 @@ export class PermissionGuard implements CanActivate {
           : false;
         const delegatedApprovalAllowed =
           scopedClearingAllowed ||
+          (requiredAction === FUND_REVIEW_ACTION && await this.scopedFundDutyAccess(request, request.user.id)) ||
           (requiredAction === "spot_procurement.approve" && projectId && await this.scopedSpotDutyAccess(request, request.user.id, projectId)) ||
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&
@@ -165,6 +174,15 @@ export class PermissionGuard implements CanActivate {
   async loadEffectiveRoleKeys(userId: string, projectId?: string): Promise<RoleKey[]> {
     const roleScopes = await this.loadRoleScopes(userId, projectId);
     return resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
+  }
+
+  private async scopedFundDutyAccess(request: AuthenticatedRequest, actorUserId: string) {
+    const id = request.params?.registrationId;
+    const expected = request.body?.expectedApprovalInstanceId;
+    const readOnly = (request as AuthenticatedRequest & { method?: string }).method === "GET";
+    if (!id || (!readOnly && typeof expected !== "string")) return false;
+    try { await resolveFundReviewIdentity(this.prisma as never, id, actorUserId, typeof expected === "string" ? expected : undefined); return true; }
+    catch { return false; }
   }
 
   private async scopedSpotDutyAccess(request: AuthenticatedRequest, actorUserId: string, projectId: string) {
