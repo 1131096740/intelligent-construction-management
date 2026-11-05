@@ -4,6 +4,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -155,11 +156,11 @@ export class ContractController {
 
   @Get()
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
-  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
+  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string, @Headers("x-contract-numeric-protocol") protocol?: string) {
     return this.contractRead.listRecent(
       limit,
       await this.projectVisibility.visibleProjectIds(user.id),
-      { actorUserId: user.id }
+      { actorUserId: user.id, ...(protocol === undefined ? {} : { numericProtocol: protocol }) }
     );
   }
 
@@ -169,18 +170,14 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("view") rawView?: string,
     @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string
+    @Query("pageSize") pageSize?: string,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
     const view = DRAFT_LEDGER_VIEWS.includes(rawView as DraftLedgerView)
       ? rawView as DraftLedgerView
       : "formal_ledger";
-    return this.contractRead.lifecycleLedger(
-      view,
-      page,
-      pageSize,
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
-    );
+    const args = [view, page, pageSize, await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    return protocol === undefined ? this.contractRead.lifecycleLedger(...args) : this.contractRead.lifecycleLedger(...args, protocol);
   }
 
   @Get("workbench")
@@ -189,18 +186,14 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("view") rawView?: string,
     @Query("page") page?: string,
-    @Query("pageSize") pageSize?: string
+    @Query("pageSize") pageSize?: string,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
     const view = CONTRACT_WORKBENCH_VIEWS.includes(rawView as ContractWorkbenchView)
       ? rawView as ContractWorkbenchView
       : "all";
-    return this.contractRead.workbenchLedger(
-      view,
-      page,
-      pageSize,
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
-    );
+    const args = [view, page, pageSize, await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    return protocol === undefined ? this.contractRead.workbenchLedger(...args) : this.contractRead.workbenchLedger(...args, protocol);
   }
 
   @Get("ledger-export")
@@ -208,12 +201,11 @@ export class ContractController {
   async exportLedger(
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true })
-    response: { set: (headers: Record<string, string>) => void }
+    response: { set: (headers: Record<string, string>) => void },
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    const result = await this.contractRead.exportLedger(
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
-    );
+    const args = [await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    const result = await (protocol === undefined ? this.contractRead.exportLedger(...args) : this.contractRead.exportLedger(...args, protocol));
     response.set({
       "Content-Type": XLSX_MIME,
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
@@ -238,14 +230,11 @@ export class ContractController {
   async detail(
     @Param("contractId") contractId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Query("versionId") versionId?: string
+    @Query("versionId") versionId?: string,
+    @Headers("x-contract-numeric-protocol") protocol?: string
   ) {
-    return this.contractRead.getDetail(
-      contractId,
-      await this.projectVisibility.visibleProjectIds(user.id),
-      user.id,
-      versionId
-    );
+    const args = [contractId, await this.projectVisibility.visibleProjectIds(user.id), user.id, versionId] as const;
+    return protocol === undefined ? this.contractRead.getDetail(...args) : this.contractRead.getDetail(...args, protocol);
   }
 
   @Post(":contractVersionId/approval-submission")

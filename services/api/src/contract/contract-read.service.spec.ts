@@ -1,3 +1,9 @@
+import { Test } from "@nestjs/testing";
+import { Prisma } from "@prisma/client";
+import { ContractController } from "./contract.controller";
+import { ContractService } from "./contract.service";
+import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import * as ExcelJS from "exceljs";
 import {
   CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS,
@@ -9,6 +15,62 @@ import {
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it("negotiates v2 draft list/detail HTTP amounts and never presents the draft's placeholder as financial capacity", async () => {
+    const now = new Date("2026-11-05T02:00:00.000Z");
+    const contract = { id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", code: null, temporaryCode: "草稿一", name: "精确金额草稿", counterparty: "合成单位", updatedAt: now };
+    const draft = { id: "version-2", contractId: contract.id, versionNo: 1, changeType: "original", status: "draft", numericProtocolVersion: 2, amountYuan: null as Prisma.Decimal | null, amountCents: 0n, updatedAt: now, firstSubmittedAt: null, draftRevision: 4 };
+    const versions: Record<string, unknown>[] = [draft];
+    const prisma = {
+      contract: { findFirst: jest.fn().mockResolvedValue(contract), findMany: jest.fn().mockResolvedValue([contract]) },
+      contractVersion: { findMany: jest.fn().mockImplementation(async () => versions) },
+      contractDraftSubmissionRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findUnique: jest.fn().mockResolvedValue({ name: "合成项目" }), findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "合成项目" }]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1", status: "draft", versionNo: 1 }), findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }, settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) }, paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }, approvalInstance: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const visibility = { visibleProjectIds: async () => ["project-1"], effectiveRoleKeys: async () => ["contract_director"], effectiveRoleKeysByProject: async () => new Map([["project-1", ["contract_director"]]]) };
+    const service = new ContractReadService(prisma as never, visibility as never);
+    const module = await Test.createTestingModule({ controllers: [ContractController], providers: [
+      { provide: ContractReadService, useValue: service }, { provide: ContractService, useValue: {} },
+      { provide: ContractWorkbenchService, useValue: {} }, { provide: ProjectVisibilityService, useValue: visibility }
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const root = await app.getUrl();
+      const paths = ["/contracts", "/contracts/lifecycle-ledger?view=my_drafts", "/contracts/workbench?view=my_drafts"];
+      for (const path of paths) { const result = await fetch(`${root}${path}`); expect({ path, status: result.status, body: result.status === 200 ? await result.json() : undefined }).toMatchObject({ path, status: 409 }); }
+      expect((await fetch(`${root}/contracts/contract-1`)).status).toBe(409);
+      for (const amount of [null, "0.0000", "1.5340"]) {
+        draft.amountYuan = amount === null ? null : new Prisma.Decimal(amount);
+        const headers = { "x-contract-numeric-protocol": "2" };
+        for (const path of paths) {
+          const result = await fetch(`${root}${path}`, { headers }); expect(result.status).toBe(200);
+          expect((await result.json()).rows[0].amount).toBe(amount === null ? "待确定" : `¥${amount}`);
+        }
+        const response = await fetch(`${root}/contracts/contract-1`, { headers });
+        expect(response.status).toBe(200);
+        const detail = await response.json();
+        expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: amount === null ? "待确定" : `¥${amount}` });
+        expect(detail.settlementPayment.summary).toEqual([]);
+        expect(detail.settlementPayment.calculationNote).toMatch(/草稿.*尚未生效.*工作台/u);
+      }
+      draft.versionNo = 2; draft.changeType = "change";
+      versions.push({ ...draft, id: "effective-1", versionNo: 1, status: "effective", numericProtocolVersion: 1, amountYuan: null, amountCents: 12345n });
+      expect((await fetch(`${root}/contracts/contract-1?versionId=version-2`)).status).toBe(409);
+      const draftDetail = await (await fetch(`${root}/contracts/contract-1?versionId=version-2`, { headers: { "x-contract-numeric-protocol": "2" } })).json();
+      expect(draftDetail.contractVersionId).toBe("version-2"); expect(draftDetail.settlementPayment.summary).toEqual([]);
+      for (const suffix of ["", "?versionId=effective-1"]) {
+        const response = await fetch(`${root}/contracts/contract-1${suffix}`); expect(response.status).toBe(200);
+        const detail = await response.json(); expect(detail.contractVersionId).toBe("effective-1");
+        expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥123.45" });
+        expect(detail.settlementPayment.summary).toContainEqual(expect.objectContaining({ label: "最新合同剩余额度", value: "¥123.45" }));
+      }
+    } finally { await app.close(); }
+  });
+
   it.each([
     ["approved_pending_seal", "pending_approval"],
     ["in_seal", "in_seal"],

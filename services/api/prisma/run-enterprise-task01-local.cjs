@@ -36,7 +36,7 @@ async function main() {
   requireThat(/^[a-f0-9]{64}$/u.test(inputsSha) && fileSha(inputsFile) === inputsSha && packet.schemaVersion === 1 && packet.purpose === "source-seal-only"
     && /^[a-f0-9]{40}$/u.test(packet.candidateSha) && inputs.schemaVersion === 1 && inputs.purpose === "task01-runtime-inputs-not-approval"
     && inputs.sourceSha === packet.candidateSha && inputs.nodeVersion === process.version && inputs.prismaClientVersion === "5.22.0"
-    && inputs.prismaEngineVersion === ENGINE && Array.isArray(packet.migrations) && packet.migrations.length === 197,
+    && inputs.prismaEngineVersion === ENGINE && Array.isArray(packet.migrations),
   "TASK01_INPUT_BINDING_REJECTED");
   // Optional for the original direct invocation, whose packet/inputs/source
   // identities are already cross-checked. The dispatcher always supplies its
@@ -92,7 +92,7 @@ async function main() {
   const receipt = { schemaVersion: 1, purpose: "task01-case-entry-only", sourceSha: packet.candidateSha,
     sourceSealSha256: packet.sealSha256, runtimeInputsSha256: inputsSha, runId, status: "running",
     worktree: { root, gitDir, gitFileSha256: fileSha(gitFile), preparationReceiptSha256: inputs.preparationReceipt.sha256 },
-    migrations: { expected: 197, status: "not-executed" }, roles: { status: "not-executed" },
+    migrations: { expected: null, status: "not-executed" }, roles: { status: "not-executed" },
     httpPgTracer: { status: "not-executed", financialPosting: "not-covered" },
     web: "not-implemented", responseLossBusinessCase: "not-executed", stages: stageReceipts };
   const kill = child => {
@@ -164,6 +164,19 @@ async function main() {
     const verified = JSON.parse((await command("source-verify", tools.node, [path.join(root, "scripts/prepare-enterprise-acceptance.cjs"), "--verify", packetFile])).trim());
     requireThat(verified.status === "source-verified" && verified.candidateSha === packet.candidateSha
       && verified.sealSha256 === packet.sealSha256 && fileSha(packetFile) === packetFileSha, "TASK01_SOURCE_NOT_VERIFIED");
+    // Source-derived canonical metadata is an additional constraint, never packet authority.
+    // Load candidate code only after complete source verification and bind it again before require.
+    readSealed("services/api/prisma/migration-baseline.cjs");
+    const { loadCanonicalMigrationBaseline, listMigrationDirectories, migrationChecksum } = require("./migration-baseline.cjs");
+    const migrationsRoot = path.join(__dirname, "migrations");
+    const migrationBaseline = loadCanonicalMigrationBaseline({ migrationsRoot });
+    const migrations = listMigrationDirectories(migrationsRoot).map(name => ({
+      path: `services/api/prisma/migrations/${name}/migration.sql`, sha256: migrationChecksum(migrationsRoot, name)
+    }));
+    const expectedMigrationCount = migrationBaseline.expectedDirectoryCount;
+    requireThat(migrations.length === expectedMigrationCount && JSON.stringify(packet.migrations) === JSON.stringify(migrations),
+      "TASK01_MIGRATION_SOURCE_MISMATCH");
+    receipt.migrations.expected = expectedMigrationCount;
     fs.mkdirSync(artifactsDir, { mode: 0o700 });
     privateDir = path.join(artifactsDir, "driver-private"); fs.mkdirSync(privateDir, { mode: 0o700 });
     const inputChecks = path.join(artifactsDir, "input-checks"); fs.mkdirSync(inputChecks, { mode: 0o700 });
@@ -290,15 +303,15 @@ async function main() {
         sanVariantSha256: certificate.wrongSanCertificateSha256, plaintextHbaRejected: true, healthyBeforeAndAfter: true });
     };
     await verifyRoleTls("jg_task01_owner", passwords.owner);
-    await command("migrate-197", tools.pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
+    await command(`migrate-${expectedMigrationCount}`, tools.pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"],
       { env: { ...environment, NODE_ENV: "test", DATABASE_URL: databaseUrl("jg_task01_owner", passwords.owner) }, timeoutMs: 180000 });
     const ledger = JSON.parse((await resource.execOwnerSql(`BEGIN READ ONLY; SELECT coalesce(json_agg(row_to_json(m)),'[]'::json) FROM (SELECT migration_name,checksum,finished_at,rolled_back_at FROM public._prisma_migrations ORDER BY migration_name) m; ROLLBACK;`, "migration-ledger")).stdout.trim());
-    requireThat(Array.isArray(ledger) && ledger.length === 197 && packet.migrations.every(file => {
+    requireThat(Array.isArray(ledger) && ledger.length === expectedMigrationCount && migrations.every(file => {
       const match = /^services\/api\/prisma\/migrations\/([^/]+)\/migration\.sql$/u.exec(file.path);
       const row = match && ledger.find(item => item.migration_name === match[1]);
       return row && row.checksum === file.sha256 && row.finished_at && !row.rolled_back_at;
     }), "TASK01_MIGRATION_LEDGER_MISMATCH");
-    receipt.migrations = { expected: 197, status: "verified", rows: ledger.map(row => ({ name: row.migration_name, sha256: row.checksum })) };
+    receipt.migrations = { expected: expectedMigrationCount, status: "verified", rows: ledger.map(row => ({ name: row.migration_name, sha256: row.checksum })) };
     await healthy("jg_task01_owner", passwords.owner);
     const planText = readSealed("services/api/prisma/enterprise-task01-access.json");
     let sql = readSealed("services/api/prisma/enterprise-task01-access.sql");

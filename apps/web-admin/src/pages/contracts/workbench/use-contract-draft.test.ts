@@ -407,6 +407,26 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("sends explicit four-decimal bill protocol and keeps null prices as unknown editable input", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({ bills: [{ id: "bill-1", billKey: "main", name: "主清单", revision: 7,
+      numericProtocolVersion: 2, totalAmountCents: "0", taxInclusiveAmountYuan: null,
+      rows: [{ rowKey: "row-1", sortOrder: 0, itemName: "待定项", unit: "项", quantity: null, unitPrice: null, customData: {} }] }] }));
+    mockSaveDraft.mockResolvedValue({ ...saveResult("cv-1", 4),
+      versionAmount: { numericProtocolVersion: 2, amountYuan: "1.5240", amountCents: "152" },
+      billAmounts: [{ billKey: "main", numericProtocolVersion: 2, taxInclusiveAmountYuan: "1.5240", taxExclusiveAmountYuan: null, taxAmountYuan: null, taxInclusiveAmountCents: "152", taxExclusiveAmountCents: null, taxAmountCents: null }]
+    } as SaveContractDraftAggregateResult);
+    await draft.load("cv-1");
+    expect(draft.aggregateModel.bills[0]!.rows[0]!["unitPrice"]).toBe("");
+    draft.aggregateModel.bills[0]!.rows[0]!["quantity"] = "1.2345";
+    draft.aggregateModel.bills[0]!.rows[0]!["unitPrice"] = "1.2345";
+    draft.markDirty("bills");
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft.mock.calls[0]?.[2].bills).toEqual([expect.objectContaining({ numericProtocolVersion: 2,
+      rows: [expect.objectContaining({ quantity: "1.2345", unitPrice: "1.2345" })] })]);
+    expect(authorityWorkbench(draft)!.bills[0]).toMatchObject({ numericProtocolVersion: 2, taxInclusiveAmountYuan: "1.5240", taxExclusiveAmountYuan: null });
+    expect(authorityWorkbench(draft)!.version).toMatchObject({ numericProtocolVersion: 2, amountYuan: "1.5240" });
+  });
   it("rechecks the server capability and fails closed before saving", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());

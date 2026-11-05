@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 697,
-    "exactRouteCount": 697,
-    "normalizedRouteCount": 697,
+    "routeCount": 698,
+    "exactRouteCount": 698,
+    "normalizedRouteCount": 698,
     "classificationOverrideCount": 222,
     "consumerSurfaceOverrideCount": 38,
     "classificationOverrideSha256": "7699a4b8cc0fd88e24bfc3300dcd67df59a5cdecdfccc6a9c0c206b76df37a26",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-    "derivedProductionPageCount": 475,
-    "pageRouteCount": 491,
+    "derivedProductionPageCount": 476,
+    "pageRouteCount": 492,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 99,
     "internalTaskCount": 37,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 544,
+      "web_api_wrapper": 545,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 544,
+    "productionWrapperRouteCount": 545,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -1791,6 +1791,47 @@
             "normalizedKey": "GET /contract-business-scenarios/recommendations",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/bills/:billKey/export",
+      "normalizedKey": "GET /contract-drafts/:param/bills/:param/export",
+      "controller": "ContractDraftBillExcelController",
+      "handler": "exportData",
+      "sourceFile": "services/api/src/contract-bill/contract-draft-bill-excel.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "exportContractDraftBill",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/bills/:param/export",
+            "normalizedKey": "GET /contract-drafts/:param/bills/:param/export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractBillsSection.vue"
             ]
           }
         ],
@@ -3749,7 +3790,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5462,
+            "sourceLine": 5465,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",

@@ -1,3 +1,9 @@
+import { Test } from "@nestjs/testing";
+import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
+import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
+import { PristineDraftDeletionService } from "../contract-workbench/pristine-draft-deletion.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), lockEconomicProject: jest.fn().mockResolvedValue(undefined), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import {
@@ -482,6 +488,32 @@ describe("ContractService", () => {
         code: "IDEMPOTENCY_KEY_REUSED"
       })
     });
+  });
+
+  it.each([{}, { expectedRevision: 4, idempotencyKey: "da868e1b-302c-4397-8731-cc298dcfcd01" }])("rejects four-place draft submission over public HTTP before approval or business writes (%j)", async (body) => {
+    const version = { id: "version-1", contractId: "contract-1", status: "draft", changeType: "original", numericProtocolVersion: 2 };
+    const tx = {
+      $queryRaw: submitQueryLocks(version),
+      contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" }), update: jest.fn() },
+      contractVersion: { update: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      contractDraftSubmissionRequest: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      paymentRequest: { create: jest.fn() }
+    };
+    const service = new ContractService({ $transaction: jest.fn(async (run: (client: typeof tx) => unknown) => run(tx)) } as never, audit as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractService, useValue: service },
+      ...[ContractDraftAggregateService, ContractDraftEditLeaseService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication();
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const response = await fetch(`${await app.getUrl()}/contract-drafts/version-1/submission`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(409);
+      expect(await response.text()).toContain("四位金额草稿尚不能提交审批");
+      for (const write of [tx.contract.update, tx.contractVersion.update, tx.approvalInstance.create, tx.contractDraftSubmissionRequest.create, tx.paymentRequest.create, audit.record]) expect(write).not.toHaveBeenCalled();
+    } finally { await app.close(); }
   });
 
   it("does not recalculate a route for an existing in-progress contract", async () => {

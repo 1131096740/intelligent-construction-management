@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 197,
-    "terminalMigration": "20261023100000_personnel_lifecycle",
-    "terminalMigrationChecksum": "3728120258fd924b194e8614760e5eac8d78c5c38c11b6ca6373c43c4945c662",
+    "expectedDirectoryCount": 198,
+    "terminalMigration": "20261105100000_contract_decimal_v2_expand",
+    "terminalMigrationChecksum": "bd4099616b1b010ca8903ddac617e51435d7e8f90e8aeb803b7063b79428da81",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 78,
     "fullyPendingSuites": 67,
     "partiallyPendingSuites": 11,
-    "pendingTests": 516,
+    "pendingTests": 517,
     "coveredFiles": 78,
-    "coveredTests": 516,
+    "coveredTests": 517,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -398,7 +398,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 157,
+      "pendingTests": 158,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -412,7 +412,7 @@
         },
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-          "pendingTests": 6,
+          "pendingTests": 7,
           "suiteStatus": "fully_pending"
         },
         {
@@ -693,7 +693,7 @@
         "invocation": "task01_explicit_inputs",
         "resourceHelper": "services/api/prisma/enterprise-task01-resources.cjs",
         "imageId": "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
-        "sourceSha256": "b1f04a17b80bc534e34686261aea2674350b6505e0e175916568842c0caa8a7f",
+        "sourceSha256": "7eaa6c921a54aa8e0ccd44fc75011c20feb35c711fffd1e46018de48e2ad1dea",
         "resourceHelperSha256": "d7a6c11b13058881106c61cf608addc3aa4cc3e086985bc29071fb0106e7cb40"
       },
       "state": "executable_local_runner",
@@ -708,7 +708,7 @@
     "ciEligible": {
       "groups": 22,
       "files": 77,
-      "tests": 515
+      "tests": 516
     },
     "manualOnly": {
       "groups": 1,

@@ -1,3 +1,8 @@
+import { Test } from "@nestjs/testing";
+import { PaymentController } from "./payment.controller";
+import { PaymentReadService } from "./payment-read.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { FileService } from "../file/file.service";
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPaid: jest.fn().mockResolvedValue(0n), contractProxyPaidForContract: jest.fn().mockResolvedValue(0n) }));
@@ -474,6 +479,26 @@ name: "签批人甲",
     };
     return { payment, createdExecution, tx, prisma };
   }
+
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("persists HTTP payment date %s at its exact Beijing/offset instant through the existing synthetic transaction", async (paidAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
+    const { tx, prisma, createdExecution } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.create.mockImplementation(async ({ data }) => ({ ...createdExecution, ...data }));
+    const actual = paymentExecutionService(new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never, undefined, undefined, projectFunding as never);
+    Reflect.set(actual, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null) });
+    const module = await Test.createTestingModule({ controllers: [PaymentController], providers: [{ provide: PaymentRequestService, useValue: actual }, { provide: PaymentReadService, useValue: {} }, { provide: ProjectVisibilityService, useValue: {} }, { provide: FileService, useValue: fileAccess }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "cashier-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const url = `${await app.getUrl()}/payments/FK-2026-012/executions`;
+      const body = { ...paymentExecutionCoordinates, amountCents: "30000", paidAt, voucherFileId: "file-1", confirmationPassword: "synthetic-password" };
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201); expect((await response.json()).paidAt).toBe(expected);
+      expect(tx.paymentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paidAt: new Date(expected) }) }));
+      tx.paymentExecution.create.mockClear(); prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(tx.paymentExecution.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
+  });
 
   it("requires payment execution CAS and UUID v4 idempotency coordinates", async () => {
     const dto = Object.assign(new RecordPaymentExecutionDto(), {

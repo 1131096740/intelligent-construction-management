@@ -50,9 +50,12 @@ export class ContractDraftController {
   @RequireProjectRole("contract.create")
   workbench(
     @Param("contractVersionId") contractVersionId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
   ) {
-    return this.aggregate.getWorkbench(contractVersionId, user.id);
+    return numericProtocol === undefined
+      ? this.aggregate.getWorkbench(contractVersionId, user.id)
+      : this.aggregate.getWorkbench(contractVersionId, user.id, numericProtocol);
   }
 
   @Put(":contractVersionId")

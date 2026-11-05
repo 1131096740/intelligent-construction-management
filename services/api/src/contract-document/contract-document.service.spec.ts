@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-document.service";
@@ -1256,6 +1257,38 @@ describe("ContractDocumentService", () => {
       companyEntityCreditCodeSnapshot: null,
       companyEntityRegisteredAddressSnapshot: null
     }, parties, [], "draft")).toThrow("合同已提交但我方主体冻结快照缺失");
+  });
+
+  it("queues v2 document output with canonical four-place amounts and unchanged content coordinates", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, numericProtocolVersion: 2, amountYuan: new Prisma.Decimal("1.5340"), amountCents: 153n } as never);
+    tx.contractBill.findMany.mockResolvedValue([{ id: "bill-1", billKey: "materials" }]);
+    tx.contractBillRow.findMany.mockResolvedValue([{
+      contractBillId: "bill-1", itemCode: null, itemName: "四位项目", specification: null, unit: "项",
+      quantity: new Prisma.Decimal("1.2345"), unitPrice: new Prisma.Decimal("1.2345"), taxRate: null,
+      numericProtocolVersion: 2, numericSource: "decimal_input", numericReviewStatus: "verified", precisionPolicy: "four_decimal",
+      taxInclusiveAmountYuan: new Prisma.Decimal("1.5240"), taxExclusiveAmountYuan: null, taxAmountYuan: null,
+      taxInclusiveAmountCents: null, taxExclusiveAmountCents: null, taxAmountCents: null, taxExclusiveUnitPrice: null,
+      isProvisional: false, settlementBasis: null, customData: {}
+    }] as never);
+    const { service } = makeService(tx);
+    await service.queue("version-1", "owner-1", { layoutTemplateVersionId: "layout-1", purpose: "draft" });
+    const snapshot = tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
+    expect(snapshot).toMatchObject(documentContentCoordinates);
+    expect(snapshot.renderInput.values["contract.amount"]).toBe("1.5340");
+    expect(snapshot.renderInput.values["bill.materials"][0]).toMatchObject({ unitPrice: "1.2345", taxInclusiveAmount: "1.5240", taxExclusiveAmount: "—", taxAmount: "—", taxRatePercent: "—" });
+    expect(snapshot.renderInput.values["contract.amountUppercase"]).toBe("人民币壹元伍角叁分肆厘");
+  });
+
+  it("queues v2 sub-cent uppercase placeholders with the exact approved li/hao amount", async () => {
+    const tx = makeTx(); const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, numericProtocolVersion: 2, amountYuan: new Prisma.Decimal("1.5340"), amountCents: 153n } as never);
+    const layout = await tx.contractLayoutTemplateVersion.findUnique();
+    tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({ ...layout, inspectionReport: { placeholders: ["合同金额大写"] } } as never);
+    const { service } = makeService(tx);
+    await service.queue("version-1", "owner-1", { layoutTemplateVersionId: "layout-1", purpose: "draft" });
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.renderInput.values).toMatchObject({ "contract.amount": "1.5340", "contract.amountUppercase": "人民币壹元伍角叁分肆厘" });
   });
 
   it("renders historical unknown tax and bill facts as dashes without recalculating amounts", async () => {

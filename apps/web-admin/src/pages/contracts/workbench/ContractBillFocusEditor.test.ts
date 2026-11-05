@@ -145,6 +145,23 @@ function controllerOptions(
 }
 
 describe("ContractBillFocusEditor aggregate editing", () => {
+  it("accepts four-place edits, keeps five-place input for correction and renders saved decimal totals", async () => {
+    const decimalBill = { ...bill, numericProtocolVersion: 2, taxInclusiveAmountYuan: "1.5340", taxExclusiveAmountYuan: "1.5340", taxAmountYuan: "0.0000" };
+    const { options } = controllerOptions(); options.bill = () => decimalBill;
+    const controller = createContractBillFocusController(options);
+    controller.setRows(controller.rows.value.map(row => ({ ...row, quantity: "1.2345", unitPrice: "1.2345" })));
+    expect(controller.errors.value).toEqual([]);
+    controller.setRows(controller.rows.value.map(row => ({ ...row, unitPrice: "1.23456" })));
+    expect(controller.errors.value).toEqual(expect.arrayContaining([expect.objectContaining({ field: "unitPrice", message: expect.stringContaining("4") })]));
+    expect(controller.rows.value[0]!.unitPrice).toBe("1.23456");
+    const app = createSSRApp(ContractBillsSection, { workbench: { bills: [decimalBill, { ...decimalBill, id: "unknown", billKey: "unknown", taxInclusiveAmountYuan: null }, { ...decimalBill, id: "zero", billKey: "zero", taxInclusiveAmountYuan: "0.0000" }] }, disabled: false });
+    registerTDesignStubs(app);
+    const html = await renderToString(app);
+    expect(html).toContain("1.5340");
+    expect(html).toContain("待确定");
+    expect(html).toContain("0.0000");
+    expect(html).toContain("导出清单");
+  });
   it("emits complete controlled rows and edited for every local operation", () => {
     const { options, emit } = controllerOptions();
     const controller = createContractBillFocusController(options);

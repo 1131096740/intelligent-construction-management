@@ -1,7 +1,7 @@
 import { Prisma, type ContractVersion } from "@prisma/client";
 import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
 import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
-import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName } from "./contract-business-entry-definition";
+import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractCommercialEntryDefinition, contractPartyRoleName } from "./contract-business-entry-definition";
 
 describe("contract business entry definitions", () => {
   it("freezes the inherited contract name for a change draft without overriding an explicit draft name", () => {
@@ -41,6 +41,15 @@ describe("contract business entry definitions", () => {
       expectedRevision: 0,
       values
     }, ["contract_staff"]).valid).toBe(true);
+  });
+
+  it("publishes v2 nullable canonical contract values and four-place definition without converting through cents", () => {
+    const version = { numericProtocolVersion: 2, amountYuan: new Prisma.Decimal("1.5340"), amountCents: 153n,
+      estimatedAmountCents: null, defaultTaxRatePercent: new Prisma.Decimal("0"), taxMode: "single_rate", pricingNature: "framework", amountSource: "bill_sum" } as ContractVersion;
+    expect(contractCommercialEntryValues(version)).toMatchObject({ contractAmountYuan: "1.5340", defaultTaxRatePercent: "0" });
+    expect(contractCommercialEntryValues({ ...version, amountYuan: null })).toHaveProperty("contractAmountYuan", null);
+    expect(contractCommercialEntryDefinition(version).fields.find(field => field.key === "contractAmountYuan")?.precision).toBe(4);
+    expect(contractCommercialEntryDefinition(version).fields.find(field => field.key === "defaultTaxRatePercent")?.precision).toBe(4);
   });
 
   it("uses the existing Chinese role labels without exposing an unknown technical key", () => {

@@ -1,3 +1,4 @@
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import {
   BadRequestException,
@@ -258,13 +259,9 @@ export class SpotProcurementPaymentService {
     const amountCents = parsePositiveExecutionAmount(
       input.amountCents
     );
-    const paidAt = new Date(input.paidAt);
-    if (Number.isNaN(paidAt.getTime())) {
-      throw new BadRequestException("实付日期格式不正确");
-    }
-    if (paidAt.getTime() > Date.now()) {
-      throw new BadRequestException("实付日期不能晚于当前时间");
-    }
+    let paidAt: Date;
+    try { paidAt = requiredPastChinaDate(input.paidAt, "实付日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "实付日期格式不正确，请核对实际日期"); }
     if (!PAYMENT_METHODS.has(input.paymentMethod)) {
       throw new BadRequestException("实际付款方式不正确");
     }

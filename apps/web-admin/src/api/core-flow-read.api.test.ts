@@ -2810,7 +2810,7 @@ describe("core flow read API client", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/contracts/route%2Fa",
-        {}
+        { headers: { "x-contract-numeric-protocol": "2" } }
       );
     }
   );

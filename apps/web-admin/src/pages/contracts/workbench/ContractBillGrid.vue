@@ -196,7 +196,7 @@ function toGridRow(row: ContractBillCandidateRow): JgBusinessGridRow {
     unit: row.unit,
     quantity: row.quantity,
     unitPrice: row.unitPrice,
-    taxExclusiveUnitPrice: netUnitPriceDisplay(row.taxExclusiveUnitPrice),
+    taxExclusiveUnitPrice: netUnitPriceDisplay(row.taxExclusiveUnitPrice, row.precisionPolicy === "four_decimal" ? 4 : 2),
     taxRateSource: row.taxRateSource,
     taxRatePercent: row.taxRatePercent,
     isProvisional: row.isProvisional ? "true" : "false",
@@ -633,7 +633,7 @@ function cellKey(clientRowKey: string, field: string) {
               :data-client-row-key="row.clientRowKey"
               :title="netUnitPriceDetail(row.taxExclusiveUnitPrice)"
             >
-              {{ netUnitPriceDisplay(row.taxExclusiveUnitPrice) }}
+              {{ netUnitPriceDisplay(row.taxExclusiveUnitPrice, row.precisionPolicy === "four_decimal" ? 4 : 2) }}
             </span>
           </div>
           <label class="contract-bill-grid__field">

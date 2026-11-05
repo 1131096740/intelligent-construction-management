@@ -153,8 +153,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 515 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 516);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 516 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 517);
 });
 
 test("manual task01 operator cannot run automatically on GitHub Actions", () => {
@@ -417,7 +417,7 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest preserves prior cases plus four parallel cases and one separately invoked task01 operator", () => {
+test("manifest preserves source inventory and one separately invoked task01 operator", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
@@ -426,16 +426,16 @@ test("manifest preserves prior cases plus four parallel cases and one separately
     pendingFiles: 78,
     fullyPendingSuites: 67,
     partiallyPendingSuites: 11,
-    pendingTests: 516,
+    pendingTests: 517,
     coveredFiles: 78,
-    coveredTests: 516,
+    coveredTests: 517,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 515);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 516);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -845,7 +845,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=516/u
+    /inventory\.coveredTests=26，派生值=517/u
   );
 });
 

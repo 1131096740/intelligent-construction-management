@@ -1,11 +1,16 @@
 import { Prisma } from "@prisma/client";
-import { Logger } from "@nestjs/common";
+import { BadRequestException, Logger } from "@nestjs/common";
+import { businessAmountFromLegacyCents, businessAmountToLegacyCents, calculateBusinessLineTaxAmounts, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
 
 const derivedFactsLogger = new Logger("ContractBillDerivedFacts");
 
 export function assertContractBillDerivedUnitPrices(
   rows: ReadonlyArray<{
+    numericProtocolVersion?: number;
+    numericSource?: string;
+    unitPrice?: Prisma.Decimal | null;
+    taxRate?: Prisma.Decimal | null;
     id?: string;
     rowKey?: string;
     quantity: Prisma.Decimal | null;
@@ -14,6 +19,12 @@ export function assertContractBillDerivedUnitPrices(
   }>
 ): void {
   for (const row of rows) {
+    if (row.numericProtocolVersion === 2 && row.numericSource === "decimal_input") {
+      const expected = calculateBusinessLineTaxAmounts(row.quantity?.toString() ?? null, row.unitPrice?.toString() ?? null, row.taxRate?.toString() ?? null).taxExclusiveUnitPrice;
+      if (row.taxExclusiveUnitPrice == null && expected === null) continue;
+      if (row.taxExclusiveUnitPrice != null && expected !== null && new Prisma.Decimal(row.taxExclusiveUnitPrice).eq(expected)) continue;
+      throw new Error("四位清单派生单价与权威业务金额不一致");
+    }
     if (row.taxExclusiveUnitPrice == null) continue;
     const expected =
       row.quantity === null || row.taxExclusiveAmountCents === null
@@ -43,7 +54,7 @@ export function assertContractBillDerivedUnitPrices(
 // 由行 CRUD 与 Excel 导入共享，避免重复的金额（分）求和逻辑。
 export async function recalculateBillAndContractAmount(
   tx: Prisma.TransactionClient,
-  bill: { id: string; contractVersionId: string },
+  bill: { id: string; contractVersionId: string; numericProtocolVersion?: number },
   version: {
     id: string;
     amountSource: string;
@@ -76,7 +87,17 @@ export async function recalculateBillAndContractAmount(
       taxAmountCents: 0n
     }
   );
-  await tx.contractBill.update({ where: { id: bill.id }, data: totals });
+  const decimalTotals = bill.numericProtocolVersion === 2 ? {
+    taxInclusiveAmountYuan: sumBillDecimals(rows.map(row => row.numericProtocolVersion === 2 ? row.taxInclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(row.taxInclusiveAmountCents))),
+    taxExclusiveAmountYuan: sumBillDecimals(rows.map(row => row.numericProtocolVersion === 2 ? row.taxExclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(row.taxExclusiveAmountCents))),
+    taxAmountYuan: sumBillDecimals(rows.map(row => row.numericProtocolVersion === 2 ? row.taxAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(row.taxAmountCents)))
+  } : null;
+  const gross = decimalTotals === null ? null : compatibleBillCents(decimalTotals.taxInclusiveAmountYuan);
+  const net = decimalTotals === null ? null : compatibleBillCents(decimalTotals.taxExclusiveAmountYuan);
+  await tx.contractBill.update({ where: { id: bill.id }, data: decimalTotals === null ? totals : {
+    ...decimalTotals, numericProtocolVersion: 2, taxInclusiveAmountCents: gross ?? 0n,
+    taxExclusiveAmountCents: net ?? 0n, taxAmountCents: gross === null || net === null ? 0n : gross - net
+  } });
   const unlimitedFramework =
     version.pricingNature === "framework" && version.amountLimitType === "unlimited";
   if (
@@ -90,6 +111,13 @@ export async function recalculateBillAndContractAmount(
     const pricedBills = bills.filter(
       (item) => item.amountRole === "included" || item.amountRole === "provisional"
     );
+    if (pricedBills.some(item => item.numericProtocolVersion === 2)) {
+      const amountYuan = sumContractBillBusinessAmounts(pricedBills);
+      const amountCents = compatibleBillCents(amountYuan);
+      await tx.contractVersion.update({ where: { id: version.id }, data: { numericProtocolVersion: 2, amountYuan,
+        ...(amountCents === null ? {} : { amountCents }) } });
+      return rows;
+    }
     const pricedRows = await tx.contractBillRow.findMany({
       where: { contractBillId: { in: pricedBills.map((item) => item.id) } }
     });
@@ -112,4 +140,23 @@ export async function recalculateBillAndContractAmount(
     }
   }
   return rows;
+}
+
+export function compatibleBillCents(amountYuan: string | null): bigint | null {
+  let cents: string | null;
+  try { cents = businessAmountToLegacyCents(amountYuan); }
+  catch { throw new BadRequestException("清单合计超出兼容保存范围，请核对金额，当前输入不会部分保存"); }
+  if (cents === null) return null;
+  const value = BigInt(cents);
+  return value;
+}
+
+export function sumContractBillBusinessAmounts(bills: ReadonlyArray<{ amountRole: string; numericProtocolVersion?: number; taxInclusiveAmountYuan?: Prisma.Decimal | null; taxInclusiveAmountCents: bigint }>): string | null {
+  return sumBillDecimals(bills.filter(bill => bill.amountRole === "included" || bill.amountRole === "provisional")
+    .map(bill => bill.numericProtocolVersion === 2 ? bill.taxInclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill.taxInclusiveAmountCents)));
+}
+
+function sumBillDecimals(values: readonly (string | null)[]) {
+  try { return sumBusinessAmounts(values); }
+  catch { throw new BadRequestException("业务金额合计超出可保存范围，请核对数量与单价，当前输入不会部分保存"); }
 }
