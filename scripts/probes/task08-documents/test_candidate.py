@@ -13,6 +13,89 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 class CandidateCLI(unittest.TestCase):
+    def test_ambiguous_table_loop_rejects_extra_unmapped_block(self):
+        import re
+        template = HERE / "samples/labor-subcontract-real-v1.docx"
+        with ZipFile(template) as z:parts = {name: z.read(name) for name in z.namelist()}
+        xml = ET.fromstring(parts["word/document.xml"])
+        body = xml.find("w:body", NS)
+        start = next(i for i, p in enumerate(body) if "".join(p.itertext()).strip() == "{#劳务清单}")
+        extra = ET.Element("{" + NS["w"] + "}p")
+        ET.SubElement(ET.SubElement(extra, "{" + NS["w"] + "}r"), "{" + NS["w"] + "}t").text = "需要显式确认归属的循环说明"
+        body.insert(start + 1, extra)
+        with tempfile.TemporaryDirectory(prefix="task08-ambiguous-") as tmp:
+            tmp = Path(tmp)
+            fixture = tmp / "ambiguous.docx"
+            with ZipFile(fixture, "w") as z:
+                for name, data in parts.items():z.writestr(name, ET.tostring(xml) if name == "word/document.xml" else data)
+            texts = "".join("".join(ET.fromstring(data).itertext()) for name, data in parts.items() if name.startswith("word/") and name.endswith(".xml"))
+            fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", texts)}
+            request = tmp / "request.json"
+            request.write_text(json.dumps({"fields": fields, "lists": {"劳务清单": [{"序号": "1", "名称": "样张行001", "单位": "件", "数量": "1", "单价": "25.00", "含税金额": "25.00", "备注": "验证"}]}}))
+            output = tmp / "actual.docx"
+            result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(fixture), "--request", str(request), "--output", str(output)], capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(output.exists())
+
+    def test_print_profile_removes_only_terminal_whitespace_and_preserves_bookmarks(self):
+        import re
+        template = HERE / "samples/labor-subcontract-real-v1.docx"
+        with ZipFile(template) as z:
+            parts = {name: z.read(name) for name in z.namelist()}
+        source = ET.fromstring(parts["word/document.xml"])
+        source_blank = sum(not "".join(p.itertext()).strip() for p in source.findall(".//w:p", NS))
+        fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", "".join(source.itertext()))}
+        fields["文档水印"] = "技术验证草稿"
+        row = {"序号": "1", "名称": "样张行001", "单位": "件", "数量": "1", "单价": "25.00", "含税金额": "25.00", "备注": "合成技术验证"}
+        for protected in [False, True]:
+            with self.subTest(protected=protected), tempfile.TemporaryDirectory(prefix="task08-tail-") as tmp:
+                tmp = Path(tmp)
+                if protected:
+                    xml = ET.fromstring(parts["word/document.xml"])
+                    paragraph = xml.find("w:body", NS)[-2]
+                    ET.SubElement(paragraph, "{" + NS["w"] + "}bookmarkStart", {"{" + NS["w"] + "}id": "42", "{" + NS["w"] + "}name": "preserve_signature_anchor"})
+                    ET.SubElement(paragraph, "{" + NS["w"] + "}bookmarkEnd", {"{" + NS["w"] + "}id": "42"})
+                    fixture = tmp / "guarded.docx"
+                    with ZipFile(fixture, "w") as z:
+                        for name, data in parts.items():z.writestr(name, ET.tostring(xml) if name == "word/document.xml" else data)
+                else:
+                    fixture = template
+                request = tmp / "request.json"
+                request.write_text(json.dumps({"fields": fields, "lists": {"劳务清单": [row]}, "printProfile": "a4-portrait"}))
+                output = tmp / "actual.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(fixture), "--request", str(request), "--output", str(output)], check=True)
+                with ZipFile(output) as z:actual = ET.fromstring(z.read("word/document.xml"))
+                blank = sum(not "".join(p.itertext()).strip() for p in actual.findall(".//w:p", NS))
+                self.assertEqual(blank, source_blank if protected else source_blank - 6)
+                if protected:self.assertIsNotNone(actual.find(".//w:bookmarkStart", NS))
+
+    def test_block_table_loop_keeps_one_header_and_repeats_only_data_rows(self):
+        import re
+        template = HERE / "samples/labor-subcontract-real-v1.docx"
+        with ZipFile(template) as z:
+            source_xml = ET.fromstring(z.read("word/document.xml"))
+            signature_tables = [ET.tostring(t) for t in source_xml.findall(".//w:tbl", NS)[:2]]
+            source_text = "".join("".join(ET.fromstring(z.read(n)).itertext()) for n in z.namelist() if n.startswith("word/") and n.endswith(".xml"))
+        for count in [3, 45]:
+            with self.subTest(rows=count), tempfile.TemporaryDirectory(prefix="task08-loop-") as tmp:
+                tmp = Path(tmp)
+                fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", source_text)}
+                rows = [{"序号": str(i), "名称": f"样张行{i:03d}", "单位": "件", "数量": "1", "单价": "25.00", "含税金额": "25.00", "备注": "合成技术验证"} for i in range(1, count + 1)]
+                request = tmp / "request.json"
+                request.write_text(json.dumps({"fields": fields, "lists": {"劳务清单": rows}}))
+                output = tmp / "actual.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(template), "--request", str(request), "--output", str(output)], check=True)
+                with ZipFile(output) as z:
+                    xml = ET.fromstring(z.read("word/document.xml"))
+                tables = xml.findall(".//w:tbl", NS)
+                self.assertEqual([ET.tostring(t) for t in tables[:2]], signature_tables)
+                bills = [t for t in tables if "项目名称" in "".join(t.itertext())]
+                self.assertEqual(len(bills), 1)
+                self.assertEqual(len(bills[0].findall("w:tr", NS)), count + 1)
+                self.assertEqual("".join(bills[0].itertext()).count("项目名称"), 1)
+                self.assertIsNotNone(bills[0].find("w:tr/w:trPr/w:tblHeader", NS))
+                self.assertEqual(["".join(row.itertext()) for row in bills[0].findall("w:tr", NS)[1:]], [f"{i}样张行{i:03d}件125.0025.00合成技术验证" for i in range(1, count + 1)])
+
     def test_eight_real_templates_have_explicit_semantic_total_mapping(self):
         import re
         for template in sorted((HERE / "samples").glob("*.docx")):

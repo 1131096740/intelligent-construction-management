@@ -478,6 +478,54 @@
     {
       "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v4-cwd-correction/final-layout-assessment.json",
       "sha256": "a5ee5d442dd5ee4a00abd55a9a3c5b295e761886495fcb27babf524397ad724f"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/causal-investigation.json",
+      "sha256": "0bbcd36da3cc710cf2db7eff2599ac67388037847705a958c50bc4bd2b289bc9"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/input-manifest.json",
+      "sha256": "b8c8ccf263001a85156ebb8e4b72a41621b909ffd04dfcdccc81a510d135604b"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/renderer-source.py",
+      "sha256": "d388f90834c7c96b2ac16aca7cccaa184616959f0988c926a13e9b855709db95"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/labor-layout-fixed.docx",
+      "sha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v5-derived-layout-fix/receipt.json",
+      "sha256": "44d79fe58a43f6ff953541a9c60a9c397d461b88b539e794d88d78e967285abe"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v5-derived-layout-fix/layout-assessment.json",
+      "sha256": "dac59905402d1fc8e8f6b0b96e61ae3ed19c6202539fd74bdd1861accaa0475c"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/10-block-table-loop-red.log",
+      "sha256": "d413f630169d8287f00a758dba62aceda834687f681e2b8800a7780ad45dd15c"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/11-terminal-whitespace-red.log",
+      "sha256": "77737cf155cbab464d5a0fb79b055ebab4d22ac4823141ff1019f17886c39193"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/12-layout-source-green.log",
+      "sha256": "ba51ac7592bbaf436fa522faeea111552863d75e3b5498e1a1248310e73e25f9"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/13-layout-source-green.log",
+      "sha256": "af10cb781b9f3cb6f2337f678b3b50d4495891f439978b9ed815ea44631065d5"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/14-ambiguous-table-loop-red.log",
+      "sha256": "1477ba740c600c1c25949917202b953774cf64e1aa9de4188491c006cd7407ee"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/15-layout-source-final-green.log",
+      "sha256": "1facbabd3b54d02cbc73681c07145683097fe6b193d40c223a0a856a5a998833"
     }
   ],
   "followup": {
@@ -921,6 +969,369 @@
         "nativeWordEquivalenceProven": false,
         "eightTemplateBatchRun": false
       }
+    },
+    "derivedLayoutSourceRepair": {
+      "rootAuthorizedScope": "two confirmed source fixes only, then one derived labor conversion; no eight-template batch",
+      "cause": {
+        "status": "read-only-cause-established",
+        "originalAsset": {
+          "sha256": "faae3cebc8e377764df12e999bcfddb1beefe6958cb728175f33f8e6fa4a187f",
+          "bodyTableCount": 3,
+          "tableRowCounts": [
+            9,
+            3,
+            2
+          ],
+          "trailingWhitespaceParagraphs": [
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "  ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "        ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            }
+          ]
+        },
+        "oldDerived": {
+          "sha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+          "bodyTableCount": 5,
+          "tableRowCounts": [
+            9,
+            3,
+            2,
+            2,
+            2
+          ],
+          "trailingWhitespaceParagraphs": [
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "  ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "        ",
+              "pageBreak": false,
+              "sectPr": false
+            },
+            {
+              "text": "",
+              "pageBreak": false,
+              "sectPr": false
+            }
+          ]
+        },
+        "v4Fo": {
+          "tableCount": 5,
+          "sequences": [
+            {
+              "force-page-count": "no-force",
+              "format": "",
+              "id": "section_s1",
+              "master-reference": "s1"
+            },
+            {
+              "force-page-count": "no-force",
+              "format": "1",
+              "id": "section_s2",
+              "master-reference": "s2"
+            }
+          ],
+          "finalFlowTrailingWhitespaceBlocks": 6,
+          "trailingBlockLineHeightPt": 25
+        },
+        "causes": [
+          "candidate repeats entire table block instead of unique data row",
+          "source has6 inert trailing paragraphs; FO preserves6 fixed25pt blocks, no forced odd/even page sequence"
+        ],
+        "minimalFixes": [
+          "single reviewed table block with unique placeholder row; ambiguous block rejected",
+          "existing a4 print profile trims only inert terminal p, stops at bookmark/field/drawing/break/section; interior whitespace unchanged"
+        ],
+        "newDerived": {
+          "sha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+          "bodyTableCount": 3,
+          "tableRowCounts": [
+            9,
+            3,
+            4
+          ],
+          "trailingWhitespaceParagraphs": []
+        }
+      },
+      "publicCliTests": "6 pass; includes3/45 rows, signature tables, protected trailing bookmark, ambiguous block rejection, prior pricing/sync/restore tests",
+      "newInputManifest": {
+        "status": "PREPARED_SIMHEI_WIRING_NOT_CONVERTED_REQUIRES_ROOT_APPROVAL",
+        "inputDocx": {
+          "path": "/private/tmp/jg-task08-docx4j-tools-20261105/derived-layout-fix/labor-layout-fixed.docx",
+          "sha256": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a"
+        },
+        "newFontVersionExplicit": true,
+        "historicalTitleFontSha256": "2322dbfb4fe3b51e5f530c0ee668a7d83df20c0fd8b1aa113a0a9e7ee45d45f3",
+        "fonts": [
+          {
+            "path": "/Users/leoyang/Library/Fonts/仿宋_GB2312.ttf",
+            "sha256": "fef7cf991b458cabd184b73378918d9d15429010e1d6c804f08d394395c3c3b4",
+            "faces": [
+              {
+                "names": [
+                  "FangSong_GB2312",
+                  "仿宋_GB2312"
+                ],
+                "fsType": 0
+              }
+            ]
+          },
+          {
+            "path": "/Users/leoyang/Library/Fonts/方正小标宋简体.ttf",
+            "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e",
+            "faces": [
+              {
+                "names": [
+                  "FZXBSJW--GB1-0",
+                  "FZXiaoBiaoSong-B05S",
+                  "方正小标宋简体"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/Users/leoyang/Library/Fonts/楷体_GB2312_0.TTF",
+            "sha256": "99092cbb0df301625f46509e85854db8685556551742097ab3fbbc2e2ca0778b",
+            "faces": [
+              {
+                "names": [
+                  "KaiTi_GB2312",
+                  "楷体_GB2312"
+                ],
+                "fsType": 0
+              }
+            ]
+          },
+          {
+            "path": "/Users/leoyang/Library/Fonts/黑体.ttf",
+            "sha256": "aa4560dd8fe5645745fed3ffa301c3ca4d6c03cbd738145b613303961ba733b8",
+            "faces": [
+              {
+                "names": [
+                  "SimHei",
+                  "黑体"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+            "sha256": "f3b4ffff71c2a0c7227d37497683b2498fb2d0a4e8beae26f022e3ccfcaabfa3",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPSMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+            "sha256": "50f5b1f27b7d34621090e437e8b1dd4510a22d2823fc876b3286bed327b64bbb",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPS-BoldMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
+            "sha256": "7bb99c3a67697fbce15ab66d806d9a2151432ce1dab2eaba4156e1251da486c0",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPS-ItalicMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf",
+            "sha256": "906157e8294fdf168d83002eaabde01c2d30fc3f44977be89e33fa22f262002a",
+            "faces": [
+              {
+                "names": [
+                  "Times New Roman",
+                  "TimesNewRomanPS-BoldItalicMT"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Wingdings.ttf",
+            "sha256": "709d5848799239f0c51c0544c471c8d02bcbf9f2bcdc49702ebca1691a4c760e",
+            "faces": [
+              {
+                "names": [
+                  "Wingdings",
+                  "Wingdings-Regular"
+                ],
+                "fsType": 8
+              }
+            ]
+          },
+          {
+            "path": "/System/Library/Fonts/Supplemental/Wingdings 2.ttf",
+            "sha256": "6fce8b535724253e294c88f272613ad4b796c4181bae18b3e49775be63d02dcd",
+            "faces": [
+              {
+                "names": [
+                  "Wingdings 2",
+                  "Wingdings2"
+                ],
+                "fsType": 8
+              }
+            ]
+          }
+        ],
+        "adapterSha256": "a4e6c359f4513d844771bb028230aca668a35084bc767435a1397f464c92d7f0",
+        "policySha256": "40440a4c075734e7569ba916948a5d544177e512f0456bc3a49d87b72c9ada94",
+        "engineCoreSha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63",
+        "engineExtrasSha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964",
+        "plannedOutput": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-v5-derived-layout-fix/labor-docx4j.pdf",
+        "maxConversionCalls": 1,
+        "timeoutSeconds": 120,
+        "preflight": "recheck every font and DOCX hash; XML external/DTD reject; actual socket/DNS/outside-file deny before fonts; no alias loop or substitute",
+        "prediction": "If independent engine handles body punctuation, all three original U+FF0C appear using unchanged fef7 FangSong. Title da811 is a new version candidate, not a single-variable historical-font comparison. Any missing char/font substitution/A4/table/signing failure is NOT ACCEPTED.",
+        "previousAdapterAndPolicyRetained": "adapter-v2",
+        "explicitCorrection": "Heiti SC is not exact SimHei; use root-selected existing aa4560 SimHei; no font install or source modification",
+        "rendererSourceSha256": "d388f90834c7c96b2ac16aca7cccaa184616959f0988c926a13e9b855709db95",
+        "sourceLayoutFixProvenance": {
+          "previousDocxSha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+          "changes": [
+            "block table loop retains1 header and3 data rows instead of3 full tables",
+            "A4 profile removes6 inert terminal whitespace paragraphs"
+          ],
+          "unchangedChecks": [
+            "two signature tables c14n identical",
+            "three data row c14n identical",
+            "final section properties c14n identical",
+            "inserted and edited ordinary clause preserved",
+            "same preexisting request values and revision sequence"
+          ],
+          "oldTableCount": 5,
+          "newTableCount": 3,
+          "newBillRows": 3,
+          "conversionPerformed": false
+        }
+      },
+      "conversion": {
+        "exitCode": 0,
+        "sourceSha256Before": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "sourceSha256After": "f56203e238ab82a2224c7c3a56bed8614cfc528bccd9a83b21a0ec6206c3580a",
+        "boundaryDenied3": true,
+        "allInputFontHashesUnchanged": true,
+        "pages": 15,
+        "pdfSha256": "e9c645a42fbf727bb8cb32247c09a400090fba93040f63c755ad87775b455168",
+        "missingCharacters": {},
+        "missingTraceCharacters": {},
+        "allFontsEmbedded": true,
+        "allPagesA4": true,
+        "outOfPageTextCount": 0
+      },
+      "independentLayoutAssessment": {
+        "status": "single-sample-measured-checks-pass-pending-full-eight",
+        "pages": 15,
+        "commaFragmentsPresent": [
+          true,
+          true,
+          true
+        ],
+        "notdefOrReplacementCandidates": [],
+        "lastPageBodyHasAll3Rows": true,
+        "lastPageHeaderOccurrences": 1,
+        "lastPageCharacters": 382,
+        "signatureBodyClipComparison": [
+          {
+            "page": 11,
+            "bodyClipPt": [
+              0.0,
+              71.0,
+              595.0,
+              770.0
+            ],
+            "pixelBytesIdenticalToV4": true
+          },
+          {
+            "page": 14,
+            "bodyClipPt": [
+              0.0,
+              71.0,
+              595.0,
+              770.0
+            ],
+            "pixelBytesIdenticalToV4": true
+          }
+        ],
+        "fonts": [
+          "EAAAAA+TimesNewRomanPSMT",
+          "EAAAAB+FZXBSJW--GB1-0",
+          "EAAAAC+TimesNewRomanPSMT",
+          "EAAAAD+TimesNewRomanPS-BoldMT",
+          "EAAAAE+SimHei",
+          "EAAAAF+SimHei",
+          "EAAAAG+FangSong_GB2312",
+          "EAAAAH+FangSong_GB2312"
+        ],
+        "nativeWordPaginationProven": false,
+        "eightTemplateBatchExecuted": false
+      },
+      "currentRendererSha256": "9ac5d318fc883bdfd8942be7bb4d7cb4cfbf8d95f20a7c05cb8bd063cca1fd1c",
+      "scopeLimit": "one sample measured pass; full task08 not complete, compact standards and eight-template batch not verified under new engine"
     }
   }
 }

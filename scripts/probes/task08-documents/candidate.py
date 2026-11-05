@@ -105,6 +105,33 @@ def expand(root, lists):
             for child in originals:
                 parent.remove(child)
             position = i
+            reviewed_table_block = len(originals) == 3 and originals[1].tag == W + "tbl" and text(originals[0]).strip() == "{#" + key + "}" and text(originals[2]).strip() == "{/" + key + "}"
+            if any(c.tag == W + "tbl" for c in originals) and not reviewed_table_block:
+                raise ValueError("ambiguous table loop block requires explicit mapping")
+            if reviewed_table_block:
+                table = deepcopy(originals[1])
+                data_rows = [r for r in table.findall(W + "tr") if TOKEN.search(text(r))]
+                if len(data_rows) != 1:
+                    raise ValueError("block table loop needs exactly one reviewed placeholder row")
+                data_row = data_rows[0]
+                row_index = table.index(data_row)
+                for header in list(table)[:row_index]:
+                    if header.tag != W + "tr":
+                        continue
+                    props = header.find(W + "trPr")
+                    if props is None:
+                        props = E.Element(W + "trPr")
+                        header.insert(0, props)
+                    if props.find(W + "tblHeader") is None:
+                        E.SubElement(props, W + "tblHeader")
+                table.remove(data_row)
+                for offset, row in enumerate(lists[key]):
+                    clone = deepcopy(data_row)
+                    substitute(clone, row, False)
+                    table.insert(row_index + offset, clone)
+                if lists[key]:
+                    parent.insert(position, table)
+                continue
             for row in lists[key]:
                 for original in originals:
                     clone = deepcopy(original)
@@ -176,6 +203,19 @@ def render(parts, request, source_name=None):
                 size.attrib.clear()
                 size.set(W + "w", "11906")
                 size.set(W + "h", "16838")
+            body = root.find(W + "body")
+            # Only inert trailing paragraphs; explicit breaks, fields, bookmarks,
+            # drawings and section properties stop trimming. Interior whitespace
+            # (including signing space) is never touched.
+            while body is not None and len(body) > 1:
+                tail = body[-2] if body[-1].tag == W + "sectPr" else body[-1]
+                if tail.tag != W + "p" or text(tail).strip():
+                    break
+                if any(n.tag not in {W + "p", W + "pPr", W + "r", W + "rPr", W + "t"} and not n.xpath("ancestor::w:pPr or ancestor::w:rPr", namespaces=NS) for n in tail.iter()):
+                    break
+                if tail.find(".//" + W + "sectPr") is not None or tail.find(".//" + W + "pageBreakBefore") is not None:
+                    break
+                body.remove(tail)
         leftovers = TOKEN.findall(text(root))
         if leftovers:
             raise ValueError("unmapped placeholders: " + ", ".join(sorted(set(leftovers))))
