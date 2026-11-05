@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `b077f92e429103d358744ce4160331eac1501f8507ab29be7fb21b3afcc41506` |
-| webApiWrappers | ready | `273136ef1bcfeba7c35f46bd8518eed6559fa20d508ba8d7b48c365ce5b6d2e8` |
-| webPageActions | ready | `9a8178842b89a8a28846a03d98197e055d796b13df378810d9d3bf6b32a86651` |
-| routeUsage | ready | `507b2c8c5d4b38fdb4914e15f14e971abf9ee158c0f4161713fbcc70ca9a0023` |
+| nestRoutes | ready | `e02f83aba12d368f115539cb8c47480f6471e1e4f9dcac65e59888523922bd3a` |
+| webApiWrappers | ready | `fc93b6cd3cb305e7881574140895e2ed80fdb18766fbdd11f34ff9de68951ae4` |
+| webPageActions | ready | `03db165ca190a61b4980693f89e06f49d1632eef2e33192a62120f0e6822930a` |
+| routeUsage | ready | `04f685d8f0170c1e8565edba54f8c6dbf6bc4ec18384862a91c614e3b180f766` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 698 |
-| pageRouteCount | 492 |
+| routeCount | 702 |
+| pageRouteCount | 498 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 99 |
+| exitCandidateRouteCount | 97 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 691 |
+| mainRequestBindingCount | 695 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 394 |
-| actionBindingCount | 454 |
-| acceptedActionBindingCount | 417 |
+| registeredActionCount | 396 |
+| actionBindingCount | 456 |
+| acceptedActionBindingCount | 419 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 384 |
-| coveredProductionMutationConsumerPairCount | 384 |
+| productionMutationConsumerPairCount | 386 |
+| coveredProductionMutationConsumerPairCount | 386 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -39,7 +39,7 @@
 
 | 方法 | 路径 | 用途 | 消费面 | Web wrapper | 动作 | 写入覆盖 | 阻塞 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DELETE | /approval-delegations/:delegationId | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | — | not_applicable | — |
+| DELETE | /approval-delegations/:delegationId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | approval-delegation.revoke | covered | — |
 | DELETE | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow | — | not_applicable | — |
 | DELETE | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction | contract-draft.delete-pristine | covered | — |
 | DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | covered | — |
@@ -50,12 +50,16 @@
 | GET | /account-security/options | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchAccountOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/allocation-options/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingAllocationOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/options | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchAffiliateClearingAuthorityOptions | — | not_applicable | — |
+| GET | /approval-delegations/:delegationId/revoke-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationRevokeCapability | — | not_applicable | — |
 | GET | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listApprovalDelegations | — | not_applicable | — |
+| GET | /approval-delegations/duty-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationDutyCapability | — | not_applicable | — |
+| GET | /approval-delegations/duty-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationDutyOptions | — | not_applicable | — |
 | GET | /approval-delegations/user-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationUserOptions | — | not_applicable | — |
 | GET | /approval-forms/:businessType/:businessId/capability | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#approvalDocumentCapability | — | not_applicable | — |
 | GET | /approval-forms | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#listApprovalDocuments | — | not_applicable | — |
 | GET | /approval-progress/:instanceId | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchApprovalProgress | — | not_applicable | — |
 | GET | /approval-progress | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchRelatedApprovals | — | not_applicable | — |
+| GET | /approval-rule-assignments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalRuleAssignments | — | not_applicable | — |
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
@@ -308,7 +312,7 @@
 | POST | /affiliate-clearing-authorities/:authorityId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /approval-delegations | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | not_applicable | — |
+| POST | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | approval-delegation.create | covered | — |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | approval-documents.download-form<br>contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
 | POST | /approval-progress/:instanceId/remind | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#remindApprovalBySms | approval-progress.remind-by-sms | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |

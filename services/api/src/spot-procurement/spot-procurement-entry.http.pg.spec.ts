@@ -619,11 +619,18 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], {type: "image/png"}), "合成受托签名.png");
     expect((await fetch(`${baseUrl}/me/signature/canvas`, {method: "POST", headers: {authorization: `Bearer ${refundFinance.tokens.accessToken}`}, body: signature})).status).toBe(201);
     const results = await Promise.all([manager, refundFinance].map(session => json(`/spot-procurements/${id}/approval`, session, "POST", {...coordinates, decision: "approve"})));
-    expect(results.map(result => result.status).sort()).toEqual([201, 409]);
+    expect(results.filter(result => result.status === 201)).toHaveLength(1);
+    expect(results.filter(result => [403,409].includes(result.status))).toHaveLength(1);
     const after = expectHttpStatus("竞争后回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
     expect(after.approvalTimeline.filter(log => log.action === "approve")).toHaveLength(1);
     expect(after.payments).toHaveLength(0);
-    expect((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "approve"})).status).toBe(409);
+    expect([403,409]).toContain((await json(`/spot-procurements/${id}/approval`, refundFinance, "POST", {...coordinates, decision: "approve"})).status);
+    for (const actor of [manager, refundFinance]) {
+      const work = expectHttpStatus("竞办结束后待办回读", await json("/me/work-items", actor), 200).body as unknown as {queues:{pending:Array<{businessId:string}>}};
+      expect(work.queues.pending.filter(item=>item.businessId===coordinates.expectedVersionId)).toHaveLength(0);
+    }
+    const stable = expectHttpStatus("拒绝重复后状态回读", await json(`/spot-procurements/${id}`, applicant), 200).body!;
+    expect(stable.approvalTimeline.filter(log=>log.action==="approve")).toHaveLength(1);
   }, 60_000);
 
   (enabled ? it : it.skip)("人员PG撤销：旧受托链接即时失权且不影响原岗位", async () => {

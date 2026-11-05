@@ -16,21 +16,21 @@ function fixture(roles: string[], participant = false) {
   const visibility={effectiveRoleKeys:async()=>roles};
   return {settlement:new SettlementReadService(db as never,visibility as never),payment:new PaymentReadService(db as never,visibility as never)};
 }
-it("普通同项目员工不能读取他人结算及付款敏感台账",async()=>{
- const services=fixture(["employee"]);
+it.each(["employee","material_staff","budget_staff","engineering_tech","engineering_foreman","material_director"])("普通或非本职岗位%s不能读取他人结算及付款敏感台账",async(role)=>{
+ const services=fixture([role]);
  expect((await services.settlement.listRecent(undefined,["project-1"],{actorUserId:"employee"} as never)).rows).toEqual([]);
  expect((await services.payment.listRecent(undefined,["project-1"],{actorUserId:"employee"})).rows).toEqual([]);
 });
-it("普通同项目员工不能用已知业务编号读取他人敏感详情",async()=>{
- const services=fixture(["employee"]);
+it.each(["employee","material_staff","budget_staff","engineering_tech","engineering_foreman","material_director"])("普通或非本职岗位%s不能用已知业务编号读取他人敏感详情",async(role)=>{
+ const services=fixture([role]);
  await expect(services.settlement.getDetail("JS-1",["project-1"],"employee")).rejects.toThrow("未找到该结算单");
  await expect(services.payment.getDetail("FK-1",["project-1"],"employee")).rejects.toThrow("未找到付款申请");
 });
 
-it.each(["finance_staff","finance_director","comprehensive_director","contract_director","material_director","project_manager"])("有权岗位保持本范围台账读取：%s", async role => {
+it.each(["finance_staff","finance_director","comprehensive_director","contract_director","project_manager"])("有权岗位保持本范围台账读取：%s", async role => {
  const services=fixture([role]);
  expect((await services.settlement.listRecent(undefined,["project-1"],{actorUserId:"reader"})).rows).toHaveLength(1);
- expect((await services.payment.listRecent(undefined,["project-1"],{actorUserId:"reader"})).rows).toHaveLength(1);
+ expect((await services.payment.listRecent(undefined,["project-1"],{actorUserId:"reader"})).rows).toHaveLength(role === "contract_director" ? 0 : 1);
 });
 it("普通员工仅凭自己真实审批参与事实读取相关单据",async()=>{
  const services=fixture(["employee"],true);

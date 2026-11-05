@@ -66,6 +66,8 @@ export class ApprovalDelegationService {
       throw new Error("委托结束时间必须晚于开始时间");
     }
 
+    if (!scope) throw new BadRequestException("请选择明确的审批职责，不能创建无范围委托");
+
     const delegation = await this.prisma.approvalDelegation.create({
       data: {
         fromUserId,
@@ -128,6 +130,17 @@ export class ApprovalDelegationService {
     });
     await this.notifications?.dispatchQueued().catch(() => undefined);
     return result;
+  }
+
+  async dutyCapability(userId: string, resourceId: string) {
+    if (!this.prisma) return {canDelegate: false};
+    await this.duty(this.prisma as never, userId, resourceId, false);
+    return {canDelegate: true};
+  }
+
+  async revokeCapability(userId: string, id: string) {
+    const row = await this.prisma?.approvalDelegation.findUnique({where: {id}});
+    return {canRevoke: Boolean(row && row.enabled && row.fromUserId === userId)};
   }
 
   async listDutyOptions(userId: string) {

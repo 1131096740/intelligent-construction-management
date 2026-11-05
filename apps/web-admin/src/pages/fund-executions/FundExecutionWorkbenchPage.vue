@@ -484,7 +484,8 @@ async function approveFundExecutionCaseWithCapability(
     (action) => action.key === "approve" && action.enabled
   );
   if (!operationAllowed) throw new Error("服务端已撤销资金执行审批权限");
-  return reviewFundExecutionCase(caseRef, { action: "approve", comment, ...selfReviewPayload(freshCase.actions.some(action => action.key === "approve" && !!action.requiresSelfReviewConfirmation)) });
+  const selfReview = selfReviewPayload(freshCase.actions.some(action => action.key === "approve" && !!action.requiresSelfReviewConfirmation));
+  return reviewFundExecutionCase(caseRef, { action: "approve", comment, selfReviewReason: selfReview.selfReviewReason, confirmationPassword: selfReview.confirmationPassword });
 }
 
 async function returnFundExecutionApprovalWithCapability(
@@ -496,9 +497,10 @@ async function returnFundExecutionApprovalWithCapability(
     (action) => action.key === "return_approval" && action.enabled
   );
   if (!operationAllowed) throw new Error("服务端已撤销资金执行审批退回权限");
+  const selfReview = selfReviewPayload(freshCase.actions.some(action => action.key === "return_approval" && !!action.requiresSelfReviewConfirmation));
   return reviewFundExecutionCase(caseRef, {
     action: "return_to_applicant",
-    ...selfReviewPayload(freshCase.actions.some(action => action.key === "return_approval" && !!action.requiresSelfReviewConfirmation)),
+    selfReviewReason: selfReview.selfReviewReason, confirmationPassword: selfReview.confirmationPassword,
     comment
   });
 }

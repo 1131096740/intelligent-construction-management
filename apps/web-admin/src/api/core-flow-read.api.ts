@@ -7358,3 +7358,19 @@ export function fetchContractFinancialBalances(input:{projectId?:string;companyE
  query.set("scopeKind","projects");
  return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/as-of?${query}`);
 }
+
+export interface ApprovalRuleAssignmentsReadModel {
+  projects: Array<{id: string; name: string}>;
+  projectId: string | null;
+  roles: Array<{roleKey: string; people: Array<{id: string; name: string}>; missing: boolean}>;
+}
+export function fetchApprovalRuleAssignments(projectId?: string) {
+  return readJson<ApprovalRuleAssignmentsReadModel>(`/approval-rule-assignments${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
+}
+
+export function fetchApprovalDelegationDutyCapability(dutyId: string) {
+  return readJson<{canDelegate: boolean}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
+}
+export function fetchApprovalDelegationRevokeCapability(id: string) {
+  return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);
+}

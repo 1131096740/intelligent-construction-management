@@ -57,3 +57,23 @@ it("只有原发起人可撤销精确委托，撤销事实保留并拒绝重复�
   await expect(service.revoke("mandate-1","manager")).rejects.toThrow("已撤销");
   expect(grants.size).toBe(1);
 });
+
+it("新建委托省略全部scope也拒绝，不新增历史无界standing授权",async()=>{
+ const {service,grants}=fixture();
+ const original=input();
+ const unscoped={toUserId:original.toUserId,startsAt:original.startsAt,endsAt:original.endsAt};
+ await expect(service.create("manager",unscoped)).rejects.toThrow("请选择明确的审批职责");
+ expect(grants.size).toBe(0);
+});
+it("当前职责办理或失岗即撤销新建委托能力，撤销能力只属本人未撤销记录",async()=>{
+ const {service,round}=fixture();
+ await expect(service.dutyCapability("manager","round-1:1")).resolves.toEqual({canDelegate:true});
+ await service.create("manager",input());
+ await expect(service.revokeCapability("other-user","mandate-1")).resolves.toEqual({canRevoke:false});
+ await expect(service.revokeCapability("manager","mandate-1")).resolves.toEqual({canRevoke:true});
+ await service.revoke("mandate-1","manager");
+ await expect(service.revokeCapability("manager","mandate-1")).resolves.toEqual({canRevoke:false});
+ Object.assign(round.frozenNodes[1],{approvedRoleKeys:["project_manager"]});
+ await expect(service.dutyCapability("manager","round-1:1")).rejects.toThrow("该审批职责已结束");
+ await expect(fixture(false).service.dutyCapability("manager","round-1:1")).rejects.toThrow("不是该职责的有效审批人");
+});

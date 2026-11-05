@@ -1,3 +1,5 @@
+import { ApprovalRuleAssignmentsController } from "./approval-rule-assignments.controller";
+import { ApprovalRuleAssignmentsService } from "./approval-rule-assignments.service";
 import {SpotProcurementApprovalNotificationService} from "../spot-procurement/spot-procurement-approval-notification.service";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
@@ -18,8 +20,8 @@ import { ApprovalSmsService } from "./approval-sms.service";
 
 @Module({
   imports: [AuditModule, AuthModule, FileModule, SpotProcurementAccessModule],
-  controllers: [ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
-  providers: [SpotProcurementApprovalNotificationService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
+  controllers: [ApprovalRuleAssignmentsController, ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
+  providers: [ApprovalRuleAssignmentsService, SpotProcurementApprovalNotificationService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
   exports: [SpotProcurementApprovalNotificationService, ApprovalSmsService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService]
 })
 export class ApprovalModule {}

@@ -829,7 +829,7 @@ function reviewContextIsCurrent(
 
 const reviewSelfReviewReason = ref("");
 const reviewConfirmationPassword = ref("");
-const reviewRequiresSelfConfirmation = computed(() => Boolean(spotProcurementCapability.value?.availableActions.find(action => action.key === "review_approval" && action.enabled)?.requiresSelfReviewConfirmation));
+const reviewRequiresSelfConfirmation = computed(() => Boolean(detail.value?.availableActions.find(action => action.key === "review_approval")?.requiresSelfReviewConfirmation));
 watch(() => confirmation.visible, visible => {if (!visible) {reviewSelfReviewReason.value = ""; reviewConfirmationPassword.value = "";}});
 
 function captureReviewContext(

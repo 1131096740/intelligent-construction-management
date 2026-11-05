@@ -452,7 +452,7 @@ export class PaymentReadService {
         })
       : [];
     const historicalTakeovers = options?.actorUserId ? (await Promise.all(allHistoricalTakeovers.map(async row =>
-      hasSensitiveLedgerReadRole(await this.actorRoleKeys(options.actorUserId, row.projectId)) ? row : null
+      hasSensitiveLedgerReadRole("payment_request", await this.actorRoleKeys(options.actorUserId, row.projectId)) ? row : null
     ))).filter((row): row is NonNullable<typeof row> => row !== null) : allHistoricalTakeovers;
     const takeoverIds = historicalTakeovers.map(
       (takeover) => takeover.id

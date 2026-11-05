@@ -18,14 +18,16 @@ function fixture(kind:"settlement"|"payment",role:string,participant=false, ownP
  const service=new FileService(db as never,new AuditService(db as never),{} as never);
  return {read:()=>service.assertCanDownloadFile(db as never,file.id,"reader")};
 }
-it.each(["settlement","payment"] as const)("普通同项目员工不能下载他人%s私有附件",async kind=>{
- await expect(fixture(kind,"employee").read()).rejects.toThrow("无权下载");
+it.each(["employee","material_staff","budget_staff","engineering_tech","engineering_foreman","material_director"])("普通或非本职岗位%s不能下载他人结算付款私有附件",async role=>{
+ for(const kind of ["settlement","payment"] as const) await expect(fixture(kind,role).read()).rejects.toThrow("无权下载");
 });
 it.each(["settlement","payment"] as const)("实际参与者可下载相关%s附件，不因同项目自动授权",async kind=>{
  await expect(fixture(kind,"employee",true).read()).resolves.toMatchObject({id:"bound-file"});
 });
 it.each(["finance_staff","finance_director","comprehensive_director","contract_director"])("公司岗位跨项目读取相关结算/付款附件：%s",async role=>{
- for(const kind of ["settlement","payment"] as const) await expect(fixture(kind,role,false,false).read()).resolves.toMatchObject({id:"bound-file"});
+ await expect(fixture("settlement",role,false,false).read()).resolves.toMatchObject({id:"bound-file"});
+ if(role === "contract_director") await expect(fixture("payment",role,false,false).read()).rejects.toThrow("无权下载");
+ else await expect(fixture("payment",role,false,false).read()).resolves.toMatchObject({id:"bound-file"});
 });
 it("项目经理只读取负责项目附件",async()=>{
  await expect(fixture("settlement","project_manager").read()).resolves.toMatchObject({id:"bound-file"});

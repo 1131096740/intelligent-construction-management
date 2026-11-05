@@ -14,6 +14,16 @@ export class ApprovalDelegationController {
     return this.delegations.create(user.id, body);
   }
 
+  @Get("duty-capability")
+  dutyCapability(@CurrentUser() user: AuthenticatedUser, @Query("dutyId") dutyId: string) {
+    return this.delegations.dutyCapability(user.id, dutyId);
+  }
+
+  @Get(":delegationId/revoke-capability")
+  revokeCapability(@CurrentUser() user: AuthenticatedUser, @Param("delegationId") delegationId: string) {
+    return this.delegations.revokeCapability(user.id, delegationId);
+  }
+
   @Get("user-options")
   userOptions(@CurrentUser() user: AuthenticatedUser, @Query("dutyId") dutyId?: string) {
     return this.delegations.listActiveUserOptions(user.id, dutyId);

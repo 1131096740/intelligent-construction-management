@@ -1,9 +1,11 @@
 import { Prisma } from "@prisma/client";
-import { CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS, CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS } from "@jiangkong/shared-domain";
-
-const FULL_READ_ROLES = new Set<string>([...CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS, ...CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS].filter(role => role !== "super_admin"));
-export function hasSensitiveLedgerReadRole(roleKeys: readonly string[]): boolean {
-  return roleKeys.some(role => FULL_READ_ROLES.has(role));
+const COMMON_READ_ROLES = ["chairman", "general_manager", "finance_staff", "finance_director", "comprehensive_director", "project_manager"];
+const READ_ROLES = {
+  settlement: new Set([...COMMON_READ_ROLES, "contract_director"]),
+  payment_request: new Set(COMMON_READ_ROLES)
+};
+export function hasSensitiveLedgerReadRole(businessType: "settlement" | "payment_request", roleKeys: readonly string[]): boolean {
+  return roleKeys.some(role => READ_ROLES[businessType].has(role));
 }
 
 /** Project membership alone is not participation in another person's financial record. */
@@ -15,7 +17,7 @@ export async function sensitiveBusinessReadAllowed(
   roleKeys: readonly string[],
   preparedByUserId?: string | null
 ): Promise<boolean> {
-  if (hasSensitiveLedgerReadRole(roleKeys) || preparedByUserId === actorUserId) return true;
+  if (hasSensitiveLedgerReadRole(businessType, roleKeys) || preparedByUserId === actorUserId) return true;
   if (typeof tx.$queryRaw !== "function") return false;
   const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT instance."id" FROM "ApprovalInstance" instance

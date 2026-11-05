@@ -134,6 +134,8 @@ import { computed, onMounted, reactive, ref } from "vue";
 import {
   listApprovalDelegations,
   fetchApprovalDelegationDutyOptions,
+  fetchApprovalDelegationDutyCapability,
+  fetchApprovalDelegationRevokeCapability,
   fetchApprovalDelegationUserOptions,
   createApprovalDelegation,
   revokeApprovalDelegation,
@@ -146,7 +148,7 @@ import {
 } from "./delegation-list.config";
 
 const auth = useAuthStore();
-const columns = [...delegationLedgerColumns, {colKey: "actions", title: "操作", width: 112}];
+const columns = delegationLedgerColumns;
 const rawRows = ref<ApprovalDelegationReadModel[]>([]);
 const rows = computed(() => mapDelegationLedgerRows(rawRows.value, auth.user?.id));
 const loading = ref(false);
@@ -166,6 +168,18 @@ async function loadRecipients() {
   try {const rows = await fetchApprovalDelegationUserOptions(dutyId); if (own === recipientGeneration && dutyId === draft.resourceId) recipients.value=rows.map(row=>({value:row.id,label:row.name}));}
   catch(error) {if(own===recipientGeneration) createError.value=error instanceof Error?error.message:"受托人读取失败，请重试";}
 }
+async function createDelegationWithCapability(input: Parameters<typeof createApprovalDelegation>[0] & {resourceId: string}) {
+  const capability = await fetchApprovalDelegationDutyCapability(input.resourceId);
+  const operationAllowed = capability.canDelegate;
+  if (!operationAllowed) throw new Error("当前职责已不能委托，请刷新后重试");
+  return createApprovalDelegation(input);
+}
+async function revokeDelegationWithCapability(id: string) {
+  const capability = await fetchApprovalDelegationRevokeCapability(id);
+  const operationAllowed = capability.canRevoke;
+  if (!operationAllowed) throw new Error("当前无权撤销该委托，请刷新后重试");
+  return revokeApprovalDelegation(id);
+}
 async function saveDelegation() {
   if(saving.value)return; createError.value="";
   try {
@@ -173,13 +187,13 @@ async function saveDelegation() {
     const chinaTime=(value:string)=> {if(!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value))throw new Error("请填写正确的起止时间"); const time=new Date(`${value.replace(" ","T")}:00+08:00`);if(!Number.isFinite(time.getTime()))throw new Error("请填写正确的起止时间");return time.toISOString();};
     const startsAt=chinaTime(draft.startsAt);const endsAt=chinaTime(draft.endsAt);if(endsAt<=startsAt)throw new Error("失效时间必须晚于生效时间");
     saving.value=true;
-    await createApprovalDelegation({toUserId:draft.toUserId,startsAt,endsAt,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:draft.resourceId});
+    await createDelegationWithCapability({toUserId:draft.toUserId,startsAt,endsAt,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:draft.resourceId});
     createVisible.value=false;messageTheme.value="success";message.value="委托已保存，本人与受托人均可办理当前职责。";await loadDelegations();
   } catch(error){createError.value=error instanceof Error?error.message:"委托保存失败，请重试";}finally{saving.value=false;}
 }
 async function revoke(id:string) {
   if(saving.value)return;saving.value=true;
-  try{await revokeApprovalDelegation(id);messageTheme.value="success";message.value="委托已撤销，受托人不能再办理该职责。";await loadDelegations();}
+  try{await revokeDelegationWithCapability(id);messageTheme.value="success";message.value="委托已撤销，受托人不能再办理该职责。";await loadDelegations();}
   catch(error){messageTheme.value="error";message.value=error instanceof Error?error.message:"撤销失败，请重试";}finally{saving.value=false;}
 }
 
