@@ -10,6 +10,7 @@ import { AppModule } from "../app.module";
 import { PrismaService } from "./prisma.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { apiJsonReplacer } from "../api-json-replacer";
+import { TencentSmsGateway } from "../auth/tencent-sms.gateway";
 
 const describePostgres = process.env.RUN_POL113_HTTP_PG16 === "1" ? describe : describe.skip;
 
@@ -21,6 +22,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   let token: string;
   const sessions = new Map<string, unknown>();
   let participatingCompanyId: string;
+  let smsRecipient: string | undefined;
+  let deliveredSmsCode: string | undefined;
   const password = `Local-${randomUUID()}`;
   const phone = `139${String(Date.now()).slice(-8)}`;
 
@@ -38,7 +41,14 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/pol113") {
       throw new Error("仅允许本机一次性 pol113 数据库");
     }
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(TencentSmsGateway)
+      .useValue({ send: async (recipient: string, code: string) => {
+        // Only the network boundary is synthetic; real SMS challenges and verification remain in PostgreSQL.
+        if (smsRecipient === undefined || recipient !== smsRecipient) throw new Error("未登记的合成短信接收人");
+        deliveredSmsCode = code;
+      } })
+      .compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(createApiValidationPipe());
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -752,13 +762,33 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const denied = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: "wrong-password" });
     expect(denied.status).toBe(400);
     expect((await request("/auth/login", "POST", { phone, password })).body.user.name).toBe("资料测试经办人");
-    const saved = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: password });
-    expect(saved.status).toBe(200);
-    expect(saved.body.user).toMatchObject({ id: userId, name, phone: newPhone });
-    token = saved.body.tokens.accessToken;
-    expect((await request("/auth/login", "POST", { phone: newPhone, password })).body.user)
-      .toMatchObject({ id: userId, name, phone: newPhone });
-    expect((await request("/auth/login", "POST", { phone, password })).status).toBe(401);
+    const smsKeys = ["SMS_ENABLED", "SMS_SECRET_ID", "SMS_SECRET_KEY", "SMS_SDK_APP_ID", "SMS_SIGN_NAME", "SMS_TEMPLATE_ID", "SMS_CODE_SECRET"] as const;
+    const previousSmsEnvironment = smsKeys.map(key => [key, process.env[key]] as const);
+    smsRecipient = newPhone;
+    deliveredSmsCode = undefined;
+    try {
+      // Synthetic configuration is local to this case; no real gateway or credentials are used.
+      for (const key of smsKeys) process.env[key] = key === "SMS_ENABLED" ? "true" : randomUUID();
+      const sent = await request("/account-security/phone-change-sms", "POST", { phone: newPhone });
+      expect(sent.status).toBe(201);
+      if (deliveredSmsCode === undefined) throw new Error("合成短信网关未接收验证码");
+      const saved = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: password, code: deliveredSmsCode });
+      expect(saved.status).toBe(200);
+      expect(saved.body.user).toMatchObject({ id: userId, name, phone: newPhone });
+      token = saved.body.tokens.accessToken;
+      const newLogin = await request("/auth/login", "POST", { phone: newPhone, password });
+      expect(newLogin.status).toBe(201);
+      expect(newLogin.body.user).toMatchObject({ id: userId, name, phone: newPhone });
+      token = newLogin.body.tokens.accessToken;
+      expect((await request("/auth/login", "POST", { phone, password })).status).toBe(401);
+    } finally {
+      smsRecipient = undefined;
+      deliveredSmsCode = undefined;
+      for (const [key, value] of previousSmsEnvironment) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it("综合部主管沿专用创建链成功，重放与并发只返回一个可回读合作单位", async () => {
