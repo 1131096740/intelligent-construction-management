@@ -9,6 +9,7 @@ import {
   isContractBillCustomColumn,
   normalizeContractBillBoolean,
   normalizeTaxRatePercent,
+  businessAmountFromLegacyCents,
   type BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
@@ -46,6 +47,7 @@ export interface ContractBillExcelImportDto {
 
 export interface ContractDraftBillExcelImportPreviewDto {
   fileId: string;
+  numericProtocolVersion?: number;
 }
 
 interface CoreFieldDef {
@@ -135,7 +137,7 @@ interface ResolvedRow {
   taxRatePercent: string | null;
   taxRateSource: "version_default" | "row_override";
   pricingFactStatus: "confirmed" | "unconfirmed";
-  precisionPolicy: "legacy" | "two_decimal";
+  precisionPolicy: "legacy" | "two_decimal" | "four_decimal";
   isProvisional: boolean;
   settlementBasis: string | null;
   customData: Prisma.InputJsonValue;
@@ -154,6 +156,34 @@ export class ContractBillExcelService {
     private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
+  async exportDraftData(contractVersionId: string, billKey: string, actorUserId: string) {
+    const { bill, rows } = await this.prisma.$transaction(async tx => {
+      // Same owner/exact draft/readability boundary as the existing template.
+      const { bill } = await this.loadDraftBillContext(tx, contractVersionId, billKey, actorUserId);
+      const rows = await tx.contractBillRow.findMany({ where: { contractBillId: bill.id }, orderBy: { sortOrder: "asc" } });
+      await this.audit.record(tx, { actorUserId, action: "contract.bill.export", businessType: "contract_bill", businessId: bill.id, metadata: { rowCount: rows.length } });
+      return { bill, rows };
+    });
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("合同清单");
+    const custom = this.schemaColumns(bill.schemaSnapshot);
+    sheet.addRow(["项目编号", "名称", "规格型号", "单位", "数量", "含税单价(元)", "税率(%)", "含税金额(元)", "不含税金额(元)", "税额(元)", "精度说明", ...custom.map(column => column.label)]);
+    for (const row of rows) {
+      const decimal = (kind: "taxInclusiveAmount" | "taxExclusiveAmount" | "taxAmount") => row.numericProtocolVersion === 2
+        ? row[`${kind}Yuan`]?.toFixed(4) ?? null : businessAmountFromLegacyCents(row[`${kind}Cents`] ?? null);
+      const values = row.customData && typeof row.customData === "object" && !Array.isArray(row.customData) ? row.customData : {};
+      sheet.addRow([row.itemCode, row.itemName, row.specification, row.unit, row.quantity?.toString() ?? null,
+        row.unitPrice?.toString() ?? null, row.taxRate?.toString() ?? null, decimal("taxInclusiveAmount"), decimal("taxExclusiveAmount"), decimal("taxAmount"),
+        row.numericProtocolVersion === 2 && row.numericSource === "decimal_input" && row.numericReviewStatus === "verified" ? "四位业务值" : "历史原值，待核对；金额按原记录保留",
+        ...custom.map(column => { const value = values[column.key]; return value == null ? null : typeof value === "boolean" ? value ? "是" : "否" : typeof value === "object" ? "待核对" : String(value); })]);
+    }
+    // Excel numeric cells have only 15 significant digits. Decimal facts and
+    // source quantities remain text, including legacy six-place source values.
+    for (const column of sheet.columns) { column.numFmt = "@"; column.width = 22; }
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    return { buffer: Buffer.from(await workbook.xlsx.writeBuffer()), fileName: `${this.safeBillName(bill.name)}-清单.xlsx` };
+  }
+
   async exportTemplate(billId: string, actorUserId: string) {
     const { bill } = await this.prisma.$transaction((tx) =>
       this.loadBillContext(tx, billId, actorUserId)
@@ -164,12 +194,19 @@ export class ContractBillExcelService {
   async exportDraftTemplate(
     contractVersionId: string,
     billKey: string,
-    actorUserId: string
+    actorUserId: string,
+    numericProtocol?: string
   ) {
     const { bill } = await this.prisma.$transaction((tx) =>
       this.loadDraftBillContext(tx, contractVersionId, billKey, actorUserId)
     );
-    return this.buildTemplateWorkbook(bill);
+    return this.buildTemplateWorkbook(this.draftNumericContext(bill, numericProtocol === undefined ? undefined : numericProtocol === "2" ? 2 : numericProtocol === "1" ? 1 : NaN));
+  }
+
+  private draftNumericContext(bill: BillContext, version?: number): BillContext {
+    if (version !== undefined && version !== 1 && version !== 2) throw new BadRequestException("清单金额格式不受支持，请刷新后重试");
+    if (bill.numericProtocolVersion === 2 && version !== 2) throw new BadRequestException("清单金额精度已升级，请刷新页面后重试");
+    return version === 2 ? { ...bill, numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4 } : bill;
   }
 
   private async buildTemplateWorkbook(bill: BillContext) {
@@ -180,7 +217,7 @@ export class ContractBillExcelService {
     instructions.addRow(["合同清单导入模板填写说明"]);
     instructions.addRow(["1. 仅在『清单数据』工作表中填写，第 1 行为中文表头，请勿修改。"]);
     instructions.addRow(["2. 系统识别用字段行和内部列已隐藏，请不要取消隐藏或改动。"]);
-    instructions.addRow(["3. 数量、含税单价最多保留 2 位小数；税率必须在 0 到 100 之间。"]);
+    instructions.addRow([`3. 数量、含税单价最多保留 ${bill.numericProtocolVersion === 2 ? 4 : 2} 位小数；税率必须在 0 到 100 之间。`]);
     instructions.addRow(["4. 不含税单价为系统只读计算列，导入时不读取该列。"]);
     instructions.addRow([
       bill.taxMode === "single_rate"
@@ -261,6 +298,7 @@ export class ContractBillExcelService {
     return this.prisma.$transaction(async (tx) => {
       // loadOwnedEditableBill 同时完成 owner + 可编辑状态校验；preview 不改动任何金额或行。
       const { bill } = await this.loadBillContext(tx, billId, actorUserId);
+      if (bill.numericProtocolVersion === 2) throw new BadRequestException("清单金额精度已升级，请在刷新后的合同草稿中预检并保存");
       const sourceFile = await tx.fileObject?.findUnique({
         where: { id: fileId },
         select: { contentSha256: true, storageStatus: true }
@@ -344,7 +382,7 @@ export class ContractBillExcelService {
       });
       assertContractBillDerivedUnitPrices(existingRows);
       const preview = await this.buildPreview(
-        bill,
+        this.draftNumericContext(bill, input.numericProtocolVersion),
         "replace",
         buffer,
         existingRows,
@@ -385,6 +423,7 @@ export class ContractBillExcelService {
         record.contractBillId,
         actorUserId
       );
+      if (bill.numericProtocolVersion === 2) throw new BadRequestException("清单金额精度已升级，请在刷新后的合同草稿中预检并保存");
       if (bill.revision !== storedPreview.billRevision) {
         throw new BadRequestException("合同清单已变化，请重新预检后再应用");
       }
@@ -1211,6 +1250,7 @@ export class ContractBillExcelService {
         revision: bill.revision,
         name: bill.name,
         pricingMode: bill.pricingMode as "tax_inclusive" | "tax_exclusive",
+        numericProtocolVersion: bill.numericProtocolVersion,
         quantityScale: bill.quantityScale,
         unitPriceScale: bill.unitPriceScale,
         schemaSnapshot: bill.schemaSnapshot,
@@ -1418,6 +1458,7 @@ export class ContractBillExcelService {
 }
 
 interface BillContext {
+  numericProtocolVersion?: number;
   businessEntryDefinition?: BusinessEntrySceneDefinition;
   id: string;
   contractVersionId: string;

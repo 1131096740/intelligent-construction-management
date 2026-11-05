@@ -56,16 +56,22 @@ export const CONTRACT_COMMERCIAL_ENTRY_DEFINITION: BusinessEntrySceneDefinition 
   ]
 };
 
+export function contractCommercialEntryDefinition(version: Pick<ContractVersion, "numericProtocolVersion">): BusinessEntrySceneDefinition {
+  return version.numericProtocolVersion === 2 ? { ...CONTRACT_COMMERCIAL_ENTRY_DEFINITION, version: 2,
+    fields: CONTRACT_COMMERCIAL_ENTRY_DEFINITION.fields.map(field => ["contractAmountYuan", "defaultTaxRatePercent"].includes(field.key) ? { ...field, precision: 4 } : field)
+  } : CONTRACT_COMMERCIAL_ENTRY_DEFINITION;
+}
+
 export function contractCommercialEntryValues(version: ContractVersion) {
   return Object.fromEntries(Object.entries({
     pricingNature: version.pricingNature, amountSource: version.amountSource,
-    contractAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(version.amountCents.toString())),
+    contractAmountYuan: version.numericProtocolVersion === 2 ? version.amountYuan?.toFixed(4) ?? null : formatMoneyCentsAsPlainYuan(BigInt(version.amountCents.toString())),
     estimatedAmountYuan: version.estimatedAmountCents == null ? null : formatMoneyCentsAsPlainYuan(BigInt(version.estimatedAmountCents.toString())),
     amountAdjustmentReason: version.amountAdjustmentReason,
     invoiceType: version.invoiceType, taxMode: version.taxMode,
-    defaultTaxRatePercent: version.defaultTaxRatePercent == null ? null : Number(version.defaultTaxRatePercent.toString()),
+    defaultTaxRatePercent: version.defaultTaxRatePercent == null ? null : version.numericProtocolVersion === 2 ? version.defaultTaxRatePercent.toString() : Number(version.defaultTaxRatePercent.toString()),
     taxFactSource: version.taxFactSource
-  }).filter(([, value]) => value !== null && value !== undefined && value !== ""));
+  }).filter(([key, value]) => (version.numericProtocolVersion === 2 && key === "contractAmountYuan") || (value !== null && value !== undefined && value !== "")));
 }
 
 export const CONTRACT_PARTY_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
@@ -200,7 +206,7 @@ export async function resolveContractBillEntries(tx: Prisma.TransactionClient, v
       ["quantity", "数量", "number", false, bill.quantityScale],
       ["unitPrice", "含税单价", "money", false, bill.unitPriceScale],
       ["taxRateSource", "税率来源", "single_select", false, 0],
-      ["taxRatePercent", "税率", "number", false, 6],
+      ["taxRatePercent", "税率", "number", false, bill.numericProtocolVersion === 2 ? 4 : 6],
       ["isProvisional", "暂定项", "boolean", false, 0],
       ["settlementBasis", "结算依据", "text", false, 0]
     ];

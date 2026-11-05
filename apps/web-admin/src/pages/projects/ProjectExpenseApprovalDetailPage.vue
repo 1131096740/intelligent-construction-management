@@ -360,6 +360,7 @@
 </template>
 
 <script setup lang="ts">
+import { chinaDateTimeInput, requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { formatUnknownApiError } from "../../api/error-message";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
@@ -1748,13 +1749,7 @@ function parseFinanceYuanAmount(raw: string) {
 }
 
 function toFinanceIsoDatetime(raw: string) {
-  const value = raw.trim();
-  if (!value) throw new Error("请填写入账时间");
-  const parsed = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error("入账时间格式不正确");
-  }
-  return parsed.toISOString();
+  return requiredPastChinaDate(raw, "入账时间").toISOString();
 }
 
 function parseExecutionYuanAmount(raw: string) {
@@ -1771,18 +1766,11 @@ function parseExecutionYuanAmount(raw: string) {
 }
 
 function toExecutionIsoDatetime(raw: string) {
-  const value = raw.trim();
-  if (!value) throw new Error("请填写实付时间");
-  const parsed = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error("实付时间格式不正确");
-  }
-  return parsed.toISOString();
+  return requiredPastChinaDate(raw, "实付时间").toISOString();
 }
 
 function toDatetimePickerValue(date: Date) {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return chinaDateTimeInput(date);
 }
 
 function requestProjectExpenseReview(

@@ -1,6 +1,7 @@
 import {
   isContractBillCustomColumn,
   normalizeTaxRatePercent,
+  normalizeBusinessAmount,
   type BusinessEntrySceneDefinition,
   type DetailActionReadModel
 } from "@jiangkong/shared-domain";
@@ -48,6 +49,11 @@ export interface WorkbenchBillRemainderCancellationFacts {
 }
 
 export interface WorkbenchBill {
+  numericProtocolVersion?: number;
+  inputNumericProtocolVersion?: number;
+  taxInclusiveAmountYuan?: string | null;
+  taxExclusiveAmountYuan?: string | null;
+  taxAmountYuan?: string | null;
   businessEntryDefinition?: BusinessEntrySceneDefinition;
   id: string;
   billKey: string;
@@ -197,15 +203,16 @@ export function billRowValidationMessage(
   if (!rowValue(row, "unit").trim()) return "请填写单位";
 
   const quantity = rowValue(row, "quantity").trim();
-  if (!quantity && !isUnlimitedFrameworkBill(bill)) return "请填写数量";
+  const decimal = (bill.inputNumericProtocolVersion ?? bill.numericProtocolVersion) === 2;
+  if (!quantity && !decimal && !isUnlimitedFrameworkBill(bill)) return "请填写数量";
   if (quantity) {
-    const error = positiveTwoDecimalMessage(quantity, "数量");
+    const error = decimal ? fourDecimalInputMessage(quantity, "数量", true) : positiveTwoDecimalMessage(quantity, "数量");
     if (error && !legacyValueUnchanged(row, "quantity", quantity)) return error;
   }
 
   const unitPrice = rowValue(row, "unitPrice").trim();
-  if (!unitPrice) return "请填写含税单价";
-  const unitPriceError = positiveTwoDecimalMessage(unitPrice, "含税单价");
+  if (!unitPrice && !decimal) return "请填写含税单价";
+  const unitPriceError = decimal ? fourDecimalInputMessage(unitPrice, "含税单价", false) : positiveTwoDecimalMessage(unitPrice, "含税单价");
   if (unitPriceError && !legacyValueUnchanged(row, "unitPrice", unitPrice)) {
     return unitPriceError;
   }
@@ -216,14 +223,26 @@ export function billRowValidationMessage(
       ? rowValue(row, "taxRatePercent").trim()
       : bill.defaultTaxRatePercent?.trim() ?? "";
   if (!rate) {
+    if (decimal) return "";
     return source === "row_override" ? "请填写例外税率" : "请先填写合同税率";
   }
   try {
     normalizeTaxRatePercent(rate);
+    if (decimal) normalizeBusinessAmount(rate);
   } catch (error) {
     return error instanceof Error ? error.message : "税率填写不正确";
   }
   return "";
+}
+
+export function fourDecimalInputMessage(value: string, label: string, positive: boolean): string {
+  if (!value) return "";
+  try {
+    const canonical = normalizeBusinessAmount(value)!;
+    if (canonical.split(".")[0].length > 18) return `${label}整数位不能超过18位，请核对资料`;
+    if (positive && canonical === "0.0000") return `${label}必须大于0；待确定时请留空`;
+    return "";
+  } catch (error) { return `${label}：${error instanceof Error ? error.message : "请核对输入"}`; }
 }
 
 export function updateRowPreservingKey(

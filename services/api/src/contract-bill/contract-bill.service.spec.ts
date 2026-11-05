@@ -1,3 +1,5 @@
+import { Test } from "@nestjs/testing";
+import { ContractBillController } from "./contract-bill.controller";
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
@@ -227,6 +229,29 @@ describe("ContractBillService", () => {
       ...overrides
     };
   }
+
+  it("blocks retired row mutations and historical cancellation for v2 over HTTP before any mutation or lineage changes", async () => {
+    const lineage = { remainderCancellationFacts: jest.fn(), assertRowsDeletable: jest.fn(), assertRowsOrdinarilyMutable: jest.fn() };
+    const { service, tx, bill, version } = fixture({ rows: [existingRow(0)], lineage: lineage as never });
+    Object.assign(bill, { numericProtocolVersion: 2 }); Object.assign(version, { numericProtocolVersion: 2 });
+    const module = await Test.createTestingModule({ controllers: [ContractBillController], providers: [{ provide: ContractBillService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      for (const [method, path, body] of [
+        ["DELETE", "rows/key-0", { expectedBillRevision: 2 }],
+        ["POST", "rows/reorder", { expectedBillRevision: 2, rowKeys: ["key-0"] }],
+        ["POST", "rows/key-0/remainder-cancellation", { reason: "合成核对", expectedBillRevision: 2, expectedDraftRevision: 5, expectedOccupancyToken: occupancyToken }]
+      ] as const) {
+        const response = await fetch(`${await app.getUrl()}/contract-bills/bill-1/${path}`, { method, headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: JSON.stringify(body) });
+        expect({ method, path, status: response.status }).toEqual({ method, path, status: 409 });
+        const message = await response.text(); expect(message).toMatch(/核对|精度已升级/u); expect(message).not.toContain("numericProtocol");
+      }
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled(); expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled(); expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+      expect(lineage.remainderCancellationFacts).not.toHaveBeenCalled(); expect(lineage.assertRowsDeletable).not.toHaveBeenCalled(); expect(audit.record).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
 
   function existingRow(index: number) {
     return {

@@ -240,6 +240,10 @@ export class SaveContractDraftFieldsDto {
 }
 
 export class SaveContractDraftBillDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn([1, 2], { message: "清单数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: number;
+
   @IsRequiredText({
     requiredMessage: "合同清单键不能为空",
     typeMessage: "合同清单键必须是文字",

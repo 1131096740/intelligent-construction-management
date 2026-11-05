@@ -1,3 +1,4 @@
+import { requiredPastChinaDate, assertRefundNotBeforePaymentChinaDate } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
   ConflictException,
@@ -676,6 +677,12 @@ export class SpotProcurementSettlementService {
             context,
             currentPayments
           );
+        }
+        // Existing immutable receipts above replay unchanged. Only a newly
+        // recorded refund is checked against the actual payment business dates.
+        for (const execution of executions) {
+          try { assertRefundNotBeforePaymentChinaDate(receivedAt, execution.paidAt); }
+          catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "请核对退款与付款的实际日期"); }
         }
         const discrepancy = await this.lockActiveDiscrepancy(
           tx,
@@ -2820,14 +2827,8 @@ function parsePositiveMoney(value: string, fieldName: string) {
 }
 
 function parsePastDate(value: string, fieldName: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw new BadRequestException(`${fieldName}格式不正确`);
-  }
-  if (date.getTime() > Date.now()) {
-    throw new BadRequestException(`${fieldName}不能晚于当前时间`);
-  }
-  return date;
+  try { return requiredPastChinaDate(value, fieldName); }
+  catch (error) { throw new BadRequestException(error instanceof Error ? error.message : `${fieldName}格式不正确，请核对实际日期`); }
 }
 
 function requiredText(value: string, message: string) {

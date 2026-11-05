@@ -653,6 +653,7 @@ function aggregateModelFromWorkbench(
       snapshot: { ...party.snapshot }
     })),
     bills: workbench.bills.map((bill) => ({
+      numericProtocolVersion: 2,
       billKey: bill.billKey,
       expectedRevision: contractBillRevision(bill),
       rows: bill.rows.map(draftBillRowFromRead)
@@ -719,7 +720,7 @@ function draftBillRowFromRead(
     typeof row["sortOrder"] !== "number" ||
     typeof row["itemName"] !== "string" ||
     typeof row["unit"] !== "string" ||
-    typeof row["unitPrice"] !== "string"
+    (typeof row["unitPrice"] !== "string" && row["unitPrice"] !== null)
   ) {
     throw new Error("合同草稿协议错误：清单行缺少聚合保存所需字段");
   }
@@ -734,7 +735,7 @@ function draftBillRowFromRead(
       : {}),
     unit: row["unit"],
     ...(typeof row["quantity"] === "string" ? { quantity: row["quantity"] } : {}),
-    unitPrice: row["unitPrice"],
+    unitPrice: row["unitPrice"] ?? "",
     ...(typeof row["taxRatePercent"] === "string"
       ? { taxRatePercent: row["taxRatePercent"] }
       : {}),
@@ -743,9 +744,11 @@ function draftBillRowFromRead(
       ? { taxRateSource: row["taxRateSource"] }
       : {}),
     ...(row["precisionPolicy"] === "legacy" ||
-    row["precisionPolicy"] === "two_decimal"
+    row["precisionPolicy"] === "two_decimal" || row["precisionPolicy"] === "four_decimal"
       ? { precisionPolicy: row["precisionPolicy"] }
       : {}),
+    ...(row["numericSource"] === "legacy_cents" || row["numericSource"] === "decimal_input" ? { numericSource: row["numericSource"] } : {}),
+    ...(row["numericReviewStatus"] === "not_assessed" || row["numericReviewStatus"] === "verified" || row["numericReviewStatus"] === "review_required" ? { numericReviewStatus: row["numericReviewStatus"] } : {}),
     initialQuantity:
       typeof row["initialQuantity"] === "string"
         ? row["initialQuantity"]
@@ -1184,6 +1187,7 @@ function savePayloadFromSnapshot(
     })),
     bills: snapshot.bills.map((bill) => ({
       ...bill,
+      numericProtocolVersion: 2,
       rows: bill.rows.map(draftBillRowForSave)
     })),
     paymentTerms,
@@ -2092,8 +2096,12 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       canMergeAggregateSaveDerivedFacts(savingState, ["draft", "bills"])
     ) {
-      currentWorkbench.version.amountCents =
-        result.amounts.taxInclusiveAmountCents;
+      if (result.versionAmount?.numericProtocolVersion === 2) {
+        Object.assign(currentWorkbench.version, result.versionAmount);
+        Object.assign(authorityReceipt.version, result.versionAmount);
+      } else {
+        currentWorkbench.version.amountCents = result.amounts.taxInclusiveAmountCents;
+      }
     }
     if (canMergeAggregateSaveDerivedFacts(savingState, ["bills"])) {
       for (const bill of aggregateModel.bills) {
@@ -2101,6 +2109,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         if (revision !== undefined) bill.expectedRevision = revision;
       }
       for (const bill of currentWorkbench.bills) {
+        const decimal = result.billAmounts?.find(item => item.billKey === bill.billKey);
+        if (decimal) Object.assign(bill, decimal);
+        const authorityBill = authorityReceipt.bills.find(item => item.billKey === bill.billKey);
+        if (decimal && authorityBill) Object.assign(authorityBill, decimal);
         const revision = result.billRevisions[bill.billKey];
         if (revision !== undefined) bill.revision = revision;
       }

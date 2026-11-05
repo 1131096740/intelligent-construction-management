@@ -1,3 +1,4 @@
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
 import { hasProjectBusiness, lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { CompanyEntityAccess } from "../company-entity/company-entity-access";
@@ -1105,7 +1106,7 @@ export class ProjectService {
     const factType = normalizeUpstreamFundFactType(input.factType);
     const basisType = normalizeUpstreamFundBasisType(input.basisType);
     const entryKind = normalizeUpstreamFundEntryKind(input.entryKind ?? "original");
-    const occurredAt = parseUpstreamFundDate(input.occurredAt);
+    const occurredAt = parseUpstreamFundDate(input.occurredAt, factType !== "affiliate_deduction");
     const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
       "上游资金金额必须大于零"
@@ -4627,7 +4628,11 @@ function normalizeLowercaseSha256(value: unknown, message: string): string {
   return value;
 }
 
-function parseUpstreamFundDate(value: unknown): Date {
+function parseUpstreamFundDate(value: unknown, cashDate = false): Date {
+  if (cashDate) {
+    try { return requiredPastChinaDate(value as string, "上游资金发生日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "上游资金发生日期格式不正确，请核对实际日期"); }
+  }
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new BadRequestException("请填写上游资金发生日期");
   }

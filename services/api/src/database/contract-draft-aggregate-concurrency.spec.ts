@@ -6,6 +6,17 @@ import { ContractBillService } from "../contract-bill/contract-bill.service";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
+import { Test } from "@nestjs/testing";
+import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractDraftBillExcelController } from "../contract-bill/contract-draft-bill-excel.controller";
+import { ContractBillExcelService } from "../contract-bill/contract-bill-excel.service";
+import { apiJsonReplacer } from "../api-json-replacer";
+import { createApiValidationPipe } from "../validation/api-validation";
+import * as ExcelJS from "exceljs";
+import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
+import { ContractService } from "../contract/contract.service";
+import { PristineDraftDeletionService } from "../contract-workbench/pristine-draft-deletion.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
 const LEASE_TOKEN_PREFIX = "contract-draft-aggregate-concurrency-lease";
@@ -28,6 +39,101 @@ export function contractDraftAggregateDatabaseUrl(value: string | undefined) {
 describe("contract draft aggregate PostgreSQL evidence", () => {
   const integrationTest =
     process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1" ? it : it.skip;
+
+  // PREPARED / NOT RUN: requires separately authorised migrations/resources.
+  // Real domain services + PG + public HTTP; synthetic actor injection exercises
+  // draft ownership, not production login or global permission guard wiring.
+  integrationTest("keeps four-decimal draft facts across HTTP save/read/export and rejects lossy legacy writes atomically", async () => {
+    const client = new PrismaClient({ datasources: { db: { url: contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL) } } });
+    const ids = makeIds("decimal-v2");
+    const audit = new AuditService();
+    const aggregate = new ContractDraftAggregateService(client as never, new ContractWorkbenchService(client as never, audit),
+      new ContractBillService(client as never, audit), new BusinessPartyService(client as never, audit),
+      { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+    const excel = new ContractBillExcelService(client as never, audit, {} as never);
+    // Constructor collaborators unrelated to these public routes are left out;
+    // actual save/read/export business methods above are never substituted.
+    const routed = await Test.createTestingModule({ controllers: [ContractDraftController, ContractDraftBillExcelController],
+      providers: [
+        { provide: ContractDraftAggregateService, useValue: aggregate },
+        { provide: ContractBillExcelService, useValue: excel },
+        { provide: ContractDraftEditLeaseService, useValue: {} },
+        { provide: ContractService, useValue: {} },
+        { provide: PristineDraftDeletionService, useValue: {} },
+        { provide: ContractDocumentService, useValue: {} }
+      ] }).compile();
+    const http = routed.createNestApplication({ logger: false });
+    http.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+    http.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => { request.user = { id: ids.owner }; next(); });
+    http.useGlobalPipes(createApiValidationPipe());
+    try {
+      await seedDraft(client, ids, true);
+      await http.listen(0, "127.0.0.1");
+      const base = await http.getUrl();
+      const body = {
+        ...aggregateInput(randomUUID(), true), changedSections: ["draft", "bills"],
+        draft: { ...aggregateInput(randomUUID()).draft, amountSource: "bill_sum", manualAmountCents: undefined,
+          taxFacts: { ...aggregateInput(randomUUID()).draft.taxFacts, defaultTaxRatePercent: "0" } },
+        bills: [
+          { billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [
+            { clientRowKey: "line", sortOrder: 0, itemName: "四位清单", unit: "项", quantity: "1.2345", unitPrice: "1.2345", customData: {} },
+            { clientRowKey: "a", sortOrder: 1, itemName: "微额一", unit: "项", quantity: "1", unitPrice: "0.005", customData: {} },
+            { clientRowKey: "b", sortOrder: 2, itemName: "微额二", unit: "项", quantity: "1", unitPrice: "0.005", customData: {} }
+          ] }, { billKey: "secondary", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }
+        ]
+      };
+      const put = (value: unknown) => fetch(`${base}/contract-drafts/${ids.version}`, { method: "PUT",
+        headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken(ids) }, body: JSON.stringify(value) });
+      expect((await put(body)).status).toBe(200);
+      const read = await fetch(`${base}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } });
+      expect(read.status).toBe(200);
+      expect((await fetch(`${base}/contract-drafts/${ids.version}/workbench`)).status).toBe(409);
+      const saved = await read.json();
+      expect(saved.bills[0]).toMatchObject({ numericProtocolVersion: 2, taxInclusiveAmountYuan: "1.5340", taxInclusiveAmountCents: "153" });
+      expect(saved.bills[0].rows[0]).toMatchObject({ quantity: "1.2345", unitPrice: "1.2345", taxInclusiveAmountYuan: "1.5240" });
+      const download = await fetch(`${base}/contract-drafts/${ids.version}/bills/main/export`);
+      expect(download.status).toBe(200);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(Buffer.from(await download.arrayBuffer()) as never);
+      expect(workbook.worksheets.every(sheet => sheet.state === "visible")).toBe(true);
+      const sheet = workbook.worksheets[0]!;
+      expect(sheet.getRow(2).values).toEqual(expect.arrayContaining(["1.2345", "1.5240"]));
+      expect(sheet.columns.every(column => !column.hidden)).toBe(true);
+      const invalid = structuredClone(body);
+      invalid.idempotencyKey = randomUUID(); invalid.expectedRevision = saved.version.draftRevision;
+      invalid.bills.forEach(bill => { bill.expectedRevision = saved.bills.find((current: { billKey: string }) => current.billKey === bill.billKey).revision; });
+      invalid.bills[0]!.rows[0]!.unitPrice = "1.23456";
+      const invalidResponse = await put(invalid);
+      expect(invalidResponse.status).toBe(400);
+      expect(await invalidResponse.json()).toMatchObject({ code: "CONTRACT_BILL_VALIDATION_FAILED", rowErrors: expect.arrayContaining([expect.objectContaining({ field: "unitPrice" })]) });
+      const overflow = structuredClone(invalid); overflow.idempotencyKey = randomUUID();
+      overflow.bills[0]!.rows[0]!.quantity = "1";
+      overflow.bills[0]!.rows[0]!.unitPrice = "92233720368547758.0750";
+      expect((await put(overflow)).status).toBe(400);
+      const trailingFifthPlace = structuredClone(invalid); trailingFifthPlace.idempotencyKey = randomUUID();
+      trailingFifthPlace.bills[0]!.rows[0]!.unitPrice = "1.23450";
+      expect((await put(trailingFifthPlace)).status).toBe(400);
+      const oldProtocol = structuredClone(invalid); oldProtocol.idempotencyKey = randomUUID();
+      oldProtocol.bills[0]!.rows[0]!.unitPrice = "1.2345";
+      oldProtocol.bills.forEach(bill => { delete (bill as { numericProtocolVersion?: number }).numericProtocolVersion; });
+      const legacyResponse = await put(oldProtocol);
+      expect(legacyResponse.status).toBe(400);
+      expect((await legacyResponse.json()).message).toMatch(/精度已升级/u);
+      expect(await (await fetch(`${base}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } })).json()).toEqual(saved);
+      const unknown = structuredClone(body); unknown.idempotencyKey = randomUUID(); unknown.expectedRevision = saved.version.draftRevision;
+      unknown.bills.forEach(bill => { bill.expectedRevision = saved.bills.find((current: { billKey: string }) => current.billKey === bill.billKey).revision; });
+      Object.assign(unknown.bills[0]!.rows[0]!, { quantity: null, unitPrice: null });
+      unknown.bills[0]!.rows[1]!.unitPrice = "0";
+      expect((await put(unknown)).status).toBe(200);
+      const unknownRead = await (await fetch(`${base}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } })).json();
+      expect(unknownRead.version).toMatchObject({ amountYuan: null, amountCents: null });
+      expect(unknownRead.bills[0]).toMatchObject({ taxInclusiveAmountYuan: null, taxInclusiveAmountCents: null });
+      expect(unknownRead.bills[0].rows[0]).toMatchObject({ quantity: null, unitPrice: null, taxInclusiveAmountYuan: null });
+      expect(unknownRead.bills[0].rows[1]).toMatchObject({ unitPrice: "0", taxInclusiveAmountYuan: "0.0000" });
+    } finally {
+      await http.close(); await cleanupDraft(client, ids); await client.$disconnect();
+    }
+  }, 45_000);
 
   integrationTest(
     "allows one revision winner and rolls back an earlier section after a later failure",

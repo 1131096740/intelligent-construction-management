@@ -39,15 +39,15 @@
           </div>
           <div>
             <span>不含税合计</span>
-            <strong>{{ moneyText(bill.taxExclusiveAmountCents) }}</strong>
+            <strong>{{ businessMoneyText(bill, "taxExclusiveAmount") }}</strong>
           </div>
           <div>
             <span>税额</span>
-            <strong>{{ moneyText(bill.taxAmountCents) }}</strong>
+            <strong>{{ businessMoneyText(bill, "taxAmount") }}</strong>
           </div>
           <div>
             <span>含税合计</span>
-            <strong>{{ moneyText(bill.taxInclusiveAmountCents) }}</strong>
+            <strong>{{ businessMoneyText(bill, "taxInclusiveAmount") }}</strong>
           </div>
         </div>
 
@@ -67,6 +67,9 @@
         </div>
 
         <div class="summary-actions">
+          <t-button size="small" variant="outline" :loading="busyBillKey === bill.billKey" @click="exportSavedBill(bill)">
+            导出清单
+          </t-button>
           <t-button
             size="small"
             variant="outline"
@@ -99,7 +102,7 @@
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed, ref } from "vue";
-import { downloadBillExcelTemplate } from "../../../api/contract-workbench.api";
+import { downloadBillExcelTemplate, exportContractDraftBill } from "../../../api/contract-workbench.api";
 import { centsTextToYuanText } from "../../../lib/money";
 import type { WorkbenchBill } from "./contract-bill-editor";
 
@@ -139,6 +142,19 @@ function moneyText(value: string | null | undefined) {
   return value === null || value === undefined
     ? "—"
     : `${centsTextToYuanText(value)} 元`;
+}
+
+function businessMoneyText(bill: WorkbenchBill, kind: "taxInclusiveAmount" | "taxExclusiveAmount" | "taxAmount") {
+  return bill.numericProtocolVersion === 2 ? bill[`${kind}Yuan`] == null ? "待确定" : `${bill[`${kind}Yuan`]} 元` : moneyText(bill[`${kind}Cents`]);
+}
+
+async function exportSavedBill(bill: WorkbenchBill) {
+  const versionId = props.workbench?.version.id;
+  if (!versionId) return;
+  busyBillKey.value = bill.billKey; messageBillKey.value = bill.billKey; message.value = ""; messageDanger.value = false;
+  try { await exportContractDraftBill(versionId, bill.billKey); message.value = "已保存清单已导出"; }
+  catch { message.value = "导出清单失败，请稍后重试"; messageDanger.value = true; }
+  finally { busyBillKey.value = ""; }
 }
 </script>
 

@@ -815,6 +815,15 @@ describe("spot procurement web pages", () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
+  it("accepts Beijing today for a refund before uploading and keeps the chosen business date", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-04T16:30:00Z"));
+    const upload = vi.fn(async () => ({ id: "synthetic-refund-file" }));
+    try {
+      const result = await prepareSpotRefundWithUpload({ ...validRefund, receivedAt: "2026-11-05" }, { name: "退款凭证.png" }, upload);
+      expect(result).toMatchObject({ receivedAt: "2026-11-05" }); expect(upload).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each(["3.333", "0", "0.00", "invalid"])(
     "does not upload a refund voucher for invalid or zero yuan input %s",
     async (amountYuan) => {

@@ -668,6 +668,7 @@ function cloneRows(
 function cloneBill(bill: WorkbenchBill): WorkbenchBill {
   return {
     ...bill,
+    inputNumericProtocolVersion: 2,
     schemaSnapshot: bill.schemaSnapshot
       ? { ...bill.schemaSnapshot }
       : bill.schemaSnapshot,
@@ -820,7 +821,11 @@ const {
 } = controller;
 
 const totalsText = computed(() =>
-  totals.value.kind === "authoritative"
+  totals.value.kind === "decimal" ? {
+    exclusive: totals.value.taxExclusiveAmountYuan === null ? "待确定" : `${totals.value.taxExclusiveAmountYuan} 元`,
+    tax: totals.value.taxAmountYuan === null ? "待确定" : `${totals.value.taxAmountYuan} 元`,
+    inclusive: totals.value.taxInclusiveAmountYuan === null ? "待确定" : `${totals.value.taxInclusiveAmountYuan} 元`
+  } : totals.value.kind === "authoritative"
     ? {
         exclusive: moneyText(totals.value.taxExclusiveAmountCents),
         tax: moneyText(totals.value.taxAmountCents),
@@ -990,6 +995,7 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       <span>{{ errors[0]?.message }}</span>
     </div>
 
+    <p class="bill-precision-note">数量、含税单价最多填写4位小数；空白表示待确定，0表示已约定零值。历史原值保留，需核对后再修改。</p>
     <ContractBillGrid
       ref="billGridRef"
       data-testid="contract-bill-grid"
