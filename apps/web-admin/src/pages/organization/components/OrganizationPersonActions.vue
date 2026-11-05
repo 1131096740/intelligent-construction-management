@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { OrganizationDirectoryUser } from "../../../api/organization.api";
 defineProps<{ user: OrganizationDirectoryUser; canManage: boolean; canManageRoles: boolean; canManagePersonnel: boolean; currentUserId?: string }>();
-const emit = defineEmits<{ details: []; security: []; add: []; remove: []; reset: [] }>();
+const emit = defineEmits<{ details: []; security: []; add: []; remove: []; reset: []; phone: [] }>();
 </script>
 <template>
   <div
@@ -35,6 +35,13 @@ const emit = defineEmits<{ details: []; security: []; add: []; remove: []; reset
       @click="emit('remove')"
     >
       撤销岗位
+    </t-button>
+    <t-button
+      v-if="canManage && user.status === 'active'"
+      variant="text"
+      @click="emit('phone')"
+    >
+      更换手机号
     </t-button>
     <t-button
       v-if="canManage && user.status === 'active'"
