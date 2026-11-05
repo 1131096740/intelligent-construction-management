@@ -2,11 +2,11 @@
 
 本文是[任务01 #383](https://github.com/1131096740/intelligent-construction-management/issues/383)的跨会话输入交接：把已确认的源码输出清单、已有运行准备源码、真实Web复用入口和保留基线逐项对应，不作为普通测试进度日志、执行批准或真实业务验收收据。详尽历史见[集成交接](2026-11-05-enterprise-simplification-integration-start.md)，字段合同及实际源码链接见[准备runbook](../runbooks/enterprise-simplification-acceptance.md)。本文只同步准备产物状态与边界，不修改规格或原验收条目正文。
 
-## 当前结论：准备产物完成，GitHub待主控收口
+## 当前结论：准备产物完成，GitHub已收口
 
-按用户确认的 `--prepare / --verify` 输出清单边界，准备产物映射、真实Web复用入口与保留约束已核齐；bff源码规范/需求复审0/0及34文档需求补核0项。主控在准确干净 `13058cab9c524b1a036c26add614342fca127c75` 取得prepare/verify通过，3032文件、197迁移，sealSha256为 `4d33cf16e699ce46d841b2dfb3a0b2bb26c687680795c62d2089ab422fb9385f`。这是已取得的阶段收据，本次状态提交后须重新封包；最终新SHA现有编排及封包收据由主控后续外部/Issue绑定，尚未取得的不写全绿。
+按确认的 `--prepare / --verify` 输出清单边界，准备产物映射、真实Web复用入口与保留约束已核齐。13058cab的prepare/verify是阶段历史；其后已闭合库存接线、清理中断、stdout交付及CI分类问题，并在最终f352d187取得下述准确收据。规范/需求复审未闭合项0/0；本结论只用于准备前置票，不扩为完整业务或发布验收。
 
-本地任务01标 prepared-complete / github-close-pending，GitHub尚未关闭；02/03/04/08须待#383实际关闭后才可启动，依赖边不变。真实HTTP/PG/Web、TLS/ACL/池与清理依旧NOT RUN、独立授权后验；任务16/A16、42/A36、44/A38真实验收不由准备完成解除。以下b09的356/3及已修接线作为历史保留，不冒充当前失败或最终新候选通过。
+任务01已以准确提交 `f352d187b720a2e8231874775616c24e91eb3bd8` 完成准备验收并[关闭#383](https://github.com/1131096740/intelligent-construction-management/issues/383#issuecomment-6651228720)：检查前后工作树干净，本机编排369/369，prepare/verify均3032文件、197迁移，seal `c62afb390f0aab4044e2f44f2eba48603d16398da20110d18c856f0f892a3f81`，packet文件SHA256 `44f0cde7d6848c104691695ecc0bcb7f76d1f3012909f66b495aea9f3740b721`。本机完整收据为 `/private/tmp/jg-enterprise-task01-final-f352d187.receipt.json`。02/04/08已领取、03就绪，依赖边不变。真实HTTP/PG/Web、TLS/ACL/池与清理仍NOT RUN；任务16/A16、42/A36、44/A38真实门不由准备完成解除。b09的356/3、5b的365/1与一次误调用driver的入场前拒绝记录保留，修复后未重演；不将失败覆盖为通过。
 
 ## 本次准备边界与阶段收据
 

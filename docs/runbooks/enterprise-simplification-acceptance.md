@@ -2,7 +2,7 @@
 
 适用[任务01 #383](https://github.com/1131096740/intelligent-construction-management/issues/383)。本页区分**准备产物验收**与**独立授权后的运行验证**；任务状态以工单及 `PROGRESS.md` 为准，不由本文预填完成或全绿。跨会话输入映射见[任务01准备产物交接](../progress/2026-11-05-enterprise-simplification-task01-prepared.md)，历史及新增只读证据见[集成交接](../progress/2026-11-05-enterprise-simplification-integration-start.md)。
 
-当前状态：任务01在已确认的source-only公开边界内准备产物已完成；GitHub待主控取得最终新SHA编排/重封包收据后收口，02/03/04/08须待#383实际关闭。真实PG/HTTP/Web、TLS/角色及清理仍NOT RUN、独立授权后验；本页不预填最终新SHA全绿。
+当前状态：任务01以准确提交 `f352d187b720a2e8231874775616c24e91eb3bd8` 在已确认的source-only公开边界内完成准备验收并关闭#383；本机编排369/369、prepare/verify的3032文件及197迁移一致。02/04/08已领取实施、03已就绪。真实PG/HTTP/Web、TLS/角色及清理仍NOT RUN、独立授权后验；该里程碑不表示后续候选或远程CI通过。
 
 ## 当前确认的测试边界
 
