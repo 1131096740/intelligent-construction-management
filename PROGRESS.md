@@ -1,12 +1,13 @@
 ## 当前执行（2026-11-05，业务简化整套实施，父工单 #382）
 
 - [~] 用户已明确授权整套193条规格、45项任务实施及 GitHub 工单推进；父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 和子工单 #383～#427 已发布。仅任务01 [#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 进行中，未验收完成；其余按阻塞图等待。
-- [~] 已从本轮核实主线 `2f474055bd018b3e454b458038d91080203ad5dc` 新建干净集成分支 `codex/enterprise-simplification-integration-20261105-r2`。本次仅纳入已确认规格、计划、票据和工单映射；旧根及旧候选保留，未吸收业务代码、模板或迁移。主线197/旧根146迁移差额及457份承接候选按范围逐域核实决定承接或排除；主线默认不纳入旧差异。
-- [~] 第二次有界生产只读查询取得197项已完成迁移，与准确主线 `2f474055bd018b3e454b458038d91080203ad5dc` 的197项名称及SHA-256全部一致，迁移登记差额为0；首次连接关闭的失败保留。运行二进制SHA、完整Schema、数据/文件及角色权限仍未证明。
-- [~] 后续只读补核取得配置连接角色非高权标志和限定public目录摘要；三份运行代码样本与0893保留release相同。未绑定实际运行源码SHA、完整Schema或有效ACL，不能从依赖路径、样本相同或健康结果放行。
-- [~] 已实现无资源源码封包CLI `scripts/prepare-enterprise-acceptance.cjs`；19项公开CLI边界检查通过，准确工具提交已取得197迁移源码封包/核对收据。仅证明源码封存，不证明已安装依赖、运行就绪或HTTP/PG验收；现有CI编排套件在无依赖工作树运行264通过/10项依赖缺失失败，未判全绿；最终集成SHA仍须重新封包。用法见[受控验收准备](docs/runbooks/enterprise-simplification-acceptance.md)。
-- [~] 响应丢失代理构件完成12项真实loopback合成HTTP协议检查；仅证明一次完整上游响应后断下游、显式重放及边界清理，不含AppModule/数据库或实付提交证明。
-- [ ] 任务01的受控公开验收入口和资金提交硬门尚未闭合；不得启动依赖业务票或宣称上线通过。未运行本轮产品测试、迁移、受控实验、部署或生产变更。详见[集成起步交接](docs/progress/2026-11-05-enterprise-simplification-integration-start.md)及[任务图](docs/plans/2026-11-05-enterprise-simplification-tasks/README.md)。
+- [~] 已从主线 `2f474055bd018b3e454b458038d91080203ad5dc` 建立干净集成分支 `codex/enterprise-simplification-integration-20261105-r2`，已加入确认文档和任务01准备工具；旧根及旧候选保留，未吸收旧业务代码、模板或迁移。主线197/旧根146迁移差额及457份承接候选按范围逐域决定承接或排除，旧差异默认不纳入主线。
+- [x] 有界生产只读查询核实197项完成迁移，与准确主线197份SQL名称/校验值逐项一致，迁移登记差额0。独立精确 `0893dd16b50c595b0d99761bd33bcd388c16ac3c` 源码冻结构建一次，重现本轮生产快照API四组件及Web dist全部2662份文件、41,895,003字节；完整树摘要一致。只证明已采集PID/cwd所指磁盘代码组件的来源，不证明生产依赖闭包、内存模块或原构建签名。[独立重建收据](docs/progress/2026-11-05-enterprise-simplification-independent-build-repro.json)。
+- [~] PID2502628的5个稳定数据库TCP socket，按inode/源端口/地址逐一匹配PG backend：实际角色均为 `jiangkong_runtime`、数据库 `jiangkong`、ssl=true。两次collector失败保留，父控仅追加一次已定位CIDR修正的同范围查询后成功；没有后续查询。仅证明当时5条实际连接，不证明CA/SAN、未来连接或完整有效ACL；Schema、数据/文件分布仍未核齐。[实际会话收据](docs/progress/2026-11-05-enterprise-simplification-runtime-db-session-binding.json)。
+- [x] 准备构件准确提交 `78a6f7b6f83a017f0b274223a00fb4c166b74d36`：修正Git replacement refs错误标记原SHA及半截请求头绕过截止时间；35项定向（CLI20、合成HTTP15）通过，规范/需求复审未闭合项0/0。主控冻结该SHA取得现有CI编排359通过、0失败、0跳过，源码封存/核验3018文件、197迁移。以上是该里程碑收据，后续提交须重新封包，不冒充最终候选/完整发布门；工具仅证明源码/网络协议，不含真实PG资金提交。[准备说明](docs/runbooks/enterprise-simplification-acceptance.md)。
+- [~] 经固定范围工具审批的合成TLS传输对照：正确CA/SAN仅完成握手和PG startup，adapter随后故意P1010认证拒绝，非健康SQL正控；错CA/SAN都P1011且消息摘要相同，无法靠文本可靠区分，不新增假分类probe、不放宽失败关闭门。[传输收据](docs/progress/2026-11-05-enterprise-simplification-tls-transport.json)。
+- [~] 首条案件入口、owner夹具、初始权限清单与运行器准备源码 `842f9e5e48a1335017e3e07c19b1b3a959670e5f`，资源helper后续 `566567061e19f653b4c91880954050d07a408c9f`，仍在审查、NOT RUN；首条真实HTTP/PG案例1项尚未执行，不计通过，不能由既有资金案件测试推定实际FundExecution提交。
+- [ ] 任务01受控HTTP/PG/Web入口、实际ACL/TLS/池绑定及资源清理验收仍未闭合，不启动依赖票或宣称上线通过。本轮未创建PG/Docker资源、执行迁移/授权、部署、修改生产或办理真实业务；合成网络/TLS适配器不算真实PG验收。详见[集成交接](docs/progress/2026-11-05-enterprise-simplification-integration-start.md)及[任务图](docs/plans/2026-11-05-enterprise-simplification-tasks/README.md)。
 
 ## 当前执行（2026-10-27，审批进度浏览器测试补修新候选）
 
