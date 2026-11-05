@@ -90,13 +90,18 @@ async function submit() {
   }
   busy.value = true;
   try {
-    const capability = await fetchOrganizationManagementCapabilities();
-    const operationAllowed = capability.canManageUsers && capability.manageableUserIds.includes(props.id);
-    if (!operationAllowed) throw new Error("当前账号没有维护该人员账号的权限");
-    await changeUserPhone(props.id, { phone: phone.value, code: code.value, confirmationPassword: password.value });
+    await changeUserPhoneWithCapability(props.id, { phone: phone.value, code: code.value, confirmationPassword: password.value });
     complete.value = true; code.value = ""; emit("saved");
   } catch (error) { message.value = formatUnknownApiError(error, "手机号未更换，请核对新号码和验证码后重试"); }
   finally { busy.value = false; password.value = ""; }
+}
+async function changeUserPhoneWithCapability(id: string, input: Parameters<typeof changeUserPhone>[1]) {
+  const capability = await fetchOrganizationManagementCapabilities();
+  const operationAllowed = capability.canManageUsers;
+  if (!operationAllowed) throw new Error("当前账号没有维护该人员账号的权限");
+  const targetAllowed = capability.manageableUserIds.includes(id);
+  if (!targetAllowed) throw new Error("当前账号没有维护该人员账号的权限");
+  return changeUserPhone(id, input);
 }
 </script>
 <style scoped>

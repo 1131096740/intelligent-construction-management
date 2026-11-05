@@ -9903,6 +9903,56 @@
           "name": "remindApprovalBySms"
         }
       ]
+    },
+    {
+      "id": "employee.admin-phone-change",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限",
+        "/员工管理"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "changeUserPhoneWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "changeUserPhone"
+        }
+      ]
+    },
+    {
+      "id": "employee.admin-phone-change-sms",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限",
+        "/员工管理"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendAdminPhoneChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "sendAdminPhoneChangeSms"
+        }
+      ]
     }
   ]
 }
