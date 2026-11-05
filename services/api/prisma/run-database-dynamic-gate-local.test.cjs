@@ -136,6 +136,45 @@ test("task01 registration binds reviewed source bodies and cannot substitute an 
   }
 });
 
+test("CI classification cannot move an old group out or make the manual operator automatic", () => {
+  for (const mutate of [
+    manifest => { manifest.coveredGroups[0].ciExecution = "manual-only"; },
+    manifest => { manifest.coveredGroups[0].ciExecution = "unknown"; },
+    manifest => { manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").ciExecution = "automatic"; },
+    manifest => { delete manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").ciExecution; }
+  ]) {
+    const manifest = loadManifest(); mutate(manifest);
+    assert.throws(() => validateManifest(manifest), /CI执行分类|任务01必须显式登记manual-only/u);
+  }
+});
+
+test("public inventory distinguishes CI eligible tests from the explicitly manual operator", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--validate-manifest"], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.executed, false);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 511 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 512);
+});
+
+test("manual task01 operator cannot run automatically on GitHub Actions", () => {
+  const script = `
+    const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');
+    const file = ${JSON.stringify(runnerPath)}; const fixture = new Module(file, module);
+    fixture.filename = file; fixture.paths = Module._nodeModulePaths(path.dirname(file));
+    fixture._compile(fs.readFileSync(file, 'utf8').replace(/^#!.*\\n/u, '') +
+      '\\nresolveGroupCommand = () => { throw new Error("COMMAND_RESOLUTION_REACHED"); };', file);
+    fixture.exports.main(${JSON.stringify([...task01Execute, ...task01Args])})
+      .catch(error => { process.stderr.write(error.message); process.exitCode = 1; });
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], {
+    encoding: "utf8", env: { PATH: "", NODE_ENV: "test", GITHUB_ACTIONS: "true" }
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /禁止GitHub Actions自动执行/u);
+  assert.doesNotMatch(result.stderr, /spawn|ENOENT/u);
+});
+
 test("task01 dispatch handles real child stdout without interpreting inherited output as a captured receipt", () => {
   // Existing dispatcher seam, real subprocess/stdio transport. Only command
   // resolution is substituted; no driver/helper import, fake SQL or PG result.

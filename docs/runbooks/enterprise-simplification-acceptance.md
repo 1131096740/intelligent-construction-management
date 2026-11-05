@@ -59,7 +59,7 @@ node scripts/prepare-enterprise-acceptance.cjs --verify /private/tmp/jg-enterpri
 接线候选 `7cb7412311c88989440d52e60f44ef04c6c337dc` 已提供可核对的[动态dispatcher](../../services/api/prisma/run-database-dynamic-gate-local.cjs)与[库存manifest](../../services/api/prisma/database-dynamic-gate-manifest.json)格式；它仅用于说明下面真实参数与映射，仍有后续审查修补，不是最终源码包或真实执行通过收据。
 
 - 新组名 `enterprise_task01_entry`，`runner.invocation=task01_explicit_inputs`；manifest分别固定driver/helper路径与源码SHA-256、准确镜像ID，dispatcher只编译检查语法，不在库存校验时import或执行模块。
-- 必须显式、单独选择该组，不能默认all、与旧组混跑或借用旧组确认。旧77文件/511测试的组保持原内容；新库存接线为78文件/512测试，**不是512项PG已通过**。新组只有1项，`executionStatus=NOT_EXECUTED`。
+- 可调用总库存为23组、78文件、512测试；GitHub Actions自动范围仍为原22组、77文件、511测试。唯一 `ciExecution=manual-only` 的本机operator为1组、1文件、1测试，`executionStatus=NOT_EXECUTED`；旧组缺省分类仍为automatic，不能改标签退出CI。`--validate-manifest` / `--list` 只核库存，不等于运行或CI通过。该operator必须显式单独选择；dispatcher拒绝默认all、混组及 `GITHUB_ACTIONS=true` 下自动执行，不能借用旧组确认。
 - 除既有候选SHA/全局确认合同外，新组还要求 `--task01-packet`、`--task01-inputs`、`--task01-inputs-sha256`、`--task01-artifacts`、`--task01-confirm` 全部显式提供。它们分别映射driver的source packet、runtime inputs、inputs文件哈希、新artifacts路径及独立确认；本文不给组合运行命令或确认值。
 - dispatcher在新白名单环境向driver注入 `JG_TASK01_EXPECTED_SOURCE_SHA`，driver与packet候选SHA交叉比对；这是防止调度请求错候选的守卫，不授予执行权限。缺输入、混组或源码哈希不符在通用构建、Docker发现、临时资源和SQL之前拒绝。
 

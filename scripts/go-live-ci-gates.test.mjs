@@ -273,9 +273,20 @@ test("CI fans out independent static and database gates behind one stable summar
   const configuredGroups = [
     ...dynamic.matchAll(/^\s{10}- ([a-z0-9_]+)$/gmu)
   ].map((match) => match[1]);
+  const manualGroups = manifest.coveredGroups.filter(group => group.ciExecution === "manual-only");
+  assert.deepEqual(manualGroups.map(group => group.id), ["enterprise_task01_entry"]);
+  assert.equal(manualGroups[0].pendingTests, 1);
+  assert.equal(manualGroups[0].testFiles.length, 1);
+  assert.equal(manualGroups[0].runner.invocation, "task01_explicit_inputs");
+  assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
+  const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
+  assert.equal(ciGroups.length, 22);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 77);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 511);
+  assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
-    manifest.coveredGroups.map((group) => group.id)
+    ciGroups.map((group) => group.id)
   );
   assert.match(dynamic, /fail-fast: false/u);
   assert.match(dynamic, /--group "\$DYNAMIC_GROUP"/u);
