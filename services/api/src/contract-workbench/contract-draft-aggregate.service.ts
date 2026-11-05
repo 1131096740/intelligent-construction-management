@@ -1,3 +1,4 @@
+import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
 import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
@@ -72,10 +73,13 @@ export class ContractDraftAggregateService {
   }
 
   async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
-    const { version, templateEntry, billEntries } = await this.prisma.$transaction(async (tx) => {
+    const { version, templateEntry, billEntries, layoutTemplateSelection } = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
       if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
-      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version) };
+      const layout = version.layoutTemplateVersionId ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: version.layoutTemplateVersionId } }) : null;
+      const layoutTemplate = layout ? await tx.contractLayoutTemplate.findUnique({ where: { id: layout.layoutTemplateId } }) : null;
+      const layoutTemplateSelection = layout && layoutTemplate ? { id: layout.id, name: layoutTemplate.name, versionNo: layout.versionNo, status: layout.status } : null;
+      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version), layoutTemplateSelection };
     });
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
@@ -133,6 +137,7 @@ export class ContractDraftAggregateService {
       ...legacyWithoutCheckpoints,
       version: {
         ...legacyReadModel.version,
+        layoutTemplateSelection,
         ...(version.numericProtocolVersion === 2 && legacyReadModel.version.amountYuan == null ? { amountCents: null } : {}),
         draftLifecycleKind: legacyReadModel.lifecycleKind
       },
@@ -347,6 +352,12 @@ export class ContractDraftAggregateService {
           });
         }
 
+        const effectiveLayoutTemplateVersionId = input.draft.layoutTemplateVersionId === undefined
+          ? version.layoutTemplateVersionId : input.draft.layoutTemplateVersionId;
+        if (effectiveLayoutTemplateVersionId && effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId) {
+          await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, contract.contractTypeKey);
+        }
+
         await tx.$queryRaw(Prisma.sql`
           SELECT "id" FROM "ContractBill"
           WHERE "contractVersionId" = ${contractVersionId}
@@ -506,11 +517,14 @@ export class ContractDraftAggregateService {
         if (attachmentResult.changed) {
           effectiveChangedSections.add("attachments");
         }
+        const fieldInput = input.draft.layoutTemplateVersionId === undefined
+          ? { ...input, draft: { ...input.draft, layoutTemplateVersionId: version.layoutTemplateVersionId ?? undefined } }
+          : input;
         const fieldResult =
           await this.workbench.prepareAggregateDraftFieldsInTransaction(
             tx,
             version,
-            input
+            fieldInput
           );
         if (fieldResult.changed) effectiveChangedSections.add("draft");
         if (fieldResult.workbenchReferencesChanged) {
@@ -576,7 +590,7 @@ export class ContractDraftAggregateService {
         const calculatedDocumentContentFingerprint =
           calculateContractDocumentContentFingerprint({
             templateSnapshot: version.templateSnapshot,
-            layoutTemplateVersionId: input.draft.layoutTemplateVersionId ?? null,
+            layoutTemplateVersionId: effectiveLayoutTemplateVersionId ?? null,
             parties: documentParties.map((party) => ({
               roleKey: party.roleKey,
               displayOrder: party.displayOrder,

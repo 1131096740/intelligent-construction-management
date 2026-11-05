@@ -36,11 +36,9 @@ import {
   UpdateLayoutTemplateVersionDto
 } from "./dto/layout-template.dto";
 import { LayoutTemplateService } from "./layout-template.service";
+import { ConfirmLayoutSourceMappingDto, SaveLayoutSourceMappingDto } from "./dto/layout-source-mapping.dto";
 
-const TEMPLATE_MAINTENANCE_POSITIONS = [
-  "contract_staff",
-  "contract_director"
-] as const;
+const TEMPLATE_MAINTENANCE_POSITIONS = ["contract_director"] as const;
 const TEMPLATE_PUBLICATION_POSITIONS = ["contract_director"] as const;
 const TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS = ["contract_director", "super_admin"] as const;
 
@@ -122,6 +120,18 @@ export class ContractTemplateController {
     return this.layouts.listPublishedLayouts(contractTypeKey);
   }
 
+  @Get("contract-layout-templates/creation-capability")
+  @RequirePositions("contract_director")
+  getLayoutCreationCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.layouts.creationCapability(user.id);
+  }
+
+  @Get("contract-layout-templates/maintenance")
+  @RequirePositions("contract_director")
+  listMaintainedLayouts(@CurrentUser() user: AuthenticatedUser) {
+    return this.layouts.listMaintainedLayouts(user.id);
+  }
+
   @Post("contract-layout-templates")
   @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   createLayout(
@@ -133,7 +143,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-templates/:templateId")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   getLayoutTemplate(
     @Param("templateId") templateId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -161,6 +171,41 @@ export class ContractTemplateController {
     return this.layouts.inspectVersion(versionId, user.id);
   }
 
+  @Get("contract-layout-template-versions/:versionId/maintenance-capability")
+  @RequirePositions("contract_director")
+  getLayoutVersionMaintenanceCapability(@Param("versionId") versionId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.layouts.versionMaintenanceCapability(versionId, user.id);
+  }
+
+  @Get("contract-layout-template-versions/:versionId/source-positions")
+  @RequirePositions("contract_director")
+  layoutSourcePositions(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.sourcePositions(versionId, user.id);
+  }
+
+  @Patch("contract-layout-template-versions/:versionId/source-mapping")
+  @RequirePositions("contract_director")
+  saveLayoutSourceMapping(
+    @Param("versionId") versionId: string,
+    @Body() body: SaveLayoutSourceMappingDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.saveSourceMapping(versionId, user.id, body);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/source-mapping-confirmation")
+  @RequirePositions("contract_director")
+  confirmLayoutSourceMapping(
+    @Param("versionId") versionId: string,
+    @Body() body: ConfirmLayoutSourceMappingDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.confirmSourceMapping(versionId, user.id, body);
+  }
+
   @Post("contract-layout-template-versions/:versionId/preview-generation")
   @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   queueLayoutPreview(
@@ -172,7 +217,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-template-versions/:versionId/preview-generation")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   getLayoutPreview(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -246,7 +291,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-templates/:templateId")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   getTemplate(
     @Param("templateId") templateId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -340,7 +385,7 @@ export class ContractTemplateController {
   }
 
   @Get("standard-clauses/history")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   listClauseHistory(
     @CurrentUser() user: AuthenticatedUser,
     @Query("category") category?: string

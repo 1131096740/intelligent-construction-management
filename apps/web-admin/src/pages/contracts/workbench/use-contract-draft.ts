@@ -1207,7 +1207,7 @@ function savePayloadFromSnapshot(
       ...(draft.companyEntityId
         ? { companyEntityId: draft.companyEntityId }
         : {}),
-      ...(draft.layoutTemplateVersionId ? { layoutTemplateVersionId: draft.layoutTemplateVersionId } : {}),
+      ...(draft.layoutTemplateVersionId !== undefined ? { layoutTemplateVersionId: draft.layoutTemplateVersionId } : {}),
       draftData: draftDataFromModel(draft),
       clauses: draft.clauses.map((clause) => ({ ...clause })),
       pricingNature:

@@ -8,11 +8,11 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 389,
+    "activeBusinessActionCount": 398,
     "technicalActionCount": 9,
-    "activeBindingCount": 449,
-    "retiredWriteEntryCount": 86,
-    "retainedReadonlyExitCount": 11,
+    "activeBindingCount": 459,
+    "retiredWriteEntryCount": 78,
+    "retainedReadonlyExitCount": 10,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
     "blockerCount": 0
@@ -2765,23 +2765,6 @@
       "causalVerified": true
     },
     {
-      "id": "general-procurement.legacy.updateProcurement",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/综合采购申请/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "GET /general-procurements/:param",
-        "POST /general-procurements/:param/draft"
-      ],
-      "bindingCount": 2,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "general-procurement.reviewProcurement",
       "status": "unified_candidate",
       "usage": "background",
@@ -2830,7 +2813,7 @@
         "POST /general-procurements/:param/draft"
       ],
       "bindingCount": 2,
-      "productionConsumerCount": 2,
+      "productionConsumerCount": 1,
       "causalVerified": true
     },
     {
@@ -3010,6 +2993,168 @@
         "POST /files/:param/download-ticket"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.clone",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/clone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-layout-templates",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.inspect",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/inspection"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.mapping-confirm",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/source-mapping-confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.mapping-save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /contract-layout-template-versions/:param/source-mapping"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/preview-generation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.publish",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/publication"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /contract-layout-template-versions/:param",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.stop",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/stop"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.submit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/submission"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -6536,13 +6681,6 @@
     },
     {
       "method": "PATCH",
-      "path": "/contract-layout-template-versions/:versionId",
-      "controller": "ContractTemplateController",
-      "handler": "updateLayoutDraftVersion",
-      "status": "gone"
-    },
-    {
-      "method": "PATCH",
       "path": "/contract-number-rules/:ruleId",
       "controller": "ContractNumberRuleController",
       "handler": "update",
@@ -6648,13 +6786,6 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/clone",
-      "controller": "ContractTemplateController",
-      "handler": "cloneLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/discard",
       "controller": "ContractTemplateController",
       "handler": "discardLayout",
@@ -6662,51 +6793,9 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/inspection",
-      "controller": "ContractTemplateController",
-      "handler": "inspectLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "controller": "ContractTemplateController",
-      "handler": "queueLayoutPreview",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/publication",
-      "controller": "ContractTemplateController",
-      "handler": "publishLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/revoke",
       "controller": "ContractTemplateController",
       "handler": "revokeLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/stop",
-      "controller": "ContractTemplateController",
-      "handler": "stopLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/submission",
-      "controller": "ContractTemplateController",
-      "handler": "submitLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-templates",
-      "controller": "ContractTemplateController",
-      "handler": "createLayout",
       "status": "gone"
     },
     {
@@ -7110,13 +7199,6 @@
     }
   ],
   "readonlyLegacyEntries": [
-    {
-      "method": "GET",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "controller": "ContractTemplateController",
-      "handler": "getLayoutPreview",
-      "status": "readonly"
-    },
     {
       "method": "GET",
       "path": "/contract-workbench",

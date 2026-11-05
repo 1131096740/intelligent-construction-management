@@ -1,4 +1,6 @@
 import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
+import { ModuleRef } from "@nestjs/core";
+import { assertGeneratedContractFileAccess } from "../contract-document/contract-generated-file-access";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
 import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
@@ -12,6 +14,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  Optional,
   ServiceUnavailableException,
   type OnModuleInit
 } from "@nestjs/common";
@@ -744,7 +747,8 @@ export class FileService {
     private readonly spotAccess: SpotProcurementAccessService =
       new SpotProcurementAccessService(prisma),
     private readonly companyRoles: CompanyRoleResolverService =
-      new CompanyRoleResolverService(prisma)
+      new CompanyRoleResolverService(prisma),
+    @Optional() private readonly moduleRef?: ModuleRef
   ) {
     this.assertDownloadSecret();
   }
@@ -2493,10 +2497,9 @@ export class FileService {
     }
 
     const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);
-    if (layoutAccess !== null) {
-      if (layoutAccess) return;
-      throw new ForbiddenException("当前账号无权查看该合同版式资料");
-    }
+    if (layoutAccess === false) throw new ForbiddenException("当前账号无权查看该合同版式资料");
+    if (await assertGeneratedContractFileAccess(tx, file, actorUserId, this.moduleRef)) return;
+    if (layoutAccess === true) return;
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;

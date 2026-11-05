@@ -997,6 +997,26 @@
     },
     {
       "method": "GET",
+      "path": "/contract-layout-template-versions/:versionId/maintenance-capability",
+      "normalizedKey": "GET /contract-layout-template-versions/:param/maintenance-capability",
+      "controller": "ContractTemplateController",
+      "handler": "getLayoutVersionMaintenanceCapability",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/contract-layout-template-versions/:versionId/preview-generation",
       "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
       "controller": "ContractTemplateController",
@@ -1009,6 +1029,26 @@
       "requiredPositions": [
         "contract_director",
         "contract_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-template-versions/:versionId/source-positions",
+      "normalizedKey": "GET /contract-layout-template-versions/:param/source-positions",
+      "controller": "ContractTemplateController",
+      "handler": "layoutSourcePositions",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -1048,6 +1088,46 @@
       "requiredPositions": [
         "contract_director",
         "contract_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-templates/creation-capability",
+      "normalizedKey": "GET /contract-layout-templates/creation-capability",
+      "controller": "ContractTemplateController",
+      "handler": "getLayoutCreationCapability",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-templates/maintenance",
+      "normalizedKey": "GET /contract-layout-templates/maintenance",
+      "controller": "ContractTemplateController",
+      "handler": "listMaintainedLayouts",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -4824,8 +4904,27 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-layout-template-versions/:versionId/source-mapping",
+      "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+      "controller": "ContractTemplateController",
+      "handler": "saveLayoutSourceMapping",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -4884,8 +4983,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6540,8 +6638,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6561,8 +6658,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6582,8 +6678,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6603,8 +6698,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6654,6 +6748,26 @@
     },
     {
       "method": "POST",
+      "path": "/contract-layout-template-versions/:versionId/source-mapping-confirmation",
+      "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+      "controller": "ContractTemplateController",
+      "handler": "confirmLayoutSourceMapping",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/stop",
       "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
       "controller": "ContractTemplateController",
@@ -6684,8 +6798,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6705,8 +6818,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6852,8 +6964,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6873,8 +6984,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6954,8 +7064,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6975,8 +7084,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -13269,8 +13377,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -13310,8 +13417,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -13331,8 +13437,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

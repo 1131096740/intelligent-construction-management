@@ -39,11 +39,9 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
   { controller: "ContractNumberRuleController", handler: "stop" },
   { controller: "ContractNumberRuleController", handler: "update" },
   { controller: "ContractTakeoverController", handler: "confirm" },
-  { controller: "ContractTemplateController", handler: "cloneLayout" },
   { controller: "ContractTemplateController", handler: "cloneVersion" },
   { controller: "ContractTemplateController", handler: "createBusinessScenario" },
   { controller: "ContractTemplateController", handler: "createClause" },
-  { controller: "ContractTemplateController", handler: "createLayout" },
   {
     controller: "ContractTemplateController",
     handler: "createScenarioTemplateMapping"
@@ -52,24 +50,15 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
   { controller: "ContractTemplateController", handler: "discardClauseVersion" },
   { controller: "ContractTemplateController", handler: "discardLayout" },
   { controller: "ContractTemplateController", handler: "discardVersion" },
-  { controller: "ContractTemplateController", handler: "inspectLayout" },
   { controller: "ContractTemplateController", handler: "publishClauseVersion" },
-  { controller: "ContractTemplateController", handler: "publishLayout" },
   { controller: "ContractTemplateController", handler: "publishVersion" },
-  { controller: "ContractTemplateController", handler: "queueLayoutPreview" },
   { controller: "ContractTemplateController", handler: "revokeLayout" },
   { controller: "ContractTemplateController", handler: "revokeVersion" },
-  { controller: "ContractTemplateController", handler: "stopLayout" },
   { controller: "ContractTemplateController", handler: "stopVersion" },
   { controller: "ContractTemplateController", handler: "submitClauseVersion" },
-  { controller: "ContractTemplateController", handler: "submitLayout" },
   { controller: "ContractTemplateController", handler: "submitVersion" },
   { controller: "ContractTemplateController", handler: "updateBusinessScenario" },
   { controller: "ContractTemplateController", handler: "updateDraftVersion" },
-  {
-    controller: "ContractTemplateController",
-    handler: "updateLayoutDraftVersion"
-  },
   {
     controller: "ContractTemplateController",
     handler: "updateScenarioTemplateMapping"
