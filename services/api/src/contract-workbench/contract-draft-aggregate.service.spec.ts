@@ -1,3 +1,4 @@
+import { ContractWorkbenchService } from "./contract-workbench.service";
 import { Prisma } from "@prisma/client";
 import { Test } from "@nestjs/testing";
 import { ContractDraftController } from "./contract-draft.controller";
@@ -392,6 +393,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
   }
 
   function makeSaveService(options: {
+    realWorkbench?: boolean;
     leaseTokenHash?: string;
     leaseHolderUserId?: string;
     leaseExpiresAt?: Date;
@@ -488,7 +490,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         }
       },
       clauseSnapshot: [],
-      templateSnapshot: {},
+      templateSnapshot: options.realWorkbench ? { fieldSchema: [], billSchema: [], clauseSchema: [] } : {},
       changeType: options.versionChangeType ?? "original",
       baseVersionId: null,
       settlementMode: "settlement_required"
@@ -662,7 +664,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       audit,
       service: new ContractDraftAggregateService(
         prisma as never,
-        workbench as never,
+        options.realWorkbench ? new ContractWorkbenchService(prisma as never, audit as never) : workbench as never,
         bills as never,
         parties as never,
         files as never,
@@ -670,6 +672,61 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       )
     };
   }
+
+  it.each(["1.23456", ""])("rejects an invalid new default tax rate %j on an empty v2 bill before writes over HTTP", async (rate) => {
+    const { service, tx, audit } = makeSaveService({ realWorkbench: true, persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: 1,
+      defaultTaxRatePercent: new Prisma.Decimal("1.23456"), taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n }] });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput(); input.draft.draftData = { fieldValues: {} } as typeof input.draft.draftData; input.draft.taxFacts.defaultTaxRatePercent = rate;
+      input.bills = [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }] as never;
+      const originalInput = JSON.stringify(input);
+      const response = await fetch(`${await app.getUrl()}/contract-drafts/cv-1`, { method: "PUT", headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: originalInput });
+      expect(response.status).toBe(400);
+      expect((await response.json()).message).toMatch(/默认税率.*4位/u);
+      expect(JSON.stringify(input)).toBe(originalInput);
+      for (const write of [tx.contractVersion.updateMany, tx.contract.updateMany, tx.contractDraftSaveRequest.create, tx.contractGeneratedDocument.updateMany, tx.contractDraftAttachment.createMany, audit.record]) expect(write).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    { protocol: 2, rate: null, stored: null },
+    { protocol: 2, rate: "0", stored: null },
+    { protocol: 2, rate: "1.2345", stored: null },
+    { protocol: 1, rate: "1.23456", stored: null },
+    { protocol: 2, rate: "1.23456", stored: "1.23456" }
+  ])("saves empty bill default tax facts without guessing or rounding (%j)", async ({ protocol, rate, stored }) => {
+    const { service, tx } = makeSaveService({ realWorkbench: true, persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: protocol,
+      taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n,
+      ...(protocol === 2 ? { taxInclusiveAmountYuan: new Prisma.Decimal(0), taxExclusiveAmountYuan: null, taxAmountYuan: null } : {}) }] });
+    const originalVersion = await tx.contractVersion.findUnique({ where: { id: "cv-1" } });
+    if (stored !== null) Object.assign(originalVersion, { defaultTaxRatePercent: new Prisma.Decimal(stored), invoiceType: "vat_special", taxFactSource: "contract_document" });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput(); input.draft.draftData = { fieldValues: {} } as typeof input.draft.draftData;
+      input.draft.taxFacts.defaultTaxRatePercent = rate as string;
+      input.bills = [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: protocol, rows: [] }] as never;
+      const response = await fetch(`${await app.getUrl()}/contract-drafts/cv-1`, { method: "PUT", headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: JSON.stringify(input) });
+      const body = await response.json();
+      expect({ status: response.status, error: body.message }).toEqual({ status: 200, error: undefined });
+      const saved = tx.contractVersion.updateMany.mock.calls[0][0].data;
+      expect(saved.defaultTaxRatePercent?.toString() ?? null).toBe(rate);
+      expect(originalVersion.defaultTaxRatePercent?.toString() ?? null).toBe(stored);
+      if (stored !== null) expect(saved).not.toHaveProperty("taxFactRevision");
+    } finally { await app.close(); }
+  });
 
   it("returns canonical v2 save totals over HTTP, rounding to cents only after accumulating bills", async () => {
     const { service } = makeSaveService({ persistedDocumentBills: ["a", "b"].map(id => ({ id, billKey: id, revision: 1, amountRole: "included", numericProtocolVersion: 2,

@@ -124,7 +124,7 @@ async function ensureOk(
 }
 
 async function readJson<T>(path: string, preserveErrorCode = false, headers?: Record<string, string>): Promise<T> {
-  const response = headers ? await apiFetch(path, { headers }) : await apiFetch(path);
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, "读取失败", preserveErrorCode);
   return response.json() as Promise<T>;
 }
