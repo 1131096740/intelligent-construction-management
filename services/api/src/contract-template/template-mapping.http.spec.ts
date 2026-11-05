@@ -3,13 +3,14 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import PizZip from "pizzip";
+import { seedSelectionDraft, saveSelectionThroughHttp } from "./template-selection.test-support";
 import { createTemplateTestServer, syntheticWordSource } from "./template-management.test-support";
 
 describe("template source positions through real HTTP, DTO pipe and private files", () => {
   let server: Awaited<ReturnType<typeof createTemplateTestServer>>;
   let token: string;
   beforeAll(async () => {
-    server = await createTemplateTestServer();
+    server = await createTemplateTestServer({ draftWorkbench: true });
     const response = await fetch(`${await server.app.getUrl()}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: server.actors[0].phone, password: server.password }) });
     expect(response.status).toBe(201);
     token = (await response.json() as { tokens: { accessToken: string } }).tokens.accessToken;
@@ -311,13 +312,8 @@ describe("template source positions through real HTTP, DTO pipe and private file
   it("freezes the confirmed source mapping in real document queue inputs", async () => {
     const layout = await preparedPublishedLayout(true);
     const serverUrl = await server.app.getUrl();
-    const contractId = randomUUID();
-    const versionId = randomUUID();
-    const projectId = randomUUID();
-    await server.store.prisma.project.create({ data: { id: projectId, name: "合成合同项目", isActive: true } });
-    await server.store.prisma.contract.create({ data: { id: contractId, projectId, name: "实际选版合同", temporaryCode: "T11-DRAFT", code: null, contractTypeKey: "material_purchase", ownerUserId: "staff", voidedAt: null } });
-    await server.store.prisma.contractVersion.create({ data: { id: versionId, contractId, changeType: "original", draftRevision: 1, documentContentRevision: 1, documentContentFingerprint: "a".repeat(64), draftData: {}, clauseSnapshot: [], numericProtocolVersion: 2, amountYuan: null, amountCents: 0n, invoiceType: null, defaultTaxRatePercent: null, companyEntityNameSnapshot: null, latestDraftPreviewDocumentId: null } });
-    for (const [roleKey, name] of [["party_a", "实际甲方"], ["party_b", "实际乙方"]]) await server.store.prisma.contractPartySnapshot.create({ data: { contractVersionId: versionId, roleKey, snapshot: { name } } });
+    const { contractId, versionId, projectId } = await seedSelectionDraft(server, false, "实际选版合同");
+    await saveSelectionThroughHttp(server, versionId, layout.id);
     const queued = await server.documents.queue(versionId, "staff", { purpose: "draft", layoutTemplateVersionId: layout.id });
     expect(queued.inputSnapshot).toMatchObject({ templateFileId: layout.fileId, layoutSourceMapping: { sourceFileId: layout.fileId, sourceSha256: layout.sourceSha256, draftRevision: 2, fingerprint: layout.mappingFingerprint } });
     await server.processor.processNext();

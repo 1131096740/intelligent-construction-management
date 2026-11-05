@@ -1,3 +1,4 @@
+import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
 import { confirmedLayoutSourceMapping, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import {
   BadRequestException,
@@ -159,18 +160,10 @@ export class ContractDocumentService {
         if (!layoutTemplateVersionId) {
           throw new BadRequestException("合同草稿尚未选择文件版式，不能生成预览");
         }
-        const layout = await tx.contractLayoutTemplateVersion.findUnique({
-          where: { id: layoutTemplateVersionId }
-        });
-        if (!layout || layout.status !== "published") {
-          throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
+        if (!command && version.layoutTemplateVersionId !== layoutTemplateVersionId) {
+          throw new ConflictException("请先保存当前选择的合同版式，再生成文档");
         }
-        const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
-          where: { id: layout.layoutTemplateId }
-        });
-        if (!layoutTemplate || layoutTemplate.contractTypeKey !== contract.contractTypeKey) {
-          throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
-        }
+        const layout = await assertSelectableLayoutVersion(tx, this.files, layoutTemplateVersionId, contract.contractTypeKey);
         this.assertInternalReviewReady(
           input.purpose,
           version.readinessSnapshot,

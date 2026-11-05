@@ -2284,7 +2284,7 @@ export class ContractWorkbenchService {
       throw new BadRequestException("合同金额调整原因必须填写文本");
     }
     if (
-      input.layoutTemplateVersionId !== undefined &&
+      input.layoutTemplateVersionId !== undefined && input.layoutTemplateVersionId !== null &&
       (typeof input.layoutTemplateVersionId !== "string" ||
         !input.layoutTemplateVersionId.trim())
     ) {
