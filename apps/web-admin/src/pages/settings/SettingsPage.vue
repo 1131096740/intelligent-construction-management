@@ -34,7 +34,12 @@
             v-model="profileForm.code"
             :phone="String(profileDraft.values.phone ?? '')"
             purpose="change_phone"
-            :disabled="profileBusy"
+            :disabled="profileBusy || !smsAvailable"
+          />
+          <t-alert
+            v-if="phoneVerificationRequired && !smsAvailable"
+            theme="warning"
+            message="短信验证暂不可用，无法更换手机号。请保留原号码以修改其他资料，或待短信恢复后重试。"
           />
           <t-alert
             v-if="profileMessage"
@@ -45,7 +50,7 @@
             theme="primary"
             type="submit"
             :loading="profileBusy"
-            :disabled="loadedDefinition?.key !== 'user_self_profile'"
+            :disabled="loadedDefinition?.key !== 'user_self_profile' || (phoneVerificationRequired && !smsAvailable)"
           >
             保存基本资料
           </t-button>
@@ -331,7 +336,7 @@ const auth = useAuthStore();
 const recoveryDialogOpen = ref(false);
 const smsAvailable = ref(false);
 const canGenerateRecoveryCode = computed(() => auth.user?.globalRoleKeys?.includes("chairman") === true);
-const phoneVerificationRequired = computed(() => smsAvailable.value && String(profileDraft.value.values.phone ?? "") !== auth.user?.phone);
+const phoneVerificationRequired = computed(() => String(profileDraft.value.values.phone ?? "") !== auth.user?.phone);
 const isSuperAdmin = computed(() => auth.user?.roleKeys.includes("super_admin") === true);
 const retentionPreview = ref<DraftRetentionPreviewReadModel | null>(null);
 const retentionLoading = ref(false);

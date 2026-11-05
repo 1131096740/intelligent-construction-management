@@ -29,9 +29,9 @@
 </template>
 <script setup lang="ts">
 import { onUnmounted, ref } from "vue";
-import { fetchAccountOptions, sendAccountSms, sendPhoneChangeSms } from "../api/employee-onboarding.api";
+import { fetchAccountOptions, sendAccountSms, sendPhoneChangeSms, sendAdminPhoneChangeSms } from "../api/employee-onboarding.api";
 import { formatUnknownApiError } from "../api/error-message";
-const props = defineProps<{ phone: string; purpose: "register" | "reset" | "change_phone"; modelValue: string; disabled?: boolean }>();
+const props = defineProps<{ phone: string; purpose: "register" | "reset" | "change_phone"; modelValue: string; disabled?: boolean; targetUserId?: string }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const sending = ref(false); const remaining = ref(0); const message = ref(""); const error = ref(false);
 let interval: ReturnType<typeof setInterval> | undefined;
@@ -60,7 +60,7 @@ async function sendPhoneChangeWithCapability(phone: string) {
   const capability = await fetchAccountOptions();
   const operationAllowed = capability.smsEnabled;
   if (!operationAllowed) throw new Error("短信验证尚未开通，请联系综合部或董事长");
-  return sendPhoneChangeSms(phone);
+  return props.targetUserId ? sendAdminPhoneChangeSms(props.targetUserId, phone) : sendPhoneChangeSms(phone);
 }
 </script>
 <style scoped>

@@ -1,6 +1,6 @@
 # 02：扩展四位精度与空值兼容协议
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#384](https://github.com/1131096740/intelligent-construction-management/issues/384) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置#383已关闭，本票已在独立工作树领取实施。用户已确认公共精度适配器、合同草稿HTTP保存/重读及Excel、清单UI测试边界；替身不算真实PG通过。[#384](https://github.com/1131096740/intelligent-construction-management/issues/384) 归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。
 
 **类型：** 跨域机械扩展片（expand）。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
