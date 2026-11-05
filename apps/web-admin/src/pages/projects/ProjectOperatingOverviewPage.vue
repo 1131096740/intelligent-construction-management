@@ -18,7 +18,7 @@
           />
         </div>
         <t-button
-          v-if="canManageProjects && selectedProjectId"
+          v-if="canManageProjectEntities && selectedProjectId"
           variant="outline"
           @click="activeTab = 'settings'"
         >
@@ -69,6 +69,7 @@
                   :key="selectedProjectId"
                   :project-id="selectedProjectId"
                   :name="selectedProjectName"
+                  :code="projects.find((project) => project.id === selectedProjectId)?.code ?? ''"
                   :saving="projectUpdating"
                   @save="submitProjectName"
                 />
@@ -330,6 +331,14 @@
             </ul>
           </section>
         </template>
+      </t-tab-panel>
+
+      <t-tab-panel
+        v-if="selectedProjectId"
+        value="personnel"
+        label="项目人员"
+      >
+        <ProjectPersonnelPanel :project-id="selectedProjectId" />
       </t-tab-panel>
 
       <t-tab-panel
@@ -963,6 +972,7 @@ import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
+import ProjectPersonnelPanel from "./components/ProjectPersonnelPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import ProjectCreateForm from "./components/ProjectCreateForm.vue";
 import ProjectLifecyclePanel from "./components/ProjectLifecyclePanel.vue";
@@ -1327,6 +1337,10 @@ const visibleExpenseTypeOptions = computed(() =>
 );
 
 const canManageProjects = computed(
+  () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director" || role === "general_manager") ?? false
+);
+
+const canManageProjectEntities = computed(
   () => auth.user?.globalRoleKeys.some((role) => role === "chairman" || role === "comprehensive_director") ?? false
 );
 

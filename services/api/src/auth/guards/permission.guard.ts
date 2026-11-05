@@ -83,13 +83,13 @@ export class PermissionGuard implements CanActivate {
       request.user.id,
       projectId,
       includeAnyProjectRole,
-      (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage")
+      (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage" || requiredAction === "project.basics.manage")
     );
     const effectiveRoleKeys = resolveEffectiveRoleKeys(
       roleScopes.globalRoleKeys,
       roleScopes.projectRoleKeys
     );
-    const actionRoleKeys = (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage")
+    const actionRoleKeys = (requiredAction === "business_party.create" || requiredAction === "project.master_data.manage" || requiredAction === "project.basics.manage")
       ? roleScopes.globalRoleKeys
       : effectiveRoleKeys;
 

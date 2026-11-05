@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `e02f83aba12d368f115539cb8c47480f6471e1e4f9dcac65e59888523922bd3a` |
-| webApiWrappers | ready | `fc93b6cd3cb305e7881574140895e2ed80fdb18766fbdd11f34ff9de68951ae4` |
-| webPageActions | ready | `03db165ca190a61b4980693f89e06f49d1632eef2e33192a62120f0e6822930a` |
-| routeUsage | ready | `04f685d8f0170c1e8565edba54f8c6dbf6bc4ec18384862a91c614e3b180f766` |
+| nestRoutes | ready | `562d835fc0bb56cfdb67797de6f40be7ced2e24c0b8bbe212352b9cbcc29ac04` |
+| webApiWrappers | ready | `49de057bead1e949ad66738805ee4d324e1ed752d788145d9c4b335752cb5bd0` |
+| webPageActions | ready | `70a5d126c86476a031a0fa63241f3f513c16a31f3bc363033177c0866c1cf710` |
+| routeUsage | ready | `234e1afeb31971eb921cc78857685aa523c3885e21ae3616d859f8e4122a323d` |
 
 ## 汇总
 
@@ -26,12 +26,12 @@
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 396 |
-| actionBindingCount | 456 |
-| acceptedActionBindingCount | 419 |
+| registeredActionCount | 397 |
+| actionBindingCount | 457 |
+| acceptedActionBindingCount | 420 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 386 |
-| coveredProductionMutationConsumerPairCount | 386 |
+| productionMutationConsumerPairCount | 387 |
+| coveredProductionMutationConsumerPairCount | 387 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -637,7 +637,7 @@
 | POST | /projects/:projectId/upstream-fund-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact | project.upstream-fund.record | covered | — |
 | POST | /projects/:projectId/upstream-settlements/:upstreamSettlementId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamSettlement | — | not_applicable | — |
 | POST | /projects/:projectId/upstream-settlements | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement | — | not_applicable | — |
-| POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate | covered | — |
+| POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate<br>project.rename.name-warning | covered | — |
 | POST | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProject | project.create | covered | — |
 | POST | /settlement-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#cloneSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#discardSettlementTemplateVersion | — | not_applicable | — |

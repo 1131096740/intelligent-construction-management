@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "e02f83aba12d368f115539cb8c47480f6471e1e4f9dcac65e59888523922bd3a",
+      "sha256": "562d835fc0bb56cfdb67797de6f40be7ced2e24c0b8bbe212352b9cbcc29ac04",
       "status": "ready",
       "summary": {
         "routeCount": 702
@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "fc93b6cd3cb305e7881574140895e2ed80fdb18766fbdd11f34ff9de68951ae4",
+      "sha256": "49de057bead1e949ad66738805ee4d324e1ed752d788145d9c4b335752cb5bd0",
       "status": "ready",
       "summary": {
         "apiModuleCount": 40,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "03db165ca190a61b4980693f89e06f49d1632eef2e33192a62120f0e6822930a",
+      "sha256": "70a5d126c86476a031a0fa63241f3f513c16a31f3bc363033177c0866c1cf710",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 396,
+        "registeredActionCount": 397,
         "pageActionCount": 56,
-        "backgroundActionCount": 340,
-        "reachableVueFileCount": 199,
+        "backgroundActionCount": 341,
+        "reachableVueFileCount": 200,
         "routeRootCount": 70,
-        "totalVueFileCount": 213,
-        "parsedVueFileCount": 213,
-        "reachableProductionModuleCount": 345,
+        "totalVueFileCount": 214,
+        "parsedVueFileCount": 214,
+        "reachableProductionModuleCount": 346,
         "templateEventDirectiveCount": 1240,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 386,
-        "candidateProductionMutationConsumerCount": 386,
-        "acceptedProductionMutationConsumerCount": 386,
-        "productionMutationConsumerPairCount": 386,
+        "coveredProductionMutationConsumerCount": 387,
+        "candidateProductionMutationConsumerCount": 387,
+        "acceptedProductionMutationConsumerCount": 387,
+        "productionMutationConsumerPairCount": 387,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "04f685d8f0170c1e8565edba54f8c6dbf6bc4ec18384862a91c614e3b180f766",
+      "sha256": "234e1afeb31971eb921cc78857685aa523c3885e21ae3616d859f8e4122a323d",
       "status": "ready",
       "summary": {
         "routeCount": 702,
@@ -104,12 +104,12 @@
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 396,
-    "actionBindingCount": 456,
-    "acceptedActionBindingCount": 419,
+    "registeredActionCount": 397,
+    "actionBindingCount": 457,
+    "acceptedActionBindingCount": 420,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 386,
-    "coveredProductionMutationConsumerPairCount": 386,
+    "productionMutationConsumerPairCount": 387,
+    "coveredProductionMutationConsumerPairCount": 387,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -1345,7 +1345,8 @@
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/business-entry.api.test.ts"
+            "apps/web-admin/src/api/business-entry.api.test.ts",
+            "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
           ]
         }
       ],
@@ -9378,7 +9379,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "project.master_data.manage",
+        "requiredProjectAction": "project.basics.manage",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,
@@ -9396,9 +9397,12 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-            "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue"
+            "apps/web-admin/src/pages/projects/components/ProjectLifecyclePanel.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -9670,7 +9674,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "project.master_data.manage",
+        "requiredProjectAction": "project.basics.manage",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,
@@ -9690,7 +9694,9 @@
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -9708,13 +9714,10 @@
         "sourceFile": "services/api/src/project/project.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "positions",
+        "guardAuthorization": "project_action",
         "isPublic": false,
-        "requiredPositions": [
-          "chairman",
-          "comprehensive_director"
-        ],
-        "requiredProjectAction": null,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.basics.manage",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,
@@ -9824,9 +9827,12 @@
           "normalizedKey": "GET /projects/roster",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectRosterPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectPersonnelPanel.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -13078,7 +13084,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "project.master_data.manage",
+        "requiredProjectAction": "project.basics.manage",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,
@@ -15090,7 +15096,8 @@
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/business-entry.api.test.ts"
+            "apps/web-admin/src/api/business-entry.api.test.ts",
+            "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
           ]
         }
       ],
@@ -35661,7 +35668,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "project.master_data.manage",
+        "requiredProjectAction": "project.basics.manage",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,
@@ -35678,9 +35685,12 @@
           "normalizedKey": "POST /projects/create-validation",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue"
+            "apps/web-admin/src/pages/projects/components/ProjectCreateForm.vue",
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/pages/projects/components/project-masterdata.component.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -35710,6 +35720,32 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "project.rename.name-warning",
+          "bindingIndex": 0,
+          "identity": "project.rename.name-warning\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000validateProjectCreation\u0000POST\u0000POST /projects/create-validation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "update_project",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "validateProjectCreation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "covered",
@@ -35728,7 +35764,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "project.master_data.manage",
+        "requiredProjectAction": "project.basics.manage",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false,

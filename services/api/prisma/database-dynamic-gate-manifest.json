@@ -29,9 +29,9 @@
     "pendingFiles": 78,
     "fullyPendingSuites": 67,
     "partiallyPendingSuites": 11,
-    "pendingTests": 521,
+    "pendingTests": 523,
     "coveredFiles": 78,
-    "coveredTests": 521,
+    "coveredTests": 523,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -95,11 +95,11 @@
     },
     {
       "id": "payment_execution",
-      "pendingTests": 1,
+      "pendingTests": 2,
       "testFiles": [
         {
           "path": "services/api/src/database/payment-execution-concurrency.spec.ts",
-          "pendingTests": 1,
+          "pendingTests": 2,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -398,7 +398,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 158,
+      "pendingTests": 159,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -562,7 +562,7 @@
         },
         {
           "path": "services/api/src/database/payable-settlement-concurrency.spec.ts",
-          "pendingTests": 19,
+          "pendingTests": 20,
           "suiteStatus": "fully_pending"
         },
         {
@@ -708,7 +708,7 @@
     "ciEligible": {
       "groups": 22,
       "files": 77,
-      "tests": 520
+      "tests": 522
     },
     "manualOnly": {
       "groups": 1,

@@ -6602,6 +6602,31 @@
       ]
     },
     {
+      "id": "project.rename.name-warning",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "validateProjectNameWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_project"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "validateProjectCreation"
+        }
+      ]
+    },
+    {
       "id": "project-operating-profile.save",
       "usage": "page_action",
       "routePaths": [

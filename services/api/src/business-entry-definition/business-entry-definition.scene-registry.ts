@@ -1,3 +1,4 @@
+import { PROJECT_BASIC_MAINTAINER_ROLES } from "@jiangkong/shared-domain";
 import { SETTLEMENT_TEMPLATE_ENTRY_DEFINITION } from "../settlement/settlement-template-entry-definition";
 import {
   createBusinessEntryDefinitionRegistry,
@@ -188,7 +189,7 @@ const projectBaseFields = (entries: Array<[string, string, "text" | "long_text" 
 export const PROJECT_CREATE_DEFINITION: BusinessEntrySceneDefinition = {
   key: "project_create", entityType: "project", name: "新建项目", version: 1,
   description: "项目编号和名称，沿用项目创建岗位及原事务。",
-  fields: projectBaseFields([["code", "项目编号", "text"], ["name", "项目名称", "text"]], projectMaintenanceRoles), rules: []
+  fields: projectBaseFields([["code", "项目编号", "text"], ["name", "项目名称", "text"]], PROJECT_BASIC_MAINTAINER_ROLES), rules: []
 };
 export const PARTICIPANT_DEACTIVATION_DEFINITION: BusinessEntrySceneDefinition = {
   key: "project_participating_company_deactivate", entityType: "project_participating_company",
@@ -313,7 +314,7 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     textField("changeReason", "加入原因", projectMaintenanceRoles, { type: "long_text", required: true, bulk: { enabled: false, maxRows: 1, strategy: "replace" } })
   ]),
   globalDefinition("project_rename", "project", "项目名称", [
-    textField("name", "项目名称", projectMaintenanceRoles, {
+    textField("name", "项目名称", PROJECT_BASIC_MAINTAINER_ROLES, {
       required: true,
       bulk: { enabled: false, maxRows: 1, strategy: "replace" }
     })
@@ -523,12 +524,12 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
     {
       sceneKey: "project_rename",
       target: { scope: "project", entityType: "project" },
-      permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+      permission: { kind: "role_keys", roleKeys: PROJECT_BASIC_MAINTAINER_ROLES, roleScope: "effective" }
     },
     {
       sceneKey: "project_create",
       target: { scope: "project", entityType: "project" },
-      permission: { kind: "role_keys", roleKeys: projectMaintenanceRoles, roleScope: "effective" }
+      permission: { kind: "role_keys", roleKeys: PROJECT_BASIC_MAINTAINER_ROLES, roleScope: "effective" }
     },
     {
       sceneKey: "project_participating_company_deactivate",

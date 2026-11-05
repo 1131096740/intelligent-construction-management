@@ -11,8 +11,6 @@ export type RetiredWriteEntry = Readonly<{
 }>;
 
 export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
-  { controller: "ApprovalDelegationController", handler: "create" },
-  { controller: "ApprovalDelegationController", handler: "revoke" },
   { controller: "AuthController", handler: "wxLogin" },
   { controller: "BusinessPartyController", handler: "addContractParty" },
   { controller: "BusinessPartyController", handler: "removeContractParty" },

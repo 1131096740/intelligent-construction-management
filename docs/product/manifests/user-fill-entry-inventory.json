@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 383,
+    "activeBusinessActionCount": 388,
     "technicalActionCount": 9,
-    "activeBindingCount": 442,
-    "retiredWriteEntryCount": 88,
+    "activeBindingCount": 447,
+    "retiredWriteEntryCount": 86,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -48,6 +48,38 @@
         "POST /projects/:param/affiliate-company-contracts/file-uploads"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-delegation.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /approval-delegations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-delegation.revoke",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "DELETE /approval-delegations/:param"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -1944,6 +1976,40 @@
         "POST /contracts/:param/signing/material-change"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.admin-phone-change",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/users/:param/change-phone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.admin-phone-change-sms",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/users/:param/phone-change-sms"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -4434,6 +4500,22 @@
       "causalVerified": true
     },
     {
+      "id": "project.rename.name-warning",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/create-validation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "project.rename.validate",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -6409,13 +6491,6 @@
   "retiredEntries": [
     {
       "method": "DELETE",
-      "path": "/approval-delegations/:delegationId",
-      "controller": "ApprovalDelegationController",
-      "handler": "revoke",
-      "status": "gone"
-    },
-    {
-      "method": "DELETE",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "deleteRow",
@@ -6496,13 +6571,6 @@
       "path": "/vat-rate-options/:optionId",
       "controller": "VatRateOptionController",
       "handler": "update",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/approval-delegations",
-      "controller": "ApprovalDelegationController",
-      "handler": "create",
       "status": "gone"
     },
     {

@@ -8,6 +8,8 @@
 
 工单逐项映射与源码指纹见 [Issue 映射](../2026-11-05-enterprise-simplification-issue-map.json)，当前基线与停止条件见[集成起步交接](../../progress/2026-11-05-enterprise-simplification-integration-start.md)。
 
+07隔离树已完成本地实现与PG源码准备，待准确候选双审及中央整合，#389仍OPEN；前置05全局旧入口guard的create/revoke残留410已公开RED并最窄补修，#387仍重开待新SHA复验收口。真实PG、账户/银行与16/42/44门不计通过，09/15不因此提前启动。[07收据](../../progress/2026-11-05-enterprise-simplification-task07-local.md)。
+
 ## 执行原则
 
 业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05为local-confirmed-boundary-complete/pg-pending/github-closed，06为in-progress，08为technical-cli-complete/github-closed；07/11测试边界已确认且所有源码前置已满足，已正式领取、in-progress。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。

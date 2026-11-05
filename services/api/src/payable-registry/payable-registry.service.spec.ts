@@ -1,3 +1,5 @@
+import { Test } from "@nestjs/testing";
+import { PayableRegistryController } from "./payable-registry.controller";
 import { PayableRegistryService } from "./payable-registry.service";
 
 describe("PayableRegistryService", () => {
@@ -157,7 +159,7 @@ describe("PayableRegistryService", () => {
     ]);
   });
 
-  it("returns only bounded eligible payment candidates as opaque projections without execution UUIDs or GET writes", async () => {
+  it.each(["effective", "superseded"])("returns only bounded eligible payment candidates from %s original versions as opaque projections without execution UUIDs or GET writes", async (sourceStatus) => {
     const payable = {
       id: "payable-1",
       confirmedVersionId: "version-1",
@@ -225,12 +227,12 @@ describe("PayableRegistryService", () => {
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([
           {
-            id: "contract-version-1", contractId: "contract-1", status: "effective", signingSubjectType: "our_company",
+            id: "contract-version-1", contractId: "contract-1", status: sourceStatus, signingSubjectType: "our_company",
             companyEntityIdSnapshot: "company-1", companyEntityVersionId: "company-version-1",
             affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T08:58:00.000Z")
           },
           {
-            id: "contract-version-2", contractId: "contract-2", status: "effective", signingSubjectType: "our_company",
+            id: "contract-version-2", contractId: "contract-2", status: sourceStatus, signingSubjectType: "our_company",
             companyEntityIdSnapshot: "company-1", companyEntityVersionId: "company-version-1",
             affiliateBusinessPartyVersionId: null, updatedAt: new Date("2026-08-27T09:58:00.000Z")
           }
@@ -792,17 +794,28 @@ describe("PayableRegistryService", () => {
       .rejects.toThrow("确认人必须职责分离");
   });
 
-  it("requires a verified bank-holder attestation before recording a cross-company proxy relationship", async () => {
+  it.each([
+    { name: "在用原路径", directoryActive: true, fault: "", error: "" },
+    { name: "原批准公司停用且合法跨主体代付HTTP", directoryActive: false, fault: "", error: "" },
+    { name: "已冻结实付主体停用且账户仍有效", directoryActive: false, fault: "actual_inactive", error: "" },
+    { name: "原冻结版本缺失", directoryActive: false, fault: "missing", error: "代付主体档案" },
+    { name: "冻结公司身份冲突", directoryActive: false, fault: "mismatch", error: "身份不明确" },
+    { name: "账户核验撤销", directoryActive: false, fault: "revoked", error: "账户权威" },
+    { name: "补充新版本后仍可核销原曾生效版本的已实付", directoryActive: false, fault: "superseded_source", error: "" },
+    { name: "作废合同版本不可作为核销来源", directoryActive: false, fault: "voided_source", error: "付款主体事实" }
+  ])("存量公司应付代付公开路径 $name", async ({ directoryActive, fault, error }) => {
     const tx = createTransitionHarness({
       paymentExecutorUserId: "executor",
       payableAmountCents: 10_000n
     });
     tx.contractVersion.findUnique.mockResolvedValue({
       id: "contract-version-1",
-      status: "effective",
+      status: fault === "superseded_source" ? "superseded" : fault === "voided_source" ? "voided" : "effective",
       signingSubjectType: "our_company",
       companyEntityIdSnapshot: "company-2",
       companyEntityVersionId: "company-version-2",
+      companyEntityNameSnapshot: "批准公司",
+      companyEntityCreditCodeSnapshot: "credit-2",
       affiliateBusinessPartyVersionId: null
     });
     tx.paymentExecution.findUnique.mockResolvedValue({
@@ -849,7 +862,7 @@ describe("PayableRegistryService", () => {
       verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
       verificationEvidenceFileId: "verification-file-3",
       verificationEvidenceContentSha256: "a".repeat(64),
-      status: "verified",
+      status: fault === "revoked" ? "revoked" : "verified",
       sourceType: "bank_account_legal_holder",
       sourceRecordId: "bank-record-3"
     });
@@ -860,6 +873,9 @@ describe("PayableRegistryService", () => {
         contentSha256: where.id === "authorization-file-3" ? "b".repeat(64) : "a".repeat(64)
       })
     );
+    tx.companyEntity.findMany.mockImplementation(({ where }: { where: { id: { in: string[] } } }) => Promise.resolve(where.id.in.map(id => ({ id, name: id, unifiedSocialCreditCode: null, isActive: (id === "company-2" || fault === "actual_inactive" && id === "company-3") ? directoryActive : true }))));
+    if (fault === "missing") tx.companyEntityVersion.findUnique.mockResolvedValue(null as never);
+    if (fault === "mismatch") tx.companyEntityVersion.findUnique.mockResolvedValue({companyEntityId:"conflicting-company",name:"批准公司",unifiedSocialCreditCode:"credit-2",isActive:true});
     const prisma = {
       $transaction: jest.fn((operation: (client: typeof tx) => unknown) => operation(tx))
     };
@@ -869,11 +885,22 @@ describe("PayableRegistryService", () => {
       { record: jest.fn() } as never
     );
 
-    await expect(service.confirm("director", {
-      settlementCaseId: "case-1",
-      expectedRevision: 3,
-      idempotencyKey: "00000000-0000-4000-8000-000000000028"
-    })).resolves.toEqual(expect.objectContaining({ status: "confirmed", revision: 4 }));
+    const payload = { settlementCaseId: "case-1", expectedRevision: 3, idempotencyKey: "00000000-0000-4000-8000-000000000028" };
+    if (error) {
+      await expect(service.confirm("director",payload)).rejects.toThrow(error);
+      expect(tx.interEntityRelationshipEntry.create).not.toHaveBeenCalled();
+      return;
+    }
+    if (!directoryActive && !fault) {
+      const module = await Test.createTestingModule({controllers:[PayableRegistryController],providers:[{provide:PayableRegistryService,useValue:service}]}).compile();
+      const app = module.createNestApplication({logger:false});
+      app.use((req:{user?:unknown},_res:unknown,next:()=>void)=>{req.user={id:"director"};next();});
+      try {
+        await app.listen(0,"127.0.0.1");
+        const response=await fetch(`${await app.getUrl()}/payable-settlements/case-1/confirm`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+        expect(response.status).toBe(201);expect(await response.json()).toMatchObject({status:"confirmed",revision:4});
+      } finally {await app.close();}
+    } else await expect(service.confirm("director",payload)).resolves.toEqual(expect.objectContaining({status:"confirmed",revision:4}));
     expect(tx.interEntityRelationshipEntry.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         entryKind: "proxy_payment",
