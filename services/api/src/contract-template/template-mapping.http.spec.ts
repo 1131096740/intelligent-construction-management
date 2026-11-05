@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
+import { inspectActualTemplatePdf } from "./template-pdf-physical.test-support";
 import { createHash, randomUUID } from "node:crypto";
 import PizZip from "pizzip";
 import { seedSelectionDraft, saveSelectionThroughHttp } from "./template-selection.test-support";
@@ -290,7 +290,7 @@ describe("template source positions through real HTTP, DTO pipe and private file
     expect(preview).toMatchObject({ status: "succeeded" });
     const pdf = await server.files.getFileBuffer(preview.previewPdfFileId);
     expect(pdf.buffer.subarray(0, 5).toString()).toBe("%PDF-");
-    const text = execFileSync(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", ["-c", "import sys,pymupdf; d=pymupdf.open(stream=sys.stdin.buffer.read(),filetype='pdf'); print(''.join(p.get_text() for p in d))"], { input: pdf.buffer, encoding: "utf8" });
+    const text = inspectActualTemplatePdf((await server.files.getFileBuffer(file.id)).buffer, pdf.buffer, "public mapped preview");
     expect(text).toContain("主管确认合同");
     expect(text).toContain("确认甲方");
     expect(text).toContain("确认乙方");
@@ -327,7 +327,7 @@ describe("template source positions through real HTTP, DTO pipe and private file
     expect(xml).not.toContain("合成甲方公司");
     expect(xml).toContain("手工条款：本项普通约定按原文保留。");
     const pdf = await server.files.getFileBuffer(String(generated!.pdfFileId));
-    const text = execFileSync(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", ["-c", "import sys,pymupdf; d=pymupdf.open(stream=sys.stdin.buffer.read(),filetype='pdf'); print(''.join(p.get_text() for p in d))"], { input: pdf.buffer, encoding: "utf8" });
+    const text = inspectActualTemplatePdf(docx.buffer, pdf.buffer, "public frozen-mapping generated document");
     expect(text).toContain("实际选版合同");
     expect(text).toContain("实际甲方");
     expect(text).toContain("实际乙方");
