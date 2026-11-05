@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
-import { businessAmountFromLegacyCents, sumBusinessAmounts } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
@@ -366,6 +366,24 @@ export class ContractDraftAggregateService {
           currentBills.some((bill) => !inputBillsByKey.has(bill.billKey))
         ) {
           throw new BadRequestException("合同清单集合已变化，请刷新后重试");
+        }
+        // Validate the version-level default even when an empty bill has no rows
+        // through which the four-place line calculator could validate it.
+        if (version.numericProtocolVersion === 2 ||
+          currentBills.some((bill) => bill.numericProtocolVersion === 2) ||
+          input.bills.some((bill) => bill.numericProtocolVersion === 2)) {
+          const rate = input.draft.taxFacts.defaultTaxRatePercent;
+          const unchangedStoredRate = typeof rate === "string" &&
+            /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/u.test(rate.trim()) &&
+            version.defaultTaxRatePercent !== null &&
+            version.defaultTaxRatePercent.equals(rate.trim());
+          if (!unchangedStoredRate && rate !== null) {
+            try {
+              if (normalizeBusinessAmount(rate) === null) throw new Error("empty tax rate transport");
+            } catch {
+              throw new BadRequestException("默认税率须填写规范数字，最多保留4位小数；请保留原输入后修改");
+            }
+          }
         }
         await this.assertNegotiationReferences(tx, contractVersionId, input);
         await this.files.assertCanBindContractDraftAttachments(

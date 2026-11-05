@@ -76,7 +76,7 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
 }
 
 async function readJson<T>(path: string, headers?: Record<string, string>): Promise<T> {
-  const response = headers ? await apiFetch(path, { headers }) : await apiFetch(path);
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
@@ -7147,7 +7147,7 @@ async function downloadWorkbook(
   fallbackError: string,
   headers?: Record<string, string>
 ): Promise<void> {
-  const response = headers ? await apiFetch(path, { headers }) : await apiFetch(path);
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, fallbackError);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
