@@ -40,7 +40,7 @@ it("未迁入的任意资源作用域不能伪装成新并联委托", async () =
 });
 it("仅列出本人仍未办理的具体职责，已办职责不再可委托", async () => {
   const {service,round}=fixture();
-  await expect(service.listDutyOptions("manager")).resolves.toEqual([{value:"round-1:1",label:"一号项目 · LXCG-001 · 项目经理"}]);
+  await expect(service.listDutyOptions("manager")).resolves.toEqual([{value:"round-1:1",label:"一号项目 · LXCG-001 · 项目经理",actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty"}]);
   Object.assign(round.frozenNodes[1], {approvedRoleKeys:["project_manager"]});
   await expect(service.listDutyOptions("manager")).resolves.toEqual([]);
   await expect(service.create("manager",input())).rejects.toThrow("该审批职责已结束");

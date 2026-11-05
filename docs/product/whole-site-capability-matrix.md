@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `991a11b8cee7334d9f62f0797a1b684d990b7f4720a140ef72e38a53efcfd69c` |
-| webApiWrappers | ready | `d3c886704f136a16d23502568689bc5dc5d309c8d8973858c9547e5230fe15a3` |
-| webPageActions | ready | `4dba32b4bc5a6d57c911e7a097bc786e541fa1bd75d0c2288333f73860754567` |
-| routeUsage | ready | `99d402c4f96e24b2c6551e4224dc21022009bc9a95df96decea7c08b7b50261d` |
+| webApiWrappers | ready | `0d5b5b6781bc7a20577a8d86b446188e83479588e8b6fa53d3682a59533f0ca7` |
+| webPageActions | ready | `c3a37ab70097c4ba27e7c7898e606570b8bb1340c4f0b2f4511f1ca54eb8693d` |
+| routeUsage | ready | `55359d6cf144fad64e83094b87461101481cdf938dea05bf06f949e7c273ad87` |
 
 ## 汇总
 
@@ -26,12 +26,12 @@
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 397 |
-| actionBindingCount | 457 |
-| acceptedActionBindingCount | 420 |
+| registeredActionCount | 398 |
+| actionBindingCount | 459 |
+| acceptedActionBindingCount | 421 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 387 |
-| coveredProductionMutationConsumerPairCount | 387 |
+| productionMutationConsumerPairCount | 388 |
+| coveredProductionMutationConsumerPairCount | 388 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -142,7 +142,7 @@
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
-| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
+| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.legacy.updateProcurement<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
 | GET | /general-procurements/create-options | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementOptions | general-procurement.createProcurement | not_applicable | — |
 | GET | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementList | — | not_applicable | — |
 | GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
@@ -468,7 +468,7 @@
 | POST | /general-procurements/:id/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive | general-procurement.uploadProcurementArchive | covered | — |
 | POST | /general-procurements/:id/archive | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement | general-procurement.archiveProcurement | covered | — |
 | POST | /general-procurements/:id/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft | general-procurement.delete-draft | covered | — |
-| POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.updateProcurement | covered | — |
+| POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.legacy.updateProcurement<br>general-procurement.updateProcurement | covered | — |
 | POST | /general-procurements/:id/payments/:claimId/cancellation | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment | general-procurement.cancelProcurementPayment | covered | — |
 | POST | /general-procurements/:id/review | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement | general-procurement.reviewProcurement | covered | — |
 | POST | /general-procurements/:id/submission | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#submitProcurement | general-procurement.submitProcurement | covered | — |

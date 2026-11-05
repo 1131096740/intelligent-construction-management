@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 369,
-    "reachableProductionModuleCount": 348
+    "productionModuleCount": 371,
+    "reachableProductionModuleCount": 350
   },
   "wrappers": [
     {
@@ -13316,7 +13316,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13333,7 +13333,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/archive",
           "normalizedPath": "/general-procurements/:param/archive",
@@ -13363,7 +13363,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13379,7 +13379,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/payments/:param/cancellation",
           "normalizedPath": "/general-procurements/:param/payments/:param/cancellation",
@@ -13408,7 +13408,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/create-options",
           "normalizedPath": "/general-procurements/create-options",
@@ -13424,7 +13424,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements",
           "normalizedPath": "/general-procurements",
@@ -13453,7 +13453,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13470,7 +13470,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/draft-deletion",
           "normalizedPath": "/general-procurements/:param/draft-deletion",
@@ -13500,7 +13500,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13516,6 +13516,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+        "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
         "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
@@ -13529,7 +13530,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements?:param",
           "normalizedPath": "/general-procurements",
@@ -13557,7 +13558,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/create-options",
           "normalizedPath": "/general-procurements/create-options",
@@ -13573,6 +13574,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
         "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
@@ -13586,7 +13588,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13603,7 +13605,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/review",
           "normalizedPath": "/general-procurements/:param/review",
@@ -13633,7 +13635,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13650,7 +13652,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/submission",
           "normalizedPath": "/general-procurements/:param/submission",
@@ -13680,7 +13682,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13697,7 +13699,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/draft",
           "normalizedPath": "/general-procurements/:param/draft",
@@ -13714,6 +13716,7 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
         "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
@@ -13727,7 +13730,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13743,7 +13746,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/archive-file-uploads",
           "normalizedPath": "/general-procurements/:param/archive-file-uploads",
@@ -13771,7 +13774,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13788,7 +13791,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/withdrawal",
           "normalizedPath": "/general-procurements/:param/withdrawal",

@@ -1,3 +1,4 @@
+import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
 import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
@@ -2259,6 +2260,12 @@ export class FileService {
       ? await tx.generalProcurement.findFirst({ where: { archiveFileId: file.id } })
       : null;
     if (procurement) {
+      if (procurement.requestProtocolVersion === 2) {
+        const actor = await generalRequestActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
+        if (generalRequestCanRead(procurement, actor)) return;
+        throw new ForbiddenException("当前账号无权下载该采购归档资料");
+      }
+      if (!procurement.projectId) throw new ForbiddenException("当前账号无权下载该采购归档资料");
       const actor = await generalProcurementActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
       if (canReadGeneralProcurement(procurement, actor)) return;
       throw new ForbiddenException("当前账号无权下载该采购归档资料");

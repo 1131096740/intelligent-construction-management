@@ -9161,7 +9161,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "capability.canEdit"
+        "source": "editCapability.canEdit"
       },
       "wrappers": [
         {
@@ -10024,6 +10024,30 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "revokeApprovalDelegation"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.legacy.updateProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canEdit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "updateProcurement"
         }
       ]
     }
