@@ -14,13 +14,24 @@ from lxml import etree as E
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 NS = {"w": W[1:-1]}
 TOKEN = re.compile(r"\{([^{}]+)\}")
+TOTAL_CONTEXT = "合同金额（含税）：人民币{合同金额}元（大写：{合同金额大写}）"
+SEMANTIC_TOTAL_SOURCE = {
+    "generic-contract-v1.docx": TOTAL_CONTEXT,
+    "professional-subcontract-v1.docx": TOTAL_CONTEXT,
+    "labor-subcontract-real-v1.docx": TOTAL_CONTEXT,
+    "equipment-rental-real-v1.docx": "{合同金额}",
+    "equipment-rental-v1.docx": "合同金额大写：{合同金额大写}",
+    "labor-subcontract-v1.docx": "合同金额大写：{合同金额大写}",
+    "material-purchase-v1.docx": "合同金额大写：{合同金额大写}",
+    "material-purchase-real-v1.docx": "本合同暂定总价（含税）{合同金额}元（大写：人民币{合同金额大写}）。其中，不含税价合计为{不含税总额}元（大写：人民币{不含税总额大写}），税额合计为{税额总计}元（大写：人民币{税额总计大写}）",
+}
 
 
 def text(node):
     return "".join(node.itertext()) if node.tag == W + "t" else "".join(node.xpath(".//w:t/text()", namespaces=NS))
 
 
-def substitute(root, values, anchors=True):
+def substitute(root, values, anchors=True, pattern=TOKEN):
     for paragraph in list(root.iter(W + "p")):
         nodes = list(paragraph.iter(W + "t"))
         spans, offset = [], 0
@@ -28,7 +39,7 @@ def substitute(root, values, anchors=True):
             end = offset + len(node.text or "")
             spans.append((offset, end, node))
             offset = end
-        for match in reversed(list(TOKEN.finditer("".join(n.text or "" for n in nodes)))):
+        for match in reversed(list(pattern.finditer("".join(n.text or "" for n in nodes)))):
             key = match[1]
             if key not in values:
                 continue
@@ -110,13 +121,50 @@ def wrap(node):
     return container
 
 
-def render(parts, request):
+def pricing_values(pricing):
+    modes = {"framework": "框架按单价", "lumpsum": "包干", "unit-price": "按清单单价计价"}
+    bases = {"inclusive": "含税", "exclusive": "不含税"}
+    if pricing.get("mode") not in modes or pricing.get("basis") not in bases:
+        raise ValueError("explicit supported pricing mode and amount basis required")
+    total, uppercase = pricing.get("total"), pricing.get("uppercase")
+    if total is None:
+        amount = "部分金额待确定（非最终总价）" if pricing["mode"] == "framework" else "待确定"
+    else:
+        if not isinstance(total, str) or not re.fullmatch(r"-?\d+(?:\.\d{1,4})?", total) or not isinstance(uppercase, str) or not uppercase.strip():
+            raise ValueError("known amount requires exact decimal string and caller-provided uppercase")
+        amount = "人民币" + total + "元（大写：" + uppercase + "）"
+    rate, invoice = pricing.get("taxRate"), pricing.get("invoiceKind")
+    if rate is not None and (not isinstance(rate, str) or not rate.strip()):
+        raise ValueError("unknown tax rate must be null; known display must be explicit")
+    if invoice is not None and (not isinstance(invoice, str) or not invoice.strip()):
+        raise ValueError("unknown invoice kind must be null")
+    display = "合同金额（" + bases[pricing["basis"]] + "）：" + amount
+    # Display only caller-authoritative facts; this probe never derives tax or
+    # uppercase amounts, and never turns NULL into a zero amount/rate.
+    display += "；计价方式：" + modes[pricing["mode"]]
+    display += "；税率：" + (rate if rate is not None else "待补充")
+    display += "；发票类型：" + (invoice if invoice is not None else "待补充")
+    if rate is None:
+        display += "（不推算另一金额口径）"
+    return {"语义.金额展示": display, "计价方式": modes[pricing["mode"]], "税率": rate if rate is not None else "待补充", "发票类型": invoice if invoice is not None else "待补充"}
+
+
+def render(parts, request, source_name=None):
+    values = dict(request["fields"])
+    semantic = pricing_values(request["pricing"]) if "pricing" in request else None
+    if semantic:
+        values.update(semantic)
     for name in list(parts):
         if not name.startswith("word/") or not name.endswith(".xml"):
             continue
         root = E.fromstring(parts[name], E.XMLParser(resolve_entities=False, no_network=True))
+        if semantic and name == "word/document.xml":
+            literal = SEMANTIC_TOTAL_SOURCE.get(source_name)
+            if not literal or text(root).count(literal) != 1:
+                raise ValueError("reviewed semantic total mapping must match exactly once")
+            substitute(root, {literal: "{语义.金额展示}"}, False, re.compile("(" + re.escape(literal) + ")"))
         expand(root, request.get("lists", {}))
-        substitute(root, request["fields"])
+        substitute(root, values)
         if name == "word/document.xml" and request.get("printProfile") == "a4-portrait":
             sections = list(root.iter(W + "sectPr"))
             if not sections:
@@ -136,6 +184,15 @@ def render(parts, request):
 
 def revise(parts, request):
     root = E.fromstring(parts["word/document.xml"], E.XMLParser(resolve_entities=False, no_network=True))
+    updates = dict(request.get("fields", {}))
+    tags = set(root.xpath(".//w:sdtPr/w:tag/@w:val", namespaces=NS))
+    if "jg:key:语义.金额展示" in tags and set(updates).intersection({"合同金额", "合同金额大写", "语义.金额展示", "计价方式", "税率", "发票类型"}):
+        raise ValueError("semantic pricing must be synchronized as one authoritative context")
+    if "pricing" in request:
+        semantic = pricing_values(request["pricing"])
+        if "jg:key:语义.金额展示" not in tags:
+            raise ValueError("pricing sync requires a reviewed semantic anchor")
+        updates.update({key: value for key, value in semantic.items() if "jg:key:" + key in tags})
     edit = request.get("edit")
     if edit:
         matches = [p for p in root.iter(W + "p") if text(p) == edit["exactText"]]
@@ -145,7 +202,7 @@ def revise(parts, request):
         nodes[0].text = edit["replacement"]
         for node in nodes[1:]:
             node.text = ""
-    for key, value in request.get("fields", {}).items():
+    for key, value in updates.items():
         controls = root.xpath(".//w:sdt[w:sdtPr/w:tag/@w:val=$tag]", namespaces=NS, tag="jg:key:" + key)
         if not controls:
             raise ValueError("field is not mapped in this document: " + key)
@@ -211,7 +268,10 @@ def main():
     request = json.loads(args.request.read_text())
     if request.get("printProfile") not in {None, "a4-portrait"}:
         raise ValueError("unknown print profile")
-    (revise if args.operation == "revise" else render)(parts, request)
+    if args.operation == "revise":
+        revise(parts, request)
+    else:
+        render(parts, request, source.name)
     if args.operation == "regenerate":
         with args.output.with_suffix(".previous.docx").open("xb") as snapshot:
             snapshot.write(args.document.read_bytes())

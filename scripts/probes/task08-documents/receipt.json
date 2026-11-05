@@ -234,7 +234,9 @@
     },
     {
       "sample": "generic-contract-v1.docx",
-      "evidence": "A09 framework blank total retains final-amount wording; untaxed clause conflicts with fixed tax-inclusive heading; no coercion of unknown tax to zero"
+      "evidence": "A09 framework blank total retains final-amount wording; untaxed clause conflicts with fixed tax-inclusive heading; no coercion of unknown tax to zero",
+      "historical": true,
+      "followup": "Fixed for three actual generic pricing cases by reviewed semantic anchors; eight mappings checked through DOCX CLI. Full-template acceptance still blocked by converter."
     }
   ],
   "failedHypotheses": [
@@ -244,7 +246,32 @@
   "alternativeConverter": {
     "MicrosoftWord": "not installed in /Applications or user Applications",
     "Pages": "existing local15.4; one AppleScript open timed out(-1712), no PDF; capability unknown",
-    "cleanup": "script has no finally; open timeout returned no ownedDocument; no claim of closing app/document, no unknown documents touched"
+    "cleanup": "script has no finally; open timeout returned no ownedDocument; no claim of closing app/document, no unknown documents touched",
+    "PagesNativeUi": {
+      "purpose": "task08-native-ui-diagnostic-not-acceptance",
+      "observedAt": 1793861339.69539,
+      "input": "/private/tmp/jg-task08-document-receipts-20261105/pages-tracer/labor-derived.docx",
+      "inputSha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+      "inputMatchesPreparedCopy": true,
+      "intendedOutput": "/private/tmp/jg-task08-document-receipts-20261105/pages-tracer/labor-pages-native-ui.pdf",
+      "outputExists": false,
+      "observations": [
+        "Pages native UI opened the exact local derived DOCX",
+        "Document showed missing-font warning",
+        "Local export panel displayed correct filename and task directory but Export remained disabled",
+        "No permissions or login dialog was observed",
+        "Export panel was cancelled; only the owned document was closed",
+        "After close the UI tool reported noWindowsAvailable"
+      ],
+      "status": "NOT_ACCEPTED_NO_PDF",
+      "limitations": [
+        "No inference about cause of disabled export",
+        "No inference about prior AppleEvent timeout",
+        "No claim about unopened or unrelated documents",
+        "No font installation or settings change"
+      ]
+    },
+    "cleanupFollowup": "Root native UI cancelled export and closed only owned document; UI observed noWindowsAvailable. Earlier AppleScript had no finally; its timeout remains separate."
   },
   "limits": [
     "not a formal application editor or approved conversion solution",
@@ -323,6 +350,407 @@
     {
       "path": "05-compression-attempt.log",
       "sha256": "37ae3fdb1461973318aa801001bae40481ca13e216c54166c9cd7783374158db"
+    },
+    {
+      "path": "pages-tracer/native-ui-diagnostic.json",
+      "sha256": "9c6286b102ac0c9547bcd2c558bcef5a15fca2e5631a9778c46c4de870f3fac9"
+    },
+    {
+      "path": "lo-standard17-once/attempt.json",
+      "sha256": "2ad9ab6e2b39e602893e8329f0df4bf01c8f823dcd14138782778f75d7c16084"
+    },
+    {
+      "path": "lo-standard17-once/receipt.json",
+      "sha256": "a2d11901662adda8ffd91aa39dea3a0492ee266e907939f3dd37a7fe42d6ff0e"
+    },
+    {
+      "path": "lo-standard17-once/labor-standard17.pdf",
+      "sha256": "e48b6cfc3fa9f27492d878de28cc2c40e7fa98086157adbc551c88ef7e84ce01"
+    },
+    {
+      "path": "pricing-cases-02-semantic/pricing-cases.json",
+      "sha256": "4744b1ae352e7f9c5dcea6aa48a28cb5a6cc2b2ce3f0820683005da201c89cb5"
+    },
+    {
+      "path": "pricing-cases-02-semantic/independent-inspection.json",
+      "sha256": "8289dcf89540d8478e2fcf1d2c5fea663799465244cf6df09868ccf64cac21be"
+    },
+    {
+      "path": "06-semantic-pricing-red.log",
+      "sha256": "42c3b1f235707d2a8b908b3c0bd7918a47eba2a777e555a7e0522fb54ff9ca87"
+    },
+    {
+      "path": "06-semantic-pricing-green.log",
+      "sha256": "d16c32585aa19c2a4ef1af4bd3e24d5dfb2a40fc6da27c50641ef2c43a84cdfd"
+    },
+    {
+      "path": "07-semantic-docx-matrix.log",
+      "sha256": "957341ea8ab31aed849d3c39899652fcea119361c53936bc95a85c96331f9b7e"
+    },
+    {
+      "path": "08-pricing-authority-red.log",
+      "sha256": "4529ea55015fb04e6a34e7509ee4fa41f536da69c6e2ef3647b8ba56ce0ebdd6"
+    },
+    {
+      "path": "08-pricing-authority-green.log",
+      "sha256": "02bc707f892aa4b9b16cc466d6c1f0b7dfb6cc7c360a533a37768089afa4915b"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/stage1-receipt.json",
+      "sha256": "758765a9b636d2b6e65659bf9e03656fea9dece950dfcca946af6c2f65f954a5"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/Task08Fo.java",
+      "sha256": "ae5fdeed1d84725a34fff26ce025dea6bdabce1c4566713802fe2838699d23f2"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/offline.policy",
+      "sha256": "1900693173fa2ed1049ddf1ed88ffad795d4a7e97cb240020815fae2250f0993"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/boundary.log",
+      "sha256": "49445b13da9e0918d75c03879b5c7b3fc055cb361c913ade7bcad38d2c343566"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-output/receipt.json",
+      "sha256": "6f1303d731d2a4c1672f0c7cc163e31ca70890f4ab1c6c8be20f0662e7d6d904"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-output/stdout.log",
+      "sha256": "df99d59b7110e26d3603c16aff9b9c1aeb5b96af770d8c4e52462de2781422ab"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/tracer-output/stderr.log",
+      "sha256": "aefca6769b7e603e7f4f178f1440617c8ff45ba30208ec8a49de49adbfdf58a2"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/FZX-font-metadata.json",
+      "sha256": "82f7be6bbc5f2182cbaf137bb3126a35548211ae8321658d78383c80e070f383"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/PhysicalFonts.bytecode.txt",
+      "sha256": "a9152f1391035aaf0c9eddfcb03a479982610247218f168797066820cbf82845"
+    },
+    {
+      "path": "/private/tmp/jg-task08-docx4j-tools-20261105/adapter/FontInfoFinder.bytecode.txt",
+      "sha256": "89f79d79e0441855f06a1e2b36474cedae592656169cb4d5a93f5562670d6dcc"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/new-engine-proposal.md",
+      "sha256": "5537b574fc10119e8b6bc5a909e3295478ccaaff2755887454d1eab4b291dec7"
+    },
+    {
+      "path": "/private/tmp/jg-task08-document-receipts-20261105/new-engine-metadata-readonly.json",
+      "sha256": "915d9987c5189cf41515de5837daf488761af75c8586bfc0109f035e9acb175e"
     }
-  ]
+  ],
+  "followup": {
+    "status": "candidate-not-accepted; A09 semantic tracer repaired",
+    "baselineCheckpoint": "bdb92b81397d5f737ef9d0ca7256050f7267b8b0",
+    "singleFilterDifference": {
+      "sourceSha256Before": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+      "sourceSha256After": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+      "onlyFilterChange": {
+        "SelectPdfVersionBefore": 2,
+        "SelectPdfVersionAfter": 0
+      },
+      "status": "HYPOTHESIS_REJECTED",
+      "missingTraceCharacters": {
+        "，": 3
+      },
+      "allFontsEmbedded": true,
+      "outOfPageTextCount": 0
+    },
+    "semanticPricing": {
+      "outcomes": [
+        {
+          "case": "framework-unknown-total",
+          "expectedAmountBasis": "含税",
+          "docxSha256": "4eaf6ad87daa0946c2200d6b775394b7258ef008a4b7e9d9108e63f8e5a28472",
+          "pdfSha256": "3ec446e81b375018ad740ad479e693ccfc60d96c268d63f10fd0621b70ec2df1",
+          "unknownRateNotCoercedToZero": true,
+          "semanticPricingParagraph": [
+            "计价方式：框架按单价；发票类型：待补充；适用税率：待补充。合同金额（含税）：部分金额待确定（非最终总价）；计价方式：框架按单价；税率：待补充；发票类型：待补充（不推算另一金额口径），付款周期为待补充，付款比例为60%。"
+          ],
+          "expectedLiteralPresentInActualPdf": true,
+          "status": "measured-literal-check-pass"
+        },
+        {
+          "case": "lumpsum-no-quantity",
+          "expectedAmountBasis": "含税",
+          "docxSha256": "cc3087039da507cc8ac39ed17ca160c0d5242ee404f2e2f74d938aa079992ec8",
+          "pdfSha256": "089eb54c03e206a1cb37711c6b890053ac09036bc78862894bad9909dba977e4",
+          "unknownRateNotCoercedToZero": true,
+          "semanticPricingParagraph": [
+            "计价方式：包干；发票类型：待补充；适用税率：待补充。合同金额（含税）：人民币1500.00元（大写：人民币壹仟伍佰元整）；计价方式：包干；税率：待补充；发票类型：待补充（不推算另一金额口径），付款周期为待补充，付款比例为60%。"
+          ],
+          "expectedLiteralPresentInActualPdf": true,
+          "status": "measured-literal-check-pass"
+        },
+        {
+          "case": "untaxed-unknown-rate",
+          "expectedAmountBasis": "不含税",
+          "docxSha256": "7ec0e6a2206cae2d8c09c3b6f8108b91c5ac90e6c1e5555358516bb7fad6d500",
+          "pdfSha256": "d229eb0c82c22a3bb2f3e146f532dab645369d0c849b08d97df73a83ddd81663",
+          "unknownRateNotCoercedToZero": true,
+          "semanticPricingParagraph": [
+            "计价方式：框架按单价；发票类型：待补充；适用税率：待补充。合同金额（不含税）：人民币1.5340元（大写：人民币壹元伍角叁分肆厘）；计价方式：框架按单价；税率：待补充；发票类型：待补充（不推算另一金额口径），付款周期为待补充，付款比例为60%。"
+          ],
+          "expectedLiteralPresentInActualPdf": true,
+          "status": "measured-literal-check-pass"
+        }
+      ],
+      "overall": "measured-checks-pass",
+      "limitations": [
+        "this is not full template acceptance or a conversion reliability proof",
+        "uppercase and decimal strings are caller-provided; no business algorithm repeated"
+      ]
+    },
+    "independentPricingChecks": {
+      "status": "measured-checks-pass",
+      "cases": [
+        {
+          "case": "framework-unknown-total",
+          "docxSha256": "4eaf6ad87daa0946c2200d6b775394b7258ef008a4b7e9d9108e63f8e5a28472",
+          "pdfSha256": "3ec446e81b375018ad740ad479e693ccfc60d96c268d63f10fd0621b70ec2df1",
+          "missingCharacters": {},
+          "missingTraceCharacters": {},
+          "allFontsEmbedded": true,
+          "allPagesA4": true,
+          "outOfPageTextCount": 0
+        },
+        {
+          "case": "lumpsum-no-quantity",
+          "docxSha256": "cc3087039da507cc8ac39ed17ca160c0d5242ee404f2e2f74d938aa079992ec8",
+          "pdfSha256": "089eb54c03e206a1cb37711c6b890053ac09036bc78862894bad9909dba977e4",
+          "missingCharacters": {},
+          "missingTraceCharacters": {},
+          "allFontsEmbedded": true,
+          "allPagesA4": true,
+          "outOfPageTextCount": 0
+        },
+        {
+          "case": "untaxed-unknown-rate",
+          "docxSha256": "7ec0e6a2206cae2d8c09c3b6f8108b91c5ac90e6c1e5555358516bb7fad6d500",
+          "pdfSha256": "d229eb0c82c22a3bb2f3e146f532dab645369d0c849b08d97df73a83ddd81663",
+          "missingCharacters": {},
+          "missingTraceCharacters": {},
+          "allFontsEmbedded": true,
+          "allPagesA4": true,
+          "outOfPageTextCount": 0
+        }
+      ]
+    },
+    "testScope": "Three public DOCX workflows pass, including eight actual templates. Actual labor comma regression remains RED; not re-run after the one bounded standard1.7 difference.",
+    "authority": "pricing is atomic mode/basis/total/uppercase/taxRate/invoiceKind; raw edits to semantic-dependent fields rejected; no decimal/uppercase/tax computation implemented",
+    "preserved": "all original sample bytes and unrelated ordinary clauses; old failed artifacts retained",
+    "remaining": [
+      "labor converter loses three U+FF0C under both PDF filters",
+      "compact source cover/font differences",
+      "semantic mapping eight DOCX check is not eight newly accepted PDF layouts",
+      "native Word pagination and formal signing acceptance unverified"
+    ],
+    "independentEngine": {
+      "stage1": {
+        "status": "PREPARED_NOT_EXECUTED_REQUIRES_ROOT_REVIEW",
+        "downloadBytes": 235989010,
+        "totalBytes": 560593557,
+        "downloads": [
+          {
+            "file": "OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.17_10.tar.gz",
+            "publicSource": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.17%2B10/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.17_10.tar.gz",
+            "finalHost": "release-assets.githubusercontent.com",
+            "bytes": 185617580,
+            "sha256": "856059de21518c2ff6eba6126ffc93390affe363c3ee205b3146a3bac3be0aa5",
+            "sha1": "5218877518234ceb3bb3173729a050e7572239b3",
+            "publishedAlgorithm": "sha256",
+            "publishedExpected": "856059de21518c2ff6eba6126ffc93390affe363c3ee205b3146a3bac3be0aa5",
+            "publishedMatches": true
+          },
+          {
+            "file": "docx4j-bundle-17.3.5.jar",
+            "publicSource": "https://repo.maven.apache.org/maven2/org/docx4j/docx4j-bundle/17.3.5/docx4j-bundle-17.3.5.jar",
+            "finalHost": "repo.maven.apache.org",
+            "bytes": 35304398,
+            "sha256": "77aa1fe1da4873946766204aabc9ba47ef66f89a46f4bea0e4c49c2994114a63",
+            "sha1": "a6bb663c770d1db0bb9a1ca1966c8c09d9f682d2",
+            "publishedAlgorithm": "sha1",
+            "publishedExpected": "a6bb663c770d1db0bb9a1ca1966c8c09d9f682d2",
+            "publishedMatches": true
+          },
+          {
+            "file": "docx4j-bundle-extras-17.3.5.jar",
+            "publicSource": "https://repo.maven.apache.org/maven2/org/docx4j/docx4j-bundle-extras/17.3.5/docx4j-bundle-extras-17.3.5.jar",
+            "finalHost": "repo.maven.apache.org",
+            "bytes": 15067032,
+            "sha256": "9e5ed5bdd1f3e88787bc138ca654b23f8c9ed9c1e83bf884687f7a140242d964",
+            "sha1": "6576e2b010de92f9265cadc5210869062f089d6b",
+            "publishedAlgorithm": "sha1",
+            "publishedExpected": "6576e2b010de92f9265cadc5210869062f089d6b",
+            "publishedMatches": true
+          }
+        ],
+        "signatureVerification": "signature source files retained; no signing-key verification claimed; root accepted chain for local diagnostic only"
+      },
+      "stage2": {
+        "status": "STOPPED_NOT_ACCEPTED_NO_RETRY",
+        "sourceSha256Before": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "sourceSha256Expected": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "externalRelationships": 0,
+        "doctypeEntities": 0,
+        "policySha256": "1900693173fa2ed1049ddf1ed88ffad795d4a7e97cb240020815fae2250f0993",
+        "adapterSha256": "ae5fdeed1d84725a34fff26ce025dea6bdabce1c4566713802fe2838699d23f2",
+        "networkBoundary": "SecurityManager overriding explicit policy; actual loopback Socket, DNS and outside-file permission denied before document load",
+        "exitCode": 1,
+        "conversionCallBegun": false,
+        "sourceSha256After": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043",
+        "pdfExists": false,
+        "intendedConversionCallLimit": true,
+        "actualConversionCalls": 0,
+        "adapterInvocations": 1
+      },
+      "observedFailure": "Explicit FangSong succeeded; FZXBSJW_1.TTF yielded no exact PhysicalFont. Stopped before conversion; no substitute. Font alias vs discovery/parser or policy cause under read-only investigation.",
+      "noProductDependencyAdopted": true,
+      "readOnlyDiagnosis": {
+        "observedOriginalPathExists": false,
+        "observedNamedFamilyPath": "/Users/leoyang/Library/Fonts/方正小标宋简体.ttf",
+        "sha256": "da8112c147eb8839666fdbec9522d282eff972cf5ac6a03f14fffe0454bb0b4e",
+        "matchesInitialByteFingerprint": false,
+        "magic": "00010000",
+        "sfntVersion": "'\\x00\\x01\\x00\\x00'",
+        "faceCount": 1,
+        "fsType": 8,
+        "names": [
+          {
+            "id": 1,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 2,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 6,
+            "platform": 1,
+            "encoding": 0,
+            "language": 0,
+            "value": "FZXBSJW--GB1-0"
+          },
+          {
+            "id": 1,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 2,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 6,
+            "platform": 1,
+            "encoding": 25,
+            "language": 33,
+            "value": "FZXBSJW--GB1-0"
+          },
+          {
+            "id": 1,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 2,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "FZXiaoBiaoSong-B05S"
+          },
+          {
+            "id": 6,
+            "platform": 3,
+            "encoding": 1,
+            "language": 1033,
+            "value": "FZXBSJW--GB1-0"
+          },
+          {
+            "id": 1,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 2,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "Regular"
+          },
+          {
+            "id": 4,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "方正小标宋简体"
+          },
+          {
+            "id": 6,
+            "platform": 3,
+            "encoding": 1,
+            "language": 2052,
+            "value": "FZXBSJW--GB1-0"
+          }
+        ],
+        "cmapFormats": [
+          {
+            "platform": 1,
+            "encoding": 0,
+            "format": 0,
+            "count": 126
+          },
+          {
+            "platform": 3,
+            "encoding": 1,
+            "format": 4,
+            "count": 8104
+          }
+        ],
+        "conclusion": "Old hard-coded FZXBSJW_1.TTF path is currently absent. Current named-family TTF has matching family names/fsType but DIFFERENT bytes; no substitution or conversion performed."
+      },
+      "aliasHypothesis": "Rejected by actual getPhysicalFont bytecode: FontInfoFinder.find receives URI/resolver/cache, returns null before alias-dependent font construction. Current old path missing; parser unsupported is NOT PROVED."
+    }
+  }
 }

@@ -13,6 +13,65 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 class CandidateCLI(unittest.TestCase):
+    def test_eight_real_templates_have_explicit_semantic_total_mapping(self):
+        import re
+        for template in sorted((HERE / "samples").glob("*.docx")):
+            with self.subTest(template=template.name), tempfile.TemporaryDirectory(prefix="task08-map-") as tmp:
+                tmp = Path(tmp)
+                with ZipFile(template) as z:
+                    source_text = "".join("".join(ET.fromstring(z.read(n)).itertext()) for n in z.namelist() if n.startswith("word/") and n.endswith(".xml"))
+                    styles = z.read("word/styles.xml")
+                fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", source_text)}
+                lists = {key: [] for key in re.findall(r"\{#([^{}]+)\}", source_text)}
+                request = tmp / "request.json"
+                request.write_text(json.dumps({"fields": fields, "lists": lists, "pricing": {"mode": "framework", "basis": "exclusive", "total": None, "uppercase": None, "taxRate": None, "invoiceKind": None}}))
+                output = tmp / "actual.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(template), "--request", str(request), "--output", str(output)], check=True)
+                with ZipFile(output) as z:
+                    actual = "".join(ET.fromstring(z.read("word/document.xml")).itertext())
+                    self.assertEqual(styles, z.read("word/styles.xml"))
+                self.assertIn("合同金额（不含税）：部分金额待确定（非最终总价）", actual)
+                self.assertNotIn("合同金额（含税）", actual)
+                self.assertNotIn("人民币元", actual)
+
+    def test_pricing_semantic_anchors_keep_unknowns_and_sync_basis_without_losing_clause(self):
+        with tempfile.TemporaryDirectory(prefix="task08-pricing-") as tmp:
+            tmp = Path(tmp)
+            template = HERE / "samples/generic-contract-v1.docx"
+            with ZipFile(template) as z:
+                import re
+                texts = "".join("".join(ET.fromstring(z.read(n)).itertext()) for n in z.namelist() if n.startswith("word/") and n.endswith(".xml"))
+                styles = z.read("word/styles.xml")
+            fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", texts)}
+            request = tmp / "request.json"
+            request.write_text(json.dumps({"fields": fields, "lists": {"通用清单": []}, "pricing": {"mode": "framework", "basis": "inclusive", "total": None, "uppercase": None, "taxRate": None, "invoiceKind": None}}))
+            first = tmp / "framework.docx"
+            subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(template), "--request", str(request), "--output", str(first)], check=True)
+            with ZipFile(first) as z:
+                actual = "".join(ET.fromstring(z.read("word/document.xml")).itertext())
+            self.assertIn("部分金额待确定（非最终总价）", actual)
+            self.assertIn("税率：待补充", actual)
+            self.assertNotIn("人民币元", actual)
+            self.assertNotIn("0.00", actual)
+            request.write_text(json.dumps({"insert": {"afterText": "第三条 付款条款", "text": "新增约定：付款日另行书面确认。"}}))
+            edited = tmp / "edited.docx"
+            subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(first), "--request", str(request), "--output", str(edited)], check=True)
+            request.write_text(json.dumps({"pricing": {"mode": "lumpsum", "basis": "exclusive", "total": "1.5340", "uppercase": "人民币壹元伍角叁分肆厘", "taxRate": None, "invoiceKind": None}}))
+            synced = tmp / "untaxed.docx"
+            subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(edited), "--request", str(request), "--output", str(synced)], check=True)
+            with ZipFile(synced) as z:
+                actual = "".join(ET.fromstring(z.read("word/document.xml")).itertext())
+                self.assertEqual(styles, z.read("word/styles.xml"))
+            self.assertIn("合同金额（不含税）：人民币1.5340元（大写：人民币壹元伍角叁分肆厘）", actual)
+            self.assertNotIn("合同金额（含税）", actual)
+            self.assertIn("计价方式：包干", actual)
+            self.assertIn("新增约定：付款日另行书面确认。", actual)
+            request.write_text(json.dumps({"fields": {"税率": "13%"}}))
+            invalid = tmp / "inconsistent.docx"
+            refused = subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(synced), "--request", str(request), "--output", str(invalid)], capture_output=True)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse(invalid.exists())
+
     def test_explicit_print_profile_keeps_fullwidth_comma_in_actual_pdf(self):
         with tempfile.TemporaryDirectory(prefix="task08-punctuation-") as tmp:
             tmp = Path(tmp)

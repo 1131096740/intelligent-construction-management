@@ -42,11 +42,37 @@ TASK08_PY=/private/tmp/jg-task08-document-tools311-20261105/bin/python
 - **真实劳务丢字**：源文“公司审批后方可生效，…”（PDF第4页）、“所有工序、工艺，…”（第5页）、“向甲方汇报，48…”（第7页）中的3个U+FF0C，在普通文字提取和PDF绘制texttrace均不存在；字体为FangSong_GB2312。第4页真实渲染已目视确认。另“材料浪费、遗失”的1个U+3001只在普通提取缺失，texttrace存在，不能混称真实丢字。两种差异分别保留，未删原字符或放宽容差。
 - `overflowPunct=0` 和 `characterSpacingControl=doNotCompress` 两个明确假设分别实测无效，失败保留，均已从候选移除，不继续猜参数。
 - 原机械/劳务简版未定义纸张，原样导出Letter612×792；只有显式A4派生修正页式。三个简版原资产还缺少正式封面/标题字形，不能因计入八模板就当全字体规范通过。
-- A09：框架空总价、包干无数量、不含税且税率/发票待补3个真实DOCX/PDF。未知税率未被转成0，但源模板会留下“合同金额（含税）：人民币元”，且不含税说明与固定含税标题冲突；这是需要显式语义锚点/模板映射修正的**真实失败**，不能仅补一段说明后称口径一致。技术探针不改正式模板或新业务规则。
+- A09历史反例：框架空总价、包干无数量、不含税且税率/发票待补3个真实DOCX/PDF。未知税率未被转成0，但源模板会留下“合同金额（含税）：人民币元”，且不含税说明与固定含税标题冲突；这是需要显式语义锚点/模板映射修正的**真实失败**，不能仅补一段说明后称口径一致。技术探针不改正式模板或新业务规则。此处是保留的修复前失败；下节记本票派生语义锚点的实测修复，不删除旧收据。
 
 `run_comparison.py --artifacts <新的不存在目录>`可重建八模板对比；完整测量失败时返回非零。`run_pricing_cases.py --baseline-request <对比生成的generic render.json> --artifacts <新目录>`重建反例。字符多重集合会被重复页眉等掩盖，因此只作有界测量，不作为完整逐字等价证明。PDF字节因生成时间/子集等可变化；收据的哈希绑定本次文件，不承诺重建字节恒等。
 
-Microsoft Word未安装；已有Pages15.4，本地字典有导出PDF接口。仅一次AppleScript在open处40秒超时(-1712)，未生成PDF，不能推断转换能力；未取得document引用，脚本没有finally，故不声称关闭应用/文稿。父控另用原生UI仅观察到模板选择窗口，将独立记录UI tracer；本目录不再调用AppleScript。原生Word打开/分页、移动端编辑及合同部/法务逐页签认均未验证。
+Microsoft Word未安装；已有Pages15.4。一次AppleScript在open处40秒超时(-1712)，未生成PDF；脚本没有finally，原结果不推断转换能力或关闭状态。父控后来以原生UI打开同f938源副本，观察到缺字体警告，正确本地路径/文件名的导出按钮始终不可用，无PDF；随后取消并关闭唯一自有文稿，UI返回noWindowsAvailable。该诊断为NOT_ACCEPTED，不推断按钮失效原因；未安装字体、登录、改设置或触碰未知文稿。原生Word分页、移动端编辑及合同部/法务逐页签认仍未验证。
+
+## 后续有界差分与A09语义锚点修复
+
+保留相同劳务派生源 `f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043` 的字节、LibreOffice版本、字体及页式，只执行一次 `SelectPdfVersion=2`→`0` 差分。转换前创建独占尝试目录，不允许重复；标准PDF仍真实缺3个U+FF0C，所有字体嵌入、页面外文字0，源前后哈希相同。PDF/A导出/子集独有原因假设被否，停止此参数方向；实际PDF与日志在外部 `lo-standard17-once/`。
+
+A09修复在**本票派生文档**明确映射关键语义金额范围，不改原模板：`pricing`参数包含mode、basis、total、uppercase、taxRate、invoiceKind。NULL总价在框架模式显示“部分金额待确定（非最终总价）”；已知总价原样显示调用方精确小数字串及大写。含税/不含税标签随同一个权威上下文同步，NULL税率/发票显示待补充，不推算另一口径。此探针不复制02正式金额/大写算法：`1.5340`及调用方给出的“人民币壹元伍角叁分肆厘”按字面保留。
+
+语义金额范围以八份样张各自明确的原文映射，必须唯一匹配；缺映射或旧文稿没有语义锚点时拒绝。同步关键资料后普通新增条款保留；语义依赖字段不能另用raw fields单独改税率/金额造成两套口径。该拒绝先红后绿。三项公开DOCX流程通过（含八模板逐份映射、后续同步保留手改、恢复点），styles.xml仍与原样张字节相同。
+
+三个修复后的实际generic DOCX/PDF位于 `pricing-cases-02-semantic/`；框架NULL、包干无数量、不含税未知税率的预期文字均在实际PDF存在，独立检查缺字符0、嵌入true、A4true、页面外文字0。八份**DOCX**映射通过不等于八份修改后PDF版式全部验收；劳务转换红、简版封面/字体差异仍阻止任务08完成。
+
+公开回归命令（不包含仍红的劳务转换项）：
+
+```sh
+"$TASK08_PY" scripts/probes/task08-documents/test_candidate.py CandidateCLI.test_eight_real_templates_have_explicit_semantic_total_mapping CandidateCLI.test_pricing_semantic_anchors_keep_unknowns_and_sync_basis_without_losing_clause CandidateCLI.test_authoritative_sync_preserves_inserted_clause_and_original_format
+```
+
+## 独立引擎诊断：字体前置未成立，转换未执行
+
+主控复核官方源及许可后，仅在 `/private/tmp/jg-task08-docx4j-tools-20261105` 准备Temurin17.0.17+10及docx4j17.3.5 core/extras两jar；下载235,989,010字节，总560,593,557字节，未全局安装。JDK核官方SHA256，两jar核官方发布SHA1并另记本地SHA256；没有伪称不存在的上游jar SHA256或未验签的签名已验证。实际许可/NOTICE已逐项留证并由主控读取接受为本地诊断，不构成产品依赖采纳。
+
+第二阶段编译最小adapter，Java17 SecurityManager以`policy==`覆盖默认策略：只准任务目录、原派生DOCX及显式本机字体读取/输出；不授SocketPermission。实际loopback Socket、DNS及目录外文件权限三项拒绝均在加载文稿前验证，XML/URI限制file/jar与文件白名单相交，原DOCX外部关系/DTD/ENTITY均0。
+
+仅一次adapter启动：精确仿宋注册成功，随后原FZXBSJW_1.TTF没有得到精确PhysicalFont，按规则停止；未替换字库、没有进入CONVERSION_CALL_BEGIN、转换调用0次、没有PDF，源前后f938相同。该结果只证明当前字体前置失败，不判docx4j/FOP渲染能力失败。
+
+随后只读因果核实：当前原路径FZXBSJW_1.TTF不存在；当前同家族“方正小标宋简体.ttf”为单TTF、fsType8、相同家族/PS名称，却是另一SHA256（da8112c1…），与早期已记录2322dbfb…字节不同，不将它静默替换。jar字节码在FontInfoFinder返回null后直接返回，alias参数尚未参与字体构建，否定alias查找假设；当前缺失路径是可解释该失败的前置问题，不足以宣布解析器不支持。字体目录变化原因未知，未修改、安装或跨目录寻找旧字体。源码、policy、字节码及失败日志见外部目录与receipt指纹，不随机改旗标或字体再试。
 
 ## 依赖、许可及后续约束
 
@@ -60,4 +86,4 @@ Python3.11.15；隔离工具环境按 [requirements.txt](requirements.txt) 固�
 | PyMuPDF1.26.7 | 本机独立解析、字库读取、逐页渲染诊断 | [AGPL/商业双轨](https://pymupdf.readthedocs.io/en/latest/about.html)；未购买商业许可，未作为产品运行依赖或分发二进制，不能把此探针直接移入闭源服务 |
 | 上传/系统字体与Pages | 只使用既有本机安装 | 未收集可再分发EULA；fsType只是技术标志，不是法律授权。未复制字体到仓库、未安装新应用、未购买或登录 |
 
-下一步须解决可靠转换和A09语义锚点，再在准确新SHA复核全部实际产物，才能固定正式实现方案。任务09/10/11不能复用本票失败结果当完成。此处没有运行任务01 driver、PG/Docker/SQL/迁移、部署、生产读写、真实业务或外发文档。
+下一步须解决可靠转换、简版源资产差异并扩展语义锚点后的实际版式验收，再在准确新SHA复核全部实际产物，才能固定正式实现方案。任务09/10/11不能复用本票失败结果当完成。此处没有运行任务01 driver、PG/Docker/SQL/迁移、部署、生产读写、真实业务或外发文档。
