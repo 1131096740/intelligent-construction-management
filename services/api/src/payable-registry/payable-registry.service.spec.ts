@@ -796,25 +796,30 @@ describe("PayableRegistryService", () => {
 
   it.each([
     ...[
-      { key: "same_00", same: true, stopped: true },
-      { key: "same_11", same: true, stopped: false },
-      { key: "diff_00", same: false, stopped: true },
-      { key: "diff_01", same: false, stopped: true },
-      { key: "diff_10", same: false, stopped: true },
-      { key: "diff_11", same: false, stopped: false },
-      { key: "diff_original_only", same: false, stopped: true }
-    ].flatMap(({ key, same, stopped }) => [
-      "valid", "missing_bank_source", "authority_missing", "revoked", "wrong_bank_type", "no_attestation",
-      "evidence_inactive", "evidence_missing", "evidence_hash", "future_verification"
-    ].map(fault => ({
-      name: `停用例外组合矩阵 ${key} ${fault}`,
-      directoryActive: true,
-      fault: `matrix_${key}_${fault}`,
-      error: fault === "valid" ? "" : ["authority_missing", "revoked", "wrong_bank_type"].includes(fault) ? "账户权威" :
-        fault === "no_attestation" ? stopped || !same ? "付款" : "" :
-        fault === "missing_bank_source" ? stopped ? "银行账户核验" : "" :
-        stopped || !same ? "核验证据" : ""
-    }))),
+      { samePayer: true, originalDebtorActive: false, approvedPayerActive: false, actualPayerActive: false },
+      { samePayer: true, originalDebtorActive: true, approvedPayerActive: true, actualPayerActive: true },
+      { samePayer: false, originalDebtorActive: true, approvedPayerActive: false, actualPayerActive: false },
+      { samePayer: false, originalDebtorActive: true, approvedPayerActive: false, actualPayerActive: true },
+      { samePayer: false, originalDebtorActive: true, approvedPayerActive: true, actualPayerActive: false },
+      { samePayer: false, originalDebtorActive: true, approvedPayerActive: true, actualPayerActive: true },
+      { samePayer: false, originalDebtorActive: false, approvedPayerActive: true, actualPayerActive: true }
+    ].flatMap(directoryState => {
+      const { samePayer, originalDebtorActive, approvedPayerActive, actualPayerActive } = directoryState;
+      const stopped = !originalDebtorActive || !approvedPayerActive || !actualPayerActive;
+      return [
+        "valid", "missing_bank_source", "authority_missing", "revoked", "wrong_bank_type", "no_attestation",
+        "evidence_inactive", "evidence_missing", "evidence_hash", "future_verification"
+      ].map(fault => ({
+        ...directoryState,
+        name: `停用例外组合矩阵 ${samePayer ? "同主体" : "跨主体"} 原债务${originalDebtorActive ? "在用" : "停用"}/批准付款方${approvedPayerActive ? "在用" : "停用"}/实际付款方${actualPayerActive ? "在用" : "停用"} ${fault}`,
+        directoryActive: true,
+        fault,
+        error: fault === "valid" ? "" : ["authority_missing", "revoked", "wrong_bank_type"].includes(fault) ? "账户权威" :
+          fault === "no_attestation" ? stopped || !samePayer ? "付款" : "" :
+          fault === "missing_bank_source" ? stopped ? "银行账户核验" : "" :
+          stopped || !samePayer ? "核验证据" : ""
+      }));
+    }),
     { name: "同主体停用历史有效核验仍可核销", directoryActive: false, fault: "same_", error: "" },
     { name: "同主体停用核验证据撤销", directoryActive: false, fault: "same_evidence_inactive", error: "核验证据" },
     { name: "同主体停用核验证据缺失", directoryActive: false, fault: "same_evidence_missing", error: "核验证据" },
@@ -832,10 +837,11 @@ describe("PayableRegistryService", () => {
     { name: "账户核验撤销", directoryActive: false, fault: "revoked", error: "账户权威" },
     { name: "补充新版本后仍可核销原曾生效版本的已实付", directoryActive: false, fault: "superseded_source", error: "" },
     { name: "作废合同版本不可作为核销来源", directoryActive: false, fault: "voided_source", error: "付款主体事实" }
-  ])("存量公司应付代付公开路径 $name", async ({ directoryActive, fault: scenario, error }) => {
-    const matrix = /^matrix_(same|diff)_(00|01|10|11|original_only)_(.+)$/.exec(scenario);
-    const samePayer = matrix ? matrix[1] === "same" : scenario.startsWith("same_");
-    const fault = matrix ? matrix[3] : samePayer ? scenario.slice("same_".length) : scenario;
+  ])("存量公司应付代付公开路径 $name", async (testCase) => {
+    const { directoryActive, fault: scenario, error } = testCase;
+    const matrix = "originalDebtorActive" in testCase ? testCase : null;
+    const samePayer = matrix ? matrix.samePayer : scenario.startsWith("same_");
+    const fault = matrix ? scenario : samePayer ? scenario.slice("same_".length) : scenario;
     const verifiedAt = fault === "future_verification" ? new Date("2999-01-01T00:00:00Z") : new Date("2026-08-27T08:00:00.000Z");
     const tx = createTransitionHarness({
       paymentExecutorUserId: "executor",
@@ -906,9 +912,14 @@ describe("PayableRegistryService", () => {
         contentSha256: where.id === "authorization-file-3" ? "b".repeat(64) : fault === "evidence_hash" ? "c".repeat(64) : "a".repeat(64)
       })
     );
+    const directoryActiveByCompany = matrix ? new Map([
+      ["company-1", matrix.originalDebtorActive],
+      ["company-2", matrix.approvedPayerActive],
+      ["company-3", matrix.actualPayerActive]
+    ]) : null;
     tx.companyEntity.findMany.mockImplementation(({ where }: { where: { id: { in: string[] } } }) => Promise.resolve(where.id.in.map(id => ({
       id, name: id, unifiedSocialCreditCode: null,
-      isActive: matrix ? matrix[2] === "original_only" ? id !== "company-1" : samePayer ? matrix[2] === "11" : id === "company-2" ? matrix[2][0] === "1" : id === "company-3" ? matrix[2][1] === "1" : true :
+      isActive: directoryActiveByCompany ? directoryActiveByCompany.get(id) ?? true :
         (samePayer && id === "company-1" || id === "company-2" || fault === "actual_inactive" && id === "company-3") ? directoryActive : true
     }))));
     if (fault === "no_attestation") tx.paymentExecutionPayerAttestation.findUnique.mockResolvedValue(null);
