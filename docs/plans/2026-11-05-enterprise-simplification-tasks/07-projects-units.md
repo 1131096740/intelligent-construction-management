@@ -1,8 +1,8 @@
 # 07：项目与单位主信息按新角色简化
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#389](https://github.com/1131096740/intelligent-construction-management/issues/389) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置#387已按本地确认边界关闭，已[领取#389](https://github.com/1131096740/intelligent-construction-management/issues/389#issuecomment-6659886227)。本轮用户已授权整套实施及 GitHub 工单推进；[#389](https://github.com/1131096740/intelligent-construction-management/issues/389) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
 
-**已确认公开验证边界：** 项目、公司及合作单位公开HTTP/公共服务、现有管理UI，以合成数据库覆盖岗位权限和资料保存；真实PG案例仅准备。继续等待05源码依赖完成并正式关闭后领取实施，不因边界确认提前解除阻塞；资源、迁移、真实短信、部署与生产写仍另需授权。
+**已确认公开验证边界：** 项目、公司及合作单位公开HTTP/公共服务、现有管理UI，以合成数据库覆盖岗位权限和资料保存；真实PG案例仅准备。在准确中央cd156be3的新隔离工作树按确认边界实施；资源、迁移、真实短信、部署与生产写仍另需授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
