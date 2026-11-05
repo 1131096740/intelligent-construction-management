@@ -16,6 +16,7 @@ import { PrismaService } from "../database/prisma.service";
 import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
 import {
   ContractBillRowFactsValidationException,
+  contractBillDecimalRowData,
   resolveContractBillRowFacts
 } from "./contract-bill-row-rules";
 import {
@@ -117,6 +118,7 @@ export class ContractBillService {
     },
     bill: {
       id: string;
+      numericProtocolVersion?: number;
       contractVersionId: string;
       revision: number;
       pricingMode: string;
@@ -126,9 +128,13 @@ export class ContractBillService {
     },
     input: {
       expectedRevision: number;
+      numericProtocolVersion?: number;
       rows: SaveContractBillRowDto[];
     }
   ) {
+    const numericProtocolVersion = input.numericProtocolVersion === undefined ? 1 : input.numericProtocolVersion;
+    if (![1, 2].includes(numericProtocolVersion)) throw new BadRequestException("清单数值版本不正确，请刷新工作台");
+    if (bill.numericProtocolVersion === 2 && numericProtocolVersion !== 2) throw new BadRequestException("清单精度已升级，请刷新工作台后重试，原四位金额不会被覆盖");
     if (bill.revision !== input.expectedRevision) {
       throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
     }
@@ -143,7 +149,7 @@ export class ContractBillService {
         idempotencyKey: "aggregate-save",
         rows: input.rows.map((row) => ({ ...row }))
       },
-      bill,
+      { ...bill, numericProtocolVersion, requestedNumericProtocolVersion: numericProtocolVersion },
       version,
       existingByKey
     );
@@ -159,7 +165,7 @@ export class ContractBillService {
       return this.batchRowChanged(existingByKey.get(row.rowKey)!, this.batchRowData(row));
     });
     const newRows = parsed.rows.filter((row) => !row.rowKey);
-    const changed = deletedRows.length > 0 || updatedRows.length > 0 || newRows.length > 0;
+    const changed = (bill.numericProtocolVersion ?? 1) !== numericProtocolVersion || deletedRows.length > 0 || updatedRows.length > 0 || newRows.length > 0;
     if (!changed) {
       return {
         changed: false,
@@ -197,7 +203,7 @@ export class ContractBillService {
         contractVersionId: bill.contractVersionId,
         revision: input.expectedRevision
       },
-      data: { revision: { increment: 1 } }
+      data: { revision: { increment: 1 }, ...(numericProtocolVersion === 2 ? { numericProtocolVersion, quantityScale: 4, unitPriceScale: 4 } : {}) }
     });
     if (billGate.count !== 1) {
       throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
@@ -231,7 +237,7 @@ export class ContractBillService {
         actorUserId
       });
     }
-    const rows = await recalculateBillAndContractAmount(tx, bill, version, {
+    const rows = await recalculateBillAndContractAmount(tx, { ...bill, numericProtocolVersion }, version, {
       updateContractVersionAmount: false
     });
     return {
@@ -420,6 +426,7 @@ export class ContractBillService {
           taxRateSource: input.facts.taxRateSource,
           pricingFactStatus: input.facts.pricingFactStatus,
           precisionPolicy: input.facts.precisionPolicy,
+          ...contractBillDecimalRowData(input.facts),
           taxInclusiveAmountCents: input.facts.taxInclusiveAmountCents,
           taxExclusiveAmountCents: input.facts.taxExclusiveAmountCents,
           taxAmountCents: input.facts.taxAmountCents,
@@ -489,6 +496,7 @@ export class ContractBillService {
           taxRateSource: input.facts.taxRateSource,
           pricingFactStatus: input.facts.pricingFactStatus,
           precisionPolicy: input.facts.precisionPolicy,
+          ...contractBillDecimalRowData(input.facts),
           taxInclusiveAmountCents: input.facts.taxInclusiveAmountCents,
           taxExclusiveAmountCents: input.facts.taxExclusiveAmountCents,
           taxAmountCents: input.facts.taxAmountCents,
@@ -882,7 +890,7 @@ export class ContractBillService {
           return;
         }
         if (rowKey) serverKeys.add(rowKey);
-        this.validateReplaceRowFields(row);
+        this.validateReplaceRowFields(row, bill.requestedNumericProtocolVersion === 2);
         rows.push({
           ...this.parseRowInput(
             { ...row, expectedBillRevision: input.expectedBillRevision },
@@ -1022,16 +1030,16 @@ export class ContractBillService {
     return { clientRowKey, field: "row", message };
   }
 
-  private validateReplaceRowFields(row: Record<string, unknown>) {
+  private validateReplaceRowFields(row: Record<string, unknown>, decimalVersion = false) {
     this.assertBatchRequiredText(row.itemName, "itemName", "项目名称");
     this.assertBatchRequiredText(row.unit, "unit", "单位");
     this.assertBatchOptionalText(row.itemCode, "itemCode", "项目编号");
     this.assertBatchOptionalText(row.specification, "specification", "规格型号");
     this.assertBatchOptionalText(row.settlementBasis, "settlementBasis", "结算依据");
-    if (row.quantity !== undefined && typeof row.quantity !== "string") {
+    if (row.quantity !== undefined && !(decimalVersion && row.quantity === null) && typeof row.quantity !== "string") {
       throw new ContractBillRowInputValidationException("quantity", "数量必须是文本数字");
     }
-    if (typeof row.unitPrice !== "string") {
+    if (typeof row.unitPrice !== "string" && !(decimalVersion && row.unitPrice === null)) {
       throw new ContractBillRowInputValidationException("unitPrice", "含税单价不能为空");
     }
     if (row.taxRatePercent !== undefined && typeof row.taxRatePercent !== "string") {
@@ -1077,6 +1085,7 @@ export class ContractBillService {
       taxRateSource: row.facts.taxRateSource,
       pricingFactStatus: row.facts.pricingFactStatus,
       precisionPolicy: row.facts.precisionPolicy,
+      ...contractBillDecimalRowData(row.facts),
       taxInclusiveAmountCents: row.facts.taxInclusiveAmountCents,
       taxExclusiveAmountCents: row.facts.taxExclusiveAmountCents,
       taxAmountCents: row.facts.taxAmountCents,
@@ -1100,6 +1109,12 @@ export class ContractBillService {
 
   private batchRowChanged(
     existing: {
+      numericProtocolVersion?: number;
+      numericSource?: string;
+      numericReviewStatus?: string;
+      taxInclusiveAmountYuan?: Prisma.Decimal | null;
+      taxExclusiveAmountYuan?: Prisma.Decimal | null;
+      taxAmountYuan?: Prisma.Decimal | null;
       sortOrder: number;
       itemCode: string | null;
       itemName: string;
@@ -1129,6 +1144,9 @@ export class ContractBillService {
         ? right === null
         : right !== null && left.eq(new Prisma.Decimal(right));
     return (
+      (data.numericProtocolVersion === 2 && (existing.numericProtocolVersion !== 2 || existing.numericSource !== data.numericSource
+        || existing.numericReviewStatus !== data.numericReviewStatus || !decimalEquals(existing.taxInclusiveAmountYuan, data.taxInclusiveAmountYuan ?? null)
+        || !decimalEquals(existing.taxExclusiveAmountYuan, data.taxExclusiveAmountYuan ?? null) || !decimalEquals(existing.taxAmountYuan, data.taxAmountYuan ?? null))) ||
       existing.sortOrder !== data.sortOrder ||
       existing.itemCode !== data.itemCode ||
       existing.itemName !== data.itemName ||
@@ -1157,6 +1175,8 @@ export class ContractBillService {
     rawInput: unknown,
     bill: {
       pricingMode: string;
+      numericProtocolVersion?: number;
+      requestedNumericProtocolVersion?: number;
       schemaSnapshot: Prisma.JsonValue;
     },
     version: {
@@ -1181,16 +1201,17 @@ export class ContractBillService {
     facts: ReturnType<typeof resolveContractBillRowFacts>;
   } {
     const input = this.requireObject(rawInput, "合同清单行提交内容");
+    if (bill.numericProtocolVersion === 2 && bill.requestedNumericProtocolVersion !== 2) throw new ContractBillRowFactsValidationException("row", "清单精度已升级，请刷新工作台后重试，原四位金额不会被覆盖");
     this.assertExpectedRevision(input.expectedBillRevision);
     this.assertRequiredString(input.itemName, "项目名称");
     this.assertRequiredString(input.unit, "单位");
     this.assertOptionalString(input.itemCode, "项目编号");
     this.assertOptionalString(input.specification, "规格型号");
     this.assertOptionalString(input.settlementBasis, "结算依据");
-    if (input.quantity !== undefined && typeof input.quantity !== "string") {
+    if (input.quantity !== undefined && !(bill.requestedNumericProtocolVersion === 2 && input.quantity === null) && typeof input.quantity !== "string") {
       throw new BadRequestException("数量必须是文本数字");
     }
-    if (typeof input.unitPrice !== "string") {
+    if (typeof input.unitPrice !== "string" && !(bill.requestedNumericProtocolVersion === 2 && input.unitPrice === null)) {
       throw new BadRequestException("含税单价不能为空");
     }
     if (input.taxRatePercent !== undefined && typeof input.taxRatePercent !== "string") {
@@ -1213,7 +1234,7 @@ export class ContractBillService {
     const facts = resolveContractBillRowFacts(
       {
         ...(input.quantity === undefined ? {} : { quantity: input.quantity as string }),
-        unitPrice: input.unitPrice,
+        unitPrice: input.unitPrice as string | null,
         ...(input.taxRatePercent === undefined
           ? {}
           : { taxRatePercent: input.taxRatePercent as string }),
@@ -1227,6 +1248,7 @@ export class ContractBillService {
       },
       {
         pricingMode: bill.pricingMode,
+        numericProtocolVersion: bill.requestedNumericProtocolVersion,
         pricingNature: version.pricingNature,
         amountLimitType: version.amountLimitType,
         taxMode: version.taxMode,
@@ -1393,7 +1415,8 @@ export class ContractBillService {
     if (Array.isArray(value)) return value.map((item) => this.convertReadValue(item));
     if (value !== null && typeof value === "object" && !(value instanceof Date)) {
       return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [key, this.convertReadValue(item)])
+        Object.entries(value).map(([key, item]) => [key,
+          key.endsWith("AmountYuan") && item instanceof Prisma.Decimal ? item.toFixed(4) : this.convertReadValue(item)])
       );
     }
     return value;

@@ -34,7 +34,7 @@ import {
   lockContractDraftMutationBoundary
 } from "../contract/contract-draft-lifecycle";
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
-import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
+import { assertContractBillDerivedUnitPrices, compatibleBillCents, sumContractBillBusinessAmounts } from "../contract-bill/contract-bill-totals";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
 import { calculateContractDocumentContentFingerprint } from "./contract-document-content";
@@ -82,6 +82,10 @@ interface TemplateSnapshot {
 }
 
 interface BillSnapshot {
+  numericProtocolVersion?: number;
+  taxInclusiveAmountYuan?: string | null;
+  taxExclusiveAmountYuan?: string | null;
+  taxAmountYuan?: string | null;
   billKey: string;
   name: string;
   amountRole: string;
@@ -95,6 +99,12 @@ interface BillSnapshot {
   taxExclusiveAmountCents: string;
   taxAmountCents: string;
   rows: Array<{
+    numericProtocolVersion?: number;
+    numericSource?: string;
+    numericReviewStatus?: string;
+    taxInclusiveAmountYuan?: string | null;
+    taxExclusiveAmountYuan?: string | null;
+    taxAmountYuan?: string | null;
     rowKey: string;
     sortOrder: number;
     itemCode: string | null;
@@ -2821,8 +2831,9 @@ export class ContractWorkbenchService {
   }
 
   private sumIncludedBills(
-    bills: Array<{ amountRole: string; taxInclusiveAmountCents: bigint }>
+    bills: Array<{ amountRole: string; numericProtocolVersion?: number; taxInclusiveAmountYuan?: Prisma.Decimal | null; taxInclusiveAmountCents: bigint }>
   ) {
+    if (bills.some(bill => bill.numericProtocolVersion === 2)) return compatibleBillCents(sumContractBillBusinessAmounts(bills)) ?? 0n;
     return bills
       .filter((bill) => bill.amountRole === "included" || bill.amountRole === "provisional")
       .reduce((sum, bill) => sum + bill.taxInclusiveAmountCents, 0n);
@@ -2850,6 +2861,9 @@ export class ContractWorkbenchService {
       schemaSnapshot: bill.schemaSnapshot,
       sourceExcelFileId: bill.sourceExcelFileId,
       revision: bill.revision,
+      ...(bill.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+        taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+        taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null } : {}),
       taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
       taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
       taxAmountCents: bill.taxAmountCents.toString(),
@@ -2869,6 +2883,9 @@ export class ContractWorkbenchService {
           taxRateSource: row.taxRateSource,
           pricingFactStatus: row.pricingFactStatus,
           precisionPolicy: row.precisionPolicy,
+          ...(row.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, numericSource: row.numericSource, numericReviewStatus: row.numericReviewStatus,
+            taxInclusiveAmountYuan: row.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+            taxExclusiveAmountYuan: row.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: row.taxAmountYuan?.toFixed(4) ?? null } : {}),
           taxInclusiveAmountCents: row.taxInclusiveAmountCents?.toString() ?? null,
           taxExclusiveAmountCents: row.taxExclusiveAmountCents?.toString() ?? null,
           taxAmountCents: row.taxAmountCents?.toString() ?? null,
@@ -2911,6 +2928,9 @@ export class ContractWorkbenchService {
     actorUserId?: string
   ) {
     const current = await tx.contractBill.findMany({ where: { contractVersionId } });
+    if (current.some(bill => bill.numericProtocolVersion === 2) && snapshots.some(bill => bill.numericProtocolVersion !== 2)) {
+      throw new BadRequestException("清单精度已升级，旧检查点不能覆盖四位金额，请刷新工作台后核对");
+    }
     const currentRows = current.length
       ? await tx.contractBillRow.findMany({ where: { contractBillId: { in: current.map((bill) => bill.id) } } })
       : [];
@@ -2934,6 +2954,8 @@ export class ContractWorkbenchService {
           schemaSnapshot: this.toJson(snapshot.schemaSnapshot),
           sourceExcelFileId: snapshot.sourceExcelFileId,
           revision: snapshot.revision,
+          ...(snapshot.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+            taxInclusiveAmountYuan: snapshot.taxInclusiveAmountYuan, taxExclusiveAmountYuan: snapshot.taxExclusiveAmountYuan, taxAmountYuan: snapshot.taxAmountYuan } : {}),
           taxInclusiveAmountCents: parseMoneyCents(
             snapshot.taxInclusiveAmountCents,
             "清单含税金额"
@@ -3498,7 +3520,8 @@ export class ContractWorkbenchService {
     }
     if (value !== null && typeof value === "object" && !(value instanceof Date)) {
       return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [key, this.convertReadValue(item)])
+        Object.entries(value).map(([key, item]) => [key,
+          (key === "amountYuan" || key.endsWith("AmountYuan")) && item instanceof Prisma.Decimal ? item.toFixed(4) : this.convertReadValue(item)])
       );
     }
     return value;

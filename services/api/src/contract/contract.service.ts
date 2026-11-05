@@ -11,7 +11,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
-import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
+import { contractCommercialEntryDefinition, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
 import {
   approvalElapsedHours,
   canRemindApproval,
@@ -2138,7 +2138,7 @@ export class ContractService {
           }, submittedAt.toISOString());
         };
         const commercialEntrySnapshot = await freezeEntry(
-          CONTRACT_COMMERCIAL_ENTRY_DEFINITION.key, CONTRACT_COMMERCIAL_ENTRY_DEFINITION.version,
+          contractCommercialEntryDefinition(version).key, contractCommercialEntryDefinition(version).version,
           "contract_version", version.id, contractCommercialEntryValues(version)
         );
         const parties = await tx.contractPartySnapshot.findMany({

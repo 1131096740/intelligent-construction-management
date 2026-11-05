@@ -473,7 +473,7 @@
             </div>
             <div class="change-banner-metrics">
               <span>基版金额 {{ moneyText(changeMeta?.baseVersion?.amountCents) }}</span>
-              <span>当前投影 {{ moneyText(workbench?.version.amountCents) }}</span>
+              <span>当前投影 {{ workbench?.version.numericProtocolVersion === 2 ? workbench.version.amountYuan == null ? "待确定" : `${workbench.version.amountYuan} 元` : moneyText(workbench?.version.amountCents) }}</span>
               <span>累计增加 {{ moneyText(changeMeta?.cumulativeIncreaseCents) }}</span>
               <span>累计减少 {{ moneyText(changeMeta?.cumulativeDecreaseCents) }}</span>
             </div>
@@ -1671,8 +1671,8 @@ const approvalRouteText = computed(() => {
   return change?.approvalRouteLabel ?? contractApprovalRouteText(change?.approvalRoute);
 });
 
-function moneyText(value: string | undefined) {
-  return value === undefined ? "—" : `¥${centsTextToYuanText(value)}`;
+function moneyText(value: string | null | undefined) {
+  return value == null ? "—" : `¥${centsTextToYuanText(value)}`;
 }
 
 const activeSectionLabel = computed(

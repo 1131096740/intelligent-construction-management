@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, businessAmountToLegacyCents, calculateBusinessLineTaxAmounts, normalizeBusinessAmount, normalizeBusinessQuantity, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { calculateBillRow } from "../money/decimal-money";
 
@@ -16,6 +16,7 @@ export class ContractBillRowFactsValidationException extends BadRequestException
 }
 
 export interface ContractBillRowPricingContext {
+  numericProtocolVersion?: number;
   pricingMode: string;
   pricingNature: string;
   amountLimitType: string;
@@ -24,6 +25,12 @@ export interface ContractBillRowPricingContext {
 }
 
 export interface ExistingContractBillRowFacts {
+  numericProtocolVersion?: number;
+  numericSource?: string;
+  numericReviewStatus?: string;
+  taxInclusiveAmountYuan?: Prisma.Decimal | null;
+  taxExclusiveAmountYuan?: Prisma.Decimal | null;
+  taxAmountYuan?: Prisma.Decimal | null;
   quantity: Prisma.Decimal | null;
   unitPrice: Prisma.Decimal | null;
   taxRate: Prisma.Decimal | null;
@@ -37,8 +44,8 @@ export interface ExistingContractBillRowFacts {
 }
 
 export interface ResolveContractBillRowFactsInput {
-  quantity?: string;
-  unitPrice: string;
+  quantity?: string | null;
+  unitPrice: string | null;
   taxRatePercent?: string;
   taxRateSource?: "version_default" | "row_override";
 }
@@ -49,7 +56,13 @@ export interface ResolvedContractBillRowFacts {
   taxRatePercent: string | null;
   taxRateSource: "version_default" | "row_override";
   pricingFactStatus: "confirmed" | "unconfirmed";
-  precisionPolicy: "legacy" | "two_decimal";
+  precisionPolicy: "legacy" | "two_decimal" | "four_decimal";
+  numericProtocolVersion?: number;
+  numericSource?: "legacy_cents" | "decimal_input";
+  numericReviewStatus?: "verified" | "review_required";
+  taxInclusiveAmountYuan?: string | null;
+  taxExclusiveAmountYuan?: string | null;
+  taxAmountYuan?: string | null;
   taxInclusiveAmountCents: bigint | null;
   taxExclusiveAmountCents: bigint | null;
   taxAmountCents: bigint | null;
@@ -61,6 +74,10 @@ export function resolveContractBillRowFacts(
   context: ContractBillRowPricingContext,
   existing?: ExistingContractBillRowFacts
 ): ResolvedContractBillRowFacts {
+  if (context.numericProtocolVersion === 2) return resolveFourDecimalFacts(input, context, existing);
+  if (existing?.numericProtocolVersion === 2) {
+    throw new ContractBillRowFactsValidationException("row", "清单精度已升级，请刷新工作台后重试，原四位金额不会被覆盖");
+  }
   if (context.pricingMode !== "tax_inclusive") {
     throw new ContractBillRowFactsValidationException(
       "row",
@@ -236,10 +253,98 @@ function assertDecimal(
   }
 }
 
-function normalizeOptional(value: string | undefined) {
+function normalizeOptional(value: string | null | undefined) {
   if (value === undefined || value === "") return null;
   if (typeof value !== "string") return null;
   return value;
+}
+
+function resolveFourDecimalFacts(input: ResolveContractBillRowFactsInput, context: ContractBillRowPricingContext, existing?: ExistingContractBillRowFacts): ResolvedContractBillRowFacts {
+  if (context.pricingMode !== "tax_inclusive") throw new ContractBillRowFactsValidationException("row", "历史不含税清单请先核对计价依据，不能自动改算");
+  const quantity = normalizeOptional(input.quantity);
+  const price = normalizeOptional(input.unitPrice);
+  const submittedRate = normalizeOptional(input.taxRatePercent);
+  const defaultRate = context.defaultTaxRatePercent?.toString() ?? null;
+  const override = context.taxMode === "multiple_rate" && (input.taxRateSource === "row_override" || (submittedRate !== null && !sameDecimal(submittedRate, context.defaultTaxRatePercent)));
+  const rate = override ? submittedRate : defaultRate;
+  const taxRateSource = override ? "row_override" as const : "version_default" as const;
+  const legacySource = existing !== undefined && (existing.numericProtocolVersion !== 2 || existing.numericSource === "legacy_cents");
+  for (const [raw, field, original] of [[quantity, "quantity", existing?.quantity], [price, "unitPrice", existing?.unitPrice],
+    [rate, "taxRatePercent", existing?.taxRate]] as const) {
+    if (raw === null) continue;
+    const preservedSource = legacySource && original != null && original.decimalPlaces() > 4 && raw === original.toString();
+    if (!preservedSource && ((!CANONICAL_DECIMAL.test(raw) && !/^-0(?:\.0{1,4})?$/u.test(raw)) || (raw.split(".")[1]?.length ?? 0) > 4)) {
+      throw new ContractBillRowFactsValidationException(field, "请填写规范数字，最多保留4位小数；保留原输入后修改");
+    }
+  }
+  if (context.taxMode !== "single_rate" && context.taxMode !== "multiple_rate") throw new ContractBillRowFactsValidationException("row", "合同税率模式无效，请刷新工作台");
+  if (context.taxMode === "single_rate" && submittedRate !== null && !sameDecimal(submittedRate, context.defaultTaxRatePercent)) {
+    throw new ContractBillRowFactsValidationException("taxRatePercent", "单一税率合同的清单税率必须与合同默认税率一致");
+  }
+  if (existing && sameDecimal(quantity, existing.quantity) && sameDecimal(price, existing.unitPrice)
+    && sameDecimal(rate, existing.taxRate) && taxRateSource === existing.taxRateSource) {
+    // Do not infer sub-cent historical facts from a six-decimal source price.
+    // Existing cents are converted exactly, never recomputed from old inputs.
+    const v2 = existing.numericProtocolVersion === 2;
+    return {
+      quantity: existing.quantity?.toString() ?? null, unitPrice: existing.unitPrice?.toString() ?? null,
+      taxRatePercent: existing.taxRate?.toString() ?? null, taxRateSource,
+      pricingFactStatus: existing.pricingFactStatus === "confirmed" ? "confirmed" : "unconfirmed",
+      precisionPolicy: existing.precisionPolicy === "legacy" ? "legacy" : existing.precisionPolicy === "four_decimal" ? "four_decimal" : "two_decimal",
+      numericProtocolVersion: 2, numericSource: v2 && existing.numericSource === "decimal_input" ? "decimal_input" : "legacy_cents",
+      numericReviewStatus: v2 && existing.numericReviewStatus === "verified" ? "verified" : "review_required",
+      taxInclusiveAmountYuan: v2 ? existing.taxInclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(existing.taxInclusiveAmountCents),
+      taxExclusiveAmountYuan: v2 ? existing.taxExclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(existing.taxExclusiveAmountCents),
+      taxAmountYuan: v2 ? existing.taxAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(existing.taxAmountCents),
+      taxInclusiveAmountCents: existing.taxInclusiveAmountCents, taxExclusiveAmountCents: existing.taxExclusiveAmountCents,
+      taxAmountCents: existing.taxAmountCents, taxExclusiveUnitPrice: existing.taxExclusiveUnitPrice?.toString() ?? null
+    };
+  }
+  const normalized = (value: string | null, field: "quantity" | "unitPrice" | "taxRatePercent") => {
+    try {
+      const result = field === "quantity" ? normalizeBusinessQuantity(value) : normalizeBusinessAmount(value);
+      if (field === "unitPrice" && result !== null && result.split(".")[0].length > 18) throw new Error("单价整数位不能超过18位，请核对原始资料");
+      return result;
+    } catch (error) { throw new ContractBillRowFactsValidationException(field, error instanceof Error ? error.message : "数值无效，请保留输入后修改"); }
+  };
+  const nextQuantity = normalized(quantity, "quantity");
+  const nextPrice = normalized(price, "unitPrice");
+  const nextRate = normalized(rate, "taxRatePercent");
+  if (nextQuantity !== null && new Prisma.Decimal(nextQuantity).lte(0)) throw new ContractBillRowFactsValidationException("quantity", "数量必须大于0；待确定时请留空");
+  let calculated: ReturnType<typeof calculateBusinessLineTaxAmounts>;
+  try { calculated = calculateBusinessLineTaxAmounts(nextQuantity, nextPrice, nextRate); }
+  catch (error) { throw new ContractBillRowFactsValidationException("row", error instanceof Error ? error.message : "行金额无法计算，请核对数量与单价"); }
+  const compatible = (value: string | null) => {
+    let cents: string | null;
+    try { cents = businessAmountToLegacyCents(value); }
+    catch { throw new ContractBillRowFactsValidationException("row", "金额超出兼容保存范围，请核对原始资料，当前输入不会部分保存"); }
+    if (cents === null) return null;
+    const integer = BigInt(cents);
+    return integer;
+  };
+  const grossCents = compatible(calculated.taxInclusiveAmountYuan);
+  const netCents = compatible(calculated.taxExclusiveAmountYuan);
+  if (calculated.taxExclusiveUnitPrice !== null && calculated.taxExclusiveUnitPrice.split(".")[0].length > 18) {
+    throw new ContractBillRowFactsValidationException("unitPrice", "派生单价超出可保存范围，请核对原始资料");
+  }
+  return {
+    quantity: nextQuantity, unitPrice: nextPrice, taxRatePercent: nextRate, taxRateSource,
+    pricingFactStatus: nextPrice !== null && nextRate !== null && (nextQuantity !== null || (context.pricingNature === "framework" && context.amountLimitType === "unlimited")) ? "confirmed" : "unconfirmed",
+    precisionPolicy: "four_decimal", numericProtocolVersion: 2, numericSource: "decimal_input", numericReviewStatus: "verified",
+    ...calculated, taxInclusiveAmountCents: netCents === null ? null : grossCents, taxExclusiveAmountCents: grossCents === null ? null : netCents,
+    taxAmountCents: grossCents === null || netCents === null ? null : grossCents - netCents
+  };
+}
+
+export function contractBillDecimalRowData(facts: ResolvedContractBillRowFacts) {
+  return facts.numericProtocolVersion !== 2 ? {} : {
+    numericProtocolVersion: 2,
+    numericSource: facts.numericSource,
+    numericReviewStatus: facts.numericReviewStatus,
+    taxInclusiveAmountYuan: facts.taxInclusiveAmountYuan,
+    taxExclusiveAmountYuan: facts.taxExclusiveAmountYuan,
+    taxAmountYuan: facts.taxAmountYuan
+  };
 }
 
 function sameDecimal(

@@ -1,3 +1,10 @@
+import { Prisma } from "@prisma/client";
+import { Test } from "@nestjs/testing";
+import { ContractDraftController } from "./contract-draft.controller";
+import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
+import { ContractService } from "../contract/contract.service";
+import { PristineDraftDeletionService } from "./pristine-draft-deletion.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 import {
   BadRequestException,
   ConflictException,
@@ -104,6 +111,36 @@ describe("ContractDraftAggregateService", () => {
       )
     };
   }
+
+  it("negotiates v2 over public HTTP and preserves unknown, zero and four-place money without a fake zero", async () => {
+    const { service, workbench } = makeService({ foundVersion: { ...version, numericProtocolVersion: 2 } as typeof version });
+    workbench.getDraftFromExactVersion.mockResolvedValue({ ...legacyReadModel,
+      version: { ...version, numericProtocolVersion: 2, amountYuan: null, amountCents: "0" },
+      bills: [null, "0.0000", "1.5340"].map((amount, index) => ({ id: `b-${index}`, billKey: `b-${index}`,
+        numericProtocolVersion: 2, taxInclusiveAmountYuan: amount, taxExclusiveAmountYuan: null, taxAmountYuan: null,
+        taxInclusiveAmountCents: amount === "1.5340" ? "153" : "0", taxExclusiveAmountCents: "0", taxAmountCents: "0", rows: [] }))
+    } as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication();
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "actor-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const url = `${await app.getUrl()}/contract-drafts/cv-1/workbench`;
+      const old = await fetch(url);
+      expect(old.status).toBe(409);
+      expect(await old.text()).toContain("刷新");
+      const current = await fetch(url, { headers: { "x-contract-numeric-protocol": "2" } });
+      expect(current.status).toBe(200);
+      const body = await current.json();
+      expect(body.version.amountCents).toBeNull();
+      expect(body.bills.map((bill: { taxInclusiveAmountYuan: unknown; taxInclusiveAmountCents: unknown }) => [bill.taxInclusiveAmountYuan, bill.taxInclusiveAmountCents]))
+        .toEqual([[null, null], ["0.0000", "0"], ["1.5340", "153"]]);
+      expect(body.bills[2].taxExclusiveAmountCents).toBeNull();
+    } finally { await app.close(); }
+  });
 
   it("loads the requested version id and never asks the legacy service to choose the latest", async () => {
     const { prisma, workbench, service } = makeService();
@@ -632,6 +669,26 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     };
   }
 
+  it("returns canonical v2 save totals over HTTP, rounding to cents only after accumulating bills", async () => {
+    const { service } = makeSaveService({ persistedDocumentBills: ["a", "b"].map(id => ({ id, billKey: id, revision: 1, amountRole: "included", numericProtocolVersion: 2,
+      taxInclusiveAmountYuan: { toFixed: () => "0.0050" }, taxExclusiveAmountYuan: { toFixed: () => "0.0050" }, taxAmountYuan: { toFixed: () => "0.0000" },
+      taxInclusiveAmountCents: 1n, taxExclusiveAmountCents: 1n, taxAmountCents: 0n })) });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput(); input.draft.amountSource = "bill_sum" as "manual"; input.bills = ["a", "b"].map(billKey => ({ billKey, expectedRevision: 1, rows: [], numericProtocolVersion: 2 })) as never;
+      const result = await fetch(`${await app.getUrl()}/contract-drafts/cv-1`, { method: "PUT", headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken }, body: JSON.stringify(input) });
+      const body = await result.json();
+      expect({ status: result.status, error: body.message }).toEqual({ status: 200, error: undefined });
+      expect(body.amounts).toMatchObject({ numericProtocolVersion: 2, taxInclusiveAmountYuan: "0.0100", taxInclusiveAmountCents: "1" });
+    } finally { await app.close(); }
+  });
+
   it("uploads a private file only after the exact draft owner boundary passes", async () => {
     const { files, service } = makeSaveService();
     const input = {
@@ -900,6 +957,18 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     };
 
     await expect(save("9.00")).resolves.toBe(await save("9"));
+  });
+
+  it("changes the public document fingerprint when canonical four-place money changes within the same cent", async () => {
+    const save = async (amount: string) => {
+      const { service } = makeSaveService({ persistedDocumentBills: [{ id: "bill-1", billKey: "main", revision: 1, amountRole: "included", numericProtocolVersion: 2,
+        taxInclusiveAmountYuan: new Prisma.Decimal(amount), taxExclusiveAmountYuan: new Prisma.Decimal(amount), taxAmountYuan: new Prisma.Decimal(0),
+        taxInclusiveAmountCents: 1n, taxExclusiveAmountCents: 1n, taxAmountCents: 0n }] });
+      const input = { ...aggregateInput(), bills: [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }] };
+      return (await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)).documentContentFingerprint;
+    };
+    expect(await save("0.0050")).not.toBe(await save("0.0051"));
+    expect(await save("0.0050")).toBe(await save("0.0050"));
   });
 
   it("excludes bill expectedRevision from the persisted document fingerprint", async () => {

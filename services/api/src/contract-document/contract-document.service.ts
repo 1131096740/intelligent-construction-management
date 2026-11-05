@@ -22,6 +22,7 @@ import { FileService } from "../file/file.service";
 import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
 import {
   formatChineseUppercaseMoney,
+  formatChineseUppercaseBusinessAmount,
   formatMoneyCents
 } from "./contract-docx-renderer";
 
@@ -988,6 +989,8 @@ export class ContractDocumentService {
     version: {
       status: string;
       amountCents: bigint;
+      numericProtocolVersion?: number;
+      amountYuan?: Prisma.Decimal | null;
       invoiceType: string | null;
       defaultTaxRatePercent: Prisma.Decimal | null;
       draftData: Prisma.JsonValue;
@@ -1003,6 +1006,11 @@ export class ContractDocumentService {
       id: string;
       billKey: string;
       rows: Array<{
+        numericProtocolVersion?: number;
+        numericSource?: string;
+        taxInclusiveAmountYuan?: Prisma.Decimal | null;
+        taxExclusiveAmountYuan?: Prisma.Decimal | null;
+        taxAmountYuan?: Prisma.Decimal | null;
         itemCode: string | null;
         itemName: string;
         specification: string | null;
@@ -1025,8 +1033,8 @@ export class ContractDocumentService {
       "contract.name": contract.name,
       "contract.temporaryCode": contract.temporaryCode ?? "",
       "contract.code": contract.code ?? "",
-      "contract.amount": formatMoneyCents(version.amountCents),
-      "contract.amountUppercase": formatChineseUppercaseMoney(version.amountCents),
+      "contract.amount": version.numericProtocolVersion === 2 ? version.amountYuan?.toFixed(4) ?? "待确定" : formatMoneyCents(version.amountCents),
+      "contract.amountUppercase": version.numericProtocolVersion === 2 ? formatChineseUppercaseBusinessAmount(version.amountYuan?.toFixed(4) ?? null) : formatChineseUppercaseMoney(version.amountCents),
       "document.watermark":
         purpose === "draft"
           ? "草稿"
@@ -1123,10 +1131,10 @@ export class ContractDocumentService {
     }
     for (const bill of bills) {
       values[`bill.${bill.billKey}`] = bill.rows.map((row) => {
-        const taxInclusiveUnitPrice = row.unitPrice?.toFixed(2) ?? "—";
+        const taxInclusiveUnitPrice = row.numericProtocolVersion === 2 ? row.unitPrice?.toString() ?? "—" : row.unitPrice?.toFixed(2) ?? "—";
         const taxExclusiveUnitPrice =
           row.taxExclusiveUnitPrice != null
-            ? row.taxExclusiveUnitPrice.toFixed(6)
+            ? row.taxExclusiveUnitPrice.toFixed(row.numericProtocolVersion === 2 && row.numericSource === "decimal_input" ? 4 : 6)
             : row.quantity && row.taxExclusiveAmountCents !== null
               ? deriveSixDecimalUnitPriceFromAmountCents(
                   row.taxExclusiveAmountCents,
@@ -1144,9 +1152,9 @@ export class ContractDocumentService {
           taxInclusiveUnitPrice,
           taxExclusiveUnitPrice,
           taxRatePercent: row.taxRate ? `${row.taxRate.toString()}%` : "—",
-          taxInclusiveAmount: this.moneyText(row.taxInclusiveAmountCents),
-          taxExclusiveAmount: this.moneyText(row.taxExclusiveAmountCents),
-          taxAmount: this.moneyText(row.taxAmountCents),
+          taxInclusiveAmount: row.numericProtocolVersion === 2 ? row.taxInclusiveAmountYuan?.toFixed(4) ?? "—" : this.moneyText(row.taxInclusiveAmountCents),
+          taxExclusiveAmount: row.numericProtocolVersion === 2 ? row.taxExclusiveAmountYuan?.toFixed(4) ?? "—" : this.moneyText(row.taxExclusiveAmountCents),
+          taxAmount: row.numericProtocolVersion === 2 ? row.taxAmountYuan?.toFixed(4) ?? "—" : this.moneyText(row.taxAmountCents),
           isProvisional: row.isProvisional,
           settlementBasis: row.settlementBasis ?? ""
         };

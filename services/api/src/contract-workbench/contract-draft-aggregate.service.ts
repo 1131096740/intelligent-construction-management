@@ -7,10 +7,12 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
+import { sumContractBillBusinessAmounts, compatibleBillCents } from "../contract-bill/contract-bill-totals";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
@@ -44,7 +46,7 @@ export class ContractDraftAggregateService {
     private readonly audit: AuditService
   ) {}
 
-  async getWorkbench(contractVersionId: string, actorUserId: string) {
+  async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
     const { version, templateEntry, billEntries } = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
       if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
@@ -57,6 +59,12 @@ export class ContractDraftAggregateService {
       version,
       actorUserId
     );
+    if (numericProtocol !== undefined && numericProtocol !== "2") {
+      throw new BadRequestException("金额读取格式不受支持，请刷新页面后重试");
+    }
+    if (version.numericProtocolVersion === 2 && numericProtocol !== "2") {
+      throw new ConflictException("合同金额精度已升级，请刷新页面后重新读取");
+    }
     const settlementModeHistory = version.settlementModeConfirmedAt
       ? await this.prisma.businessEntrySubmissionSnapshot.findMany({
           where: { projectId: legacyReadModel.contract.projectId, sceneKey: "contract_settlement_mode", entityType: "contract_version", entityId: version.id },
@@ -102,6 +110,7 @@ export class ContractDraftAggregateService {
       ...legacyWithoutCheckpoints,
       version: {
         ...legacyReadModel.version,
+        ...(version.numericProtocolVersion === 2 && legacyReadModel.version.amountYuan == null ? { amountCents: null } : {}),
         draftLifecycleKind: legacyReadModel.lifecycleKind
       },
       draft: version.draftData,
@@ -122,6 +131,16 @@ export class ContractDraftAggregateService {
       },
       bills: legacyReadModel.bills.map((bill) => ({
         ...bill,
+        ...(bill.numericProtocolVersion === 2 ? {
+          taxInclusiveAmountCents: bill.taxInclusiveAmountYuan == null ? null : bill.taxInclusiveAmountCents,
+          taxExclusiveAmountCents: bill.taxExclusiveAmountYuan == null ? null : bill.taxExclusiveAmountCents,
+          taxAmountCents: bill.taxAmountYuan == null ? null : bill.taxAmountCents,
+          rows: bill.rows.map(row => ({ ...row, ...(row.numericProtocolVersion === 2 ? {
+            taxInclusiveAmountCents: row.taxInclusiveAmountYuan == null ? null : row.taxInclusiveAmountCents,
+            taxExclusiveAmountCents: row.taxExclusiveAmountYuan == null ? null : row.taxExclusiveAmountCents,
+            taxAmountCents: row.taxAmountYuan == null ? null : row.taxAmountCents
+          } : {}) }))
+        } : {}),
         businessEntryDefinition: billEntries.find((entry) => entry.billId === bill.id)?.definition
       })),
       businessEntry: {
@@ -456,6 +475,12 @@ export class ContractDraftAggregateService {
             : Promise.resolve([])
         ]);
 
+        const numericProtocolVersion = documentBills.some(bill => bill.numericProtocolVersion === 2) ? 2 : 1;
+        const amountYuan = numericProtocolVersion === 2
+          ? input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills) : businessAmountFromLegacyCents(fieldResult.amountCents)
+          : null;
+        if (numericProtocolVersion === 2) Object.assign(fieldResult.data, { numericProtocolVersion, amountYuan });
+
         const changed = effectiveChangedSections.size > 0;
         const documentContentChangedSections = [...effectiveChangedSections]
           .filter((section) => section !== "negotiation_documents")
@@ -481,6 +506,7 @@ export class ContractDraftAggregateService {
               pricingNature: input.draft.pricingNature,
               amountSource: input.draft.amountSource,
               amountCents: fieldResult.amountCents.toString(),
+              ...(numericProtocolVersion === 2 ? { numericProtocolVersion, amountYuan } : {}),
               estimatedAmountCents:
                 fieldResult.estimatedAmountCents?.toString() ?? null,
               amountAdjustmentReason: input.draft.amountAdjustmentReason ?? null,
@@ -495,6 +521,9 @@ export class ContractDraftAggregateService {
                 schemaSnapshot: bill.schemaSnapshot,
                 sourceExcelFileId: bill.sourceExcelFileId,
                 taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+                ...(bill.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+                  taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                  taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null } : {}),
                 taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
                 taxAmountCents: bill.taxAmountCents.toString(),
                 rows: documentBillRows
@@ -512,6 +541,9 @@ export class ContractDraftAggregateService {
                     taxRateSource: row.taxRateSource,
                     pricingFactStatus: row.pricingFactStatus,
                     precisionPolicy: row.precisionPolicy,
+                    ...(row.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, numericSource: row.numericSource, numericReviewStatus: row.numericReviewStatus,
+                      taxInclusiveAmountYuan: row.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                      taxExclusiveAmountYuan: row.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: row.taxAmountYuan?.toFixed(4) ?? null } : {}),
                     taxInclusiveAmountCents:
                       row.taxInclusiveAmountCents?.toString() ?? null,
                     taxExclusiveAmountCents:
@@ -661,6 +693,12 @@ export class ContractDraftAggregateService {
         for (const bill of refreshedBills) {
           billRevisions[bill.billKey] = bill.revision;
         }
+        const decimalAmounts = numericProtocolVersion === 2 ? Object.fromEntries(
+          (["taxInclusiveAmount", "taxExclusiveAmount", "taxAmount"] as const).flatMap(kind => {
+            const amount = sumBusinessAmounts(refreshedBills.filter(bill => bill.amountRole === "included" || bill.amountRole === "provisional")
+              .map(bill => bill.numericProtocolVersion === 2 ? bill[`${kind}Yuan`]?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill[`${kind}Cents`])));
+            return [[`${kind}Yuan`, amount], [`${kind}Cents`, compatibleBillCents(amount)?.toString() ?? null]];
+          })) : {};
         const isDirector = await this.isContractDirector(actorUserId);
         const response = {
           contractVersionId,
@@ -670,6 +708,14 @@ export class ContractDraftAggregateService {
           documentContentFingerprint,
           documentContentChangedSections,
           savedAt: now.toISOString(),
+          ...(numericProtocolVersion === 2 ? {
+            versionAmount: { numericProtocolVersion: 2, amountYuan, amountCents: compatibleBillCents(amountYuan)?.toString() ?? null },
+            billAmounts: refreshedBills.filter(bill => bill.numericProtocolVersion === 2).map(bill => ({ billKey: bill.billKey, numericProtocolVersion: 2,
+              taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null, taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null,
+              taxInclusiveAmountCents: bill.taxInclusiveAmountYuan == null ? null : bill.taxInclusiveAmountCents.toString(),
+              taxExclusiveAmountCents: bill.taxExclusiveAmountYuan == null ? null : bill.taxExclusiveAmountCents.toString(),
+              taxAmountCents: bill.taxAmountYuan == null ? null : bill.taxAmountCents.toString() }))
+          } : {}),
           effectiveChangedSections: [...effectiveChangedSections].sort(),
           amounts: {
             taxInclusiveAmountCents: refreshedBills
@@ -692,7 +738,8 @@ export class ContractDraftAggregateService {
                 bill.amountRole === "provisional"
               )
               .reduce((sum, bill) => sum + bill.taxAmountCents, 0n)
-              .toString()
+              .toString(),
+            ...(numericProtocolVersion === 2 ? { numericProtocolVersion: 2, ...decimalAmounts } : {})
           },
           billRevisions,
           issueCounts: {},

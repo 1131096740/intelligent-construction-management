@@ -391,7 +391,8 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-drafts/version%2F1/workbench"
+      "/contract-drafts/version%2F1/workbench",
+      { headers: { "x-contract-numeric-protocol": "2" } }
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -896,7 +897,8 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledTimes(2);
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
-      "/contract-drafts/version-1/workbench"
+      "/contract-drafts/version-1/workbench",
+      { headers: { "x-contract-numeric-protocol": "2" } }
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
@@ -1817,7 +1819,7 @@ describe("contract workbench API client", () => {
     await downloadContractDraftBillExcelTemplate("version / 1", "main / bill");
 
     expect(mockApiFetch).toHaveBeenCalledWith(
-      "/contract-drafts/version%20%2F%201/bills/main%20%2F%20bill/template"
+      "/contract-drafts/version%20%2F%201/bills/main%20%2F%20bill/template?numericProtocolVersion=2"
     );
   });
 
@@ -1843,7 +1845,7 @@ describe("contract workbench API client", () => {
     );
     expect((options as RequestInit).method).toBe("POST");
     expect(JSON.parse((options as RequestInit).body as string)).toEqual({
-      fileId: "file-1"
+      fileId: "file-1", numericProtocolVersion: 2
     });
   });
 

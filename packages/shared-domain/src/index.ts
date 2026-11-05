@@ -12,6 +12,7 @@ export * from "./roles";
 export * from "./statuses";
 export * from "./approval";
 export * from "./money";
+export * from "./business-decimal";
 export * from "./core-flow-read-model";
 export * from "./permissions";
 export * from "./contract-workbench";

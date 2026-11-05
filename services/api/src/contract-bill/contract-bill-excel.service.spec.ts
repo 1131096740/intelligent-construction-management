@@ -6,6 +6,8 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ContractBillExcelService } from "./contract-bill-excel.service";
 import { ContractBillLineageService } from "./contract-bill-lineage.service";
+import { Test } from "@nestjs/testing";
+import { ContractDraftBillExcelController } from "./contract-draft-bill-excel.controller";
 
 const DATA_SHEET = "清单数据";
 const INSTRUCTION_SHEET = "填写说明";
@@ -239,6 +241,69 @@ function billFixture(options: {
 }
 
 describe("ContractBillExcelService", () => {
+  it("previews explicit v2 draft Excel through HTTP with four-place values and no database writes", async () => {
+    const { service, fileService, tx, version } = billFixture({ rows: [] });
+    Object.assign(version, { defaultTaxRatePercent: new Prisma.Decimal(0) });
+    const buffer = await buildWorkbookBuffer({ rows: [{ values: { itemName: "四位项目", unit: "项", quantity: "1.2345", unitPrice: "1.2345", taxRatePercent: "0", isProvisional: "否" } }] });
+    jest.mocked(fileService.getFileBuffer).mockResolvedValue({ buffer } as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftBillExcelController], providers: [{ provide: ContractBillExcelService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const root = `${await app.getUrl()}/contract-drafts/version-1/bills/main`;
+      const result = await fetch(`${root}/import-preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fileId: "file-1", numericProtocolVersion: 2 }) });
+      expect(result.status).toBe(201);
+      const preview = await result.json();
+      expect(preview.errors).toEqual([]);
+      expect(preview.rows[0]).toMatchObject({ quantity: "1.2345", unitPrice: "1.2345", taxRatePercent: "0" });
+      expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+      expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+      const template = await fetch(`${root}/template?numericProtocolVersion=2`);
+      const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(Buffer.from(await template.arrayBuffer()) as never);
+      expect(JSON.stringify(workbook.getWorksheet(INSTRUCTION_SHEET)!.getSheetValues())).toContain("4 位");
+    } finally { await app.close(); }
+  });
+  it("exports public draft Excel with exact text decimals, unknown versus zero and preserved legacy source", async () => {
+    // Database boundary substitute only. The actual HTTP controller, draft
+    // ownership guard and Excel serializer run; this is not real PG evidence.
+    const { service, bill } = billFixture({ rows: [
+      { rowKey: "private-row-id", sortOrder: 0, itemName: "四位项目", unit: "项", quantity: new Prisma.Decimal("1.2345"), unitPrice: new Prisma.Decimal("1.2345"),
+        taxRate: new Prisma.Decimal(0), numericProtocolVersion: 2, numericSource: "decimal_input", numericReviewStatus: "verified",
+        taxInclusiveAmountYuan: new Prisma.Decimal("1.5240"), taxExclusiveAmountYuan: new Prisma.Decimal("1.5240"), taxAmountYuan: new Prisma.Decimal(0), taxExclusiveUnitPrice: new Prisma.Decimal("1.2345"), customData: {} },
+      { sortOrder: 1, itemName: "待确定项目", unit: "项", quantity: null, unitPrice: null, taxInclusiveAmountCents: null, taxExclusiveUnitPrice: null, customData: {} },
+      { sortOrder: 2, itemName: "真实零价", unit: "项", quantity: new Prisma.Decimal(1), unitPrice: new Prisma.Decimal(0), taxInclusiveAmountCents: 0n, taxExclusiveUnitPrice: null, customData: {} },
+      { sortOrder: 3, itemName: "历史原值", unit: "项", quantity: new Prisma.Decimal("1.123456"), unitPrice: new Prisma.Decimal("0.005678"), taxInclusiveAmountCents: 0n, taxExclusiveUnitPrice: null, customData: {} },
+      { sortOrder: 4, itemName: "大数量原值", unit: "项", quantity: new Prisma.Decimal("999999999999999999.9999"), unitPrice: null, taxInclusiveAmountCents: null, taxExclusiveUnitPrice: null, customData: {} }
+    ] });
+    Object.assign(bill, { numericProtocolVersion: 2 });
+    const module = await Test.createTestingModule({ controllers: [ContractDraftBillExcelController], providers: [{ provide: ContractBillExcelService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: { id: string }; headers: Record<string, string> }, _response: unknown, next: () => void) => { request.user = { id: request.headers["x-test-actor"] ?? "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const url = `${await app.getUrl()}/contract-drafts/version-1/bills/main/export`;
+      const response = await fetch(url);
+      expect(response.status).toBe(200);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()) as never);
+      expect(workbook.worksheets).toHaveLength(1);
+      const sheet = workbook.worksheets[0]!;
+      expect(sheet.state).toBe("visible");
+      expect(sheet.columns.every(column => !column.hidden)).toBe(true);
+      const headers = sheet.getRow(1).values as string[];
+      const column = (label: string) => headers.indexOf(label);
+      expect(sheet.getRow(2).getCell(column("数量")).value).toBe("1.2345");
+      expect(sheet.getRow(2).getCell(column("含税金额(元)")).value).toBe("1.5240");
+      expect(sheet.getRow(3).getCell(column("含税金额(元)")).value).toBeNull();
+      expect(sheet.getRow(4).getCell(column("含税金额(元)")).value).toBe("0.0000");
+      expect(sheet.getRow(5).getCell(column("数量")).value).toBe("1.123456");
+      expect(sheet.getRow(5).getCell(column("精度说明")).value).toMatch(/原值.*核对/u);
+      expect(sheet.getRow(6).getCell(column("数量")).value).toBe("999999999999999999.9999");
+      expect(JSON.stringify(sheet.getSheetValues())).not.toContain("private-row-id");
+      expect((await fetch(url, { headers: { "x-test-actor": "other-user" } })).status).toBe(403);
+    } finally { await app.close(); }
+  });
   it.each([
     { value: 9, numFmt: "0.######", expected: "9" },
     { value: "9%", numFmt: "General", expected: "9" },
