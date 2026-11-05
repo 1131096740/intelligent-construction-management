@@ -1,6 +1,8 @@
 # 15：公司登记余额与公共现金期初闭环
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#397](https://github.com/1131096740/intelligent-construction-management/issues/397) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置02/#384与07/#389已关闭，已[领取#397](https://github.com/1131096740/intelligent-construction-management/issues/397#issuecomment-6664198769)。原发布快照保留，执行以当前进度与评论为准。
+
+**已确认测试边界：** 资金账户/期初公开HTTP、公共服务及真实UI，以合成数据库验证每公司登记余额、唯一无所属公司公共现金、未知余额/来源/项目、防重与权限审计。真实PG约束及并发只准备，不运行、不连接银行；迁移执行、资源、真实交易、部署和生产仍另需授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
