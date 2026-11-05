@@ -39,6 +39,24 @@ const TASK01_HELPER = "services/api/prisma/enterprise-task01-resources.cjs";
 const TASK01_IMAGE = "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d";
 const TASK01_FLAGS = ["--task01-packet", "--task01-inputs", "--task01-inputs-sha256", "--task01-artifacts", "--task01-confirm"];
 
+function ciExecutionFor(group) {
+  const category = group.ciExecution === undefined ? "automatic" : group.ciExecution;
+  if (!["automatic", "manual-only"].includes(category) || (group.id !== TASK01_GROUP && category !== "automatic")) {
+    fail("CI执行分类无效；旧组必须继续全部进入CI");
+  }
+  if (group.id === TASK01_GROUP && category !== "manual-only") fail("任务01必须显式登记manual-only");
+  return category;
+}
+
+function executionInventory(groups) {
+  const result = { ciEligible: { groups: 0, files: 0, tests: 0 }, manualOnly: { groups: 0, files: 0, tests: 0 } };
+  for (const group of groups) {
+    const bucket = ciExecutionFor(group) === "automatic" ? result.ciEligible : result.manualOnly;
+    bucket.groups += 1; bucket.files += group.testFiles?.length ?? 0; bucket.tests += group.pendingTests;
+  }
+  return result;
+}
+
 function fail(message) {
   throw new Error(message);
 }
@@ -223,6 +241,7 @@ function validateManifest(manifest) {
     fail("coveredGroups 不能为空");
   }
   for (const group of manifest.coveredGroups) {
+    ciExecutionFor(group);
     if (!group.id || seenGroupIds.has(group.id)) {
       fail(`coveredGroups id 缺失或重复：${group.id ?? "missing"}`);
     }
@@ -271,6 +290,15 @@ function validateManifest(manifest) {
   }
 
   assertRunGatedPgSpecsRegistered(seenPaths);
+
+  const execution = executionInventory(manifest.coveredGroups);
+  for (const category of ["ciEligible", "manualOnly"]) {
+    for (const count of ["groups", "files", "tests"]) {
+      if (manifest.executionInventory?.[category]?.[count] !== execution[category][count]) {
+        fail(`CI执行分类库存漂移：${category}.${count}`);
+      }
+    }
+  }
 
   const derived = {
     pendingFiles: seenPaths.size,
@@ -627,6 +655,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
   const coveredGroups = selectCoveredGroups(manifest, options.groups);
   const coverage = selectedCoverage(coveredGroups);
   if (coveredGroups.length === 1 && coveredGroups[0].id === TASK01_GROUP) {
+    if (sourceEnv.GITHUB_ACTIONS === "true") fail("任务01仅限本机独立授权，禁止GitHub Actions自动执行");
     // The operator owns its exact source/dependency/build/TLS/ACL admissions.
     // No generic build, Docker discovery, temporary resource or SQL precedes it.
     const environment = { PATH: sourceEnv.PATH ?? "", LANG: "C", LC_ALL: "C", NODE_ENV: "test",
@@ -635,7 +664,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     await runCommand(resolved.command, resolved.args, { env: environment, forwardOutput: true });
     return { status: "task01-operator-completed", scope: "first-case-tracer-only", candidateSha: options.candidateSha,
       driverReceiptPath: path.join(options.task01["--task01-artifacts"], "task01-receipt.json"),
-      coveredTests: 1, fullDynamicGate: false };
+      coveredTests: 1, fullDynamicGate: false, executionInventory: executionInventory(coveredGroups), ciExecution: "manual-only" };
   }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-gate-")
@@ -711,6 +740,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       containerImageId: dockerReceipt.imageId,
       coveredTests: coverage.coveredTests,
       coveredFiles: coverage.coveredFiles,
+      executionInventory: executionInventory(coveredGroups),
       remainingTests: manifest.inventory.remainingTests,
       remainingFiles: manifest.inventory.remainingFiles,
       groups: groupReceipts
@@ -737,6 +767,7 @@ function preview(manifest, validation, options) {
     gate: manifest.id,
     mode: options.mode,
     executed: false,
+    executionInventory: executionInventory(coveredGroups),
     manifestValid: true,
     migrationCount: validation.migrationCount,
     terminalMigration: validation.terminalMigration,
@@ -751,6 +782,7 @@ function preview(manifest, validation, options) {
   if (options.mode === "list") {
     payload.coveredGroups = coveredGroups.map((group) => ({
       id: group.id,
+      ciExecution: ciExecutionFor(group),
       pendingTests: group.pendingTests,
       testFiles: group.testFiles.map((file) => file.path),
       runner: group.runner

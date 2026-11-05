@@ -699,8 +699,21 @@
       "state": "executable_local_runner",
       "issue": 383,
       "executionStatus": "NOT_EXECUTED",
-      "scope": "first-case-tracer-only; explicit separate authorization and immutable inputs required"
+      "scope": "first-case-tracer-only; explicit separate authorization and immutable inputs required",
+      "ciExecution": "manual-only"
     }
   ],
-  "remainingFiles": []
+  "remainingFiles": [],
+  "executionInventory": {
+    "ciEligible": {
+      "groups": 22,
+      "files": 77,
+      "tests": 511
+    },
+    "manualOnly": {
+      "groups": 1,
+      "files": 1,
+      "tests": 1
+    }
+  }
 }
