@@ -543,11 +543,8 @@ export function createContractBillFocusController(
 
   function syncBill(nextBill: WorkbenchBill) {
     const bindings = nextBill.acknowledgedRowKeys ?? {};
-    if (lastImport.value) for (const row of lastImport.value.before) {
-      if (!row.rowKey && bindings[row.clientRowKey]) { row.rowKey = bindings[row.clientRowKey]; delete row.restoreRef; delete row.restoreOriginalValues; }
-      const deletion = nextBill.acknowledgedDeletions?.find(ref => ref.oldRowKey === row.rowKey);
-      if (deletion) { row.restoreRef = { saveIntentKey: deletion.saveIntentKey, oldRowKey: deletion.oldRowKey }; row.restoreOriginalValues = JSON.parse(JSON.stringify(deletion.originalValues)) as Record<string, unknown>; delete row.rowKey; }
-    }
+    if (lastImport.value) lastImport.value.before = lastImport.value.before.map(row =>
+      reconcileUndoRowReceipt(row, bindings, nextBill.acknowledgedDeletions));
     const nextSnapshot = cloneBill(nextBill);
     const nextRows = fromWorkbenchBill(nextSnapshot);
     billSnapshot.value = nextSnapshot;
@@ -706,6 +703,26 @@ function importCandidateRow(value: unknown): ContractBillCandidateRow | null {
       ])
     )
   };
+}
+
+function reconcileUndoRowReceipt(
+  row: ContractBillCandidateRow,
+  bindings: Record<string, string>,
+  deletions: WorkbenchBill["acknowledgedDeletions"]
+): ContractBillCandidateRow {
+  const next = { ...row };
+  if (!next.rowKey && bindings[next.clientRowKey]) {
+    next.rowKey = bindings[next.clientRowKey];
+    delete next.restoreRef;
+    delete next.restoreOriginalValues;
+  }
+  const deletion = deletions?.find(ref => ref.oldRowKey === next.rowKey);
+  if (deletion) {
+    next.restoreRef = { saveIntentKey: deletion.saveIntentKey, oldRowKey: deletion.oldRowKey };
+    next.restoreOriginalValues = JSON.parse(JSON.stringify(deletion.originalValues)) as Record<string, unknown>;
+    delete next.rowKey;
+  }
+  return next;
 }
 
 function cloneRows(
@@ -1028,11 +1045,9 @@ watch(
   () => props.bill,
   (bill) => {
     const bindings = bill.acknowledgedRowKeys ?? {};
-    if (deletedRows.value) for (const { row } of deletedRows.value) {
-      if (!row.rowKey && bindings[row.clientRowKey]) { row.rowKey = bindings[row.clientRowKey]; delete row.restoreRef; delete row.restoreOriginalValues; }
-      const deletion = bill.acknowledgedDeletions?.find(ref => ref.oldRowKey === row.rowKey);
-      if (deletion) { row.restoreRef = { saveIntentKey: deletion.saveIntentKey, oldRowKey: deletion.oldRowKey }; row.restoreOriginalValues = JSON.parse(JSON.stringify(deletion.originalValues)) as Record<string, unknown>; delete row.rowKey; }
-    }
+    if (deletedRows.value) deletedRows.value = deletedRows.value.map(entry => ({
+      ...entry, row: reconcileUndoRowReceipt(entry.row, bindings, bill.acknowledgedDeletions)
+    }));
     controller.syncBill(bill);
     const currentKeys = new Set(controller.rows.value.map(row => row.clientRowKey));
     selectedKeys.value = selectedKeys.value.filter(key => currentKeys.has(key));

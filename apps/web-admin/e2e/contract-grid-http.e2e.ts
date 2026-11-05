@@ -141,6 +141,41 @@ test("keeps later input dirty across a delayed acknowledgement and retains a new
   await expect(page.getByTestId("contract-draft-save-status")).toContainText("已保存");
 });
 
+for (const failure of ["connection", "5xx"] as const) {
+  test(`retries after a ${failure} capability preflight failure without inventing an unknown write`, async ({ page, context, request }) => {
+    const session = await (await request.get("/api/__grid_fixture/session")).json();
+    const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+    const writes: string[] = [];
+    const lookups: string[] = [];
+    page.on("request", outgoing => {
+      if (outgoing.method() === "PUT" && outgoing.url().endsWith("/contract-drafts/grid-version")) writes.push(outgoing.postDataJSON().idempotencyKey);
+      if (outgoing.url().includes("/save-requests/")) lookups.push(outgoing.url());
+    });
+    await page.goto("/合同工作台/grid-contract?versionId=grid-version");
+    const save = page.getByRole("button", { name: "保存草稿", exact: true });
+    await expect(save).toBeEnabled();
+    expect((await request.post("/api/__grid_fixture/fail-next-workbench-response", { headers, data: { mode: failure } })).status()).toBe(200);
+    const name = page.getByPlaceholder("请填写合同名称", { exact: true });
+    const input = `能力读取${failure}断线后保留的输入`;
+    await name.fill(input);
+    await expect(page.getByTestId("contract-draft-save-error")).toBeVisible();
+    expect(writes).toHaveLength(0);
+    await expect(save).toBeEnabled();
+    await expect(page.getByRole("button", { name: "核对保存结果", exact: true })).toHaveCount(0);
+    await expect(name).toHaveValue(input);
+    await context.setOffline(true);
+    await context.setOffline(false);
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.getByTestId("contract-draft-save-receipt")).toContainText("修订 2");
+    const saved = await (await request.get("/api/contract-drafts/grid-version/workbench", { headers })).json();
+    expect(saved.version.draftRevision).toBe(2);
+    expect(saved.draft.contractName).toBe(input);
+    expect(writes).toHaveLength(1);
+    expect(lookups).toHaveLength(0);
+  });
+}
+
 test("checks a committed save with a lost response before permitting another write", async ({ page, request }) => {
   const session = await (await request.get("/api/__grid_fixture/session")).json();
   const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };

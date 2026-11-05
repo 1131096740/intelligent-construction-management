@@ -118,6 +118,7 @@ let delayNextSaveResponse = false;
 let delayNextPreviewResponse = false;
 let heldPreviewResponse = null;
 let dropNextSaveResponse = false;
+let nextWorkbenchResponseFailure = null;
 let dropNextFileResponse = false;
 let heldSaveResponse = null;
 let holdNextSaveRequest = false;
@@ -164,6 +165,7 @@ async function main() {
       heldSaveResponse = null;
       delayNextSaveResponse = false;
       dropNextSaveResponse = false;
+      nextWorkbenchResponseFailure = null;
       dropNextFileResponse = false;
       holdNextSaveRequest = false;
       heldSaveRequest = null;
@@ -251,6 +253,28 @@ async function main() {
           dropNextFileResponse = false;
           request.socket.destroy();
           return response;
+        }
+        return end.apply(response, args);
+      };
+    }
+    if (request.method === "POST" && request.path === "/__grid_fixture/fail-next-workbench-response") {
+      if (!["connection", "5xx"].includes(request.body?.mode)) return response.status(400).json({ message: "未知本地读取故障类型" });
+      nextWorkbenchResponseFailure = request.body.mode;
+      return response.json({ status: "next_completed_workbench_response_will_fail" });
+    }
+    if (request.method === "GET" && request.path === "/contract-drafts/grid-version/workbench") {
+      const end = response.end;
+      response.end = function (...args) {
+        if (nextWorkbenchResponseFailure && response.statusCode >= 200 && response.statusCode < 300) {
+          const failure = nextWorkbenchResponseFailure;
+          nextWorkbenchResponseFailure = null;
+          // Read-only domain work completed normally. Fault only its transport
+          // response; never replace a successful write with fabricated facts.
+          if (failure === "connection") { request.socket.destroy(); return response; }
+          response.statusCode = 503;
+          response.removeHeader("content-length");
+          response.setHeader("content-type", "application/json; charset=utf-8");
+          return end.call(response, JSON.stringify({ message: "本地合成能力读取服务暂不可用" }));
         }
         return end.apply(response, args);
       };

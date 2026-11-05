@@ -4756,7 +4756,7 @@
         "event": "call",
         "handler": "manualSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 208,
+        "sourceLine": 210,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4823,7 +4823,7 @@
         "event": "call",
         "handler": "queueContractDraftPreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 222,
+        "sourceLine": 226,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -8704,7 +8704,7 @@
         "event": "call",
         "handler": "submitContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 235,
+        "sourceLine": 239,
         "sourceColumn": 0
       },
       "semantic": "business_write",

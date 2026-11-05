@@ -194,7 +194,8 @@ async function takeOverContractDraftEditLeaseWithCapability(
 async function autoSaveContractDraftAggregateWithCapability(
   contractVersionId: string,
   leaseToken: string,
-  payload: SaveContractDraftAggregatePayload
+  payload: SaveContractDraftAggregatePayload,
+  beforeDispatch: () => void
 ) {
   await assertCurrentContractDraftOperationCapability(
     contractVersionId,
@@ -202,13 +203,15 @@ async function autoSaveContractDraftAggregateWithCapability(
     "save_contract_draft",
     "当前用户不能保存合同草稿"
   );
+  beforeDispatch();
   return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
 }
 
 async function manualSaveContractDraftAggregateWithCapability(
   contractVersionId: string,
   leaseToken: string,
-  payload: SaveContractDraftAggregatePayload
+  payload: SaveContractDraftAggregatePayload,
+  beforeDispatch: () => void
 ) {
   await assertCurrentContractDraftOperationCapability(
     contractVersionId,
@@ -216,6 +219,7 @@ async function manualSaveContractDraftAggregateWithCapability(
     "save_contract_draft",
     "当前用户不能保存合同草稿"
   );
+  beforeDispatch();
   return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
 }
 
@@ -2398,23 +2402,35 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
 
     let receivedSaveResult = false;
+    let saveDispatched = false;
     lastSaveValidationRejected.value = false;
     try {
       const requestFingerprint = await transportPayloadFingerprint(payload);
       const currentIntent = aggregateSaveState.value;
       if (disposed || contractVersionId.value !== savingVersionId || leaseToken !== token || currentIntent.kind !== "saving" || currentIntent.idempotencyKey !== savingState.idempotencyKey) return false;
-      pendingSaveIntent.value = { contractVersionId: savingVersionId, requestFingerprint, state: savingState };
-      writeBackup();
+      const beforeDispatch = () => {
+        const current = aggregateSaveState.value;
+        if (disposed || contractVersionId.value !== savingVersionId || leaseToken !== token || current.kind !== "saving" || current.idempotencyKey !== savingState.idempotencyKey) {
+          throw new ContractDraftAuthorityRefreshRequiredError("当前合同编辑状态已变化，请保留输入并刷新后重试");
+        }
+        pendingSaveIntent.value = { contractVersionId: savingVersionId, requestFingerprint, state: savingState };
+        writeBackup();
+        // Only a completed preflight/intent freeze reaches the write API call.
+        // An exception from this synchronous hook never marks a write attempted.
+        saveDispatched = true;
+      };
       const result = payload.saveKind === "auto"
         ? await autoSaveContractDraftAggregateWithCapability(
             savingVersionId,
             token,
-            payload
+            payload,
+            beforeDispatch
           )
         : await manualSaveContractDraftAggregateWithCapability(
             savingVersionId,
             token,
-            payload
+            payload,
+            beforeDispatch
           );
       receivedSaveResult = true;
       // A late response from another route must never mutate the newly loaded
@@ -2484,10 +2500,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
           saveError.value = error.message;
         } else {
           const status = typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
-          const rejected = typeof status === "number" && status >= 400 && status < 500;
+          const rejected = !saveDispatched || (typeof status === "number" && status >= 400 && status < 500);
           pendingSaveResult.value = !rejected && pendingSaveIntent.value !== null;
           if (rejected) pendingSaveIntent.value = null;
-          lastSaveValidationRejected.value = status === 400;
+          lastSaveValidationRejected.value = saveDispatched && status === 400;
           const message = pendingSaveResult.value
             ? "保存结果待核对，当前输入已保留；请先核对结果，暂不重复保存"
             : error instanceof Error ? error.message : "合同草稿保存失败";
