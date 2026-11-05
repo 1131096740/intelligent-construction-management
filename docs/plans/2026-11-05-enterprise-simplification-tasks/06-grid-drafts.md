@@ -1,6 +1,6 @@
 # 06：合同草稿先实现统一表格与保存导入
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#388](https://github.com/1131096740/intelligent-construction-management/issues/388) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置#384按本地阶段完成/PG待验关闭，已[领取#388](https://github.com/1131096740/intelligent-construction-management/issues/388#issuecomment-6656214904)。用户确认草稿公开HTTP、实际Excel导入和桌面/手机真实浏览器表格，连接本地HTTP与合成服务端数据，覆盖键盘/批量/撤销/保存断线/导入错误；不以原型localStorage代替后端。真实PG案例只准备；资源、迁移、真实短信和部署/生产写仍无授权，16/42/44硬门保留。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

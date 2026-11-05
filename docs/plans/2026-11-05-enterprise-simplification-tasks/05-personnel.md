@@ -1,6 +1,6 @@
 # 05：统一岗位配置、自审和委托权限
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#387](https://github.com/1131096740/intelligent-construction-management/issues/387) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置#385本地阶段和#386确认公开边界已关闭，已[领取#387](https://github.com/1131096740/intelligent-construction-management/issues/387#issuecomment-6656211089)。用户确认人员/项目岗位、委托、自审及权限的公开HTTP、公共服务与系统管理/审批UI边界，以合成数据库和短信网关覆盖跨项目权限、原因+本人密码、委托竞办及停用撤权；真实PG案例只准备。资源、迁移、真实短信、部署/生产写仍无授权，16/42/44硬门保留。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
