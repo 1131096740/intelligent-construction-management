@@ -1,7 +1,7 @@
 {
   "issue": 390,
   "task": "08",
-  "status": "technical-matrix-measured / independent-review-pending / formal-master-not-certified",
+  "status": "compact-party-P1-repaired / fresh-independent-review-pending / formal-master-not-certified",
   "sourceBase": "f352d187b720a2e8231874775616c24e91eb3bd8",
   "method": "DOCX-preserving candidate public CLI; historical default LibreOffice rejected; explicit pinned offline docx4j adapter under independent fidelity checks",
   "sourceManifestSha256": "c8790a0375224d3485695394eb059451cec07e1b148077980e77292a6ad6d56b",
@@ -1853,7 +1853,181 @@
       ],
       "technicalDecision": "OOXML-preserving anchored document + explicit pinned offline docx4j feasible on reviewed8 packages with approved source-normalization guards; not a fullWebeditor/productservice/universalWordloader/formalmastercertification",
       "nextFormalTasks": "10 needs serverrevision/authority/persistence/privatefiles/responsiveeditor/currentversionexport/fullsource-styleacceptance;11 needs supervisor-approved template mappings/version isolation/retirement and actual8motherstyle approval; no dependency-edge or originalticketcriteria changed",
-      "githubStatus": "task08open pendingindependentreviews; no push/close/integrationmerge bythisagent"
+      "githubStatus": "task08open pendingindependentreviews; no push/close/integrationmerge bythisagent",
+      "stage": "819f3e25 pre-review historical candidate; partygapassumption rejected by SpecP1; superseded by compactPartyP1Repair"
+    },
+    "compactPartyP1Repair": {
+      "status": "compact-party-P1-repaired / fresh-independent-review-pending / formal-master-not-certified",
+      "findingSource": "/private/tmp/jg-enterprise-task08-spec-819f3e25.md",
+      "findingSourceSha256": "f4de2dd2bffb4553a8c5fbd83bf23b341d37e2776a60eda0358820fdd640a466",
+      "finding": "3compact originalabsence ofpartyanchors was not valid reason to omit user-supplied parties or defer keycapability10/11",
+      "sourceInspection": "all3 original document and otherwordparts contain no parties/signingnames; no oldnamesconflict to reuse",
+      "approvedMapping": "neutral甲方/乙方 controlled14ptFangSong+Times paragraphs after unique originalnumber directly before originalamount; no inferredlessor/buyer/contractorroles; no sidecar/appendix/signaturefabrication",
+      "renderGuards": "explicitnonempty bothparties, uniqueexactnumber/nextamount, no existingunreviewedpartytext; conflictingorambiguous positions reject",
+      "syncGuards": "both existingfieldanchors updated; blank/nonstringpartysync rejects; ordinaryeditingcontrolledpartyparagraph refused by existingpublicboundary",
+      "actualSixNewExports": [
+        {
+          "index": 3,
+          "template": "equipment-rental-v1.docx",
+          "variant": "before",
+          "pages": 1,
+          "docxSha256": "0309a065e296322f7cf87e2c5f210f3de16fb0a19958dc3982dc0bae4cf4c22a",
+          "pdfSha256": "bf33ff7ae88bc0dbd4f1b32f2f234d072d01db546fec1a551ed57d5095db6546",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 4,
+          "template": "equipment-rental-v1.docx",
+          "variant": "after",
+          "pages": 1,
+          "docxSha256": "5f06d295ad1c6c62574da3e47d4f42a7a83405a9c39d2bb99a97abff196deac9",
+          "pdfSha256": "7d8d55220003e15caac4ff5062364825c4c365de539c15335def54dd4de4e5a7",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 9,
+          "template": "labor-subcontract-v1.docx",
+          "variant": "before",
+          "pages": 1,
+          "docxSha256": "de82da98e3b1f3c87d90fcf4188cfbe398accebd9cb74f586b839d23ff9d639e",
+          "pdfSha256": "3d1a2fdbf685d59eb5964b5eadb05b03747206ecf5448623b4020563de8539e3",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 10,
+          "template": "labor-subcontract-v1.docx",
+          "variant": "after",
+          "pages": 1,
+          "docxSha256": "a658e6f110f0283c49d9a8cb60241aa0e255bf979b839a2b5b3c195b5d5a516b",
+          "pdfSha256": "4bbaa51680089e62070e3da992ec7af3d59b461bfe0116ee2ca3a4646b6b1cc7",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 13,
+          "template": "material-purchase-v1.docx",
+          "variant": "before",
+          "pages": 1,
+          "docxSha256": "f7dc58b1b74dc9d7d25942be67bc521696cc9a9908f8ce09c9cce015d56f5d6b",
+          "pdfSha256": "93876e2a57be3537d5e56c334822d4ced8cd3064ff72beffdc71ce649ee80e6c",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        },
+        {
+          "index": 14,
+          "template": "material-purchase-v1.docx",
+          "variant": "after",
+          "pages": 1,
+          "docxSha256": "a684513ac30ba408c2d859e047d01e8ad1170f8eba6c19d652940effe29f7026",
+          "pdfSha256": "1552307feeb074d987dd3c728868df0446221367ed42c7e9c78f9595062ff90d",
+          "checks": {
+            "bothPartiesInActualDocxBody": true,
+            "bothPartiesInActualPdf": true,
+            "uniqueMappedBodyPosition": true,
+            "noStaleNamesAfterSync": true,
+            "manualClauseSurvives": true,
+            "partyFontExactFangSongFourteen": true,
+            "originalParagraphsUnchanged": true,
+            "noMissingText": true,
+            "noBadGlyph": true,
+            "embedded": true,
+            "a4": true,
+            "noOutpageText": true,
+            "originalSourceHasNoSigningBlock": true
+          }
+        }
+      ],
+      "sixResultsSha256": "0c8c4ac7846f0cf881ea25d5532810bd88236e33491a14de7c557bc4c320f7a0",
+      "allOriginal8SourceBytesUnchanged": true,
+      "bothPartyCoverageEffectiveCases": 18,
+      "effectiveCurrentMatrix": "/private/tmp/jg-task08-document-receipts-20261105/task08-party-fixed-effective-matrix-current.json",
+      "effectiveCurrentMatrixSha256": "a1923a4ac3e037bab59c41fef23e1a1e2113502183dfdb4b90e54a3b5f299f33",
+      "other12CurrentDocxAllPartEquivalence": {
+        "path": "/private/tmp/jg-task08-document-receipts-20261105/compact-parties-other12-docx-equivalence/receipt.json",
+        "sha256": "a112400e6e3ece54c4db31a245b7e2724ff5f0add462c06c4157350b424a899f",
+        "newPdfExports": 0
+      },
+      "lastExactAmountPositionGuard": "publicRED56/GREEN57; currentall18DOCXpartbyteequal to6new+12retainedPDFinputs; no furtherPDF",
+      "final18CurrentDocxEquivalenceSha256": "dc538697b7ef938ff4b141e92a20c712d0cf25f060ae71cf7494b2658aa4ebf7",
+      "rendererSha256": "7429c4b0800c3cc2243be75d8386917d4be43d14fc6b9d8d92277f323a5f1b28",
+      "focusedTests": {
+        "passed": 17,
+        "path": "/private/tmp/jg-task08-document-receipts-20261105/58-party-fix-final-current-seventeen-tests.log",
+        "sha256": "13ad872520a5bf56d4d645e17780f514881e61ea8ac57384b8395dd7f49f9eaa",
+        "newPdfConversions": 0
+      },
+      "oldFailedSixPreserved": "prioractualsix that omitted names and oldsync that omitted partyupdates retained; pre-review819receipt not overwritten",
+      "remainingSourceLimits": "compact originalcover/titlefont/signingregion absent; realinheritedstyle differences and nativeWord/manualmasterapproval limits persist; partycapability no longer deferred",
+      "reviews": "819 Standards0/SpecP1 retained; newSHA needs freshdualreview; no claim P1 independentlyclosed",
+      "noRemoteOrResourceChanges": true
     }
   }
 }

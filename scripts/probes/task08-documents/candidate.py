@@ -249,6 +249,34 @@ def render(parts, request, source_name=None):
         if not name.startswith("word/") or not name.endswith(".xml"):
             continue
         root = E.fromstring(parts[name], E.XMLParser(resolve_entities=False, no_network=True))
+        if name == "word/document.xml" and source_name in {"equipment-rental-v1.docx", "labor-subcontract-v1.docx", "material-purchase-v1.docx"}:
+            # These reviewed compact sources have no parties or signing block.
+            # Add authoritative parties in the contract body, not a sidecar;
+            # neutral labels deliberately infer no unreviewed legal role.
+            for key in ["甲方名称", "乙方名称"]:
+                if not isinstance(values.get(key), str) or not values[key].strip():
+                    raise ValueError("explicit nonempty compact party fields required")
+            body = root.find(W + "body")
+            number = "临时编号：{草稿编号}" if source_name == "material-purchase-v1.docx" else "合同编号：{草稿编号}"
+            anchors = [p for p in body.findall(W + "p") if text(p) == number]
+            if len(anchors) != 1 or "甲方" in text(root) or "乙方" in text(root):
+                raise ValueError("reviewed compact party body mapping missing or conflicting")
+            following = body[body.index(anchors[0]) + 1] if body.index(anchors[0]) + 1 < len(body) else None
+            if following is None or following.tag != W + "p" or text(following) != SEMANTIC_TOTAL_SOURCE[source_name]:
+                raise ValueError("reviewed compact party amount position changed")
+            previous = anchors[0]
+            for label, key in [("甲方：", "甲方名称"), ("乙方：", "乙方名称")]:
+                paragraph = E.Element(W + "p")
+                props = anchors[0].find(W + "pPr")
+                if props is not None:
+                    paragraph.append(deepcopy(props))
+                run = E.SubElement(paragraph, W + "r")
+                run_props = E.SubElement(run, W + "rPr")
+                E.SubElement(run_props, W + "rFonts", {W + "ascii": "Times New Roman", W + "hAnsi": "Times New Roman", W + "eastAsia": "仿宋_GB2312"})
+                E.SubElement(run_props, W + "sz").set(W + "val", "28")
+                E.SubElement(run, W + "t").text = label + "{" + key + "}"
+                previous.addnext(paragraph)
+                previous = paragraph
         if semantic and name == "word/document.xml":
             literal = SEMANTIC_TOTAL_SOURCE.get(source_name)
             if not literal or text(root).count(literal) != 1:
@@ -345,6 +373,9 @@ def render(parts, request, source_name=None):
 def revise(parts, request):
     root = E.fromstring(parts["word/document.xml"], E.XMLParser(resolve_entities=False, no_network=True))
     updates = dict(request.get("fields", {}))
+    for key in ["甲方名称", "乙方名称"]:
+        if key in updates and (not isinstance(updates[key], str) or not updates[key].strip()):
+            raise ValueError("explicit nonempty party fields required")
     tags = set(root.xpath(".//w:sdtPr/w:tag/@w:val", namespaces=NS))
     dependent = {"合同金额", "合同金额大写", "语义.金额展示", "语义.含税合计数值", "语义.不含税合计数值", "计价方式", "税率", "发票类型"}
     if "jg:key:语义.不含税合计数值" in tags:

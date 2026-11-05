@@ -13,6 +13,89 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 class CandidateCLI(unittest.TestCase):
+    def test_three_compact_documents_sync_both_parties_without_losing_manual_clause(self):
+        original = Path("/private/tmp/jg-task08-document-receipts-20261105/task08-final-effective-matrix.json")
+        matrix = json.loads(original.read_text())
+        labels = {name: ("甲方：", "乙方：") for name in ["equipment-rental-v1.docx", "labor-subcontract-v1.docx", "material-purchase-v1.docx"]}
+        for name, roles in labels.items():
+            with self.subTest(template=name), tempfile.TemporaryDirectory(prefix="task08-compact-parties-") as tmp:
+                tmp = Path(tmp)
+                case = next(x for x in matrix["cases"] if x["template"] == name and x["variant"] == "before")
+                # Existing synthetic render inputs already explicitly supplied
+                # both parties; their prior silent omission is the regression.
+                folder = Path(case["pdf"]).parent
+                request = json.loads((folder / "render.json").read_text())
+                path = tmp / "request.json"
+                path.write_text(json.dumps(request))
+                first = tmp / "first.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(path), "--output", str(first)], check=True)
+                with ZipFile(first) as z:xml = ET.fromstring(z.read("word/document.xml"))
+                paragraphs = ["".join(p.itertext()) for p in xml.findall("w:body/w:p", NS)]
+                for role, value in zip(roles, ["合成甲方一", "合成乙方一"]):self.assertIn(role + value, paragraphs)
+                number_index = next(i for i, value in enumerate(paragraphs) if value.startswith(("合同编号：", "临时编号：")))
+                self.assertEqual(paragraphs[number_index + 1:number_index + 3], ["甲方：合成甲方一", "乙方：合成乙方一"])
+                self.assertTrue(paragraphs[number_index + 3].startswith("合同金额"))
+                tag_values = [x.get("{" + NS["w"] + "}val") for x in xml.findall(".//w:sdtPr/w:tag", NS)]
+                self.assertEqual(tag_values.count("jg:key:甲方名称"), 1)
+                self.assertEqual(tag_values.count("jg:key:乙方名称"), 1)
+                anchor = paragraphs[1] if "文档水印" in paragraphs[0] or "技术验证草稿" in paragraphs[0] else paragraphs[0]
+                path.write_text(json.dumps({"insert": {"afterText": anchor, "text": "新增约定：夜间作业须双方书面确认。"}}))
+                inserted = tmp / "inserted.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(first), "--request", str(path), "--output", str(inserted)], check=True)
+                path.write_text(json.dumps({"edit": {"exactText": "新增约定：夜间作业须双方书面确认。", "replacement": "新增约定：夜间作业须提前两天书面确认。"}}))
+                edited = tmp / "edited.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(inserted), "--request", str(path), "--output", str(edited)], check=True)
+                path.write_text(json.dumps({"fields": {"甲方名称": "合成甲方二", "乙方名称": "合成乙方二"}}))
+                after = tmp / "after.docx"
+                subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(edited), "--request", str(path), "--output", str(after)], check=True)
+                with ZipFile(after) as z:actual = "".join(ET.fromstring(z.read("word/document.xml")).itertext())
+                self.assertIn(roles[0] + "合成甲方二", actual)
+                self.assertIn(roles[1] + "合成乙方二", actual)
+                self.assertNotIn("合成甲方一", actual)
+                self.assertNotIn("合成乙方一", actual)
+                self.assertIn("夜间作业须提前两天书面确认", actual)
+                path.write_text(json.dumps({"fields": {"甲方名称": ""}}))
+                rejected = tmp / "empty-party.docx"
+                result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "revise", "--document", str(after), "--request", str(path), "--output", str(rejected)], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(rejected.exists())
+
+    def test_compact_party_mapping_rejects_missing_values_and_ambiguous_body(self):
+        from copy import deepcopy
+        name = "equipment-rental-v1.docx"
+        baseline = Path("/private/tmp/jg-task08-document-receipts-20261105/compact-known-package-fix-single/render.json")
+        request = json.loads(baseline.read_text())
+        with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
+        for variant in ["empty-party", "duplicate-number", "existing-party", "amount-position"]:
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory(prefix="task08-party-guard-") as tmp:
+                tmp = Path(tmp)
+                current = json.loads(json.dumps(request))
+                xml = ET.fromstring(parts["word/document.xml"])
+                body = xml.find("w:body", NS)
+                if variant == "empty-party":current["fields"]["乙方名称"] = None
+                elif variant == "duplicate-number":
+                    number = next(p for p in body.findall("w:p", NS) if "".join(p.itertext()) == "合同编号：{草稿编号}")
+                    body.insert(1, deepcopy(number))
+                elif variant == "existing-party":
+                    party = ET.Element("{" + NS["w"] + "}p")
+                    ET.SubElement(ET.SubElement(party, "{" + NS["w"] + "}r"), "{" + NS["w"] + "}t").text = "甲方：不得忽略的原值"
+                    body.insert(1, party)
+                else:
+                    number = next(p for p in body.findall("w:p", NS) if "".join(p.itertext()) == "合同编号：{草稿编号}")
+                    extra = ET.Element("{" + NS["w"] + "}p")
+                    ET.SubElement(ET.SubElement(extra, "{" + NS["w"] + "}r"), "{" + NS["w"] + "}t").text = "未审位置变化"
+                    body.insert(list(body).index(number) + 1, extra)
+                source = tmp / name
+                with ZipFile(source, "w") as z:
+                    for n, data in parts.items():z.writestr(n, ET.tostring(xml) if n == "word/document.xml" else data)
+                path = tmp / "request.json"
+                path.write_text(json.dumps(current))
+                output = tmp / "rejected.docx"
+                result = subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(source), "--request", str(path), "--output", str(output)], capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b"compact party", result.stderr)
+                self.assertFalse(output.exists())
+
     def test_material_bill_table_minimum_nine_point_keeps_grid_and_signature(self):
         source = HERE / "samples/material-purchase-real-v1.docx"
         original_case = Path("/private/tmp/jg-task08-document-receipts-20261105/public-matrix15-resume-03-20261105/17-material-purchase-real-v1-long45")
@@ -39,7 +122,7 @@ class CandidateCLI(unittest.TestCase):
                 with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
                 texts = "".join("".join(ET.fromstring(data).itertext()) for n, data in parts.items() if n.startswith("word/") and n.endswith(".xml"))
                 request = tmp / "request.json"
-                request.write_text(json.dumps({"fields": {k: "合成值" for k in re.findall(r"\{([^{}#/]+)\}", texts)}, "lists": {k: [] for k in re.findall(r"\{#([^{}]+)\}", texts)}}))
+                request.write_text(json.dumps({"fields": {**{k: "合成值" for k in re.findall(r"\{([^{}#/]+)\}", texts)}, "甲方名称": "合成甲方一", "乙方名称": "合成乙方一"}, "lists": {k: [] for k in re.findall(r"\{#([^{}]+)\}", texts)}}))
                 output = tmp / "actual.docx"
                 subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(request), "--output", str(output)], check=True)
                 with ZipFile(output) as z:
@@ -66,7 +149,7 @@ class CandidateCLI(unittest.TestCase):
                 with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
                 texts = "".join("".join(ET.fromstring(data).itertext()) for n, data in parts.items() if n.startswith("word/") and n.endswith(".xml"))
                 request = tmp / "render.json"
-                request.write_text(json.dumps({"fields": {k: "合成值" for k in re.findall(r"\{([^{}#/]+)\}", texts)}, "lists": {k: [] for k in re.findall(r"\{#([^{}]+)\}", texts)}}))
+                request.write_text(json.dumps({"fields": {**{k: "合成值" for k in re.findall(r"\{([^{}#/]+)\}", texts)}, "甲方名称": "合成甲方一", "乙方名称": "合成乙方一"}, "lists": {k: [] for k in re.findall(r"\{#([^{}]+)\}", texts)}}))
                 output = tmp / "actual.docx"
                 subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(request), "--output", str(output)], check=True)
                 original_rels = ET.fromstring(parts["word/_rels/document.xml.rels"])
@@ -136,7 +219,7 @@ class CandidateCLI(unittest.TestCase):
                 with ZipFile(HERE / "samples" / name) as z:parts = {n: z.read(n) for n in z.namelist()}
                 texts = "".join("".join(ET.fromstring(data).itertext()) for n, data in parts.items() if n.startswith("word/") and n.endswith(".xml"))
                 request = tmp / "render.json"
-                request.write_text(json.dumps({"fields": {key: "合成值" for key in re.findall(r"\{([^{}#/]+)\}", texts)}, "lists": {key: [] for key in re.findall(r"\{#([^{}]+)\}", texts)}}))
+                request.write_text(json.dumps({"fields": {**{key: "合成值" for key in re.findall(r"\{([^{}#/]+)\}", texts)}, "甲方名称": "合成甲方一", "乙方名称": "合成乙方一"}, "lists": {key: [] for key in re.findall(r"\{#([^{}]+)\}", texts)}}))
                 actual = tmp / "actual.docx"
                 subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(HERE / "samples" / name), "--request", str(request), "--output", str(actual)], check=True)
                 with ZipFile(actual) as z:
@@ -278,6 +361,7 @@ class CandidateCLI(unittest.TestCase):
             with self.subTest(rows=count), tempfile.TemporaryDirectory(prefix="task08-loop-") as tmp:
                 tmp = Path(tmp)
                 fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", source_text)}
+                fields.update({"甲方名称": "合成甲方一", "乙方名称": "合成乙方一"})
                 rows = [{"序号": str(i), "名称": f"样张行{i:03d}", "单位": "件", "数量": "1", "单价": "25.00", "含税金额": "25.00", "备注": "合成技术验证"} for i in range(1, count + 1)]
                 request = tmp / "request.json"
                 request.write_text(json.dumps({"fields": fields, "lists": {"劳务清单": rows}}))
@@ -303,6 +387,7 @@ class CandidateCLI(unittest.TestCase):
                     source_text = "".join("".join(ET.fromstring(z.read(n)).itertext()) for n in z.namelist() if n.startswith("word/") and n.endswith(".xml"))
                     styles = z.read("word/styles.xml")
                 fields = {key: "待补充" for key in re.findall(r"\{([^{}#/]+)\}", source_text)}
+                fields.update({"甲方名称": "合成甲方一", "乙方名称": "合成乙方一"})
                 lists = {key: [] for key in re.findall(r"\{#([^{}]+)\}", source_text)}
                 request = tmp / "request.json"
                 request.write_text(json.dumps({"fields": fields, "lists": lists, "pricing": {"mode": "framework", "basis": "exclusive", "total": None, "uppercase": None, "taxRate": None, "invoiceKind": None}}))
