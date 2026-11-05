@@ -219,3 +219,19 @@ test("rejects extra migration SQL even when an ignore rule hides it from Git sta
   assert.equal(result.body.code, "MIGRATION_MEMBERSHIP_MISMATCH");
   assert.equal(existsSync(f.packet), false);
 });
+
+test("replacement refs cannot seal another tree under the original candidate SHA", (t) => {
+  const f = fixture(t);
+  const original = f.git("rev-parse", "HEAD");
+  f.put("pnpm-lock.yaml", "replacement-tree-lockfile\n");
+  f.commit();
+  const replacement = f.git("rev-parse", "HEAD");
+  f.git("replace", original, replacement);
+  f.git("update-ref", "HEAD", original);
+  assert.equal(f.git("status", "--porcelain"), "");
+  assert.equal(f.git("--no-replace-objects", "show", `${original}:pnpm-lock.yaml`), "lockfileVersion: '9.0'");
+  const result = f.run("--prepare", "--output", f.packet);
+  assert.equal(result.status, 1);
+  assert.equal(result.body.code, "SOURCE_NOT_CLEAN");
+  assert.equal(existsSync(f.packet), false);
+});

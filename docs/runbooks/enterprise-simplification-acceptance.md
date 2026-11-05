@@ -40,7 +40,7 @@ SHA-256是公开内容校验，**不是批准、签名或执行凭证**。`sourc
 
 ## 响应丢失代理准备构件
 
-任务专用构件 `services/api/prisma/enterprise-task01-response-loss-proxy.cjs` 已完成合成loopback HTTP协议验证。`startResponseLossProxy({ upstreamUrl, drop: { method, path, requestId }, ... })` 返回 `url/getStatus()/close()`；合成标记头为 `x-jg-task01-synthetic-request-id`。仅在精确method/path/标记匹配时完整读取上游响应，再一次性销毁下游连接；错误不重新武装、不自动重试。后续同键请求须由调用者显式发起并正常转发。默认请求/响应上限各1MiB、截止2秒，上限16MiB/30秒、16连接；只用literal loopback随机端口，`close()`幂等终止自有活动socket及监听。
+任务专用构件 `services/api/prisma/enterprise-task01-response-loss-proxy.cjs` 已完成合成loopback HTTP协议验证。`startResponseLossProxy({ upstreamUrl, drop: { method, path, requestId }, ... })` 返回 `url/getStatus()/close()`；合成标记头为 `x-jg-task01-synthetic-request-id`。仅在精确method/path/标记匹配时完整读取上游响应，再一次性销毁下游连接；错误不重新武装、不自动重试。后续同键请求须由调用者显式发起并正常转发。默认请求/响应上限各1MiB，从连接建立起的总截止为2秒，覆盖未完成请求头、请求体、上游响应及下游交付，不在收到请求头后重新计时；上限16MiB/30秒、16连接。每个连接只办理一个请求，响应显式 `Connection: close`，不复用keep-alive连接或转发后续流水线请求；调用者的显式重放使用新连接。只用literal loopback随机端口，`close()`幂等终止自有活动socket及监听。
 
 12项真实合成HTTP协议测试通过，只证明网络时序与边界，不能证明真实资金已提交、回执唯一或数据库失败无半笔；后续受控真实HTTP/PG仍需单独验收。精确代码及测试证据见集成交接。
 

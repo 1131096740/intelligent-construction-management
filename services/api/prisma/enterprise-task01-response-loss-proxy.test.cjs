@@ -1,6 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const http = require("node:http");
+const net = require("node:net");
 const { test } = require("node:test");
 const { startResponseLossProxy } = require("./enterprise-task01-response-loss-proxy.cjs");
 
@@ -12,9 +13,9 @@ async function serverFixture(t, handler) {
   t.after(async () => { const closed = new Promise(resolve => server.close(resolve)); for (const socket of sockets) socket.destroy(); await closed; });
   return `http://127.0.0.1:${server.address().port}`;
 }
-function request(url, { method = "GET", body = "", headers = {}, onHeaders = () => {}, path } = {}) {
+function request(url, { method = "GET", body = "", headers = {}, onHeaders = () => {}, path, agent = false } = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request(url, { method, headers, agent: false, ...(path === undefined ? {} : { path }) }, res => {
+    const req = http.request(url, { method, headers, agent, ...(path === undefined ? {} : { path }) }, res => {
       onHeaders(res);
       const chunks = [];
       res.on("data", chunk => chunks.push(chunk));
@@ -221,4 +222,62 @@ test("truncated upstream responses are reported as unknown failure without raw d
   assert.deepEqual(JSON.parse(failure.body), { error: "PROXY_UPSTREAM_FAILED" });
   assert.equal((await request(`${proxy.url}/synthetic`, call)).body, "ok");
   assert.equal(calls, 2);
+});
+
+test("an incomplete first request header cannot outlive the connection deadline", async t => {
+  let calls = 0;
+  const upstream = await serverFixture(t, (_req, res) => { calls++; res.end("must not forward"); });
+  const proxy = await startResponseLossProxy({ upstreamUrl: upstream, deadlineMs: 25 });
+  t.after(() => proxy.close());
+  const socket = net.createConnection(new URL(proxy.url).port, "127.0.0.1");
+  t.after(() => socket.destroy());
+  socket.on("error", () => {});
+  const closed = new Promise(resolve => socket.once("close", () => resolve("closed")));
+  await new Promise(resolve => socket.once("connect", resolve));
+  socket.write("POST /synthetic HTTP/1.1\r\nHost: local\r\nX-Incomplete:");
+  let guard;
+  try {
+    const outcome = await Promise.race([closed, new Promise(resolve => { guard = setTimeout(() => resolve("still-open"), 150); })]);
+    assert.equal(outcome, "closed");
+    assert.equal(calls, 0);
+  } finally { clearTimeout(guard); }
+});
+
+test("keep-alive callers receive complete responses on separate bounded connections", async t => {
+  let calls = 0;
+  const upstream = await serverFixture(t, (_req, res) => { calls++; res.end(`complete-${calls}`); });
+  const proxy = await startResponseLossProxy({ upstreamUrl: upstream });
+  t.after(() => proxy.close());
+  const agent = new http.Agent({ keepAlive: true });
+  t.after(() => agent.destroy());
+  const call = { agent, headers: { connection: "keep-alive" } };
+  const first = await request(`${proxy.url}/first`, call);
+  const second = await request(`${proxy.url}/second`, call);
+  assert.equal(first.body, "complete-1");
+  assert.equal(second.body, "complete-2");
+  assert.equal(first.headers.connection, "close");
+  assert.equal(second.headers.connection, "close");
+  assert.equal(calls, 2);
+});
+
+test("a partial pipelined second header is closed without forwarding another request", async t => {
+  const seen = [];
+  const upstream = await serverFixture(t, (req, res) => { seen.push(req.url); res.end("first-complete"); });
+  const proxy = await startResponseLossProxy({ upstreamUrl: upstream, deadlineMs: 25 });
+  t.after(() => proxy.close());
+  const socket = net.createConnection(new URL(proxy.url).port, "127.0.0.1");
+  t.after(() => socket.destroy());
+  socket.on("error", () => {});
+  let received = "";
+  socket.on("data", chunk => { received += chunk.toString(); });
+  const closed = new Promise(resolve => socket.once("close", () => resolve("closed")));
+  await new Promise(resolve => socket.once("connect", resolve));
+  socket.write("GET /first HTTP/1.1\r\nHost: local\r\nConnection: keep-alive\r\n\r\nGET /second HTTP/1.1\r\nHost: local\r\nX-Incomplete:");
+  let guard;
+  try {
+    const outcome = await Promise.race([closed, new Promise(resolve => { guard = setTimeout(() => resolve("still-open"), 150); })]);
+    assert.equal(outcome, "closed");
+    assert.ok(received.includes("first-complete"));
+    assert.deepEqual(seen, ["/first"]);
+  } finally { clearTimeout(guard); }
 });

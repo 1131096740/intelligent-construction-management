@@ -12,7 +12,7 @@ function fail(code) { throw Object.assign(new Error(code), { sealCode: code }); 
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
 function git(...args) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
-  return execFileSync("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
+  return execFileSync("git", ["--no-replace-objects", "--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
     cwd: root, env, encoding: "utf8", timeout: 15_000, maxBuffer: 32 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"]
   });

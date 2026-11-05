@@ -16,29 +16,36 @@ async function startResponseLossProxy(options = {}) {
     drop = Object.freeze({ method: drop.method, path: drop.path, requestId: drop.requestId });
   }
   const sockets = new Set();
+  const connections = new WeakMap();
   const active = new Set();
   let closePromise;
   let dropState = drop ? "armed" : "disabled";
   let faultError = null;
   let upstreamStatusCode = null;
   const server = http.createServer((req, res) => {
+    const connection = connections.get(req.socket);
+    // One request per owned connection: no idle keep-alive or pipelined work.
+    if (connection.handled) { req.socket.destroy(); return; }
+    connection.handled = true;
+    res.shouldKeepAlive = false;
     const requestChunks = [];
     let size = 0;
     let done = false;
     let outgoing;
     let loseResponse = false;
-    const abort = () => { done = true; clearTimeout(timer); active.delete(abort); if (loseResponse) { dropState = "failed"; faultError = "PROXY_CLOSED"; } outgoing?.destroy(); res.destroy(); };
+    const abort = () => { if (done) return; done = true; active.delete(abort); if (loseResponse) { dropState = "failed"; faultError = "PROXY_CLOSED"; } outgoing?.destroy(); res.destroy(); };
     active.add(abort);
-    const timer = setTimeout(() => fail(504, "PROXY_DEADLINE_EXCEEDED"), deadlineMs);
+    connection.abort = abort;
+    connection.onDeadline = () => fail(504, "PROXY_DEADLINE_EXCEEDED");
     function fail(status, code) {
       if (done) return;
       done = true;
       active.delete(abort);
-      clearTimeout(timer);
+      connection.onDeadline = () => req.socket.destroy();
       requestChunks.length = 0;
       if (loseResponse) { dropState = "failed"; faultError = code; }
       outgoing?.destroy();
-      if (!res.destroyed) { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify({ error: code })); }
+      if (!res.destroyed) { res.writeHead(status, { "content-type": "application/json", connection: "close" }); res.end(JSON.stringify({ error: code })); }
     }
     if (!req.url.startsWith("/") || req.url.startsWith("//") || /[\\\x00-\x20\x7f]/u.test(req.url)) { fail(400, "PROXY_REQUEST_TARGET_INVALID"); req.resume(); return; }
     req.on("error", () => fail(400, "PROXY_REQUEST_FAILED"));
@@ -52,7 +59,7 @@ async function startResponseLossProxy(options = {}) {
       if (done) return;
       loseResponse = dropState === "armed" && req.method === drop.method && req.url === drop.path && req.headers["x-jg-task01-synthetic-request-id"] === drop.requestId;
       if (loseResponse) dropState = "pending";
-      outgoing = http.request({ hostname: upstream.hostname.replace(/^\[|\]$/gu, ""), port: upstream.port || 80, path: req.url, method: req.method, headers: { ...req.headers, host: upstream.host }, agent: false }, incoming => {
+      outgoing = http.request({ hostname: upstream.hostname.replace(/^\[|\]$/gu, ""), port: upstream.port || 80, path: req.url, method: req.method, headers: { ...req.headers, host: upstream.host, connection: "close" }, agent: false }, incoming => {
         const chunks = [];
         let responseSize = 0;
         incoming.on("data", chunk => {
@@ -66,9 +73,9 @@ async function startResponseLossProxy(options = {}) {
           if (done) return;
           done = true;
           active.delete(abort);
-          clearTimeout(timer);
+          connection.onDeadline = () => req.socket.destroy();
           if (loseResponse) { dropState = "dropped"; upstreamStatusCode = incoming.statusCode; res.destroy(); return; }
-          if (!res.destroyed) { res.writeHead(incoming.statusCode, incoming.headers); res.end(Buffer.concat(chunks)); }
+          if (!res.destroyed) { res.writeHead(incoming.statusCode, { ...incoming.headers, connection: "close" }); res.end(Buffer.concat(chunks)); }
         });
       });
       outgoing.once("error", () => fail(502, "PROXY_UPSTREAM_FAILED"));
@@ -76,7 +83,15 @@ async function startResponseLossProxy(options = {}) {
       requestChunks.length = 0;
     });
   });
-  server.on("connection", socket => { sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
+  server.on("connection", socket => {
+    const connection = { handled: false, onDeadline: () => socket.destroy() };
+    connections.set(socket, connection);
+    sockets.add(socket);
+    // A single non-renewable budget starts before even the first HTTP header.
+    const timer = setTimeout(() => connection.onDeadline(), deadlineMs);
+    socket.once("close", () => { clearTimeout(timer); sockets.delete(socket); connection.abort?.(); });
+  });
+  server.maxRequestsPerSocket = 1;
   server.maxConnections = 16;
   await new Promise((resolve, reject) => {
     server.once("error", () => reject(Object.assign(new Error("PROXY_LISTEN_FAILED"), { code: "PROXY_LISTEN_FAILED" })));
