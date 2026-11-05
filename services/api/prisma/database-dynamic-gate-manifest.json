@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 198,
-    "terminalMigration": "20261105100000_contract_decimal_v2_expand",
-    "terminalMigrationChecksum": "bd4099616b1b010ca8903ddac617e51435d7e8f90e8aeb803b7063b79428da81",
+    "expectedDirectoryCount": 199,
+    "terminalMigration": "20261106001000_spot_material_request_v2",
+    "terminalMigrationChecksum": "402814facd525ede44f2a8b95ded55702cf24672ad615fc261c1b7c052525f50",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 78,
     "fullyPendingSuites": 67,
     "partiallyPendingSuites": 11,
-    "pendingTests": 524,
+    "pendingTests": 525,
     "coveredFiles": 78,
-    "coveredTests": 524,
+    "coveredTests": 525,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 180,
+      "pendingTests": 181,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -361,7 +361,7 @@
         },
         {
           "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-          "pendingTests": 11,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         },
         {
@@ -708,7 +708,7 @@
     "ciEligible": {
       "groups": 22,
       "files": 77,
-      "tests": 523
+      "tests": 524
     },
     "manualOnly": {
       "groups": 1,

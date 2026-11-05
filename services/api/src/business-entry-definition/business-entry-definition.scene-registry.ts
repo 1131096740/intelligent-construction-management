@@ -28,6 +28,7 @@ const businessPartyCreateRoles = MASTER_DATA_MAINTAINER_ROLES;
 const settlementTemplateRoles = ["contract_director", "super_admin"] as const;
 const authenticatedSelf = ["authenticated_self"] as unknown as readonly RoleKey[];
 const spotProcurementCreateRoles = ["material_staff"] as const;
+const spotProcurementRequestRoles = ["material_staff", "material_director"] as const;
 const upstreamFundFactTypes = [
   { value: "owner_payment_to_affiliate", label: "业主向施工企业付款" },
   { value: "affiliate_remittance_to_company", label: "施工企业向我方拨款" },
@@ -364,6 +365,50 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
     rules: []
   },
   {
+    key: "spot_procurement.request_v2",
+    entityType: "spot_procurement_version",
+    name: "零星材料采购申请",
+    description: "零星材料采购申请表头的统一填写与提交快照。",
+    version: 1,
+    fields: [
+      textField("applicationDepartment", "申请部门", spotProcurementRequestRoles, { required: true }),
+      textField("applicationName", "申请人", spotProcurementRequestRoles, { required: true }),
+      { ...textField("requestedArrivalAt", "要求采购到位日期", spotProcurementRequestRoles), type: "date", unit: "日" },
+      textField("reason", "采购原因", spotProcurementRequestRoles),
+      { ...textField("estimatedTotalAmount", "申请预计总金额", spotProcurementRequestRoles), type: "money", precision: 4, exactDecimalString: { sign: "nonnegative", maximumExclusive: "100000000000000000000" } },
+      { ...textField("note", "采购备注", spotProcurementRequestRoles), type: "long_text" }
+    ],
+    rules: []
+  },
+  {
+    key: "spot_procurement.request_line_v2",
+    entityType: "spot_procurement_line",
+    name: "零星材料采购明细",
+    description: "零星材料采购明细的统一填写与提交快照。",
+    version: 1,
+    fields: [
+      { ...textField("materialName", "材料名称", spotProcurementRequestRoles, { required: true }), scope: "line" },
+      { ...textField("specification", "规格型号", spotProcurementRequestRoles), scope: "line" },
+      { ...textField("unit", "单位", spotProcurementRequestRoles), scope: "line" },
+      {
+        ...textField("quantity", "数量", spotProcurementRequestRoles),
+        type: "number",
+        scope: "line",
+        precision: 4,
+        exactDecimalString: {
+          sign: "nonnegative",
+          minimumExclusive: "0",
+          maximumExclusive: "1000000000000000000"
+        },
+        unit: "",
+        excel: { column: "数量", paste: "multi", errorLocation: "cell" }
+      },
+      ...["estimatedUnitPrice", "estimatedAmount"].map((key, index) => ({ ...textField(key, index === 0 ? "预计单价" : "预计金额", spotProcurementRequestRoles), type: "money" as const, scope: "line" as const, precision: 4, exactDecimalString: { sign: "nonnegative" as const, maximumExclusive: "100000000000000000000" } })),
+      { ...textField("note", "明细备注", spotProcurementRequestRoles), type: "long_text", scope: "line" }
+    ],
+    rules: []
+  },
+  {
     key: "project_operating_profile",
     entityType: "project",
     name: "项目经营档案",
@@ -560,6 +605,32 @@ export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAc
         kind: "business_action",
         action: "spot_procurement.create",
         roleScope: "project"
+      }
+    },
+    {
+      sceneKey: "spot_procurement.request_v2",
+      target: {
+        scope: "project",
+        entityType: "spot_procurement_version",
+        resolve: resolveSpotProcurementVersion
+      },
+      permission: {
+        kind: "business_action",
+        action: "spot_procurement.create",
+        roleScope: "effective"
+      }
+    },
+    {
+      sceneKey: "spot_procurement.request_line_v2",
+      target: {
+        scope: "project",
+        entityType: "spot_procurement_line",
+        resolve: resolveSpotProcurementLine
+      },
+      permission: {
+        kind: "business_action",
+        action: "spot_procurement.create",
+        roleScope: "effective"
       }
     },
     {

@@ -421,7 +421,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "expense_claim.repayment.record": ["finance_staff"],
   "expense_claim.repayment.confirm": ["finance_director"],
   "expense_claim.repayment.reverse": ["finance_director"],
-  "spot_procurement.create": ["material_staff"],
+  "spot_procurement.create": ["material_staff", "material_director"],
   "spot_procurement.approve": ["material_director", "project_manager"],
   "spot_procurement.payment.submit": ["material_staff", "material_director"],
   "spot_procurement.payment.approve": [

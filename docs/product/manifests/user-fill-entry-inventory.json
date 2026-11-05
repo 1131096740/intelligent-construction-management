@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 388,
+    "activeBusinessActionCount": 389,
     "technicalActionCount": 9,
-    "activeBindingCount": 447,
+    "activeBindingCount": 448,
     "retiredWriteEntryCount": 86,
     "retainedReadonlyExitCount": 11,
     "uncoveredRetiredWriteCount": 0,
@@ -5656,6 +5656,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /spot-procurements"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "spot-procurement.create-draft.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /spot-procurements/:param/draft"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

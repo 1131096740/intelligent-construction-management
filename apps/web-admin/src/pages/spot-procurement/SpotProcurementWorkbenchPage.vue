@@ -2,7 +2,7 @@
 import type { SpotProcurementStatus } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { MessagePlugin } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
 import { localBusinessForm } from "../../lib/local-business-form";
 import DurableFilePicker from "../../components/DurableFilePicker.vue";
@@ -11,9 +11,12 @@ import { formatUnknownApiError } from "../../api/error-message";
 import { fetchProjects } from "../../api/core-flow-read.api";
 import {
   createSpotProcurementDraft,
+  updateSpotProcurementDraft,
+  type SpotProcurementWriteReadModel,
   fetchSpotProcurementApplicationTextSuggestions,
   fetchSpotProcurementApplicationDefinitions,
   fetchSpotProcurementCapabilities,
+  fetchSpotProcurementDetail,
   fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurements,
   uploadSpotProcurementCreateFile,
@@ -68,6 +71,19 @@ const capabilityBusy = ref(false);
 const createVisible = ref(false);
 const createBusy = ref(false);
 const createError = ref("");
+type SavedRequestDraft = {id: string; versionId: string; revision: number};
+const savedRequestDraft = ref<SavedRequestDraft | undefined>();
+const createSaveStatus = ref("");
+let createSaveTimer: ReturnType<typeof setTimeout> | undefined;
+let savedCreateSignature = "";
+function queueCreateSave() {
+  clearTimeout(createSaveTimer);
+  if (!createVisible.value || !recoveryReady.value || submissionUncertain.value || createDisabledReason.value || JSON.stringify(createForm) === savedCreateSignature) return;
+  createSaveStatus.value = "有待保存修改";
+  createSaveTimer = setTimeout(() => {if (!createBusy.value) void persistDraft(true);}, 800);
+}
+onBeforeUnmount(() => clearTimeout(createSaveTimer));
+
 const quotationFiles = ref<UploadFile[]>([]);
 const referencePhotoFiles = ref<UploadFile[]>([]);
 let capabilityRequestId = 0;
@@ -87,23 +103,24 @@ const createForm = reactive({
   applicationDepartment: "",
   applicationName: "",
   requestedArrivalAt: "",
+  estimatedTotalAmount: "",
   reason: "",
   note: "",
   lines: [blankLine()] as ProcurementLineDraft[]
 });
 const recoveryReady = ref(false);
 let recoveryOwner = "";
-let recovery: ReturnType<typeof localBusinessForm<{ form: typeof createForm; id: string; uncertain: boolean }>> | undefined;
+let recovery: ReturnType<typeof localBusinessForm<{ form: typeof createForm; id: string; uncertain: boolean; serverDraft?: SavedRequestDraft }>> | undefined;
 function persistRecovery() {
   if (!recoveryReady.value || !recovery) return false;
   try {
-    recovery.save({ form: JSON.parse(JSON.stringify(createForm)), id: localDraftId.value, uncertain: submissionUncertain.value });
+    recovery.save({ form: JSON.parse(JSON.stringify(createForm)), id: localDraftId.value, uncertain: submissionUncertain.value, serverDraft: savedRequestDraft.value });
     recoveryMessage.value = "填写已暂存本机，保存草稿后才能在其他设备继续。";
     return true;
   } catch { recoveryMessage.value = "本机暂存失败，请保留当前页面并检查浏览器存储或其他已打开页面。"; return false; }
 }
 watch(createForm, persistRecovery, { deep: true, flush: "sync" });
-const projectLockedByAttachments = computed(() => fileBusy.quotation || fileBusy.photo || quotationFiles.value.length > 0 || referencePhotoFiles.value.length > 0);
+const projectLockedByAttachments = computed(() => Boolean(savedRequestDraft.value) || createBusy.value || fileBusy.quotation || fileBusy.photo || quotationFiles.value.length > 0 || referencePhotoFiles.value.length > 0);
 async function changeAttachments(task: () => Promise<void>) {
   const current = recovery;
   if (!current || !recoveryReady.value || createBusy.value || submissionUncertain.value) throw new Error("请先核对本次草稿状态，再添加或移除附件。");
@@ -120,7 +137,7 @@ const columns = [
   { colKey: "participants", title: "申请人 / 采购人", width: 150 },
   { colKey: "arrival", title: "到位日期", width: 120 },
   { colKey: "materialReason", title: "材料与原因摘要", width: 250 },
-  { colKey: "fulfillment", title: "关联付款 / 收货", width: 210 },
+  { colKey: "fulfillment", title: "采购待办 / 付款", width: 210 },
   { colKey: "status", title: "状态 / 当前办理", width: 160 },
   { colKey: "updatedAt", title: "更新时间", width: 150 },
   { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
@@ -183,19 +200,16 @@ const createDisabledReason = computed(() => {
     return capabilities.value.unavailableReason ?? "当前账号无权在该项目新建零星采购。";
   }
   if (!entryDefinitions.value) return "零采填写定义尚未读取完成。";
-  if (!createForm.applicationDepartment.trim()) return "请填写申请部门。";
-  if (!createForm.applicationName.trim()) return "请填写申请人。";
-  if (!createForm.requestedArrivalAt) return "请选择要求采购到位日期。";
-  if (!createForm.reason.trim()) return "请填写物资用途及采购原因。";
   if (!createForm.lines.length) return "请至少填写一条材料明细。";
   for (const [index, line] of createForm.lines.entries()) {
     const rowNumber = index + 1;
     if (!line.materialName.trim()) return `第 ${rowNumber} 行请填写材料名称。`;
-    if (!line.unit.trim()) return `第 ${rowNumber} 行请填写单位。`;
-    if (!isQuantity(line.quantity)) return `第 ${rowNumber} 行数量必须大于 0，最多 2 位小数。`;
+    if (line.quantity.trim() && !isQuantity(line.quantity)) return `第 ${rowNumber} 行数量必须大于 0，最多4位小数。`;
   }
   return "";
 });
+
+watch([createForm, entryDefinitions], queueCreateSave, {deep: true, flush: "post"});
 
 function blankLine(): ProcurementLineDraft {
   return {
@@ -208,7 +222,7 @@ function blankLine(): ProcurementLineDraft {
 }
 
 function isQuantity(value: string) {
-  return /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value.trim()) && Number(value) > 0;
+  return /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(value.trim()) && Number(value) > 0;
 }
 
 function countStatus(status: SpotProcurementStatus) {
@@ -337,14 +351,14 @@ async function openCreate() {
   createVisible.value = true;
   if (!creatableProjects.value.length) await loadReferenceData();
   if (generation !== createOpenGeneration || !owner || auth.user?.id !== owner || !createVisible.value) return;
-  const current = localBusinessForm<{ form: typeof createForm; id: string; uncertain: boolean }>(localStorage, owner, "spot-procurement-create");
+  const current = localBusinessForm<{ form: typeof createForm; id: string; uncertain: boolean; serverDraft?: SavedRequestDraft }>(localStorage, owner, "spot-procurement-create");
   recovery = current;
   try {
     // Opening another tab participates in the same lock as staging originals.
     // A completed record starts an empty form; old window memory is never reused.
     await current.resume(async (saved) => {
       if (generation !== createOpenGeneration || current !== recovery || auth.user?.id !== owner || !createVisible.value) return;
-      if (saved) { Object.assign(createForm, saved.form); localDraftId.value = saved.id; submissionUncertain.value = saved.uncertain; }
+      if (saved) { Object.assign(createForm, saved.form); localDraftId.value = saved.id; submissionUncertain.value = saved.uncertain; savedRequestDraft.value = saved.serverDraft; }
       if (!createForm.projectId) createForm.projectId = creatableProjects.value.some((project) => project.id === filters.projectId)
         ? filters.projectId : creatableProjects.value.length === 1 ? creatableProjects.value[0]!.id : "";
       recoveryReady.value = true;
@@ -420,13 +434,18 @@ async function loadCapabilities(projectId: string) {
   }
 }
 
-async function saveDraft() {
+function saveDraft() { return persistDraft(false); }
+
+async function persistDraft(automatic: boolean) {
+  const requestedSignature = JSON.stringify(createForm);
+  clearTimeout(createSaveTimer);
   if (createBusy.value) return;
   if (createDisabledReason.value) {
     createError.value = createDisabledReason.value;
     return;
   }
   createBusy.value = true;
+  createSaveStatus.value = "保存中";
   createError.value = "";
   creationRequestStarted = false;
   try {
@@ -459,28 +478,44 @@ async function saveDraft() {
     }
     submissionUncertain.value = true;
     if (!persistRecovery()) { submissionUncertain.value = false; throw new Error("本机暂存失败，本次尚未提交。请保留当前页面并检查浏览器存储。"); }
-    const result = await createSpotProcurementDraftWithCapability(projectId, {
-      projectId,
+    const body = {
       entryDefinitionVersions: entryDefinitions.value
         ? {
             application: entryDefinitions.value.application.version,
             line: entryDefinitions.value.line.version
           }
         : undefined,
-      applicationDepartment: requiredText(submittedForm.applicationDepartment, "申请部门"),
-      applicationName: requiredText(submittedForm.applicationName, "申请人"),
-      requestedArrivalAt: submittedForm.requestedArrivalAt,
-      reason: requiredText(submittedForm.reason, "物资用途及采购原因"),
+      applicationDepartment: submittedForm.applicationDepartment.trim() || undefined,
+      applicationName: submittedForm.applicationName.trim() || undefined,
+      requestedArrivalAt: submittedForm.requestedArrivalAt || null,
+      estimatedTotalAmount: submittedForm.estimatedTotalAmount?.trim() || null,
+      reason: submittedForm.reason.trim() || undefined,
       note: optionalText(submittedForm.note),
       lines: submittedForm.lines.map((line) => ({
         materialName: requiredText(line.materialName, "材料名称"),
         specification: optionalText(line.specification) ?? undefined,
-        unit: requiredText(line.unit, "材料单位"),
-        quantity: requiredText(line.quantity, "采购数量"),
+        unit: optionalText(line.unit) ?? null,
+        quantity: line.quantity.trim() || null,
+        estimatedUnitPrice: line.estimatedUnitPrice?.trim() || null,
+        estimatedAmount: line.estimatedAmount?.trim() || null,
         note: optionalText(line.note) ?? undefined
       })),
       attachments
-    });
+    };
+    let result: SpotProcurementWriteReadModel;
+    if (savedRequestDraft.value) {
+      creationRequestStarted = true;
+      if (projectId !== createForm.projectId) throw new Error("项目已变化，请保留填写并核对原草稿");
+      result = await updateSpotProcurementDraftWithCapability(savedRequestDraft.value.id, {...body, expectedVersionId: savedRequestDraft.value.versionId, expectedDraftRevision: savedRequestDraft.value.revision});
+    } else result = await createSpotProcurementDraftWithCapability(projectId, {...body, projectId});
+    if (auth.user?.id !== recoveryOwner || current !== recovery) return;
+    if (!Number.isSafeInteger(result.draftRevision)) throw new Error("草稿保存回执待核对，请保留当前填写");
+    savedRequestDraft.value = {id: result.procurementId, versionId: result.versionId, revision: result.draftRevision!};
+    savedCreateSignature = JSON.stringify(submittedForm);
+    createSaveStatus.value = automatic ? "已自动保存" : "草稿已保存";
+    submissionUncertain.value = false;
+    persistRecovery();
+    if (automatic) return;
     try { recovery?.complete({ form: submittedForm, id: localDraftId.value, uncertain: false }); } catch { /* Business creation is already confirmed. */ }
     const attachmentIds = (files: File[]) => files.flatMap((file) => {
       const id = (file as File & { uploadRequestKey?: string }).uploadRequestKey;
@@ -499,8 +534,11 @@ async function saveDraft() {
     const status = (error as { status?: number }).status;
     if (!creationRequestStarted || (status && status >= 400 && status < 500)) { submissionUncertain.value = false; persistRecovery(); }
     createError.value = formatUnknownApiError(error, "零星采购草稿保存失败");
+    createSaveStatus.value = "保存失败，当前填写保留";
+    if (creationRequestStarted && (status === 409 || !status || status >= 500)) {submissionUncertain.value = true; createSaveStatus.value = "保存结果待核对，请保留当前填写并核对服务器最新内容"; persistRecovery();}
   } finally {
     createBusy.value = false;
+    if (createVisible.value && !submissionUncertain.value && JSON.stringify(createForm) !== requestedSignature) queueCreateSave();
   }
 }
 
@@ -508,12 +546,10 @@ async function createSpotProcurementDraftWithCapability(
   projectId: string,
   body: Parameters<typeof createSpotProcurementDraft>[0]
 ) {
-  const capability = await fetchSpotProcurementCapabilities(projectId);
-  const matchesRequestedProject = capability.projectId === projectId;
+  const creationCapability = await fetchSpotProcurementCapabilities(projectId);
+  const matchesRequestedProject = creationCapability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("项目坐标已变化，请重新选择后重试");
-  const operationAllowed = capability.availableActions.includes(
-    "create_spot_procurement"
-  );
+  const operationAllowed = creationCapability.availableActions.includes("create_spot_procurement");
   if (!operationAllowed) throw new Error("当前项目不可创建零星采购");
   const currentUser = auth.user;
   if (!currentUser) throw new Error("请重新登录后核对填写。");
@@ -521,6 +557,15 @@ async function createSpotProcurementDraftWithCapability(
   if (!ownerMatches) throw new Error("登录状态已变化，本次未提交，请重新打开填写窗口。");
   creationRequestStarted = true;
   return createSpotProcurementDraft(body);
+}
+
+async function updateSpotProcurementDraftWithCapability(procurementId: string, body: Parameters<typeof updateSpotProcurementDraft>[1]) {
+  const draftCapability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = draftCapability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) throw new Error("采购申请已变化，请核对服务器内容");
+  const operationAllowed = draftCapability.availableActions.some(action => action.key === "edit_draft" && action.enabled);
+  if (!operationAllowed) throw new Error("当前采购草稿不可编辑");
+  return updateSpotProcurementDraft(procurementId, body);
 }
 
 function finishRecovery() {
@@ -538,12 +583,10 @@ async function uploadSpotProcurementCreateFileWithCapability(
   projectId: string,
   file: File
 ) {
-  const capability = await fetchSpotProcurementCapabilities(projectId);
-  const matchesRequestedProject = capability.projectId === projectId;
+  const uploadCapability = await fetchSpotProcurementCapabilities(projectId);
+  const matchesRequestedProject = uploadCapability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("项目坐标已变化，请重新选择后重试");
-  const operationAllowed = capability.availableActions.includes(
-    "create_spot_procurement"
-  );
+  const operationAllowed = uploadCapability.availableActions.includes("create_spot_procurement");
   if (!operationAllowed) throw new Error("当前项目不可上传零星采购附件");
   const currentUser = auth.user;
   if (!currentUser) throw new Error("请重新登录后核对填写。");
@@ -578,10 +621,14 @@ function optionalText(value: string) {
 }
 
 function resetCreateForm() {
+  savedRequestDraft.value = undefined;
+  savedCreateSignature = "";
+  createSaveStatus.value = "";
   createForm.projectId = "";
   createForm.applicationDepartment = "";
   createForm.applicationName = "";
   createForm.requestedArrivalAt = "";
+  createForm.estimatedTotalAmount = "";
   createForm.reason = "";
   createForm.note = "";
   createForm.lines = [blankLine()];
@@ -597,7 +644,7 @@ const mobileRows = computed(() => rows.value.map((row) => ({
   meta: `${row.project.code} · ${row.project.name}`, status: row.statusLabel, tone: statusTheme(row.status),
   facts: [{ label: "申请人", value: row.applicationName ?? row.applicant.name },
     { label: "到位日期", value: arrivalDateText(row) },
-    { label: "付款", value: paymentLabel(row) }, { label: "收货", value: receiptLabel(row) },
+    ...(row.requestProtocolVersion === 2 ? [{label: "采购待办", value: row.purchaseTask?.pending ? row.purchaseTask.label : row.statusLabel}] : [{ label: "付款", value: paymentLabel(row) }, { label: "收货", value: receiptLabel(row) }]),
     { label: "当前办理", value: row.approval.currentNodeName || row.statusLabel }],
   nextAction: canFillPaymentDraft(row) ? "填写付款申请" : row.status === "draft" ? "继续填写" : "查看办理进度"
 })));
@@ -735,7 +782,7 @@ onMounted(() => {
           <h2 id="spot-procurement-table-title">
             采购记录
           </h2>
-          <p>申请单没有价格、供应商、税率或发票字段；关联付款、收货和发票事实在后续环节分别归档。</p>
+          <p>材料需求与预计金额可以未知留空；批准后在原单查看采购待办，既有历史单据保留关联记录。</p>
         </div>
         <span>当前返回 {{ rows.length }} 条</span>
       </header>
@@ -781,8 +828,10 @@ onMounted(() => {
           </template>
           <template #fulfillment="{ row }">
             <div class="two-line-cell">
-              <span>付款：{{ paymentLabel(row) }}</span>
-              <span>收货：{{ receiptLabel(row) }}</span>
+              <span v-if="row.purchaseTask?.pending">{{ row.purchaseTask.label }}：{{ row.purchaseTask.canHandle ? '请按需求线下采购' : '等待本项目物资员办理' }}</span>
+              <span v-else-if="row.requestProtocolVersion === 2">申请预计金额：{{ row.estimatedTotalAmount ?? '待确定' }}</span>
+              <span v-else>付款：{{ paymentLabel(row) }}</span>
+              <span v-if="row.requestProtocolVersion !== 2">收货：{{ receiptLabel(row) }}</span>
               <t-link
                 v-if="canFillPaymentDraft(row)"
                 theme="primary"
@@ -792,7 +841,7 @@ onMounted(() => {
                 填写付款申请
               </t-link>
               <span
-                v-else-if="row.status === 'approved_in_progress' && isRealPaymentSummary(row.payment) && row.payment.paymentId === null"
+                v-else-if="row.requestProtocolVersion !== 2 && row.status === 'approved_in_progress' && isRealPaymentSummary(row.payment) && row.payment.paymentId === null"
                 class="payment-draft-hint"
               >
                 采购审批完成后将自动生成付款草稿
@@ -848,7 +897,7 @@ onMounted(() => {
 
     <t-dialog
       v-model:visible="createVisible"
-      header="新建零星/小额材料采购申请表"
+      header="新建零星材料采购申请"
       width="min(1180px, 94vw)"
       :close-on-overlay-click="false"
       :close-btn="!createBusy"
@@ -857,6 +906,7 @@ onMounted(() => {
       :cancel-btn="{ content: '取消', disabled: createBusy }"
       @confirm="saveDraft"
     >
+      <p role="status">{{ createSaveStatus }}</p>
       <div
         class="create-form"
         :inert="createBusy || !recoveryReady || undefined"
@@ -877,7 +927,7 @@ onMounted(() => {
           先填写材料需求，采购批准后再办理付款。
           <BusinessHelp
             label="采购申请"
-            text="采购申请单号会在保存草稿时由系统自动生成。申请部门与申请人按实际需求填写，采购人由当前登录物资员确定。本单所有材料共用一个到位日期；价格、商户和发票在后续付款环节填写。"
+            text="采购申请单号会在保存草稿时由系统自动生成。填写名称即可保存；未知数量、单价及到位时间可留空。姓名与部门空白时沿用本人资料；保存草稿不会提交审批。"
           />
         </div>
         <div class="form-grid">
@@ -893,14 +943,14 @@ onMounted(() => {
             <small v-if="projectLockedByAttachments">附件属于当前项目；请先保存草稿，或移除附件后再切换项目。</small>
           </label>
           <label class="form-field">
-            <span>申请部门 <b aria-hidden="true">*</b></span>
+            <span>申请部门（空白沿用本人部门）</span>
             <t-input
               v-model="createForm.applicationDepartment"
               placeholder="如：工程部"
             />
           </label>
           <label class="form-field">
-            <span>申请人 <b aria-hidden="true">*</b></span>
+            <span>申请人（空白沿用本人姓名）</span>
             <t-input
               v-model="createForm.applicationName"
               placeholder="如：杨帅"
@@ -925,15 +975,16 @@ onMounted(() => {
             <small>仅复制文本，不创建账号或部门关系。</small>
           </section>
           <label class="form-field form-field--wide">
-            <span>要求采购到位日期 <b aria-hidden="true">*</b></span>
+            <span>要求采购到位日期（可空）</span>
             <t-date-picker
               v-model="createForm.requestedArrivalAt"
               value-type="YYYY-MM-DD"
             />
-            <small>本单所有材料共用该日期。</small>
+            <small>未确定可留空。</small>
           </label>
+          <label class="form-field form-field--wide"><span>申请预计总金额（元，可空）</span><t-input v-model="createForm.estimatedTotalAmount" placeholder="未确定请留空；仅供采购核对" /></label>
           <label class="form-field form-field--wide">
-            <span>物资用途及采购原因 <b aria-hidden="true">*</b></span>
+            <span>物资用途及采购原因（可空）</span>
             <t-textarea
               v-model="createForm.reason"
               :autosize="{ minRows: 2, maxRows: 5 }"
@@ -975,7 +1026,7 @@ onMounted(() => {
         <section class="attachment-section">
           <div>
             <h3>现场参考照片（可选）</h3>
-            <p>{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptText }}，{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitText }}；仅作申请参考，不替代后续收货照片。</p>
+            <p>{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.acceptText }}，{{ SPOT_PROCUREMENT_REFERENCE_PHOTO_UPLOAD_POLICY.limitText }}；仅作申请参考，不作为实际采购凭证。</p>
           </div>
           <DurableFilePicker
             ref="photoPicker"

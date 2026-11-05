@@ -1,3 +1,4 @@
+import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
 import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
@@ -61,7 +62,7 @@ const MAX_PAGE_SIZE = 100;
 const PAYMENT_TASK_SORT_AT = Symbol("paymentTaskSortAt");
 const PAYMENT_AMOUNT_FACTS = Symbol("paymentAmountFacts");
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
-const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>(["material_staff"]);
+const PROCUREMENT_CREATE_ROLES = new Set<RoleKey>(["material_staff", "material_director"]);
 const PROCUREMENT_VOID_ROLES = new Set<RoleKey>([
   "project_manager",
   "finance_director"
@@ -380,10 +381,9 @@ export class SpotProcurementReadService {
       throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
     }
 
-    const roleKeys = await this.projectVisibility.effectiveRoleKeys(
-      actorUserId,
-      normalizedProjectId
-    );
+    const roleKeys = await currentSpotMaterialRoleKeys(this.prisma, actorUserId, await this.projectVisibility.effectiveRoleKeys(
+      actorUserId, normalizedProjectId
+    ));
     const enabled = this.pilot.isEnabled(normalizedProjectId);
     const canCreate =
       enabled && roleKeys.some((role) => PROCUREMENT_CREATE_ROLES.has(role));
@@ -474,10 +474,9 @@ export class SpotProcurementReadService {
     const options = await Promise.all(
       projects.map(async (project) => ({
         project,
-        roleKeys: await this.projectVisibility.effectiveRoleKeys(
-          actorUserId,
-          project.id
-        )
+        roleKeys: await currentSpotMaterialRoleKeys(this.prisma, actorUserId, await this.projectVisibility.effectiveRoleKeys(
+          actorUserId, project.id
+        ))
       }))
     );
 
@@ -814,6 +813,7 @@ export class SpotProcurementReadService {
     const delegatedReviewIndexes = currentApproval ? await scopedSpotDutyNodeIndexes(this.prisma as never, currentApproval, procurement.projectId, actorUserId) : [];
     const availableActions = this.procurementActions({
       delegatedReviewIndexes,
+      materialRoleKeys: await currentSpotMaterialRoleKeys(this.prisma, actorUserId, roleKeys),
       procurement,
       currentVersion,
       currentApproval,
@@ -1025,6 +1025,7 @@ export class SpotProcurementReadService {
             ? null
             : "采购审批完成后才可下载正式审批单"
       },
+      purchaseTask: this.purchaseTask(procurement.status, currentVersion, await currentSpotMaterialRoleKeys(this.prisma, actorUserId, roleKeys)),
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: [
@@ -1726,7 +1727,7 @@ export class SpotProcurementReadService {
               materialName: line.materialName,
               specification: line.specification,
               unit: line.unit,
-              approvedQuantity: line.quantity.toString(),
+              approvedQuantity: line.quantity?.toString() ?? null,
               note: line.note
             })),
             paymentMethods: paymentMethods.map((method) => ({
@@ -2008,6 +2009,13 @@ export class SpotProcurementReadService {
     };
   }
 
+  private purchaseTask(status: string, version: {requestProtocolVersion?: number}, roles: RoleKey[]) {
+    const pending = version.requestProtocolVersion === 2 && status === "approved_in_progress";
+    return { pending, canHandle: pending && roles.some(role => role === "material_staff" || role === "material_director"),
+      label: pending ? "待采购" : "暂无采购待办", requiresReceipt: false,
+      note: pending ? "按审批需求线下采购；预计与实际差异供经办人核对，无收货登记。实际采购批次及付款在对应办理入口记录。" : null };
+  }
+
   private async procurementListItems(
     rows: SpotProcurement[],
     actorUserId: string
@@ -2152,6 +2160,7 @@ export class SpotProcurementReadService {
         )
       : new Map();
 
+    const purchaseRoles = new Map(await Promise.all(projectIds.map(async projectId => [projectId, await currentSpotMaterialRoleKeys(this.prisma, actorUserId, await this.projectVisibility.effectiveRoleKeys(actorUserId, projectId))] as const)));
     return rows.flatMap((row) => {
       const project = projectById.get(row.projectId);
       const version = row.currentVersionId
@@ -2223,6 +2232,7 @@ export class SpotProcurementReadService {
             userById,
             "采购经办人未读取"
           ),
+          purchaseTask: this.purchaseTask(row.status, version, purchaseRoles.get(row.projectId) ?? []),
           status: row.status,
           statusLabel: procurementStatusLabel(row.status),
           approval: approvalSummary(
@@ -2238,7 +2248,9 @@ export class SpotProcurementReadService {
                 applicationName: version.applicationNameSnapshot,
                 purchaserName: version.purchaserNameSnapshot,
                 purchaserDepartment: version.purchaserDepartmentNameSnapshot,
-                requestedArrivalAt: version.requestedArrivalAt.toISOString(),
+                requestedArrivalAt: version.requestedArrivalAt?.toISOString() ?? null,
+                requestProtocolVersion: version.requestProtocolVersion,
+                estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null,
                 payment: {
                   paymentId: currentPaymentId,
                   ...realPayment,
@@ -2731,6 +2743,7 @@ export class SpotProcurementReadService {
   }
 
   private procurementActions(input: {
+    materialRoleKeys: RoleKey[];
     procurement: SpotProcurement;
     currentVersion: SpotProcurementVersion;
     currentApproval: ApprovalInstance | null;
@@ -2770,7 +2783,7 @@ export class SpotProcurementReadService {
     const isOwner =
       input.actorUserId === input.procurement.applicantUserId ||
       input.actorUserId === input.procurement.handlerUserId;
-    const canCreate = input.roleKeys.some((role) =>
+    const canCreate = input.materialRoleKeys.some((role) =>
       PROCUREMENT_CREATE_ROLES.has(role)
     );
     const reviewAccess =
@@ -2831,6 +2844,7 @@ export class SpotProcurementReadService {
       !hasActivePayment &&
       hasRecreatableSource;
     const canCreateVersion =
+      !(input.currentVersion.requestProtocolVersion === 2 && input.currentVersion.status === "approved") &&
       input.canonicalRealRevisionSource &&
       !["closed", "voided"].includes(input.procurement.status) &&
       ["approved", "rejected"].includes(input.currentVersion.status) &&
@@ -4423,7 +4437,10 @@ function versionReadModel(
         applicationName: version.applicationNameSnapshot,
         purchaserName: version.purchaserNameSnapshot,
         purchaserDepartment: version.purchaserDepartmentNameSnapshot,
-        requestedArrivalAt: version.requestedArrivalAt.toISOString()
+        requestedArrivalAt: version.requestedArrivalAt?.toISOString() ?? null,
+        requestProtocolVersion: version.requestProtocolVersion,
+        draftRevision: version.draftRevision,
+        estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null
       }
     : {
         ...common,
@@ -4440,7 +4457,9 @@ function lineReadModel(line: SpotProcurementLine, realApplication = false) {
     materialName: line.materialName,
     specification: line.specification,
     unit: line.unit,
-    quantity: line.quantity.toString(),
+    quantity: line.quantity?.toString() ?? null,
+    estimatedUnitPrice: line.estimatedUnitPrice?.toString() ?? null,
+    estimatedAmount: line.estimatedAmount?.toString() ?? null,
     note: line.note
   };
   return realApplication
@@ -4473,7 +4492,7 @@ function procurementMaterialSummary(lines: readonly SpotProcurementLine[]) {
 function procurementQuantitySummary(lines: readonly SpotProcurementLine[]) {
   if (!lines.length) return "批准数量未读取";
   return lines
-    .map((line) => `${line.quantity.toString()} ${line.unit}`)
+    .map((line) => `${line.quantity?.toString() ?? "待确定"} ${line.unit ?? ""}`)
     .join("；");
 }
 

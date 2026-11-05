@@ -3930,6 +3930,8 @@ model SpotProcurement {
 }
 
 model SpotProcurementVersion {
+  requestProtocolVersion          Int @default(1)
+  draftRevision                   Int @default(1)
   id                              String    @id @default(uuid())
   procurementId                   String
   versionNo                       Int
@@ -3945,7 +3947,8 @@ model SpotProcurementVersion {
   purchaserNameSnapshot           String
   purchaserDepartmentId           String?
   purchaserDepartmentNameSnapshot String
-  requestedArrivalAt              DateTime
+  requestedArrivalAt              DateTime?
+  estimatedTotalAmount            Decimal? @db.Decimal(24, 4)
   totalAmountCents                BigInt? // legacy: the A4 procurement application has no amount
   changeReason                    String?
   changeSummary                   Json?
@@ -3970,13 +3973,15 @@ model SpotProcurementLine {
   sortOrder            Int
   materialName         String
   specification        String?
-  unit                 String
-  quantity             Decimal  @db.Decimal(24, 6)
+  unit                 String?
+  quantity             Decimal? @db.Decimal(24, 6)
   invoiceMode          String? // legacy: expected invoice facts belong to payment lines
   invoiceType          String?
   vatRateOptionId      String?
   vatRateValueSnapshot Decimal? @db.Decimal(9, 6)
   vatRateLabelSnapshot String?
+  estimatedUnitPrice   Decimal? @db.Decimal(24, 4)
+  estimatedAmount      Decimal? @db.Decimal(24, 4)
   unitPrice            Decimal? @db.Decimal(24, 6) // legacy: price belongs to payment lines
   amountCents          BigInt? // legacy: amount belongs to payment lines
   usageLocation        String?

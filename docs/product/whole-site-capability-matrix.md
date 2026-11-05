@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `991a11b8cee7334d9f62f0797a1b684d990b7f4720a140ef72e38a53efcfd69c` |
-| webApiWrappers | ready | `d3c886704f136a16d23502568689bc5dc5d309c8d8973858c9547e5230fe15a3` |
-| webPageActions | ready | `4dba32b4bc5a6d57c911e7a097bc786e541fa1bd75d0c2288333f73860754567` |
-| routeUsage | ready | `99d402c4f96e24b2c6551e4224dc21022009bc9a95df96decea7c08b7b50261d` |
+| webApiWrappers | ready | `ef8761d404dc7d93e2dc49962ed5c0744b15a9ca5e7ac20c41d89b98c4e70ded` |
+| webPageActions | ready | `59602cb598ebf73fea39390c76b088bdf94fa8da0564ac6510815db5ffcfdaa8` |
+| routeUsage | ready | `2a0bb06ed19fe78f5ff85cb3da2a448a661eb8a7ee1bae66fc30f1b129b7f851` |
 
 ## 汇总
 
@@ -26,12 +26,12 @@
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 397 |
-| actionBindingCount | 457 |
-| acceptedActionBindingCount | 420 |
+| registeredActionCount | 398 |
+| actionBindingCount | 458 |
+| acceptedActionBindingCount | 421 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 387 |
-| coveredProductionMutationConsumerPairCount | 387 |
+| productionMutationConsumerPairCount | 388 |
+| coveredProductionMutationConsumerPairCount | 388 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -297,7 +297,7 @@
 | PATCH | /settlement-template-workbench/versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#updateSettlementTemplateVersion | template-workbench.save<br>template-workbench.save-source | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentDraft | spot-procurement-payment.draft.update | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/payer | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentPayer | spot-procurement-payment.payer.update | covered | — |
-| PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.draft.update | covered | — |
+| PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.create-draft.update<br>spot-procurement.draft.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | spot-procurement-receipt.draft.update | covered | — |
 | PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
 | POST | /account-security/applications/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |

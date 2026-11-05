@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "d3c886704f136a16d23502568689bc5dc5d309c8d8973858c9547e5230fe15a3",
+      "sha256": "ef8761d404dc7d93e2dc49962ed5c0744b15a9ca5e7ac20c41d89b98c4e70ded",
       "status": "ready",
       "summary": {
         "apiModuleCount": 40,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "4dba32b4bc5a6d57c911e7a097bc786e541fa1bd75d0c2288333f73860754567",
+      "sha256": "59602cb598ebf73fea39390c76b088bdf94fa8da0564ac6510815db5ffcfdaa8",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 397,
+        "registeredActionCount": 398,
         "pageActionCount": 56,
-        "backgroundActionCount": 341,
+        "backgroundActionCount": 342,
         "reachableVueFileCount": 202,
         "routeRootCount": 70,
         "totalVueFileCount": 216,
         "parsedVueFileCount": 216,
         "reachableProductionModuleCount": 348,
-        "templateEventDirectiveCount": 1273,
+        "templateEventDirectiveCount": 1275,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 387,
-        "candidateProductionMutationConsumerCount": 387,
-        "acceptedProductionMutationConsumerCount": 387,
-        "productionMutationConsumerPairCount": 387,
+        "coveredProductionMutationConsumerCount": 388,
+        "candidateProductionMutationConsumerCount": 388,
+        "acceptedProductionMutationConsumerCount": 388,
+        "productionMutationConsumerPairCount": 388,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "99d402c4f96e24b2c6551e4224dc21022009bc9a95df96decea7c08b7b50261d",
+      "sha256": "2a0bb06ed19fe78f5ff85cb3da2a448a661eb8a7ee1bae66fc30f1b129b7f851",
       "status": "ready",
       "summary": {
         "routeCount": 703,
@@ -104,12 +104,12 @@
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 397,
-    "actionBindingCount": 457,
-    "acceptedActionBindingCount": 420,
+    "registeredActionCount": 398,
+    "actionBindingCount": 458,
+    "acceptedActionBindingCount": 421,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 387,
-    "coveredProductionMutationConsumerPairCount": 387,
+    "productionMutationConsumerPairCount": 388,
+    "coveredProductionMutationConsumerPairCount": 388,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -11226,7 +11226,8 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
@@ -13558,7 +13559,8 @@
           "normalizedKey": "PATCH /spot-procurements/:param/draft",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
@@ -13567,6 +13569,32 @@
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "spot-procurement.create-draft.update",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.create-draft.update\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000updateSpotProcurementDraft\u0000PATCH\u0000PATCH /spot-procurements/:param/draft\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "draftCapability.availableActions",
+            "key": "edit_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "spot-procurement.draft.update",
           "bindingIndex": 0,
@@ -40990,7 +41018,7 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
           "capability": {
             "kind": "available_action_string",
-            "source": "capability.availableActions",
+            "source": "uploadCapability.availableActions",
             "key": "create_spot_procurement",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -41059,7 +41087,7 @@
           "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
           "capability": {
             "kind": "available_action_string",
-            "source": "capability.availableActions",
+            "source": "creationCapability.availableActions",
             "key": "create_spot_procurement",
             "serverDerived": true,
             "dominatesTrigger": true

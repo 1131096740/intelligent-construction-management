@@ -106,7 +106,7 @@ export function createBusinessEntryTransactionSceneRegistry(
 async function spotProcurementProjectId(
   context: BusinessEntryTransactionResolverContext
 ): Promise<string | null> {
-  if (context.sceneKey === "spot_procurement.application") {
+  if (["spot_procurement.application", "spot_procurement.request_v2"].includes(context.sceneKey)) {
     const version = await context.tx.spotProcurementVersion.findUnique({
       where: { id: context.target.entityId },
       select: { procurementId: true }
@@ -214,6 +214,22 @@ export const BUSINESS_ENTRY_TRANSACTION_SCENE_POLICIES = Object.freeze(
     },
     {
       sceneKey: "spot_procurement.application_line",
+      targetKind: "project_owned_entity",
+      entityType: "spot_procurement_line",
+      action: "spot_procurement.create",
+      resolveOwnership: resolveSpotProcurementOwnership,
+      resolveAuthorization: resolveSpotProcurementAuthorization
+    },
+    {
+      sceneKey: "spot_procurement.request_v2",
+      targetKind: "project_owned_entity",
+      entityType: "spot_procurement_version",
+      action: "spot_procurement.create",
+      resolveOwnership: resolveSpotProcurementOwnership,
+      resolveAuthorization: resolveSpotProcurementAuthorization
+    },
+    {
+      sceneKey: "spot_procurement.request_line_v2",
       targetKind: "project_owned_entity",
       entityType: "spot_procurement_line",
       action: "spot_procurement.create",

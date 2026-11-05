@@ -3733,7 +3733,7 @@ export class SpotProcurementPaymentService {
     payment: { handlerUserId: string },
     procurementLines: Array<{
       id: string;
-      quantity: Prisma.Decimal;
+      quantity: Prisma.Decimal | null;
     }>,
     actorUserId: string,
     input: UpdateSpotProcurementPaymentDraftDto
@@ -3778,6 +3778,7 @@ export class SpotProcurementPaymentService {
         unitPrice: line.unitPrice
       });
       const paymentQuantity = new Prisma.Decimal(line.paymentQuantity);
+      if (source.quantity === null) throw new ConflictException("申请数量待确定，请先按实际采购流程办理");
       if (paymentQuantity.greaterThan(source.quantity)) {
         throw new BadRequestException("付款材料数量不能超过采购批准数量");
       }
@@ -3830,7 +3831,7 @@ export class SpotProcurementPaymentService {
   }
 
   private assertCompleteRealFormMaterialScope(
-    procurementLines: Array<{ id: string; quantity: Prisma.Decimal }>,
+    procurementLines: Array<{ id: string; quantity: Prisma.Decimal | null }>,
     paymentLines: Array<{
       procurementLineId: string;
       paymentQuantity: Prisma.Decimal;
@@ -3847,7 +3848,7 @@ export class SpotProcurementPaymentService {
     if (
       procurementLines.some((source) => {
         const paymentLine = paymentLineBySource.get(source.id);
-        return !paymentLine || !paymentLine.paymentQuantity.equals(source.quantity);
+        return !paymentLine || source.quantity === null || !paymentLine.paymentQuantity.equals(source.quantity);
       })
     ) {
       throw new BadRequestException(
