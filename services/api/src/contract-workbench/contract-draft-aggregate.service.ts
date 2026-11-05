@@ -373,10 +373,10 @@ export class ContractDraftAggregateService {
           currentBills.some((bill) => bill.numericProtocolVersion === 2) ||
           input.bills.some((bill) => bill.numericProtocolVersion === 2)) {
           const rate = input.draft.taxFacts.defaultTaxRatePercent;
-          const unchangedStoredRate = typeof rate === "string" &&
-            /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/u.test(rate.trim()) &&
-            version.defaultTaxRatePercent !== null &&
-            version.defaultTaxRatePercent.equals(rate.trim());
+          const storedRate = version.defaultTaxRatePercent?.toString();
+          const unchangedStoredRate = storedRate !== undefined &&
+            (storedRate.split(".")[1]?.length ?? 0) > 4 &&
+            rate === storedRate;
           if (!unchangedStoredRate && rate !== null) {
             try {
               if (normalizeBusinessAmount(rate) === null) throw new Error("empty tax rate transport");
