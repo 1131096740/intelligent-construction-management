@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 708,
-    "exactRouteCount": 708,
-    "normalizedRouteCount": 708,
+    "routeCount": 709,
+    "exactRouteCount": 709,
+    "normalizedRouteCount": 709,
     "classificationOverrideCount": 213,
     "consumerSurfaceOverrideCount": 38,
     "classificationOverrideSha256": "0c1e6ff2a25e48ed9fa78c0dd797e84af2a1732fb5fd033b69d1ff1db638fa4a",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-    "derivedProductionPageCount": 495,
-    "pageRouteCount": 513,
+    "derivedProductionPageCount": 496,
+    "pageRouteCount": 514,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 88,
     "internalTaskCount": 37,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 566,
+      "web_api_wrapper": 567,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 566,
+    "productionWrapperRouteCount": 567,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -2049,6 +2049,47 @@
             "normalizedKey": "GET /contract-drafts/:param/bills/:param/template",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/save-requests/:idempotencyKey",
+      "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+      "controller": "ContractDraftController",
+      "handler": "saveResult",
+      "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractDraftSaveResult",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/save-requests/:param",
+            "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
         ],

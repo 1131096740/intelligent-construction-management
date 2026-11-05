@@ -1,4 +1,4 @@
-import { CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
+import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -6,7 +6,8 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ContractBillRow } from "@prisma/client";
+import { readDeletedDraftRow, deletedRowPublicOriginalValues } from "../contract-bill/contract-bill-row-undo";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import { businessAmountFromLegacyCents, normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
@@ -25,6 +26,13 @@ import type {
   SaveContractDraftAggregateDto,
   SaveContractDraftAttachmentDto
 } from "./dto/contract-workbench.dto";
+
+function publicSaveSnapshot(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const snapshot = { ...value as Record<string, unknown> };
+  delete snapshot["_rowUndo"];
+  return snapshot;
+}
 
 const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft"]);
 
@@ -46,6 +54,22 @@ export class ContractDraftAggregateService {
     private readonly files: FileService,
     private readonly audit: AuditService
   ) {}
+
+  async getSaveResult(contractVersionId: string, actorUserId: string, idempotencyKey: string, numericProtocol?: string) {
+    return this.prisma.$transaction(async tx => {
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      if (!version) throw new NotFoundException("未找到合同草稿，不能核对保存结果");
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对该草稿的保存结果");
+      assertContractDraftNumericProtocol(version, numericProtocol);
+      const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey } });
+      if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId) {
+        // Absence cannot prove that a disconnected write is not still in flight.
+        return { status: "unknown" as const };
+      }
+      return { status: "saved" as const, result: publicSaveSnapshot(receipt.responseSnapshot), latestRevision: version.draftRevision };
+    });
+  }
 
   async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
     const { version, templateEntry, billEntries } = await this.prisma.$transaction(async (tx) => {
@@ -217,7 +241,8 @@ export class ContractDraftAggregateService {
     contractVersionId: string,
     actorUserId: string,
     rawLeaseToken: string,
-    input: SaveContractDraftAggregateDto
+    input: SaveContractDraftAggregateDto,
+    transportFingerprint?: string
   ) {
     const requestSha256 = this.sha256(this.stableJson(input));
     try {
@@ -395,6 +420,9 @@ export class ContractDraftAggregateService {
 
         const effectiveChangedSections = new Set<string>();
         const billRevisions: Record<string, number> = {};
+        const billRowKeys: Record<string, Array<{ clientRowKey: string; rowKey: string }>> = {};
+        const deletedRows: Record<string, Prisma.InputJsonObject[]> = {};
+        const restoreSources = new Map<string, { snapshot: Record<string, unknown>; undo: { version: number; deletedRows: Record<string, unknown[]>; restoredKeys: string[] } }>();
         const billVersionContext = {
           ...version,
           pricingNature: input.draft.pricingNature,
@@ -408,14 +436,50 @@ export class ContractDraftAggregateService {
           taxMode: input.draft.taxFacts.taxMode
         };
         for (const bill of currentBills) {
+          const billInput = inputBillsByKey.get(bill.billKey)!;
+          const trustedRestores = new Map<string, ContractBillRow>();
+          for (const row of billInput.rows) {
+            const ref = row.restoreRef;
+            if (!ref) continue;
+            if (billInput.numericProtocolVersion !== 2 || row.rowKey !== undefined || typeof ref !== "object" || Array.isArray(ref) || Object.keys(ref).length !== 2 ||
+              typeof ref.saveIntentKey !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(ref.saveIntentKey) ||
+              typeof ref.oldRowKey !== "string" || !ref.oldRowKey || ref.oldRowKey.length > 128) throw new BadRequestException("撤销来源格式不正确，请保留输入并核对原保存结果");
+            let source = restoreSources.get(ref.saveIntentKey);
+            if (!source) {
+              const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey: ref.saveIntentKey } });
+              if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId || receipt.expiresAt <= now || !receipt.responseSnapshot || typeof receipt.responseSnapshot !== "object" || Array.isArray(receipt.responseSnapshot)) throw new BadRequestException("原删除记录不属于当前经办人的合同草稿或已过期");
+              const snapshot = receipt.responseSnapshot as Record<string, unknown>;
+              const undo = snapshot["_rowUndo"] as { version?: unknown; deletedRows?: unknown; restoredKeys?: unknown } | undefined;
+              if (!undo || undo.version !== 1 || !undo.deletedRows || typeof undo.deletedRows !== "object" || Array.isArray(undo.deletedRows) || !Array.isArray(undo.restoredKeys) || undo.restoredKeys.some(key => typeof key !== "string")) throw new BadRequestException("原保存记录没有可核对的删除事实，不能恢复该行");
+              source = { snapshot, undo: { version: 1, deletedRows: undo.deletedRows as Record<string, unknown[]>, restoredKeys: [...undo.restoredKeys] } };
+              restoreSources.set(ref.saveIntentKey, source);
+            }
+            const consumedKey = JSON.stringify([bill.billKey, ref.oldRowKey]);
+            if (source.undo.restoredKeys.includes(consumedKey)) throw new BadRequestException("该删除记录已经恢复，不能重复恢复");
+            const candidates = source.undo.deletedRows[bill.billKey];
+            if (!Array.isArray(candidates)) throw new BadRequestException("原删除记录不属于当前清单");
+            const matches = candidates.filter(fact => fact && typeof fact === "object" && !Array.isArray(fact) && (fact as Record<string, unknown>)["rowKey"] === ref.oldRowKey);
+            if (matches.length !== 1) throw new BadRequestException("原删除记录不包含该行，不能恢复");
+            trustedRestores.set(row.clientRowKey, readDeletedDraftRow(matches[0], bill.id));
+            source.undo.restoredKeys.push(consumedKey);
+          }
           const result = await this.bills.replaceRowsInTransaction(
             tx,
             actorUserId,
             billVersionContext,
             bill,
-            inputBillsByKey.get(bill.billKey)!
+            billInput,
+            trustedRestores
           );
           billRevisions[bill.billKey] = result.revision;
+          billRowKeys[bill.billKey] = result.rowKeys ?? [];
+          deletedRows[bill.billKey] = result.deletedRows ?? [];
+          for (const row of billInput.rows) if (row.restoreRef) {
+            const restored = result.rowKeys?.find(binding => binding.clientRowKey === row.clientRowKey);
+            if (!restored) throw new BadRequestException("恢复行回执不完整，请核对保存结果");
+            await this.audit.record(tx, { actorUserId, action: "contract.draft.row.restore", businessType: "contract_version", businessId: contractVersionId,
+              metadata: { billKey: bill.billKey, originalSaveIntentKey: row.restoreRef.saveIntentKey, oldRowKey: row.restoreRef.oldRowKey, newRowKey: restored.rowKey, restoreSaveIntentKey: input.idempotencyKey } });
+          }
           if (result.changed) effectiveChangedSections.add("bills");
         }
         const partyResult = await this.parties.replaceContractPartiesInTransaction(
@@ -727,6 +791,9 @@ export class ContractDraftAggregateService {
           documentContentChangedSections,
           savedAt: now.toISOString(),
           ...(numericProtocolVersion === 2 ? {
+            ...(transportFingerprint ? { requestFingerprint: transportFingerprint } : {}),
+            billRowKeys,
+            deletedRowRestoreRefs: Object.fromEntries(Object.entries(deletedRows).map(([billKey, rows]) => [billKey, rows.map(row => ({ saveIntentKey: input.idempotencyKey, oldRowKey: row["rowKey"], originalValues: deletedRowPublicOriginalValues(row) }))])),
             versionAmount: { numericProtocolVersion: 2, amountYuan, amountCents: compatibleBillCents(amountYuan)?.toString() ?? null },
             billAmounts: refreshedBills.filter(bill => bill.numericProtocolVersion === 2).map(bill => ({ billKey: bill.billKey, numericProtocolVersion: 2,
               taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null, taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null,
@@ -777,6 +844,9 @@ export class ContractDraftAggregateService {
             status: documentContentChanged ? "document_invalidated" : "unchanged"
           }
         };
+        for (const [idempotencyKey, source] of restoreSources) await tx.contractDraftSaveRequest.update({
+          where: { idempotencyKey }, data: { responseSnapshot: { ...source.snapshot, _rowUndo: source.undo } as Prisma.InputJsonObject }
+        });
         await tx.contractDraftSaveRequest.create({
           data: {
             idempotencyKey: input.idempotencyKey,
@@ -785,7 +855,7 @@ export class ContractDraftAggregateService {
             resultRevision,
             saveKind: input.saveKind,
             requestSha256,
-            responseSnapshot: response,
+            responseSnapshot: numericProtocolVersion === 2 ? { ...response, _rowUndo: { version: 1, deletedRows, restoredKeys: [] } } : response,
             createdByUserId: actorUserId,
             expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
           }
@@ -893,6 +963,7 @@ export class ContractDraftAggregateService {
     isOwner: boolean,
     isDirector: boolean
   ) {
+    responseSnapshot = publicSaveSnapshot(responseSnapshot);
     if (this.hasCompleteSaveReceipt(responseSnapshot, resultRevision)) {
       return responseSnapshot;
     }

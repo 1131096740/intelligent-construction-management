@@ -14,6 +14,8 @@ export interface WorkbenchBillColumn {
 }
 
 export interface WorkbenchBillRow {
+  restoreRef?: { saveIntentKey: string; oldRowKey: string };
+  restoreOriginalValues?: Record<string, unknown>;
   rowKey: string;
   itemCode?: string | null;
   itemName?: string | null;
@@ -49,6 +51,8 @@ export interface WorkbenchBillRemainderCancellationFacts {
 }
 
 export interface WorkbenchBill {
+  acknowledgedRowKeys?: Record<string, string>;
+  acknowledgedDeletions?: Array<{ saveIntentKey: string; oldRowKey: string; originalValues: Record<string, unknown> }>;
   numericProtocolVersion?: number;
   inputNumericProtocolVersion?: number;
   taxInclusiveAmountYuan?: string | null;
@@ -276,6 +280,19 @@ export function mergeFocusedBillAggregate(
         ? draftRow["rowKey"]
         : "";
       const authoritative = authoritativeRows.get(rowKey);
+      const reference = draftRow["restoreRef"];
+      const oldRowKey = reference && typeof reference === "object" && !Array.isArray(reference) && typeof (reference as Record<string, unknown>)["oldRowKey"] === "string"
+        ? (reference as Record<string, string>)["oldRowKey"] : "";
+      // Retain only numeric display provenance across an acknowledged new key.
+      // Actions and historical occupancy capabilities require an exact row key.
+      const pricingOrigin = authoritative ?? authoritativeRows.get(oldRowKey) ??
+        (typeof draftRow["clientRowKey"] === "string" ? authoritativeRows.get(draftRow["clientRowKey"]) : undefined);
+      const retainedPricing = pricingOrigin ? {
+        ...Object.fromEntries(["precisionPolicy", "numericSource", "numericReviewStatus", "taxExclusiveUnitPrice", "taxInclusiveAmountCents", "taxExclusiveAmountCents", "taxAmountCents", "taxInclusiveAmountYuan", "taxExclusiveAmountYuan", "taxAmountYuan"].map(key => [key, pricingOrigin[key]])),
+        initialQuantity: pricingOrigin.initialQuantity ?? pricingOrigin.quantity,
+        initialUnitPrice: pricingOrigin.initialUnitPrice ?? pricingOrigin.unitPrice,
+        initialTaxRatePercent: pricingOrigin.initialTaxRatePercent ?? pricingOrigin.taxRatePercent ?? pricingOrigin.taxRate
+      } : {};
       const customData =
         draftRow["customData"] !== null &&
         typeof draftRow["customData"] === "object" &&
@@ -284,6 +301,7 @@ export function mergeFocusedBillAggregate(
           : {};
       return {
         ...authoritative,
+        ...retainedPricing,
         ...draftRow,
         customData,
         ...(authoritative?.availableActions

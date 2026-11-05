@@ -4,12 +4,16 @@ import type { JgBusinessGridColumn } from "./jg-business-grid.config";
 
 const props = defineProps<{
   val?: unknown;
-  column: JgBusinessGridColumn;
+  column: JgBusinessGridColumn | { column: JgBusinessGridColumn };
   save: (value: unknown, preventFocus?: boolean) => void;
   close: (focusNext?: boolean) => void;
 }>();
 
-const options = computed(() => [...(props.column.businessSelectOptions ?? [])]);
+// RevoGrid supplies ColumnDataSchemaModel to editor constructors; its actual
+// column configuration is nested. Retain direct configuration for callers.
+const configuration = computed(() => "column" in props.column
+  ? props.column.column as JgBusinessGridColumn : props.column);
+const options = computed(() => [...(configuration.value.businessSelectOptions ?? [])]);
 const selectedValue = computed(() => {
   const values = (Array.isArray(props.val) ? props.val : String(props.val ?? "")
     .split(/[、，,;；]/u))
@@ -19,7 +23,7 @@ const selectedValue = computed(() => {
       (option) => option.value === value || option.label === value
     )?.value)
     .filter((value): value is string => Boolean(value));
-  return props.column.businessSelectMultiple ? values : values[0];
+  return configuration.value.businessSelectMultiple ? values : values[0];
 });
 
 function commit(value: unknown) {
@@ -33,7 +37,7 @@ function commit(value: unknown) {
     class="jg-business-grid-select-editor"
     :model-value="selectedValue"
     :options="options"
-    :multiple="column.businessSelectMultiple"
+    :multiple="configuration.businessSelectMultiple"
     :filterable="true"
     :autofocus="true"
     placeholder="搜索并选择业务选项"
