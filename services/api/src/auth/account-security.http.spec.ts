@@ -4,7 +4,7 @@ import { Reflector } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AuthController } from "./auth.controller";
 import { EmployeeOnboardingController } from "../organization/employee-onboarding.controller";
 import { EmployeeOnboardingService } from "../organization/employee-onboarding.service";
@@ -97,9 +97,10 @@ function memoryPersistence() {
       applications.push({ id, phone, name: "合成申请人", passwordHash: await bcrypt.hash("synthetic-current-password", 4),
         status: "pending", mustChangePassword: true, credentialVersion: 0, revision: 0, temporaryPasswordExpiresAt: null, createdAt: new Date() });
     },
-    async add(id: string, phone: string, role: string, mustChangePassword = false, isActive = true) {
+    async add(id: string, phone: string, role: string, mustChangePassword = false, isActive = true, recoveryCode?: string) {
       users.push({ id, phone, name: "合成人员", isActive, passwordHash: await bcrypt.hash("synthetic-current-password", 4),
-        sessionVersion: 0, mustChangePassword, temporaryPasswordExpiresAt: null }); roles.set(id, [role]);
+        sessionVersion: 0, mustChangePassword, temporaryPasswordExpiresAt: null,
+        recoveryCodeHash: recoveryCode ? createHash("sha256").update(recoveryCode).digest("hex") : null }); roles.set(id, [role]);
     }
   };
 }
@@ -325,6 +326,56 @@ describe("任务04公开账号安全接口（内存持久层、模拟短信，�
     jest.useFakeTimers({ doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "performance", "hrtime"] });
     jest.setSystemTime(Date.now() + 86_400_001);
     expect((await login("13800000001", "synthetic-controlled-initial")).status).toBe(401);
+  });
+
+  it("被强制改密的正式账号不能经短信忘密沿用原初始密码解除限制", async () => {
+    process.env.INITIAL_USER_TEMPORARY_PASSWORD = "synthetic-controlled-initial";
+    const manager = await login("13800000002");
+    await request("/account-security/users/employee/reset-password", { identityVerified: true, confirmationPassword: "synthetic-current-password" }, manager.body.tokens.accessToken);
+    enableSms(); await request("/account-security/sms", { phone: "13800000001", purpose: "reset" });
+    const code = sentCode;
+    const result = await request("/account-security/reset-with-sms", { phone: "13800000001", code, newPassword: "synthetic-controlled-initial" });
+    expect(result.status).toBe(400);
+    const initial = await login("13800000001", "synthetic-controlled-initial");
+    expect(initial.body.user.mustChangePassword).toBe(true);
+    expect((await request("/auth/profile", { name: "仍受限", phone: "13800000001", currentPassword: "synthetic-controlled-initial" }, initial.body.tokens.accessToken, "PATCH")).status).toBe(403);
+    expect((await request("/account-security/reset-with-sms", { phone: "13800000001", code, newPassword: "synthetic-personal-password" })).status).toBe(400);
+    jest.useFakeTimers({ doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "performance", "hrtime"] });
+    jest.setSystemTime(Date.now() + 60_001);
+    await request("/account-security/sms", { phone: "13800000001", purpose: "reset" });
+    expect((await request("/account-security/reset-with-sms", { phone: "13800000001", code: sentCode, newPassword: "synthetic-personal-password" })).status).toBe(201);
+    expect((await login("13800000001", "synthetic-personal-password")).body.user.mustChangePassword).toBe(false);
+  });
+
+  it("被强制改密的待审核申请不能经短信忘密沿用原初始密码解除限制", async () => {
+    await state.addApplication("application", "13800000008");
+    process.env.INITIAL_USER_TEMPORARY_PASSWORD = "synthetic-controlled-initial";
+    const manager = await login("13800000002");
+    await request("/account-security/applications/application/reset-password", { identityVerified: true, confirmationPassword: "synthetic-current-password" }, manager.body.tokens.accessToken);
+    enableSms(); await request("/account-security/sms", { phone: "13800000008", purpose: "reset" });
+    const code = sentCode;
+    const result = await request("/account-security/reset-with-sms", { phone: "13800000008", code, newPassword: "synthetic-controlled-initial" });
+    expect(result.status).toBe(400);
+    const initial = await request("/employee-onboarding/login", { phone: "13800000008", password: "synthetic-controlled-initial" });
+    expect(initial.body.application).toMatchObject({ mustChangePassword: true, status: "pending" });
+    expect((await request("/account-security/reset-with-sms", { phone: "13800000008", code, newPassword: "synthetic-applicant-password" })).status).toBe(400);
+    jest.useFakeTimers({ doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "performance", "hrtime"] });
+    jest.setSystemTime(Date.now() + 60_001);
+    await request("/account-security/sms", { phone: "13800000008", purpose: "reset" });
+    expect((await request("/account-security/reset-with-sms", { phone: "13800000008", code: sentCode, newPassword: "synthetic-applicant-password" })).status).toBe(201);
+    expect((await request("/employee-onboarding/login", { phone: "13800000008", password: "synthetic-applicant-password" })).body.application).toMatchObject({ mustChangePassword: false, status: "pending" });
+  });
+
+  it("董事长恢复码不能把强改账号重设为原密码；设置不同密码后才解除限制", async () => {
+    const recoveryCode = "synthetic-recovery-code-".repeat(3);
+    await state.add("forced-chairman", "13800000009", "chairman", true, true, recoveryCode);
+    const input = { phone: "13800000009", recoveryCode, newPassword: "synthetic-current-password" };
+    expect((await request("/account-security/recover", input)).status).toBe(400);
+    const unchanged = await login("13800000009");
+    expect(unchanged.body.user.mustChangePassword).toBe(true);
+    expect((await request("/account-security/recover", { ...input, newPassword: "synthetic-personal-password" })).status).toBe(201);
+    expect((await login("13800000009", "synthetic-personal-password")).body.user.mustChangePassword).toBe(false);
+    expect((await request("/account-security/recover", { ...input, newPassword: "synthetic-replay-password" })).status).toBe(401);
   });
 
 });

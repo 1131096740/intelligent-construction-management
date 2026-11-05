@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { AuditService } from "../audit/audit.service";
@@ -110,11 +111,15 @@ export class AccountSecurityService {
     const passwordHash = await this.auth.hashPassword(input.newPassword);
     await this.prisma.$transaction(async (tx) => {
       if (subject.kind === "user") {
+        const current = await tx.user.findUnique({ where: { id: subject.id } });
+        await this.assertInitialPasswordChanged(input.newPassword, current);
         const updated = await tx.user.updateMany({ where: { id: subject.id, phone: input.phone, isActive: true, sessionVersion: subject.version },
           data: { passwordHash, mustChangePassword: false, temporaryPasswordExpiresAt: null, sessionVersion: { increment: 1 }, recoveryCodeHash: null } });
         if (updated.count !== 1) throw new BadRequestException("账号状态已变化，请重新获取验证码");
         await this.revokeAndAudit(tx, subject.id, subject.id, "auth.password.sms_reset");
       } else {
+        const current = await tx.employeeRegistration.findUnique({ where: { id: subject.id } });
+        await this.assertInitialPasswordChanged(input.newPassword, current);
         const updated = await tx.employeeRegistration.updateMany({ where: { id: subject.id, phone: input.phone,
           status: { not: "approved" }, credentialVersion: subject.version },
         data: { passwordHash, mustChangePassword: false, temporaryPasswordExpiresAt: null, credentialVersion: { increment: 1 }, revision: { increment: 1 } } });
@@ -187,12 +192,19 @@ export class AccountSecurityService {
       if (!user?.isActive || user.recoveryCodeHash !== this.hashCode(input.recoveryCode)) throw new UnauthorizedException("手机号或恢复码不正确，或恢复码已使用");
       const roles = await employeeManagerRoles(tx, user.id);
       if (!roles.includes("chairman")) throw new UnauthorizedException("恢复码已失效，请联系董事长");
+      await this.assertInitialPasswordChanged(input.newPassword, user);
       const changed = await tx.user.updateMany({ where: { id: user.id, isActive: true, recoveryCodeHash: this.hashCode(input.recoveryCode) },
         data: { passwordHash, recoveryCodeHash: null, mustChangePassword: false, temporaryPasswordExpiresAt: null, sessionVersion: { increment: 1 } } });
       if (changed.count !== 1) throw new UnauthorizedException("恢复码已失效，请重新核对");
       await this.revokeAndAudit(tx, user.id, user.id, "auth.password.recovery_code");
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch(this.rejectStaleAccount);
     return { ok: true };
+  }
+
+  private async assertInitialPasswordChanged(password: string, current: { mustChangePassword: boolean; passwordHash: string | null } | null) {
+    if (current?.mustChangePassword && current.passwordHash && await bcrypt.compare(password, current.passwordHash)) {
+      throw new BadRequestException("新密码不能与当前密码相同，请设置本人新密码");
+    }
   }
 
   private hashCode(value: string) { return createHash("sha256").update(value).digest("hex"); }
