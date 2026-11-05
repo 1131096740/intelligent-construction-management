@@ -1143,7 +1143,7 @@ export class ContractReadService {
       settlementsByContractId.set(settlement.contractId, [...rows, settlement]);
     }
 
-    return contracts.map((contract) => {
+    return contracts.filter(contract => effectiveVersionByContractId.has(contract.id) || latestVersionByContractId.get(contract.id)?.signingSubjectType !== "draft_unconfirmed").map((contract) => {
       const latestVersion = latestVersionByContractId.get(contract.id);
       const effectiveVersion = effectiveVersionByContractId.get(contract.id);
       const takeover = takeoverByContractId.get(contract.id);
@@ -1174,8 +1174,8 @@ export class ContractReadService {
         versionLabel: effectiveVersion ? `合同 v${effectiveVersion.versionNo}` : "-",
         contractStatus: effectiveVersion?.status ?? latestVersion?.status ?? "draft",
         contractStatusLabel: this.statusView(effectiveVersion?.status ?? latestVersion?.status ?? "draft").label,
-        paymentSubjectType:
-          effectiveVersion?.signingSubjectType === "affiliate" ? "affiliate" : "our_company",
+        ...(effectiveVersion?.signingSubjectType === "affiliate" || effectiveVersion?.signingSubjectType === "our_company"
+          ? { paymentSubjectType: effectiveVersion.signingSubjectType } : {}),
         source,
         sourceLabel:
           source === "historical_takeover"

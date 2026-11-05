@@ -85,6 +85,7 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const affiliate = frozenAffiliateFromJson(source, "合同承诺");
     const occurredAt = requiredJsonDate(source, "occurredAt", "合同承诺");
     const delta = requiredJsonMoney(source, "commitmentDeltaCents", "合同承诺");
+    if (source.signingSubjectType === "draft_unconfirmed") throw new Error("合同签约主体待补充，不能形成正式经营事实");
     const debtor = source.signingSubjectType === "affiliate"
       ? { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId }
       : { kind: "participating_company" as const, id: requiredJsonText(source, "companyEntityVersionId", "合同签约主体") };

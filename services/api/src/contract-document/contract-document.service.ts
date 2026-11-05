@@ -120,6 +120,26 @@ export class ContractDocumentService {
           contractVersionId,
           actorUserId
         );
+        const draftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : {};
+        const basics = draftData.contractBasics && typeof draftData.contractBasics === "object" && !Array.isArray(draftData.contractBasics) ? draftData.contractBasics : {};
+        if (version.status === "draft" && version.numericProtocolVersion === 2 && basics.amountBasis === "tax_exclusive") {
+          throw new BadRequestException("当前不含税草稿文书尚待模板口径核对，请保留资料，暂不能生成");
+        }
+        if (version.status === "draft" && draftData.contractBasics !== undefined) {
+          const parties = await tx.contractPartySnapshot.findMany({ where: { contractVersionId: version.id } });
+          const namedParty = (role: string) => parties.some(party => party.roleKey === role && party.snapshot && typeof party.snapshot === "object" && !Array.isArray(party.snapshot) && typeof party.snapshot.name === "string" && party.snapshot.name.trim());
+          const missing = [
+            ...(!ownedContract.projectId ? ["项目"] : []),
+            ...(typeof draftData.contractName !== "string" || !draftData.contractName.trim() ? ["合同名称"] : []),
+            ...(!["inside", "outside", "upward"].includes(String(basics.relationship ?? "")) ? ["合同关系"] : []),
+            ...(!namedParty("party_a") ? ["甲方"] : []),
+            ...(!namedParty("party_b") ? ["乙方"] : [])
+          ];
+          if (missing.length) throw new BadRequestException(`生成前请补充：${missing.join("、")}。草稿内容已保留，可继续填写。`);
+        }
+        if (version.status === "draft" && version.numericProtocolVersion === 2 && version.signingSubjectType === "draft_unconfirmed" && !version.layoutTemplateVersionId) {
+          throw new BadRequestException("请选择并保存模板，再生成当前合同草稿；填写内容已保留");
+        }
         let contract = ownedContract;
         if (version.changeType === "historical_takeover") {
           throw new BadRequestException(
@@ -1030,7 +1050,8 @@ export class ContractDocumentService {
     purpose: ContractDocumentPurpose
   ) {
     const values: Record<string, unknown> = {
-      "contract.name": contract.name,
+      "contract.name": version.status === "draft" && this.isObject(version.draftData) && typeof version.draftData.contractName === "string" && version.draftData.contractName.trim()
+        ? version.draftData.contractName : contract.name,
       "contract.temporaryCode": contract.temporaryCode ?? "",
       "contract.code": contract.code ?? "",
       "contract.amount": version.numericProtocolVersion === 2 ? version.amountYuan?.toFixed(4) ?? "待确定" : formatMoneyCents(version.amountCents),

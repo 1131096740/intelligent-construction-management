@@ -6,10 +6,6 @@ const listSource = fs.readFileSync(
   path.resolve(__dirname, "ContractTemplateListPage.vue"),
   "utf8"
 );
-const workbenchSource = fs.readFileSync(
-  path.resolve(__dirname, "../contracts/ContractWorkbenchPage.vue"),
-  "utf8"
-);
 const drawerSource = fs.readFileSync(
   path.resolve(__dirname, "../../components/ContractTemplateUsagePreviewDrawer.vue"),
   "utf8"
@@ -34,25 +30,9 @@ describe("published contract template usage preview structure", () => {
     expect(listSource).not.toContain("listPublishedLayoutTemplates");
   });
 
-  it("previews only a selected latest published template in the creation wizard", () => {
-    expect(workbenchSource).toContain("ContractTemplateUsagePreviewDrawer");
-    expect(workbenchSource).toContain("预览所选模板");
-    expect(workbenchSource).toContain("publishedTemplateForSelection");
-    expect(workbenchSource).toContain("selectedTemplate");
-    expect(workbenchSource).toContain(
-      "() => [route.query.contractType, route.query.templateVersionId]"
-    );
-    expect(workbenchSource).toContain("initializeDraft.setContractTypeKey(contractTypeKey)");
-    expect(workbenchSource).toContain(
-      "initializeDraft.setBusinessTemplateVersionId(templateVersionId)"
-    );
-    expect(workbenchSource).not.toContain("listPublishedLayoutTemplates");
-    expect(workbenchSource).not.toContain("createPrivateFileDownloadTicket");
-    expect(workbenchSource).toContain("recommendContractScenarioTemplates");
-    expect(workbenchSource).toContain("从模板库直接选择");
-    expect(workbenchSource).not.toContain("listContractScenarioGovernance");
-    expect(workbenchSource).not.toContain("createdByUserId");
-    expect(workbenchSource).not.toContain("updatedByUserId");
-    expect(workbenchSource).not.toContain("choice.priority");
-  });
+  // CON09 and task09 v2 create supersede the former forced business-template
+  // bootstrap, query preselection and recommendation drawer contract. Real new
+  // create UI covers project/type/relation and backend persistence. Word-template
+  // selection and actual generated files remain a task09 closing gate after
+  // formal task11 integration; they are not claimed by this source test.
 });

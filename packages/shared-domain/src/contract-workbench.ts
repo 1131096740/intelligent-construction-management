@@ -265,6 +265,7 @@ export interface ContractWorkbenchReadModel {
     documentContentFingerprint: string | null;
     layoutTemplateVersionId?: string | null;
     contractGovernanceVersion?: number | null;
+    signingSubjectType?: "our_company" | "affiliate" | "draft_unconfirmed";
     numericProtocolVersion?: number;
     amountYuan?: string | null;
     amountCents: MoneyCents | null;

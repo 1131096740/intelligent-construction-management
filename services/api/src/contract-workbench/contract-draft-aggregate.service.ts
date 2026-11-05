@@ -284,6 +284,9 @@ export class ContractDraftAggregateService {
             await this.isContractDirector(actorUserId)
           );
         }
+        if (version.numericProtocolVersion === 2 && input.draft.amountSource === "manual" && input.draft.numericProtocolVersion !== 2) {
+          throw new ConflictException("合同金额精度已升级，请刷新页面并保留四位合同金额后重试");
+        }
         await tx.$queryRaw(Prisma.sql`
           SELECT "contractVersionId" FROM "ContractDraftEditLease"
           WHERE "contractVersionId" = ${contractVersionId}
@@ -394,7 +397,7 @@ export class ContractDraftAggregateService {
         }
         // Validate the version-level default even when an empty bill has no rows
         // through which the four-place line calculator could validate it.
-        if (version.numericProtocolVersion === 2 ||
+        if (input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 ||
           currentBills.some((bill) => bill.numericProtocolVersion === 2) ||
           input.bills.some((bill) => bill.numericProtocolVersion === 2)) {
           const rate = input.draft.taxFacts.defaultTaxRatePercent;
@@ -422,7 +425,7 @@ export class ContractDraftAggregateService {
         const billRevisions: Record<string, number> = {};
         const billRowKeys: Record<string, Array<{ clientRowKey: string; rowKey: string }>> = {};
         const deletedRows: Record<string, Prisma.InputJsonObject[]> = {};
-        const restoreSources = new Map<string, { snapshot: Record<string, unknown>; undo: { version: number; deletedRows: Record<string, unknown[]>; restoredKeys: string[] } }>();
+        const restoreSources = new Map<string, { snapshot: Record<string, unknown>; undo: { version: number; deletedRows: Record<string, unknown[]>; restoredKeys: string[]; pricingModes: Record<string, string> } }>();
         const billVersionContext = {
           ...version,
           pricingNature: input.draft.pricingNature,
@@ -449,10 +452,19 @@ export class ContractDraftAggregateService {
               const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey: ref.saveIntentKey } });
               if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId || receipt.expiresAt <= now || !receipt.responseSnapshot || typeof receipt.responseSnapshot !== "object" || Array.isArray(receipt.responseSnapshot)) throw new BadRequestException("原删除记录不属于当前经办人的合同草稿或已过期");
               const snapshot = receipt.responseSnapshot as Record<string, unknown>;
-              const undo = snapshot["_rowUndo"] as { version?: unknown; deletedRows?: unknown; restoredKeys?: unknown } | undefined;
+              const undo = snapshot["_rowUndo"] as { version?: unknown; deletedRows?: unknown; restoredKeys?: unknown; pricingModes?: unknown } | undefined;
               if (!undo || undo.version !== 1 || !undo.deletedRows || typeof undo.deletedRows !== "object" || Array.isArray(undo.deletedRows) || !Array.isArray(undo.restoredKeys) || undo.restoredKeys.some(key => typeof key !== "string")) throw new BadRequestException("原保存记录没有可核对的删除事实，不能恢复该行");
-              source = { snapshot, undo: { version: 1, deletedRows: undo.deletedRows as Record<string, unknown[]>, restoredKeys: [...undo.restoredKeys] } };
+              if (!undo.pricingModes || typeof undo.pricingModes !== "object" || Array.isArray(undo.pricingModes)) {
+                throw new BadRequestException("原删除记录的金额口径缺少可核对依据，请保留草稿并联系合同部核对后恢复");
+              }
+              source = { snapshot, undo: { version: 1, deletedRows: undo.deletedRows as Record<string, unknown[]>, restoredKeys: [...undo.restoredKeys], pricingModes: undo.pricingModes as Record<string, string> } };
               restoreSources.set(ref.saveIntentKey, source);
+            }
+            const requestedBasics = input.draft.draftData.contractBasics;
+            const targetPricingMode = requestedBasics && typeof requestedBasics === "object" && !Array.isArray(requestedBasics)
+              ? (requestedBasics as Record<string, unknown>).amountBasis ?? bill.pricingMode : bill.pricingMode;
+            if (source.undo.pricingModes[bill.billKey] !== bill.pricingMode || source.undo.pricingModes[bill.billKey] !== targetPricingMode) {
+              throw new BadRequestException("原删除记录的金额口径与当前草稿不一致，请保留草稿并先核对口径，不能直接恢复原行");
             }
             const consumedKey = JSON.stringify([bill.billKey, ref.oldRowKey]);
             if (source.undo.restoredKeys.includes(consumedKey)) throw new BadRequestException("该删除记录已经恢复，不能重复恢复");
@@ -468,7 +480,10 @@ export class ContractDraftAggregateService {
             actorUserId,
             billVersionContext,
             bill,
-            billInput,
+            { ...billInput, ...(
+              input.draft.draftData.contractBasics && typeof input.draft.draftData.contractBasics === "object" &&
+              ["tax_inclusive", "tax_exclusive"].includes((input.draft.draftData.contractBasics as Record<string, unknown>).amountBasis as string)
+                ? { pricingMode: (input.draft.draftData.contractBasics as { amountBasis: "tax_inclusive" | "tax_exclusive" }).amountBasis } : {}) },
             trustedRestores
           );
           billRevisions[bill.billKey] = result.revision;
@@ -557,11 +572,13 @@ export class ContractDraftAggregateService {
             : Promise.resolve([])
         ]);
 
-        const numericProtocolVersion = documentBills.some(bill => bill.numericProtocolVersion === 2) ? 2 : 1;
+        const numericProtocolVersion = input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 || documentBills.some(bill => bill.numericProtocolVersion === 2) ? 2 : 1;
         const amountYuan = numericProtocolVersion === 2
-          ? input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills) : businessAmountFromLegacyCents(fieldResult.amountCents)
+          ? input.draft.pricingNature === "framework" ? null : input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills)
+            : input.draft.numericProtocolVersion === 2 ? normalizeBusinessAmount(input.draft.manualAmountYuan ?? null)
+              : businessAmountFromLegacyCents(fieldResult.amountCents)
           : null;
-        if (numericProtocolVersion === 2) Object.assign(fieldResult.data, { numericProtocolVersion, amountYuan });
+        if (numericProtocolVersion === 2) Object.assign(fieldResult.data, { numericProtocolVersion, amountYuan, amountCents: compatibleBillCents(amountYuan) ?? 0n });
 
         const changed = effectiveChangedSections.size > 0;
         const documentContentChangedSections = [...effectiveChangedSections]
@@ -834,7 +851,7 @@ export class ContractDraftAggregateService {
           capability: {
             refreshRequired: false,
             draftOperationAvailableActions: this.projectDraftOperationCapabilities(
-              version,
+              { ...version, numericProtocolVersion },
               true,
               isDirector,
               false
@@ -855,7 +872,7 @@ export class ContractDraftAggregateService {
             resultRevision,
             saveKind: input.saveKind,
             requestSha256,
-            responseSnapshot: numericProtocolVersion === 2 ? { ...response, _rowUndo: { version: 1, deletedRows, restoredKeys: [] } } : response,
+            responseSnapshot: numericProtocolVersion === 2 ? { ...response, _rowUndo: { version: 1, deletedRows, restoredKeys: [], pricingModes: Object.fromEntries(currentBills.map(bill => [bill.billKey, bill.pricingMode])) } } : response,
             createdByUserId: actorUserId,
             expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
           }

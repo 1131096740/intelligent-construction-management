@@ -1429,3 +1429,185 @@ test("focuses the new independent row from the section and batch copy controls",
   expect(saved.bills[0].rows.map((row: { itemName: string }) => row.itemName)).toEqual(["级配碎石", "长名称材料用于核验表格与局部滚动", "顶部复制的独立新行", "批量复制的独立新行"]);
   expect(new Set(saved.bills[0].rows.map((row: { rowKey: string }) => row.rowKey)).size).toBe(4);
 });
+
+
+test("fills independent contract relationship, business type and pending tax facts on the full page", async ({ page, request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  await page.goto("/合同工作台/grid-contract?versionId=grid-version");
+  const basic = page.locator('[data-section-id="basic"]');
+  await expect(basic.locator(".business-entry-field__label").filter({ hasText: "合同关系" }).first()).toBeVisible();
+  async function select(label: string, option: string) {
+    await basic.locator(".business-entry-field").filter({ hasText: label }).locator(".t-select").click();
+    await page.getByText(option, { exact: true }).last().click();
+  }
+  await select("合同关系", "对上合同（我方公司与施工企业）");
+  await select("业务类型", "其他");
+  await select("发票约定", "无发票");
+  const settlement = basic.locator('textarea');
+  await settlement.fill("以双方真实确认的结算资料为准");
+  await settlement.blur();
+  await expect.poll(async () => {
+    const response = await request.get("/api/contract-drafts/grid-version/workbench", { headers: { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" } });
+    expect(response.status()).toBe(200);
+    return (await response.json()).version.draftData.contractBasics;
+  }).toMatchObject({ relationship: "upward", businessType: "other", invoiceStatus: "none", settlementText: "以双方真实确认的结算资料为准" });
+  await page.reload();
+  await expect(basic.getByPlaceholder("请填写合同关系", { exact: true })).toHaveValue("对上合同（我方公司与施工企业）");
+  await expect(basic.locator('textarea')).toHaveValue("以双方真实确认的结算资料为准");
+});
+
+
+test("saves declared net draft amounts over guarded HTTP and keeps unknown tax and partial facts distinct", async ({ request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  const grant = await (await request.post("/api/contract-drafts/grid-version/edit-lease", { headers })).json();
+  const input = gridApiSave(1, 1, [{ clientRowKey: "net-line", sortOrder: 0, itemName: "不含税材料", unit: "吨", quantity: "1.2345", unitPrice: "1.2345", customData: {} }]);
+  input.draft.draftData = { ...input.draft.draftData, contractBasics: { amountBasis: "tax_exclusive" } } as never;
+  input.draft.taxFacts.defaultTaxRatePercent = null as never;
+  const response = await request.put("/api/contract-drafts/grid-version", { headers: { ...headers, "x-contract-draft-lease": grant.token }, data: input });
+  expect({ status: response.status(), body: await response.json() }).toMatchObject({ status: 200, body: { versionAmount: { amountYuan: "1.5240" } } });
+  const read = await (await request.get("/api/contract-drafts/grid-version/workbench", { headers })).json();
+  expect(read.bills[0]).toMatchObject({ pricingMode: "tax_exclusive", taxExclusiveAmountYuan: "1.5240", taxInclusiveAmountYuan: null, taxAmountYuan: null });
+  expect(read.bills[0].rows[0]).toMatchObject({ unitPrice: "1.2345", taxExclusiveAmountYuan: "1.5240", taxInclusiveAmountYuan: null, taxAmountYuan: null });
+  expect(read.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+});
+
+
+test("saves a four-place lump sum and both current-contract party names without creating shared units", async ({ page, request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  const unitsBefore = await (await request.get("/api/business-parties", { headers })).json();
+  await page.goto("/合同工作台/grid-contract?versionId=grid-version");
+  const pricing = page.locator('[data-section-id="bill_tax"]');
+  await pricing.getByText("计价性质", { exact: true }).locator("..").locator(".t-select").click();
+  await page.getByText("固定总价", { exact: true }).last().click();
+  const amount = pricing.getByPlaceholder("请输入含税合同金额，未知可留空", { exact: true });
+  await amount.fill("1.5340");
+  await amount.blur();
+  const parties = page.locator('[data-section-id="parties"] .party-form');
+  await parties.getByText("合同角色", { exact: true }).locator("..").locator(".t-select").click();
+  await page.getByText("甲方", { exact: true }).last().click();
+  await parties.getByPlaceholder("请输入公司名称", { exact: true }).fill("当前单甲方名称");
+  await parties.getByRole("button", { name: "加入合同草稿", exact: true }).click();
+  await parties.getByPlaceholder("请输入公司名称", { exact: true }).fill("当前单乙方名称");
+  await parties.getByRole("button", { name: "加入合同草稿", exact: true }).click();
+  const payment = page.getByPlaceholder("按实际约定填写付款时间、比例和条件，可留空待补充");
+  await payment.fill("设备调试并由双方确认后支付，比例另行约定");
+  await payment.blur();
+  await expect.poll(async () => {
+    const response = await request.get("/api/contract-drafts/grid-version/workbench", { headers });
+    expect(response.status()).toBe(200);
+    const draft = await response.json();
+    return { amount: draft.version.amountYuan, names: draft.parties.map((party: { roleKey: string; snapshot: { name: string } }) => [party.roleKey, party.snapshot.name]), payment: draft.paymentTerms.originalText };
+  }).toEqual({ amount: "1.5340", names: [["party_a", "当前单甲方名称"], ["party_b", "当前单乙方名称"]], payment: "设备调试并由双方确认后支付，比例另行约定" });
+  const unitsAfter = await request.get("/api/business-parties", { headers });
+  expect(unitsAfter.status()).toBe(200);
+  expect(await unitsAfter.json()).toEqual(unitsBefore);
+});
+
+
+test("rejects cross-basis deletion restores before any row or revision write", async ({ request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  const grant = await (await request.post("/api/contract-drafts/grid-version/edit-lease", { headers })).json();
+  const writeHeaders = { ...headers, "x-contract-draft-lease": grant.token };
+  const deleted = await request.put("/api/contract-drafts/grid-version", { headers: writeHeaders, data: gridApiSave(1, 1, []) });
+  expect(deleted.status()).toBe(200);
+  const ref = (await deleted.json()).deletedRowRestoreRefs.main[0];
+  const change = gridApiSave(2, 2, []);
+  change.draft.draftData = { ...change.draft.draftData, contractBasics: { amountBasis: "tax_exclusive" } } as never;
+  expect((await request.put("/api/contract-drafts/grid-version", { headers: writeHeaders, data: change })).status()).toBe(200);
+  const restore = gridApiSave(3, 3, [{ ...ref.originalValues, clientRowKey: "cross-basis-restore", sortOrder: 0, restoreRef: { saveIntentKey: ref.saveIntentKey, oldRowKey: ref.oldRowKey } }]);
+  restore.draft.draftData = change.draft.draftData;
+  const response = await request.put("/api/contract-drafts/grid-version", { headers: writeHeaders, data: restore });
+  expect(response.status()).toBe(400);
+  expect((await response.json()).message).toContain("原删除记录的金额口径");
+  const after = await (await request.get("/api/contract-drafts/grid-version/workbench", { headers })).json();
+  expect(after.version.draftRevision).toBe(3);
+  expect(after.bills[0].revision).toBe(3);
+  expect(after.bills[0].rows).toEqual([]);
+});
+
+
+test("searches an existing unit name and only adds its snapshot to the current draft", async ({ page, request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  expect((await request.post("/api/__grid_fixture/reset", { headers, data: { preset: "unit-search" } })).status()).toBe(200);
+  await page.goto("/合同工作台/grid-contract?versionId=grid-version");
+  const parties = page.locator('[data-section-id="parties"] .party-form');
+  await parties.getByPlaceholder("输入单位名称或信用代码").fill("已有材料");
+  await parties.getByRole("button", { name: "搜索已有单位", exact: true }).click();
+  await parties.getByPlaceholder("选择后带入当前合同名称").click();
+  await page.getByText("已有材料单位", { exact: true }).last().click();
+  await expect(parties.getByPlaceholder("请输入公司名称", { exact: true })).toHaveValue("已有材料单位");
+  await parties.getByRole("button", { name: "加入合同草稿", exact: true }).click();
+  await expect.poll(async () => (await (await request.get("/api/contract-drafts/grid-version/workbench", { headers })).json()).parties.map((party: { snapshot: { name: string } }) => party.snapshot.name)).toEqual(["已有材料单位"]);
+  const units = await request.get("/api/business-parties?query=已有材料", { headers });
+  expect(units.status()).toBe(200);
+  expect((await units.json()).map((unit: { name: string }) => unit.name)).toEqual(["已有材料单位"]);
+});
+
+
+test("creates new v2 contracts for all independent relations and five types with real empty bill and payment initialization", async ({ request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  for (const relationship of ["inside", "outside", "upward"]) for (const contractTypeKey of ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"]) {
+    const response = await request.post("/api/contracts", { headers, data: { numericProtocolVersion: 2, projectId: "grid-project", contractTypeKey, relationship } });
+    const body = await response.json();
+    expect({ status: response.status(), body }).toMatchObject({ status: 201, body: { version: { numericProtocolVersion: 2, signingSubjectType: "draft_unconfirmed", amountYuan: null, amountCents: null } } });
+    const readResponse = await request.get(`/api/contract-drafts/${body.version.id}/workbench`, { headers });
+    expect(readResponse.status()).toBe(200);
+    const read = await readResponse.json();
+    expect(read.version.draftData.contractBasics).toMatchObject({ relationship, businessType: contractTypeKey });
+    expect(read.version).toMatchObject({ businessTemplateVersionId: null, layoutTemplateVersionId: null, amountYuan: null, amountCents: null });
+    expect(read.bills).toHaveLength(1);
+    expect(read.bills[0]).toMatchObject({ numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4, rows: [] });
+    expect(read.paymentTerms).toMatchObject({ originalText: "", stages: [] });
+    expect(read.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+    const refused = await request.post(`/api/contract-drafts/${body.version.id}/submission`, { headers, data: { expectedRevision: 1, idempotencyKey: randomUUID() } });
+    expect(refused.status()).toBe(409);
+    expect((await refused.json()).message).toContain("四位金额草稿尚不能提交审批");
+    const after = await (await request.get(`/api/contract-drafts/${body.version.id}/workbench`, { headers })).json();
+    expect(after.version.status).toBe("draft");
+    expect(after.contract.code).toBeNull();
+  }
+});
+
+
+for (const [relationship, label] of [["inside", "表内合同（我方公司与下游）"], ["outside", "表外合同（施工企业与下游）"], ["upward", "对上合同（我方公司与施工企业）"]]) {
+  test(`starts a real new ${relationship} draft from the full UI and persists partial basic information`, async ({ page, request, isMobile }) => {
+    const session = await (await request.get("/api/__grid_fixture/session")).json();
+    const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+    await page.goto("/合同工作台/新建");
+    await expect(page.getByRole("heading", { name: "新建合同", exact: true })).toBeVisible();
+    await page.getByPlaceholder("选择业务类型", { exact: true }).click();
+    await page.getByText("其他", { exact: true }).last().click();
+    await page.getByPlaceholder("可先留空，生成前选择", { exact: true }).click();
+    await page.getByText(label, { exact: true }).last().click();
+    const createResponse = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/api/contracts"));
+    await page.getByRole("button", { name: "创建草稿", exact: true }).click();
+    const created = await createResponse;
+    expect(created.status()).toBe(201);
+    const body = await created.json();
+    await expect(page.getByText("待补充（未提交草稿）", { exact: true })).toBeVisible();
+    const name = page.getByPlaceholder("请填写合同名称", { exact: true });
+    await page.getByRole("link", { name: "基础信息", exact: true }).click();
+    await name.scrollIntoViewIfNeeded();
+    await expect(name).toBeInViewport();
+    if (isMobile) await name.tap(); else await name.click();
+    await expect(name).toBeFocused();
+    await name.fill(`新建${relationship}当前草稿`);
+    await name.blur();
+    await expect.poll(async () => {
+      const read = await request.get(`/api/contract-drafts/${body.version.id}/workbench`, { headers });
+      expect(read.status()).toBe(200);
+      return (await read.json()).version.draftData.contractName;
+    }).toBe(`新建${relationship}当前草稿`);
+    const persisted = await (await request.get(`/api/contract-drafts/${body.version.id}/workbench`, { headers })).json();
+    expect(persisted.version.draftData.contractBasics).toMatchObject({ relationship, businessType: "other" });
+    expect(persisted.parties).toEqual([]);
+    expect(persisted.version.amountYuan).toBeNull();
+    expect(persisted.version.status).toBe("draft");
+    expect(persisted.contract.code).toBeNull();
+  });
+}

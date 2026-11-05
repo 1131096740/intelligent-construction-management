@@ -245,10 +245,16 @@ type CreateWorkbenchDraftBasePayload = {
   signingSubjectType?: "affiliate" | "our_company";
 };
 
-export type CreateWorkbenchDraftPayload = CreateWorkbenchDraftBasePayload & (
+export type CreateWorkbenchDraftPayload = (CreateWorkbenchDraftBasePayload & (
   | { businessScenarioId: string; scenarioTemplateMappingId: string }
   | { businessScenarioId?: never; scenarioTemplateMappingId?: never }
-);
+)) | {
+  numericProtocolVersion: 2;
+  projectId: string;
+  contractTypeKey: string;
+  amountLimitType: "capped" | "unlimited";
+  relationship?: "inside" | "outside" | "upward";
+};
 
 export interface CreateWorkbenchDraftReadModel {
   contract: { id: string };
@@ -314,6 +320,8 @@ export interface ContractDraftLeaseHeartbeat {
 }
 
 export interface ContractDraftFieldsPayload {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
   clauses: ContractClauseDefinition[];

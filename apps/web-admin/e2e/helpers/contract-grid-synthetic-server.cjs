@@ -1,4 +1,4 @@
-// Real Nest controllers/services; only persistence, authentication and private
+// Real Nest controllers/services/guards; only persistence and private
 // file storage are synthetic. No PrismaClient, AppModule, SQL engine or gateway.
 const path = require("node:path");
 const { createRequire } = require("node:module");
@@ -17,13 +17,24 @@ const { ContractWorkbenchService } = load("contract-workbench/contract-workbench
 const { ContractDraftEditLeaseService } = load("contract-workbench/contract-draft-edit-lease.service");
 const { ContractBillService } = load("contract-bill/contract-bill.service");
 const { BusinessPartyService } = load("business-party/business-party.service");
+const { BusinessPartyController } = load("business-party/business-party.controller");
 const { ContractBillExcelService } = load("contract-bill/contract-bill-excel.service");
 const { ContractDraftBillExcelController } = load("contract-bill/contract-draft-bill-excel.controller");
 const { ContractService } = load("contract/contract.service");
+const { ContractController } = load("contract/contract.controller");
+const { ContractReadService } = load("contract/contract-read.service");
+const { ContractFormalFileService } = load("contract/contract-formal-file.service");
+const { ProjectVisibilityService } = load("auth/project-visibility.service");
 const { PristineDraftDeletionService } = load("contract-workbench/pristine-draft-deletion.service");
 const { ContractDocumentService } = load("contract-document/contract-document.service");
 const { AuditService } = load("audit/audit.service");
 const { FileService } = load("file/file.service");
+const { Reflector } = req("@nestjs/core");
+const { JwtTokenService } = load("auth/jwt-token.service");
+const { JwtAuthGuard } = load("auth/guards/jwt-auth.guard");
+const { PermissionGuard } = load("auth/guards/permission.guard");
+const { RetiredWriteEntryGuard } = load("retired-write-entry/retired-write-entry.guard");
+const tokens = new JwtTokenService();
 const D = value => new Prisma.Decimal(value);
 const now = new Date();
 const actor = { id: "grid-actor", name: "合成合同经办人", phone: null, mustChangePassword: false, roleKeys: ["contract_staff"], globalRoleKeys: ["contract_staff"] };
@@ -41,6 +52,11 @@ for (const name of ["approvalInstance", "approvalActionLog", "contractFormalFile
 // enables the real file ACL to reject absent business bindings, not bypass it.
 for (const model of Prisma.dmmf.datamodel.models) state[model.name[0].toLowerCase() + model.name.slice(1)] ??= [];
 const clone = value => value instanceof Date ? new Date(value) : Prisma.Decimal.isDecimal(value) ? D(value.toString()) : Array.isArray(value) ? value.map(clone) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)])) : value;
+state.paymentTermsVersion = [{ id: "grid-terms", contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "draft", originalText: "", createdAt: now, updatedAt: now }];
+state.userPosition = [actor, otherActor].map(user => ({ userId: user.id, positionId: "synthetic-contract-role", projectId: null }));
+state.position = [{ id: "synthetic-contract-role", key: "contract_staff" }];
+session.accessToken = tokens.signAccessToken(actor);
+otherSession.accessToken = tokens.signAccessToken(otherActor);
 const initialState = clone(state);
 function matches(record, where = {}) {
   return Object.entries(where).every(([key, wanted]) => {
@@ -50,6 +66,8 @@ function matches(record, where = {}) {
     const actual = record[key];
     if (wanted && typeof wanted === "object" && !Prisma.Decimal.isDecimal(wanted) && !(wanted instanceof Date)) {
       return Object.entries(wanted).every(([operator, value]) => {
+        if (operator === "contains") return typeof actual === "string" && actual.toLowerCase().includes(String(value).toLowerCase());
+        if (operator === "mode") return value === "insensitive";
         if (operator === "in") return value.includes(actual);
         if (operator === "notIn") return !value.includes(actual);
         if (operator === "not") return actual !== value;
@@ -93,7 +111,17 @@ for (const table of Object.keys(state)) {
   };
   db[table] = {
     findUnique: async args => enrich(find(args)[0]), findFirst: async args => enrich(find(args)[0]), findMany: async args => find(args).map(enrich), count: async args => find(args).length,
-    create: async ({ data }) => { const item = { id: randomUUID(), createdAt: new Date() }; assign(item, data); state[table].push(item); return clone(item); },
+    create: async ({ data }) => {
+      const defaults = table === "contractVersion" ? { draftRevision: 1, documentContentRevision: 1, documentContentFingerprint: null,
+        baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, abandonedAt: null, abandonedByUserId: null, abandonReason: null,
+        estimatedAmountCents: null, amountAdjustmentReason: null, taxFactRevision: 0, taxFactsFrozenAt: null, readinessSnapshot: null,
+        affiliateAssignmentId: null, affiliateBusinessPartyVersionId: null, affiliateNameSnapshot: null, affiliateCreditCodeSnapshot: null,
+        settlementMode: null, settlementModeSource: null, settlementModeConfirmedAt: null }
+        : table === "contractBill" ? { revision: 1, sourceExcelFileId: null, taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n }
+        : table === "contract" ? { voidedAt: null, source: "system" } : {};
+      const item = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...defaults };
+      assign(item, data); state[table].push(item); return clone(item);
+    },
     createMany: async ({ data }) => { for (const item of data) await db[table].create({ data: item }); return { count: data.length }; },
     update: async ({ where, data }) => { const item = find({ where })[0]; if (!item) throw Error(`Missing synthetic ${table}`); return assign(item, data); },
     updateMany: async ({ where, data }) => { const found = find({ where }); found.forEach(item => assign(item, data)); return { count: found.length }; },
@@ -105,6 +133,7 @@ db.$transaction = async run => { const previous = clone(state); try { return awa
 db.$queryRaw = async query => {
   const text = query.strings?.join(" ") ?? "";
   if (text.includes('FROM "ContractFormalFile"')) { const id = query.values[0]; return [{ hasSignedFormalFile: state.contractFormalFile.some(file => file.contractVersionId === id && file.status === 'active' && file.purpose === 'mutually_signed_final'), hasActiveSealTask: state.contractSealTask.some(task => task.contractVersionId === id && task.status !== 'cancelled'), hasArchiveFile: state.contractArchiveFile.some(file => file.contractVersionId === id), hasSettlement: state.settlement.some(item => item.contractVersionId === id), hasPaymentRequest: state.paymentRequest.some(item => item.contractVersionId === id) }]; }
+  if (text.includes('FROM "Project"')) return clone(state.project.filter(item => item.id === query.values[0]));
   if (text.includes('FROM "Contract" c')) { const version = state.contractVersion.find(item => item.id === query.values[0]); return clone(state.contract.filter(item => item.id === version?.contractId)); }
   if (text.includes('FROM "ContractVersion"')) return state.contractVersion.filter(item => item.id === query.values[0]).map(item => ({ ...clone(item), hasHistoricalTakeoverRelation: false }));
   if (text.includes('FROM "ContractBill"')) return clone(state.contractBill);
@@ -139,15 +168,23 @@ async function main() {
   fixtureSheet.addRow(["", "有权读取的导入材料", "", "吨", "1", "1.2345", "", "0", "否", ""]);
   const fixtureBuffer = Buffer.from(await fixtureWorkbook.xlsx.writeBuffer());
   const workbench = new ContractWorkbenchService(db, audit);
-  const aggregate = new ContractDraftAggregateService(db, workbench, new ContractBillService(db, audit), new BusinessPartyService(db, audit), files, audit);
+  const parties = new BusinessPartyService(db, audit);
+  const aggregate = new ContractDraftAggregateService(db, workbench, new ContractBillService(db, audit), parties, files, audit);
   const lease = new ContractDraftEditLeaseService(db, { confirmPassword: async () => { throw Error("Password actions outside grid acceptance"); } }, audit);
   const excel = new ContractBillExcelService(db, audit, files);
-  const module = await Test.createTestingModule({ controllers: [ContractDraftController, ContractDraftBillExcelController], providers: [
+  const module = await Test.createTestingModule({ controllers: [ContractDraftController, ContractDraftBillExcelController, BusinessPartyController, ContractController], providers: [
+    { provide: ContractService, useValue: new ContractService(db, audit) },
+    { provide: ContractReadService, useValue: {} },
+    { provide: ContractFormalFileService, useValue: new ContractFormalFileService(db, audit, files) },
+    { provide: ProjectVisibilityService, useValue: {} },
+    { provide: ContractWorkbenchService, useValue: workbench },
+    { provide: BusinessPartyService, useValue: parties },
     { provide: ContractDraftAggregateService, useValue: aggregate }, { provide: ContractDraftEditLeaseService, useValue: lease }, { provide: ContractBillExcelService, useValue: excel },
     { provide: ContractDocumentService, useValue: { queueDraftPreview: async () => { throw new (req("@nestjs/common").BadRequestException)("本地表格验收未接入文书生成，请在文书验收入口核对"); } } },
-    ...[ContractService, PristineDraftDeletionService].map(provide => ({ provide, useValue: {} }))
+    ...[PristineDraftDeletionService].map(provide => ({ provide, useValue: {} }))
   ] }).compile();
   const app = module.createNestApplication();
+  app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, db), new PermissionGuard(new Reflector(), db), new RetiredWriteEntryGuard());
   app.useGlobalPipes(req(path.join(root, "services/api/dist/validation/api-validation.js")).createApiValidationPipe());
   app.use(req("express").json());
   app.use((request, response, next) => {
@@ -171,7 +208,8 @@ async function main() {
       heldSaveRequest = null;
       state = clone(initialState);
       const preset = request.body?.preset;
-      if (preset !== undefined && !["legacy-null-zero", "two-drafts", "prior-owner-deletion", "file-permissions", "existing-layout"].includes(preset)) return response.status(400).json({ message: "未知合成初始场景" });
+      if (preset !== undefined && !["legacy-null-zero", "two-drafts", "prior-owner-deletion", "file-permissions", "existing-layout", "unit-search"].includes(preset)) return response.status(400).json({ message: "未知合成初始场景" });
+      if (preset === "unit-search") state.businessParty = [{ id: "grid-existing-unit", name: "已有材料单位", type: "organization", status: "active", unifiedSocialCreditCode: null, createdAt: now, updatedAt: now }];
       if (preset === "existing-layout") state.contractVersion[0].layoutTemplateVersionId = "grid-existing-retired-layout-version";
       if (preset === "legacy-null-zero") {
         const historical = { ...clone(rows[0]), itemName: "六位历史原事实", quantity: D("1.234567"), unitPrice: D("2.345678"), taxExclusiveUnitPrice: D("8.027106"), numericProtocolVersion: 1, numericSource: "legacy_cents", numericReviewStatus: "not_assessed", precisionPolicy: "legacy", taxInclusiveAmountYuan: null, taxExclusiveAmountYuan: null, taxAmountYuan: null, taxInclusiveAmountCents: 991n, taxExclusiveAmountCents: 991n, taxAmountCents: 0n };

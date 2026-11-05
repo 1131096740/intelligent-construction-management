@@ -179,6 +179,15 @@
         "publishSettlementTemplateVersion",
         "updateSettlementTemplateVersion"
       ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "classification": "test_only",
+      "reason": "Task09 CON09 requires manual template selection without recommendations; these two wrappers have no production consumer after removing the former scenario recommendation flow. Retained API unit tests and backend APIs pending task43 retirement.",
+      "wrappers": [
+        "listAvailableContractBusinessScenarios",
+        "recommendContractScenarioTemplates"
+      ]
     }
   ]
 }

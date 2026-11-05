@@ -1016,6 +1016,7 @@ const {
   replacePrompt
 } = controller;
 
+const enteredBasisLabel = computed(() => billSnapshot.value.pricingMode === "tax_exclusive" ? "不含税" : "含税");
 const currentTotal = computed(() => previewBillGross(rows.value, billSnapshot.value));
 const selectedTotal = computed(() => previewBillGross(rows.value.filter(row => selectedKeys.value.includes(row.clientRowKey)), billSnapshot.value));
 
@@ -1263,11 +1264,11 @@ defineExpose({ openImportPicker, focusReadinessIssue });
     </div>
 
     <p class="bill-precision-note">
-      数量、含税单价最多填写4位小数；空白表示待确定，0表示已约定零值。历史原值保留，需核对后再修改。
+      数量、{{ enteredBasisLabel }}单价最多填写4位小数；空白表示待确定，0表示已约定零值。历史原值保留，需核对后再修改。
     </p>
     <div class="focus-toolbar">
       <span>{{ selectedKeys.length ? `已选择 ${selectedKeys.length} 行` : '勾选行后可批量操作；单元格焦点不改变勾选' }}</span>
-      <span data-testid="bill-selected-total">所选含税合计 {{ selectedTotal }}</span>
+      <span data-testid="bill-selected-total">所选{{ enteredBasisLabel }}已知金额 {{ selectedTotal }}</span>
       <t-button
         :disabled="disabled || busy || !selectedKeys.length"
         @click="copySelection"
@@ -1325,7 +1326,7 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       新增一行
     </t-button>
     <footer class="focus-summary">
-      <span data-testid="bill-current-total">当前清单含税合计 <strong>{{ currentTotal }}</strong></span>
+      <span data-testid="bill-current-total">当前清单{{ enteredBasisLabel }}已知金额 <strong>{{ currentTotal }}</strong></span>
       <span>候选行数 <strong>{{ rows.length }}</strong></span>
       <span>上次保存不含税合计 <strong>{{ totalsText.exclusive }}</strong></span>
       <span>上次保存税额 <strong>{{ totalsText.tax }}</strong></span>

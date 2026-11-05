@@ -13,29 +13,29 @@
     "routeCount": 703,
     "exactRouteCount": 703,
     "normalizedRouteCount": 703,
-    "classificationOverrideCount": 222,
+    "classificationOverrideCount": 224,
     "consumerSurfaceOverrideCount": 38,
-    "classificationOverrideSha256": "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df",
+    "classificationOverrideSha256": "ffff014464abfb5e1c326e6f96140d4c478f79ff186877baa4f13a9b7ddec629",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-    "derivedProductionPageCount": 481,
-    "pageRouteCount": 499,
+    "derivedProductionPageCount": 479,
+    "pageRouteCount": 497,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 97,
+    "exitCandidateCount": 99,
     "internalTaskCount": 37,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 552,
+      "web_api_wrapper": 550,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 108
+      "none": 110
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 552,
+    "productionWrapperRouteCount": 550,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -1135,7 +1135,8 @@
             "normalizedPath": "/business-parties",
             "normalizedKey": "GET /business-parties",
             "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+              "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
             ]
           }
         ],
@@ -1912,29 +1913,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-            "wrapper": "listAvailableContractBusinessScenarios",
-            "method": "GET",
-            "normalizedPath": "/contract-business-scenarios/available",
-            "normalizedKey": "GET /contract-business-scenarios/available",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -1953,29 +1943,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-            "wrapper": "recommendContractScenarioTemplates",
-            "method": "GET",
-            "normalizedPath": "/contract-business-scenarios/recommendations",
-            "normalizedKey": "GET /contract-business-scenarios/recommendations",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",

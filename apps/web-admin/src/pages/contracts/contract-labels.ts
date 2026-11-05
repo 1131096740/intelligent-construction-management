@@ -5,6 +5,7 @@ export function contractTypeLabel(value?: string | null) {
       equipment_rental: "工程机械设备租赁合同",
       labor_subcontract: "劳务分包合同",
       generic_contract: "通用合同",
+      other: "其他合同",
       professional_subcontract: "专业分包合同"
     }[value ?? ""] ?? value ?? "未知合同类型"
   );

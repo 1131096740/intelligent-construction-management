@@ -1,3 +1,4 @@
+import { resolveContractDraftBusinessType } from "./contract-draft-basics";
 import { assertContractDraftNumericProtocol, assertLegacyContractDraftWriter, CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON, contractVersionMoneyReadProjection, contractBillMoneyReadProjection } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
@@ -16,6 +17,7 @@ import {
   contractPricingPolicy,
   isContractSettlementMode,
   normalizeTaxRatePercent,
+  normalizeBusinessAmount,
   type ContractBillDefinition,
   type ContractClauseDefinition,
   type ContractFieldDefinition,
@@ -357,7 +359,7 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
-    assertContractBillDerivedUnitPrices(rows);
+    for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
     const remainderCancellationFacts = await this.lineage.remainderCancellationFacts(
       this.prisma,
       { id: version.id, baseVersionId: version.baseVersionId },
@@ -435,7 +437,8 @@ export class ContractWorkbenchService {
       lifecycleBlockers: [...lifecycle.blockers, ...lifecycleDisabledReasons],
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       expectedDraftRevision: version.draftRevision,
-      contract,
+      contract: version.status === "draft" && version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) && typeof version.draftData.contractName === "string" && version.draftData.contractName.trim()
+        ? { ...contract, name: version.draftData.contractName } : contract,
       version: {
         ...version,
         ...contractVersionMoneyReadProjection(version),
@@ -661,6 +664,8 @@ export class ContractWorkbenchService {
         ? pricingPolicy.contractAmountCents
         : pricingPolicy.kind === "priced_bill"
           ? billAmount
+          : input.numericProtocolVersion === 2
+          ? compatibleBillCents(input.manualAmountYuan ?? null) ?? 0n
           : this.toCents(input.manualAmountCents, "manualAmountCents");
       const estimatedAmountCents = this.resolveEstimatedAmountCents(
         input.estimatedAmountCents,
@@ -825,6 +830,7 @@ export class ContractWorkbenchService {
       template,
       changeBase?.draftData
     );
+    if (version.signingSubjectType === "draft_unconfirmed") resolveContractDraftBusinessType(storedDraftData, null, version.signingSubjectType);
     if (isChangeVersion) {
       if (!changeBase) {
         throw new BadRequestException("合同变更直接来源版本不存在，不能保存草稿");
@@ -859,7 +865,7 @@ export class ContractWorkbenchService {
     const pricingPolicy = contractPricingPolicy({
       pricingNature: input.pricingNature,
       amountLimitType: version.amountLimitType,
-      hasPricedRows: pricedRows.length > 0
+      hasPricedRows: input.numericProtocolVersion === 2 && input.pricingNature === "fixed_total" ? false : pricedRows.length > 0
     });
     if (input.amountSource !== pricingPolicy.amountSource) {
       throw new BadRequestException(
@@ -874,7 +880,9 @@ export class ContractWorkbenchService {
       ? pricingPolicy.contractAmountCents
       : pricingPolicy.kind === "priced_bill"
         ? this.sumIncludedBills(bills)
-        : this.toCents(input.manualAmountCents, "manualAmountCents");
+        : input.numericProtocolVersion === 2
+          ? compatibleBillCents(input.manualAmountYuan ?? null) ?? 0n
+          : this.toCents(input.manualAmountCents, "manualAmountCents");
     const estimatedAmountCents = this.resolveEstimatedAmountCents(
       input.estimatedAmountCents,
       pricingPolicy
@@ -910,6 +918,7 @@ export class ContractWorkbenchService {
       version.pricingNature !== input.pricingNature ||
       version.amountSource !== input.amountSource ||
       version.amountCents !== amountCents ||
+      (input.numericProtocolVersion === 2 && input.amountSource === "manual" && (version.numericProtocolVersion !== 2 || (version.amountYuan?.toFixed(4) ?? null) !== input.manualAmountYuan)) ||
       version.estimatedAmountCents !== estimatedAmountCents ||
       version.amountAdjustmentReason !==
         (aggregateInput.draft.amountAdjustmentReason ?? null) ||
@@ -1010,6 +1019,12 @@ export class ContractWorkbenchService {
       await tx.paymentTermsStage.deleteMany({
         where: { paymentTermsVersionId: terms.id }
       });
+      return { changed: true };
+    }
+    if (version.numericProtocolVersion === 2 && paymentTerms.stages.length === 0) {
+      if (terms.originalText === paymentTerms.originalText && existingStages.length === 0) return { changed: false };
+      await tx.paymentTermsVersion.update({ where: { id: terms.id }, data: { originalText: paymentTerms.originalText } });
+      await tx.paymentTermsStage.deleteMany({ where: { paymentTermsVersionId: terms.id } });
       return { changed: true };
     }
     const explicitSettlementMode = isContractSettlementMode(version.settlementMode);
@@ -2268,7 +2283,17 @@ export class ContractWorkbenchService {
     ) {
       throw new BadRequestException("合同金额来源不正确，请重新选择");
     }
-    if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
+    if (input.numericProtocolVersion !== undefined && input.numericProtocolVersion !== 2) {
+      throw new BadRequestException("合同数值版本不正确，请刷新工作台");
+    }
+    if (input.manualAmountYuan !== undefined || input.numericProtocolVersion === 2 && input.amountSource === "manual") {
+      if (input.numericProtocolVersion !== 2 || input.manualAmountYuan !== null && typeof input.manualAmountYuan !== "string") {
+        throw new BadRequestException("请按新版合同金额格式填写，未知金额请留空");
+      }
+      try { normalizeBusinessAmount(input.manualAmountYuan as string | null); }
+      catch { throw new BadRequestException("合同金额须填写规范数字，最多保留4位小数；请保留原输入后修改"); }
+      if (input.manualAmountCents !== undefined) throw new BadRequestException("合同金额不能同时填写两种精度格式，请刷新后重试");
+    } else if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
       this.toCents(input.manualAmountCents as string | undefined, "手工合同金额");
     }
     if (input.estimatedAmountCents !== undefined) {
@@ -2305,6 +2330,8 @@ export class ContractWorkbenchService {
     }
     return {
       expectedRevision: input.expectedRevision as number,
+      ...(input.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 as const } : {}),
+      ...(input.manualAmountYuan !== undefined ? { manualAmountYuan: normalizeBusinessAmount(input.manualAmountYuan as string | null) } : {}),
       ...(input.companyEntityId === undefined
         ? {}
         : { companyEntityId: (input.companyEntityId as string).trim() }),
@@ -2641,6 +2668,7 @@ export class ContractWorkbenchService {
     const fieldKeys = new Set(template.fieldSchema.map((field) => field.key));
     const structuralKeys = new Set([
       "contractName",
+      "contractBasics",
       "myCompanyEntity",
       "companyEntitySelection",
       "fieldValues",
@@ -2670,6 +2698,27 @@ export class ContractWorkbenchService {
     );
     if (unknownNestedField) {
       throw new BadRequestException(`字段 ${unknownNestedField} 未在合同模板中声明，不能保存`);
+    }
+    if (draftData.contractBasics !== undefined) {
+      const basics = this.requireObject(draftData.contractBasics, "合同基础资料");
+      const choices: Record<string, readonly string[]> = {
+        relationship: ["inside", "outside", "upward"],
+        businessType: ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"],
+        amountBasis: ["tax_inclusive", "tax_exclusive"],
+        invoiceStatus: ["vat_general", "vat_special", "none", "pending"]
+      };
+      if (Object.keys(basics).some(key => !Object.hasOwn(choices, key) && key !== "settlementText")) {
+        throw new BadRequestException("合同基础资料包含未知字段，请刷新后重试");
+      }
+      for (const [key, values] of Object.entries(choices)) {
+        if (basics[key] !== undefined && !values.includes(basics[key] as string)) {
+          throw new BadRequestException("合同关系、业务类型或金额税务口径不正确，请重新选择");
+        }
+      }
+      if (basics.settlementText !== undefined &&
+        (typeof basics.settlementText !== "string" || basics.settlementText.length > 2000)) {
+        throw new BadRequestException("结算约定应为不超过2000字的文字");
+      }
     }
     if (draftData.partyValues !== undefined) {
       this.requireObject(draftData.partyValues, "合同主体字段");
@@ -2875,7 +2924,7 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
-    assertContractBillDerivedUnitPrices(rows);
+    for (const bill of bills) assertContractBillDerivedUnitPrices(rows.filter(row => row.contractBillId === bill.id), bill.pricingMode);
     return bills.map((bill) => ({
       billKey: bill.billKey,
       name: bill.name,

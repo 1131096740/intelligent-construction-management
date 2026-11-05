@@ -138,7 +138,10 @@ describe("ContractBillService", () => {
         ),
         count: jest.fn().mockImplementation(() => Promise.resolve(rows.length)),
         create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
-          const row = { id: `row-${rows.length + 1}`, ...data };
+          const row: Record<string, unknown> = { id: `row-${rows.length + 1}`, ...data };
+          if (data.numericProtocolVersion === 2) for (const key of ["taxInclusiveAmountYuan", "taxExclusiveAmountYuan", "taxAmountYuan"]) {
+            if (typeof row[key] === "string") row[key] = new Prisma.Decimal(row[key] as string);
+          }
           rows.push(row);
           return Promise.resolve(row);
         }),
@@ -1170,6 +1173,25 @@ describe("ContractBillService", () => {
       taxExclusiveAmountCents: 88n,
       taxAmountCents: 12n
     });
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { rate: null, gross: null, tax: null },
+    { rate: "13", gross: "1.7221", tax: "0.1981" }
+  ])("saves declared tax-exclusive four-place draft facts without guessing missing tax (%j)", async ({ rate, gross, tax }) => {
+    const { service, tx, bill, version } = fixture({ pricingMode: "tax_exclusive", pricingNature: "unit_price", defaultTaxRatePercent: rate });
+    Object.assign(bill, { numericProtocolVersion: 2 });
+    const result = await service.replaceRowsInTransaction(tx as never, "owner-1", version, bill, {
+      expectedRevision: 2, numericProtocolVersion: 2,
+      rows: [{ clientRowKey: "net-row", sortOrder: 0, itemName: "不含税约定材料", unit: "吨", quantity: "1.2345", unitPrice: "1.2345", customData: {} }]
+    });
+    expect(result.changed).toBe(true);
+    const data = tx.contractBillRow.create.mock.calls[0][0].data;
+    expect(data.taxExclusiveAmountYuan).toBe("1.5240");
+    expect(data.taxInclusiveAmountYuan).toBe(gross);
+    expect(data.taxAmountYuan).toBe(tax);
+    expect(data.taxExclusiveUnitPrice?.toString()).toBe("1.2345");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
