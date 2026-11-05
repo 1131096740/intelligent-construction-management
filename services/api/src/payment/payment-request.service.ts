@@ -1,3 +1,4 @@
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
 import { contractProxyPaid, contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { createHash, randomUUID } from "node:crypto";
@@ -3114,13 +3115,9 @@ export class PaymentRequestService {
       throw new Error("登记实付需要当前登录密码确认");
     }
 
-    const paidAt = new Date(input.paidAt);
-    if (Number.isNaN(paidAt.getTime())) {
-      throw new Error("实付日期格式不正确，请重新选择实付日期");
-    }
-    if (paidAt.getTime() > Date.now()) {
-      throw new Error("实付日期不能晚于当前时间");
-    }
+    let paidAt: Date;
+    try { paidAt = requiredPastChinaDate(input.paidAt, "实付日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "实付日期格式不正确，请核对实际日期"); }
 
     if (!this.auth) {
       throw new Error("登记实付确认服务暂不可用，请稍后重试或联系管理员");

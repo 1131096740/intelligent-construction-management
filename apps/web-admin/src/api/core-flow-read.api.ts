@@ -75,8 +75,8 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   );
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path);
+async function readJson<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const response = headers ? await apiFetch(path, { headers }) : await apiFetch(path);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
@@ -128,7 +128,8 @@ export function fetchContractDetail(contractId: string, options?: { versionId?: 
     ? `?versionId=${encodeURIComponent(options.versionId)}`
     : "";
   return readJson<ContractDetailReadModel>(
-    `/contracts/${encodeURIComponent(contractId)}${query}`
+    `/contracts/${encodeURIComponent(contractId)}${query}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -3626,7 +3627,7 @@ export async function downloadProjectExpenseApprovalPdf(
 }
 
 export function fetchContractLedger() {
-  return readJson<ContractLedgerListReadModel>("/contracts");
+  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" });
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
@@ -3669,7 +3670,8 @@ export function fetchContractLifecycleLedger(
     pageSize: String(pageSize)
   });
   return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/lifecycle-ledger?${query.toString()}`
+    `/contracts/lifecycle-ledger?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -3688,12 +3690,13 @@ export function fetchContractWorkbenchLedger(
     pageSize: String(pageSize)
   });
   return readJson<ContractWorkbenchLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/workbench?${query.toString()}`
+    `/contracts/workbench?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
 export function downloadContractLedgerExport() {
-  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
+  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败", { "x-contract-numeric-protocol": "2" });
 }
 
 export function fetchSettlementContractOptions(projectId: string) {
@@ -7141,9 +7144,10 @@ function saveBlob(blob: Blob, fileName: string): void {
 async function downloadWorkbook(
   path: string,
   fallbackFileName: string,
-  fallbackError: string
+  fallbackError: string,
+  headers?: Record<string, string>
 ): Promise<void> {
-  const response = await apiFetch(path);
+  const response = headers ? await apiFetch(path, { headers }) : await apiFetch(path);
   await ensureOk(response, fallbackError);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";

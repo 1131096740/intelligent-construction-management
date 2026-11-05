@@ -732,6 +732,7 @@
 </template>
 
 <script setup lang="ts">
+import { chinaDateTimeInput, requiredPastChinaDate } from "@jiangkong/shared-domain";
 import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
@@ -1312,17 +1313,11 @@ function clearPaymentDetailTransientState() {
 }
 
 function toDatetimePickerValue(date: Date) {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return chinaDateTimeInput(date);
 }
 
 function toIsoDatetime(raw: string, label: string) {
-  const value = requiredText(raw, label);
-  const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) throw new Error(`${label}格式不正确`);
-  return date.toISOString();
+  return requiredPastChinaDate(raw, label).toISOString();
 }
 
 function parseYuanAmount(raw: string, label: string) {

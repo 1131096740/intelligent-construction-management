@@ -2302,6 +2302,8 @@ model ContractVersion {
   changeType                             String
   status                                 String
   amountCents                            BigInt
+  numericProtocolVersion                 Int       @default(1)
+  amountYuan                             Decimal?  @db.Decimal(24, 4)
   estimatedAmountCents                   BigInt?
   baseVersionId                          String?
   supersedesVersionId                    String?
@@ -6009,6 +6011,10 @@ model ContractBill {
   schemaSnapshot          Json
   sourceExcelFileId       String?
   revision                Int      @default(1)
+  numericProtocolVersion  Int      @default(1)
+  taxInclusiveAmountYuan  Decimal? @db.Decimal(24, 4)
+  taxExclusiveAmountYuan  Decimal? @db.Decimal(24, 4)
+  taxAmountYuan           Decimal? @db.Decimal(24, 4)
   taxInclusiveAmountCents BigInt   @default(0)
   taxExclusiveAmountCents BigInt   @default(0)
   taxAmountCents          BigInt   @default(0)
@@ -6033,6 +6039,12 @@ model ContractBillRow {
   taxRateSource                String    @default("version_default")
   pricingFactStatus            String    @default("unconfirmed")
   precisionPolicy              String    @default("two_decimal")
+  numericProtocolVersion       Int       @default(1)
+  numericSource                String    @default("legacy_cents")
+  numericReviewStatus          String    @default("not_assessed")
+  taxInclusiveAmountYuan       Decimal?  @db.Decimal(24, 4)
+  taxExclusiveAmountYuan       Decimal?  @db.Decimal(24, 4)
+  taxAmountYuan                Decimal?  @db.Decimal(24, 4)
   taxInclusiveAmountCents      BigInt?
   taxExclusiveAmountCents      BigInt?
   taxAmountCents               BigInt?
