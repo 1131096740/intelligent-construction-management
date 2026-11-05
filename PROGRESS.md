@@ -10,7 +10,9 @@
 - [x] 任务01准确收口提交 `f352d187b720a2e8231874775616c24e91eb3bd8`：检查前后树干净，本机编排369通过、0失败、0跳过；prepare/verify核对3032文件、197迁移，seal `c62afb390f0aab4044e2f44f2eba48603d16398da20110d18c856f0f892a3f81`，规范/需求复审余项0/0。已推送草稿PR #428并[关闭#383](https://github.com/1131096740/intelligent-construction-management/issues/383#issuecomment-6651228720)，未合入main。b09的356/3、5b的365/1失败日志及一次误调用driver的入场前拒绝记录保留，修复后未重演。真实HTTP/PG/Web、实际ACL/TLS/池绑定和清理仍NOT RUN、独立授权后验。本轮未创建PG/Docker资源、执行写入SQL或迁移、部署、修改生产或办理真实业务；任务16/42/44真实门保留。详见[准备交接](docs/progress/2026-11-05-enterprise-simplification-task01-prepared.md)及[任务图](docs/plans/2026-11-05-enterprise-simplification-tasks/README.md)。
 
 - [x] 任务04已在准确集成 `899afb9538fe01be54ff264c48c7037794d3be2a` 完成本地确认边界并[关闭#386](https://github.com/1131096740/intelligent-construction-management/issues/386#issuecomment-6653441151)：本人/管理员换号均验证新号、统一受控初始及重置密码、强改与会话撤销；身份引用不变。API186项绑定83271且相关API字节在899保持；899新组件5/5、Web类型/lint/UI、原治理就绪链与本机编排369/369通过，prepare/verify核对3035文件/197迁移。独立复审余项0；真实PG、真实短信、浏览器持久链及生产验收未执行。[任务04收口记录](docs/progress/2026-11-05-enterprise-simplification-task04-local.md)。任务05仍被03阻塞。
-- [~] 任务03源候选及治理准备继续独立复核；4项新真实PG竞争案例已接入既有选择器，尚未执行，不计通过或关闭。任务08的单次PDF导出参数对照仍缺3处逗号，原样张及失败证据保留，文书验证尚未通过。
+- [~] 任务02已在准确集成 `31f165ea9c4f2a8693cd5ec5a0bea4f825f9318a` 完成本地确认边界及独立两轴复核：API1313通过/9项原有跳过、Web505、共享适配器9、原编排369/369，类型/lint/UI及原治理就绪链通过；prepare/verify核对3047文件、198份迁移源码。新增198迁移及真实PG案例仍NOT RUN，#384保持开放；用户另确认草稿提交HTTP的写前拒绝边界，新正式提交由任务12接入。新增税率/尾零、共享读封装和准备模块加载顺序遗漏已修，检查器及权限不放宽。[本地验证记录](docs/progress/2026-11-05-enterprise-simplification-task02-local.md)。
+- [~] 任务03已合入本地集成，原spot spec含7项实际it（原3项+4项新竞争/通知案例）；仍未执行真实PG，不计通过或关闭，05仍阻塞。任务08独立候选已用实际单份派生PDF恢复3处逗号、单表头与正常末页；八模板及长清单矩阵尚未完成，未合中央，不宣布方案通过。原样张及所有失败证据保留。
+- [~] 31的首次API检查由父控误加全局 `SKIP_DATABASE_CONNECT=true` 触发合同读取示例分支，1299通过/14失败/9跳过；仅修正父控环境后同源码1313通过/9跳过，原断言及业务源码未改。753准备分支的既有代理deadline检查368/1失败也保留；31原编排此次369/369不等于证明旧失败原因已修复。
 - [~] 本轮源码发布不启动含真实PG迁移的远程CI（`ci.yml` 的pull_request同步可自动触发PG组）；最新推送HEAD使用 `[skip ci]` 并保持draft及合并阻塞。这不是检查豁免或CI通过，迁移获独立授权后须在准确SHA重新取得正式CI。
 
 ## 当前执行（2026-10-27，审批进度浏览器测试补修新候选）
