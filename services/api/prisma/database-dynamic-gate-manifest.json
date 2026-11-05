@@ -26,14 +26,14 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 77,
-    "fullyPendingSuites": 66,
+    "pendingFiles": 78,
+    "fullyPendingSuites": 67,
     "partiallyPendingSuites": 11,
-    "pendingTests": 511,
+    "pendingTests": 512,
     "coveredFiles": 77,
     "coveredTests": 511,
-    "remainingFiles": 0,
-    "remainingTests": 0
+    "remainingFiles": 1,
+    "remainingTests": 1
   },
   "coveredGroups": [
     {
@@ -678,5 +678,20 @@
       "state": "executable_local_runner"
     }
   ],
-  "remainingFiles": []
+  "remainingFiles": [
+    {
+      "path": "services/api/src/fund-execution/enterprise-task01-entry.http.pg.spec.ts",
+      "pendingTests": 1,
+      "suiteStatus": "fully_pending",
+      "runFlag": "RUN_ENTERPRISE_TASK01_ENTRY_PG16",
+      "databaseEnv": [
+        "DATABASE_URL",
+        "JG_TASK01_OBSERVER_DATABASE_URL"
+      ],
+      "reason": "missing_disposable_pg16_orchestration",
+      "issue": 383,
+      "preparationStatus": "prepared-not-executed",
+      "explanation": "任务01受控入口尚待独立资源与迁移授权；未登记为现有runner覆盖或通过。"
+    }
+  ]
 }
