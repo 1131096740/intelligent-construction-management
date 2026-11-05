@@ -1,3 +1,4 @@
+import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import {
   BadRequestException,
@@ -1541,10 +1542,9 @@ export class ProjectExpenseService {
       throw new BadRequestException("预期项目支出版本格式不正确");
     }
     const voucherFileId = requiredTrimmed(input.voucherFileId, "实付凭证必填");
-    const paidAt = parseDate(input.paidAt, "实付日期无效");
-    if (paidAt.getTime() > Date.now()) {
-      throw new BadRequestException("项目支出实付日期不能晚于当前时间");
-    }
+    let paidAt: Date;
+    try { paidAt = requiredPastChinaDate(input.paidAt, "项目支出实付日期"); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "项目支出实付日期格式不正确，请核对实际日期"); }
     const confirmationPassword = requiredTrimmed(input.confirmationPassword, "实付登记需要当前登录密码确认");
     if (!this.auth) {
       throw new Error("Auth service is required to confirm project expense execution");

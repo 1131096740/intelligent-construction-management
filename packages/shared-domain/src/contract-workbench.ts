@@ -228,6 +228,7 @@ export function contractPricingPolicy(input: {
 }
 
 export interface ContractWorkbenchReadModel {
+  draftSubmissionUnavailableReason?: string;
   settlementModeEntry?: {
     definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
     values: { settlementMode: ContractSettlementMode | null };

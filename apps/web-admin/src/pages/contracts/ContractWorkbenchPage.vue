@@ -344,6 +344,13 @@
       </header>
 
       <t-alert
+        v-if="workbench?.draftSubmissionUnavailableReason"
+        theme="warning"
+        title="草稿已保留，暂不能提交审批"
+        :message="workbench.draftSubmissionUnavailableReason"
+      />
+
+      <t-alert
         v-if="workbench && editable && !canEdit"
         theme="warning"
         title="当前页面只读"

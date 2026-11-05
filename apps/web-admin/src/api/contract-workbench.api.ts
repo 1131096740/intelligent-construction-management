@@ -418,7 +418,7 @@ export interface SaveContractDraftAggregateResult {
 
 export function fetchContractWorkbench(contractId: string) {
   return readJson<ContractWorkbenchReadModel>(
-    `/contract-workbench/${encodeURIComponent(contractId)}`
+    `/contract-workbench/${encodeURIComponent(contractId)}`, false, { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -1140,7 +1140,7 @@ export function checkContractSubmissionReadiness(contractVersionId: string) {
 }
 
 export function listContractDrafts(scope: "my" | "voided") {
-  return readJson<unknown[]>(`/contract-workbench?scope=${scope}`);
+  return readJson<unknown[]>(`/contract-workbench?scope=${scope}`, false, { "x-contract-numeric-protocol": "2" });
 }
 
 export interface SaveContractDraftPayload {
@@ -1194,9 +1194,8 @@ export function confirmContractSettlementMode(
   contractVersionId: string,
   body: ConfirmContractSettlementModePayload
 ) {
-  return postJson<SaveContractDraftResult>(
-    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
-    body
+  return postJsonWithHeaders<SaveContractDraftResult>(
+    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`, body, { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -1276,10 +1275,7 @@ export function applyContractTypeChange(
 ) {
   // Backend requires explicit `confirmed: true` (ApplyContractTypeChangeDto) so the
   // migration only runs after the user accepts the preview.
-  return postJson<unknown>(`/contract-workbench/${contractVersionId}/type-change`, {
-    ...body,
-    confirmed: true
-  });
+  return postJsonWithHeaders<unknown>(`/contract-workbench/${contractVersionId}/type-change`, { ...body, confirmed: true }, { "x-contract-numeric-protocol": "2" });
 }
 
 export interface TransferContractDraftPayload {

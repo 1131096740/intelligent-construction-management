@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { chinaDateOnly } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
@@ -121,7 +122,7 @@ const refundCompletedReceipt = ref<{ amountCents: string; receivedAt: string; st
 const refundDetailRefreshed = ref(false);
 let refundOperationSequence = 0;
 const refundForm = reactive({
-  receivedAt: new Date().toISOString().slice(0, 10),
+  receivedAt: chinaDateOnly(),
   refundMethod: "bank_transfer" as "bank_transfer" | "cash"
 });
 const retainedAttachmentIds = ref<string[]>([]);
@@ -289,7 +290,12 @@ function money(value: string | null | undefined) {
 function dateTime(value: string | null | undefined) {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
+}
+
+function refundDateText(value: string | null | undefined) {
+  if (!value) return "—";
+  try { return chinaDateOnly(value); } catch { return "日期待核对"; }
 }
 
 function readStatusLabel(value: { statusLabel?: string; label?: string }) {
@@ -1872,7 +1878,7 @@ watch(
         >
           <dl class="fact-list">
             <div><dt>退款金额</dt><dd>{{ money(refundCompletedReceipt?.amountCents ?? detail.discrepancy?.refund?.amountCents) }}</dd></div>
-            <div><dt>到账日期</dt><dd>{{ (refundCompletedReceipt?.receivedAt ?? detail.discrepancy?.refund?.receivedAt ?? '').slice(0, 10) }}</dd></div>
+            <div><dt>到账日期</dt><dd>{{ refundDateText(refundCompletedReceipt?.receivedAt ?? detail.discrepancy?.refund?.receivedAt) }}</dd></div>
             <div><dt>当前状态</dt><dd>{{ refundCompletedReceipt?.status === 'resolved' ? '已办结' : (detail.discrepancy?.statusLabel ?? '已办结') }}</dd></div>
             <div><dt>净实付</dt><dd>{{ refundCompletedReceipt && !refundDetailRefreshed ? '刷新后读取' : money(detail.payment.netPaidAmountCents) }}</dd></div>
           </dl>

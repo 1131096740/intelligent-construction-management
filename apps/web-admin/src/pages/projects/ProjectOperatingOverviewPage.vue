@@ -895,6 +895,7 @@
 </template>
 
 <script setup lang="ts">
+import { chinaDateOnly } from "@jiangkong/shared-domain";
 import CompanyBankEventSelect from "../../components/CompanyBankEventSelect.vue";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
@@ -2552,11 +2553,7 @@ function canRecordPurchaseExecution(row: ProjectExpenseRow) {
 }
 
 function todayText(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return chinaDateOnly();
 }
 
 function requiredText(value: string, label: string): string {
@@ -2766,6 +2763,7 @@ function upstreamFundStatusLabel(status: ProjectUpstreamFundFactReadModel["statu
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
@@ -2774,6 +2772,7 @@ function formatDate(value: string): string {
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

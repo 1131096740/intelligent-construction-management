@@ -136,6 +136,8 @@ describe("ContractDraftAggregateService", () => {
       expect(current.status).toBe(200);
       const body = await current.json();
       expect(body.version.amountCents).toBeNull();
+      expect(body.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+      expect(body.draftSubmissionUnavailableReason).toContain("四位金额草稿尚不能提交审批");
       expect(body.bills.map((bill: { taxInclusiveAmountYuan: unknown; taxInclusiveAmountCents: unknown }) => [bill.taxInclusiveAmountYuan, bill.taxInclusiveAmountCents]))
         .toEqual([[null, null], ["0.0000", "0"], ["1.5340", "153"]]);
       expect(body.bills[2].taxExclusiveAmountCents).toBeNull();

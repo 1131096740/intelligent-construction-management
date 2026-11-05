@@ -1,3 +1,6 @@
+import { Test } from "@nestjs/testing";
+import { ProjectController } from "./project.controller";
+import { FileService } from "../file/file.service";
 jest.mock("../file/file-business-binding",()=>({...jest.requireActual("../file/file-business-binding"),acquireFileBusinessBindingTransactionLock:jest.fn().mockResolvedValue(undefined)}));
 jest.mock("../contract-ledger/contract-bank-event",()=>({requireContractBankEvent:jest.fn().mockResolvedValue({id:"verified-bank"}),claimContractBankEvent:jest.fn()}));
 import { ConflictException } from "@nestjs/common";
@@ -186,7 +189,8 @@ describe("ProjectService upstream fund facts", () => {
     }
   );
 
-  it("records an owner payment as a pending external fact instead of company cash", async () => {
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("records owner receipt %s over HTTP at the exact Beijing/offset instant as a pending external fact", async (occurredAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
     const tx = {
  contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
  upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
@@ -265,16 +269,16 @@ describe("ProjectService upstream fund facts", () => {
       ): Promise<Record<string, unknown>>;
     };
 
-    const result = await service.recordUpstreamFundFact("project-1", "finance-1", {
-      factType: "owner_payment_to_affiliate",
-      basisType: "written",
-      occurredAt: "2026-07-29T00:00:00.000Z",
-      amountCents: "10000",
-      counterpartyName: "建设单位",
-      evidenceFileId: "file-1",
-      idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637"
-    });
-
+    const module = await Test.createTestingModule({ controllers: [ProjectController], providers: [{ provide: ProjectService, useValue: service }, { provide: FileService, useValue: {} }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "finance-1" }; next(); });
+    await app.listen(0, "127.0.0.1");
+    const body = { factType: "owner_payment_to_affiliate", basisType: "written", occurredAt, amountCents: "10000", counterpartyName: "建设单位", evidenceFileId: "file-1", idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637" };
+    try {
+      const url = `${await app.getUrl()}/projects/project-1/upstream-fund-facts`;
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201);
+      const result = await response.json(); expect(result.occurredAt).toBe(expected);
+      expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ occurredAt: new Date(expected) }) }));
     expect(result).toMatchObject({
       id: "fund-fact-1",
       factType: "owner_payment_to_affiliate",
@@ -316,6 +320,10 @@ describe("ProjectService upstream fund facts", () => {
       idempotencyKey: "snapshot-freeze-failure"
     })).rejects.toThrow("snapshot freeze failed");
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+      tx.projectUpstreamFundFact.create.mockClear(); prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, occurredAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
   });
 
   it("rejects an owner payment whose counterparty differs from the linked upstream settlement", async () => {

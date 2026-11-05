@@ -1,3 +1,4 @@
+import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
@@ -330,7 +331,7 @@ export class ContractReadService {
   async listRecent(
     rawLimit?: string | number,
     visibleProjectIds?: string[],
-    internalOptions?: { unbounded?: boolean; actorUserId?: string }
+    internalOptions?: { unbounded?: boolean; actorUserId?: string; numericProtocol?: string }
   ) {
     const take = internalOptions?.unbounded ? undefined : this.limit(rawLimit);
     const contracts = await this.prisma.contract.findMany({
@@ -445,7 +446,8 @@ export class ContractReadService {
             takeoverByVersion.get(version.id),
             false
           )
-        }
+        },
+        internalOptions?.numericProtocol
       )];
     });
 
@@ -684,7 +686,8 @@ export class ContractReadService {
     rawPage: string | number | undefined,
     rawPageSize: string | number | undefined,
     visibleProjectIds: string[],
-    actorUserId: string
+    actorUserId: string,
+    numericProtocol?: string
   ): Promise<LifecycleLedgerPage<Record<string, unknown>>> {
     const page = this.page(rawPage);
     const pageSize = this.pageSize(rawPageSize);
@@ -789,7 +792,8 @@ export class ContractReadService {
             takeoverByVersion.get(rowVersion.id),
             takeoverReadableProjectIds.has(contract.projectId)
           )
-        }
+        },
+        numericProtocol
       )];
     });
     const summary = {
@@ -839,7 +843,8 @@ export class ContractReadService {
     rawPage: string | number | undefined,
     rawPageSize: string | number | undefined,
     visibleProjectIds: string[],
-    actorUserId: string
+    actorUserId: string,
+    numericProtocol?: string
   ): Promise<ContractWorkbenchLedgerPage<Record<string, unknown>>> {
     const page = this.page(rawPage);
     const pageSize = this.pageSize(rawPageSize);
@@ -945,7 +950,8 @@ export class ContractReadService {
             takeoverByVersion.get(version.id),
             takeoverReadableProjectIds.has(contract.projectId)
           )
-        }
+        },
+        numericProtocol
       )];
     });
     const count = (targetView: ContractWorkbenchView) => contracts.filter((contract) => {
@@ -987,10 +993,11 @@ export class ContractReadService {
     };
   }
 
-  async exportLedger(visibleProjectIds: string[], actorUserId: string) {
+  async exportLedger(visibleProjectIds: string[], actorUserId: string, numericProtocol?: string) {
     const ledger = await this.listRecent(undefined, visibleProjectIds, {
       unbounded: true,
-      actorUserId
+      actorUserId,
+      ...(numericProtocol === undefined ? {} : { numericProtocol })
     });
     const rows = ledger.rows.map((row) => ({
       contractNo: row.contractNo,
@@ -1202,7 +1209,8 @@ export class ContractReadService {
     contractId: string,
     visibleProjectIds?: string[],
     actorUserId?: string,
-    requestedVersionId?: string
+    requestedVersionId?: string,
+    numericProtocol?: string
   ): Promise<ContractDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(contractId);
@@ -1290,11 +1298,20 @@ export class ContractReadService {
     ) {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
-    const version = endedHistoryRead ? requestedVersion : defaultVersion;
+    // An unapproved precision-v2 draft must not replace an already effective
+    // contract's financial view. Its exact draft is reachable explicitly.
+    const effectiveDefault = defaultVersion?.numericProtocolVersion === 2 && defaultVersion.status === "draft"
+      ? versions.find(candidate => candidate.status === "effective") ?? defaultVersion : defaultVersion;
+    const requestedPrecisionOrEffective = requestedVersion && (requestedVersion.numericProtocolVersion === 2 || requestedVersion.status === "effective")
+      ? requestedVersion : null;
+    const version = endedHistoryRead ? requestedVersion : requestedPrecisionOrEffective ?? effectiveDefault;
 
     if (!version) {
       throw new NotFoundException("未找到合同版本，请刷新合同台账后重试");
     }
+
+    if (!this.canReadContractVersionDraft(version, contract.ownerUserId, actorUserId, roleKeys)) throw new NotFoundException("未找到合同，请刷新合同台账后重试");
+    assertContractDraftNumericProtocol(version, numericProtocol);
 
     const terms = await this.prisma.paymentTermsVersion.findFirst({
       where: { contractVersionId: version.id },
@@ -1499,6 +1516,7 @@ export class ContractReadService {
         canSelfConfirmGovernedFinal: governedFinalAccess.canSelfConfirm,
         canReportSigningMaterialChange,
         genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction),
+        numericProtocolVersion: version.numericProtocolVersion,
         withdrawApprovalContext
       }
     );
@@ -1613,7 +1631,7 @@ export class ContractReadService {
         { label: "合同名称", value: contract.name },
         { label: "项目", value: project?.name ?? contract.projectId },
         { label: "相对方", value: contract.counterparty },
-        { label: "合同金额", value: this.formatContractAmount(version) },
+        { label: "合同金额", value: this.formatContractAmount(version, numericProtocol) },
         {
           label: "发票类型",
           value: this.formatContractInvoiceType(version.invoiceType)
@@ -1642,7 +1660,10 @@ export class ContractReadService {
         advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps
       })),
       settlementBlockMessage: this.settlementBlockMessage(version.status, contract.contractTypeKey),
-      settlementPayment: this.settlementPayment(
+      settlementPayment: version.numericProtocolVersion === 2 && version.status === "draft" ? {
+        summary: [], settlementRows: [], paymentRows: [],
+        calculationNote: "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
+      } : this.settlementPayment(
         version.amountCents,
         settlements,
         settlementArchiveFiles,
@@ -2346,6 +2367,7 @@ export class ContractReadService {
       canSelfConfirmGovernedFinal: boolean;
       canReportSigningMaterialChange: boolean;
       genericDraftActionsAllowed: boolean;
+      numericProtocolVersion?: number;
       withdrawApprovalContext: ContractDetailReadModel["withdrawApprovalContext"];
     }
   ): DetailActionReadModel[] {
@@ -2439,7 +2461,8 @@ export class ContractReadService {
           kind: "primary",
           roleKeys,
           requiredAction: "contract.submit",
-          enabled: true
+          enabled: context?.numericProtocolVersion !== 2,
+          disabledReason: CONTRACT_PRECISE_SUBMISSION_REASON
         }),
         ...workflowActions
       ];
@@ -2940,13 +2963,16 @@ export class ContractReadService {
     amountCents: bigint;
     amountLimitType?: string | null;
     pricingNature?: string | null;
-  }): string {
+    numericProtocolVersion?: number;
+    amountYuan?: { toFixed(scale: number): string } | null;
+  }, numericProtocol?: string): string {
+    assertContractDraftNumericProtocol(version, numericProtocol);
     if (version.amountLimitType === "unlimited" &&
       version.pricingNature === "framework"
     ) {
       return "不设合同总价";
     }
-    const amount = this.formatMoney(version.amountCents);
+    const amount = version.numericProtocolVersion === 2 ? version.amountYuan == null ? "待确定" : `¥${version.amountYuan.toFixed(4)}` : this.formatMoney(version.amountCents);
     return ["provisional_total", "unit_price"].includes(version.pricingNature ?? "")
       ? `控制金额 ${amount}`
       : amount;
@@ -3272,7 +3298,8 @@ export class ContractReadService {
     } & ContractSigningIdentity,
     termsVersion?: { versionNo: number } | null,
     project?: { name: string } | null,
-    lifecycle: Record<string, unknown> = {}
+    lifecycle: Record<string, unknown> = {},
+    numericProtocol?: string
   ) {
     const status = this.statusView(version.status);
     const nextAction = this.nextActionLabel(version.status);
@@ -3286,7 +3313,7 @@ export class ContractReadService {
       project: project?.name ?? contract.projectId,
       counterparty: contract.counterparty,
       typePricing: this.contractTypePricingLabel(contract.contractTypeKey, version.pricingNature),
-      amount: this.formatContractAmount(version),
+      amount: this.formatContractAmount(version, numericProtocol),
       version: `v${version.versionNo}`,
       status: version.status,
       currentNode: nextAction,

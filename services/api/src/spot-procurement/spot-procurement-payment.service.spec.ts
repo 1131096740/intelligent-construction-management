@@ -1,3 +1,7 @@
+import { Test } from "@nestjs/testing";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
+import { FileService } from "../file/file.service";
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import {
@@ -4033,6 +4037,25 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
         }
       ).invalidateForVersionChange
     ).toBeUndefined();
+  });
+
+  it.each([["2026-11-05", "2026-11-04T16:00:00.000Z"], ["2026-11-04T11:15:00-05:00", "2026-11-04T16:15:00.000Z"]])("persists HTTP spot payment date %s through the existing synthetic transaction", async (paidAt, expected) => {
+    jest.useFakeTimers({ now: new Date("2026-11-04T16:30:00Z"), doNotFake: ["nextTick", "queueMicrotask", "setImmediate", "clearImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "hrtime", "performance"] });
+    const current = executionHarness();
+    Reflect.set(current.service, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null) });
+    current.tx.spotProcurementPaymentExecution.create.mockImplementation(async ({ data }) => ({ id: "execution-1", ...data, voidedAt: null, voidedByUserId: null, voidReason: null, createdAt: new Date() }));
+    const module = await Test.createTestingModule({ controllers: [SpotProcurementPaymentController], providers: [{ provide: SpotProcurementPaymentService, useValue: current.service }, { provide: SpotProcurementReadService, useValue: {} }, { provide: SpotProcurementSettlementService, useValue: {} }, { provide: FileService, useValue: current.files }] }).compile();
+    const app = module.createNestApplication({ logger: false }); app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "finance-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const url = `${await app.getUrl()}/spot-procurement-payments/payment-1/executions`;
+      const body = { ...validExecutionInput(), paidAt };
+      const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(201); expect((await response.json()).execution.paidAt).toBe(expected);
+      expect(current.tx.spotProcurementPaymentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paidAt: new Date(expected) }) }));
+      current.tx.spotProcurementPaymentExecution.create.mockClear(); current.prisma.$transaction.mockClear();
+      const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
+      expect(future.status).toBe(400); expect(current.tx.spotProcurementPaymentExecution.create).not.toHaveBeenCalled(); expect(current.prisma.$transaction).not.toHaveBeenCalled();
+    } finally { await app.close(); jest.useRealTimers(); }
   });
 
   it("records a partial company payment by current-project finance staff and preserves supplier-balance facts", async () => {

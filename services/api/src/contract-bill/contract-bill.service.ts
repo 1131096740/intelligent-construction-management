@@ -1,3 +1,4 @@
+import { assertLegacyContractDraftWriter, CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
 import { createHash, randomUUID } from "node:crypto";
 import {
   BadRequestException,
@@ -527,6 +528,7 @@ export class ContractBillService {
   ) {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+      assertLegacyContractDraftWriter(bill); assertLegacyContractDraftWriter(version);
       this.assertExpectedRevision(expectedBillRevision);
       const row = await this.findRow(tx, billId, rowKey);
       await this.lineage.assertRowsDeletable(
@@ -577,6 +579,7 @@ export class ContractBillService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+        if (bill.numericProtocolVersion === 2 || version.numericProtocolVersion === 2) throw new ConflictException(CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON);
       if (version.draftRevision !== input.expectedDraftRevision) {
         throw new BadRequestException("合同草稿已变化，请刷新后重试");
       }
@@ -722,6 +725,7 @@ export class ContractBillService {
   reorderRows(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+      assertLegacyContractDraftWriter(bill); assertLegacyContractDraftWriter(version);
       const input = this.parseReorderInput(rawInput);
       const rows = await tx.contractBillRow.findMany({
         where: { contractBillId: billId },

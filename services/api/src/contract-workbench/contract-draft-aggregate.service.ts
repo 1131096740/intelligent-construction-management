@@ -1,3 +1,4 @@
+import { CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -55,10 +56,8 @@ export class ContractDraftAggregateService {
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
-    const legacyReadModel = await this.workbench.getDraftFromExactVersion(
-      version,
-      actorUserId
-    );
+    const legacyReadModel = await (numericProtocol === undefined ? this.workbench.getDraftFromExactVersion(version, actorUserId)
+      : this.workbench.getDraftFromExactVersion(version, actorUserId, numericProtocol));
     if (numericProtocol !== undefined && numericProtocol !== "2") {
       throw new BadRequestException("金额读取格式不受支持，请刷新页面后重试");
     }
@@ -149,6 +148,7 @@ export class ContractDraftAggregateService {
       },
       attachments,
       draftOperationAvailableActions,
+      ...(version.numericProtocolVersion === 2 ? { draftSubmissionUnavailableReason: CONTRACT_PRECISE_SUBMISSION_REASON } : {}),
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,
@@ -870,6 +870,7 @@ export class ContractDraftAggregateService {
       changeType: string;
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
+      numericProtocolVersion?: number;
     },
     isOwner: boolean,
     isDirector: boolean
@@ -943,6 +944,7 @@ export class ContractDraftAggregateService {
       changeType: string;
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
+      numericProtocolVersion?: number;
     },
     isOwner: boolean,
     isDirector: boolean,
@@ -976,7 +978,7 @@ export class ContractDraftAggregateService {
         ...(version.contractGovernanceVersion === 1 ? [
           "set_contract_authorization"
         ] : []),
-        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
+        ...(version.status === "draft" && version.numericProtocolVersion !== 2 ? ["submit_contract_draft"] : []),
         ...(version.contractGovernanceVersion === 1 ? [
           "upload_contract_formal_approval_file",
           "upload_contract_counterparty_signed_files",

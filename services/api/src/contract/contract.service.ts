@@ -1,3 +1,4 @@
+import { CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -1880,6 +1881,9 @@ export class ContractService {
               )
         ) {
           throw new ForbiddenException("只有合同经办人可以提交该合同审批");
+        }
+        if (version.numericProtocolVersion === 2) {
+          throw new ConflictException(CONTRACT_PRECISE_SUBMISSION_REASON);
         }
         if (submissionRequest) {
           await tx.$queryRaw(Prisma.sql`

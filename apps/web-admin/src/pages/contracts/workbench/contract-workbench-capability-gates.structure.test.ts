@@ -5,6 +5,13 @@ const read = (name: string) =>
   readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
 
 describe("contract workbench mutation capability gates", () => {
+  it("explains the unavailable submission while preserving the four-place draft editor", () => {
+    const page = readFileSync(new URL("../ContractWorkbenchPage.vue", import.meta.url), "utf8");
+    expect(page).toContain('v-if="workbench?.draftSubmissionUnavailableReason"');
+    expect(page).toContain(':message="workbench.draftSubmissionUnavailableReason"');
+    expect(page).toContain('title="草稿已保留，暂不能提交审批"');
+  });
+
   it.each([
     ["ContractBillTransitionsSection.vue", "saveContractBillTransitionsWithCapability"],
     ["ContractBillTransitionsSection.vue", "discardContractBillTransitionsWithCapability"],

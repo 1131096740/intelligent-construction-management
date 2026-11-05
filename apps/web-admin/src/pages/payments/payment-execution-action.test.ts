@@ -100,6 +100,18 @@ describe("payment execution page ownership", () => {
     });
   });
 
+  it("defaults and submits cash time in Beijing even when the device timezone is UTC", async () => {
+    const priorTz = process.env.TZ; process.env.TZ = "UTC";
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-04T16:30:00Z"));
+    const { bindings, scope } = setupExecutionPage();
+    try {
+      expect(bindings.paymentActionForm.paidAt).toBe("2026-11-05 00:30:00");
+      fillExecution(bindings); bindings.paymentActionForm.paidAt = "2026-11-05 00:15:00";
+      bindings.requestExecution(); await bindings.confirmPaymentExecution({ reason: "", password: "synthetic-password" });
+      expect(executionRuntime.recordWithUpload.mock.calls[0]?.[1]).toMatchObject({ paidAt: "2026-11-04T16:15:00.000Z" });
+    } finally { scope.stop(); vi.useRealTimers(); if (priorTz === undefined) delete process.env.TZ; else process.env.TZ = priorTz; }
+  });
+
   it("opens only from the raw authoritative execution capability and context", () => {
     const { bindings, scope } = setupPage();
     const authoritative = paymentExecutionDetail();
