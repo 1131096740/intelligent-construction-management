@@ -1,6 +1,6 @@
 # 08：用既有样张验证可编辑合同文书方案
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#390](https://github.com/1131096740/intelligent-construction-management/issues/390) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；前置#383已关闭，本票已在独立工作树领取实施。用户已确认真实DOCX样张及字段/条款编辑的候选CLI输出DOCX/PDF，并独立检查文字、格式、字体与分页。[#390](https://github.com/1131096740/intelligent-construction-management/issues/390) 归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。
 
 **类型：** 技术验证片（必须先证明后固定实现）。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

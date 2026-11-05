@@ -1,6 +1,6 @@
 # 业务简化重构已确认任务与依赖图
 
-> 2026-11-05，`plan-confirmed`；用户已确认全部技术方案、任务粒度及验收边界，并明确授权整套实施和 GitHub 工单推进。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 [#383](https://github.com/1131096740/intelligent-construction-management/issues/383)～[#427](https://github.com/1131096740/intelligent-construction-management/issues/427) 已发布；本地01～45编号保持稳定。任务01准备产物完成、GitHub收口待主控最终新SHA编排/封包；02/03/04/08待#383实际关闭才可启动，其余依原阻塞图。
+> 2026-11-05，`plan-confirmed`；用户已确认全部技术方案、任务粒度及验收边界，并明确授权整套实施和 GitHub 工单推进。父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 与45份子工单 [#383](https://github.com/1131096740/intelligent-construction-management/issues/383)～[#427](https://github.com/1131096740/intelligent-construction-management/issues/427) 已发布；本地01～45编号保持稳定。任务01已按准备产物边界关闭#383；02/04/08已领取实施，03已就绪等待并行名额，其余依原阻塞图。
 
 来源：[193条完整规格](../../specs/2026-11-05-enterprise-simplification-spec.md)、[技术方案](../2026-11-05-enterprise-simplification-technical-plan.md)、[差距依据](../2026-11-05-enterprise-simplification-evidence-and-gaps.md)、[验收边界](../2026-11-05-enterprise-simplification-acceptance.md)。每个票据写明交付、阻塞关系、逐条需求验收、技术决定及测试情景。
 
@@ -8,7 +8,7 @@
 
 ## 执行原则
 
-业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做阻塞已完成的前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。任务01为 prepared-complete / github-close-pending，其余为 not-started；02/03/04/08须在#383实际关闭后才进入可领取前沿；按对应实施授权和已核实前置推进，不将全部票据标记为可立即执行。
+业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做阻塞已完成的前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。任务01为 prepared-complete / github-closed，02/04/08为in-progress，03为ready / not-started，其余按原阻塞图等待；不将全部票据标记为可立即执行。迁移、受控资源及部署仍需各自具体授权。
 
 用户希望最终整体可用，因此实现可以逐片验证，用户侧统一切新机制；不提供旧结算/新结算双模式。最终资金提交、数据恢复、文书与权限有任何硬门未过，不宣布可上线。
 

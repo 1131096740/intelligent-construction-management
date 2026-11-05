@@ -1,6 +1,6 @@
 # 01：固定现状与受控公开验收入口
 
-**状态：** `plan-confirmed` / `prepared-complete` / `github-close-pending`；按用户确认的 `--prepare / --verify` 及输出清单边界，任务01准备产物完成；GitHub待主控最终新SHA编排及重封包后收口，真实运行仍NOT RUN。本轮用户已授权整套实施及 GitHub 工单推进；[#383](https://github.com/1131096740/intelligent-construction-management/issues/383) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。 当前起步与阻断见[集成交接](../../progress/2026-11-05-enterprise-simplification-integration-start.md)。
+**状态：** `plan-confirmed` / `prepared-complete` / `github-closed`；按确认的 `--prepare / --verify` 及输出清单边界，以准确提交 `f352d187b720a2e8231874775616c24e91eb3bd8` 完成准备验收并[关闭#383](https://github.com/1131096740/intelligent-construction-management/issues/383#issuecomment-6651228720)。本机编排369/369、源码3032文件及197迁移核验通过，真实运行仍NOT RUN。归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。[准备交接](../../progress/2026-11-05-enterprise-simplification-task01-prepared.md)保留验收边界。
 
 **类型：** 验证前置片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
