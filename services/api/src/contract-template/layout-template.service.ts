@@ -1,3 +1,4 @@
+import { CompanyRoleResolverService, COMPANY_ROLE_RESOLUTION_ERROR } from "../auth/company-role-resolver.service";
 import { LAYOUT_TEMPLATE_READ_ROLES } from "./layout-template-file-access";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -12,6 +13,8 @@ import {
   isContractBillRowPlaceholder
 } from "../contract-document/contract-placeholder-registry";
 import { FileService } from "../file/file.service";
+import { confirmedLayoutSourceMapping, LAYOUT_MAPPING_FIELDS, mappedLayoutSourceForVersion, prepareLayoutSourceMapping, readLayoutSourcePositions } from "./layout-field-mapping";
+import type { ConfirmLayoutSourceMappingDto, SaveLayoutSourceMappingDto } from "./dto/layout-source-mapping.dto";
 import type {
   CreateLayoutTemplateDto,
   LayoutTemplatePreviewSampleDataDto,
@@ -27,14 +30,7 @@ export interface LayoutInspectionReport {
   warnings: string[];
 }
 
-type RoleClient = {
-  userPosition: {
-    findMany(args: { where: Record<string, unknown> }): Promise<Array<{ positionId: string }>>;
-  };
-  position: {
-    findMany(args: { where: Record<string, unknown> }): Promise<Array<{ key: string }>>;
-  };
-};
+type RoleClient = Pick<Prisma.TransactionClient, "user" | "userPosition" | "position">;
 
 const REQUIRED_PLACEHOLDERS = CONTRACT_DOCUMENT_REQUIRED_PLACEHOLDERS;
 const RECOGNIZED_NAMESPACE = /^(contract|party|field|clause|bill|document)\./;
@@ -51,6 +47,93 @@ export class LayoutTemplateService {
 
   async assertCanMaintainBusinessEntry(actorUserId: string) {
     await this.assertTemplateMaintenanceRole(this.prisma, actorUserId);
+  }
+
+  async sourcePositions(versionId: string, actorUserId: string) {
+    await this.assertGlobalRole(this.prisma, actorUserId, "contract_director");
+    const version = await this.findVersion(this.prisma, versionId);
+    const source = await this.files.getFileBuffer(version.docxFileId);
+    const parsed = readLayoutSourcePositions(source.buffer);
+    const stored = (version.placeholderSchema as Record<string, unknown>).sourceMapping as Record<string, unknown> | undefined;
+    const sameSource = stored?.sourceFileId === version.docxFileId && stored?.sourceSha256 === parsed.sourceSha256;
+    let confirmed = false;
+    try { confirmed = Boolean(confirmedLayoutSourceMapping(version)); } catch { /* stale mappings require confirmation */ }
+    return {
+      fields: LAYOUT_MAPPING_FIELDS.map((field, index) => ({ ...field, required: index < 5 })),
+      bindings: sameSource && Array.isArray(stored?.bindings) ? stored.bindings : [],
+      mappingFingerprint: sameSource && stored?.draftRevision === version.draftRevision ? stored.fingerprint : null,
+      confirmed,
+      versionId: version.id,
+      sourceFileId: version.docxFileId,
+      draftRevision: version.draftRevision,
+      ...parsed
+    };
+  }
+
+  async saveSourceMapping(versionId: string, actorUserId: string, input: SaveLayoutSourceMappingDto) {
+    return this.prisma.$transaction(async tx => {
+      await this.assertGlobalRole(tx, actorUserId, "contract_director");
+      const version = await this.findVersion(tx, versionId);
+      if (version.status !== "draft") throw new BadRequestException("只能为模板草稿确认自动填写位置");
+      if (version.draftRevision !== input.expectedRevision || version.docxFileId !== input.sourceFileId) {
+        throw new ConflictException("模板原文件或修订已变化，请重新读取并选择位置");
+      }
+      const source = await this.files.getFileBuffer(version.docxFileId);
+      const prepared = prepareLayoutSourceMapping(source.buffer, version.docxFileId, version.draftRevision + 1, input.bindings);
+      if (prepared.mapping.sourceSha256 !== input.sourceSha256) throw new ConflictException("模板原文件已变化，请重新读取并选择位置");
+      const placeholderSchema = { ...(version.placeholderSchema as Record<string, unknown>), sourceMapping: prepared.mapping };
+      const saved = await tx.contractLayoutTemplateVersion.updateMany({ where: { id: versionId, status: "draft", draftRevision: input.expectedRevision }, data: {
+        placeholderSchema: placeholderSchema as unknown as Prisma.InputJsonValue,
+        draftRevision: { increment: 1 }, inspectionReport: Prisma.DbNull, inspectionRevision: null, previewPdfFileId: null
+      } });
+      if (saved.count !== 1) throw new ConflictException("模板修订已变化，请重新读取并选择位置");
+      await tx.contractLayoutPreviewJob.updateMany({ where: { layoutTemplateVersionId: versionId, status: { in: ["queued", "processing", "succeeded"] } }, data: { status: "stale" } });
+      await this.record(tx, actorUserId, "source_mapping_draft", versionId, { sourceFileId: version.docxFileId, sourceSha256: prepared.mapping.sourceSha256, draftRevision: prepared.mapping.draftRevision, mappingFingerprint: prepared.mapping.fingerprint });
+      return { draftRevision: prepared.mapping.draftRevision, mappingFingerprint: prepared.mapping.fingerprint, confirmed: false, preview: readLayoutSourcePositions(prepared.docx).positions };
+    });
+  }
+
+  async confirmSourceMapping(versionId: string, actorUserId: string, input: ConfirmLayoutSourceMappingDto) {
+    return this.prisma.$transaction(async tx => {
+      await this.assertGlobalRole(tx, actorUserId, "contract_director");
+      // Serialize confirmation with the existing draft update/preview row write.
+      // Re-read only after the lock so READ COMMITTED cannot confirm an older job.
+      const locked = await tx.contractLayoutTemplateVersion.updateMany({ where: { id: versionId, status: "draft", draftRevision: input.expectedRevision }, data: { status: "draft" } });
+      if (locked.count !== 1) throw new ConflictException("模板修订已变化，请重新预览并确认");
+      const version = await this.findVersion(tx, versionId);
+      const schema = version.placeholderSchema as Record<string, unknown>;
+      const mapping = schema.sourceMapping as Record<string, unknown> | undefined;
+      if (version.status !== "draft" || version.draftRevision !== input.expectedRevision || version.docxFileId !== input.sourceFileId || mapping?.sourceSha256 !== input.sourceSha256 || mapping?.fingerprint !== input.mappingFingerprint) {
+        throw new ConflictException("模板原文件或填写位置已变化，请重新预览并确认");
+      }
+      const source = await this.files.getFileBuffer(version.docxFileId);
+      mappedLayoutSourceForVersion(source.buffer, version);
+      const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
+      if (!report || report.blockingErrors.length || version.inspectionRevision !== version.draftRevision) throw new BadRequestException("请先完成当前修订的版式检查");
+      const preview = await tx.contractLayoutPreviewJob.findFirst({ where: { layoutTemplateVersionId: versionId, sourceRevision: version.draftRevision }, orderBy: { createdAt: "desc" } });
+      if (preview?.status !== "succeeded" || !preview.previewPdfFileId) throw new BadRequestException("请先生成当前填写位置的真实预览");
+      const confirmation = { actorUserId, confirmedAt: new Date().toISOString(), sourceFileId: input.sourceFileId, sourceSha256: input.sourceSha256, draftRevision: input.expectedRevision, mappingFingerprint: input.mappingFingerprint, previewJobId: preview.id, previewPdfFileId: preview.previewPdfFileId };
+      const result = await tx.contractLayoutTemplateVersion.updateMany({ where: { id: versionId, status: "draft", draftRevision: input.expectedRevision }, data: { placeholderSchema: { ...schema, sourceMapping: { ...mapping, confirmation } } as Prisma.InputJsonValue } });
+      if (result.count !== 1) throw new ConflictException("模板修订已变化，请重新预览并确认");
+      await this.record(tx, actorUserId, "source_mapping_confirm", versionId, confirmation);
+      return { confirmed: true, draftRevision: input.expectedRevision, previewPdfFileId: preview.previewPdfFileId };
+    });
+  }
+
+  private assertMappingConfirmed(version: { docxFileId: string; draftRevision: number; placeholderSchema: Prisma.JsonValue }) {
+    const schema = version.placeholderSchema as Record<string, unknown>;
+    const mapping = schema?.sourceMapping as Record<string, unknown> | undefined;
+    const confirmation = mapping?.confirmation as Record<string, unknown> | undefined;
+    if (!mapping || !confirmation || mapping.sourceFileId !== version.docxFileId || mapping.draftRevision !== version.draftRevision || confirmation.sourceFileId !== mapping.sourceFileId || confirmation.sourceSha256 !== mapping.sourceSha256 || confirmation.draftRevision !== version.draftRevision || confirmation.mappingFingerprint !== mapping.fingerprint) throw new BadRequestException("请由合同主管预览并确认当前原文的自动填写位置");
+  }
+
+  async listMaintainedLayouts(actorUserId: string) {
+    return this.prisma.$transaction(async tx => {
+      await this.assertGlobalRole(tx, actorUserId, "contract_director");
+      const templates = await tx.contractLayoutTemplate.findMany({ orderBy: { createdAt: "desc" } });
+      const versions = templates.length ? await tx.contractLayoutTemplateVersion.findMany({ where: { layoutTemplateId: { in: templates.map(template => template.id) } }, orderBy: { versionNo: "desc" } }) : [];
+      return templates.map(template => ({ id: template.id, name: template.name, contractTypeKey: template.contractTypeKey, versions: versions.filter(version => version.layoutTemplateId === template.id).map(version => ({ id: version.id, versionNo: version.versionNo, status: version.status, draftRevision: version.draftRevision, updatedAt: version.updatedAt })) }));
+    });
   }
 
   async listPublishedLayouts(contractTypeKey?: string) {
@@ -90,7 +173,12 @@ export class LayoutTemplateService {
     });
   }
 
+  private assertUnreservedSchema(schema: Record<string, unknown>) {
+    if (Object.prototype.hasOwnProperty.call(schema, "sourceMapping")) throw new BadRequestException("请通过专用填写位置操作保存并确认映射");
+  }
+
   async createLayout(actorUserId: string, input: CreateLayoutTemplateDto) {
+    this.assertUnreservedSchema(input.placeholderSchema);
     return this.prisma.$transaction(async (tx) => {
       await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const file = await tx.fileObject.findUnique({ where: { id: input.docxFileId } });
@@ -192,6 +280,7 @@ export class LayoutTemplateService {
     actorUserId: string,
     input: UpdateLayoutTemplateVersionDto
   ) {
+    if (input.placeholderSchema !== undefined) this.assertUnreservedSchema(input.placeholderSchema);
     return this.prisma.$transaction(async (tx) => {
       await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
@@ -261,7 +350,7 @@ export class LayoutTemplateService {
         throw new BadRequestException("只有草稿状态的合同版式可以检查");
       }
       const source = await this.files.getFileBuffer(version.docxFileId);
-      const report = this.inspectDocx(source.buffer, version.placeholderSchema);
+      const report = this.inspectDocx(mappedLayoutSourceForVersion(source.buffer, version), version.placeholderSchema);
       const sourceRevision = version.draftRevision;
       const result = await tx.contractLayoutTemplateVersion.updateMany({
         where: { id: versionId, status: "draft", draftRevision: sourceRevision },
@@ -289,9 +378,14 @@ export class LayoutTemplateService {
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以生成预览");
       }
+      const source = await this.files.getFileBuffer(version.docxFileId);
+      mappedLayoutSourceForVersion(source.buffer, version);
+      const schema = version.placeholderSchema as Record<string, unknown>;
+      const mapping = schema.sourceMapping as Record<string, unknown> | undefined;
+      const nextSchema = mapping ? { ...schema, sourceMapping: Object.fromEntries(Object.entries(mapping).filter(([key]) => key !== "confirmation")) } : schema;
       const result = await tx.contractLayoutTemplateVersion.updateMany({
         where: { id: versionId, status: "draft", draftRevision: version.draftRevision },
-        data: { status: "draft" }
+        data: { status: "draft", placeholderSchema: nextSchema as Prisma.InputJsonValue }
       });
       if (result.count !== 1) {
         throw new BadRequestException("合同版式状态已变化，请刷新后重试");
@@ -326,10 +420,13 @@ export class LayoutTemplateService {
   async submitVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertTemplateMaintenanceRole(tx, actorUserId);
+      const locked = await tx.contractLayoutTemplateVersion.updateMany({ where: { id: versionId, status: "draft" }, data: { status: "draft" } });
+      if (locked.count !== 1) throw new BadRequestException("只有草稿状态的合同版式可以提交");
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以提交");
       }
+      this.assertMappingConfirmed(version);
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
       if (
         !report ||
@@ -357,6 +454,7 @@ export class LayoutTemplateService {
       if (version.status !== "submitted") {
         throw new BadRequestException("只有已提交的合同版式可以发布");
       }
+      this.assertMappingConfirmed(version);
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
       if (
         !report ||
@@ -790,44 +888,22 @@ export class LayoutTemplateService {
     actorUserId: string,
     roleKeys: readonly ("contract_staff" | "contract_director")[]
   ) {
-    const assignments = await tx.userPosition.findMany({
-      where: { userId: actorUserId, projectId: null }
-    });
-    const positions = assignments.length
-      ? await tx.position.findMany({
-          where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
-        })
-      : [];
-    if (!positions.some((position) => roleKeys.includes(position.key as typeof roleKeys[number]))) {
-      throw new ForbiddenException("只有合同经办人或合同主管可以执行该版式操作");
+    let roles: string[];
+    try {
+      roles = await new CompanyRoleResolverService(this.prisma).resolveActiveRoleScopesInTransaction(tx, actorUserId);
+    } catch {
+      throw new ForbiddenException(COMPANY_ROLE_RESOLUTION_ERROR);
     }
-    return positions.map((position) => position.key);
+    if (!roles.some(role => roleKeys.includes(role as typeof roleKeys[number]))) throw new ForbiddenException("只有合同主管可以维护模板，合同员可选择已发布模板");
+    return roles;
   }
 
   private assertTemplateMaintenanceRole(tx: RoleClient, actorUserId: string) {
-    return this.assertAnyGlobalRole(tx, actorUserId, LAYOUT_TEMPLATE_READ_ROLES);
+    return this.assertAnyGlobalRole(tx, actorUserId, ["contract_director"]);
   }
 
-  private async assertGlobalRole(
-    tx: RoleClient,
-    actorUserId: string,
-    roleKey: "contract_staff" | "contract_director"
-  ) {
-    const assignments = await tx.userPosition.findMany({
-      where: { userId: actorUserId, projectId: null }
-    });
-    const positions = assignments.length
-      ? await tx.position.findMany({
-          where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
-        })
-      : [];
-    if (!positions.some((position) => position.key === roleKey)) {
-      throw new ForbiddenException(
-        roleKey === "contract_staff"
-          ? "只有合同经办人可以执行该版式操作"
-          : "只有合同主管可以执行该版式操作"
-      );
-    }
+  private async assertGlobalRole(tx: RoleClient, actorUserId: string, roleKey: "contract_staff" | "contract_director") {
+    await this.assertAnyGlobalRole(tx, actorUserId, [roleKey]);
   }
 
   private record(

@@ -11,7 +11,7 @@
       >
         <t-button
           v-if="governance.canSubmit"
-          :disabled="!inspectionCurrent"
+          :disabled="!inspectionCurrent || !mappingConfirmed"
           @click="submitCurrent"
         >
           提交审核
@@ -157,6 +157,20 @@
       />
     </t-card>
 
+    <LayoutSourceMappingPanel
+      v-if="currentVersion"
+      ref="mappingPanel"
+      :version-id="currentVersion.id"
+      :revision="currentVersion.draftRevision"
+      :editable="governance.canSave"
+      :inspection-current="inspectionCurrent"
+      :preview-succeeded="latestPreview?.status === 'succeeded' && !previewStale"
+      :preview-job-id="latestPreview?.id"
+      @changed="refreshDetail(currentVersion?.id)"
+      @dirty-change="mappingDirty = $event"
+      @confirmation-state="mappingConfirmed = $event"
+    />
+
     <t-card
       title="占位符参考"
       :bordered="true"
@@ -200,7 +214,7 @@
           </div>
           <div>
             <p class="hint">
-              样张使用系统内置示例数据，并明确绑定当前草稿修订。
+              样张使用主管输入的样例值，并绑定当前原文件、映射和修订。
             </p>
             <t-space class="actions">
               <t-button
@@ -216,6 +230,10 @@
                 刷新预览状态
               </t-button>
             </t-space>
+            <PrivatePdfActions
+              v-if="latestPreview?.status === 'succeeded' && latestPreview.previewPdfFileId"
+              :file-id="latestPreview.previewPdfFileId"
+            />
             <div class="preview-summary">
               <span>最新预览：{{ previewStatus }}</span>
               <span v-if="latestPreview">源修订：R{{ latestPreview.sourceRevision }}</span>
@@ -249,6 +267,8 @@
 </template>
 
 <script setup lang="ts">
+import LayoutSourceMappingPanel from "./LayoutSourceMappingPanel.vue";
+import PrivatePdfActions from "../../components/files/PrivatePdfActions.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -281,6 +301,9 @@ import {
   canPublishContractTemplates
 } from "./template-permissions";
 
+const mappingPanel = ref<InstanceType<typeof LayoutSourceMappingPanel> | null>(null);
+const mappingDirty = ref(false);
+const mappingConfirmed = ref(false);
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
@@ -382,7 +405,7 @@ const placeholders = [
   "{交货地点}",
   "{#材料清单}{名称}{/材料清单}"
 ];
-const isDirty = computed(() => Boolean(editorBaseline.value) && editorSnapshot() !== editorBaseline.value);
+const isDirty = computed(() => mappingDirty.value || (Boolean(editorBaseline.value) && editorSnapshot() !== editorBaseline.value));
 const leaveGuard = useUnsavedChangesGuard({
   isDirty: () => isDirty.value && !allowNavigation.value,
   confirmLeave: () => new Promise<boolean>((resolve) => {
@@ -440,7 +463,7 @@ async function createLayout() {
       placeholderSchema: { bills: [] }
     });
     allowNavigation.value = true;
-    await router.replace(`/合同模板库/版式/${created.template.id}`);
+    await router.replace(`/合同模板库/版式/${created.template.id}/维护`);
     allowNavigation.value = false;
     detail.value = { template: created.template, versions: [created.version] };
     selectedVersionId.value = created.version.id;
@@ -493,7 +516,9 @@ async function queuePreview() {
   const version = currentVersion.value;
   if (!version) return;
   try {
-    version.latestPreview = await queueLayoutTemplatePreview(version.id, {});
+    if (mappingDirty.value) throw new Error("请先保存填写位置，再生成样张");
+    version.latestPreview = await queueLayoutTemplatePreview(version.id, mappingPanel.value?.previewSampleData() ?? {});
+    mappingConfirmed.value = false;
     showSuccess("当前修订样张已进入队列");
     startPolling();
   } catch (error) {
@@ -715,7 +740,7 @@ async function loadLayoutRoute() {
     return;
   }
   try {
-    await refreshDetail();
+    await refreshDetail(typeof route.query.versionId === "string" ? route.query.versionId : undefined);
   } catch (error) {
     if (layoutTemplateRouteId.value === expectedTemplateId) {
       showError(error instanceof Error ? error.message : "读取版式失败");

@@ -1,3 +1,4 @@
+import { confirmedLayoutSourceMapping, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import {
   BadRequestException,
   ConflictException,
@@ -54,6 +55,7 @@ export interface ContractDocumentInputSnapshot {
   documentContentRevision: number;
   documentContentFingerprint: string;
   templateFileId: string;
+  layoutSourceMapping?: LayoutSourceMapping;
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
   requiredKeys: string[];
@@ -244,10 +246,12 @@ export class ContractDocumentService {
             })
           : [];
         assertContractBillDerivedUnitPrices(rows);
+        const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,
           documentContentFingerprint: documentContent.fingerprint,
           templateFileId: layout.docxFileId,
+          ...(layoutSourceMapping ? { layoutSourceMapping } : {}),
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
             values: this.renderValues(

@@ -1,0 +1,66 @@
+import { expect, test } from "@playwright/test";
+
+test("合同主管通过真实HTTP上传Word并明确选择自动填写位置", async ({ page }) => {
+  const account = JSON.parse(process.env.TEMPLATE_BROWSER_ACCOUNT ?? "{}");
+  expect(account.phone).toBeTruthy();
+  await page.goto("/login?redirect=" + encodeURIComponent("/合同模板库"));
+  await page.getByPlaceholder("请输入手机号").fill(account.phone);
+  await page.getByPlaceholder("请输入密码").fill(account.password);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "合同模板库", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "维护合同模板", exact: true }).click();
+  await expect(page.getByRole("button", { name: "上传Word模板", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "上传Word模板", exact: true }).click();
+  await page.getByPlaceholder("请输入版式名称").fill("浏览器显式映射模板");
+  await page.locator(".t-form__item").filter({ hasText: "合同类型" }).locator("input").click();
+  await page.getByText("材料采购合同", { exact: true }).click();
+  await page.locator('input[type="file"]').setInputFiles(process.env.TEMPLATE_BROWSER_SOURCE!);
+  await page.getByRole("button", { name: "创建版式草稿", exact: true }).click();
+  await expect(page.getByText("合同名称：合成工程合同", { exact: true })).toBeVisible();
+  const choices = [
+    ["合同名称", "合同名称：合成工程合同", "合成工程合同", "浏览器预览合同"],
+    ["甲方名称", "甲方：合成甲方公司", "合成甲方公司", "浏览器甲方"],
+    ["乙方名称", "乙方：合成乙方公司", "合成乙方公司", "浏览器乙方"],
+    ["草稿编号", "编号：{草稿编号}", "{草稿编号}", "BROWSER-11"],
+    ["文档水印", "{文档水印}", "{文档水印}", "浏览器预览"]
+  ];
+  for (const [index, choice] of choices.entries()) {
+    const [field, paragraph, selected, value] = choice;
+    const row = page.getByRole("region", { name: `${field}填写位置`, exact: true });
+    await row.locator("input").first().click();
+    await page.locator(".t-select-option:visible").filter({ hasText: paragraph }).click();
+    await expect(row.locator("input").first()).toHaveValue(`正文第${index + 1}段：${paragraph}`);
+    await expect(page.locator(".t-select-option:visible")).toHaveCount(0);
+    await row.getByPlaceholder("输入需自动填写的原文", { exact: true }).fill(selected);
+    await row.getByPlaceholder("填写预览样例值", { exact: true }).fill(value);
+  }
+  for (const [field, paragraph, value, index] of [["甲方名称", "甲方签章：合成甲方公司", "合成甲方公司", 8], ["乙方名称", "乙方签章：合成乙方公司", "合成乙方公司", 9]] as const) {
+    await page.getByPlaceholder("选择其他字段或增加重复位置", { exact: true }).click();
+    await page.locator(".t-select-option:visible").filter({ hasText: field }).click();
+    await expect(page.locator(".t-select-option:visible")).toHaveCount(0);
+    await page.getByRole("button", { name: "增加填写位置", exact: true }).click();
+    const row = page.getByRole("region", { name: `${field}填写位置`, exact: true }).last();
+    await row.locator("input").first().click();
+    await page.locator(".t-select-option:visible").filter({ hasText: paragraph }).click();
+    await expect(row.locator("input").first()).toHaveValue(`正文第${index}段：${paragraph}`);
+    await expect(page.locator(".t-select-option:visible")).toHaveCount(0);
+    await row.getByPlaceholder("输入需自动填写的原文", { exact: true }).fill(value);
+    await expect(row.getByPlaceholder("填写预览样例值", { exact: true })).toHaveValue(field === "甲方名称" ? "浏览器甲方" : "浏览器乙方");
+  }
+  const saved = page.waitForResponse(response => response.url().includes("/source-mapping") && response.request().method() === "PATCH");
+  await page.getByRole("button", { name: "保存填写位置", exact: true }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(page.getByText("R2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "执行文档检查", exact: true }).click();
+  await expect(page.getByText("检查对应 R2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "生成当前修订样张", exact: true }).click();
+  await expect(page.getByText("最新预览：生成成功", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认当前原文、位置和真实预览", exact: true }).click();
+  await expect(page.getByText("当前修订填写位置已由主管确认", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "提交审核", exact: true }).click();
+  await page.getByPlaceholder("请填写本次版式发布内容").fill("浏览器明确映射并确认真实样张");
+  await page.getByRole("button", { name: "发布版式", exact: true }).click();
+  await expect(page.getByText("版式已发布", { exact: true })).toBeVisible();
+
+
+});

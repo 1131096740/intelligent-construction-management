@@ -36,11 +36,9 @@ import {
   UpdateLayoutTemplateVersionDto
 } from "./dto/layout-template.dto";
 import { LayoutTemplateService } from "./layout-template.service";
+import { ConfirmLayoutSourceMappingDto, SaveLayoutSourceMappingDto } from "./dto/layout-source-mapping.dto";
 
-const TEMPLATE_MAINTENANCE_POSITIONS = [
-  "contract_staff",
-  "contract_director"
-] as const;
+const TEMPLATE_MAINTENANCE_POSITIONS = ["contract_director"] as const;
 const TEMPLATE_PUBLICATION_POSITIONS = ["contract_director"] as const;
 const TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS = ["contract_director", "super_admin"] as const;
 
@@ -122,6 +120,12 @@ export class ContractTemplateController {
     return this.layouts.listPublishedLayouts(contractTypeKey);
   }
 
+  @Get("contract-layout-templates/maintenance")
+  @RequirePositions("contract_director")
+  listMaintainedLayouts(@CurrentUser() user: AuthenticatedUser) {
+    return this.layouts.listMaintainedLayouts(user.id);
+  }
+
   @Post("contract-layout-templates")
   @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   createLayout(
@@ -159,6 +163,35 @@ export class ContractTemplateController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.layouts.inspectVersion(versionId, user.id);
+  }
+
+  @Get("contract-layout-template-versions/:versionId/source-positions")
+  @RequirePositions("contract_director")
+  layoutSourcePositions(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.sourcePositions(versionId, user.id);
+  }
+
+  @Patch("contract-layout-template-versions/:versionId/source-mapping")
+  @RequirePositions("contract_director")
+  saveLayoutSourceMapping(
+    @Param("versionId") versionId: string,
+    @Body() body: SaveLayoutSourceMappingDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.saveSourceMapping(versionId, user.id, body);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/source-mapping-confirmation")
+  @RequirePositions("contract_director")
+  confirmLayoutSourceMapping(
+    @Param("versionId") versionId: string,
+    @Body() body: ConfirmLayoutSourceMappingDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.confirmSourceMapping(versionId, user.id, body);
   }
 
   @Post("contract-layout-template-versions/:versionId/preview-generation")
