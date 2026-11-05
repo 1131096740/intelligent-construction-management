@@ -136,6 +136,29 @@ test("task01 registration binds reviewed source bodies and cannot substitute an 
   }
 });
 
+test("task01 dispatch handles real child stdout without interpreting inherited output as a captured receipt", () => {
+  // Existing dispatcher seam, real subprocess/stdio transport. Only command
+  // resolution is substituted; no driver/helper import, fake SQL or PG result.
+  const hook = `\nresolveGroupCommand = () => ({ command: process.execPath, args: ${JSON.stringify(["-e", 'process.stdout.write("real-child-stdout-not-json\\n")'])} });`;
+  const script = `
+    const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');
+    const file = ${JSON.stringify(runnerPath)};
+    const fixture = new Module(file, module); fixture.filename = file;
+    fixture.paths = Module._nodeModulePaths(path.dirname(file));
+    fixture._compile(fs.readFileSync(file, 'utf8').replace(/^#!.*\\n/u, '') + ${JSON.stringify(hook)}, file);
+    fixture.exports.main(${JSON.stringify([...task01Execute, ...task01Args])})
+      .then(result => process.stdout.write('DISPATCH_RESULT=' + JSON.stringify(result) + '\\n'))
+      .catch(error => { process.stderr.write(error.name + ':' + error.message); process.exitCode = 1; });
+  `;
+  const child = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /real-child-stdout-not-json/u);
+  const line = child.stdout.split("\n").find(value => value.startsWith("DISPATCH_RESULT="));
+  const result = JSON.parse(line.slice("DISPATCH_RESULT=".length));
+  assert.equal(result.fullDynamicGate, false);
+  assert.equal(result.driverReceiptPath, "/private/tmp/new-task01-artifacts/task01-receipt.json");
+});
+
 test("fund verifier SQL completes without depending on Docker interactive stdin EOF", () => {
   const sql = readFileSync(path.join(__dirname, "migrations/20260814120000_operating_ledger_runtime_write_guard/migration.sql"), "utf8");
   let localFile; let containerFile; let calls = 0;

@@ -632,9 +632,10 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     const environment = { PATH: sourceEnv.PATH ?? "", LANG: "C", LC_ALL: "C", NODE_ENV: "test",
       JG_TASK01_EXECUTION_APPROVED: "LOCAL_TASK01_HTTP_PG", JG_TASK01_EXPECTED_SOURCE_SHA: options.candidateSha.toLowerCase() };
     const resolved = resolveGroupCommand(coveredGroups[0], options);
-    const result = await runCommand(resolved.command, resolved.args, { env: environment, forwardOutput: true });
+    await runCommand(resolved.command, resolved.args, { env: environment, forwardOutput: true });
     return { status: "task01-operator-completed", scope: "first-case-tracer-only", candidateSha: options.candidateSha,
-      driverReceipt: JSON.parse(result.stdout.trim()), coveredTests: 1, fullDynamicGate: false };
+      driverReceiptPath: path.join(options.task01["--task01-artifacts"], "task01-receipt.json"),
+      coveredTests: 1, fullDynamicGate: false };
   }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-gate-")
