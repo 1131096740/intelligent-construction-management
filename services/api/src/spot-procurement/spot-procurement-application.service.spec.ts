@@ -1,3 +1,8 @@
+import { Test } from "@nestjs/testing";
+import { SpotProcurementController } from "./spot-procurement.controller";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
+import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import { ConflictException } from "@nestjs/common";
@@ -2155,4 +2160,127 @@ describe("SpotProcurementApplicationService real-form application", () => {
       message: "只有本项目财务主管可以确认异常终止"
     });
   });
+});
+
+
+it("并联申请允许项目经理先同意，仍等待物资主管", async () => {
+  const { service, tx } = context("project_manager");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")])
+    .mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0,
+      applicantUserId: "material-1", frozenNodes: [
+        { name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel" },
+        { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" }
+      ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+  queueActiveSignature(tx.$queryRaw);
+  await expect(service.review("procurement-1", "manager-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1
+  })).resolves.toMatchObject({ status: "approval_pending", versionStatus: "approval_pending" });
+});
+
+
+it("缺岗仍可提交，新轮冻结并联职责协议", async () => {
+  const { service, tx } = context();
+  tx.$queryRaw.mockResolvedValueOnce([procurement()]).mockResolvedValueOnce([version()]);
+  mockConfiguredApprovalAssignments(tx);
+  await expect(service.submit("procurement-1", "material-1")).resolves.toMatchObject({ status: "approval_pending" });
+  expect(tx.approvalInstance.create).toHaveBeenCalledWith({data: expect.objectContaining({ frozenNodes: [
+    { name: "物资部主管审批", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel" },
+    { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" }
+  ] })});
+});
+
+
+it("并联任一驳回直接回到可编辑新草稿，保留原制单人", async () => {
+  const { service, tx } = context("project_manager");
+  tx.spotProcurementVersion.create.mockImplementation(async ({ data }) => ({ ...version(), ...data, id: "version-2" }));
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], approvedRoleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+  await expect(service.review("procurement-1", "manager-1", {
+    decision: "reject", comment: "请修改需求", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1
+  })).resolves.toMatchObject({ status: "draft", versionStatus: "draft", currentVersionId: "version-2" });
+});
+
+it("经理先办后物资主管完成最后职责，才转入采购后继", async () => {
+  const { service, tx } = context("material_director");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], approvedRoleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "director-1", roleKey: "material_director", userIsActive: true}]).mockResolvedValueOnce([]);
+  queueActiveSignature(tx.$queryRaw);
+  await expect(service.review("procurement-1", "director-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0
+  })).resolves.toMatchObject({ status: "approved_in_progress", versionStatus: "approved" });
+});
+
+it("兼岗人员不能再次处理已经同意的同一职责", async () => {
+  const { service, tx } = context("material_director");
+  tx.projectMember.findMany.mockResolvedValue([{positionKey: "material_director"}, {positionKey: "project_manager"}]);
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 1, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], approvedRoleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  await expect(service.review("procurement-1", "both-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0
+  })).rejects.toMatchObject({status: 409});
+});
+
+
+it("合成HTTP并联经理职责可先同意，错误职责不越权", async () => {
+  const { service, tx } = context("project_manager");
+  const round = { id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+    {name: "物资", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+    {name: "项目", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+  ] };
+  const module = await Test.createTestingModule({ controllers: [SpotProcurementController], providers: [
+    {provide: SpotProcurementApplicationService, useValue: service},
+    {provide: SpotProcurementReadService, useValue: null},
+    {provide: SpotProcurementSettlementService, useValue: null},
+    {provide: SpotProcurementPaymentService, useValue: null}
+  ] }).compile();
+  const app = module.createNestApplication({logger: false});
+  app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => { request.user = {id: "manager-1"}; next(); });
+  app.useGlobalPipes(createApiValidationPipe());
+  await app.listen(0, "127.0.0.1");
+  try {
+    const url = `${await app.getUrl()}/spot-procurements/procurement-1/approval`;
+    const post = (index: number) => fetch(url, {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: index})});
+    tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")]).mockResolvedValueOnce([round]);
+    tx.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    expect((await post(0)).status).toBe(403);
+    tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")]).mockResolvedValueOnce([round]);
+    tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+    queueActiveSignature(tx.$queryRaw);
+    const response = await post(1);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({status: "approval_pending", versionStatus: "approval_pending"});
+  } finally { await app.close(); }
+});
+
+it("停用或调离后的旧链接不能用旧岗位上下文驳回并联申请", async () => {
+  const {service, tx} = context("project_manager");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ]}]).mockResolvedValueOnce([]);
+  await expect(service.review("procurement-1", "manager-1", {decision: "reject", comment: "旧链接办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toMatchObject({status: 403});
+});
+
+it.each(["approve", "reject", "return_to_applicant"] as const)("新并联协议在未接入自审确认前拒绝创建人本人%s", async (decision) => {
+  const {service, tx} = context("project_manager");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ]}]).mockResolvedValueOnce([{projectId: "project-1", userId: "material-1", roleKey: "project_manager", userIsActive: true}]);
+  await expect(service.review("procurement-1", "material-1", {decision, comment: "本人办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toThrow("本单由你创建或提交，当前职责请由其他有权人员办理");
 });

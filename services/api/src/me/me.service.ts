@@ -1,3 +1,4 @@
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {companyTransferWorkItems} from "../company-transfer/company-transfer-workitems";
 import {contractHandlingWorkItems} from "../contract-ledger/contract-handling-workitems";
 import { addContractRelationshipSummaries } from "../contract-ledger/contract-relationship-summary";
@@ -975,7 +976,7 @@ export class MeService {
       const projectId = instance.businessType === "payment_request"
         ? paymentProjectById.get(instance.businessId)
         : spotProjectById.get(instance.businessId);
-      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex);
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(projectId ?? "") ?? []);
       if (!projectId || !node) continue;
       const roleKeys = roleKeysByProject.get(projectId) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
@@ -2175,7 +2176,7 @@ export class MeService {
 
     for (const instance of instances) {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
-      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex);
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []);
       if (!detail || !node) {
         continue;
       }
@@ -2520,7 +2521,8 @@ export class MeService {
 
       const currentNode = this.currentApprovalNode(
         instance.frozenNodes,
-        instance.currentNodeIndex
+        instance.currentNodeIndex,
+        roleKeys
       );
       if (!currentNode) {
         continue;
@@ -2668,7 +2670,11 @@ export class MeService {
     return ids;
   }
 
-  private currentApprovalNode(frozenNodes: unknown, index: number): ApprovalNode | null {
+  private currentApprovalNode(frozenNodes: unknown, index: number, roleKeys: RoleKey[] = []): ApprovalNode | null {
+    if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) return null;
+    if (isParallelApprovalRound(frozenNodes)) {
+      index = activeApprovalNodeIndexes(frozenNodes, index).find(candidate => this.hasDirectRoleTodo(frozenNodes[candidate] as ApprovalNode, roleKeys)) ?? -1;
+    }
     if (!Array.isArray(frozenNodes)) {
       return null;
     }
@@ -2714,11 +2720,12 @@ export class MeService {
   }
 
   private canShowSpotApplicantTodo(
-    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId">,
+    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId" | "frozenNodes">,
     node: ApprovalNode,
     roleKeys: RoleKey[],
     userId: string
   ) {
+    if (instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.applicantUserId === userId) return false;
     if (
       !SPOT_APPROVAL_TYPES.includes(
         instance.businessType as (typeof SPOT_APPROVAL_TYPES)[number]
