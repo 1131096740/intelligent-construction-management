@@ -1,0 +1,328 @@
+{
+  "issue": 390,
+  "task": "08",
+  "status": "in-progress / candidate-not-accepted",
+  "sourceBase": "f352d187b720a2e8231874775616c24e91eb3bd8",
+  "method": "DOCX-preserving field content controls + ordinary paragraph editing; native LibreOffice PDF/A-2b export",
+  "sourceManifestSha256": "c8790a0375224d3485695394eb059451cec07e1b148077980e77292a6ad6d56b",
+  "versions": {
+    "python": "3.11.15",
+    "lxml": "6.0.2",
+    "fonttools": "4.60.1",
+    "PyMuPDF": "1.26.7",
+    "LibreOffice": "26.2.4.2",
+    "Pages": "15.4"
+  },
+  "results": [
+    {
+      "template": "equipment-rental-real-v1.docx",
+      "pagesBeforeAfter": [
+        20,
+        20
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+TimesNewRomanPSMT",
+        "CAAAAA+FangSong_GB2312",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+TimesNewRomanPS-BoldMT",
+        "FAAAAA+SIL-Hei-Med-Jian",
+        "GAAAAA+FangSong_GB2312",
+        "HAAAAA+FangSong_GB2312"
+      ],
+      "docxSha256": "1b3c0ed494911162096fa5580927de181a6ded6f928c2fded6fe25359e8baf2a",
+      "pdfSha256": "5387681020399cb30ecbbd8ea1b8315b1f2f2eb9d49db81f4bfdfba56ed1370f"
+    },
+    {
+      "template": "equipment-rental-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT"
+      ],
+      "docxSha256": "6e9dd1e1af498d765beb4ce62221ddadbb58e2c73936b8a19572bdd05485e8a7",
+      "pdfSha256": "7505e6c128f93d7556d080e74b9a0ee6dff11280120ee3082167000703108d9e"
+    },
+    {
+      "template": "generic-contract-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+SIL-Hei-Med-Jian"
+      ],
+      "docxSha256": "56ac5b065b518f24f2b32cac0f36b6ec4640746aac8f145f21a54645c29902b4",
+      "pdfSha256": "146a7b571fb996274f0bc83005a4ebf6e52a7eb5e282a9b44a76426206065e02"
+    },
+    {
+      "template": "labor-subcontract-real-v1.docx",
+      "pagesBeforeAfter": [
+        15,
+        15
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {
+        "、": 1,
+        "，": 3
+      },
+      "missingTraceCharacters": {
+        "，": 3
+      },
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+SIL-Hei-Med-Jian",
+        "FAAAAA+TimesNewRomanPS-BoldMT",
+        "GAAAAA+FangSong_GB2312",
+        "HAAAAA+FangSong_GB2312"
+      ],
+      "docxSha256": "31a92478bba530fc4ade3dc2d7f946b4785bb68b26ed1ff312a7865ceaad1de2",
+      "pdfSha256": "27b60a48e410f132ae27910d7d4cd2b1444ec27824730ae88f6987c9e269934d"
+    },
+    {
+      "template": "labor-subcontract-v1.docx",
+      "pagesBeforeAfter": [
+        1,
+        1
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT"
+      ],
+      "docxSha256": "dc9e10f46ee9710ef00f43f952331de572764d9d7c52df6567f8db6c90c6ca81",
+      "pdfSha256": "98d2cc36a11df5b4f9ffd91026ed3d42100eb2e42cceb489610bb08c67ec628f"
+    },
+    {
+      "template": "material-purchase-real-v1.docx",
+      "pagesBeforeAfter": [
+        20,
+        20
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+TimesNewRomanPSMT",
+        "CAAAAA+FangSong_GB2312",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+TimesNewRomanPS-BoldMT",
+        "FAAAAA+SIL-Hei-Med-Jian",
+        "GAAAAA+FangSong_GB2312",
+        "HAAAAA+FangSong_GB2312",
+        "IAAAAA+KaiTi_GB2312"
+      ],
+      "docxSha256": "8b6f92875291404af43f134c7f468f30b2d1c2ddb2e78eac2ad15799f88ba544",
+      "pdfSha256": "da31b441d08c04a122bec8aea56b6cdfef8eb9c02b3c3bc727b07f15b22bbab0"
+    },
+    {
+      "template": "material-purchase-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT"
+      ],
+      "docxSha256": "f04225651630506a55e6c2274699d3eaa979671ac1e6c74ba7846d9013796537",
+      "pdfSha256": "65edf250b3b34e6757c4c75ba265a36af059b6e9a8ac84fbe8ff1d3741c14414"
+    },
+    {
+      "template": "professional-subcontract-v1.docx",
+      "pagesBeforeAfter": [
+        2,
+        2
+      ],
+      "embedded": true,
+      "a4": true,
+      "missingCharacters": {},
+      "missingTraceCharacters": {},
+      "manualClausePresent": true,
+      "outOfPageTextCount": 0,
+      "fonts": [
+        "BAAAAA+FangSong_GB2312",
+        "CAAAAA+TimesNewRomanPSMT",
+        "DAAAAA+FZXBSJW--GB1-0",
+        "EAAAAA+SIL-Hei-Med-Jian"
+      ],
+      "docxSha256": "0deb3946a4d0cf93e14dc47366deaad1cb583e1c0ace1a112b41d2036488b7ae",
+      "pdfSha256": "85a4c82c472ddccbca604d8415effb2b0aa17010a3cd0a686a95e1050c4dcb5d"
+    }
+  ],
+  "knownFailures": [
+    {
+      "sample": "labor-subcontract-real-v1.docx",
+      "codepoint": "U+FF0C",
+      "count": 3,
+      "sourceParagraphFragments": [
+        "公司审批后方可生效，否则不予作为最终结算依据。",
+        "所有工序、工艺，若乙方报价",
+        "向甲方汇报，48小时内"
+      ],
+      "pdfPages": [
+        4,
+        5,
+        7
+      ],
+      "font": "FangSong_GB2312",
+      "evidence": "absent both normal extraction and PDF texttrace; actual page4 rendered and visually checked"
+    },
+    {
+      "sample": "labor-subcontract-real-v1.docx",
+      "codepoint": "U+3001",
+      "count": 1,
+      "sourceParagraphFragment": "若乙方出现材料浪费、遗失",
+      "evidence": "absent ordinary extraction but present PDF texttrace; extraction discrepancy, not proven glyph loss"
+    },
+    {
+      "samples": [
+        "equipment-rental-v1.docx",
+        "labor-subcontract-v1.docx"
+      ],
+      "evidence": "raw-source PDF defaults Letter612x792; explicit derivative a4-portrait fixes paper only; originals unchanged"
+    },
+    {
+      "samples": [
+        "equipment-rental-v1.docx",
+        "labor-subcontract-v1.docx",
+        "material-purchase-v1.docx"
+      ],
+      "evidence": "compact source titles lack FZXBSJW in actual fonts; not full formal-cover/font-standard acceptance"
+    },
+    {
+      "sample": "generic-contract-v1.docx",
+      "evidence": "A09 framework blank total retains final-amount wording; untaxed clause conflicts with fixed tax-inclusive heading; no coercion of unknown tax to zero"
+    }
+  ],
+  "failedHypotheses": [
+    "overflowPunct=0 did not restore three commas; removed from candidate",
+    "characterSpacingControl=doNotCompress did not restore three commas; removed from candidate"
+  ],
+  "alternativeConverter": {
+    "MicrosoftWord": "not installed in /Applications or user Applications",
+    "Pages": "existing local15.4; one AppleScript open timed out(-1712), no PDF; capability unknown",
+    "cleanup": "script has no finally; open timeout returned no ownedDocument; no claim of closing app/document, no unknown documents touched"
+  },
+  "limits": [
+    "not a formal application editor or approved conversion solution",
+    "native Microsoft Word pagination not verified",
+    "same-engine import/export is not independent native Word equivalence",
+    "all-fonts-embedded does not prove exact font choice or full text retention",
+    "font redistribution/license rights unverified; existing local fonts only",
+    "no PG/Docker/SQL/migrations/deploy/production/business writes"
+  ],
+  "externalArtifacts": "/private/tmp/jg-task08-document-receipts-20261105",
+  "artifacts": [
+    {
+      "path": "actual-comparison-02/comparison.json",
+      "sha256": "483a40f00c3dd8e0aa9dad58ce6c42b9b8013aea145bea36fb0abc3dd9d5d669"
+    },
+    {
+      "path": "actual-comparison-03-a4/comparison-inspected-final.json",
+      "sha256": "67c574095122c714a9c3bd37c44d0819c5c5869b27aee560b54ca18944298373"
+    },
+    {
+      "path": "pricing-cases-01/pricing-cases.json",
+      "sha256": "d762e96b35a212f55ecc7923ebff0dc88efd4e06af99b44ded775d289a2d62f3"
+    },
+    {
+      "path": "font-inventory.json",
+      "sha256": "1a33cc807da80d81ace0d735cc943ca2ee6e4a2b22a066d755f51725de4995fa"
+    },
+    {
+      "path": "pages-tracer/labor-derived.docx",
+      "sha256": "f9388ca82159d79d06097c3f4c261cc5e66f9e0cf174fb6151dbcdbc8c5f0043"
+    },
+    {
+      "path": "pages-tracer/export.applescript",
+      "sha256": "9c9a380d704bf9af12837d2ea10e6089788639bb7e71ecbafeaf288813f1f9a9"
+    },
+    {
+      "path": "pages-tracer/result.log",
+      "sha256": "db6e2b88fa159c45c30bcc453fcdc5eb8812f6102ca3bd916c1bb2c6daf8c59f"
+    },
+    {
+      "path": "01-red.log",
+      "sha256": "09394fcc6d857f92cbae681d46a887f61d8813718e608916299d972878b08b2d"
+    },
+    {
+      "path": "01-green.log",
+      "sha256": "669b7650bd3d7c2d95fc3077be66316033fc1ff72775a625d8ca18d5b3996637"
+    },
+    {
+      "path": "01-green2.log",
+      "sha256": "89df3d8a1a303da179ebf2ae6affd741710db97acbaaa8579f115bf073b52125"
+    },
+    {
+      "path": "02-red.log",
+      "sha256": "94f2ea1110c00f389fdd2a2bc1cb0061d63534a82c1ea1fe20dc660141265e88"
+    },
+    {
+      "path": "02-green.log",
+      "sha256": "f4ca1ba093e0a269419f9b1e331edbc231b1042124379064a162d4c0886b053b"
+    },
+    {
+      "path": "03-red.log",
+      "sha256": "01a04a2caad95fe4f883f65fae51e9d98addad5af7917fcfe136251a77322285"
+    },
+    {
+      "path": "03-green.log",
+      "sha256": "748482a0050507ff20b34334893b0567492c4dbc30cb05a8f07104aa2a8a0785"
+    },
+    {
+      "path": "04-red.log",
+      "sha256": "5abb86d637c91b690c177d25ae60e2574cde2d13d9adbe7df50b38fde6931591"
+    },
+    {
+      "path": "04-green-attempt.log",
+      "sha256": "43c30113151bdb5da3624c341b4896ee6de74051dc58d80a106153ae0bf57367"
+    },
+    {
+      "path": "05-compression-attempt.log",
+      "sha256": "37ae3fdb1461973318aa801001bae40481ca13e216c54166c9cd7783374158db"
+    }
+  ]
+}
