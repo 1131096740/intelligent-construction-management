@@ -20,7 +20,8 @@ export interface PreparedParallelPgHttp {
   review(id: string, session: Session, input: Coordinates & { decision: "approve" | "reject"; comment?: string }): Promise<Reply<unknown>>;
 }
 
-export async function runPreparedParallelPgHttpCases(http: PreparedParallelPgHttp): Promise<void> {
+export async function runPreparedParallelPgHttpCases(http: PreparedParallelPgHttp,
+  scenario: "distinct-duties" | "same-duty" | "last-decision"): Promise<void> {
   const coordinates = async (id: string, actor: Session) => {
     const reply = await http.detail(id, actor);
     assert.equal(reply.status, 200);
@@ -33,7 +34,7 @@ export async function runPreparedParallelPgHttpCases(http: PreparedParallelPgHtt
     assert.equal(reply.status, 200);
     return reply.body;
   };
-  {
+  if (scenario === "distinct-duties") {
     const id = await http.createSubmittedApplication("parallel-distinct-duties");
     const [materials, manager] = await Promise.all([coordinates(id, "materialsA"), coordinates(id, "manager")]);
     assert.equal(materials.expectedNodeIndex, 0);
@@ -49,7 +50,7 @@ export async function runPreparedParallelPgHttpCases(http: PreparedParallelPgHtt
     assert.equal(after.approvalTimeline.filter(log => log.action === "approve").length, 2);
     assert.equal((await http.review(id, "manager", { ...manager, decision: "approve" })).status, 409);
   }
-  {
+  if (scenario === "same-duty") {
     const id = await http.createSubmittedApplication("parallel-same-duty-claim");
     const [first, second] = await Promise.all([coordinates(id, "materialsA"), coordinates(id, "materialsB")]);
     const replies = await Promise.all([
@@ -62,7 +63,7 @@ export async function runPreparedParallelPgHttpCases(http: PreparedParallelPgHtt
     assert.equal(after.payments.length, 0);
     assert.equal(after.approvalTimeline.filter(log => log.action === "approve").length, 1);
   }
-  {
+  if (scenario === "last-decision") {
     const id = await http.createSubmittedApplication("parallel-last-approve-versus-reject");
     const materials = await coordinates(id, "materialsA");
     assert.equal((await http.review(id, "materialsA", { ...materials, decision: "approve" })).status, 201);
@@ -88,13 +89,15 @@ export async function runPreparedParallelNotificationClaimPgCase(input: {
   firstConsumer(): Promise<void>;
   secondConsumer(): Promise<void>;
   gatewayRequestCount(): number;
-  publicProgress(): Promise<{history: Array<{action: string}>}>;
+  dutyName?: string;
+  recipientName?: string;
+  publicProgress(): Promise<{history: Array<{action: string; comment?: string | null}>}>;
 }): Promise<void> {
   assert.equal(input.gatewayRequestCount(), 0);
   await Promise.all([input.firstConsumer(), input.secondConsumer()]);
   assert.equal(input.gatewayRequestCount(), 1, "同一轮同一职责同一收件人只能跨网关一次");
   const progress = await input.publicProgress();
-  assert.equal(progress.history.filter(log => log.action === "已提交审批通知").length, 1);
+  assert.equal(progress.history.filter(log => log.action === "已提交审批通知" && (!input.dutyName || log.comment?.startsWith(`${input.dutyName} ·`)) && (!input.recipientName || log.comment?.endsWith(` · ${input.recipientName}`))).length, 1);
   await input.firstConsumer();
   assert.equal(input.gatewayRequestCount(), 1, "已领取的通知不得自动重发");
 }

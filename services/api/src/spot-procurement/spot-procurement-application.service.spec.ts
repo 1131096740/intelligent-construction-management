@@ -2275,12 +2275,12 @@ it("停用或调离后的旧链接不能用旧岗位上下文驳回并联申请"
   await expect(service.review("procurement-1", "manager-1", {decision: "reject", comment: "旧链接办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toMatchObject({status: 403});
 });
 
-it.each(["approve", "reject"] as const)("新并联协议在未接入自审确认前拒绝创建人本人%s", async (decision) => {
+it.each(["approve", "reject", "return_to_applicant"] as const)("新并联协议在未接入自审确认前拒绝创建人本人%s", async (decision) => {
   const {service, tx} = context("project_manager");
   tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
     .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
       {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
       {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
     ]}]).mockResolvedValueOnce([{projectId: "project-1", userId: "material-1", roleKey: "project_manager", userIsActive: true}]);
-  await expect(service.review("procurement-1", "material-1", {decision, comment: "本人办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toThrow("本人自审确认尚未开放");
+  await expect(service.review("procurement-1", "material-1", {decision, comment: "本人办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toThrow("本单由你创建或提交，当前职责请由其他有权人员办理");
 });

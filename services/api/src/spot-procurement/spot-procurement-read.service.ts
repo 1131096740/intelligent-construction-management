@@ -2930,7 +2930,7 @@ export class SpotProcurementReadService {
             : hasRevisionDownstreamFacts
               ? "当前采购已存在付款或收货事实，不能处理审批"
             : selfReviewClosed
-              ? "本人自审确认尚未开放，请由其他有权人员办理本职责"
+              ? "本单由你创建或提交，当前职责请由其他有权人员办理"
               : "当前账号不是本审批节点处理人"
       }),
       detailAction({

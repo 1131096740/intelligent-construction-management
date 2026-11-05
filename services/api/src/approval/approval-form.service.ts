@@ -1,4 +1,4 @@
-import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
+import { hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
 import { approvalDate as formatDate, approvalDateTime as formatDateTime } from "./approval-date";
 import { drawApprovalTable as drawTable } from "./approval-pdf-table";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "./approval-business-facts";
@@ -1384,9 +1384,12 @@ export class ApprovalFormService {
         : null;
       return {
         kind: "application",
-        ...(isParallelApprovalRound(instance.frozenNodes) && instance.status === "approval_pending" ? {
-          approvalPending: true,
-          pendingDutyNames: activeApprovalNodeIndexes(instance.frozenNodes, 0).map(index => String((instance.frozenNodes as Array<Record<string, unknown>>)[index].name ?? "待审批职责"))
+        ...(isParallelApprovalRound(instance.frozenNodes) ? {
+          approvalPending: instance.status === "approval_pending",
+          frozenDutySlots: instance.frozenNodes.map(node => ({
+            position: String(node.name ?? "审批职责"),
+            approval: signatureLogs.find(log => (node.roleKeys as string[]).includes(log.approvedRoleKey ?? "")) ?? null
+          }))
         } : {}),
         approvals: rendered.logs,
         projectName: project?.name ?? "项目名称未读取",

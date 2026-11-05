@@ -563,7 +563,7 @@ export class SpotProcurementApplicationService {
         if (parallel && (actorUserId === procurement.applicantUserId || actorUserId === approval.applicantUserId)) {
           // Creation and submission both require this original applicant in requireDraftOwnerRole.
           // Task05 will replace this closed gate with explicit reason/password confirmation.
-          throw new ForbiddenException("本人自审确认尚未开放，请由其他有权人员办理本职责");
+          throw new ForbiddenException("本单由你创建或提交，当前职责请由其他有权人员办理");
         }
         const reviewNodeIndex = parallel ? input.expectedNodeIndex : approval.currentNodeIndex;
         if (!activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).includes(reviewNodeIndex)) {

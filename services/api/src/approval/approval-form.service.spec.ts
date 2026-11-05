@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { markFormalApprovalPdf } from "./approval-pdf-watermark";
 import {
@@ -3319,4 +3321,51 @@ it("未知并联协议版本不能回退为旧串联证明", async () => {
   const {service, instance} = parallelFormFixture();
   instance.frozenNodes[0].protocolVersion = 2;
   await expect(service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核验协议")).rejects.toThrow("审批职责协议版本无效");
+});
+
+
+function pdfDutyCoordinates(buffer: Buffer) {
+  const pdfjs = require.resolve("pdfjs-dist/legacy/build/pdf.mjs", {paths: [resolve(__dirname, "../../../../apps/web-admin")]});
+  const parsed = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import {pathToFileURL} from "node:url";
+    const {getDocument} = await import(pathToFileURL(process.argv[1]).href);
+    const chunks=[]; for await (const chunk of process.stdin) chunks.push(chunk);
+    const task=getDocument({data:new Uint8Array(Buffer.concat(chunks)),verbosity:0}); const doc=await task.promise;
+    const items=[];
+    for(let page=1;page<=doc.numPages;page++) {
+      const content=await (await doc.getPage(page)).getTextContent();
+      for(const item of content.items) if("str" in item) items.push({page,text:item.str,x:item.transform[4],y:item.transform[5]});
+    }
+    process.stdout.write(JSON.stringify(items)); await task.destroy();
+  `, pdfjs], {input: buffer, maxBuffer: 4 * 1024 * 1024});
+  if (parsed.status !== 0) throw new Error(`PDF公开输出坐标解析失败：${parsed.stderr.toString()}`);
+  const items = JSON.parse(parsed.stdout.toString()) as Array<{page:number;text:string;x:number;y:number}>;
+  const duty = (word: string) => {
+    const item = items.find(item => item.x < 100 && item.text.includes(word));
+    if (!item) throw new Error(`PDF缺少冻结职责文字：${word}`);
+    return {page: item.page, x: item.x, y: item.y};
+  };
+  const managerSigner = items.find(item => item.x >= 100 && item.text.includes("原项目经理"));
+  return {materials: duty("物资"), manager: duty("项目经理"), managerSigner: managerSigner ? {page: managerSigner.page, x: managerSigner.x, y: managerSigner.y} : null};
+}
+
+it("公开PDF在空白、经理先签、全签时固定同一职责次序和签字位置", async () => {
+  const {service, instance, logs} = parallelFormFixture();
+  const download = async () => pdfDutyCoordinates((await service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核对冻结签字位置")).buffer);
+  const empty = await download();
+  instance.frozenNodes[1].approvedRoleKeys = ["project_manager"];
+  const sign = (role: string) => ({id: `log-${role}`, action: "approve", actorUserId: `user-${role}`, approvedRoleKey: role,
+    signatureFileIdSnapshot: "signature-1", signatureVersionIdSnapshot: `frozen-${role}`, signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"),
+    comment: "同意，原需求与材料清单核对无误。".repeat(12), metadata: {approverName: role === "project_manager" ? "原项目经理" : "原物资主管"}, createdAt: new Date("2026-11-05T00:00:00Z")});
+  logs.push(sign("project_manager"));
+  const partial = await download();
+  expect(partial.materials.y).toBeGreaterThan(partial.manager.y);
+  expect({materials: partial.materials, manager: partial.manager}).toEqual({materials: empty.materials, manager: empty.manager});
+  expect(partial.managerSigner).not.toBeNull();
+  instance.status = "approved";
+  instance.frozenNodes[0].approvedRoleKeys = ["material_director"];
+  logs.push(sign("material_director"));
+  const final = await download();
+  expect({materials: final.materials, manager: final.manager}).toEqual({materials: empty.materials, manager: empty.manager});
+  expect(final.managerSigner).toEqual(partial.managerSigner);
 });
