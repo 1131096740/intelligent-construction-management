@@ -2,7 +2,7 @@
 
 适用[任务01 #383](https://github.com/1131096740/intelligent-construction-management/issues/383)。本页区分**准备产物验收**与**独立授权后的运行验证**；任务状态以工单及 `PROGRESS.md` 为准，不由本文预填完成或全绿。跨会话输入映射见[任务01准备产物交接](../progress/2026-11-05-enterprise-simplification-task01-prepared.md)，历史及新增只读证据见[集成交接](../progress/2026-11-05-enterprise-simplification-integration-start.md)。
 
-当前状态：任务01以准确提交 `f352d187b720a2e8231874775616c24e91eb3bd8` 在已确认的source-only公开边界内完成准备验收并关闭#383；本机编排369/369、prepare/verify的3032文件及197迁移一致。04已在确认边界关闭#386，02/03/08实施中。真实PG/HTTP/Web、TLS/角色及清理仍NOT RUN、独立授权后验；该里程碑不表示后续候选或远程CI通过。
+当前状态：01以准确f352d187在source-only边界关闭#383（当时369/369、3032文件/197迁移），04按确认公开边界关闭#386。用户最新确认02/03按本地阶段完成/PG待验关闭，05/06/08实施中。最新fab77daa source-only封存3048文件/198迁移，库存517登记场景、其中CI可选516，不是PG执行数。任务01真实HTTP/PG/Web、TLS/角色及清理仍NOT RUN，16/42/44硬门不解除；本页旧SHA收据仍为历史，不当作新候选或远程CI通过。资源、迁移和部署继续单独授权。
 
 ## 当前确认的测试边界
 

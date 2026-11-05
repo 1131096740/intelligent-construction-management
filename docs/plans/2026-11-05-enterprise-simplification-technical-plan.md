@@ -2,7 +2,7 @@
 
 > 2026-11-05；`plan-confirmed`（用户已确认技术方案、任务粒度和验收边界）。业务约束见[完整规格](../specs/2026-11-05-enterprise-simplification-spec.md)。本文件是已确认设计基线；实现、数据库操作和发布仍按对应任务授权范围执行。当前差距见[证据表](2026-11-05-enterprise-simplification-evidence-and-gaps.md)，执行顺序见[任务图](2026-11-05-enterprise-simplification-tasks/README.md)。
 
-当前执行：用户已授权整套实施及 GitHub 工单推进；[#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 跟踪全图，任务01准备和任务04已按各自确认边界关闭，02/03/08实施中，05仍被03阻塞。当前精确基线与停止条件见[集成起步交接](../progress/2026-11-05-enterprise-simplification-integration-start.md)。本方案不授予迁移、受控实验、部署或生产变更权限。
+当前执行：用户已授权整套实施及 GitHub 工单推进；[#382](https://github.com/1131096740/intelligent-construction-management/issues/382) 跟踪全图，01准备和04公开边界已关闭；用户最新明确确认02/03以“本地阶段完成、PG待验”收口并推进05/06，05/06/08已领取实施。193规则及45依赖边不变，真实PG约束/竞争未计通过，16/42/44发布前硬门保留。[当前状态](../../PROGRESS.md)与[集成起步交接](../progress/2026-11-05-enterprise-simplification-integration-start.md)分别记录现状和起点；资源、迁移、短信及部署仍单独授权。
 
 ## D01：保留领域边界，统一公开行为
 

@@ -1,6 +1,6 @@
 # 02：扩展四位精度与空值兼容协议
 
-**状态：** `plan-confirmed` / `in-progress`；前置#383已关闭，本票已在独立工作树领取实施。用户已确认公共精度适配器、合同草稿HTTP保存/重读及Excel、清单UI测试边界；替身不算真实PG通过。[#384](https://github.com/1131096740/intelligent-construction-management/issues/384) 归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)；迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `local-stage-complete` / `pg-pending` / `github-closed`。用户最新明确确认本票按“本地阶段完成、PG待验”收口并继续05/06，已[关闭#384](https://github.com/1131096740/intelligent-construction-management/issues/384#issuecomment-6656201086)。真实PG不计通过，16/42/44发布前硬门保留；迁移、受控资源、部署及生产变更仍单独授权。
 
 **类型：** 跨域机械扩展片（expand）。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
@@ -32,7 +32,7 @@
 
 用户另确认草稿提交HTTP：四位精度草稿不能从旧提交入口进入尚未迁入的新审批链，拒绝时无状态、审批或资金写入；旧协议提交保持原行为，正式新提交由任务12接入。该边界使用合成适配器，不执行真实PG或迁移。
 
-当前准确本地集成31f165ea已通过确认边界及两轴复核，证据见[本地验证记录](../../progress/2026-11-05-enterprise-simplification-task02-local.md)。新增第198份SQL只准备，真实PG及其约束/并发仍未验；本票保持开放。v2历史余量取消及旧delete/reorder写入口先拒绝，旧v1保持；后续票按自身范围决定精确接入或退役，不能重新启用分精度算法。
+准确本地集成31f165ea已通过确认边界及两轴复核，后续源码fab77daa另含文档及旧PG换号夹具准备，生产业务字节不变；证据见[本地记录](../../progress/2026-11-05-enterprise-simplification-task02-local.md)。新增198 SQL只准备，真实约束/并发未验；本地阶段关闭不删除这些欠验。v2历史余量取消及旧delete/reorder先拒绝，旧v1保持；后续按各票范围精确接入或退役，不能重新启用分精度算法。
 
 ## 验证与边界
 
