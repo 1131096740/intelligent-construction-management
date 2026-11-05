@@ -49,6 +49,46 @@ export class LayoutTemplateService {
     await this.assertTemplateMaintenanceRole(this.prisma, actorUserId);
   }
 
+  async creationCapability(actorUserId: string) {
+    await this.assertGlobalRole(this.prisma, actorUserId, "contract_director");
+    return { canCreate: true };
+  }
+
+  async versionMaintenanceCapability(versionId: string, actorUserId: string) {
+    return this.prisma.$transaction(async tx => {
+      await this.assertGlobalRole(tx, actorUserId, "contract_director");
+      const version = await this.findVersion(tx, versionId);
+      const preview = await tx.contractLayoutPreviewJob.findFirst({ where: { layoutTemplateVersionId: versionId, sourceRevision: version.draftRevision }, orderBy: { createdAt: "desc" } });
+      return {
+        versionId: version.id, draftRevision: version.draftRevision, sourceFileId: version.docxFileId,
+        availableActions: [...this.maintenanceActions(version, true, preview), ...this.discardAction(version, null, true).availableActions.filter(action => action.key === "risk_stop")]
+      };
+    });
+  }
+
+  private maintenanceActions(
+    version: { status: string; docxFileId: string; draftRevision: number; placeholderSchema: Prisma.JsonValue; inspectionRevision: number | null; inspectionReport: Prisma.JsonValue },
+    director: boolean,
+    preview?: { status: string; sourceRevision: number; previewPdfFileId: string | null } | null
+  ): DetailActionReadModel[] {
+    const draft = director && version.status === "draft";
+    const report = version.inspectionReport as { blockingErrors?: unknown[] } | null;
+    const inspectionCurrent = version.inspectionRevision === version.draftRevision && Array.isArray(report?.blockingErrors) && report.blockingErrors.length === 0;
+    const previewCurrent = preview?.status === "succeeded" && preview.sourceRevision === version.draftRevision && Boolean(preview.previewPdfFileId);
+    let confirmed = false;
+    try { this.assertMappingConfirmed(version); confirmed = true; } catch { /* current confirmation is required */ }
+    const schema = version.placeholderSchema as Record<string, unknown> | null;
+    const mapped = Boolean(schema?.sourceMapping);
+    return [
+      ["save_draft", "保存源文件", draft], ["inspect_source", "检查原文", draft],
+      ["preview_source", "生成真实样张", draft], ["map_source", "保存填写位置", draft],
+      ["confirm_source", "确认填写位置", draft && mapped && inspectionCurrent && previewCurrent],
+      ["submit_version", "提交版式", draft && confirmed && inspectionCurrent && previewCurrent],
+      ["publish_version", "发布版式", director && version.status === "submitted" && confirmed && inspectionCurrent && previewCurrent],
+      ["clone_version", "复制为草稿", director && version.status === "published"]
+    ].map(([key, label, enabled]) => ({ key: String(key), label: String(label), kind: "primary", enabled: Boolean(enabled), disabledReason: enabled ? null : "当前版式状态或确认条件不允许此操作" }));
+  }
+
   async sourcePositions(versionId: string, actorUserId: string) {
     await this.assertGlobalRole(this.prisma, actorUserId, "contract_director");
     const version = await this.findVersion(this.prisma, versionId);
@@ -58,7 +98,9 @@ export class LayoutTemplateService {
     const sameSource = stored?.sourceFileId === version.docxFileId && stored?.sourceSha256 === parsed.sourceSha256;
     let confirmed = false;
     try { confirmed = Boolean(confirmedLayoutSourceMapping(version)); } catch { /* stale mappings require confirmation */ }
+    const preview = await this.prisma.contractLayoutPreviewJob.findFirst({ where: { layoutTemplateVersionId: versionId, sourceRevision: version.draftRevision }, orderBy: { createdAt: "desc" } });
     return {
+      availableActions: this.maintenanceActions(version, true, preview),
       fields: LAYOUT_MAPPING_FIELDS.map((field, index) => ({ ...field, required: index < 5 })),
       bindings: sameSource && Array.isArray(stored?.bindings) ? stored.bindings : [],
       mappingFingerprint: sameSource && stored?.draftRevision === version.draftRevision ? stored.fingerprint : null,
@@ -223,11 +265,11 @@ export class LayoutTemplateService {
       const versions = await tx.contractLayoutTemplateVersion.findMany({
         where: {
           layoutTemplateId: templateId,
-          ...(includeHistory ? {} : { status: { not: "discarded" } })
+          ...(roleKeys.includes("contract_director") ? (includeHistory ? {} : { status: { not: "discarded" } }) : { status: { in: ["published", "stopped", "revoked"] } })
         },
         orderBy: { versionNo: "desc" }
       });
-      if (!includeHistory && versions.length === 0) {
+      if ((!includeHistory || !roleKeys.includes("contract_director")) && versions.length === 0) {
         throw new NotFoundException("未找到合同版式模板，请刷新后重试");
       }
       const jobs = versions.length
@@ -269,7 +311,8 @@ export class LayoutTemplateService {
         versions: versions.map((version, index) => ({
           ...version,
           latestPreview: latestByVersion.get(version.id) ?? null,
-          ...actionModels[index]
+          ...actionModels[index],
+          availableActions: [...actionModels[index].availableActions, ...this.maintenanceActions(version, roleKeys.includes("contract_director"), latestByVersion.get(version.id))]
         }))
       };
     });
@@ -408,12 +451,13 @@ export class LayoutTemplateService {
   }
 
   getLatestPreview(versionId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertTemplateMaintenanceRole(tx, actorUserId);
-      return tx.contractLayoutPreviewJob.findFirst({
-        where: { layoutTemplateVersionId: versionId },
-        orderBy: { createdAt: "desc" }
-      });
+    return this.prisma.$transaction(async tx => {
+      const roles = await this.assertAnyGlobalRole(tx, actorUserId, LAYOUT_TEMPLATE_READ_ROLES);
+      const version = await this.findVersion(tx, versionId);
+      if (!roles.includes("contract_director") && !["published", "stopped", "revoked"].includes(version.status)) throw new ForbiddenException("当前版式样张尚未发布，请联系合同主管");
+      const preview = await tx.contractLayoutPreviewJob.findFirst({ where: { layoutTemplateVersionId: versionId }, orderBy: { createdAt: "desc" } });
+      if (preview && !roles.includes("contract_director") && (preview.status !== "succeeded" || preview.sourceRevision !== version.draftRevision || preview.previewPdfFileId !== version.previewPdfFileId)) throw new ForbiddenException("当前样张不是已发布的冻结预览");
+      return preview;
     });
   }
 

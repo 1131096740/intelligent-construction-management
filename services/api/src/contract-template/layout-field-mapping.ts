@@ -84,7 +84,9 @@ export function readLayoutSourcePositions(source: Buffer) {
     if (totalXmlBytes > CONTRACT_DOCX_EXTRACTION_LIMITS.maxTotalXmlBytes) throw new BadRequestException("Word 模板 XML 与关系总内容过大");
     const xml = entry.asText();
     const doc = xmlDocument(xml);
-    if (/<w:(?:altChunk|oleObject)\b|INCLUDETEXT|INCLUDEPICTURE|DDEAUTO/iu.test(xml)) {
+    if (doc.getElementsByTagNameNS(WORD_NAMESPACE, "altChunk").length ||
+      doc.getElementsByTagNameNS("urn:schemas-microsoft-com:office:office", "OLEObject").length ||
+      /INCLUDETEXT|INCLUDEPICTURE|DDEAUTO/iu.test(xml)) {
       throw new BadRequestException("模板包含外部或可执行内容，请移除后重新上传");
     }
     if (entry.name.endsWith(".rels")) {

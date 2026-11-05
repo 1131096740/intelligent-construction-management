@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 test("合同主管通过真实HTTP上传Word并明确选择自动填写位置", async ({ page }) => {
@@ -17,6 +18,7 @@ test("合同主管通过真实HTTP上传Word并明确选择自动填写位置", 
   await page.locator('input[type="file"]').setInputFiles(process.env.TEMPLATE_BROWSER_SOURCE!);
   await page.getByRole("button", { name: "创建版式草稿", exact: true }).click();
   await expect(page.getByText("合同名称：合成工程合同", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "废弃草稿版本", exact: true })).toHaveCount(0);
   const choices = [
     ["合同名称", "合同名称：合成工程合同", "合成工程合同", "浏览器预览合同"],
     ["甲方名称", "甲方：合成甲方公司", "合成甲方公司", "浏览器甲方"],
@@ -61,6 +63,34 @@ test("合同主管通过真实HTTP上传Word并明确选择自动填写位置", 
   await page.getByPlaceholder("请填写本次版式发布内容").fill("浏览器明确映射并确认真实样张");
   await page.getByRole("button", { name: "发布版式", exact: true }).click();
   await expect(page.getByText("版式已发布", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "提交审核", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "发布版式", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "保存填写位置", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "确认当前原文、位置和真实预览", exact: true })).toBeDisabled();
+  const cloning = page.waitForResponse(response => response.url().endsWith("/clone") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "复制为新草稿", exact: true }).click();
+  const clone = await (await cloning).json() as { id: string };
+  await expect(page.getByText("R1", { exact: true })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles(process.env.TEMPLATE_BROWSER_SOURCE!);
+  const login = await page.request.post("/api/auth/login", { data: { phone: account.phone, password: account.password } });
+  expect(login.status()).toBe(201);
+  const auth = await login.json() as { tokens: { accessToken: string } };
+  const headers = { authorization: `Bearer ${auth.tokens.accessToken}` };
+  const concurrentUpload = await page.request.post("/api/files", { headers, multipart: { file: { name: "另一主管新原文.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: readFileSync(process.env.TEMPLATE_BROWSER_SOURCE!) } } });
+  expect(concurrentUpload.status()).toBe(201);
+  const replacement = await concurrentUpload.json() as { id: string };
+  const concurrentSave = await page.request.patch(`/api/contract-layout-template-versions/${clone.id}`, { headers, data: { expectedRevision: 1, docxFileId: replacement.id } });
+  expect(concurrentSave.status()).toBe(200);
+  const staleWrites: string[] = [];
+  page.on("request", request => {
+    if (["POST", "PATCH"].includes(request.method()) && (request.url().endsWith("/api/files") || request.url().includes(`/contract-layout-template-versions/${clone.id}`))) staleWrites.push(request.url());
+  });
+  await page.getByRole("button", { name: "保存新修订", exact: true }).click();
+  await expect(page.getByText("版式修订已变化，请刷新后重试", { exact: true })).toBeVisible();
+  await expect(page.locator(".t-upload")).toContainText("source.docx");
+  expect(staleWrites).toEqual([]);
+  const retained = await page.request.get(`/api/contract-layout-template-versions/${clone.id}/source-positions`, { headers });
+  expect(await retained.json()).toMatchObject({ sourceFileId: replacement.id, draftRevision: 2 });
 
 
 });

@@ -19,8 +19,8 @@
       <t-button :disabled="!additionalField || busy" @click="addPosition">增加填写位置</t-button>
     </t-space>
     <t-space class="mapping-actions">
-      <t-button :disabled="!editable || !source || busy" :loading="busy" @click="save">保存填写位置</t-button>
-      <t-button theme="primary" :disabled="!editable || dirty || !source?.mappingFingerprint || !inspectionCurrent || !previewSucceeded || busy" @click="confirm">确认当前原文、位置和真实预览</t-button>
+      <t-button :disabled="!editable || !source?.availableActions.some(action => action.key === 'map_source' && action.enabled) || busy" :loading="busy" @click="save">保存填写位置</t-button>
+      <t-button theme="primary" :disabled="!editable || !source?.availableActions.some(action => action.key === 'confirm_source' && action.enabled) || dirty || !source?.mappingFingerprint || !inspectionCurrent || !previewSucceeded || busy" @click="confirm">确认当前原文、位置和真实预览</t-button>
       <span>{{ confirmed ? '当前修订填写位置已由主管确认' : '尚未确认当前修订，不可提交发布' }}</span>
     </t-space>
   </t-card>
@@ -50,6 +50,7 @@ const positionOptions = computed(() => source.value?.positions.map(position => (
 watch(dirty, value => { emit("dirty-change", value); emit("confirmation-state", !value && confirmed.value); });
 watch(confirmed, value => emit("confirmation-state", value && !dirty.value));
 watch(() => [props.versionId, props.revision, props.previewJobId], () => { void load(); }, { immediate: true });
+watch(() => [props.previewSucceeded, props.inspectionCurrent], () => { if (!dirty.value) void load(); });
 async function load() {
   const request = ++generation;
   loading.value = true;
@@ -81,9 +82,31 @@ function addPosition() {
   rows.value.push({ ...field, rowId: nextRowId++, required: false, positionId: "", selectedText: "" });
   additionalField.value = "";
 }
+async function saveMappingWithCapability(versionId: string, body: Parameters<typeof saveLayoutSourceMapping>[1]) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "map_source" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === body.expectedRevision;
+  if (!matchesRequestedRevision) throw new Error("版式修订已变化，请重新选择填写位置");
+  return saveLayoutSourceMapping(versionId, body);
+}
+
+async function confirmMappingWithCapability(versionId: string, body: Parameters<typeof confirmLayoutSourceMapping>[1]) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "confirm_source" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === body.expectedRevision;
+  if (!matchesRequestedRevision) throw new Error("版式修订已变化，请重新选择填写位置");
+  return confirmLayoutSourceMapping(versionId, body);
+}
+
 async function save() {
   const current = source.value;
-  if (!current) return;
+  if (!current?.availableActions.some(action => action.key === "map_source" && action.enabled)) return;
   busy.value = true;
   message.value = "";
   try {
@@ -93,7 +116,7 @@ async function save() {
       if (!position || !row.selectedText || start < 0 || position.text.indexOf(row.selectedText, start + 1) >= 0) throw new Error(`请为${row.label}选择一处准确且唯一的原文`);
       return { fieldKey: row.key, positionId: position.positionId, start, end: start + row.selectedText.length };
     });
-    await saveLayoutSourceMapping(props.versionId, { expectedRevision: current.draftRevision, sourceFileId: current.sourceFileId, sourceSha256: current.sourceSha256, bindings });
+    await saveMappingWithCapability(props.versionId, { expectedRevision: current.draftRevision, sourceFileId: current.sourceFileId, sourceSha256: current.sourceSha256, bindings });
     baseline.value = serialized.value;
     confirmed.value = false;
     emit("dirty-change", false);
@@ -103,11 +126,11 @@ async function save() {
 }
 async function confirm() {
   const current = source.value;
-  if (!current?.mappingFingerprint) return;
+  if (!current?.mappingFingerprint || !current.availableActions.some(action => action.key === "confirm_source" && action.enabled)) return;
   busy.value = true;
   message.value = "";
   try {
-    await confirmLayoutSourceMapping(props.versionId, { expectedRevision: current.draftRevision, sourceFileId: current.sourceFileId, sourceSha256: current.sourceSha256, mappingFingerprint: current.mappingFingerprint });
+    await confirmMappingWithCapability(props.versionId, { expectedRevision: current.draftRevision, sourceFileId: current.sourceFileId, sourceSha256: current.sourceSha256, mappingFingerprint: current.mappingFingerprint });
     await load();
     emit("changed");
   } catch (error) { message.value = formatUnknownApiError(error, "确认失败，请重新检查并预览"); }

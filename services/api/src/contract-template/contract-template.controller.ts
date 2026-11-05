@@ -120,6 +120,12 @@ export class ContractTemplateController {
     return this.layouts.listPublishedLayouts(contractTypeKey);
   }
 
+  @Get("contract-layout-templates/creation-capability")
+  @RequirePositions("contract_director")
+  getLayoutCreationCapability(@CurrentUser() user: AuthenticatedUser) {
+    return this.layouts.creationCapability(user.id);
+  }
+
   @Get("contract-layout-templates/maintenance")
   @RequirePositions("contract_director")
   listMaintainedLayouts(@CurrentUser() user: AuthenticatedUser) {
@@ -137,7 +143,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-templates/:templateId")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   getLayoutTemplate(
     @Param("templateId") templateId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -163,6 +169,12 @@ export class ContractTemplateController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.layouts.inspectVersion(versionId, user.id);
+  }
+
+  @Get("contract-layout-template-versions/:versionId/maintenance-capability")
+  @RequirePositions("contract_director")
+  getLayoutVersionMaintenanceCapability(@Param("versionId") versionId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.layouts.versionMaintenanceCapability(versionId, user.id);
   }
 
   @Get("contract-layout-template-versions/:versionId/source-positions")
@@ -205,7 +217,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-template-versions/:versionId/preview-generation")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   getLayoutPreview(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -279,7 +291,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-templates/:templateId")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   getTemplate(
     @Param("templateId") templateId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -373,7 +385,7 @@ export class ContractTemplateController {
   }
 
   @Get("standard-clauses/history")
-  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
+  @RequirePositions("contract_staff", "contract_director")
   listClauseHistory(
     @CurrentUser() user: AuthenticatedUser,
     @Query("category") category?: string

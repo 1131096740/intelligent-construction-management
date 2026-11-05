@@ -1,3 +1,8 @@
+import { BusinessEntryDefinitionController } from "../business-entry-definition/business-entry-definition.controller";
+import { BusinessEntryDefinitionService } from "../business-entry-definition/business-entry-definition.service";
+import { BusinessEntrySceneAuthorizationService } from "../business-entry-definition/business-entry-scene-authorization.service";
+import { BusinessEntryExcelService } from "../business-entry-definition/business-entry-excel.service";
+import { BUSINESS_ENTRY_ACCESS_REGISTRY, BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
 import { ContractReadService } from "../contract/contract-read.service";
 import { CONTRACT_VERSION_FILE_READ_AUTHORITY } from "../contract/contract-version-file-read-authority";
@@ -115,6 +120,8 @@ export class TemplateSyntheticStore {
     projectMember: this.table("projectMember"), refreshToken: this.table("refreshToken"), auditLog: this.table("auditLog"),
     fileObject: this.table("fileObject"), contractLayoutTemplate: this.table("contractLayoutTemplate"),
     contractLayoutTemplateVersion: this.table("contractLayoutTemplateVersion"), contractLayoutPreviewJob: this.table("contractLayoutPreviewJob"),
+    contractScenarioTemplateMapping: this.table("contractScenarioTemplateMapping"),
+    standardClause: this.table("standardClause"), standardClauseVersion: this.table("standardClauseVersion"),
     contractBusinessTemplate: this.table("contractBusinessTemplate"), contractBusinessTemplateVersion: this.table("contractBusinessTemplateVersion"),
     contractOfflineRevision: this.table("contractOfflineRevision"), contractDocumentComparison: this.table("contractDocumentComparison"),
     // Explicitly empty adjacent-domain bindings for the real private-file policy.
@@ -222,14 +229,20 @@ export async function createTemplateTestServer() {
   const audit = new AuditService(prisma);
   const tokens = new JwtTokenService();
   const auth = new AuthService(prisma, tokens, audit);
-  const module = await Test.createTestingModule({ controllers: [AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
+  const module = await Test.createTestingModule({ controllers: [BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
     { provide: PrivateFileStorage, useValue: storage }, ProjectVisibilityService, ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     { provide: FileService, useFactory: (moduleRef: ModuleRef) => new FileService(prisma, audit, storage, undefined, undefined, moduleRef), inject: [ModuleRef] },
     { provide: ContractDocumentService, useFactory: (files: FileService) => new ContractDocumentService(prisma, audit, files), inject: [FileService] },
     { provide: ContractNegotiationService, useValue: {} }, { provide: AuthService, useValue: auth },
-    LayoutTemplateService, ContractTemplateService, { provide: ContractScenarioService, useValue: {} }
+    LayoutTemplateService, ContractTemplateService, { provide: ContractScenarioService, useValue: {} },
+    // Only the real template scene is exercised; unrelated domains and Excel are not invoked.
+    { provide: BusinessEntryExcelService, useValue: {} },
+    { provide: BusinessEntryDefinitionService, useFactory: (templates: ContractTemplateService, layouts: LayoutTemplateService, visibility: ProjectVisibilityService) => {
+      const authority = new BusinessEntrySceneAuthorizationService({} as never, {} as never, {} as never, {} as never, templates, layouts, {} as never, {} as never, {} as never, prisma, {} as never);
+      return new BusinessEntryDefinitionService(BUSINESS_ENTRY_DEFINITION_REGISTRY, BUSINESS_ENTRY_ACCESS_REGISTRY, visibility, {} as never, prisma, authority);
+    }, inject: [ContractTemplateService, LayoutTemplateService, ProjectVisibilityService] }
   ] }).compile();
   const files = module.get(FileService);
   const layouts = module.get(LayoutTemplateService);
@@ -239,5 +252,5 @@ export async function createTemplateTestServer() {
   app.useGlobalPipes(createApiValidationPipe());
   app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, prisma), new RetiredWriteEntryGuard(), new PermissionGuard(new Reflector(), prisma));
   await app.listen(0, "127.0.0.1");
-  return { app, store, actors, password, files, layouts, documents, moduleRef: module.get(ModuleRef), processor: new ContractDocumentProcessor(prisma, files, audit) };
+  return { app, store, actors, password, files, layouts, documents, templates: module.get(ContractTemplateService), moduleRef: module.get(ModuleRef), processor: new ContractDocumentProcessor(prisma, files, audit) };
 }

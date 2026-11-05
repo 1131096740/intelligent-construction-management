@@ -9,6 +9,7 @@ describe("LayoutTemplateService", () => {
   beforeEach(() => {
     audit.record.mockReset();
     files.getFileBuffer.mockReset();
+    files.getFileBuffer.mockResolvedValue({ buffer: docx("{合同名称}{草稿编号}{文档水印}") });
     process.env.DOC_ALLOWED_FONTS = "Noto Sans CJK SC,宋体,仿宋,黑体";
   });
 
@@ -22,33 +23,42 @@ describe("LayoutTemplateService", () => {
     extraXml: Record<string, string> = {}
   ) {
     const zip = new PizZip();
-    zip.file(
-      "word/document.xml",
-      documentXml.includes("<w:t")
-        ? documentXml
-        : `<w:document><w:body><w:p><w:r><w:t>${documentXml.replace(
-            /^<w:document>|<\/w:document>$/g,
-            ""
-          )}</w:t></w:r></w:p></w:body></w:document>`
-    );
-    zip.file("word/styles.xml", stylesXml);
-    for (const [path, xml] of Object.entries(extraXml)) {
-      zip.file(path, xml);
-    }
+    const namespace = ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const namespaced = (xml: string) => /xmlns:w=/.test(xml) ? xml : xml.replace(/<w:[A-Za-z]+/, value => value + namespace);
+    let content = documentXml.replace(/^<w:document[^>]*>|<\/w:document>$/g, "");
+    if (!content.includes("<w:t")) content = `<w:p><w:r><w:t>${content}</w:t></w:r></w:p>`;
+    else if (!/<w:p[ >]/.test(content)) content = `<w:p><w:r>${content}</w:r></w:p>`;
+    if (!content.includes("<w:body")) content = `<w:body>${content}</w:body>`;
+    zip.file("word/document.xml", `<w:document${namespace}>${content}</w:document>`);
+    if (stylesXml) zip.file("word/styles.xml", namespaced(stylesXml));
+    for (const [path, xml] of Object.entries(extraXml)) zip.file(path, namespaced(xml));
     return zip.generate({ type: "nodebuffer" });
+  }
+
+  // Transition-unit precondition: a confirmation was persisted by the separate
+  // real HTTP/Word/worker flow. These cases do not certify source parsing/hash creation.
+  function confirmedCoordinates(revision: number) {
+    const sourceFileId = "source-file";
+    const sourceSha256 = "a".repeat(64);
+    const fingerprint = "b".repeat(64);
+    return { docxFileId: sourceFileId, placeholderSchema: { sourceMapping: {
+      protocolVersion: 1, sourceFileId, sourceSha256, draftRevision: revision, fingerprint,
+      confirmation: { sourceFileId, sourceSha256, draftRevision: revision, mappingFingerprint: fingerprint }
+    } } };
   }
 
   function roleTx(role: string) {
     return {
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }]) },
-      position: { findMany: jest.fn().mockResolvedValue([{ key: role }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "pos-1", key: role }]) },
       auditLog: { create: jest.fn() }
     };
   }
 
   it("rejects a non-DOCX source extension", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -76,7 +86,7 @@ describe("LayoutTemplateService", () => {
 
   it("rejects a DOCX uploaded by another user", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -105,7 +115,7 @@ describe("LayoutTemplateService", () => {
 
   it("audits create against the layout version", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-1",
@@ -150,7 +160,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -188,7 +198,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [{ key: "materials" }] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -223,7 +233,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -252,7 +262,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [{ key: "materials" }] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -281,7 +291,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [{ key: "materials" }] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -329,7 +339,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
         updateMany: jest.fn()
@@ -343,18 +353,19 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.inspectVersion("version-1", "staff-1")).rejects.toThrow(
-      "DOCX 版式内容过大，无法完成检查"
+      "合同 DOCX 正文内容过大"
     );
     expect(tx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it("queues a layout preview with saved sample data", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
           status: "draft",
+          docxFileId: "source-file", placeholderSchema: { bills: [] },
           draftRevision: 3
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -385,7 +396,7 @@ describe("LayoutTemplateService", () => {
 
   it("rejects preview queueing after submission", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "version-1", status: "submitted" }),
         updateMany: jest.fn()
@@ -403,13 +414,16 @@ describe("LayoutTemplateService", () => {
     expect(tx.contractLayoutPreviewJob.create).not.toHaveBeenCalled();
   });
 
-  it("allows global contract_staff to read the latest preview", async () => {
+  it("allows contract staff to read the exact published frozen preview", async () => {
     const tx = {
       ...roleTx("contract_staff"),
+      contractLayoutTemplateVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", status: "published", draftRevision: 2, previewPdfFileId: "published-sample" }) },
       contractLayoutPreviewJob: {
         findFirst: jest.fn().mockResolvedValue({
           id: "job-1",
-          status: "queued",
+          status: "succeeded",
+          sourceRevision: 2,
+          previewPdfFileId: "published-sample",
           sampleData: { contract: { name: "示例合同" } }
         })
       }
@@ -431,6 +445,7 @@ describe("LayoutTemplateService", () => {
   it("allows a contract director to read the latest preview", async () => {
     const tx = {
       ...roleTx("contract_director"),
+      contractLayoutTemplateVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", status: "published", draftRevision: 2, previewPdfFileId: "published-sample" }) },
       contractLayoutPreviewJob: { findFirst: jest.fn().mockResolvedValue({ id: "job-1" }) }
     };
     const prisma = {
@@ -454,23 +469,24 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.getLatestPreview("version-1", "finance-1")).rejects.toThrow(
-      "只有合同经办人或合同主管可以执行该版式操作"
+      "只有合同主管可以维护模板，合同员可选择已发布模板"
     );
     expect(tx.contractLayoutPreviewJob.findFirst).not.toHaveBeenCalled();
   });
 
   it("rejects submission when inspection belongs to an older draft revision", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
           status: "draft",
+          ...confirmedCoordinates(4),
           draftRevision: 4,
           inspectionRevision: 3,
           inspectionReport: { blockingErrors: [] }
         }),
-        updateMany: jest.fn()
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
     const prisma = {
@@ -481,13 +497,15 @@ describe("LayoutTemplateService", () => {
     await expect(service.submitVersion("version-1", "staff-1")).rejects.toThrow(
       "版式检查仍有阻断项，请处理后再提交或发布"
     );
-    expect(tx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractLayoutTemplateVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractLayoutTemplateVersion.updateMany).toHaveBeenCalledWith({ where: { id: "version-1", status: "draft" }, data: { status: "draft" } });
   });
 
   it("publishes only when inspection has no blocking errors and the latest preview succeeded", async () => {
     const version = {
       id: "version-1",
       status: "submitted",
+      ...confirmedCoordinates(3),
       draftRevision: 3,
       inspectionRevision: 3,
       inspectionReport: { blockingErrors: [] }
@@ -543,6 +561,9 @@ describe("LayoutTemplateService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
           status: "submitted",
+          ...confirmedCoordinates(3),
+          draftRevision: 3,
+          inspectionRevision: 3,
           inspectionReport: { blockingErrors: [] }
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
@@ -607,7 +628,7 @@ describe("LayoutTemplateService", () => {
 
   it("keeps a published layout immutable", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -628,9 +649,9 @@ describe("LayoutTemplateService", () => {
     expect(tx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
   });
 
-  it("returns layout versions newest-first with each current-revision preview", async () => {
+  it("returns supervisor layout versions newest-first with each current-revision preview", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplate: {
         findUnique: jest.fn().mockResolvedValue({ id: "template-1", name: "采购合同" })
       },
@@ -677,8 +698,8 @@ describe("LayoutTemplateService", () => {
     expect(result.versions[1]?.availableActions).toContainEqual(
       expect.objectContaining({
         key: "risk_stop",
-        enabled: false,
-        disabledReason: "只有合同主管可以风险停用已发布版式版本"
+        enabled: true,
+        disabledReason: null
       })
     );
     expect(tx.contractLayoutTemplateVersion.findMany).toHaveBeenCalledWith({
@@ -777,7 +798,7 @@ describe("LayoutTemplateService", () => {
     );
     await expect(
       staffService.stopVersion("version-1", "staff-1")
-    ).rejects.toThrow("只有合同主管可以执行该版式操作");
+    ).rejects.toThrow("只有合同主管可以维护模板，合同员可选择已发布模板");
     expect(staffTx.contractLayoutTemplateVersion.findUnique).not.toHaveBeenCalled();
 
     const draftTx = {
@@ -830,7 +851,7 @@ describe("LayoutTemplateService", () => {
       placeholderSchema: { bills: [] }
     };
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
           id: "file-new",
@@ -877,7 +898,7 @@ describe("LayoutTemplateService", () => {
 
   it("rejects a stale draft save without invalidating current results", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -906,7 +927,7 @@ describe("LayoutTemplateService", () => {
 
   it("discards an unreferenced layout draft and stales preview bindings", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       $queryRaw: jest.fn().mockResolvedValue([{
         id: "version-1",
         layoutTemplateId: "template-1",
@@ -944,7 +965,7 @@ describe("LayoutTemplateService", () => {
 
   it("rejects stale layout discard before checking references or invalidating previews", async () => {
     const tx = {
-      ...roleTx("contract_staff"),
+      ...roleTx("contract_director"),
       $queryRaw: jest.fn().mockResolvedValue([{
         id: "version-1",
         layoutTemplateId: "template-1",

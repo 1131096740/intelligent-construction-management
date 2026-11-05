@@ -146,15 +146,6 @@
       <p class="warning">
         已发布版本不可覆盖。固定公司名称、联系人、账号等跨公司内容应改用占位符。
       </p>
-      <BusinessDraftAction
-        v-if="currentVersion"
-        class="version-lifecycle-action"
-        :actions="currentVersion.availableActions ?? []"
-        :blocked-reasons="currentVersion.blockedReasons ?? []"
-        :subject="versionActionSubject"
-        :execute="discardCurrentVersion"
-        @completed="handleDiscardCompleted"
-      />
     </t-card>
 
     <LayoutSourceMappingPanel
@@ -273,11 +264,10 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
-import { useAuthStore } from "../../auth/auth.store";
+import { getLayoutCreationCapability, getLayoutSourcePositions, getLayoutVersionMaintenanceCapability } from "../../api/contract-template-mapping.api";
 import {
   cloneLayoutTemplateVersion,
   createLayoutTemplate,
-  discardLayoutTemplateVersion,
   getLatestLayoutTemplatePreview,
   getLayoutTemplate,
   inspectLayoutTemplateVersion,
@@ -290,23 +280,16 @@ import {
   updateLayoutTemplateVersion
 } from "../../api/contract-workbench.api";
 import { templateStatusLabel } from "../contracts/contract-labels";
-import BusinessDraftAction, {
-  type BusinessDraftActionRequest
-} from "../../components/BusinessDraftAction.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import { canPublishLayoutVersion, contractTypeOptions } from "./contract-template.config";
-import {
-  canMaintainContractTemplates,
-  canPublishContractTemplates
-} from "./template-permissions";
 
 const mappingPanel = ref<InstanceType<typeof LayoutSourceMappingPanel> | null>(null);
 const mappingDirty = ref(false);
 const mappingConfirmed = ref(false);
 const route = useRoute();
 const router = useRouter();
-const auth = useAuthStore();
+const creationCapability = ref<{ canCreate: boolean } | null>(null);
 const layoutTemplateRouteId = computed(() =>
   String(route.params.layoutTemplateId ?? "")
 );
@@ -354,19 +337,14 @@ const riskStopAction = computed(() =>
     .find((version) => version.id === riskStopVersionId.value)?.availableActions ?? [])
     .find((action) => action.key === "risk_stop") ?? null
 );
-const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
-const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
+const canMaintainTemplates = computed(() => creationCapability.value?.canCreate === true);
 const governance = computed(() => ({
-  canSave: currentVersion.value?.status === "draft" && canMaintainTemplates.value,
-  canSubmit: currentVersion.value?.status === "draft" && canMaintainTemplates.value,
-  canPublish: currentVersion.value?.status === "submitted" && canPublishTemplates.value,
-  canClone: currentVersion.value?.status === "published" && canMaintainTemplates.value
-}));
-const versionActionSubject = computed(() => ({
-  businessCode: detail.value?.template.id ?? "—",
-  name: `${detail.value?.template.name ?? "合同版式"} V${currentVersion.value?.versionNo ?? "—"}`,
-  lastSavedAt: formatDateTime(currentVersion.value?.updatedAt),
-  impactScope: "仅废弃当前从未提交的版式草稿；已发布版式和合同生成文件不受影响。"
+  canSave: currentVersion.value?.availableActions?.some(action => action.key === "save_draft" && action.enabled) === true,
+  canInspect: currentVersion.value?.availableActions?.some(action => action.key === "inspect_source" && action.enabled) === true,
+  canPreview: currentVersion.value?.availableActions?.some(action => action.key === "preview_source" && action.enabled) === true,
+  canSubmit: currentVersion.value?.availableActions?.some(action => action.key === "submit_version" && action.enabled) === true,
+  canPublish: currentVersion.value?.availableActions?.some(action => action.key === "publish_version" && action.enabled) === true,
+  canClone: currentVersion.value?.availableActions?.some(action => action.key === "clone_version" && action.enabled) === true
 }));
 const latestPreview = computed<LayoutTemplatePreviewReadModel | null>(() =>
   currentVersion.value?.latestPreview ?? null
@@ -450,23 +428,105 @@ function selectedFile() {
   return raw instanceof File ? raw : null;
 }
 
+async function createLayoutWithCapability(file: File, body: Omit<Parameters<typeof createLayoutTemplate>[0], "docxFileId">) {
+  const capability = await getLayoutCreationCapability();
+  const operationAllowed = capability.canCreate;
+  if (!operationAllowed) throw new Error("当前账号不能新增合同模板");
+  const uploaded = await uploadPrivateFile(file, file.name);
+  return createLayoutTemplate({ ...body, docxFileId: uploaded.id });
+}
+
+async function saveDraftSourceWithCapability(versionId: string, file: File, revision: number) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "save_draft" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许修改原文");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === revision;
+  if (!matchesRequestedRevision) throw new Error("版式修订已变化，请刷新后重试");
+  const uploaded = await uploadPrivateFile(file, file.name);
+  return updateLayoutTemplateVersion(versionId, { expectedRevision: revision, docxFileId: uploaded.id });
+}
+
+async function inspectWithCapability(versionId: string, revision: number) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "inspect_source" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === revision;
+  if (!matchesRequestedRevision) throw new Error("版式版本已变化，请刷新后重试");
+  return inspectLayoutTemplateVersion(versionId);
+}
+
+async function queuePreviewWithCapability(versionId: string, revision: number, body: Parameters<typeof queueLayoutTemplatePreview>[1]) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "preview_source" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === revision;
+  if (!matchesRequestedRevision) throw new Error("版式版本已变化，请刷新后重试");
+  return queueLayoutTemplatePreview(versionId, body);
+}
+
+async function submitCurrentWithCapability(versionId: string, revision: number) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "submit_version" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === revision;
+  if (!matchesRequestedRevision) throw new Error("版式版本已变化，请刷新后重试");
+  return submitLayoutTemplateVersion(versionId);
+}
+
+async function publishCurrentWithCapability(versionId: string, revision: number, body: Parameters<typeof publishLayoutTemplateVersion>[1]) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "publish_version" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === revision;
+  if (!matchesRequestedRevision) throw new Error("版式版本已变化，请刷新后重试");
+  return publishLayoutTemplateVersion(versionId, body);
+}
+
+async function cloneCurrentWithCapability(versionId: string, revision: number) {
+  const capability = await getLayoutSourcePositions(versionId);
+  const operationAllowed = capability.availableActions.some(action => action.key === "clone_version" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许此操作，请刷新后重试");
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const matchesRequestedRevision = capability.draftRevision === revision;
+  if (!matchesRequestedRevision) throw new Error("版式版本已变化，请刷新后重试");
+  return cloneLayoutTemplateVersion(versionId);
+}
+
+async function stopCurrentVersionWithCapability(versionId: string) {
+  const capability = await getLayoutVersionMaintenanceCapability(versionId);
+  const matchesRequestedVersion = capability.versionId === versionId;
+  if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(action => action.key === "risk_stop" && action.enabled);
+  if (!operationAllowed) throw new Error("当前版式不允许风险停用");
+  return stopLayoutTemplateVersion(versionId);
+}
+
 async function createLayout() {
+  if (!creationCapability.value?.canCreate) return showError("当前账号不能新增模板，请刷新后重试");
   const file = selectedFile();
   if (!file) return showError("请选择 DOCX 版式源文件");
   saving.value = true;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    const created = await createLayoutTemplate({
+    const created = await createLayoutWithCapability(file, {
       name: form.name.trim(),
       contractTypeKey: form.contractTypeKey.trim(),
-      docxFileId: uploaded.id,
       placeholderSchema: { bills: [] }
     });
     allowNavigation.value = true;
     await router.replace(`/合同模板库/版式/${created.template.id}/维护`);
     allowNavigation.value = false;
-    detail.value = { template: created.template, versions: [created.version] };
-    selectedVersionId.value = created.version.id;
+    await refreshDetail(created.version.id);
     sourceFiles.value = [];
     syncEditorBaseline();
     showSuccess("版式草稿已创建");
@@ -479,16 +539,13 @@ async function createLayout() {
 }
 
 async function saveDraftSource() {
+  if (!governance.value.canSave) return showError("当前版式不允许此操作，请刷新后重试");
   const version = currentVersion.value;
   const file = selectedFile();
   if (!version || !file) return showError("请选择新的 DOCX 版式源文件");
   saving.value = true;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    await updateLayoutTemplateVersion(version.id, {
-      expectedRevision: version.draftRevision,
-      docxFileId: uploaded.id
-    });
+    await saveDraftSourceWithCapability(version.id, file, version.draftRevision);
     sourceFiles.value = [];
     await refreshDetail(version.id);
     showSuccess("新修订已保存，旧检查和旧预览已失效");
@@ -500,10 +557,11 @@ async function saveDraftSource() {
 }
 
 async function inspect() {
+  if (!governance.value.canInspect) return showError("当前版式不允许此操作，请刷新后重试");
   const version = currentVersion.value;
   if (!version) return;
   try {
-    const report = await inspectLayoutTemplateVersion(version.id);
+    const report = await inspectWithCapability(version.id, version.draftRevision);
     version.inspectionReport = report;
     version.inspectionRevision = report.sourceRevision;
     showSuccess("检查完成");
@@ -513,11 +571,12 @@ async function inspect() {
 }
 
 async function queuePreview() {
+  if (!governance.value.canPreview) return showError("当前版式不允许此操作，请刷新后重试");
   const version = currentVersion.value;
   if (!version) return;
   try {
     if (mappingDirty.value) throw new Error("请先保存填写位置，再生成样张");
-    version.latestPreview = await queueLayoutTemplatePreview(version.id, mappingPanel.value?.previewSampleData() ?? {});
+    version.latestPreview = await queuePreviewWithCapability(version.id, version.draftRevision, mappingPanel.value?.previewSampleData() ?? {});
     mappingConfirmed.value = false;
     showSuccess("当前修订样张已进入队列");
     startPolling();
@@ -540,49 +599,36 @@ async function loadPreview() {
 }
 
 async function submitCurrent() {
+  if (!governance.value.canSubmit) return showError("当前版式不允许此操作，请刷新后重试");
   const version = currentVersion.value;
   if (!version) return;
-  await runVersionAction(() => submitLayoutTemplateVersion(version.id), "版式已提交", version.id);
+  await runVersionAction(() => submitCurrentWithCapability(version.id, version.draftRevision), "版式已提交", version.id);
 }
 
 async function publishCurrent() {
+  if (!governance.value.canPublish) return showError("当前版式不允许此操作，请刷新后重试");
   const version = currentVersion.value;
   if (!version) return;
   const changeSummary = publicationSummary.value.trim();
   if (!changeSummary) return showError("请填写本次版式发布说明");
   await runVersionAction(
-    () => publishLayoutTemplateVersion(version.id, { changeSummary }),
+    () => publishCurrentWithCapability(version.id, version.draftRevision, { changeSummary }),
     "版式已发布",
     version.id
   );
 }
 
 async function cloneCurrent() {
+  if (!governance.value.canClone) return showError("当前版式不允许此操作，请刷新后重试");
   const version = currentVersion.value;
   if (!version) return;
   try {
-    const cloned = await cloneLayoutTemplateVersion(version.id);
+    const cloned = await cloneCurrentWithCapability(version.id, version.draftRevision);
     await refreshDetail(cloned.id);
     showSuccess("已复制为新草稿，请在新草稿中修订");
   } catch (error) {
     showError(error instanceof Error ? error.message : "复制失败");
   }
-}
-
-async function discardCurrentVersion(request: BusinessDraftActionRequest) {
-  const version = currentVersion.value;
-  if (!version || request.action !== "discard_version") {
-    throw new Error("当前版式版本不支持该操作，请刷新后重试");
-  }
-  await discardLayoutTemplateVersion(version.id, {
-    reason: request.reason,
-    expectedRevision: version.draftRevision
-  });
-  await refreshDetail(version.id);
-}
-
-function handleDiscardCompleted() {
-  showSuccess("版式草稿版本已废弃，已发布版式和正式引用均未改变");
 }
 
 function openRiskStopDialog() {
@@ -646,10 +692,9 @@ function finishRiskStop(context: RiskStopContext) {
 }
 
 function stopCurrentVersion() {
+  if (!riskStopAction.value?.enabled) return;
   const context = captureRiskStopContext();
-  const request = stopLayoutTemplateVersion(
-    requireCurrentRiskStopVersionId(context)
-  );
+  const request = stopCurrentVersionWithCapability(requireCurrentRiskStopVersionId(context));
   riskStopOperationId = context.operationId;
   riskStopLoading.value = true;
   riskStopError.value = "";
@@ -700,14 +745,6 @@ function layoutStatusLabel(status: string) {
   return status === "discarded" ? "已废弃" : templateStatusLabel(status);
 }
 
-function formatDateTime(value?: string) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "—"
-    : date.toLocaleString("zh-CN", { hour12: false });
-}
-
 function clearTransientState() {
   sourceFiles.value = [];
   publicationSummary.value = "";
@@ -736,6 +773,9 @@ function clearLayoutRouteContext() {
 async function loadLayoutRoute() {
   const expectedTemplateId = layoutTemplateRouteId.value;
   if (!expectedTemplateId || expectedTemplateId === "new") {
+    creationCapability.value = null;
+    try { creationCapability.value = await getLayoutCreationCapability(); }
+    catch (error) { showError(error instanceof Error ? error.message : "无法新增模板"); }
     syncEditorBaseline();
     return;
   }

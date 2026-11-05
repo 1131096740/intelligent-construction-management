@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 702,
-    "classificationOverrideCount": 222,
-    "derivedProductionPageCount": 480,
-    "classificationOverrideSha256": "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df",
+    "routeCount": 708,
+    "classificationOverrideCount": 213,
+    "derivedProductionPageCount": 495,
+    "classificationOverrideSha256": "0c1e6ff2a25e48ed9fa78c0dd797e84af2a1732fb5fd033b69d1ff1db638fa4a",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
     "usageCounts": {
-      "page": 498,
+      "page": 513,
       "external_takeover": 70,
-      "exit_candidate": 97,
+      "exit_candidate": 88,
       "internal_task": 37,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 551,
+      "web_api_wrapper": 566,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 108
+      "none": 99
     }
   },
   "overrides": [
@@ -78,12 +78,6 @@
       "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
       "usage": "exit_candidate",
       "reason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "GET",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -255,12 +249,6 @@
     },
     {
       "method": "PATCH",
-      "path": "/contract-layout-template-versions/:versionId",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "PATCH",
       "path": "/contract-number-rules/:ruleId",
       "usage": "exit_candidate",
       "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
@@ -411,31 +399,7 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/clone",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/discard",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/inspection",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/publication",
       "usage": "exit_candidate",
       "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
     },
@@ -444,24 +408,6 @@
       "path": "/contract-layout-template-versions/:versionId/revoke",
       "usage": "exit_candidate",
       "reason": "replaced_revoke_route_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/stop",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/submission",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-templates",
-      "usage": "exit_candidate",
-      "reason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

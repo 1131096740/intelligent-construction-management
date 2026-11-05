@@ -18,12 +18,21 @@ async function templateRequest<T>(path: string, method = "GET", body?: unknown):
   return response.json() as Promise<T>;
 }
 
+export function getLayoutCreationCapability() {
+  return templateRequest<{ canCreate: boolean }>("/contract-layout-templates/creation-capability");
+}
+
+export function getLayoutVersionMaintenanceCapability(versionId: string) {
+  return templateRequest<{ versionId: string; draftRevision: number; sourceFileId: string; availableActions: Array<{ key: string; enabled: boolean }> }>(`/contract-layout-template-versions/${encodeURIComponent(versionId)}/maintenance-capability`);
+}
+
 export function listMaintainedLayouts() {
   return templateRequest<MaintainedLayout[]>("/contract-layout-templates/maintenance");
 }
 
 export interface LayoutSourceBinding { positionId: string; start: number; end: number; fieldKey: string }
 export interface LayoutSourcePositions {
+  availableActions: Array<{ key: string; enabled: boolean; disabledReason?: string | null }>;
   versionId: string;
   sourceFileId: string;
   sourceSha256: string;

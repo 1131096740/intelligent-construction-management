@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 40,
-    "exportedFunctionCount": 678,
-    "transportWrapperCount": 656,
+    "apiModuleCount": 41,
+    "exportedFunctionCount": 684,
+    "transportWrapperCount": 662,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 695,
+    "mainRequestBindingCount": 701,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 683,
-    "productionConsumerCount": 562,
+    "requestEdgeCount": 689,
+    "productionConsumerCount": 577,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 367,
-    "reachableProductionModuleCount": 346
+    "productionModuleCount": 370,
+    "reachableProductionModuleCount": 351
   },
   "wrappers": [
     {
@@ -2497,6 +2497,176 @@
       "unreachableConsumers": []
     },
     {
+      "name": "confirmLayoutSourceMapping",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/source-mapping-confirmation",
+          "normalizedPath": "/contract-layout-template-versions/:param/source-mapping-confirmation",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmLayoutSourceMapping",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getLayoutCreationCapability",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-templates/creation-capability",
+          "normalizedPath": "/contract-layout-templates/creation-capability",
+          "normalizedKey": "GET /contract-layout-templates/creation-capability",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "getLayoutCreationCapability",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateManagementPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getLayoutSourcePositions",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-template-versions/:param/source-positions",
+          "normalizedPath": "/contract-layout-template-versions/:param/source-positions",
+          "normalizedKey": "GET /contract-layout-template-versions/:param/source-positions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "getLayoutSourcePositions",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getLayoutVersionMaintenanceCapability",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-template-versions/:param/maintenance-capability",
+          "normalizedPath": "/contract-layout-template-versions/:param/maintenance-capability",
+          "normalizedKey": "GET /contract-layout-template-versions/:param/maintenance-capability",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "getLayoutVersionMaintenanceCapability",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "listMaintainedLayouts",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-templates/maintenance",
+          "normalizedPath": "/contract-layout-templates/maintenance",
+          "normalizedKey": "GET /contract-layout-templates/maintenance",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "listMaintainedLayouts",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateManagementPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "saveLayoutSourceMapping",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "PATCH",
+          "path": "/contract-layout-template-versions/:param/source-mapping",
+          "normalizedPath": "/contract-layout-template-versions/:param/source-mapping",
+          "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveLayoutSourceMapping",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "abandonContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -2698,10 +2868,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "confirmContractBillTransitions",
@@ -2934,10 +3104,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "createStandardClause",
@@ -3141,10 +3311,8 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-      ],
-      "productionConsumers": []
+      "productionConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "discardStandardClauseVersion",
@@ -3775,10 +3943,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "getLayoutTemplate",
@@ -3805,12 +3973,11 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-      ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue"
-      ]
+      ],
+      "unreachableConsumers": []
     },
     {
       "name": "heartbeatContractDraftEditLease",
@@ -3868,10 +4035,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "listBusinessParties",
@@ -4265,10 +4432,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "publishStandardClauseVersion",
@@ -4386,10 +4553,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "releaseContractDraftEditLease",
@@ -4794,10 +4961,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "submitContractDraft",
@@ -4885,10 +5052,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "submitStandardClauseVersion",
@@ -5122,10 +5289,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "uploadContractFormalApprovalFile",
@@ -11055,15 +11222,14 @@
         "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
         "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-      ]
+      "unreachableConsumers": []
     },
     {
       "name": "uploadProjectAffiliateBusinessPrivateFile",
@@ -20616,12 +20782,6 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "cloneLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "createContractNumberRule",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
@@ -20635,12 +20795,6 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "createDraftCheckpoint",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "createLayoutTemplate",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
@@ -20688,18 +20842,6 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "getLatestLayoutTemplatePreview",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "inspectLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "listContractDrafts",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
@@ -20718,19 +20860,7 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "publishLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "publishStandardClauseVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "queueLayoutTemplatePreview",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
@@ -20778,19 +20908,7 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "stopLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "submitContractTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "submitLayoutTemplateVersion",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
@@ -20815,12 +20933,6 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "updateContractTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "updateLayoutTemplateVersion",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
