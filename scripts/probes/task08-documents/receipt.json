@@ -1,7 +1,7 @@
 {
   "issue": 390,
   "task": "08",
-  "status": "in-progress / candidate-not-accepted",
+  "status": "technical-matrix-measured / independent-review-pending / formal-master-not-certified",
   "sourceBase": "f352d187b720a2e8231874775616c24e91eb3bd8",
   "method": "DOCX-preserving candidate public CLI; historical default LibreOffice rejected; explicit pinned offline docx4j adapter under independent fidelity checks",
   "sourceManifestSha256": "c8790a0375224d3485695394eb059451cec07e1b148077980e77292a6ad6d56b",
@@ -1710,6 +1710,150 @@
       "testLog": "/private/tmp/jg-task08-document-receipts-20261105/40-package-repair-checkpoint-tests.log",
       "testLogSha256": "f83e8ee93128c895aaed36c3a7ed7a2d6d1c2316d9423ca2654fd83b50864db4",
       "remaining": "matrix15 notstarted per root scheduling; no next conversion; task08 notcomplete; no PG/SQL/deploy/production"
+    },
+    "finalTechnicalCandidate": {
+      "status": "technical-matrix-measured / independent-review-pending / formal-master-not-certified",
+      "effectiveMatrix": "/private/tmp/jg-task08-document-receipts-20261105/task08-final-effective-matrix.json",
+      "effectiveMatrixSha256": "d40e20efe83c8da3bd09d65644675867f84c7f73099bba39eb6de4f3a1fdc4b4",
+      "effectiveCases": 18,
+      "basis": "existing8 exactsources: before/after each plus13colmaterial45/10colequipment45; explicitstagebindings preserved",
+      "rendererSha256": "2d671f96e6a7ce6cbb16657549a61f563d724950e18784b83ce7486ade81b446",
+      "materialNinePoint": {
+        "sourceChange": "reviewed13colbilltable only explicit<9pt to9; unchanged grid/fonts/body/signature",
+        "redLog": "43-material-minimum-nine-red.log",
+        "greenLog": "44-material-minimum-nine-structure-green.log",
+        "threeActualResults": {
+          "status": "THREE_MATERIAL_NINE_POINT_CONTENT_LAYOUT_MEASURED_NOT_FULL_MASTER_STANDARD",
+          "results": [
+            {
+              "index": 11,
+              "variant": "before",
+              "rows": 3,
+              "pages": 12,
+              "docxSha256": "52f09e5987abad37e2d12343c706d8ac46be9dbe770a1e63de75054f6d24fa71",
+              "pdfSha256": "f07db7e575d0492e39eeac6de2f965877429374b4963cfc070f12f07db295ad9",
+              "checks": {
+                "contentNoMissing": true,
+                "noPhysicalGlyphErrors": true,
+                "embedded": true,
+                "a4": true,
+                "noOutpageText": true,
+                "exactRows": true,
+                "quantitiesSingleLineNinePoint": true,
+                "continuationHeader": true,
+                "manualClauseSurvived": true,
+                "signatureSourceIdentical": true,
+                "gridIdentical": true
+              },
+              "outputDirectory": "/private/tmp/jg-task08-document-receipts-20261105/material-nine-point-three/11-before"
+            },
+            {
+              "index": 12,
+              "variant": "after",
+              "rows": 3,
+              "pages": 12,
+              "docxSha256": "f9abbe224a95b8f7e09beafb72f2f3e27b0ad8007eb496e6e6a237dfc04ce85f",
+              "pdfSha256": "348fbef1f0474673c8f8e6c1f3a69aafefeb25b3c8ff27cbc99d02fe45a1faf4",
+              "checks": {
+                "contentNoMissing": true,
+                "noPhysicalGlyphErrors": true,
+                "embedded": true,
+                "a4": true,
+                "noOutpageText": true,
+                "exactRows": true,
+                "quantitiesSingleLineNinePoint": true,
+                "continuationHeader": true,
+                "manualClauseSurvived": true,
+                "signatureSourceIdentical": true,
+                "gridIdentical": true
+              },
+              "outputDirectory": "/private/tmp/jg-task08-document-receipts-20261105/material-nine-point-three/12-after"
+            },
+            {
+              "index": 17,
+              "variant": "long45",
+              "rows": 45,
+              "pages": 13,
+              "docxSha256": "7372aaa5ed9fd808b27c7f1268b05070297a034f4b563e81baab68917e312a8f",
+              "pdfSha256": "de31b881f086758b5021e0c666f7c134acdfb2205e37bf29537fa12a2c3cb354",
+              "checks": {
+                "contentNoMissing": true,
+                "noPhysicalGlyphErrors": true,
+                "embedded": true,
+                "a4": true,
+                "noOutpageText": true,
+                "exactRows": true,
+                "quantitiesSingleLineNinePoint": true,
+                "continuationHeader": true,
+                "manualClauseSurvived": true,
+                "signatureSourceIdentical": true,
+                "gridIdentical": true
+              },
+              "outputDirectory": "/private/tmp/jg-task08-document-receipts-20261105/material-nine-point-three/17-long45"
+            }
+          ]
+        },
+        "allOriginalEightPointFiveArtifactsPreserved": true,
+        "sourceResultsSha256": "6b1be96e271cd1e625b68f0a72aa20994f5b36b67909f2a9c49786df091dd9cb"
+      },
+      "other15CurrentDocxEquivalence": {
+        "receipt": "/private/tmp/jg-task08-document-receipts-20261105/current-generator-other15-docx-equivalence/receipt.json",
+        "sha256": "8711f65fe68f0b07ccda3da398e0c92c21510d4ae42373fcecedcdc65b78280e",
+        "allZipPartNamesAndBytesEqual": true,
+        "reExported": false,
+        "reason": "same actual DOCXparts + same pinned JDK/jars/adapter/fonts/export flags allow explicit inherited PDF measurements; no claim oldPDF newlyexported"
+      },
+      "allEightManualClausesSurviveSync": true,
+      "fiveFullAssetsHaveBothPartyAnchors": true,
+      "threeCompactAssetsMissingPartyAnchors": true,
+      "allPagesA4AndFontsEmbeddedAndNoMissingGlyphOrTextOrOutpage": true,
+      "longTables": {
+        "material": {
+          "columns": 13,
+          "rows": 45,
+          "pagesWithRows": [
+            2,
+            3
+          ],
+          "rowSplit": [
+            28,
+            17
+          ],
+          "actualQuantityPt": 9,
+          "all45QuantitiesOneLine": true
+        },
+        "equipment": {
+          "columns": 10,
+          "rows": 45,
+          "pagesWithRows": [
+            2,
+            3
+          ],
+          "rowSplit": [
+            27,
+            18
+          ],
+          "actualQuantityPt": 9,
+          "all45QuantitiesOneLine": true
+        }
+      },
+      "focusedTests": {
+        "passed": 15,
+        "log": "/private/tmp/jg-task08-document-receipts-20261105/46-final-fifteen-focused-tests.log",
+        "sha256": "16f2f787117e97b24209165043117446032d26535dc8667245edd0d2a2e6fce6",
+        "newPdfConversions": 0
+      },
+      "standardsLimits": [
+        "threecompactoriginalassetsmissingformalcover/titlefont/partyanchors; no silent addition",
+        "originalmechanical30/18pttitles and12ptbody/margins, originalmaterial36/18pttitles/margins differ confirmedmaster; preserved sourcefacts not conversionfailures",
+        "formal10/11 includes authoritativebackend persistence/revision/privatefile/API/UI/templateversion/approvedmapping and fullmotherstyle acceptance",
+        "nativeWordpage rendering/contractdepartmentmanualmasterapproval not proven; noMicrosoftWordinstalled",
+        "JDK/jars/fonts localdiagnosticonly; nofontredistributionEULAorproductdependencyadoption claimed",
+        "LO stillrejectedbaseline3missingcommas; defaultengine is not acceptedroute"
+      ],
+      "technicalDecision": "OOXML-preserving anchored document + explicit pinned offline docx4j feasible on reviewed8 packages with approved source-normalization guards; not a fullWebeditor/productservice/universalWordloader/formalmastercertification",
+      "nextFormalTasks": "10 needs serverrevision/authority/persistence/privatefiles/responsiveeditor/currentversionexport/fullsource-styleacceptance;11 needs supervisor-approved template mappings/version isolation/retirement and actual8motherstyle approval; no dependency-edge or originalticketcriteria changed",
+      "githubStatus": "task08open pendingindependentreviews; no push/close/integrationmerge bythisagent"
     }
   }
 }

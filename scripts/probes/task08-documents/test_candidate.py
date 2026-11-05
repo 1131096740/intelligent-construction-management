@@ -13,6 +13,23 @@ NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 class CandidateCLI(unittest.TestCase):
+    def test_material_bill_table_minimum_nine_point_keeps_grid_and_signature(self):
+        source = HERE / "samples/material-purchase-real-v1.docx"
+        original_case = Path("/private/tmp/jg-task08-document-receipts-20261105/public-matrix15-resume-03-20261105/17-material-purchase-real-v1-long45")
+        with tempfile.TemporaryDirectory(prefix="task08-material-nine-") as tmp:
+            output = Path(tmp) / "actual.docx"
+            subprocess.run([sys.executable, str(HERE / "candidate.py"), "render", "--template", str(source), "--request", str(original_case / "render.json"), "--output", str(output)], check=True)
+            with ZipFile(output) as z:xml = ET.fromstring(z.read("word/document.xml"))
+            with ZipFile(original_case / "actual.docx") as z:old = ET.fromstring(z.read("word/document.xml"))
+            table = xml.find("w:body/w:tbl", NS)
+            old_table = old.find("w:body/w:tbl", NS)
+            self.assertEqual(ET.tostring(table.find("w:tblGrid", NS)), ET.tostring(old_table.find("w:tblGrid", NS)))
+            self.assertEqual("".join(table.itertext()), "".join(old_table.itertext()))
+            for size in table.findall(".//w:rPr/w:sz", NS):
+                self.assertGreaterEqual(int(size.get("{" + NS["w"] + "}val")), 18)
+            self.assertEqual([ET.tostring(x) for x in table.findall(".//w:rFonts", NS)], [ET.tostring(x) for x in old_table.findall(".//w:rFonts", NS)])
+            self.assertEqual([ET.tostring(x) for x in xml.findall("w:body/w:tbl", NS)[1:]], [ET.tostring(x) for x in old.findall("w:body/w:tbl", NS)[1:]])
+
     def test_five_known_font_tables_get_typed_metadata_without_font_changes(self):
         import re
         ct = "{http://schemas.openxmlformats.org/package/2006/content-types}"

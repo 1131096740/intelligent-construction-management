@@ -303,6 +303,13 @@ def render(parts, request, source_name=None):
                             edge.set(W + "w", "40")
                             edge.set(W + "type", "dxa")
                     column += width
+        if name == "word/document.xml" and source_name == "material-purchase-real-v1.docx" and request.get("printProfile") == "a4-portrait":
+            tables = [table for table in root.findall(W + "body/" + W + "tbl") if len(table.findall(W + "tblGrid/" + W + "gridCol")) == 13 and "货物名称" in text(table) and "价税合计" in text(table)]
+            if len(tables) != 1:
+                raise ValueError("reviewed material bill table missing or ambiguous")
+            for size in tables[0].xpath(".//w:rPr/w:sz | .//w:rPr/w:szCs", namespaces=NS):
+                if int(size.get(W + "val")) < 18:
+                    size.set(W + "val", "18")
         expand(root, request.get("lists", {}))
         substitute(root, values)
         if name == "word/document.xml" and request.get("printProfile") == "a4-portrait":
