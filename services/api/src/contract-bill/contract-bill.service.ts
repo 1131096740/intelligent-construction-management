@@ -6,7 +6,8 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ContractBillRow } from "@prisma/client";
+import { freezeDeletedDraftRow, originalDraftRowNumericData } from "./contract-bill-row-undo";
 import {
   isContractBillCustomColumn,
   normalizeContractBillBoolean
@@ -131,7 +132,8 @@ export class ContractBillService {
       expectedRevision: number;
       numericProtocolVersion?: number;
       rows: SaveContractBillRowDto[];
-    }
+    },
+    trustedRestores: ReadonlyMap<string, ContractBillRow> = new Map()
   ) {
     const numericProtocolVersion = input.numericProtocolVersion === undefined ? 1 : input.numericProtocolVersion;
     if (![1, 2].includes(numericProtocolVersion)) throw new BadRequestException("清单数值版本不正确，请刷新工作台");
@@ -144,16 +146,45 @@ export class ContractBillService {
       orderBy: { sortOrder: "asc" }
     });
     const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
+    const validationRows = input.rows.map(row => {
+      if (!row.restoreRef) return row;
+      const original = trustedRestores.get(row.clientRowKey);
+      if (numericProtocolVersion !== 2 || !original || row.rowKey !== undefined || existingByKey.has(original.rowKey)) throw new BadRequestException("撤销来源无法核对，不能恢复该行");
+      if (row.unit !== original.unit) throw new BadRequestException("请先恢复原行，再修改单位");
+      if (original.remainderDisposition === "cancelled" && (row.itemName !== original.itemName || (row.itemCode || null) !== (original.itemCode || null) || (row.specification || null) !== (original.specification || null) || (row.settlementBasis || null) !== (original.settlementBasis || null) || Boolean(row.isProvisional) !== original.isProvisional || stableJson(row.customData) !== stableJson(original.customData))) throw new BadRequestException("已取消未实施余量的原行只能按原记录恢复");
+      for (const [field, value] of [["quantity", original.quantity], ["unitPrice", original.unitPrice], ["taxRatePercent", original.taxRate]] as const) {
+        const submitted = row[field];
+        const text = submitted === undefined || submitted === null || submitted === "" ? null : submitted;
+        if ((text === null) !== (value === null)) throw new BadRequestException("请先恢复原行，再修改数值；原删除事实不会被改写");
+        if (text !== null && value !== null) {
+          let unchanged = false;
+          try { unchanged = new Prisma.Decimal(text).equals(value) && (value.decimalPlaces() <= 4 || text === value.toString()); }
+          catch { throw new BadRequestException("恢复行的数值格式不正确，请保留原输入并修改"); }
+          if (!unchanged) throw new BadRequestException("请先恢复原行，再修改数值；原删除事实不会被改写");
+        }
+      }
+      return { ...row, rowKey: original.rowKey };
+    });
+    for (const original of trustedRestores.values()) if (original.lineageId) {
+      const lineage = await tx.contractBillRowLineage.findUnique({ where: { id: original.lineageId } });
+      if (!lineage || lineage.contractId !== version.contractId) throw new BadRequestException("原行来源记录与当前合同不一致，请核对后再恢复");
+    }
+    const validationByKey = new Map([...existingByKey, ...[...trustedRestores.values()].map(row => [row.rowKey, row] as const)]);
     const parsed = this.parseReplaceInput(
       {
         expectedBillRevision: input.expectedRevision,
         idempotencyKey: "aggregate-save",
-        rows: input.rows.map((row) => ({ ...row }))
+        rows: validationRows.map((row) => ({ ...row }))
       },
       { ...bill, numericProtocolVersion, requestedNumericProtocolVersion: numericProtocolVersion },
       version,
-      existingByKey
+      validationByKey
     );
+    for (const row of parsed.rows) if (trustedRestores.has(row.clientRowKey)) {
+      const original = trustedRestores.get(row.clientRowKey)!;
+      if (row.facts.taxRatePercent !== original.taxRate?.toString() && !(row.facts.taxRatePercent === null && original.taxRate === null)) throw new BadRequestException("原行税率与当前草稿不一致，请核对后再恢复");
+      delete row.rowKey;
+    }
     const requestedKeys = new Set(
       parsed.rows.flatMap((row) => (row.rowKey ? [row.rowKey] : []))
     );
@@ -166,12 +197,15 @@ export class ContractBillService {
       return this.batchRowChanged(existingByKey.get(row.rowKey)!, this.batchRowData(row));
     });
     const newRows = parsed.rows.filter((row) => !row.rowKey);
+    const rowKeys = parsed.rows.flatMap(row => row.rowKey ? [{ clientRowKey: row.clientRowKey, rowKey: row.rowKey }] : []);
     const changed = (bill.numericProtocolVersion ?? 1) !== numericProtocolVersion || deletedRows.length > 0 || updatedRows.length > 0 || newRows.length > 0;
     if (!changed) {
       return {
         changed: false,
         revision: bill.revision,
-        rows: existingRows
+        rows: existingRows,
+        rowKeys,
+        deletedRows: [] as Prisma.InputJsonObject[]
       };
     }
     if (updatedRows.some((row) =>
@@ -228,10 +262,12 @@ export class ContractBillService {
         data: {
           contractBillId: bill.id,
           rowKey: randomUUID(),
-          ...this.batchRowData(row)
+          ...this.batchRowData(row),
+          ...(trustedRestores.has(row.clientRowKey) ? originalDraftRowNumericData(trustedRestores.get(row.clientRowKey)!) : {})
         }
       });
-      await this.lineage.bindNewRow(tx, {
+      rowKeys.push({ clientRowKey: row.clientRowKey, rowKey: created.rowKey });
+      if (!trustedRestores.get(row.clientRowKey)?.lineageId) await this.lineage.bindNewRow(tx, {
         contractId: version.contractId,
         contractVersionId: version.id,
         contractBillRowId: created.id,
@@ -244,7 +280,9 @@ export class ContractBillService {
     return {
       changed: true,
       revision: input.expectedRevision + 1,
-      rows
+      rows,
+      rowKeys,
+      deletedRows: numericProtocolVersion === 2 ? deletedRows.map(freezeDeletedDraftRow) : []
     };
   }
 

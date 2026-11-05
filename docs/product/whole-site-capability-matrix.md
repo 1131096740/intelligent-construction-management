@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `562d835fc0bb56cfdb67797de6f40be7ced2e24c0b8bbe212352b9cbcc29ac04` |
-| webApiWrappers | ready | `49de057bead1e949ad66738805ee4d324e1ed752d788145d9c4b335752cb5bd0` |
-| webPageActions | ready | `70a5d126c86476a031a0fa63241f3f513c16a31f3bc363033177c0866c1cf710` |
-| routeUsage | ready | `234e1afeb31971eb921cc78857685aa523c3885e21ae3616d859f8e4122a323d` |
+| nestRoutes | ready | `991a11b8cee7334d9f62f0797a1b684d990b7f4720a140ef72e38a53efcfd69c` |
+| webApiWrappers | ready | `d3c886704f136a16d23502568689bc5dc5d309c8d8973858c9547e5230fe15a3` |
+| webPageActions | ready | `4dba32b4bc5a6d57c911e7a097bc786e541fa1bd75d0c2288333f73860754567` |
+| routeUsage | ready | `99d402c4f96e24b2c6551e4224dc21022009bc9a95df96decea7c08b7b50261d` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 702 |
-| pageRouteCount | 498 |
+| routeCount | 703 |
+| pageRouteCount | 499 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 97 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 695 |
+| mainRequestBindingCount | 696 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -88,6 +88,7 @@
 | GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/export | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#exportContractDraftBill | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/save-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSaveResult | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
 | GET | /contract-economic-reviews | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchEconomicReviews | — | not_applicable | — |
 | GET | /contract-economic-reviews/counterparties | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchContractCounterparties | — | not_applicable | — |

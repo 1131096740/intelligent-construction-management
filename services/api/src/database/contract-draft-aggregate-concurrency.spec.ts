@@ -135,6 +135,150 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
     }
   }, 45_000);
 
+  // Task06 PREPARED / NOT EXECUTED. No PG/resource authorisation in this phase.
+  // Two actual HTTP apps/Prisma pools; synthetic actor injection is not a
+  // production authentication/global PermissionGuard or restricted-role proof.
+  integrationTest("restores deleted legacy/null/zero facts once under the version lock and replays only public receipts", async () => {
+    const databaseUrl = contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL);
+    const ids = makeIds("row-undo");
+    const appName = `draft-row-undo-${randomUUID()}`;
+    const firstUrl = new URL(databaseUrl); firstUrl.searchParams.set("application_name", appName);
+    const first = new PrismaClient({ datasources: { db: { url: firstUrl.toString() } } });
+    const second = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const blocker = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const observer = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const createHttp = async (client: PrismaClient) => {
+      const audit = new AuditService();
+      const aggregate = new ContractDraftAggregateService(client as never,
+        new ContractWorkbenchService(client as never, audit), new ContractBillService(client as never, audit),
+        new BusinessPartyService(client as never, audit),
+        { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+      const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+        { provide: ContractDraftAggregateService, useValue: aggregate },
+        ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService]
+          .map(provide => ({ provide, useValue: {} }))
+      ] }).compile();
+      const app = module.createNestApplication({ logger: false });
+      app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+      app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => { request.user = { id: ids.owner }; next(); });
+      app.useGlobalPipes(createApiValidationPipe());
+      await app.listen(0, "127.0.0.1");
+      return app;
+    };
+    const apps: Array<Awaited<ReturnType<typeof createHttp>>> = [];
+    let releaseLock: (() => void) | undefined;
+    const inFlight: Array<Promise<unknown>> = [];
+    // Explicit numeric/source projection: no private receipt, actor, credential,
+    // arbitrary table dump or generated row id participates in conservation.
+    const factSelect = { itemName: true, quantity: true, unitPrice: true, taxRate: true, taxRateSource: true,
+      pricingFactStatus: true, precisionPolicy: true, numericProtocolVersion: true, numericSource: true,
+      numericReviewStatus: true, taxInclusiveAmountYuan: true, taxExclusiveAmountYuan: true, taxAmountYuan: true,
+      taxInclusiveAmountCents: true, taxExclusiveAmountCents: true, taxAmountCents: true, taxExclusiveUnitPrice: true,
+      isProvisional: true, customData: true } as const;
+    const facts = async () => JSON.parse(JSON.stringify(await observer.contractBillRow.findMany({
+      where: { contractBillId: ids.billA }, orderBy: { itemName: "asc" }, select: factSelect
+    }), apiJsonReplacer));
+    try {
+      await seedDraft(first, ids, true);
+      await first.contractVersion.update({ where: { id: ids.version }, data: {
+        numericProtocolVersion: 2, pricingNature: "unit_price", amountSource: "bill_sum", defaultTaxRatePercent: "0", amountYuan: null
+      } });
+      await first.contractBill.updateMany({ where: { contractVersionId: ids.version }, data: {
+        numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4
+      } });
+      const common = { contractBillId: ids.billA, unit: "项", quantity: "1", taxRate: "0", taxRateSource: "version_default",
+        pricingFactStatus: "confirmed", precisionPolicy: "four_decimal", numericProtocolVersion: 2,
+        numericSource: "decimal_input", numericReviewStatus: "verified", customData: {} };
+      await first.contractBillRow.createMany({ data: [
+        { ...common, rowKey: "legacy", sortOrder: 0, itemName: "历史六位", quantity: "1.234567", unitPrice: "2.345678",
+          taxRate: "13", taxRateSource: "row_override", taxExclusiveUnitPrice: "8.027106", numericProtocolVersion: 1,
+          numericSource: "legacy_cents", numericReviewStatus: "not_assessed", precisionPolicy: "legacy",
+          taxInclusiveAmountCents: 991n, taxExclusiveAmountCents: 991n, taxAmountCents: 0n },
+        { ...common, rowKey: "unknown", sortOrder: 1, itemName: "未知单价", unitPrice: null, pricingFactStatus: "unconfirmed" },
+        { ...common, rowKey: "zero", sortOrder: 2, itemName: "明确零", unitPrice: "0", taxExclusiveUnitPrice: "0",
+          taxInclusiveAmountYuan: "0", taxExclusiveAmountYuan: "0", taxAmountYuan: "0",
+          taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n }
+      ] });
+      const original = await facts();
+      apps.push(await createHttp(first), await createHttp(second));
+      const bases = await Promise.all(apps.map(app => app.getUrl()));
+      const put = (base: string, body: unknown) => fetch(`${base}/contract-drafts/${ids.version}`, { method: "PUT",
+        headers: { "content-type": "application/json", "x-contract-draft-lease": leaseToken(ids) }, body: JSON.stringify(body) });
+      const read = async () => {
+        const response = await fetch(`${bases[0]}/contract-drafts/${ids.version}/workbench`, { headers: { "x-contract-numeric-protocol": "2" } });
+        expect(response.status).toBe(200); return response.json();
+      };
+      const lookup = async (key: string) => {
+        const response = await fetch(`${bases[0]}/contract-drafts/${ids.version}/save-requests/${key}`, { headers: { "x-contract-numeric-protocol": "2" } });
+        expect(response.status).toBe(200); return response.json();
+      };
+      const deleteBody = { ...aggregateInput(randomUUID()), changedSections: ["draft", "bills"],
+        draft: { ...aggregateInput(randomUUID()).draft, pricingNature: "unit_price", amountSource: "bill_sum", manualAmountCents: undefined,
+          taxFacts: { ...aggregateInput(randomUUID()).draft.taxFacts, defaultTaxRatePercent: "0" } },
+        bills: [ { billKey: "main", numericProtocolVersion: 2, expectedRevision: 1, rows: [] },
+          { billKey: "secondary", numericProtocolVersion: 2, expectedRevision: 1, rows: [] } ] };
+      const deletion = await put(bases[0]!, deleteBody); expect(deletion.status).toBe(200);
+      const deleted = await deletion.json();
+      expect(await facts()).toEqual([]);
+      expect(deleted).not.toHaveProperty("_rowUndo");
+      const originalLookup = await lookup(deleteBody.idempotencyKey);
+      expect(originalLookup.result).toEqual(deleted);
+      const refs = deleted.deletedRowRestoreRefs.main as Array<{ saveIntentKey: string; oldRowKey: string; originalValues: Record<string, unknown> }>;
+      expect(refs).toHaveLength(3);
+      const afterDelete = await read();
+      const restoreBody = { ...deleteBody, idempotencyKey: randomUUID(), expectedRevision: afterDelete.version.draftRevision,
+        bills: afterDelete.bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, numericProtocolVersion: 2,
+          expectedRevision: bill.revision, rows: bill.billKey === "main" ? refs.map((ref, index) => ({ ...ref.originalValues,
+            clientRowKey: `restore-${index}`, sortOrder: index, restoreRef: { saveIntentKey: ref.saveIntentKey, oldRowKey: ref.oldRowKey } })) : [] })) };
+      let locked!: (pid: number) => void;
+      const lockedPid = new Promise<number>(resolve => { locked = resolve; });
+      const held = new Promise<void>(resolve => { releaseLock = resolve; });
+      const lockTask = blocker.$transaction(async tx => {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${ids.version} FOR UPDATE`);
+        const [identity] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        locked(identity!.pid); await held;
+      }, { timeout: 20_000 });
+      inFlight.push(lockTask);
+      const blockerPid = await lockedPid;
+      const winningAttempt = put(bases[0]!, restoreBody); inFlight.push(winningAttempt);
+      await waitForBlockedApplication(observer, appName, blockerPid);
+      const competingBody = { ...restoreBody, idempotencyKey: randomUUID() };
+      const competingAttempt = put(bases[1]!, competingBody); inFlight.push(competingAttempt);
+      releaseLock!(); await lockTask;
+      const responses = await Promise.all([winningAttempt, competingAttempt]);
+      expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+      const winnerIndex = responses.findIndex(response => response.status === 200);
+      const winnerBody = winnerIndex === 0 ? restoreBody : competingBody;
+      const restored = await responses[winnerIndex]!.json();
+      expect(restored).not.toHaveProperty("_rowUndo");
+      expect(restored.billRowKeys.main).toHaveLength(3);
+      expect(await facts()).toEqual(original);
+      const current = await read();
+      expect(current.bills.find((bill: { billKey: string }) => bill.billKey === "main").rows).toHaveLength(3);
+      const counts = async () => ({ receipts: await observer.contractDraftSaveRequest.count({ where: { contractVersionId: ids.version } }),
+        audits: await observer.auditLog.count({ where: { businessId: ids.version } }) });
+      const beforeReplay = await counts();
+      const replay = await put(bases[0]!, winnerBody); expect(replay.status).toBe(200); expect(await replay.json()).toEqual(restored);
+      expect((await lookup(winnerBody.idempotencyKey)).result).toEqual(restored);
+      expect((await lookup(deleteBody.idempotencyKey)).result).toEqual(originalLookup.result);
+      // Fresh current version AND bill coordinates distinguish consumed-ref
+      // rejection from the preceding stale-revision concurrency loser.
+      const consumedBody = { ...winnerBody, idempotencyKey: randomUUID(), expectedRevision: current.version.draftRevision,
+        bills: winnerBody.bills.map((bill: { billKey: string }) => ({ ...bill,
+          expectedRevision: current.bills.find((entry: { billKey: string }) => entry.billKey === bill.billKey).revision })) };
+      const consumed = await put(bases[0]!, consumedBody); expect(consumed.status).toBe(400);
+      expect((await consumed.json()).message).toMatch(/已经恢复/u);
+      expect(await counts()).toEqual(beforeReplay);
+      expect(await facts()).toEqual(original);
+      expect(await read()).toEqual(current);
+    } finally {
+      releaseLock?.(); await Promise.allSettled(inFlight);
+      await Promise.all(apps.map(app => app.close()));
+      await cleanupDraft(first, ids);
+      await Promise.all([first, second, blocker, observer].map(client => client.$disconnect()));
+    }
+  }, 30_000);
+
   integrationTest(
     "allows one revision winner and rolls back an earlier section after a later failure",
     async () => {

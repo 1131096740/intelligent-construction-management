@@ -310,6 +310,7 @@
             >
               {{ manualSaveMessage }}
             </small>
+            <small v-if="saveError" class="manual-save-message" data-testid="contract-draft-save-error">{{ saveError }}</small>
           </div>
           <t-button
             v-if="canTransfer"
@@ -324,11 +325,14 @@
             v-if="contractDraftOperationAvailableActions.includes('save_contract_draft')"
             size="small"
             variant="outline"
-            :disabled="editorDisabled"
+            :disabled="editorDisabled || pendingSaveResult || !online"
             :loading="saveState === 'saving'"
             @click="onSave"
           >
             保存草稿
+          </t-button>
+          <t-button v-if="pendingSaveResult" :loading="checkingSaveResult" :disabled="!online" @click="checkSaveResult">
+            核对保存结果
           </t-button>
           <t-button
             v-if="contractDraftOperationAvailableActions.includes('submit_contract_draft')"
@@ -500,11 +504,13 @@
         :bill="focusedBill"
         :contract-version-id="workbench?.version.id ?? ''"
         :disabled="editorDisabled"
+        :remote-disabled="writeLocked"
         :action-disabled="!contractDraftActionEnabled('contract-bill.remainder-cancellation')"
         :action-handler="executeFocusedBillRemainderCancellation"
         @close="requestBillFocusClose"
         @update:rows="updateFocusedBillRows"
         @edited="markDirty('bills')"
+        @editor-input="setEditorInput"
       />
 
       <div
@@ -769,6 +775,8 @@
               >
                 <ContractDocumentsSection
                   :workbench="workbench"
+                  :layout-template-version-id="model.layoutTemplateVersionId"
+                  @update:layout-template-version-id="updateLayoutTemplateVersion"
                   :disabled="editorDisabled"
                   :prepare-mutation="prepareGovernanceMutation"
                   :complete-mutation="completeGovernanceMutation"
@@ -782,7 +790,7 @@
                     <strong>提交就绪</strong>
                     <span>提交前会先保存未保存修改，再重新检查当前修订。</span>
                   </div>
-                  <span>正式编号在首次手动保存时由系统按日流水生成，提交时不再选择编号规则。</span>
+                  <span>保存仅保留草稿，不发起审批或形成正式业务；正式编号在首次提交审批时生成。</span>
                   <t-alert
                     v-if="submissionMessage"
                     :theme="submissionMessageTone"
@@ -1311,6 +1319,10 @@ const {
   authoritySnapshot,
   saveState,
   saveError,
+  pendingSaveResult,
+  online,
+  checkingSaveResult,
+  checkSaveResult,
   conflict,
   dirty,
   isDirty,
@@ -1319,6 +1331,7 @@ const {
   clearAuthoritySnapshot,
   requireAuthorityRefresh,
   markDirty,
+  setEditorInput,
   savedRevision,
   formalSaveCompleted,
   lastSavedAt,
@@ -1527,9 +1540,13 @@ function applyPatch(
   patch: Partial<ContractDraftModel>,
   section: ContractDraftChangedSection = "draft"
 ) {
-  if (writeLocked.value) return;
+  if (editorDisabled.value) return;
   Object.assign(model, patch);
   markDirty(section);
+}
+
+function updateLayoutTemplateVersion(value: string | null) {
+  applyPatch({ layoutTemplateVersionId: value });
 }
 
 const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
@@ -1635,11 +1652,12 @@ const editable = computed(() => {
   return status ? EDITABLE_STATUSES.has(status) : false;
 });
 const writeLocked = computed(() =>
+  pendingSaveResult.value || !online.value ||
   governanceMutationLocked.value ||
   submissionBusy.value ||
   (editable.value && !canEdit.value)
 );
-const editorDisabled = computed(() => !editable.value || !canEdit.value || writeLocked.value);
+const editorDisabled = computed(() => !editable.value || !canEdit.value || governanceMutationLocked.value || submissionBusy.value);
 const leaseCanTakeOver = computed(() =>
   "canTakeOver" in lease.value && lease.value.canTakeOver
 );
@@ -1884,13 +1902,15 @@ function closeBillFocus() {
 }
 
 function updateFocusedBillRows(rows: ContractBillCandidateRow[]) {
-  if (writeLocked.value || !focusedBillKey.value) return;
+  if (editorDisabled.value || !focusedBillKey.value) return;
   const bill = aggregateModel.bills.find(
     (candidate) => candidate.billKey === focusedBillKey.value
   );
   if (!bill) return;
   bill.rows = rows.map((row, sortOrder) => ({
     clientRowKey: row.clientRowKey,
+    ...(row.restoreRef ? { restoreRef: { ...row.restoreRef } } : {}),
+    ...(row.restoreOriginalValues ? { restoreOriginalValues: JSON.parse(JSON.stringify(row.restoreOriginalValues)) as Record<string, unknown> } : {}),
     ...(row.rowKey ? { rowKey: row.rowKey } : {}),
     sortOrder,
     ...(row.itemCode ? { itemCode: row.itemCode } : {}),
@@ -1962,7 +1982,7 @@ const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
 const autosaveLabel = computed(() =>
-  contractDraftSaveStatusText({
+  pendingSaveResult.value ? "保存结果待核对" : !online.value ? "离线，当前输入已保留" : contractDraftSaveStatusText({
     formalSaveCompleted: formalSaveCompleted.value,
     dirty: dirty.value,
     saveState: saveState.value
@@ -1970,6 +1990,7 @@ const autosaveLabel = computed(() =>
 );
 
 const saveReceiptText = computed(() => {
+  if (lastSavedAt.value === null) return "";
   return contractDraftSaveReceiptText({
     formalSaveCompleted: formalSaveCompleted.value,
     savedRevision: sessionSavedRevision.value,

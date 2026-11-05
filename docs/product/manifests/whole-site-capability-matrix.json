@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "562d835fc0bb56cfdb67797de6f40be7ced2e24c0b8bbe212352b9cbcc29ac04",
+      "sha256": "991a11b8cee7334d9f62f0797a1b684d990b7f4720a140ef72e38a53efcfd69c",
       "status": "ready",
       "summary": {
-        "routeCount": 702
+        "routeCount": 703
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "49de057bead1e949ad66738805ee4d324e1ed752d788145d9c4b335752cb5bd0",
+      "sha256": "d3c886704f136a16d23502568689bc5dc5d309c8d8973858c9547e5230fe15a3",
       "status": "ready",
       "summary": {
         "apiModuleCount": 40,
-        "exportedFunctionCount": 678,
-        "transportWrapperCount": 656,
+        "exportedFunctionCount": 679,
+        "transportWrapperCount": 657,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 695,
+        "mainRequestBindingCount": 696,
         "ticketFollowupCount": 4,
-        "requestEdgeCount": 683,
-        "productionConsumerCount": 562,
+        "requestEdgeCount": 684,
+        "productionConsumerCount": 563,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,18 +42,18 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "70a5d126c86476a031a0fa63241f3f513c16a31f3bc363033177c0866c1cf710",
+      "sha256": "4dba32b4bc5a6d57c911e7a097bc786e541fa1bd75d0c2288333f73860754567",
       "status": "ready",
       "summary": {
         "registeredActionCount": 397,
         "pageActionCount": 56,
         "backgroundActionCount": 341,
-        "reachableVueFileCount": 200,
+        "reachableVueFileCount": 202,
         "routeRootCount": 70,
-        "totalVueFileCount": 214,
-        "parsedVueFileCount": 214,
-        "reachableProductionModuleCount": 346,
-        "templateEventDirectiveCount": 1240,
+        "totalVueFileCount": 216,
+        "parsedVueFileCount": 216,
+        "reachableProductionModuleCount": 348,
+        "templateEventDirectiveCount": 1273,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 387,
         "candidateProductionMutationConsumerCount": 387,
@@ -64,24 +64,24 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "234e1afeb31971eb921cc78857685aa523c3885e21ae3616d859f8e4122a323d",
+      "sha256": "99d402c4f96e24b2c6551e4224dc21022009bc9a95df96decea7c08b7b50261d",
       "status": "ready",
       "summary": {
-        "routeCount": 702,
-        "exactRouteCount": 702,
-        "normalizedRouteCount": 702,
+        "routeCount": 703,
+        "exactRouteCount": 703,
+        "normalizedRouteCount": 703,
         "classificationOverrideCount": 222,
         "consumerSurfaceOverrideCount": 38,
         "classificationOverrideSha256": "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df",
         "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-        "derivedProductionPageCount": 480,
-        "pageRouteCount": 498,
+        "derivedProductionPageCount": 481,
+        "pageRouteCount": 499,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 97,
         "internalTaskCount": 37,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 551,
+          "web_api_wrapper": 552,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,13 +93,13 @@
     }
   },
   "summary": {
-    "routeCount": 702,
-    "pageRouteCount": 498,
+    "routeCount": 703,
+    "pageRouteCount": 499,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 97,
     "internalTaskRouteCount": 37,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 695,
+    "mainRequestBindingCount": 696,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
@@ -2346,6 +2346,48 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/contract-drafts/:contractVersionId/save-requests/:idempotencyKey",
+        "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+        "controller": "ContractDraftController",
+        "handler": "saveResult",
+        "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "contract.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractDraftSaveResult",
+          "method": "GET",
+          "path": "/contract-drafts/:param/save-requests/:param",
+          "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
           ]
         }
       ],

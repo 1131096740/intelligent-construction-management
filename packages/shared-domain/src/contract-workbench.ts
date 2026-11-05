@@ -263,6 +263,7 @@ export interface ContractWorkbenchReadModel {
     draftRevision: number;
     documentContentRevision: number;
     documentContentFingerprint: string | null;
+    layoutTemplateVersionId?: string | null;
     contractGovernanceVersion?: number | null;
     numericProtocolVersion?: number;
     amountYuan?: string | null;
