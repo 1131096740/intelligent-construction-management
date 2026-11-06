@@ -13,7 +13,7 @@ import {
   ref,
   watch
 } from "vue";
-import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
   abandonSpotProcurementDraft,
@@ -92,7 +92,14 @@ const editEditorPending = ref(false);
 const editEditorBuffered = ref(false);
 const editCloseConfirm = ref(false);
 const editGridSession = ref(0);
-const hasUnsavedEdit = computed(() => editSignature() !== savedEditSignature || editEditorBuffered.value);
+interface EditSession {procurementId: string; versionId: string; routeGeneration: number}
+const editSession = ref<EditSession | null>(null);
+function editSessionCurrent(session: EditSession | null) {
+  return Boolean(session && editSession.value === session && reviewComponentActive &&
+    detailRouteGeneration === session.routeGeneration && procurementId.value === session.procurementId &&
+    detail.value?.procurement.id === session.procurementId && detail.value.currentVersion.id === session.versionId);
+}
+const hasUnsavedEdit = computed(() => editSignature() !== savedEditSignature.value || editEditorBuffered.value);
 function editEditorInput(state: {pending: boolean; edited: boolean}) {
   editEditorPending.value = state.pending;
   editEditorBuffered.value = state.pending && (editEditorBuffered.value || state.edited);
@@ -105,12 +112,13 @@ function closeEdit() {
   if (actionBusy.value) return;
   clearTimeout(editSaveTimer);
   if (hasUnsavedEdit.value) editCloseConfirm.value = true;
-  else editVisible.value = false;
+  else discardEdit();
 }
 function discardEdit() {
   clearTimeout(editSaveTimer);
   editCloseConfirm.value = false;
   editVisible.value = false;
+  editSession.value = null;
   editEditorPending.value = false;
   editEditorBuffered.value = false;
 }
@@ -118,27 +126,35 @@ function keepEdit() {editCloseConfirm.value = false; queueEditSave();}
 function beforeEditUnload(event: BeforeUnloadEvent) {
   if (editVisible.value && hasUnsavedEdit.value) {event.preventDefault(); event.returnValue = "";}
 }
-onBeforeRouteLeave(() => {
+function guardEditNavigation() {
   if (!editVisible.value || !hasUnsavedEdit.value) return true;
   editError.value = "当前填写尚未保存，请先确认单元格并保存，或关闭填写窗口后再离开";
   return false;
-});
+}
+onBeforeRouteLeave(guardEditNavigation);
+onBeforeRouteUpdate(guardEditNavigation);
 const confirmedEditSave = ref<{versionId: string; draftRevision: number} | null>(null);
 const serverDraftCheck = ref("");
 let editSaveTimer: ReturnType<typeof setTimeout> | undefined;
-let savedEditSignature = "";
+const savedEditSignature = ref("");
 const editSignature = () => JSON.stringify(editForm);
 function queueEditSave() {
   clearTimeout(editSaveTimer);
-  if (editEditorBuffered.value || editCloseConfirm.value || !editVisible.value || editMode.value !== "draft" || detail.value?.currentVersion.requestProtocolVersion !== 2 || editSaveBlocked.value || editSignature() === savedEditSignature) return;
+  if (!editSessionCurrent(editSession.value) || editEditorBuffered.value || editCloseConfirm.value || !editVisible.value || editMode.value !== "draft" || detail.value?.currentVersion.requestProtocolVersion !== 2 || editSaveBlocked.value || editSignature() === savedEditSignature.value) return;
   editSaveStatus.value = "有待保存修改";
   editSaveTimer = setTimeout(() => {if (!actionBusy.value && editVisible.value) void saveDraft(true);}, 800);
 }
 async function checkServerDraft() {
   const current = detail.value;
-  if (!current) return;
-  try {const fresh = await fetchSpotProcurementDetail(current.procurement.id); serverDraftCheck.value = `服务器当前材料：${fresh.lines.map(line => line.materialName).join("；")}。本页填写仍保留，请核对后再重新打开草稿，当前不会自动覆盖。`;}
-  catch (error) {serverDraftCheck.value = formatUnknownApiError(error, "暂未读到服务器内容，请保留当前页面稍后核对");}
+  const session = editSession.value;
+  if (!current || !editSessionCurrent(session)) return;
+  try {
+    const fresh = await fetchSpotProcurementDetail(current.procurement.id);
+    if (!editSessionCurrent(session)) return;
+    serverDraftCheck.value = `服务器当前材料：${fresh.lines.map(line => line.materialName).join("；")}。本页填写仍保留，请核对后再重新打开草稿，当前不会自动覆盖。`;
+  } catch (error) {
+    if (editSessionCurrent(session)) serverDraftCheck.value = formatUnknownApiError(error, "暂未读到服务器内容，请保留当前页面稍后核对");
+  }
 }
 
 const editQuotationFiles = ref<UploadFile[]>([]);
@@ -527,6 +543,7 @@ async function openEdit(mode: "draft" | "version" = "draft") {
       current = fresh;
       confirmedEditSave.value = null;
     } catch (error) {
+      if (!reviewComponentActive || detailRouteGeneration !== expectedGeneration || procurementId.value !== expectedProcurementId) return;
       actionState.value = "error";
       actionMessage.value = formatUnknownApiError(error, "草稿未能重新读取，请稍后再打开，原保存结果不变");
       return;
@@ -539,6 +556,7 @@ async function openEdit(mode: "draft" | "version" = "draft") {
   editEditorBuffered.value = false;
   editCloseConfirm.value = false;
   editGridSession.value++;
+  editSession.value = {procurementId: current.procurement.id, versionId: current.currentVersion.id, routeGeneration: detailRouteGeneration};
   editForm.applicationDepartment = current.currentVersion.applicationDepartment ?? "";
   editForm.applicationName = current.currentVersion.applicationName ?? "";
   editForm.requestedArrivalAt = toDateInput(current.currentVersion.requestedArrivalAt ?? undefined);
@@ -559,7 +577,7 @@ async function openEdit(mode: "draft" | "version" = "draft") {
   editReferencePhotoFiles.value = [];
   retainedAttachmentFileIds.value = activeSpotProcurementAttachmentIds(current.attachments);
   editError.value = "";
-  savedEditSignature = editSignature();
+  savedEditSignature.value = editSignature();
   editSaveStatus.value = "当前草稿已保存";
   editSaveBlocked.value = false;
   serverDraftCheck.value = "";
@@ -568,7 +586,9 @@ async function openEdit(mode: "draft" | "version" = "draft") {
 
 async function saveDraft(automatic = false) {
   clearTimeout(editSaveTimer);
+  const session = editSession.value;
   await nextTick();
+  if (!session || !editVisible.value || !editSessionCurrent(session)) return;
   if (editEditorPending.value && editEditorBuffered.value) {
     editError.value = "请先按Tab或Enter确认当前单元格，填写仍保留，本次尚未保存";
     return;
@@ -578,8 +598,8 @@ async function saveDraft(automatic = false) {
   const submittedSignature = JSON.stringify(submittedForm);
   const current = detail.value;
   if (!current) return;
-  const saveGeneration = detailRouteGeneration;
-  const saveIsCurrent = () => reviewComponentActive && detailRouteGeneration === saveGeneration && procurementId.value === current.procurement.id;
+  const mode = editMode.value;
+  const saveIsCurrent = () => editSessionCurrent(session);
   editError.value = "";
   let requestStarted = false;
   actionBusy.value = true;
@@ -597,6 +617,7 @@ async function saveDraft(automatic = false) {
         current.procurement.id,
         file
       );
+      if (!saveIsCurrent()) return;
       attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
     for (const file of selectedUploadFiles(editReferencePhotoFiles.value)) {
@@ -606,11 +627,13 @@ async function saveDraft(automatic = false) {
         current.procurement.id,
         file
       );
+      if (!saveIsCurrent()) return;
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
     const definitions = await fetchSpotProcurementApplicationDefinitions(
       current.procurement.project.id
     );
+    if (!saveIsCurrent()) return;
     const draft = {
       expectedDraftRevision: current.currentVersion.draftRevision,
       expectedVersionId: current.currentVersion.id,
@@ -635,7 +658,7 @@ async function saveDraft(automatic = false) {
       })),
       attachments
     };
-    if (editMode.value === "version") {
+    if (mode === "version") {
       requestStarted = true;
       await createSpotProcurementVersionWithCapability(current.procurement.id, {
         ...draft,
@@ -649,7 +672,7 @@ async function saveDraft(automatic = false) {
       );
       if (!saveIsCurrent()) return;
       if (typeof receipt.draftRevision === "number") confirmedEditSave.value = {versionId: draft.expectedVersionId, draftRevision: receipt.draftRevision};
-      savedEditSignature = submittedSignature;
+      savedEditSignature.value = submittedSignature;
       editSaveStatus.value = "草稿已保存，正在核对最新内容";
       const confirmed = await fetchSpotProcurementDetail(current.procurement.id);
       if (!saveIsCurrent()) return;
@@ -662,11 +685,11 @@ async function saveDraft(automatic = false) {
       detail.value = confirmed;
     }
     if (!saveIsCurrent()) return;
-    savedEditSignature = submittedSignature;
+    savedEditSignature.value = submittedSignature;
     editSaveStatus.value = automatic ? "已自动保存" : "草稿已保存";
     if (automatic) return;
     editVisible.value = false;
-    showSuccess(editMode.value === "version" ? "采购变更草稿已创建。" : "采购草稿已保存。");
+    showSuccess(mode === "version" ? "采购变更草稿已创建。" : "采购草稿已保存。");
     await loadDetail();
   } catch (error) {
     if (!saveIsCurrent()) return;
@@ -682,9 +705,11 @@ async function saveDraft(automatic = false) {
     const status = (error as {status?: number}).status;
     if (requestStarted && (status === 409 || !status || status >= 500)) {editSaveBlocked.value = true; editSaveStatus.value = "保存结果待核对，请保留当前填写并核对服务器最新内容";}
   } finally {
-    if (saveIsCurrent()) {
+    // A successful new-version save may reload a newer version in this same
+    // session. Release only this route/session's busy owner, never a new editor.
+    if (editSession.value === session && detailRouteGeneration === session.routeGeneration && procurementId.value === session.procurementId) {
       actionBusy.value = false;
-      if (editVisible.value && !editSaveBlocked.value && submittedSignature !== editSignature()) queueEditSave();
+      if (saveIsCurrent() && editVisible.value && !editSaveBlocked.value && submittedSignature !== editSignature()) queueEditSave();
     }
   }
 }
@@ -1753,7 +1778,7 @@ function selectedUploadFiles(files: UploadFile[]) {
 }
 
 function clearDetailRouteContext() {
-  clearTimeout(editSaveTimer);
+  discardEdit();
   detailRouteGeneration += 1;
   detailLoadRequestId += 1;
   submitOperationId += 1;

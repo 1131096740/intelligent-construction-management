@@ -35,3 +35,7 @@
 - 完成时提供可复核行为、指纹/检查结果和未通过事项，更新简短进度；不能把旧SHA收据或文档确认作为本票通过。
 
 **两轴补修：** 缓存、本人采购待办、原生缓冲保护、所选金额四项已实现并取得公开红绿证据；合15后真实Me桌面/手机通过，原20按源桥接保留，原PDF未变继承。PG541/CI540/202 SQL仅准备，旧前提待16统一。详见[补修收据](../../progress/2026-11-06-enterprise-simplification-task19-review-fixes.md)；待准确候选增量双审和独立merger，不提前关闭。
+
+**第二轮增量：** 原6a复审新增保存computed误拦与同record切单身份缺口已公开RED→最小GREEN；用户确认正式export router公共导航驱动，真实全app/DOM/HTTP不替换。详情新增update守卫与打开编辑时ID/版本/generation绑定，旧异步回执不污染新单；原6a收据/失败保留。[R2收据](../../progress/2026-11-06-enterprise-simplification-task19-review-fixes-r2.md)，待准确新候选窄回归/封包与原两轴再次复核，不提前关闭。
+
+**R2本地验证：** 新3项与受影响旧5项真实双端一次16/16（52秒）、原Web234及类型/lint/UI/E2E通过；API/Shared/PDF/PG源对6a无变，旧证据按实际源继承，旧20不冒当前全跑。准确新包待原两轴复审，治理源行号机械派生和原369由独立merger执行。

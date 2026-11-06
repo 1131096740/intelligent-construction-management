@@ -44,7 +44,8 @@ const manager={...actor,id:'manager',name:'合成项目经理',phone:'1380000000
 const project={id:'spot-project',code:'合成项目',name:'生产材料申请验收项目',isActive:true,status:'active',createdAt:now,updatedAt:now};
 let state={};
 let failConfirmationRead=false, confirmationReadPending=false;
-function reset(){failConfirmationRead=false;confirmationReadPending=false;state=Object.fromEntries(Prisma.dmmf.datamodel.models.map(m=>[m.name[0].toLowerCase()+m.name.slice(1),[]]));state.user=[actor,director,manager];state.project=[project];state.position=[{id:'director-position',key:'material_director'}];state.userPosition=[{id:'global-director',userId:director.id,projectId:null,positionId:'director-position'}];state.projectMember=[{id:'member',projectId:project.id,userId:actor.id,positionKey:'material_staff'},{id:'manager-member',projectId:project.id,userId:manager.id,positionKey:'project_manager'}];
+let holdNextConfirmationRead=false, confirmationHoldId=null, heldConfirmationRead=null;
+function reset(){if(heldConfirmationRead)heldConfirmationRead();holdNextConfirmationRead=false;confirmationHoldId=null;failConfirmationRead=false;confirmationReadPending=false;state=Object.fromEntries(Prisma.dmmf.datamodel.models.map(m=>[m.name[0].toLowerCase()+m.name.slice(1),[]]));state.user=[actor,director,manager];state.project=[project];state.position=[{id:'director-position',key:'material_director'}];state.userPosition=[{id:'global-director',userId:director.id,projectId:null,positionId:'director-position'}];state.projectMember=[{id:'member',projectId:project.id,userId:actor.id,positionKey:'material_staff'},{id:'manager-member',projectId:project.id,userId:manager.id,positionKey:'project_manager'}];
 const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=','base64');const hash=createHash('sha256').update(bytes).digest('hex');for(const user of [director,manager]){state.handwrittenSignatureVersion.push({id:'signature-'+user.id,userId:user.id,fileId:'signature-file-'+user.id,source:'canvas',contentSha256:hash,createdAt:now});state.fileObject.push({id:'signature-file-'+user.id,contentSha256:hash,storageStatus:'active',uploadedByUserId:user.id});}}
 reset();
 const clone=v=>v instanceof Date?new Date(v):Prisma.Decimal.isDecimal(v)?new Prisma.Decimal(v.toString()):Array.isArray(v)?v.map(clone):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,clone(x)])):v;
@@ -95,6 +96,11 @@ async function main(){
  app.use(req('express').json());
  app.use((request,response,next)=>{
   if(request.path==='/__spot_fixture/health')return response.json({status:'synthetic_http_only'});
+  if(request.path==='/__spot_fixture/hold-confirmation-read'&&request.method==='POST'){holdNextConfirmationRead=true;return response.json({armed:true});}
+  if(request.path==='/__spot_fixture/held-confirmation-read'&&request.method==='GET')return response.json({pending:heldConfirmationRead!==null});
+  if(request.path==='/__spot_fixture/release-confirmation-read'&&request.method==='POST'){if(heldConfirmationRead)heldConfirmationRead();return response.json({released:true});}
+  if(request.method==='PATCH'&&/^\/spot-procurements\/[^/]+\/draft$/.test(request.path)&&holdNextConfirmationRead)response.once('finish',()=>{if(response.statusCode>=200&&response.statusCode<300){holdNextConfirmationRead=false;confirmationHoldId=request.path.split('/')[2];}});
+  if(request.method==='GET'&&request.path===`/spot-procurements/${confirmationHoldId}`){confirmationHoldId=null;heldConfirmationRead=()=>{heldConfirmationRead=null;next();};return;}
   if(request.path==='/__spot_fixture/fail-confirmation-read'&&request.method==='POST'){failConfirmationRead=true;return response.json({armed:true});}
   if(request.method==='PATCH'&&/^\/spot-procurements\/[^/]+\/draft$/.test(request.path)&&failConfirmationRead)response.once('finish',()=>{if(response.statusCode>=200&&response.statusCode<300){failConfirmationRead=false;confirmationReadPending=true;}});
   if(request.method==='GET'&&/^\/spot-procurements\/[^/]+$/.test(request.path)&&confirmationReadPending){confirmationReadPending=false;return response.status(503).json({message:'合成保存后读取暂不可用'});}
