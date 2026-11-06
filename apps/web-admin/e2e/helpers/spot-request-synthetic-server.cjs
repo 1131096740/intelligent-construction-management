@@ -41,7 +41,8 @@ const director={...actor,id:'director',name:'合成物资主管',phone:'13800000
 const manager={...actor,id:'manager',name:'合成项目经理',phone:'13800000003',roleKeys:['project_manager'],globalRoleKeys:[]};
 const project={id:'spot-project',code:'合成项目',name:'生产材料申请验收项目',isActive:true,status:'active',createdAt:now,updatedAt:now};
 let state={};
-function reset(){state=Object.fromEntries(Prisma.dmmf.datamodel.models.map(m=>[m.name[0].toLowerCase()+m.name.slice(1),[]]));state.user=[actor,director,manager];state.project=[project];state.position=[{id:'director-position',key:'material_director'}];state.userPosition=[{id:'global-director',userId:director.id,projectId:null,positionId:'director-position'}];state.projectMember=[{id:'member',projectId:project.id,userId:actor.id,positionKey:'material_staff'},{id:'manager-member',projectId:project.id,userId:manager.id,positionKey:'project_manager'}];
+let failConfirmationRead=false, confirmationReadPending=false;
+function reset(){failConfirmationRead=false;confirmationReadPending=false;state=Object.fromEntries(Prisma.dmmf.datamodel.models.map(m=>[m.name[0].toLowerCase()+m.name.slice(1),[]]));state.user=[actor,director,manager];state.project=[project];state.position=[{id:'director-position',key:'material_director'}];state.userPosition=[{id:'global-director',userId:director.id,projectId:null,positionId:'director-position'}];state.projectMember=[{id:'member',projectId:project.id,userId:actor.id,positionKey:'material_staff'},{id:'manager-member',projectId:project.id,userId:manager.id,positionKey:'project_manager'}];
 const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=','base64');const hash=createHash('sha256').update(bytes).digest('hex');for(const user of [director,manager]){state.handwrittenSignatureVersion.push({id:'signature-'+user.id,userId:user.id,fileId:'signature-file-'+user.id,source:'canvas',contentSha256:hash,createdAt:now});state.fileObject.push({id:'signature-file-'+user.id,contentSha256:hash,storageStatus:'active',uploadedByUserId:user.id});}}
 reset();
 const clone=v=>v instanceof Date?new Date(v):Prisma.Decimal.isDecimal(v)?new Prisma.Decimal(v.toString()):Array.isArray(v)?v.map(clone):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,clone(x)])):v;
@@ -92,6 +93,10 @@ async function main(){
  app.use(req('express').json());
  app.use((request,response,next)=>{
   if(request.path==='/__spot_fixture/health')return response.json({status:'synthetic_http_only'});
+  if(request.path==='/__spot_fixture/fail-confirmation-read'&&request.method==='POST'){failConfirmationRead=true;return response.json({armed:true});}
+  if(request.method==='PATCH'&&/^\/spot-procurements\/[^/]+\/draft$/.test(request.path)&&failConfirmationRead)response.once('finish',()=>{if(response.statusCode>=200&&response.statusCode<300){failConfirmationRead=false;confirmationReadPending=true;}});
+  if(request.method==='GET'&&/^\/spot-procurements\/[^/]+$/.test(request.path)&&confirmationReadPending){confirmationReadPending=false;return response.status(503).json({message:'合成保存后读取暂不可用'});}
+
   if(request.path==='/__spot_fixture/session'){const person=request.query.actor==='director'?director:request.query.actor==='manager'?manager:actor;return response.json({...session,user:person,accessToken:tokens.signAccessToken(person)});}
   if(request.path==='/__spot_fixture/reset'&&request.method==='POST'){reset();return response.json({reset:true});}
   if(request.path==='/projects'&&request.method==='GET')return response.json([project]);

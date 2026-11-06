@@ -6,13 +6,14 @@ import type { BusinessSummaryTone } from "../../components/business-status-summa
 import type { UploadFile } from "tdesign-vue-next";
 import {
   computed,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   reactive,
   ref,
   watch
 } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
   abandonSpotProcurementDraft,
@@ -87,13 +88,49 @@ const editMode = ref<"draft" | "version">("draft");
 const editError = ref("");
 const editSaveStatus = ref("");
 const editSaveBlocked = ref(false);
+const editEditorPending = ref(false);
+const editEditorBuffered = ref(false);
+const editCloseConfirm = ref(false);
+const editGridSession = ref(0);
+const hasUnsavedEdit = computed(() => editSignature() !== savedEditSignature || editEditorBuffered.value);
+function editEditorInput(state: {pending: boolean; edited: boolean}) {
+  editEditorPending.value = state.pending;
+  editEditorBuffered.value = state.pending && (editEditorBuffered.value || state.edited);
+  if (editEditorBuffered.value) {
+    clearTimeout(editSaveTimer);
+    editSaveStatus.value = "当前单元格尚未确认，请按Tab或Enter后保存";
+  } else queueEditSave();
+}
+function closeEdit() {
+  if (actionBusy.value) return;
+  clearTimeout(editSaveTimer);
+  if (hasUnsavedEdit.value) editCloseConfirm.value = true;
+  else editVisible.value = false;
+}
+function discardEdit() {
+  clearTimeout(editSaveTimer);
+  editCloseConfirm.value = false;
+  editVisible.value = false;
+  editEditorPending.value = false;
+  editEditorBuffered.value = false;
+}
+function keepEdit() {editCloseConfirm.value = false; queueEditSave();}
+function beforeEditUnload(event: BeforeUnloadEvent) {
+  if (editVisible.value && hasUnsavedEdit.value) {event.preventDefault(); event.returnValue = "";}
+}
+onBeforeRouteLeave(() => {
+  if (!editVisible.value || !hasUnsavedEdit.value) return true;
+  editError.value = "当前填写尚未保存，请先确认单元格并保存，或关闭填写窗口后再离开";
+  return false;
+});
+const confirmedEditSave = ref<{versionId: string; draftRevision: number} | null>(null);
 const serverDraftCheck = ref("");
 let editSaveTimer: ReturnType<typeof setTimeout> | undefined;
 let savedEditSignature = "";
 const editSignature = () => JSON.stringify(editForm);
 function queueEditSave() {
   clearTimeout(editSaveTimer);
-  if (!editVisible.value || editMode.value !== "draft" || detail.value?.currentVersion.requestProtocolVersion !== 2 || editSaveBlocked.value || editSignature() === savedEditSignature) return;
+  if (editEditorBuffered.value || editCloseConfirm.value || !editVisible.value || editMode.value !== "draft" || detail.value?.currentVersion.requestProtocolVersion !== 2 || editSaveBlocked.value || editSignature() === savedEditSignature) return;
   editSaveStatus.value = "有待保存修改";
   editSaveTimer = setTimeout(() => {if (!actionBusy.value && editVisible.value) void saveDraft(true);}, 800);
 }
@@ -477,11 +514,31 @@ async function loadDetail() {
   }
 }
 
-function openEdit(mode: "draft" | "version" = "draft") {
-  const current = detail.value;
+async function openEdit(mode: "draft" | "version" = "draft") {
+  let current = detail.value;
+  if (editVisible.value || actionBusy.value) return;
+  if (mode === "draft" && current?.currentVersion.requestProtocolVersion === 2) {
+    const expectedProcurementId = current.procurement.id;
+    const expectedGeneration = detailRouteGeneration;
+    try {
+      const fresh = await fetchSpotProcurementDetail(expectedProcurementId);
+      if (!reviewComponentActive || detailRouteGeneration !== expectedGeneration || procurementId.value !== expectedProcurementId || editVisible.value) return;
+      detail.value = fresh;
+      current = fresh;
+      confirmedEditSave.value = null;
+    } catch (error) {
+      actionState.value = "error";
+      actionMessage.value = formatUnknownApiError(error, "草稿未能重新读取，请稍后再打开，原保存结果不变");
+      return;
+    }
+  }
   const actionKey = mode === "version" ? "create_version" : "edit_draft";
   if (!current || !actionEnabled(actionKey)) return;
   editMode.value = mode;
+  editEditorPending.value = false;
+  editEditorBuffered.value = false;
+  editCloseConfirm.value = false;
+  editGridSession.value++;
   editForm.applicationDepartment = current.currentVersion.applicationDepartment ?? "";
   editForm.applicationName = current.currentVersion.applicationName ?? "";
   editForm.requestedArrivalAt = toDateInput(current.currentVersion.requestedArrivalAt ?? undefined);
@@ -511,6 +568,11 @@ function openEdit(mode: "draft" | "version" = "draft") {
 
 async function saveDraft(automatic = false) {
   clearTimeout(editSaveTimer);
+  await nextTick();
+  if (editEditorPending.value && editEditorBuffered.value) {
+    editError.value = "请先按Tab或Enter确认当前单元格，填写仍保留，本次尚未保存";
+    return;
+  }
   if (actionBusy.value || editSaveBlocked.value) return;
   const submittedForm = JSON.parse(JSON.stringify(editForm)) as typeof editForm;
   const submittedSignature = JSON.stringify(submittedForm);
@@ -586,7 +648,18 @@ async function saveDraft(automatic = false) {
         draft
       );
       if (!saveIsCurrent()) return;
-      detail.value = {...current, currentVersion: {...current.currentVersion, draftRevision: receipt.draftRevision ?? current.currentVersion.draftRevision}};
+      if (typeof receipt.draftRevision === "number") confirmedEditSave.value = {versionId: draft.expectedVersionId, draftRevision: receipt.draftRevision};
+      savedEditSignature = submittedSignature;
+      editSaveStatus.value = "草稿已保存，正在核对最新内容";
+      const confirmed = await fetchSpotProcurementDetail(current.procurement.id);
+      if (!saveIsCurrent()) return;
+      if (confirmed.currentVersion.id !== draft.expectedVersionId ||
+        (current.currentVersion.requestProtocolVersion === 2 && confirmed.currentVersion.draftRevision !== receipt.draftRevision)) {
+        throw new Error("服务器草稿已变化，请保留当前填写并核对最新内容");
+      }
+      // Replace the confirmed content and its revision together. The form may
+      // already contain newer input, so this read must never refill editForm.
+      detail.value = confirmed;
     }
     if (!saveIsCurrent()) return;
     savedEditSignature = submittedSignature;
@@ -597,6 +670,13 @@ async function saveDraft(automatic = false) {
     await loadDetail();
   } catch (error) {
     if (!saveIsCurrent()) return;
+    if (confirmedEditSave.value?.versionId === current.currentVersion.id &&
+      confirmedEditSave.value.draftRevision !== current.currentVersion.draftRevision) {
+      editSaveBlocked.value = true;
+      editSaveStatus.value = "草稿已保存，最新内容暂未核对";
+      editError.value = "本次保存已成功，后续读取失败或草稿又有变化。当前填写仍保留，已停止自动写入；核对后重新打开，不会重发本次保存。";
+      return;
+    }
     editError.value = formatUnknownApiError(error, "采购草稿保存失败");
     editSaveStatus.value = "保存失败，当前填写保留";
     const status = (error as {status?: number}).status;
@@ -1703,8 +1783,9 @@ watch(procurementId, () => {
   clearDetailRouteContext();
   void loadDetail();
 });
-onMounted(() => void loadDetail());
+onMounted(() => {window.addEventListener("beforeunload", beforeEditUnload); void loadDetail();});
 onBeforeUnmount(() => {
+  window.removeEventListener("beforeunload", beforeEditUnload);
   clearTimeout(editSaveTimer);
   reviewComponentActive = false;
   withdrawalComponentActive = false;
@@ -2042,13 +2123,16 @@ onBeforeUnmount(() => {
       </section>
     </template>
 
+
+
     <t-dialog
-      v-model:visible="editVisible"
+      :visible="editVisible"
       :header="editMode === 'version' ? '创建采购变更草稿' : '编辑零星材料采购草稿'"
       width="min(1180px, 94vw)"
       :close-on-overlay-click="false"
       :confirm-btn="{ content: editMode === 'version' ? '创建变更草稿' : '保存草稿', loading: actionBusy, disabled: editSaveBlocked }"
       @confirm="() => saveDraft()"
+      @close="closeEdit"
     >
       <div class="edit-form">
         <p role="status">{{ editSaveStatus }}</p>
@@ -2124,7 +2208,7 @@ onBeforeUnmount(() => {
           />
         </label>
         <label v-if="detail?.currentVersion.requestProtocolVersion === 2"><span>申请预计总金额（元，可空）</span><t-input v-model="editForm.estimatedTotalAmount" /></label>
-        <ProcurementLineEditor v-model="editForm.lines" />
+        <ProcurementLineEditor :key="editGridSession" v-model="editForm.lines" @editor-input="editEditorInput" />
         <t-alert
           v-if="editError"
           theme="error"
@@ -2133,6 +2217,16 @@ onBeforeUnmount(() => {
         />
       </div>
     </t-dialog>
+
+    <t-dialog
+      :visible="editCloseConfirm"
+      header="当前填写尚未保存"
+      :close-on-overlay-click="false"
+      confirm-btn="放弃未保存改动并关闭"
+      cancel-btn="保留当前填写"
+      @confirm="discardEdit"
+      @close="keepEdit"
+    >当前单元格或草稿还有未保存的修改。保留填写后可先确认单元格，再保存到服务器。</t-dialog>
 
     <SensitiveActionDialog
       v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_approve'"

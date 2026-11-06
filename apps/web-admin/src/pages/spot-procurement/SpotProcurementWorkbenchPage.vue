@@ -2,11 +2,11 @@
 import type { SpotProcurementStatus } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
 import { MessagePlugin } from "tdesign-vue-next";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
 import { localBusinessForm } from "../../lib/local-business-form";
 import DurableFilePicker from "../../components/DurableFilePicker.vue";
-import { useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import { fetchProjects } from "../../api/core-flow-read.api";
 import {
@@ -74,11 +74,48 @@ const createError = ref("");
 type SavedRequestDraft = {id: string; versionId: string; revision: number};
 const savedRequestDraft = ref<SavedRequestDraft | undefined>();
 const createSaveStatus = ref("");
+const createEditorPending = ref(false);
+const createEditorBuffered = ref(false);
+const createCloseConfirm = ref(false);
+const hasUnsavedCreate = computed(() => createEditorBuffered.value || submissionUncertain.value ||
+  (savedRequestDraft.value ? JSON.stringify(createForm) !== savedCreateSignature :
+    createForm.lines.some(row => ["materialName", "specification", "unit", "quantity", "estimatedUnitPrice", "estimatedAmount", "note"].some(key => row[key]?.trim())) ||
+    [createForm.applicationDepartment, createForm.applicationName, createForm.requestedArrivalAt, createForm.estimatedTotalAmount, createForm.reason, createForm.note].some(value => value.trim())));
+function createEditorInput(state: {pending: boolean; edited: boolean}) {
+  createEditorPending.value = state.pending;
+  createEditorBuffered.value = state.pending && (createEditorBuffered.value || state.edited);
+  if (createEditorBuffered.value) {clearTimeout(createSaveTimer); createSaveStatus.value = "当前单元格尚未确认，请按Tab或Enter后保存";}
+  else queueCreateSave();
+}
+function closeCreate() {
+  if (createBusy.value) return;
+  clearTimeout(createSaveTimer);
+  if (hasUnsavedCreate.value) createCloseConfirm.value = true;
+  else createVisible.value = false;
+}
+function discardCreate() {
+  clearTimeout(createSaveTimer);
+  createCloseConfirm.value = false;
+  createVisible.value = false;
+  createEditorPending.value = false;
+  createEditorBuffered.value = false;
+}
+function keepCreate() {createCloseConfirm.value = false; queueCreateSave();}
+function beforeCreateUnload(event: BeforeUnloadEvent) {
+  if (createVisible.value && hasUnsavedCreate.value) {event.preventDefault(); event.returnValue = "";}
+}
+onMounted(() => window.addEventListener("beforeunload", beforeCreateUnload));
+onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeCreateUnload));
+onBeforeRouteLeave(() => {
+  if (!createVisible.value || !hasUnsavedCreate.value) return true;
+  createError.value = "当前填写尚未保存，请先确认单元格并保存，或关闭填写窗口后再离开";
+  return false;
+});
 let createSaveTimer: ReturnType<typeof setTimeout> | undefined;
 let savedCreateSignature = "";
 function queueCreateSave() {
   clearTimeout(createSaveTimer);
-  if (!createVisible.value || !recoveryReady.value || submissionUncertain.value || createDisabledReason.value || JSON.stringify(createForm) === savedCreateSignature) return;
+  if (createEditorBuffered.value || createCloseConfirm.value || !createVisible.value || !recoveryReady.value || submissionUncertain.value || createDisabledReason.value || JSON.stringify(createForm) === savedCreateSignature) return;
   createSaveStatus.value = "有待保存修改";
   createSaveTimer = setTimeout(() => {if (!createBusy.value) void persistDraft(true);}, 800);
 }
@@ -339,6 +376,9 @@ function changeLifecycleView() {
 
 async function openCreate() {
   const generation = ++createOpenGeneration;
+  createEditorPending.value = false;
+  createEditorBuffered.value = false;
+  createCloseConfirm.value = false;
   const owner = auth.user?.id ?? "";
   recoveryReady.value = false;
   recovery = undefined;
@@ -437,6 +477,11 @@ async function loadCapabilities(projectId: string) {
 function saveDraft() { return persistDraft(false); }
 
 async function persistDraft(automatic: boolean) {
+  await nextTick();
+  if (createEditorPending.value && createEditorBuffered.value) {
+    createError.value = "请先按Tab或Enter确认当前单元格，填写仍保留，本次尚未保存";
+    return;
+  }
   const requestedSignature = JSON.stringify(createForm);
   clearTimeout(createSaveTimer);
   if (createBusy.value) return;
@@ -895,8 +940,10 @@ onMounted(() => {
       </footer>
     </section>
 
+
+
     <t-dialog
-      v-model:visible="createVisible"
+      :visible="createVisible"
       header="新建零星材料采购申请"
       width="min(1180px, 94vw)"
       :close-on-overlay-click="false"
@@ -905,6 +952,7 @@ onMounted(() => {
       :confirm-btn="{ content: '保存草稿', theme: 'primary', loading: createBusy, disabled: Boolean(createDisabledReason) }"
       :cancel-btn="{ content: '取消', disabled: createBusy }"
       @confirm="saveDraft"
+      @close="closeCreate"
     >
       <p role="status">{{ createSaveStatus }}</p>
       <div
@@ -1005,7 +1053,7 @@ onMounted(() => {
           title="当前项目暂不能发起"
           :message="capabilities?.unavailableReason || '当前账号没有该项目的发起权限。'"
         />
-        <ProcurementLineEditor v-model="createForm.lines" />
+        <ProcurementLineEditor :key="localDraftId" v-model="createForm.lines" @editor-input="createEditorInput" />
         <section class="attachment-section">
           <div>
             <h3>报价单、材料清单或其他说明附件（可选）</h3>
@@ -1048,6 +1096,16 @@ onMounted(() => {
         />
       </div>
     </t-dialog>
+
+    <t-dialog
+      :visible="createCloseConfirm"
+      header="当前填写尚未保存"
+      :close-on-overlay-click="false"
+      confirm-btn="放弃未确认修改并关闭"
+      cancel-btn="保留当前填写"
+      @confirm="discardCreate"
+      @close="keepCreate"
+    >当前单元格或草稿还有未保存修改。本机暂存不代表服务器已保存；请先确认单元格，再保存草稿。</t-dialog>
   </section>
 </template>
 

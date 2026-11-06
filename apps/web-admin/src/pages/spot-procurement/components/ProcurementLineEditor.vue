@@ -30,6 +30,15 @@ const errors = computed(() => props.readonly ? [] : props.modelValue.flatMap((ro
 }));
 function locateError(error: {index: number; key: string}) {void grid.value?.editCell(error.index, error.key);}
 const total = computed(() => {try { return sumBusinessAmounts(props.modelValue.map(amount)); } catch { return "需修改输入"; }});
+const selectedTotal = computed(() => {
+  try {
+    const amounts = selected.value.flatMap(index => {const row = props.modelValue[index]; return row ? [amount(row)] : [];});
+    const known = amounts.filter((value): value is string => value !== null);
+    if (amounts.length && !known.length) return "所选预计金额待确定";
+    const knownAmount = sumBusinessAmounts(known);
+    return known.length < amounts.length ? `所选已知预计合计：${knownAmount} 元（部分预计金额待确定）` : `所选预计合计：${knownAmount} 元`;
+  } catch { return "所选预计金额需修改输入"; }
+});
 const source = computed(() => props.modelValue.map((row, index) => ({...row, __rowIndex: String(index), __selected: selected.value.includes(index) ? "true" : "false", __calculatedAmount: amount(row) ?? "待确定"})));
 function selectRows(all: boolean) {selected.value = all ? props.modelValue.map((_, index) => index) : [];}
 function toggle(index: number | null, shift: boolean) {
@@ -64,6 +73,7 @@ const columns = computed<ColumnRegular[]>(() => [{prop: "__selected", name: "选
       class="procurement-line-editor__row-actions"
     >
       <span>已选择 {{ selected.length }} 行</span>
+      <span>{{ selectedTotal }}</span>
       <t-button
         variant="outline"
         size="small"

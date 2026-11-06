@@ -138,3 +138,141 @@ test("four-decimal quantity errors stay in the cell and expose a Chinese locatio
  await expect(page.getByRole("button",{name:/第1行数量/})).toBeVisible();await expect(grid.getByRole("gridcell",{name:"1.23456",exact:true})).toBeVisible();
  await page.getByRole("button",{name:/第1行数量/}).click();await expect(input).toBeFocused();await expect(input).toHaveValue("1.23456");
 });
+
+test("auto-saved confirmed content and revision reopen as one snapshot before another field changes", async ({page, request}) => {
+  const session = await (await request.get("/api/__spot_fixture/session")).json();
+  const headers = {authorization: `Bearer ${session.accessToken}`};
+  await request.post("/api/__spot_fixture/reset", {headers});
+  const created = await request.post("/api/spot-procurements", {headers, data: {projectId: "spot-project", lines: [{materialName: "材料甲"}]}});
+  expect(created.status()).toBe(201);
+  const result = await created.json();
+  await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), session);
+  await page.goto(`/零星采购/${result.procurementId}`);
+  await page.getByText("审批与动作", {exact: true}).click();
+  await page.getByRole("button", {name: "编辑采购草稿", exact: true}).click();
+  const grid = page.getByTestId("spot-request-grid").locator("revo-grid");
+  await grid.getByRole("gridcell", {name: "材料甲", exact: true}).dblclick();
+  const input = grid.locator("revogr-edit input");
+  await input.fill("材料乙"); await input.press("Tab");
+  await expect(page.getByText("已自动保存", {exact: true})).toBeVisible();
+  expect((await (await request.get(`/api/spot-procurements/${result.procurementId}`, {headers})).json()).lines[0].materialName).toBe("材料乙");
+  await page.getByRole("button", {name: "取消", exact: true}).click();
+  await page.getByRole("button", {name: "编辑采购草稿", exact: true}).click();
+  await expect(grid.getByRole("gridcell", {name: "材料乙", exact: true})).toBeVisible();
+  const noteSaved = page.waitForResponse(response => response.request().method() === "PATCH" && response.url().endsWith(`/spot-procurements/${result.procurementId}/draft`));
+  await page.getByLabel("备注（可选）", {exact: true}).fill("只改备注");
+  expect((await noteSaved).status()).toBe(200);
+  await expect(page.getByText("已自动保存", {exact: true})).toBeVisible();
+  const saved = await (await request.get(`/api/spot-procurements/${result.procurementId}`, {headers})).json();
+  expect(saved.lines[0].materialName).toBe("材料乙");
+  expect(saved.currentVersion.note).toBe("只改备注");
+});
+
+test("a confirmed save followed by a failed read is reported saved and is not sent again", async ({page, request}) => {
+  const session = await (await request.get("/api/__spot_fixture/session")).json();
+  const headers = {authorization: `Bearer ${session.accessToken}`}; await request.post("/api/__spot_fixture/reset");
+  const result = await (await request.post("/api/spot-procurements", {headers, data: {projectId: "spot-project", lines: [{materialName: "保存前"}]}})).json();
+  await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), session);
+  await page.goto(`/零星采购/${result.procurementId}`); await page.getByText("审批与动作", {exact: true}).click();
+  await page.getByRole("button", {name: "编辑采购草稿", exact: true}).click();
+  expect((await request.post("/api/__spot_fixture/fail-confirmation-read")).status()).toBe(200);
+  const writes: number[] = [];
+  page.on("response", response => {if (response.request().method() === "PATCH" && response.url().endsWith(`/spot-procurements/${result.procurementId}/draft`)) writes.push(response.status());});
+  const grid = page.getByTestId("spot-request-grid").locator("revo-grid");
+  await grid.getByRole("gridcell", {name: "保存前", exact: true}).dblclick();
+  await grid.locator("revogr-edit input").fill("已确认保存"); await grid.locator("revogr-edit input").press("Tab");
+  await expect(page.getByText("草稿已保存，最新内容暂未核对", {exact: true})).toBeVisible();
+  expect((await (await request.get(`/api/spot-procurements/${result.procurementId}`, {headers})).json()).lines[0].materialName).toBe("已确认保存");
+  await expect(page.getByRole("button", {name: "保存草稿", exact: true})).toBeDisabled();
+  expect(writes).toEqual([200]);
+});
+
+for (const mode of ["existing", "new"] as const) test(`raw native Chinese buffer protects reload in ${mode} request`, async ({page, request}) => {
+  const session = await (await request.get("/api/__spot_fixture/session")).json();
+  const headers = {authorization: `Bearer ${session.accessToken}`}; await request.post("/api/__spot_fixture/reset");
+  await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), session);
+  if (mode === "existing") {
+    const result = await (await request.post("/api/spot-procurements", {headers, data: {projectId: "spot-project", lines: [{materialName: "已存材料"}]}})).json();
+    await page.goto(`/零星采购/${result.procurementId}`);
+  } else await page.goto("/零星采购工作台");
+  const open = async () => {
+    if (mode === "existing") {
+      await page.getByText("审批与动作", {exact: true}).click();
+      await page.getByRole("button", {name: "编辑采购草稿", exact: true}).click();
+    } else await page.getByRole("button", {name: "新建采购申请", exact: true}).click();
+  };
+  await open();
+  const grid = page.getByTestId("spot-request-grid").locator("revo-grid");
+  const focus = async () => {
+    await expect(grid).toBeVisible();
+    await grid.locator('revogr-data[col-type="colPinStart"] [data-rgrow="0"][data-rgcol="1"]').dblclick();
+  };
+  await focus();
+  const dialogs: string[] = [];
+  const dismissals: Promise<void>[] = [];
+  page.on("dialog", dialog => {dialogs.push(dialog.type()); dismissals.push(dialog.dismiss());});
+  await page.reload({waitUntil: "commit"});
+  expect(dialogs).toEqual([]); // Blank focus alone is not an unsaved change.
+  await open(); await focus();
+  const input = grid.locator("revogr-edit input"); await input.fill("中文尚未确认");
+  await expect(input).toHaveValue("中文尚未确认");
+  const originalDocument = await page.evaluateHandle(() => document);
+  const originalUrl = page.url();
+  // A cancelled real reload never commits a new document. Invoke the public
+  // browser reload, then observe its native dialog and the retained old input.
+  await page.evaluate(() => window.location.reload());
+  await expect.poll(() => dialogs).toEqual(["beforeunload"]);
+  await Promise.all(dismissals);
+  expect(await originalDocument.evaluate(previous => previous === document)).toBe(true);
+  expect(page.url()).toBe(originalUrl);
+  await originalDocument.dispose();
+  await expect(input).toHaveValue("中文尚未确认");
+  await page.getByRole("button", {name: "取消", exact: true}).click();
+  await expect(page.getByText("当前填写尚未保存", {exact: true})).toBeVisible();
+  await page.getByRole("button", {name: "保留当前填写", exact: true}).click();
+  await expect(grid).toBeVisible();
+  await expect.poll(async () => await input.isVisible() ? await input.inputValue() :
+    await grid.getByRole("gridcell", {name: "中文尚未确认", exact: true}).count() ? "中文尚未确认" : "").toBe("中文尚未确认");
+});
+
+test("selected estimated amounts distinguish partial unknown and a genuinely known zero", async ({page, request}) => {
+  const session = await (await request.get("/api/__spot_fixture/session")).json(); const headers = {authorization: `Bearer ${session.accessToken}`};
+  await request.post("/api/__spot_fixture/reset");
+  const result = await (await request.post("/api/spot-procurements", {headers, data: {projectId: "spot-project", lines: [
+    {materialName: "已知预计", estimatedAmount: "1.5340"}, {materialName: "未知预计"}, {materialName: "已知零额", estimatedAmount: "0.0000"}
+  ]}})).json();
+  await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), session);
+  await page.goto(`/零星采购/${result.procurementId}`); await page.getByText("审批与动作", {exact: true}).click();
+  await page.getByRole("button", {name: "编辑采购草稿", exact: true}).click();
+  const grid = page.getByTestId("spot-request-grid");
+  await grid.getByRole("columnheader", {name: "全选清单行", exact: true}).locator(".t-checkbox").click();
+  await expect(grid.getByText("已选择 3 行", {exact: true})).toBeVisible();
+  await expect(grid.getByText("所选已知预计合计：1.5340 元（部分预计金额待确定）", {exact: true})).toBeVisible();
+  await grid.getByRole("gridcell", {name: "选择第2行", exact: true}).locator(".t-checkbox").click();
+  await expect(grid.getByText("所选预计合计：1.5340 元", {exact: true})).toBeVisible();
+  await grid.getByRole("gridcell", {name: "选择第1行", exact: true}).locator(".t-checkbox").click();
+  await expect(grid.getByText("所选预计合计：0.0000 元", {exact: true})).toBeVisible();
+  await grid.getByRole("gridcell", {name: "选择第3行", exact: true}).locator(".t-checkbox").click();
+  await grid.getByRole("gridcell", {name: "选择第2行", exact: true}).locator(".t-checkbox").click();
+  await expect(grid.getByText("所选预计金额待确定", {exact: true})).toBeVisible();
+  await page.screenshot({path: test.info().outputPath("selected-unknown-is-not-zero.png"), fullPage: true});
+});
+
+
+test("an uncommitted editor buffer blocks the actual browser back route", async ({page, request}) => {
+  const session = await (await request.get("/api/__spot_fixture/session")).json(); const headers = {authorization: `Bearer ${session.accessToken}`};
+  await request.post("/api/__spot_fixture/reset");
+  const result = await (await request.post("/api/spot-procurements", {headers, data: {projectId: "spot-project", lines: [{materialName: "原材料"}]}})).json();
+  await page.addInitScript(value => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), session);
+  await page.goto("/零星采购工作台");
+  await page.getByText("查看详情", {exact: true}).filter({visible: true}).or(page.getByRole("button", {name: "继续填写", exact: true})).first().click();
+  await expect(page).toHaveURL(url => decodeURIComponent(url.pathname) === `/零星采购/${result.procurementId}`);
+  await page.getByText("审批与动作", {exact: true}).click(); await page.getByRole("button", {name: "编辑采购草稿", exact: true}).click();
+  const grid = page.getByTestId("spot-request-grid").locator("revo-grid");
+  await grid.getByRole("gridcell", {name: "原材料", exact: true}).dblclick();
+  const input = grid.locator("revogr-edit input"); await input.fill("返回前未确认");
+  await page.goBack({waitUntil: "commit"});
+  await expect(page).toHaveURL(url => decodeURIComponent(url.pathname) === `/零星采购/${result.procurementId}`);
+  await expect(page.getByText("当前填写尚未保存，请先确认单元格并保存，或关闭填写窗口后再离开", {exact: true})).toBeVisible();
+  await expect(input).toHaveValue("返回前未确认");
+});
