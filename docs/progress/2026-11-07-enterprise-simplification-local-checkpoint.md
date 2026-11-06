@@ -2,6 +2,14 @@
 
 仅记录私有工作树分片证据；本集成分支未纳入10/16业务代码，两票未关闭。当前13/45按阶段边界关闭。不是准确集成头全量验证、SQL迁移或资金提交安全验收。
 
+## 当日后继检查点
+
+- 10同一公开行为用例先在旧版实际失败：完整Word等价检查、8089个正文字符关联、原row108和5.4pt间距及严格schema2均通过后，两PDF表宽差2.800013pt超出原0.1pt容差。新版最终Word在同层保留start/end并按正式元素顺序添加等值left/right；该同一文件上传并送原Java81/r2转换。原用例未改，复验两表宽差均0，通过1/1；API类型/full lint通过，源码body3f4c56c0、service ede3a33e、processor3c999665。日志SHA 860f15fbe59c742607a82feb95753dcee1f5d456d298eff7095e601d9310cf7e，收据 /private/tmp/jg-task10-evidence-20261106/logical-margin-first-public-green-asrun.json。旧版本实际兼容、缓存和不支持内容拒绝仍须新版后继验证，不能将下方旧阶段收据直接移至新版；两次合成清理warning保留，不计清理通过。
+- 16准确冻结32源包f5b474062a1ed6ab7ca2e039bc42940200016ad04ad1007c924066c6674b7746：两目标2/2、完整62/62、API类型/full lint通过，收据SHA a5bf734903d3a1f8b0d963bae80f9f64486814ad6bee3919419f710fa8fe015f。原审查员在 /private/tmp/jg-task16-operating-scope-p1p2-incremental-review-20261107.md 确认后来Fact/Impact的延迟完整性入口、校验后CAS前的Project UPDATE NOWAIT两项Closed at source；32文件首尾无漂移。SQL安装、真实触发器/锁/ACL/COMMIT及错误映射仍未执行。
+- 16上述包与13项Web源并集41项，4次独立新服务中的分次40元、历史原结果查看桌面/手机均通过，原30秒/5秒/0重试条件保持；源码首尾和实际加载绑定一致，8个自有服务退出0。收据位于16私有树 apps/web-admin/test-results/task16-current-scope-compat-20261107/receipt.json。普通场景仅NULL经营启用范围；历史场景已有原B付40，浏览器新增POST为0，不代表整个准备过程零付款，不声称任务34激活或凭证字节本轮重验。资金更正清单新UI仍待验。
+
+以下是保留的早先阶段记录；“尚未实现/待复审”等时间态由本节明确后继更新，不改写旧收据的源码身份。
+
 ## 任务10
 
 - 布局阶段文件指纹body 1a77c6e5、service 1a4502c8、processor 801d6f1f，正式44be母版未改。45项被拆为45张小表的公开反例保留；修复后完整公开保存、排队、处理、双格式授权下载通过。实际DOCX46行、PDF17页；严格字形、A4、45项含045、总价1035、手改及签署文字通过。未测原生Word分页。

@@ -1,8 +1,8 @@
 ## 当前执行（2026-11-06，业务简化整套实施，父工单 #382）
 
-- [~] 截至11月7日，16私有树已落实合同历史/资金期初独立确认及历史集合revision；经营轴分片62 HTTP、API类型/lint通过，旧476仅精确语义桥接。新30/历史40保留与依据漂移409后刷新重选同键UI已按阶段源通过。SQL仍在补后来投影入口/锁序，未执行真实PG或迁移，不能因合成关闭16。[检查点](docs/progress/2026-11-07-enterprise-simplification-local-checkpoint.md)。
+- [~] 截至11月7日，16私有树已落实合同历史/资金期初独立确认及历史集合revision；后来投影入口/锁序两项已增量源码复审闭合，准确f5b474包实62 HTTP、API类型/lint通过，旧476仅精确语义桥接。当前分次付款/历史原结果桌面手机4/4通过，资金更正清单UI仍待验。SQL、真实PG及提交安全未验，不能因合成关闭16。[检查点](docs/progress/2026-11-07-enterprise-simplification-local-checkpoint.md)。
 
-- [~] 10私有树已修正文45项拆表，完整DOCX46行/PDF17页、旧无标记真实输出、缓存隔离、开头手写锚点保留通过；新增条款真实桌面/手机保存重读刷新2/2。global logical-margin差异已定位待修；删除/重排等UI与完整物理/治理/终审仍未完成。10/16业务未集成本分支，12仍等10；原生Word分页不计通过。[检查点](docs/progress/2026-11-07-enterprise-simplification-local-checkpoint.md)。
+- [~] 10私有树新版边距已取得实际双格式红绿：原PDF表宽差2.8pt→0，两组8089全文字形关联及签署行108例外保留；API类型/full lint通过。此前45项拆表、新增条款双端2/2为各自旧阶段证据；新版旧版本兼容、删除/重排等UI及完整物理/治理/终审仍未完成。10/16业务未集成本分支，12仍等10；原生Word分页不计通过。[检查点](docs/progress/2026-11-07-enterprise-simplification-local-checkpoint.md)。
 
 - [~] 文档提交b7d7c8ee推送意外触发既有自动CI含PG执行；已取消并核最终无活动job，10成功/7失败/9取消保留，不计10/16验收。不得再声称本轮远端零PG；私有候选真实PG门继续未满足，后续推送须避免未授权自动PG。[事件记录](docs/progress/2026-11-06-enterprise-simplification-auto-ci-boundary.md)。
 
