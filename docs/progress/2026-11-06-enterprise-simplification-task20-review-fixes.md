@@ -27,3 +27,11 @@
 ## 完成段
 
 合正式46f935后的业务源码无再变更；r2-write-1至7、r2-check-1至7全部实际exit0，709路由/663 wrappers/702绑定/408动作0阻塞，contractMutation80路由/22展示动作。主控预留独占窗口后136原 `pnpm test:ci-orchestration` 一次执行exit0，369pass/0fail/0skip/0cancel，10841.04ms；没有延长预算或重试代理短窗口。最终提交仅本记录/PROGRESS/生成清单，源码包与完整日志hash索引存外部证据目录，handoff给出准确clean SHA/seal，不在文档自引用自身SHA。
+
+## 9aa两轴通过后的测试证据路径补修
+
+原9aa同Standards/Spec复审均0，报告 `/private/tmp/jg-task20-{standards,spec}-9aa014a2.md` 保留。独立merger随后只读发现截图硬编码会覆盖原作者GREEN，暂停整合。只改两行：已有case截图改用 `info.outputPath(...)`，默认outputDir改为该工作树 `apps/web-admin/test-results/task20-general-request`（已在现有gitignore范围）；标准Playwright `--output` 可覆盖，现有pnpm exec透传无需改runner。业务/交互/断言/45秒预算/0retry均未改。
+
+证据根 `/private/tmp/jg-task20-output-path-fix-20261106-265b7bfe`。实际命令 `corepack pnpm@9.15.9 --filter @jiangkong/web-admin exec playwright test --config playwright.general-request.config.ts --project desktop-chromium --grep company_daily真实表格 --output /private/tmp/jg-task20-output-path-fix-20261106-265b7bfe/playwright-output`：1pass/8.1秒，生成唯一1366×1335 PNG于新root的case子目录，sha256 `3c37f1c27c4eea14dc1e3e9ae6f03792aa2504b423684370fbd83d4f6ddf961a`。`before-original-png.json`/`after-original-png.json`证明原目录全部37PNG（含6GREEN）路径/存在/字节/哈希集合完全不变。`verification.json`包含实际argv、默认/覆盖输出root、每张旧/新PNG哈希和业务diff0范围。
+
+E2E类型检查及仅改动e2e/config的scoped eslint均exit0；API/Prisma/Shared/Web src相对9aa diff0。未重跑无关529/18/369，原9aa全部通过与失败保持原来源。新cleancheckpoint/sourcepacket供最小增量复核，再由独立merger在自己的唯一目录运行18项；此处未合中央/push/close。

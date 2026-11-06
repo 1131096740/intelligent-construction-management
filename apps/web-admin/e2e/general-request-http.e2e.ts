@@ -58,7 +58,7 @@ for (const scope of ["company_daily", "project"] as const) test(`${scope}真实�
   await page.reload(); await expect(page.getByText("待综合部采购", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "综合部归档", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "发起付款申请", exact: true })).toHaveCount(0);
-  await page.screenshot({ path: `/private/tmp/jg-task20-evidence/${info.project.name}-${scope}.png`, fullPage: true });
+  await page.screenshot({ path: info.outputPath(`${info.project.name}-${scope}.png`), fullPage: true });
 });
 
 test("清单复制生成独立行，撤销后仍保留原填写并真实保存", async ({ page }) => {
