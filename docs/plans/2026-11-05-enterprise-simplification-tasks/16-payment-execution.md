@@ -1,6 +1,6 @@
 # 16：财务与综合主管共办实付及资金提交安全
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#398](https://github.com/1131096740/intelligent-construction-management/issues/398) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `local-implementation-pg-pending`；实时核03/05/15关闭并[领取#398](https://github.com/1131096740/intelligent-construction-management/issues/398#issuecomment-6677039026)。用户已确认合成公开HTTP/服务/真实UI边界；正常/异常/断连/响应丢失/竞争真实PG只准备未执行，本票不会因合成通过关闭。资源/SQL执行迁移/真实通知银行COS交易/main合并/部署与生产写仍未授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

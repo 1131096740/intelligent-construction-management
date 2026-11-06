@@ -1,6 +1,6 @@
 # 15：公司登记余额与公共现金期初闭环
 
-**状态：** `plan-confirmed` / `foundation-ready-for-review`；前置02/#384与07/#389已关闭，已[领取#397](https://github.com/1131096740/intelligent-construction-management/issues/397#issuecomment-6664198769)。原发布快照保留，执行以当前进度与评论为准。
+**状态：** `local-foundation-stage-complete` / `github-closed`；用户确认余额基础阶段，原三P2补修后两轴增量0/0、准确94183571独立整合通过并[关闭#397](https://github.com/1131096740/intelligent-construction-management/issues/397#issuecomment-6677009957)。FND-01待归还27/垫资26及44门仍未完成；真实PG仅准备，资源/SQL迁移/交易/部署及生产写另需授权。
 
 **已确认测试边界：** 资金账户/期初公开HTTP、公共服务及真实UI，以合成数据库验证每公司登记余额、唯一无所属公司公共现金、未知余额/来源/项目、防重与权限审计。真实PG约束及并发只准备，不运行、不连接银行；迁移执行、资源、真实交易、部署和生产仍另需授权。
 
@@ -41,3 +41,5 @@
 - 金额、权限、状态、文书、归档、审计用后端公开行为验证；最窄检查通过后做受影响包typecheck/lint，Web另做check:ui。依赖外部网关时明确模拟与真实边界。
 - 保留真实数据及既有未提交内容；本票不包括无关清理、生产变更、重启/删除状态不明旧资源。受控实验/迁移/远程写须在实际实施时按项目既有授权流程处理。
 - 完成时提供可复核行为、指纹/检查结果和未通过事项，更新简短进度；不能把旧SHA收据或文档确认作为本票通过。
+
+最终准确新跑与PG静态边界、原失败保留见[整合收据](../../progress/2026-11-06-enterprise-simplification-task15-integrated.md)。
