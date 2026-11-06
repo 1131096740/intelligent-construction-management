@@ -2,7 +2,7 @@
 
 2026-11-06。本记录覆盖并限定先前“PDF通过”的结论：生成成功、嵌入字体、文本提取和历史文件哈希不变均不足以证明页面可读。
 
-## 当前准确边界
+## 发现时准确边界（历史现场，最新状态见文末）
 
 - 候选：`f797594c`；独立Standards/Spec源码复审各0项。
 - 独立本地整合：`2f3d0c98a773e57dd9f66b7b41493374177ce470`，tree `df892382e8b84d37948ed56a52016e652861a95b`。
@@ -35,3 +35,9 @@
 工具版本：Python3.11.15/PyMuPDF1.26.7/fonttools4.60.1。后两者已有正式Task08 requirements精确pin，实际路径/版本/字体/引擎SHA由外部环境manifest声明并核验；缺工具、错误版本、字体/runner漂移明确fail，无默认解释器或静默skip。运行合同见[`README.task11-pdf.md`](../../services/api/test-support/README.task11-pdf.md)。原RED与新GREEN、manifest/产物/栅格及准确候选SHA见外部交接。
 
 **B未修复：** 产品processor三路仍直接convertDocxToPdf(buffer)，坏字体runtime可能生成空白PDF并标success。本补丁没有改converter/processor/extractor，也不称failclosed已修。任务10正式文书及44发布前必须用拟发布实际runtime/字体和真实文书验证发现/家族/不同非空glyph/分页/栅格；不得继承本机profile替代。原坏历史文件不自动修复，11仍待增量两轴复审/主控整合收票；无PG、迁移、部署或生产操作。
+
+## 当前收口（2026-11-06）
+
+准确`4327a75f`已推送，按确认的任务11本地公开边界关闭#393。原86项空字形PDF及09原82glyph0实物仍保留；新受控环境实际输出已过严格物理检查。独立Standards/Spec各0，独立merger新26/26及12实际PDF、治理和369通过，源码3135/198核验。详见[准确整合](2026-11-06-enterprise-simplification-task11-integrated.md)。
+
+这是A测试runtime字体发现条件的修正，不是B产品坏字体环境failclosed修复；后者仍未实现，10/44实际拟发布runtime/字体/文书硬门保留。未安装字体、改全局配置、重写原文件、执行真实PG/SQL/迁移或部署。发现时未推送/未关闭的描述为原现场，不代表当前状态。
