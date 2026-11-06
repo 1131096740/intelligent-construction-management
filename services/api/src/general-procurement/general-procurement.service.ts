@@ -1,4 +1,6 @@
-import { GENERAL_PROCUREMENT_ENTRY_DEFINITION } from "./general-procurement-entry.definition";
+import { generalRequestEstimateText } from "./general-procurement-request-facts";
+import { GeneralProcurementRequestService } from "./general-procurement-request.service";
+import { GENERAL_PROCUREMENT_ENTRY_DEFINITION, GENERAL_PROCUREMENT_REQUEST_ENTRY_DEFINITION } from "./general-procurement-entry.definition";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, type GeneralProcurement } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
@@ -6,8 +8,7 @@ import { AuthService } from "../auth/auth.service";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
 import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { FileService } from "../file/file.service";
-import { createHash } from "node:crypto";
-import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_STATUS_LABELS } from "@jiangkong/shared-domain";
+import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_STATUS_LABELS, LEGACY_GENERAL_PROCUREMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
@@ -20,17 +21,17 @@ import type { ListGeneralProcurementDto, CreateGeneralProcurementDto, ReviewGene
 @Injectable()
 export class GeneralProcurementService {
   constructor(private readonly prisma: PrismaService, private readonly visibility: ProjectVisibilityService,
-    private readonly numbering: BusinessNumberingService, private readonly audit: AuditService, private readonly auth: AuthService, private readonly files: FileService) {}
+    _numbering: BusinessNumberingService, private readonly audit: AuditService, private readonly auth: AuthService, private readonly files: FileService, private readonly requests: GeneralProcurementRequestService) {}
 
   async options(actorUserId: string) {
     await this.listRoles(actorUserId);
     const visible = await this.visibility.visibleProjectIds(actorUserId);
     const [projects, companies] = await Promise.all([
       this.prisma.project.findMany({ where: { id: { in: visible }, isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-      this.prisma.companyEntity.findMany({ where: { isActive: true, dataStatus: "complete" }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+      this.prisma.companyEntity.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } })
     ]);
-    return { entryDefinition: GENERAL_PROCUREMENT_ENTRY_DEFINITION, projects, companies, categories: GENERAL_PROCUREMENT_CATEGORIES,
-      canCreate: projects.length > 0 && companies.length > 0 };
+    return { entryDefinition: GENERAL_PROCUREMENT_ENTRY_DEFINITION, requestEntryDefinition: GENERAL_PROCUREMENT_REQUEST_ENTRY_DEFINITION, projects, companies, categories: GENERAL_PROCUREMENT_CATEGORIES,
+      canCreate: true, canCreateCompanyDaily: true };
   }
 
   private async listRoles(actorUserId: string) {
@@ -50,9 +51,10 @@ export class GeneralProcurementService {
     const all = roles.some((role) => !role.projectId && ["chairman", "general_manager", "comprehensive_director"].includes(role.key));
     const financeGlobal = roles.some((role) => !role.projectId && ["general_manager", "finance_director", "finance_staff"].includes(role.key));
     const managedProjects = roles.filter((role) => role.key === "project_manager" && role.projectId).map((role) => role.projectId!);
+    const comprehensiveProjects = roles.filter(role => role.key === "comprehensive_director" && role.projectId).map(role => role.projectId!);
     const financeProjects = roles.filter((role) => ["finance_director", "finance_staff"].includes(role.key) && role.projectId).map((role) => role.projectId!);
     const access: Prisma.GeneralProcurementWhereInput = all ? {} : { OR: [
-      { applicantUserId: actorUserId }, { projectId: { in: managedProjects } },
+      { applicantUserId: actorUserId }, { projectId: { in: managedProjects } }, { requestProtocolVersion: 2, projectId: { in: comprehensiveProjects } },
       { status: "archived", ...(financeGlobal ? {} : { projectId: { in: financeProjects } }) }
     ] };
     const search = query.search?.trim();
@@ -63,49 +65,26 @@ export class GeneralProcurementService {
         { applicantNameSnapshot: { contains: search, mode: "insensitive" as const } }, { projectId: { in: matchedProjects.map((project) => project.id) } } ] }] : [])
     ] };
     const rows = await this.prisma.generalProcurement.findMany({ where, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize });
-    const projects = await this.prisma.project.findMany({ where: { id: { in: rows.map((row) => row.projectId) } }, select: { id: true, name: true } });
-    return { items: rows.map((row) => ({ id: row.id, code: row.code, projectName: projects.find((item) => item.id === row.projectId)?.name ?? "所属项目",
+    const projects = await this.prisma.project.findMany({ where: { id: { in: rows.flatMap((row) => row.projectId ? [row.projectId] : []) } }, select: { id: true, name: true } });
+    return { items: rows.map((row) => ({ id: row.id, code: row.code, projectName: projects.find((item) => item.id === row.projectId)?.name ?? "公司日常",
       applicantName: row.applicantNameSnapshot, categoryLabel: GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === row.category)?.label ?? "其他物资或服务",
-      reason: row.reason, requestedAmountCents: row.requestedAmountCents.toString(), status: row.status, statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status], updatedAt: row.updatedAt })),
+      reason: row.reason, requestProtocolVersion: row.requestProtocolVersion, estimatedAmount: generalRequestEstimateText(row.estimatedAmount), requestedAmountCents: row.requestedAmountCents?.toString() ?? null, status: row.status, statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status], updatedAt: row.updatedAt })),
       total: await this.prisma.generalProcurement.count({ where }), page: query.page, pageSize: query.pageSize };
   }
 
   async create(actorUserId: string, input: CreateGeneralProcurementDto) {
-    const amount = parseMoneyCentsInput(input.requestedAmountCents, "申请金额格式不正确");
-    if (amount <= 0n) throw new BadRequestException("申请金额必须大于零");
-    const fingerprint = createHash("sha256").update(JSON.stringify([input.projectId, input.companyEntityId, input.category, input.reason.trim(), amount.toString()])).digest("hex");
-    return this.prisma.$transaction(async (tx) => {
-      await lockMasterDataRow(tx, "Project", input.projectId);
-      await lockMasterDataRow(tx, "CompanyEntity", input.companyEntityId);
-      const actor = await generalProcurementActor(tx, this.visibility, actorUserId, input.projectId);
-      const visible = await this.visibility.visibleRequestedProjectIdsInTransaction(tx, actorUserId, [input.projectId]);
-      if (!visible.includes(input.projectId)) throw new ForbiddenException("当前账号无权为该项目申请采购");
-      const company = await tx.companyEntity.findFirst({ where: { id: input.companyEntityId, isActive: true, dataStatus: "complete" } });
-      if (!company) throw new BadRequestException("费用承担公司不存在、已停用或资料未补齐");
-      const deleted = await tx.auditLog.findFirst({ where: { action: "general_procurement.draft.delete", metadata: { path: ["requestKey"], equals: input.requestKey } }, select: { id: true } });
-      if (deleted) throw new ConflictException("此草稿已删除，请重新发起申请");
-      const existing = await tx.generalProcurement.findUnique({ where: { requestKey: input.requestKey } });
-      if (existing) {
-        if (existing.applicantUserId !== actorUserId || existing.creationFingerprint !== fingerprint) throw new ConflictException("重复提交内容不一致，请刷新后核对");
-        return { id: existing.id, code: existing.code, revision: existing.revision };
-      }
-      const row = await tx.generalProcurement.create({ data: {
-        requestKey: input.requestKey, creationFingerprint: fingerprint, code: await this.numbering.allocateDaily(tx, "ZHCG"),
-        projectId: input.projectId, companyEntityId: company.id, companyNameSnapshot: company.name,
-        applicantUserId: actor.id, applicantNameSnapshot: actor.name, category: input.category, reason: input.reason.trim(), requestedAmountCents: amount
-      } });
-      await this.audit.record(tx, { actorUserId, action: "general_procurement.create", businessType: "general_procurement", businessId: row.id, metadata: { code: row.code } });
-      return { id: row.id, code: row.code, revision: row.revision };
-    });
+    return this.requests.create(actorUserId, input);
   }
 
   async deleteUnsubmittedDraft(id: string, actorUserId: string, revision: number) {
+    const current = await this.prisma.generalProcurement.findUnique({ where: { id } });
+    if (current?.requestProtocolVersion === 2) return this.requests.deleteUnsubmittedDraft(id, actorUserId, revision);
     return this.prisma.$transaction(async (tx) => {
       // Same parent lock order as creation: an old create retry cannot resurrect deletion.
       const source = await tx.generalProcurement.findUnique({ where: { id }, select: { projectId: true, companyEntityId: true } });
       if (!source) throw new NotFoundException("采购草稿不存在或已删除");
-      await lockMasterDataRow(tx, "Project", source.projectId);
-      await lockMasterDataRow(tx, "CompanyEntity", source.companyEntityId);
+      if (source.projectId) await lockMasterDataRow(tx, "Project", source.projectId);
+      if (source.companyEntityId) await lockMasterDataRow(tx, "CompanyEntity", source.companyEntityId);
       const row = await this.lock(tx, id, revision);
       await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
       if (row.applicantUserId !== actorUserId) throw new ForbiddenException("只有申请人可以删除采购草稿");
@@ -118,6 +97,8 @@ export class GeneralProcurementService {
   }
 
   async submit(id: string, actorUserId: string, revision: number) {
+    const source = await this.prisma.generalProcurement.findUnique({ where: { id } });
+    if (source?.requestProtocolVersion === 2) return this.requests.submit(id, actorUserId, revision);
     return this.prisma.$transaction(async (tx) => {
       const row = await this.lock(tx, id, revision);
       await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
@@ -134,13 +115,15 @@ export class GeneralProcurementService {
       const submittedAt = new Date().toISOString();
       const updated = await tx.generalProcurement.update({ where: { id }, data: { status: "approval_pending", revision: { increment: 1 }, approvalInstanceId: instance.id,
         companyNameSnapshot: company.name, submissions: [...snapshots, { approvalInstanceId: instance.id, submittedAt, definitionSnapshot: GENERAL_PROCUREMENT_ENTRY_DEFINITION as unknown as Prisma.InputJsonValue, category: row.category, reason: row.reason,
-          requestedAmountCents: row.requestedAmountCents.toString(), projectId: row.projectId, companyEntityId: row.companyEntityId, companyName: company.name }] as Prisma.InputJsonValue } });
+          requestedAmountCents: row.requestedAmountCents?.toString() ?? null, projectId: row.projectId, companyEntityId: row.companyEntityId, companyName: company.name }] as Prisma.InputJsonValue } });
       await this.audit.record(tx, { actorUserId, action: "general_procurement.submit", businessType: "general_procurement", businessId: id, metadata: { approvalInstanceId: instance.id, revision: updated.revision } });
       return { id, status: updated.status, revision: updated.revision };
     });
   }
 
   async review(id: string, actorUserId: string, input: ReviewGeneralProcurementDto) {
+    const source = await this.prisma.generalProcurement.findUnique({ where: { id } });
+    if (source?.requestProtocolVersion === 2) return this.requests.review(id, actorUserId, input);
     return this.prisma.$transaction(async (tx) => {
       const row = await this.lock(tx, id, input.revision);
       const actor = await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
@@ -182,6 +165,10 @@ export class GeneralProcurementService {
   }
 
   async updateDraft(id: string, actorUserId: string, input: UpdateGeneralProcurementDto) {
+    const source = await this.prisma.generalProcurement.findUnique({ where: { id } });
+    if (source?.requestProtocolVersion === 2) return this.requests.updateDraft(id, actorUserId, input);
+    assertLegacyDraft(input);
+    if (!LEGACY_GENERAL_PROCUREMENT_CATEGORIES.some(item => item.key === input.category)) throw new BadRequestException("此历史申请请沿用原费用类别");
     const amount = parseMoneyCentsInput(input.requestedAmountCents, "申请金额格式不正确");
     if (amount <= 0n) throw new BadRequestException("申请金额必须大于零");
     return this.prisma.$transaction(async (tx) => {
@@ -203,6 +190,8 @@ export class GeneralProcurementService {
   }
 
   async withdraw(id: string, actorUserId: string, input: WithdrawGeneralProcurementDto) {
+    const source = await this.prisma.generalProcurement.findUnique({ where: { id } });
+    if (source?.requestProtocolVersion === 2) return this.requests.withdraw(id, actorUserId, input);
     return this.prisma.$transaction(async (tx) => {
       const row = await this.lock(tx, id, input.revision);
       await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
@@ -235,6 +224,7 @@ export class GeneralProcurementService {
     return this.prisma.$transaction(async (tx) => {
       const source = await tx.generalProcurement.findUnique({ where: { id } });
       if (!source) throw new NotFoundException("采购申请不存在");
+      assertLegacyProcurement(source);
       const actor = await generalProcurementActor(tx, this.visibility, actorUserId, source.projectId);
       if (!actor.globalRoleKeys.includes("comprehensive_director")) throw new ForbiddenException("只有综合部主管可以撤销付款草稿");
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
@@ -247,11 +237,12 @@ export class GeneralProcurementService {
     });
   }
 
-  private async lock(tx: Prisma.TransactionClient, id: string, revision: number): Promise<GeneralProcurement> {
+  private async lock(tx: Prisma.TransactionClient, id: string, revision: number): Promise<LegacyProcurement> {
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "GeneralProcurement" WHERE "id" = ${id} FOR UPDATE`);
     const row = await tx.generalProcurement.findUnique({ where: { id } });
     if (!row) throw new NotFoundException("采购申请不存在或当前账号无权查看");
     if (row.revision !== revision) throw new ConflictException("申请已被更新，请刷新页面后重试");
+    assertLegacyProcurement(row);
     return row;
   }
 
@@ -280,9 +271,12 @@ export class GeneralProcurementService {
   }
 
   async detail(id: string, actorUserId: string) {
+    const current = await this.prisma.generalProcurement.findUnique({ where: { id } });
+    if (current?.requestProtocolVersion === 2) return this.requests.detail(current, actorUserId);
     return this.prisma.$transaction(async (tx) => {
       const row = await tx.generalProcurement.findUnique({ where: { id } });
       if (!row) throw new NotFoundException("采购申请不存在或当前账号无权查看");
+      assertLegacyProcurement(row);
       const actor = await generalProcurementActor(tx, this.visibility, actorUserId, row.projectId);
       if (!canReadGeneralProcurement(row, actor)) throw new ForbiddenException("当前账号无权查看该采购申请");
       const project = await tx.project.findUnique({ where: { id: row.projectId }, select: { name: true } });
@@ -301,7 +295,7 @@ export class GeneralProcurementService {
       return { id: row.id, code: row.code, projectId: row.projectId, projectName: project?.name ?? "所属项目",
         companyEntityId: row.companyEntityId, companyName: row.companyNameSnapshot, applicantName: row.applicantNameSnapshot,
         category: row.category, categoryLabel: GENERAL_PROCUREMENT_CATEGORIES.find((item) => item.key === row.category)?.label ?? "其他物资或服务",
-        reason: row.reason, requestedAmountCents: row.requestedAmountCents.toString(), status: row.status,
+        reason: row.reason, requestedAmountCents: row.requestedAmountCents?.toString() ?? null, status: row.status,
         statusLabel: GENERAL_PROCUREMENT_STATUS_LABELS[row.status], revision: row.revision,
         archive: archiveFile ? { fileId: archiveFile.id, fileName: archiveFile.originalName, note: row.archiveNote, archivedAt: row.archivedAt } : null,
         canDeleteDraft: canEdit && row.status === "draft" && !row.approvalInstanceId && instances.length === 0 && Array.isArray(row.submissions) && row.submissions.length === 0,
@@ -328,4 +322,14 @@ interface ProcurementNode extends FrozenApprovalNode {
   candidateUserIdsByRole: Partial<Record<RoleKey, string[]>>;
   roleScopesByRole: Partial<Record<RoleKey, "global" | "project">>;
   approvedRoleKeys?: RoleKey[];
+}
+
+type LegacyProcurement = GeneralProcurement & { projectId: string; companyEntityId: string; companyNameSnapshot: string; requestedAmountCents: bigint };
+function assertLegacyProcurement(row: GeneralProcurement): asserts row is LegacyProcurement {
+  if (row.requestProtocolVersion !== 1 || row.projectId == null || row.companyEntityId == null || row.companyNameSnapshot == null || row.requestedAmountCents == null)
+    throw new ConflictException("请从当前综合采购申请入口办理");
+}
+
+function assertLegacyDraft(input: UpdateGeneralProcurementDto): asserts input is UpdateGeneralProcurementDto & { projectId: string; companyEntityId: string; reason: string; requestedAmountCents: string } {
+  if (!input.projectId || !input.companyEntityId || !input.reason?.trim() || input.requestedAmountCents == null) throw new BadRequestException("请填齐项目、费用承担公司、用途和申请金额");
 }

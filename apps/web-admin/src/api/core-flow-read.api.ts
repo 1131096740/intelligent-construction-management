@@ -7320,21 +7320,19 @@ export interface UserOptionReadModel {
   name: string;
 }
 
-export interface CreateApprovalDelegationPayload {
-  actionKey?: "spot_procurement.approve";
-  resourceType?: "spot_procurement_approval_duty";
-  resourceId?: string;
-  toUserId: string;
-  startsAt: string;
-  endsAt: string;
-}
+export type ApprovalDelegationDutyScope =
+  | { actionKey: "spot_procurement.approve"; resourceType: "spot_procurement_approval_duty" }
+  | { actionKey: "general_procurement.approve"; resourceType: "general_procurement_approval_duty" };
+export type CreateApprovalDelegationPayload = {
+  resourceId?: string; toUserId: string; startsAt: string; endsAt: string;
+} & (ApprovalDelegationDutyScope | { actionKey?: never; resourceType?: never });
 
 export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
 }
 
 export function fetchApprovalDelegationDutyOptions() {
-  return readJson<Array<{value: string; label: string}>>("/approval-delegations/duty-options");
+  return readJson<Array<{value: string; label: string} & ApprovalDelegationDutyScope>>("/approval-delegations/duty-options");
 }
 
 export function fetchApprovalDelegationUserOptions(dutyId?: string) {

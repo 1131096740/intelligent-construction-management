@@ -154,7 +154,7 @@ const rows = computed(() => mapDelegationLedgerRows(rawRows.value, auth.user?.id
 const loading = ref(false);
 const message = ref("");
 
-const duties = ref<Array<{value: string; label: string}>>([]);
+const duties = ref<Array<{value: string; label: string; actionKey: "spot_procurement.approve" | "general_procurement.approve"; resourceType: "spot_procurement_approval_duty" | "general_procurement_approval_duty"}>>([]);
 const recipients = ref<Array<{value: string; label: string}>>([]);
 const draft = reactive({resourceId: "", toUserId: "", startsAt: "", endsAt: ""});
 const createVisible = ref(false);
@@ -187,7 +187,9 @@ async function saveDelegation() {
     const chinaTime=(value:string)=> {if(!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value))throw new Error("请填写正确的起止时间"); const time=new Date(`${value.replace(" ","T")}:00+08:00`);if(!Number.isFinite(time.getTime()))throw new Error("请填写正确的起止时间");return time.toISOString();};
     const startsAt=chinaTime(draft.startsAt);const endsAt=chinaTime(draft.endsAt);if(endsAt<=startsAt)throw new Error("失效时间必须晚于生效时间");
     saving.value=true;
-    await createDelegationWithCapability({toUserId:draft.toUserId,startsAt,endsAt,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:draft.resourceId});
+    const duty = duties.value.find(item => item.value === draft.resourceId);
+    if (!duty || !((duty.actionKey === "spot_procurement.approve" && duty.resourceType === "spot_procurement_approval_duty") || (duty.actionKey === "general_procurement.approve" && duty.resourceType === "general_procurement_approval_duty"))) throw new Error("职责范围已变化，请刷新后重新选择");
+    await createDelegationWithCapability({toUserId:draft.toUserId,startsAt,endsAt,...(duty.actionKey === "spot_procurement.approve" ? {actionKey:"spot_procurement.approve" as const,resourceType:"spot_procurement_approval_duty" as const} : {actionKey:"general_procurement.approve" as const,resourceType:"general_procurement_approval_duty" as const}),resourceId:draft.resourceId});
     createVisible.value=false;messageTheme.value="success";message.value="委托已保存，本人与受托人均可办理当前职责。";await loadDelegations();
   } catch(error){createError.value=error instanceof Error?error.message:"委托保存失败，请重试";}finally{saving.value=false;}
 }

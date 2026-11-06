@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 398,
+    "activeBusinessActionCount": 399,
     "technicalActionCount": 9,
-    "activeBindingCount": 459,
+    "activeBindingCount": 461,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 10,
     "uncoveredRetiredWriteCount": 0,
@@ -2765,6 +2765,23 @@
       "causalVerified": true
     },
     {
+      "id": "general-procurement.legacy.updateProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/draft"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "general-procurement.reviewProcurement",
       "status": "unified_candidate",
       "usage": "background",
@@ -2813,7 +2830,7 @@
         "POST /general-procurements/:param/draft"
       ],
       "bindingCount": 2,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {

@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+import { runPreparedGeneralRequestPgCase, type PreparedGeneralRequestPgHttp } from "./general-procurement-request.http.pg.prepared";
 import { verifyApprovedPdf } from "./approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
@@ -81,6 +83,55 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
 
   });
   afterAll(async () => { if (app) await app.close(); });
+
+
+  // Task 20 additions are opt-in with this existing PG16 group. They have not been run.
+  // The original 12 tests below retain their pre-cutover create/serial assumptions unchanged.
+  async function preparedGeneralRequestAdapter(): Promise<{ http: PreparedGeneralRequestPgHttp; close(): Promise<void> }> {
+    const db = app.get(PrismaService);
+    const secondDirector = await actor("comprehensive_director"); await sign(secondDirector.token);
+    let createdId = "";
+    const tokens = { applicant: employee.token, directorA: director.token, directorB: secondDirector.token, manager: manager.token };
+    const http: PreparedGeneralRequestPgHttp = {
+      create: async scope => {
+        const reply = await request("/general-procurements", "POST", { requestKey: randomUUID(), requestProtocolVersion: 2, scope,
+          projectId: scope === "project" ? projectId : null, companyEntityId: null, category: "office_supplies", reason: "", requestedAmountCents: null,
+          lines: [{ id: randomUUID(), name: "任务20待定办公需求", specification: null, unit: null, quantity: null, unitPrice: null, estimatedAmount: null, requiredOn: null, note: null }] });
+        createdId = reply.body.id; return reply;
+      },
+      submit: (id, revision) => request(`/general-procurements/${id}/submission`, "POST", { revision }),
+      detail: id => request(`/general-procurements/${id}`),
+      review: (id, actorKey, input) => request(`/general-procurements/${id}/review`, "POST", input, tokens[actorKey]),
+      readPersistedNullableFacts: async id => {
+        const row = await db.generalProcurement.findUniqueOrThrow({ where: { id } });
+        const line = (row.lines as Prisma.JsonArray)[0] as Prisma.JsonObject;
+        expect(line.quantity).toBeNull();
+        return { projectId: row.projectId, companyEntityId: row.companyEntityId, requestedAmountCents: row.requestedAmountCents?.toString() ?? null, quantity: null };
+      },
+      invalidV2MissingNameConstraintCode: async () => {
+        try {
+          await db.$transaction(async tx => {
+            await tx.$executeRaw(Prisma.sql`UPDATE "GeneralProcurement" SET "lines" = "lines" #- ARRAY['0','name'] WHERE "id" = ${createdId}`);
+            throw new Error("缺少名称的采购清单不应被数据库接受");
+          });
+        } catch (error) { return String((error as { meta?: { code?: unknown } }).meta?.code ?? "CONSTRAINT_NOT_REJECTED"); }
+        return "CONSTRAINT_NOT_REJECTED";
+      }
+    };
+    return { http, close: async () => { await db.user.update({ where: { id: secondDirector.id }, data: { isActive: false } }); } };
+  }
+  it("任务20公司日常未知值在真实PG仍为NULL且清单名称约束拒绝缺失", async () => {
+    const prepared = await preparedGeneralRequestAdapter();
+    try { await runPreparedGeneralRequestPgCase(prepared.http, "company-null-and-constraint"); } finally { await prepared.close(); }
+  });
+  it("任务20同一综合审批职责竞争只接受一个动作并保留另一职责待办", async () => {
+    const prepared = await preparedGeneralRequestAdapter();
+    try { await runPreparedGeneralRequestPgCase(prepared.http, "same-duty-competition"); } finally { await prepared.close(); }
+  });
+  it("任务20末同意与合法退回竞争不能形成双终态", async () => {
+    const prepared = await preparedGeneralRequestAdapter();
+    try { await runPreparedGeneralRequestPgCase(prepared.http, "last-decision-competition"); } finally { await prepared.close(); }
+  });
 
   it("同人兼三节点及领导双岗须逐次签字，或签只记录一个实际岗位", async () => {
     const db = app.get(PrismaService);
