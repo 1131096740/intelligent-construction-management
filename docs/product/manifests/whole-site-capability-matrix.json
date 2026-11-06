@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "b9ed0ae980b638327ffcb8ff221d4c08de439f5af2fff660d45cfff390372a93",
+      "sha256": "bb894fe3ed5726974fdae806f02af50500d6afab46e348f2bfba0eea7f7292e0",
       "status": "ready",
       "summary": {
         "registeredActionCount": 408,
