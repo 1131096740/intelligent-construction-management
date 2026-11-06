@@ -96,7 +96,9 @@ async function submitOpeningBalance() {
   saving.value = false;
 }
 async function submitCorrectionBalance() {
-  if (coverageOptions.value.length && !coverageConfirmed.value) { formError.value = "请明确本次核对金额已包含的实付清单，并确认未勾选实付继续扣减"; return; }
+  const coveredPaymentCount = coverageOptions.value.length;
+  const coverageWasConfirmed = coverageConfirmed.value;
+  if (coveredPaymentCount && !coverageWasConfirmed) { formError.value = "请明确本次核对金额已包含的实付清单，并确认未勾选实付继续扣减"; return; }
   saving.value = true; formError.value = "";
   const input = balanceInput.value;
   const request = requestFundCorrection(input);

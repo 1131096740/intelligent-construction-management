@@ -1082,6 +1082,84 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect(await get("finance", "/fund-accounts")).toEqual(beforeFunds);
     expect(await get("admin", "/audit-logs")).toEqual(beforeAudit);
   });
+  it("projects an explicit current registration operation grant from options without granting project-only or technical accounts", async () => {
+    await prepareApprovedPayment();
+    const beforeFunds=await get("finance","/fund-accounts");
+    const beforeAudit=await get("admin","/audit-logs");
+    for (const actor of ["project_finance","admin"]) {
+      expect((await get(actor,"/payment-executions/payment-a/registration-options")).status).toBe(403);
+      expect((await get(actor,"/payment-executions/recorded-items")).status).toBe(403);
+    }
+    const options=await get("finance","/payment-executions/payment-a/registration-options");
+    expect(options.status).toBe(200);
+    expect(options.body).toMatchObject({paymentId:"payment-a",paidAmountCents:"0",remainingAmountCents:"10000",accounts:[expect.objectContaining({scopeKey:"company:company-a",eligible:true})]});
+    // The public read response must explicitly grant this operation. A positive
+    // remaining amount, voucher-pending status or client role is not authority.
+    expect(options.body.canRegisterPayment).toBe(true);
+    const keeper=await get("keeper","/payment-executions/payment-a/registration-options");
+    expect(keeper.status).toBe(200);
+    expect(keeper.body.canRegisterPayment).toBe(true);
+    expect(await get("finance","/fund-accounts")).toEqual(beforeFunds);
+    expect(await get("admin","/audit-logs")).toEqual(beforeAudit);
+  });
+  it("projects a separate current supplementary-voucher grant after full payment and removes it after real evidence is attached", async () => {
+    const opening=await prepareApprovedPayment();
+    const key="d43294d5-b319-48b9-8209-30bc82b16e6c";
+    expect((await recordSourcePayment(opening,"10000",key)).status).toBe(201);
+    const result=await get("keeper",`/payment-executions/results/${key}`);
+    expect(result.status).toBe(200);
+    const executionId=result.body.execution.executionId;
+    for (const actor of ["project_finance","admin"]) {
+      expect((await get(actor,"/payment-executions/recorded-items?paymentId=payment-a")).status).toBe(403);
+      expect((await post(actor,`/payment-executions/${executionId}/voucher`,{fileId:"86bc2875-41ad-4353-81dc-7087b8970691"})).status).toBe(403);
+    }
+    expect((await get("keeper")).body.items).toEqual([]);
+    const pending=await get("finance","/payment-executions/recorded-items?paymentId=payment-a");
+    expect(pending.status).toBe(200);
+    expect(pending.body.items).toEqual([expect.objectContaining({executionId,paymentId:"payment-a",amountCents:"10000",voucherPending:true,resultKey:key})]);
+    // Supplement authority is a current server operation grant, independently
+    // of being fully paid and independently of the display-only pending state.
+    expect(pending.body.items[0].canSupplementVoucher).toBe(true);
+    const bytes=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=","base64");
+    const form=new FormData();form.append("file",new Blob([bytes],{type:"image/png"}),"operation-grant-voucher.png");form.append("idempotencyKey","a6b1535c-0e1a-4639-9daa-e31b035c50ec");
+    const token=tokens.signAccessToken({id:"keeper",name:"综合部主管",phone:null,sessionVersion:0});
+    const uploaded=await fetch(`${await app.getUrl()}/payment-executions/${executionId}/voucher-file-uploads`,{method:"POST",headers:{authorization:`Bearer ${token}`},body:form});
+    expect(uploaded.status).toBe(201);
+    const file=await uploaded.json();expect(file.sizeBytes).toBe(bytes.length);
+    expect((await post("keeper",`/payment-executions/${executionId}/voucher`,{fileId:file.id})).status).toBe(201);
+    const supplemented=await get("finance","/payment-executions/recorded-items?paymentId=payment-a");
+    expect(supplemented.status).toBe(200);
+    expect(supplemented.body.items).toEqual([expect.objectContaining({executionId,paymentId:"payment-a",voucherPending:false,canSupplementVoucher:false,resultKey:key})]);
+    expect((await get("keeper",`/payment-executions/results/${key}`)).body.execution).toMatchObject({executionId,amountCents:"10000",voucherPending:false});
+    expect((await get("finance","/fund-accounts")).body.accounts.find((row:{scopeKey:string})=>row.scopeKey==="company:company-a").balanceYuan).toBe("0.0000");
+  });
+  it("projects a fresh root supplementary-voucher grant from the original result without expanding result access", async () => {
+    const opening=await prepareApprovedPayment();
+    const key="d6619e52-ec04-4543-a379-171ff27cec47";
+    expect((await recordSourcePayment(opening,"10000",key)).status).toBe(201);
+    for (const actor of ["project_finance","admin"]) {
+      expect((await get(actor,`/payment-executions/results/${key}`)).status).toBe(403);
+    }
+    expect((await get("keeper")).body.items).toEqual([]);
+    const pending=await get("finance",`/payment-executions/results/${key}`);
+    expect(pending.status).toBe(200);
+    expect(pending.body).toMatchObject({status:"recorded",execution:{paymentId:"payment-a",amountCents:"10000",voucherPending:true}});
+    const executionId=pending.body.execution.executionId;
+    expect(typeof executionId).toBe("string");
+    expect(pending.body.canSupplementVoucher).toBe(true);
+    const bytes=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=","base64");
+    const form=new FormData();form.append("file",new Blob([bytes],{type:"image/png"}),"result-operation-voucher.png");form.append("idempotencyKey","ce8ab340-5c99-4213-ae9f-66a184813745");
+    const token=tokens.signAccessToken({id:"keeper",name:"综合部主管",phone:null,sessionVersion:0});
+    const uploaded=await fetch(`${await app.getUrl()}/payment-executions/${executionId}/voucher-file-uploads`,{method:"POST",headers:{authorization:`Bearer ${token}`},body:form});
+    expect(uploaded.status).toBe(201);
+    const file=await uploaded.json();expect(file.sizeBytes).toBe(bytes.length);
+    expect((await post("keeper",`/payment-executions/${executionId}/voucher`,{fileId:file.id})).status).toBe(201);
+    const supplemented=await get("finance",`/payment-executions/results/${key}`);
+    expect(supplemented.status).toBe(200);
+    expect(supplemented.body).toMatchObject({status:"recorded",canSupplementVoucher:false,execution:{executionId,paymentId:"payment-a",amountCents:"10000",voucherPending:false}});
+    expect((await get("keeper","/payment-executions/recorded-items?paymentId=payment-a")).body.items).toEqual([expect.objectContaining({executionId,amountCents:"10000",voucherPending:false,resultKey:key})]);
+    expect((await get("finance","/fund-accounts")).body.accounts.find((row:{scopeKey:string})=>row.scopeKey==="company:company-a").balanceYuan).toBe("0.0000");
+  });
   it("gives current finance and comprehensive director the same approved unpaid request without fabricating bank information", async () => {
     await prepareFrozenOurVersion();
     for (const actor of ["finance", "keeper"]) {

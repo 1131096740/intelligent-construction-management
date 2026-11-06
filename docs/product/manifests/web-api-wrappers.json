@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 42,
-    "exportedFunctionCount": 694,
-    "transportWrapperCount": 672,
+    "apiModuleCount": 43,
+    "exportedFunctionCount": 701,
+    "transportWrapperCount": 679,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 711,
-    "ticketFollowupCount": 4,
-    "requestEdgeCount": 699,
-    "productionConsumerCount": 585,
+    "mainRequestBindingCount": 719,
+    "ticketFollowupCount": 5,
+    "requestEdgeCount": 708,
+    "productionConsumerCount": 592,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 376,
-    "reachableProductionModuleCount": 357
+    "productionModuleCount": 379,
+    "reachableProductionModuleCount": 360
   },
   "wrappers": [
     {
@@ -12963,7 +12963,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 80,
+          "sourceLine": 87,
           "method": "POST",
           "path": "/fund-accounts/registrations/:param/confirm",
           "normalizedPath": "/fund-accounts/registrations/:param/confirm",
@@ -12990,7 +12990,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 81,
+          "sourceLine": 88,
           "method": "GET",
           "path": "/fund-accounts/:param",
           "normalizedPath": "/fund-accounts/:param",
@@ -13017,7 +13017,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 77,
+          "sourceLine": 84,
           "method": "GET",
           "path": "/fund-accounts",
           "normalizedPath": "/fund-accounts",
@@ -13031,7 +13031,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+        "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -13044,7 +13045,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 82,
+          "sourceLine": 89,
           "method": "GET",
           "path": "/fund-accounts/registrations/:param",
           "normalizedPath": "/fund-accounts/registrations/:param",
@@ -13071,7 +13072,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 85,
+          "sourceLine": 92,
           "method": "GET",
           "path": "/fund-accounts/registrations/:param/review",
           "normalizedPath": "/fund-accounts/registrations/:param/review",
@@ -13098,7 +13099,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 78,
+          "sourceLine": 85,
           "method": "POST",
           "path": "/fund-accounts/openings",
           "normalizedPath": "/fund-accounts/openings",
@@ -13125,7 +13126,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 79,
+          "sourceLine": 86,
           "method": "POST",
           "path": "/fund-accounts/corrections",
           "normalizedPath": "/fund-accounts/corrections",
@@ -13152,7 +13153,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 83,
+          "sourceLine": 90,
           "method": "POST",
           "path": "/fund-accounts/registrations/:param/return",
           "normalizedPath": "/fund-accounts/registrations/:param/return",
@@ -13179,7 +13180,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 84,
+          "sourceLine": 91,
           "method": "POST",
           "path": "/fund-accounts/registrations/:param/withdraw",
           "normalizedPath": "/fund-accounts/registrations/:param/withdraw",
@@ -17151,6 +17152,224 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadRegisteredPaymentVoucher",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "none",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 37,
+          "method": "GET",
+          "path": "/payment-executions/:param/voucher-ticket",
+          "normalizedPath": "/payment-executions/:param/voucher-ticket",
+          "normalizedKey": "GET /payment-executions/:param/voucher-ticket",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadRegisteredPaymentVoucher"
+            ]
+          ]
+        },
+        {
+          "kind": "ticket_followup",
+          "sourceLine": 39,
+          "method": "GET",
+          "ticketField": "downloadUrl",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadRegisteredPaymentVoucher"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchRecordedPaymentItems",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 21,
+          "method": "GET",
+          "path": "/payment-executions/recorded-items",
+          "normalizedPath": "/payment-executions/recorded-items",
+          "normalizedKey": "GET /payment-executions/recorded-items",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchRecordedPaymentItems"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchRegisteredPaymentOptions",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 17,
+          "method": "GET",
+          "path": "/payment-executions/:param/registration-options",
+          "normalizedPath": "/payment-executions/:param/registration-options",
+          "normalizedKey": "GET /payment-executions/:param/registration-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchRegisteredPaymentOptions"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchRegisteredPaymentResult",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 23,
+          "method": "GET",
+          "path": "/payment-executions/results/:param",
+          "normalizedPath": "/payment-executions/results/:param",
+          "normalizedKey": "GET /payment-executions/results/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchRegisteredPaymentResult"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchRegisteredPaymentWorkItems",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 16,
+          "method": "GET",
+          "path": "/payment-executions/work-items",
+          "normalizedPath": "/payment-executions/work-items",
+          "normalizedKey": "GET /payment-executions/work-items",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchRegisteredPaymentWorkItems"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recordRegisteredPayment",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 22,
+          "method": "POST",
+          "path": "/payment-executions/:param/registrations",
+          "normalizedPath": "/payment-executions/:param/registrations",
+          "normalizedKey": "POST /payment-executions/:param/registrations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordRegisteredPayment"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "supplementRegisteredPaymentVoucher",
+      "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 28,
+          "method": "POST",
+          "path": "/payment-executions/:param/voucher",
+          "normalizedPath": "/payment-executions/:param/voucher",
+          "normalizedKey": "POST /payment-executions/:param/voucher",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "supplementRegisteredPaymentVoucher",
+              "attachRegisteredPaymentVoucher"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 26,
+          "method": "POST",
+          "path": "/payment-executions/:param/voucher-file-uploads",
+          "normalizedPath": "/payment-executions/:param/voucher-file-uploads",
+          "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "supplementRegisteredPaymentVoucher",
+              "uploadRegisteredPaymentVoucher"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []

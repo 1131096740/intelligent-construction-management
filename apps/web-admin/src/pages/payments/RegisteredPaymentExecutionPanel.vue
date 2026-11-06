@@ -1,25 +1,34 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import { chinaDateOnly, requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../../auth/auth.store";
-import { fetchRegisteredPaymentOptions, fetchRegisteredPaymentWorkItems, fetchRecordedPaymentItems, recordRegisteredPayment, fetchRegisteredPaymentResult, uploadRegisteredPaymentVoucher, attachRegisteredPaymentVoucher, downloadRegisteredPaymentVoucher, RegisteredPaymentApiError, type RegisteredPaymentWorkItem, type RegisteredPaymentOptions, type RecordedPaymentItem, type RegisteredPaymentCommand, type RegisteredPaymentResult } from "../../api/registered-payment-execution.api";
+import { fetchRegisteredPaymentOptions, fetchRegisteredPaymentWorkItems, fetchRecordedPaymentItems, recordRegisteredPayment, fetchRegisteredPaymentResult, supplementRegisteredPaymentVoucher, downloadRegisteredPaymentVoucher, RegisteredPaymentApiError, type RegisteredPaymentWorkItem, type RegisteredPaymentOptions, type RecordedPaymentItem, type RegisteredPaymentCommand, type RegisteredPaymentResult } from "../../api/registered-payment-execution.api";
 import { fetchFundAccounts, type FundAccountsReadModel } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
-type PendingPaymentCommand = Omit<RegisteredPaymentCommand, "confirmationPassword">;
-interface PendingPaymentDraft { amountYuan:string;paidAt:string;scopeKey:string;treatment:string;reason:string;evidence:string;accountName:string;allocations:Array<{sourceBatchId:string;amountYuan:string}> }
-interface PendingPaymentAttempt { version:1;userId:string;paymentId:string;command:PendingPaymentCommand;draft:PendingPaymentDraft }
+import { makePendingPaymentAttempt, readPendingPaymentAttempt, writePendingPaymentAttempt, clearPendingPaymentAttemptIfSameKey, type PendingPaymentDraft, type PendingPaymentAttempt } from "./registered-payment-pending-attempt";
 interface OutdatedSourceDraft { sourceBatchId:string;accountName:string;sourceName:string;projectName:string;amountYuan:string }
 const props = defineProps<{ paymentReference?: string }>();
 const emit = defineEmits<{recorded:[paymentId:string,paymentReference:string]}>();
 const auth = useAuthStore();
+const route = useRoute();
 const visible = computed(() => (auth.user?.globalRoleKeys ?? []).some(role => ["finance_staff","finance_director","comprehensive_director"].includes(role)));
 const items = ref<RegisteredPaymentWorkItem[]>([]);
 const recorded = ref<RecordedPaymentItem[]>([]);
 const selected = ref<RegisteredPaymentOptions | null>(null);
+const registrationPermission = ref<RegisteredPaymentOptions | null>(null);
+const voucherPermission = ref<RegisteredPaymentResult | null>(null);
+const registrationPermissionOwner = ref("");
+const registrationPermissionRoute = ref("");
+const voucherPermissionOwner = ref("");
+const voucherPermissionRoute = ref("");
+let registrationReadSequence = 0;
+let voucherReadSequence = 0;
+const registrationAllowed = computed(() => registrationPermission.value?.canRegisterPayment === true && registrationPermissionOwner.value === auth.user?.id && registrationPermissionRoute.value === route.fullPath && registrationPermission.value.paymentId === selected.value?.paymentId);
 const funds = ref<FundAccountsReadModel>({accounts:[],projects:[],notice:""});
 const loading = ref(false);
 const saving = ref(false);
@@ -43,8 +52,17 @@ const voucher = ref<RecordedPaymentItem | null>(null);
 const voucherFiles = ref<UploadFile[]>([]);
 const voucherUploadKey = ref("");
 const voucherFileId = ref<string | null>(null);
+const voucherProgressExecutionId = ref("");
 const voucherBusy = ref(false);
 const voucherError = ref("");
+const selectedVoucherFile = computed(() => voucherFiles.value[0]?.raw);
+const voucherOperationAllowed = computed(() => voucherPermission.value?.canSupplementVoucher === true && voucherPermission.value.status === "recorded" && voucherPermissionOwner.value === auth.user?.id && voucherPermissionRoute.value === route.fullPath && voucherPermission.value.execution?.executionId === voucher.value?.executionId && voucherPermission.value.execution?.paymentId === voucher.value?.paymentId && voucherProgressExecutionId.value === voucher.value?.executionId);
+const registrationActorMatches = computed(() => auth.user?.id === commandUserId.value);
+const registrationCommandMatches = computed(() => registrationPermission.value?.paymentId === commandPaymentId.value && registrationPermission.value?.expectedPaymentUpdatedAt === frozenCommand.value?.expectedPaymentUpdatedAt);
+watch(() => [auth.user?.id, (auth.user?.globalRoleKeys ?? []).join("|"), route.fullPath], () => {
+ registrationReadSequence += 1; voucherReadSequence += 1;
+ registrationPermission.value = null; voucherPermission.value = null;
+}, { flush: "sync" });
 const downloadBusyId = ref("");
 const resultDetail = ref<RegisteredPaymentResult | null>(null);
 const resultDetailVisible = ref(false);
@@ -61,57 +79,34 @@ const accountOption = computed(() => selected.value?.accounts.find(item=>item.sc
 const locked = computed(() => saving.value || uncertain.value || completed.value);
 const accountOptions = computed(() => (selected.value?.accounts ?? []).map(item=>({value:item.scopeKey,label:item.name,disabled:!item.eligible})));
 const projectLabel = (source: {projectStatus:string;projectId:string|null}) => source.projectStatus === "project" ? funds.value.projects.find(project=>project.id === source.projectId)?.name ?? "原登记项目" : source.projectStatus === "company_daily" ? "公司日常资金" : "项目归属待核对";
-// This is a transport draft and original lookup key, never a local money ledger.
-function pendingStorageKey(userId: string) { return `jiangkong-payment-pending:v1:${userId}`; }
-function transportCommand(command: PendingPaymentCommand): PendingPaymentCommand {
- const history = command.contractHistoryConfirmation;
- return {...(history ? {contractHistoryConfirmation:{treatment:history.treatment,expectedFingerprint:history.expectedFingerprint,reason:history.reason,evidence:history.evidence}} : {}),idempotencyKey:command.idempotencyKey,expectedPaymentUpdatedAt:command.expectedPaymentUpdatedAt,amountCents:command.amountCents,paidAt:command.paidAt,scopeKey:command.scopeKey,expectedRegistrationId:command.expectedRegistrationId,openingTreatment:command.openingTreatment,openingReason:command.openingReason,openingEvidence:command.openingEvidence,sourceAllocations:command.sourceAllocations.map(line=>({sourceBatchId:line.sourceBatchId,amountCents:line.amountCents}))};
-}
-function savePendingAttempt() {
- if (!frozenCommand.value || !preparedDraft.value || !commandUserId.value) return;
- const draft = preparedDraft.value;
- const pointer: PendingPaymentAttempt = {version:1,userId:commandUserId.value,paymentId:commandPaymentId.value,command:transportCommand(frozenCommand.value),draft:{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,accountName:draft.accountName,allocations:draft.allocations.map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:line.amountYuan}))}};
- pendingAttempt.value = pointer;
- try { sessionStorage.setItem(pendingStorageKey(pointer.userId),JSON.stringify(pointer)); }
- catch { storageNotice.value = "浏览器暂时无法保存恢复信息，本页已保留原请求；请勿刷新或离开，先查询本次登记结果。"; }
-}
+// Transport recovery never restores operation permission or credentials.
 function clearConfirmedPointer() {
  const pointer = pendingAttempt.value;
  pendingAttempt.value = null;
- if (!pointer) return;
- try {
-  const saved = sessionStorage.getItem(pendingStorageKey(pointer.userId));
-  if (saved && (JSON.parse(saved) as PendingPaymentAttempt).command?.idempotencyKey === pointer.command.idempotencyKey) sessionStorage.removeItem(pendingStorageKey(pointer.userId));
-  storageNotice.value = "";
- } catch { storageNotice.value = "本次结果已由服务器确认，浏览器恢复信息暂未清除；再次进入仍会查询原请求，不会自动重新登记。"; }
+ storageNotice.value = clearPendingPaymentAttemptIfSameKey(pointer,() => sessionStorage,storageNotice.value);
 }
 function restorePendingAttempt(): boolean {
  const userId = auth.user?.id;
  if (!userId) return false;
- let saved: string | null;
- try { saved = sessionStorage.getItem(pendingStorageKey(userId)); }
- catch { storageNotice.value = "浏览器暂时无法读取恢复信息，新登记将在本页保留原请求；提交后请先查询结果再离开。"; return false; }
- if (!saved) return false;
- try {
-  const pointer = JSON.parse(saved) as PendingPaymentAttempt;
-  const command = pointer.command;
-  const fields = ["idempotencyKey","expectedPaymentUpdatedAt","amountCents","paidAt","scopeKey","expectedRegistrationId","openingReason","openingEvidence"] as const;
-  if (pointer.version !== 1 || pointer.userId !== userId || typeof pointer.paymentId !== "string" || !command || fields.some(field=>typeof command[field] !== "string") || !["included","not_included"].includes(command.openingTreatment) || !Array.isArray(command.sourceAllocations) || command.sourceAllocations.some(line=>!line || typeof line.sourceBatchId !== "string" || typeof line.amountCents !== "string") || !pointer.draft || typeof pointer.draft.amountYuan !== "string" || typeof pointer.draft.accountName !== "string" || !Array.isArray(pointer.draft.allocations)) throw new Error("Invalid transport pointer");
-  const history = command.contractHistoryConfirmation;
-  if (history && (history.treatment !== "not_included" || [history.expectedFingerprint,history.reason,history.evidence].some(value=>typeof value !== "string"))) throw new Error("Invalid history transport confirmation");
-  const stored = transportCommand(command);
-  const draft: PendingPaymentDraft = {amountYuan:pointer.draft.amountYuan,paidAt:stored.paidAt,scopeKey:stored.scopeKey,treatment:stored.openingTreatment,reason:stored.openingReason,evidence:stored.openingEvidence,accountName:pointer.draft.accountName,allocations:pointer.draft.allocations.filter(line=>line && typeof line.sourceBatchId === "string" && typeof line.amountYuan === "string").map(line=>({sourceBatchId:line.sourceBatchId,amountYuan:line.amountYuan}))};
-  pendingAttempt.value = {version:1,userId,paymentId:pointer.paymentId,command:stored,draft};
-  preparedDraft.value = draft;
-  commandUserId.value = userId; commandPaymentId.value = pointer.paymentId;
-  frozenCommand.value = {...stored,confirmationPassword:""}; confirmationAccountName.value = draft.accountName;
-  Object.assign(form,{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,password:"",idempotencyKey:stored.idempotencyKey,historyTreatment:stored.contractHistoryConfirmation?.treatment ?? "",historyReason:stored.contractHistoryConfirmation?.reason ?? "",historyEvidence:stored.contractHistoryConfirmation?.evidence ?? ""});
-  for (const key of Object.keys(allocations)) delete allocations[key];
-  for (const line of draft.allocations) allocations[line.sourceBatchId] = line.amountYuan;
-  uncertain.value = true; completed.value = false;
-  resultMessage.value = "此前登记结果待确认，正在查询原请求；不会自动重新提交。";
-  return true;
- } catch { uncertain.value = true; storageNotice.value = "浏览器保存的待确认信息暂时无法读取，请由有权财务或综合部主管核查原申请，暂勿重复登记。"; return false; }
+ const recovered = readPendingPaymentAttempt(userId,() => sessionStorage);
+ if (recovered.kind === "missing") return false;
+ if (recovered.kind === "unreadable") {
+  storageNotice.value = recovered.notice;
+  if (recovered.blocksNewAttempt) uncertain.value = true;
+  return false;
+ }
+ const pointer = recovered.attempt;
+ const stored = pointer.command;
+ const draft = pointer.draft;
+ pendingAttempt.value = pointer; preparedDraft.value = draft;
+ commandUserId.value = userId; commandPaymentId.value = pointer.paymentId;
+ frozenCommand.value = {...stored,confirmationPassword:""}; confirmationAccountName.value = draft.accountName;
+ Object.assign(form,{amountYuan:draft.amountYuan,paidAt:draft.paidAt,scopeKey:draft.scopeKey,treatment:draft.treatment,reason:draft.reason,evidence:draft.evidence,password:"",idempotencyKey:stored.idempotencyKey,historyTreatment:stored.contractHistoryConfirmation?.treatment ?? "",historyReason:stored.contractHistoryConfirmation?.reason ?? "",historyEvidence:stored.contractHistoryConfirmation?.evidence ?? ""});
+ for (const key of Object.keys(allocations)) delete allocations[key];
+ for (const line of draft.allocations) allocations[line.sourceBatchId] = line.amountYuan;
+ uncertain.value = true; completed.value = false;
+ resultMessage.value = "此前登记结果待确认，正在查询原请求；不会自动重新提交。";
+ return true;
 }
 function outcomeUnconfirmed(failure: unknown) {
  return !(failure instanceof RegisteredPaymentApiError) || failure.code === "PAYMENT_RESULT_UNCONFIRMED" || failure.resultStatus === "unconfirmed" || ![400,409].includes(failure.status);
@@ -124,10 +119,19 @@ async function load() {
 }
 async function open(item: RegisteredPaymentWorkItem) {
  if (saving.value || uncertain.value) return;
+ const readSequence = ++registrationReadSequence;
+ const owner = auth.user?.id;
+ const routeOwner = route.fullPath;
+ registrationPermission.value = null;
  loading.value = true; error.value = "";
  try {
-  const [options,balances] = await Promise.all([fetchRegisteredPaymentOptions(item.paymentId),fetchFundAccounts()]);
-  selected.value = options; funds.value = balances; completed.value = false; frozenCommand.value = null; resultMessage.value = "";
+  const options = await fetchRegisteredPaymentOptions(item.paymentId);
+  const balances = await fetchFundAccounts();
+  if (readSequence !== registrationReadSequence || owner !== auth.user?.id || routeOwner !== route.fullPath) return;
+  if (!owner || options.paymentId !== item.paymentId) throw new Error("实付登记许可与当前申请不一致，请重新读取原单资料");
+  registrationPermissionOwner.value = owner; registrationPermissionRoute.value = routeOwner;
+  registrationPermission.value = options;
+  selected.value = structuredClone(options); funds.value = balances; completed.value = false; frozenCommand.value = null; resultMessage.value = "";
   basisReadRequired.value = false; basisReadNotice.value = ""; outdatedSourceDrafts.value = []; confirmationFundBasis.value = null;
   Object.assign(form,{amountYuan:"",paidAt:chinaDateOnly(),scopeKey:"",treatment:"",reason:"",evidence:"",password:"",idempotencyKey:crypto.randomUUID(),historyTreatment:"",historyReason:"",historyEvidence:""});
   for (const key of Object.keys(allocations)) delete allocations[key];
@@ -137,10 +141,18 @@ async function open(item: RegisteredPaymentWorkItem) {
 async function reReadFundingBasis() {
  const paymentId = selected.value?.paymentId;
  if (!paymentId || loading.value || locked.value) return;
+ const readSequence = ++registrationReadSequence;
+ const owner = auth.user?.id;
+ const routeOwner = route.fullPath;
+ registrationPermission.value = null;
  loading.value = true; error.value = ""; basisReadNotice.value = ""; basisReadRequired.value = true;
  try {
-  const [options,balances] = await Promise.all([fetchRegisteredPaymentOptions(paymentId),fetchFundAccounts()]);
-  if (selected.value?.paymentId !== paymentId) return;
+  const options = await fetchRegisteredPaymentOptions(paymentId);
+  const balances = await fetchFundAccounts();
+  if (selected.value?.paymentId !== paymentId || readSequence !== registrationReadSequence || owner !== auth.user?.id || routeOwner !== route.fullPath) return;
+  if (!owner || options.paymentId !== paymentId) throw new Error("实付登记许可与当前申请不一致，请重新读取原单资料");
+  registrationPermissionOwner.value = owner; registrationPermissionRoute.value = routeOwner;
+  registrationPermission.value = options;
   const drafts = new Map(outdatedSourceDrafts.value.map(draft=>[draft.sourceBatchId,draft]));
   for (const priorAccount of funds.value.accounts) for (const source of priorAccount.sources) {
    const raw = source.id ? allocations[source.id] : undefined;
@@ -150,7 +162,7 @@ async function reReadFundingBasis() {
   outdatedSourceDrafts.value = [...drafts.values()].filter(draft=>!currentSources.has(draft.sourceBatchId));
   const historyChanged = selected.value.contractHistoryBasis?.fingerprint !== options.contractHistoryBasis.fingerprint;
   if (historyChanged) form.historyTreatment = "";
-  selected.value = options; funds.value = balances;
+  selected.value = structuredClone(options); funds.value = balances;
   frozenCommand.value = null; preparedDraft.value = null; confirmationFundBasis.value = null; confirmation.value = false;
   basisReadRequired.value = false;
   basisReadNotice.value = historyChanged && options.contractHistoryBasis.required ? "资料已重新读取，合同历史核对依据已变化，请重新明确本次是否未计入；金额、日期和核对文字已保留。" : "资金资料已重新读取，请核对当前余额、期初归属和来源，再确认这笔实付。";
@@ -169,6 +181,7 @@ function prepare() {
  error.value = "";
  try {
   if (locked.value || !selected.value) return;
+  if (!registrationAllowed.value) throw new Error("当前申请尚未取得实付登记许可，请重新读取原单资料");
   if (basisReadRequired.value) throw new Error("请先重新读取资金资料成功，再核对确认这笔实付");
   const amountCents = yuanTextToCentsText(form.amountYuan.trim());
   if (BigInt(amountCents) <= 0n) throw new Error("请填写大于零的实付金额");
@@ -202,25 +215,40 @@ function prepare() {
  } catch (failure) { error.value = formatUnknownApiError(failure,"请检查本次实付填写，金额最多保留两位小数"); }
 }
 async function submit() {
- if (!frozenCommand.value || saving.value || uncertain.value || completed.value) return;
- if (auth.user?.id !== commandUserId.value) { error.value = "当前登录身份已变化，请重新读取原单据后办理"; return; }
+ const command = frozenCommand.value;
+ const draft = preparedDraft.value;
+ const owner = commandUserId.value;
+ const paymentId = commandPaymentId.value;
+ const busy = saving.value;
+ const resultUnknown = uncertain.value;
+ const resultComplete = completed.value;
+ const allowed = registrationAllowed.value;
+ const sameActor = registrationActorMatches.value;
+ const sameCommand = registrationCommandMatches.value;
+ if (!command || !draft || !owner || busy || resultUnknown || resultComplete) return;
+ if (!allowed || !sameCommand) { error.value = "当前申请尚未取得实付登记许可，请重新读取原单资料"; return; }
+ if (!sameActor) { error.value = "当前登录身份已变化，请重新读取原单据后办理"; return; }
  saving.value = true; error.value = "";
- savePendingAttempt();
- try {
-  await recordRegisteredPayment(commandPaymentId.value,frozenCommand.value);
+ const pointer = makePendingPaymentAttempt(owner,paymentId,command,draft);
+ pendingAttempt.value = pointer;
+ storageNotice.value = writePendingPaymentAttempt(pointer,() => sessionStorage,storageNotice.value);
+ const request = recordRegisteredPayment(paymentId,command);
+ await request.then(async () => {
+  registrationPermission.value = null;
   completed.value = true; uncertain.value = false; confirmation.value = false; clearConfirmedPointer(); resultMessage.value = "实际付款已登记，电子凭证待补充。";
   await refreshAfterRecord();
   const current = items.value.find(item=>item.paymentId === commandPaymentId.value);
   if (selected.value) selected.value = current ? {...selected.value,...current} : null;
   emit("recorded",commandPaymentId.value,props.paymentReference ?? commandPaymentId.value);
- } catch (failure) {
+ }).catch(failure => {
   confirmation.value = false;
+  if (failure instanceof RegisteredPaymentApiError && failure.status === 403) registrationPermission.value = null;
   if (outcomeUnconfirmed(failure)) {
    uncertain.value = true;
    resultMessage.value = failure instanceof RegisteredPaymentApiError && failure.status === 403 ? "当前岗位暂不能办理，已保留原请求，请由有权财务或综合部主管核查登记结果。" : "登记结果暂未确认，请保留当前填写并查询本次结果，不能重复登记。";
   } else { clearConfirmedPointer(); resultMessage.value = ""; if (failure instanceof RegisteredPaymentApiError && failure.status === 409) basisReadRequired.value = true; }
   error.value = formatUnknownApiError(failure,"付款登记未完成，当前填写已保留");
- } finally { saving.value = false; }
+ }).finally(() => { saving.value = false; });
 }
 async function queryOriginal() {
  if (!frozenCommand.value || saving.value) return;
@@ -249,10 +277,22 @@ async function viewResult(key: string, code: string) {
  catch (failure) { if (sequence === resultReadSequence) resultDetailError.value = formatUnknownApiError(failure,"原登记结果读取失败，请保留当前填写后重新查询"); }
  finally { if (sequence === resultReadSequence) resultDetailLoading.value = false; }
 }
-function openVoucher(item: RecordedPaymentItem) {
+async function openVoucher(item: RecordedPaymentItem) {
  if (voucherBusy.value) return;
- if (voucher.value?.executionId !== item.executionId) { voucherFiles.value = []; voucherUploadKey.value = crypto.randomUUID(); voucherFileId.value = null; }
+ const readSequence = ++voucherReadSequence;
+ const owner = auth.user?.id;
+ const routeOwner = route.fullPath;
+ voucherPermission.value = null;
+ if (voucherProgressExecutionId.value !== item.executionId) { voucherFiles.value = []; voucherUploadKey.value = crypto.randomUUID(); voucherFileId.value = null; voucherProgressExecutionId.value = item.executionId; }
  voucher.value = item; voucherError.value = "";
+ try {
+  const permission = await fetchRegisteredPaymentResult(item.resultKey);
+  if (readSequence !== voucherReadSequence || owner !== auth.user?.id || routeOwner !== route.fullPath || voucher.value?.executionId !== item.executionId) return;
+  if (!owner || permission.status !== "recorded" || permission.execution?.executionId !== item.executionId || permission.execution.paymentId !== item.paymentId) throw new Error("后补凭证许可与原实付不一致，请重新读取原记录");
+  voucherPermissionOwner.value = owner; voucherPermissionRoute.value = routeOwner;
+  voucherPermission.value = permission;
+  if (permission.canSupplementVoucher !== true) voucherError.value = "原实付暂不能补充凭证，请先核对原记录；当前文件已保留。";
+ } catch (failure) { voucherPermission.value = null; voucherError.value = formatUnknownApiError(failure,"后补凭证许可读取失败，当前文件已保留"); }
 }
 function voucherFileChanged() {
  if (voucherBusy.value) return;
@@ -260,26 +300,28 @@ function voucherFileChanged() {
 }
 async function saveVoucher() {
  const selectedVoucher = voucher.value;
- const file = voucherFiles.value[0]?.raw;
- if (!selectedVoucher || !file || voucherBusy.value) { voucherError.value = "请先选择需要补充的电子付款凭证"; return; }
+ const file = selectedVoucherFile.value;
+ const busy = voucherBusy.value;
+ const allowed = voucherOperationAllowed.value;
+ if (!selectedVoucher || !file || busy) { voucherError.value = "请先选择需要补充的电子付款凭证"; return; }
+ if (!allowed) { voucherError.value = "当前记录尚未取得后补凭证许可，请重新读取已登记实付"; return; }
  voucherBusy.value = true; voucherError.value = "";
- try {
-  if (!voucherFileId.value) voucherFileId.value = (await uploadRegisteredPaymentVoucher(selectedVoucher.executionId,file,voucherUploadKey.value)).id;
-  await attachRegisteredPaymentVoucher(selectedVoucher.executionId,voucherFileId.value);
+ const request = supplementRegisteredPaymentVoucher(selectedVoucher.executionId,file,voucherUploadKey.value,voucherFileId.value,fileId => { voucherFileId.value = fileId; });
+ await request.then(async () => {
   resultMessage.value = "这笔实付的电子凭证已补充。";
   await load();
-  voucherFiles.value = []; voucherFileId.value = null; voucher.value = null;
- } catch (failure) {
+  voucherFiles.value = []; voucherFileId.value = null; voucher.value = null; voucherPermission.value = null; voucherProgressExecutionId.value = "";
+ }).catch(failure => {
+  if (failure instanceof RegisteredPaymentApiError && failure.status === 403) voucherPermission.value = null;
   const reason = formatUnknownApiError(failure,"上传或关联结果暂未确认，请稍后重试").replace(/。+$/,"");
   voucherError.value = `电子凭证补充结果暂未确认：${reason}。已保留所选文件，请重试补充；本次不会新增付款。`;
- }
- finally { voucherBusy.value = false; }
+ }).finally(() => { voucherBusy.value = false; });
 }
 async function downloadVoucher(item: RecordedPaymentItem) {
  if (downloadBusyId.value) return;
  downloadBusyId.value = item.executionId; voucherError.value = "";
  try { await downloadRegisteredPaymentVoucher(item.executionId); }
- catch (failure) { voucher.value = item; voucherError.value = formatUnknownApiError(failure,"付款凭证下载失败，请重新点击下载"); }
+ catch (failure) { voucherPermission.value = null; voucherReadSequence += 1; voucher.value = item; voucherError.value = formatUnknownApiError(failure,"付款凭证下载失败，请重新点击下载"); }
  finally { downloadBusyId.value = ""; }
 }
 onMounted(async () => {
@@ -573,7 +615,7 @@ onMounted(async () => {
       </div>
       <t-button
         theme="primary"
-        :disabled="locked || loading || basisReadRequired"
+        :disabled="locked || loading || basisReadRequired || !registrationAllowed"
         :loading="saving"
         @click="prepare"
       >
@@ -634,6 +676,7 @@ onMounted(async () => {
             @change="voucherFileChanged"
           />
           <t-button
+            v-if="voucherPermission && voucherPermission.canSupplementVoucher && voucherOperationAllowed"
             theme="primary"
             :loading="voucherBusy"
             @click="saveVoucher"
@@ -692,6 +735,7 @@ onMounted(async () => {
       </section>
     </t-dialog>
     <SensitiveActionDialog
+      v-if="registrationPermission && registrationPermission.canRegisterPayment && registrationAllowed && registrationCommandMatches"
       v-model="confirmation"
       title="确认登记系统外已支付的款项"
       :description="`本次实际付款 ¥${frozenCommand ? centsTextToYuanText(frozenCommand.amountCents) : '—'}，登记后更新已付金额和共同待办，请核实金额、日期、付款资金与来源。`"

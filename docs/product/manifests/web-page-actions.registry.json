@@ -10455,6 +10455,56 @@
           "name": "updateSpotProcurementDraft"
         }
       ]
+    },
+    {
+      "id": "registered-payment.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registrationPermission.canRegisterPayment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "name": "recordRegisteredPayment"
+        }
+      ]
+    },
+    {
+      "id": "registered-payment.supplement-voucher",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "saveVoucher"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "voucherPermission.canSupplementVoucher"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "name": "supplementRegisteredPaymentVoucher"
+        }
+      ]
     }
   ]
 }

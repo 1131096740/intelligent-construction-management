@@ -1088,8 +1088,7 @@ function paymentReviewActionEnabled(key: "review_approval") {
   );
 }
 function paymentExecutionActionEnabled() {
-  if (registeredExecutionCapability.value?.supportedDomain) return false;
-  return Boolean(
+  return !registeredExecutionCapability.value?.supportedDomain && Boolean(
     paymentApprovalCapability.value?.availableActions.some(
       (action) =>
         action.key === "record_execution" && action.enabled

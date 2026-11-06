@@ -36,51 +36,132 @@ END $$;
 CREATE FUNCTION public."jg_assert_registered_payment_intercompany_complete"(execution_id TEXT)
 RETURNS VOID LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE e public."PaymentExecution"; f public."RegisteredPaymentFunding"; request public."PaymentRequest";
- root public."InterEntityRelationshipEntry"; fact public."OperatingFact"; proxy public."OperatingImpactEntry"; root_count BIGINT; proxy_count BIGINT;
+ root public."InterEntityRelationshipEntry"; fact public."OperatingFact"; effect public."OperatingImpactEntry";
+ frozen_source_type TEXT; cross_company BOOLEAN; root_count BIGINT; fact_count BIGINT; impact_count BIGINT;
+ due_count BIGINT; due_total NUMERIC; expected_payables JSONB; snapshot_payables JSONB; expected_payable_count BIGINT;
+ payable_count BIGINT := 0; funds_count BIGINT := 0; proxy_count BIGINT := 0; source_id TEXT; funds_kind TEXT;
 BEGIN
  SELECT * INTO STRICT e FROM public."PaymentExecution" WHERE "id" = execution_id;
  SELECT * INTO STRICT f FROM public."RegisteredPaymentFunding" WHERE "executionId" = execution_id;
  SELECT * INTO STRICT request FROM public."PaymentRequest" WHERE "id" = e."paymentRequestId";
+ SELECT event."payload"->'writeAuthority'->>'sourceType' INTO STRICT frozen_source_type
+ FROM public."RegisteredPaymentEvent" event WHERE event."executionId"=execution_id;
+ IF frozen_source_type NOT IN ('settlement','contract_due','contract_advance') OR frozen_source_type IS NULL THEN
+   RAISE EXCEPTION 'registered payment requires its frozen source applicability';
+ END IF;
+ cross_company := f."actualPayerKind"='participating_company' AND f."actualPayerId"<>e."companyEntityIdSnapshot";
  SELECT pg_catalog.count(*) INTO root_count FROM public."InterEntityRelationshipEntry"
-   WHERE "paymentExecutionId" = execution_id AND "entryKind" = 'proxy_payment' AND "direction" = 'increase';
- SELECT pg_catalog.count(*) INTO proxy_count FROM public."OperatingImpactEntry" WHERE "sourceType" = 'payment_execution' AND "sourceBusinessId" = execution_id
-   AND ("impactKind" = 'inter_subject_balance_increase' OR "sourceImpactKey" = 'inter_subject_proxy_payment' OR "idempotencyKey" = 'payment_execution:' || execution_id || ':proxy');
- IF f."actualPayerKind" = 'participating_company' AND f."actualPayerId" <> e."companyEntityIdSnapshot" THEN
-   IF root_count <> 1 THEN RAISE EXCEPTION 'registered cross-company payment requires exactly one debt root'; END IF;
+ WHERE "paymentExecutionId"=execution_id AND "entryKind"='proxy_payment' AND "direction"='increase';
+ IF cross_company THEN
+   IF root_count<>1 THEN RAISE EXCEPTION 'registered cross-company payment requires exactly one debt root'; END IF;
    SELECT * INTO STRICT root FROM public."InterEntityRelationshipEntry"
-     WHERE "paymentExecutionId" = execution_id AND "entryKind" = 'proxy_payment' AND "direction" = 'increase';
+   WHERE "paymentExecutionId"=execution_id AND "entryKind"='proxy_payment' AND "direction"='increase';
    PERFORM public."jg_assert_registered_payment_relationship"(root);
-   -- Frozen initial applicability is not a ban on later legitimate projection.
-   -- No future Project date read here: already committed receipts stay valid.
-   IF f."operatingLedgerEffectiveDateAtRegistration" IS NULL AND proxy_count=0
-     AND NOT EXISTS(SELECT 1 FROM public."OperatingFact" WHERE "sourceType"='payment_execution' AND "sourceBusinessId"=execution_id) THEN RETURN; END IF;
-   IF proxy_count <> 1 THEN RAISE EXCEPTION 'registered projected cross-company payment requires exactly one proxy impact'; END IF;
-   SELECT * INTO STRICT fact FROM public."OperatingFact" WHERE "sourceType" = 'payment_execution' AND "sourceBusinessId" = execution_id;
-   IF NOT coalesce(fact."projectId" = request."projectId" AND fact."sourceVersion" = 1 AND fact."entryKind" = 'original'
-     AND fact."status" = 'confirmed' AND fact."factKind" = 'downstream_payment' AND fact."operatingLevel" = 'inter_subject'
-     AND fact."amountCents" = e."amountCents" AND fact."currencyCode" = 'CNY' AND fact."direction" = 'outflow'
-     AND fact."idempotencyKey" = 'payment_execution:' || execution_id
-     AND fact."debtorSubjectKind" = 'participating_company' AND fact."debtorSubjectId" = e."companyEntityIdSnapshot"
-     AND fact."approvedPayerSubjectKind" = 'participating_company' AND fact."approvedPayerSubjectId" = e."companyEntityIdSnapshot"
-     AND fact."actualPayerSubjectKind" = 'participating_company' AND fact."actualPayerSubjectId" = f."actualPayerId",FALSE) THEN
-     RAISE EXCEPTION 'registered debt root requires its exact frozen canonical A/B payment fact';
-   END IF;
-   SELECT * INTO STRICT proxy FROM public."OperatingImpactEntry" WHERE "sourceType" = 'payment_execution' AND "sourceBusinessId" = execution_id
-     AND ("impactKind" = 'inter_subject_balance_increase' OR "sourceImpactKey" = 'inter_subject_proxy_payment' OR "idempotencyKey" = 'payment_execution:' || execution_id || ':proxy');
-   IF NOT coalesce(proxy."factId" = fact."id" AND proxy."projectId" = request."projectId"
-     AND proxy."sourceImpactKey" = 'inter_subject_proxy_payment' AND proxy."impactKind" = 'inter_subject_balance_increase'
-     AND proxy."idempotencyKey" = 'payment_execution:' || execution_id || ':proxy'
-     AND proxy."amountCents" = e."amountCents" AND proxy."direction" = 'increase'
-     AND proxy."subjectRole" = 'actual_payer' AND proxy."subjectKind" = 'participating_company' AND proxy."subjectId" = f."actualPayerId"
-     AND proxy."impactSnapshot"->'debtor' = pg_catalog.jsonb_build_object('kind','participating_company','id',e."companyEntityIdSnapshot")
-     AND proxy."impactSnapshot"->'approvedPayer' = pg_catalog.jsonb_build_object('kind','participating_company','id',e."companyEntityIdSnapshot")
-     AND proxy."impactSnapshot"->'actualPayer' = pg_catalog.jsonb_build_object('kind','participating_company','id',f."actualPayerId"),FALSE) THEN
-     RAISE EXCEPTION 'registered cross-company proxy impact must match the one frozen debt root';
-   END IF;
- ELSIF root_count <> 0 OR proxy_count <> 0 THEN
-   RAISE EXCEPTION 'same-company or public-cash payment cannot create an intercompany debt root or proxy impact';
+ ELSIF root_count<>0 THEN
+   RAISE EXCEPTION 'same-company or public-cash payment cannot create an intercompany debt root';
+ END IF;
+ -- Adapter's payable basis is immutable Execution.settlementId plus positive
+ -- immutable due-payment allocation rows, never a guessed zero or future request.
+ SELECT pg_catalog.count(*),coalesce(pg_catalog.sum(a."amountCents"),0) INTO due_count,due_total
+ FROM public."PaymentExecutionAllocation" a WHERE a."paymentExecutionId"=execution_id AND a."allocationType"='contract_due_payment';
+ IF EXISTS(SELECT 1 FROM public."PaymentExecutionAllocation" a WHERE a."paymentExecutionId"=execution_id AND a."allocationType"='contract_due_payment'
+   AND (a."paymentRequestId"<>e."paymentRequestId" OR a."projectId"<>request."projectId" OR a."contractId"<>request."contractId"
+        OR a."amountCents"<=0 OR coalesce(pg_catalog.length(pg_catalog.btrim(coalesce(a."settlementId",a."sourceRowId"))),0)=0)) THEN
+   RAISE EXCEPTION 'registered due allocation must belong to its frozen payment source';
+ END IF;
+ IF frozen_source_type='contract_due' AND e."settlementId" IS NULL THEN
+   IF due_count=0 OR due_total<>e."amountCents" THEN RAISE EXCEPTION 'registered contract-due payment requires its full immutable payable allocation basis'; END IF;
+ ELSIF due_count<>0 THEN
+   RAISE EXCEPTION 'registered payment cannot add a due allocation outside its application source path';
+ END IF;
+ SELECT coalesce(pg_catalog.jsonb_object_agg(grouped.source_id,grouped.amount::TEXT),'{}'::JSONB) INTO expected_payables
+ FROM (SELECT pg_catalog.btrim(coalesce(a."settlementId",a."sourceRowId")) AS source_id,pg_catalog.sum(a."amountCents") AS amount
+       FROM public."PaymentExecutionAllocation" a WHERE a."paymentExecutionId"=execution_id AND a."allocationType"='contract_due_payment'
+       GROUP BY pg_catalog.btrim(coalesce(a."settlementId",a."sourceRowId"))) grouped;
+ IF due_count=0 AND e."settlementId" IS NOT NULL THEN
+   IF pg_catalog.length(pg_catalog.btrim(e."settlementId"))=0 THEN RAISE EXCEPTION 'registered settlement source is empty'; END IF;
+   expected_payables:=pg_catalog.jsonb_build_object(pg_catalog.btrim(e."settlementId"),e."amountCents"::TEXT);
+ END IF;
+ SELECT pg_catalog.count(*) INTO fact_count FROM public."OperatingFact" WHERE "sourceType"='payment_execution' AND "sourceBusinessId"=execution_id;
+ SELECT pg_catalog.count(*) INTO impact_count FROM public."OperatingImpactEntry" WHERE "sourceType"='payment_execution' AND "sourceBusinessId"=execution_id;
+ -- NULL frozen scope permits no projection at all. Once any projection exists,
+ -- including a later legitimate append, it must be the complete same graph.
+ IF f."operatingLedgerEffectiveDateAtRegistration" IS NULL AND fact_count=0 AND impact_count=0 THEN RETURN; END IF;
+ IF fact_count<>1 THEN RAISE EXCEPTION 'registered projected payment requires exactly one canonical fact'; END IF;
+ SELECT * INTO STRICT fact FROM public."OperatingFact" WHERE "sourceType"='payment_execution' AND "sourceBusinessId"=execution_id;
+ IF NOT coalesce(fact."projectId"=request."projectId" AND fact."sourceVersion"=1 AND fact."entryKind"='original' AND fact."status"='confirmed'
+   AND fact."factKind"='downstream_payment' AND fact."operatingLevel"=CASE WHEN cross_company THEN 'inter_subject' ELSE 'project' END
+   AND fact."amountCents"=e."amountCents" AND fact."currencyCode"='CNY' AND fact."direction"='outflow' AND fact."evidenceLevel"='A'
+   AND fact."occurredAt"=e."paidAt" AND fact."confirmedAt"=e."createdAt" AND fact."confirmedByUserId"=e."executedByUserId" AND fact."recordedByUserId"=e."executedByUserId"
+   AND fact."idempotencyKey"='payment_execution:'||execution_id
+   AND fact."debtorSubjectKind"='participating_company' AND fact."debtorSubjectId"=e."companyEntityIdSnapshot"
+   AND fact."approvedPayerSubjectKind"='participating_company' AND fact."approvedPayerSubjectId"=e."companyEntityIdSnapshot"
+   AND fact."actualPayerSubjectKind"=f."actualPayerKind" AND fact."actualPayerSubjectId"=f."actualPayerId"
+   AND fact."payeeSubjectKind"='downstream_counterparty' AND pg_catalog.length(pg_catalog.btrim(fact."payeeSubjectId"))>0
+   AND fact."sourceSnapshot"->>'payeeVersionId'=fact."payeeSubjectId"
+   AND fact."sourceSnapshot"->>'paymentSourceType'=frozen_source_type
+   AND fact."sourceSnapshot"->'settlementId'=coalesce(pg_catalog.to_jsonb(e."settlementId"),'null'::JSONB)
+   AND (f."operatingLedgerEffectiveDateAtRegistration" IS NULL OR fact."operatingLedgerEffectiveDateSnapshot"=f."operatingLedgerEffectiveDateAtRegistration")
+   AND public."jg_registered_payment_source_matches"(execution_id,request."projectId",e."amountCents",f."actualPayerKind",f."actualPayerId"),FALSE) THEN
+   RAISE EXCEPTION 'registered canonical fact must match its exact frozen payment subjects and applicability';
+ END IF;
+ IF pg_catalog.jsonb_typeof(fact."sourceSnapshot"->'payableAllocations') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'registered canonical fact requires its payable source set'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_catalog.jsonb_array_elements(fact."sourceSnapshot"->'payableAllocations') item
+   WHERE pg_catalog.jsonb_typeof(item) IS DISTINCT FROM 'object' OR pg_catalog.jsonb_typeof(item->'sourceId') IS DISTINCT FROM 'string'
+     OR coalesce(pg_catalog.length(pg_catalog.btrim(item->>'sourceId')),0)=0 OR pg_catalog.jsonb_typeof(item->'amountCents') IS DISTINCT FROM 'string'
+     OR NOT coalesce(item->>'amountCents' ~ '^[1-9][0-9]*$',FALSE)) THEN RAISE EXCEPTION 'registered canonical payable source is invalid'; END IF;
+ SELECT coalesce(pg_catalog.jsonb_object_agg(grouped.source_id,grouped.amount::TEXT),'{}'::JSONB) INTO snapshot_payables
+ FROM (SELECT pg_catalog.btrim(item->>'sourceId') AS source_id,pg_catalog.sum((item->>'amountCents')::NUMERIC) AS amount
+       FROM pg_catalog.jsonb_array_elements(fact."sourceSnapshot"->'payableAllocations') item GROUP BY pg_catalog.btrim(item->>'sourceId')) grouped;
+ IF snapshot_payables<>expected_payables THEN RAISE EXCEPTION 'registered canonical payable snapshot must match its immutable execution allocations'; END IF;
+ funds_kind:=CASE WHEN f."actualPayerKind"='public_cash' THEN 'public_cash_funds_decrease' ELSE 'company_project_funds_decrease' END;
+ FOR effect IN SELECT * FROM public."OperatingImpactEntry" WHERE "sourceType"='payment_execution' AND "sourceBusinessId"=execution_id LOOP
+   IF effect."factId"<>fact."id" OR effect."projectId"<>fact."projectId" THEN RAISE EXCEPTION 'registered impact must belong to its one canonical fact'; END IF;
+   IF effect."sourceImpactKey" LIKE 'payable:%' THEN
+     source_id:=pg_catalog.substr(effect."sourceImpactKey",9);
+     IF NOT coalesce(expected_payables ? source_id AND effect."impactKind"='payable_decrease' AND effect."direction"='decrease'
+       AND effect."idempotencyKey"='payment_execution:'||execution_id||':payable:'||source_id
+       AND effect."amountCents"=(expected_payables->>source_id)::BIGINT AND effect."subjectRole"='payee'
+       AND effect."subjectKind"=fact."payeeSubjectKind" AND effect."subjectId"=fact."payeeSubjectId",FALSE) THEN
+       RAISE EXCEPTION 'registered payable impact must match its exact immutable allocation and frozen fact payee'; END IF;
+     payable_count:=payable_count+1;
+   ELSIF effect."sourceImpactKey"=funds_kind THEN
+     IF NOT coalesce(f."openingTreatment"='not_included' AND effect."impactKind"=funds_kind AND effect."direction"='decrease'
+       AND effect."idempotencyKey"='payment_execution:'||execution_id||':funds' AND effect."amountCents"=e."amountCents"
+       AND effect."subjectRole"='actual_payer' AND effect."subjectKind"=f."actualPayerKind" AND effect."subjectId"=f."actualPayerId",FALSE) THEN
+       RAISE EXCEPTION 'registered funds impact must match the unpaid-in-opening frozen actual payer'; END IF;
+     funds_count:=funds_count+1;
+   ELSIF effect."sourceImpactKey"='inter_subject_proxy_payment' THEN
+     IF NOT coalesce(cross_company AND effect."impactKind"='inter_subject_balance_increase' AND effect."direction"='increase'
+       AND effect."idempotencyKey"='payment_execution:'||execution_id||':proxy' AND effect."amountCents"=e."amountCents"
+       AND effect."subjectRole"='actual_payer' AND effect."subjectKind"='participating_company' AND effect."subjectId"=f."actualPayerId"
+       AND effect."impactSnapshot"->'debtor'=pg_catalog.jsonb_build_object('kind','participating_company','id',e."companyEntityIdSnapshot")
+       AND effect."impactSnapshot"->'approvedPayer'=pg_catalog.jsonb_build_object('kind','participating_company','id',e."companyEntityIdSnapshot")
+       AND effect."impactSnapshot"->'actualPayer'=pg_catalog.jsonb_build_object('kind','participating_company','id',f."actualPayerId"),FALSE) THEN
+       RAISE EXCEPTION 'registered proxy impact must match its one frozen debt root'; END IF;
+     proxy_count:=proxy_count+1;
+   ELSE RAISE EXCEPTION 'registered canonical graph cannot contain an extra unrecognized impact'; END IF;
+ END LOOP;
+ SELECT pg_catalog.count(*) INTO expected_payable_count FROM pg_catalog.jsonb_object_keys(expected_payables);
+ IF payable_count<>expected_payable_count OR funds_count<>CASE WHEN f."openingTreatment"='not_included' THEN 1 ELSE 0 END
+   OR proxy_count<>CASE WHEN cross_company THEN 1 ELSE 0 END THEN
+   RAISE EXCEPTION 'registered canonical graph is missing an applicable payable, funds or proxy consequence';
  END IF;
 END $$;
+-- Existing UPDATE/DELETE immutable allocation guard is retained. This INSERT
+-- hook prevents later source rows changing a committed canonical payable set.
+CREATE FUNCTION public."jg_registered_payment_allocation_deferred"() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF EXISTS(SELECT 1 FROM public."RegisteredPaymentFunding" f WHERE f."executionId"=NEW."paymentExecutionId") THEN
+   PERFORM public."jg_assert_registered_payment_intercompany_complete"(NEW."paymentExecutionId");
+ END IF;
+ RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER "PaymentExecutionAllocation_registered_payment_complete"
+ AFTER INSERT ON public."PaymentExecutionAllocation" DEFERRABLE INITIALLY DEFERRED
+ FOR EACH ROW WHEN (NEW."allocationType"='contract_due_payment')
+ EXECUTE FUNCTION public."jg_registered_payment_allocation_deferred"();
 CREATE UNIQUE INDEX "InterEntityRelationshipEntry_registered_payment_root_key"
  ON public."InterEntityRelationshipEntry"("paymentExecutionId") WHERE "sourceType" = 'registered_payment_execution' AND "entryKind" = 'proxy_payment';
 

@@ -48,6 +48,60 @@ function configureCosStorage() {
   process.env.COS_REGION = "ap-guangzhou";
 }
 
+/** Legacy file fixtures contain no RegisteredPaymentVoucher records. Supply
+ * only that additional persistence read; keep old-domain SQL on its original
+ * adapter so its query assertions, order and failures remain observable. */
+const adaptedLegacyFileTransactions = new WeakSet<object>();
+
+function legacyFileTransaction<T extends object>(transaction: T): T {
+  if (adaptedLegacyFileTransactions.has(transaction)) return transaction;
+  const registeredVoucherSql = '/* registered_payment_voucher_download */ SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256" FROM "RegisteredPaymentVoucher" voucher LEFT JOIN "RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId" LEFT JOIN "PaymentExecution" execution ON execution."id" = voucher."executionId" WHERE voucher."fileId" = ?';
+  const proxy = new Proxy(transaction, {
+    get(target, property, receiver) {
+      if ((property === "projectNecessaryExpenseReserveEntry" || property === "projectFundDisputeEntry") &&
+        Reflect.get(target,property,target) == null && Reflect.get(target,"$queryRaw",target) == null) {
+        const relation = property === "projectNecessaryExpenseReserveEntry" ? "reserve" : "dispute";
+        // These legacy narrow fixtures explicitly had neither persistence port;
+        // the existing service therefore observed no such evidence. Preserve
+        // that empty fact rather than accidentally activating its raw fallback.
+        return new Proxy({}, {
+          get(_empty, method) {
+            if (method !== "findFirst") throw new Error("Unsupported legacy empty-evidence model method");
+            return async (query: unknown, ...extra: unknown[]) => {
+              const input = query && typeof query === "object" ? query as {where?: unknown; select?: unknown} : null;
+              const where = input?.where && typeof input.where === "object" ? input.where as {evidenceFileId?: unknown} : null;
+              if (extra.length !== 0 || !input || Object.keys(input).sort().join(",") !== "select,where" || !where || Object.keys(where).join(",") !== "evidenceFileId" ||
+                typeof where.evidenceFileId !== "string" || !where.evidenceFileId.trim() ||
+                JSON.stringify(input.select) !== JSON.stringify({[relation]:{select:{projectId:true}}})) {
+                throw new Error("Unsupported legacy empty-evidence query or file binding");
+              }
+              return null;
+            };
+          }
+        });
+      }
+      if (property !== "$queryRaw") return Reflect.get(target, property, receiver);
+      return async (query: unknown, ...args: unknown[]) => {
+        const input = query && typeof query === "object"
+          ? query as {sql?: unknown; values?: unknown}
+          : null;
+        const sql = typeof input?.sql === "string" ? input.sql.replace(/\s+/g," ").trim() : null;
+        if (sql?.includes("registered_payment_voucher_download")) {
+          if (sql !== registeredVoucherSql || args.length !== 0 || !Array.isArray(input?.values) || input.values.length !== 1 || typeof input.values[0] !== "string" || !input.values[0].trim()) {
+            throw new Error("Unsupported registered-voucher fixture query or file binding");
+          }
+          return [];
+        }
+        const original = Reflect.get(target, property, target);
+        if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
+        return Reflect.apply(original,target,[query,...args]);
+      };
+    }
+  });
+  adaptedLegacyFileTransactions.add(proxy);
+  return proxy;
+}
+
 describe("FileService", () => {
   const audit = {
     record: jest.fn()
@@ -138,7 +192,7 @@ describe("FileService", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
     };
     const prisma = {
-      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn() }
     };
     const service = new FileService(prisma as never, audit as never, storage as never);
@@ -186,7 +240,7 @@ describe("FileService", () => {
       auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
     };
     const prisma = {
-      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "wage-source-1" }) }
     };
     const service = new FileService(
@@ -233,7 +287,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string; uploadedByUserId: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "generated-1", uploadedByUserId: "actor-1" }, "actor-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "generated-1", uploadedByUserId: "actor-1" }, "actor-1"))
       .rejects.toThrow("当前账号无权下载该结算签章资料");
     expect(tx.settlementSignedDocument.findFirst).not.toHaveBeenCalled();
   });
@@ -258,7 +312,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string; uploadedByUserId: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "generated-1", uploadedByUserId: "other" }, "finance-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "generated-1", uploadedByUserId: "other" }, "finance-1"))
       .resolves.toBeUndefined();
   });
 
@@ -291,7 +345,7 @@ describe("FileService", () => {
       settlementSignedDocumentGenerationClaim: { updateMany: claimUpdate }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -347,7 +401,7 @@ describe("FileService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -522,7 +576,7 @@ describe("FileService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -576,7 +630,7 @@ describe("FileService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -609,7 +663,7 @@ describe("FileService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     };
     const service = new FileService(
       prisma as unknown as PrismaService,
@@ -659,7 +713,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "formal-file-1" }, "admin-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "formal-file-1" }, "admin-1"))
       .rejects.toThrow("当前账号无权下载该合同签署资料");
   });
 
@@ -703,7 +757,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "approval-form-1" }, "approver-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "approval-form-1" }, "approver-1"))
       .rejects.toThrow("审批单必须通过专用下载入口下载");
     expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
   });
@@ -751,7 +805,7 @@ describe("FileService", () => {
 
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
-    }).assertCanDownloadFileObject(tx, { id: "approval-form-1" }, "reminder-1"))
+    }).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "approval-form-1" }, "reminder-1"))
       .rejects.toThrow("审批单必须通过专用下载入口下载");
     expect(approvalActionLookup).not.toHaveBeenCalled();
   });
@@ -832,7 +886,7 @@ describe("FileService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -881,7 +935,7 @@ describe("FileService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -934,7 +988,7 @@ describe("FileService", () => {
           actorUserId: string
         ): Promise<void>;
       }).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "spot-raw-approval-file-1" },
         "spot-applicant-1"
       )).rejects.toThrow("审批单必须通过专用下载入口下载");
@@ -1031,10 +1085,10 @@ describe("FileService", () => {
       position: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new FileService({} as PrismaService, audit as never, storage as never);
-    await expect(service.assertCanDownloadFile(tx as never, file.id, "reader"))
+    await expect(service.assertCanDownloadFile(legacyFileTransaction(tx) as never, file.id, "reader"))
       .resolves.toEqual(file);
     tx.contractLayoutTemplateVersion.findMany.mockResolvedValue([]);
-    await expect(service.assertCanDownloadFile(tx as never, file.id, "reader"))
+    await expect(service.assertCanDownloadFile(legacyFileTransaction(tx) as never, file.id, "reader"))
       .rejects.toThrow("当前账号无权下载该资料");
   });
 
@@ -1073,7 +1127,7 @@ describe("FileService", () => {
             actorUserId: string
           ): Promise<void>;
         }
-      ).assertCanDownloadFileObject(tx, { id: "file-other-project" }, "global-finance")
+      ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "file-other-project" }, "global-finance")
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(businessLookup).toHaveBeenCalled();
   });
@@ -1122,7 +1176,7 @@ describe("FileService", () => {
         actorUserId: string
       ): Promise<void>;
     }).assertCanDownloadFileObject(
-      tx,
+      legacyFileTransaction(tx),
       { id: "confirmed-archive", uploadedByUserId: "other-user" },
       "global-finance"
     )).resolves.toBeUndefined();
@@ -1154,7 +1208,7 @@ describe("FileService", () => {
       projectMember: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1230,7 +1284,7 @@ describe("FileService", () => {
       position: { findMany: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1275,7 +1329,7 @@ describe("FileService", () => {
       position: { findMany: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -1320,7 +1374,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "spot-pending-pdf", uploadedByUserId: "global-uploader" },
         "global-uploader"
       )
@@ -1367,7 +1421,7 @@ describe("FileService", () => {
             actorUserId: string
           ): Promise<void>;
         }
-      ).assertCanDownloadFileObject(tx, { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "handler-1")
+      ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "handler-1")
     ).resolves.toBeUndefined();
   });
 
@@ -1408,7 +1462,7 @@ describe("FileService", () => {
             actorUserId: string
           ): Promise<void>;
         }
-      ).assertCanDownloadFileObject(tx, { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "stranger-1")
+      ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "stranger-1")
     ).rejects.toThrow("当前账号无权下载该费用附件");
   });
 
@@ -1453,7 +1507,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "receipt-only-file" },
         "receipt-viewer"
       )
@@ -1503,7 +1557,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "mixed-binding-file" },
         "receipt-viewer"
       )
@@ -1551,7 +1605,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "refund-only-voucher" },
         "refund-viewer"
       )
@@ -1599,7 +1653,7 @@ describe("FileService", () => {
           ): Promise<void>;
         }
       ).assertCanDownloadFileObject(
-        tx,
+        legacyFileTransaction(tx),
         { id: "mixed-refund-voucher" },
         "refund-viewer"
       )
@@ -1670,7 +1724,7 @@ describe("FileService", () => {
             ): Promise<void>;
           }
         ).assertCanDownloadFileObject(
-          tx,
+          legacyFileTransaction(tx),
           { id: "invoice-evidence-file" },
           "invoice-viewer"
         )
@@ -1736,7 +1790,7 @@ describe("FileService", () => {
             ): Promise<void>;
           }
         ).assertCanDownloadFileObject(
-          tx,
+          legacyFileTransaction(tx),
           { id: "invoice-evidence-file" },
           "invoice-viewer"
         )
@@ -1756,7 +1810,7 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
@@ -1781,9 +1835,9 @@ describe("FileService", () => {
           ? [{ fileId: file.id }]
           : [];
       })
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
 
@@ -1866,7 +1920,7 @@ describe("FileService", () => {
         })
       };
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const service = new FileService(prisma, audit as never, storage as never);
 
@@ -1891,7 +1945,7 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
@@ -1905,9 +1959,9 @@ describe("FileService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "uploader-1", isActive: true })
       },
       $queryRaw: jest.fn().mockResolvedValue([])
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const spotAccess = {
       resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied")
@@ -1975,7 +2029,7 @@ describe("FileService", () => {
         $queryRaw: jest.fn().mockResolvedValue([])
       };
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const spotAccess = { resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied") };
       const service = new FileService(
@@ -2007,7 +2061,7 @@ describe("FileService", () => {
         storageStatus: "active",
         contentSha256: null
       };
-      const tx = {
+      const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         invoiceRecord: {
@@ -2027,9 +2081,9 @@ describe("FileService", () => {
           findMany: jest.fn().mockResolvedValue([{ id: `position-${roleKey}`, key: roleKey }])
         },
         $queryRaw: jest.fn().mockResolvedValue([])
-      };
+      });
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const service = new FileService(prisma, audit as never, storage as never);
 
@@ -2066,7 +2120,7 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
@@ -2080,9 +2134,9 @@ describe("FileService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "inactive-uploader", isActive: false })
       },
       $queryRaw: jest.fn().mockResolvedValue([])
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
 
@@ -2108,7 +2162,7 @@ describe("FileService", () => {
       storageStatus: "active",
       contentSha256: null
     };
-    const tx = {
+    const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
       invoiceRecord: {
@@ -2144,9 +2198,9 @@ describe("FileService", () => {
         }])
       },
       $queryRaw: jest.fn().mockResolvedValue([])
-    };
+    });
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
@@ -2210,7 +2264,7 @@ describe("FileService", () => {
         storageStatus: "active",
         contentSha256: null
       };
-      const tx = {
+      const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
         invoiceRecord: {
@@ -2229,9 +2283,9 @@ describe("FileService", () => {
         },
         approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
         $queryRaw: jest.fn().mockResolvedValue([])
-      };
+      });
       const prisma = {
-        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
       } as unknown as PrismaService;
       const service = new FileService(prisma, audit as never, storage as never);
 
@@ -3006,7 +3060,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3122,7 +3176,7 @@ describe("FileService", () => {
       },
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3375,7 +3429,7 @@ describe("FileService", () => {
           }
           secondEntered.resolve();
           await releaseSecond.promise;
-          return callback(tx);
+          return callback(legacyFileTransaction(tx));
         }
       )
     } as unknown as PrismaService;
@@ -3438,7 +3492,7 @@ describe("FileService", () => {
       },
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) => {
-          await callback(tx);
+          await callback(legacyFileTransaction(tx));
           throw new Error("transaction acknowledgement lost");
         }
       )
@@ -3487,7 +3541,7 @@ describe("FileService", () => {
       },
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) => {
-          await callback(tx);
+          await callback(legacyFileTransaction(tx));
           throw acknowledgementError;
         }
       )
@@ -3531,7 +3585,7 @@ describe("FileService", () => {
       approvalFormGenerationClaim: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx))),
       fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3582,7 +3636,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => {
-        await callback(tx);
+        await callback(legacyFileTransaction(tx));
         throw acknowledgementError;
       }),
       fileObject: { findUnique: jest.fn(async () => persisted) }
@@ -3627,7 +3681,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (value: typeof tx) => unknown) => {
-        await callback(tx);
+        await callback(legacyFileTransaction(tx));
         throw acknowledgementError;
       }),
       fileObject: { findUnique: jest.fn(async () => persisted) },
@@ -3670,7 +3724,7 @@ describe("FileService", () => {
     const prisma = {
       $transaction: jest.fn(
         async (callback: (transaction: typeof tx) => unknown) => {
-          await callback(tx);
+          await callback(legacyFileTransaction(tx));
           throw transactionError;
         }
       ),
@@ -3740,7 +3794,7 @@ describe("FileService", () => {
       approvalFormGenerationClaim: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx))),
       fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
     } as unknown as PrismaService;
     const service = new FileService(
@@ -3795,7 +3849,7 @@ describe("FileService", () => {
       }
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         ),
         fileObject: { findUnique: jest.fn().mockResolvedValue(null) }
       } as unknown as PrismaService;
@@ -4059,7 +4113,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -4927,7 +4981,7 @@ describe("FileService", () => {
     const prisma = {
       $transaction: jest.fn(
         (callback: (client: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -4970,7 +5024,7 @@ describe("FileService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -5015,7 +5069,7 @@ describe("FileService", () => {
       fileObject: { updateMany: jest.fn() }
     };
     const prisma = {
-      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -5158,7 +5212,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.assertCanDownloadFile(tx as never, "file-1", "owner-1")
+      service.assertCanDownloadFile(legacyFileTransaction(tx) as never, "file-1", "owner-1")
     ).resolves.toBe(file);
     expect(tx.fileObject.findUnique).toHaveBeenCalledWith({ where: { id: "file-1" } });
   });
@@ -5253,7 +5307,7 @@ describe("FileService", () => {
       const prisma = {
         $transaction: jest.fn(
           async (callback: (transaction: typeof tx) => unknown) =>
-            callback(tx)
+            callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -5308,7 +5362,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(prisma, audit as never, storage as never);
@@ -5346,7 +5400,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5393,7 +5447,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5450,7 +5504,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5498,7 +5552,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5553,7 +5607,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5625,7 +5679,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5684,7 +5738,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5751,7 +5805,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5802,7 +5856,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5853,7 +5907,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -5909,7 +5963,7 @@ describe("FileService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(legacyFileTransaction(tx))
         )
       } as unknown as PrismaService;
       const service = new FileService(
@@ -5971,7 +6025,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6042,7 +6096,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6095,7 +6149,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6145,7 +6199,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6208,7 +6262,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6272,7 +6326,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6333,7 +6387,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6380,7 +6434,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6439,7 +6493,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6487,7 +6541,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6550,7 +6604,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6616,7 +6670,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6670,7 +6724,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6737,7 +6791,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6788,7 +6842,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6852,7 +6906,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6933,7 +6987,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -6999,7 +7053,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7045,7 +7099,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7105,7 +7159,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7165,7 +7219,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7216,7 +7270,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7274,7 +7328,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7338,7 +7392,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7402,7 +7456,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7467,7 +7521,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7524,7 +7578,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7601,7 +7655,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7713,7 +7767,7 @@ describe("FileService", () => {
       }
     });
     const prisma = {
-      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "source-1" }) }
     };
     const service = new FileService(prisma as never, audit as never, storage as never);
@@ -7769,7 +7823,7 @@ describe("FileService", () => {
       }
     });
     const prisma = {
-      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(legacyFileTransaction(tx))),
       wageApprovedSourceVersion: { findFirst: jest.fn().mockResolvedValue({ id: "source-1" }) }
     };
     const roles = new CompanyRoleResolverService(prisma as never);
@@ -7860,7 +7914,7 @@ describe("FileService", () => {
       position: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(legacyFileTransaction(tx)))
     } as unknown as PrismaService;
     const service = new FileService(
       prisma,
@@ -7924,7 +7978,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -7992,7 +8046,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -8053,7 +8107,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -8100,7 +8154,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(
@@ -8147,7 +8201,7 @@ describe("FileService", () => {
       paymentExecution: { findFirst: jest.fn() }
     };
     const transaction = jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-      callback(tx)
+      callback(legacyFileTransaction(tx))
     );
     const prisma = {
       $transaction: transaction
@@ -8245,7 +8299,7 @@ describe("FileService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(legacyFileTransaction(tx))
       )
     } as unknown as PrismaService;
     const service = new FileService(

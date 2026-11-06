@@ -1,6 +1,6 @@
 # 任务16约束组合准备（WIP，不可执行）
 
-`executed: false`。本目录不是Prisma migrations，不是可部署/可迁移候选；没有执行SQL、连接数据库、创建资源或调用PG driver。当前自有树基线94cb/201份迁移，主控固定中央cb124f71205636f777c2c6bb97193a4505060a19（尚未合入本树）有202份；自然源码检查点合入准确中央后才能产生最终库存，不能沿旧201或旧seal声明新候选。
+`executed: false`。本目录不是Prisma migrations，不是可部署/可迁移候选；没有执行SQL、连接数据库、创建资源或调用PG driver。私有树已将固定中央0aa691bf6eb35e719c9f28da64e710b294c06284合入为M16 7a6204a3553584e2363b9a8d99497ea6ee7de49c（202份迁移源码），另有后继未提交WIP。此前201份基线/cb124尚未合并的叙述只属历史。七片prepared仍不计迁移；完整driver/source-derived用例库存及最终prepare/verify clean seal尚未完成，不能沿旧seal或一条未执行descriptor声明完整PG准备。
 
 组合顺序：registered-funding.sql → registered-history-revision.sql → registered-write-authority.sql → registered-canonical-proof.sql → registered-intercompany.sql → registered-canonical-adapter.sql → registered-voucher.sql。最终只能经过静态完整组合复核后合并为一份受控迁移源码（单一事务），不能独立执行这些片段，也不能把写好的SQL计为PG通过。
 
@@ -78,3 +78,19 @@ Funding新增native DATE operatingLedgerEffectiveDateAtRegistration；NULL仅表
 ## 2026-11-07 P1/P2窄审后闭合增量（未执行）
 第6片为OperatingFact及OperatingImpactEntry各增加仅AFTER INSERT、DEFERRABLE INITIALLY DEFERRED入口：仅sourceType=payment_execution且真实同EID RegisteredPaymentFunding存在才调用永久complete。以后补入Fact但漏proxy会排队该事务的完整图检查；不调用未来角色/轮次/marker/Project写时authority，不改旧v7、退款/返还/更正。原UPDATE/DELETE/TRUNCATE保障来自20260814100000:510–528的protectOperatingLedgerAppendOnly及四trigger，当前正式迁移链无后续同名替换/移除；本票不另造广域禁止。
 Project锁不再upfront SHARE：先原业务行与账户，校验后CAS前强NOWAIT，后续原Fact/Impact validator同事务重入Project UPDATE，消除本报告所列共享锁升级边；不声明所有死锁免除。NULL/enabled字段、Schema和永久scope proof不变，不重生成客户端。后来投影缺席/完整正控、两独立申请同项目、Project维护反向锁与错误回执均只列PG NOTRUN向量。
+
+
+## source79完整图P2的源码补修闭包（仍仅准备）
+
+完整79输入新Spec审查发现：此前提交末门主要覆盖跨公司root/Fact/proxy，未启用之外的同公司/公共现金以及资金/应付轴缺席没有完整存在性校验。旧两项窄源码审查关闭不代表本项已通过或PG已验。本轮已按已审候选将同一末门扩为所有registered Execution的完整图，不新增付款/费用事实；私有候选Spec源码增量0新项，本次应用后的精确hash复核仍待完成，所有原生案例未执行。
+
+- **金融根轴**：冻结公司B代A始终精确一个A欠B root，即使经营日期快照NULL；同A/公共现金必须无root和proxy。
+- **是否投影**：以Funding登记时原生DATE快照为准。非NULL必须有唯一原始canonical Fact；NULL且完全没有该源Fact/Impact可合法无投影。一旦后继合法追加任一projection行，就必须补齐完整同源图；不读未来Project日期，不以当前启用状态改变旧回执。
+- **资金轴**：仅openingTreatment=not_included需要精确一个与冻结actual payer匹配的资金减少；included必须零个，不重复扣期初。
+- **应付适用集合**：跟随正式adapter，先取本Execution的contract_due_payment行按规范sourceId聚合；不存在该行且Execution不可变settlementId非空时整笔回落该结算；其它情况为空集合而非虚构0行。contract_due且无settlement的真实应用路径总分配等于本次实付，其余路径不产此类due行。依据是Event冻结sourceType、不可变Execution.settlementId和原正数/上限/UPDATE-DELETE不可变Allocation行，不是未来PaymentRequest/Project日期或客户端bool。
+- **匹配**：canonical Fact应付快照与该规范集合结构相同；每个应付影响的键、方向、金额、同Fact及其冻结payee精确相同，资金/proxy同理；缺少、多出、换轴、错金额/主体不接受。影响主体仍受原canonical引用验证器约束；本项不新增ContractPartySnapshot整体不可变承诺，也不以当前相对方目录覆盖冻结Fact。
+- **后来来源行**：原Allocation UPDATE/DELETE不可变守卫保留；新增的registered-only due Allocation INSERT延迟入口复用同末门，避免初始Funding/Event触发器在后来插入时不再触发。原bank/工资/v7/返还/更正路径不进入该额外门，既有不可变及回退语义不改。
+
+安装依赖仍为上方七片单事务顺序。完整图函数及精确Allocation延迟入口位于registered-intercompany.sql，故先于canonical-adapter的后来projection hook存在；Funding/Event延迟调用顺序不变。新的invoker helper/触发器亦必须纳入既定owner/runtime/默认ACL实际证明，未授权不执行，不以源码定义推断权限已通过。
+
+拟追加原生反例清单只在私有候选报告中描述；不是正式driver库存、未提供伪可执行命令、未运行SQL parser或mock证明PG红绿。至少覆盖enabled同A/cash无Fact、not_included缺资金、included额外资金、遗漏/多出/错配应付、contract_due分组、advance合法空应付、NULL无projection及后来不完整/完整追加、后来非法due行、跨B唯一root与proxy。真实COMMIT故障/竞争/响应丢失及组合旧守卫仍须单独授权资源后验证。

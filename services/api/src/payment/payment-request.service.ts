@@ -3194,7 +3194,8 @@ export class PaymentRequestService {
       }
       const contractHistoryBasis = await registeredContractHistoryBasis(tx,payment.contractId);
       const originalResults = await registeredOriginalPaymentResults(tx,payment.id);
-      return {paymentId:payment.id,code:payment.code,projectId:payment.projectId,expectedPaymentUpdatedAt:payment.updatedAt.toISOString(),paidAmountCents:payment.paidAmountCents.toString(),remainingAmountCents:((payment.approvedAmountCents??payment.requestedAmountCents)-payment.paidAmountCents).toString(),accounts,originalResults,contractHistoryBasis};
+      const remainingAmountCents = (payment.approvedAmountCents??payment.requestedAmountCents)-payment.paidAmountCents;
+      return {paymentId:payment.id,code:payment.code,projectId:payment.projectId,expectedPaymentUpdatedAt:payment.updatedAt.toISOString(),paidAmountCents:payment.paidAmountCents.toString(),remainingAmountCents:remainingAmountCents.toString(),canRegisterPayment:remainingAmountCents>0n,accounts,originalResults,contractHistoryBasis};
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }
 

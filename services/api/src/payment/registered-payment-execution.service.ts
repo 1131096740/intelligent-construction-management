@@ -44,9 +44,10 @@ export class RegisteredPaymentExecutionService {
         const receipt = funding.find(row=>row.executionId === execution.id);
         const snapshot = receipt?.actualPayerSnapshot;
         const actualPayerName = receipt?.actualPayerKind === "public_cash" ? "\u516c\u5171\u73b0\u91d1" : snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) && typeof snapshot.name === "string" && snapshot.name.trim() ? snapshot.name : "\u4ed8\u6b3e\u8d44\u91d1\u8d44\u6599\u5f85\u6838\u5bf9";
+        const voucherPending = (await paymentExecutionVoucherFileId(tx,execution)) === null;
         items.push({executionId:execution.id,paymentId:request.id,code:request.code,projectId:request.projectId,
           amountCents:execution.amountCents.toString(),paidAt:chinaDateOnly(execution.paidAt),registeredByName:actor?.name??"原登记人",actualPayerName,
-          voucherPending:(await paymentExecutionVoucherFileId(tx,execution)) === null,resultKey:execution.idempotencyKey});
+          voucherPending,canSupplementVoucher:Boolean(receipt && execution.voucherFileId === null && voucherPending),resultKey:execution.idempotencyKey});
       }
       return {items,total:items.length};
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
@@ -62,10 +63,12 @@ export class RegisteredPaymentExecutionService {
       const impacts = facts.length ? await tx.operatingImpactEntry.findMany({ where: { factId: { in: facts.map(fact=>fact.id) } } }) : [];
       const relationshipEntries = await tx.interEntityRelationshipEntry.findMany({where:{paymentExecutionId:execution.id,sourceType:"registered_payment_execution"}});
       const voucherFileId = await paymentExecutionVoucherFileId(tx,execution);
+      const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
+      const canSupplementVoucher = Boolean(funding && execution.voucherFileId === null && voucherFileId === null);
       const intercompany = relationshipEntries.map(entry=>({entryId:entry.id,debtorCompanyId:entry.originalDebtorCompanyId,creditorCompanyId:entry.creditorCompanyId,amountCents:entry.amountCents.toString(),status:entry.status,voucherPending:voucherFileId===null}));
       const effects = facts.map(fact=>({ factId: fact.id, sourceVersion: fact.sourceVersion, recordedVoucherPending: fact.basisSnapshot && typeof fact.basisSnapshot === "object" && !Array.isArray(fact.basisSnapshot) ? fact.basisSnapshot.voucherPending === true : false, actualPayerKind: fact.actualPayerSubjectKind, actualPayerId: fact.actualPayerSubjectId,
         impacts: impacts.filter(impact=>impact.factId===fact.id).map(impact=>({ kind: impact.impactKind, amountCents: impact.amountCents.toString(), subjectKind: impact.subjectKind, subjectId: impact.subjectId })) }));
-      return { status: "recorded", execution: {
+      return { status: "recorded", canSupplementVoucher, execution: {
         executionId: execution.id, paymentId: execution.paymentRequestId,
         amountCents: execution.amountCents.toString(), paidAt: chinaDateOnly(execution.paidAt),
         voucherPending: voucherFileId === null

@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `9e99e7c9d2fa7b13de4ff37f18809bbc6147403497750d419eeb8603cb60750b` |
-| webApiWrappers | ready | `c3acd48c8e524c94069a165a37540d7f5463c18489225afe362f199e15ef27fc` |
-| webPageActions | ready | `883ebedc2ee2bc30c319c389a96dadb7c8bdcd0c56d5de9cdb33123ef3d46692` |
-| routeUsage | ready | `169feb46786490fdc1b5f14cbfd001e60f17386713e9b68680ecac3564bda702` |
+| nestRoutes | ready | `3fc133fca6dd25743063eefe944540e97ec766f7d31430bddd6f01aa8098eda0` |
+| webApiWrappers | ready | `55a88091866cc493325b231c46cb03b85c09a2e1c64ee36592b522b6583d141f` |
+| webPageActions | ready | `2e3752904faf4c720ea5a3c45d8700e20301d9e343d5028334dfde680f4aa9b1` |
+| routeUsage | ready | `59803966a737aa1c8e10d996f4e1fb65a9fec3bd0b0a6c24d399f0addcab425b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 718 |
-| pageRouteCount | 521 |
+| routeCount | 728 |
+| pageRouteCount | 529 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
-| internalTaskRouteCount | 37 |
+| internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 711 |
+| mainRequestBindingCount | 719 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 414 |
-| actionBindingCount | 477 |
-| acceptedActionBindingCount | 439 |
+| registeredActionCount | 416 |
+| actionBindingCount | 480 |
+| acceptedActionBindingCount | 442 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 405 |
-| coveredProductionMutationConsumerPairCount | 405 |
+| productionMutationConsumerPairCount | 407 |
+| coveredProductionMutationConsumerPairCount | 407 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -183,6 +183,13 @@
 | GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchWagePayableCases | — | not_applicable | — |
 | GET | /payable-settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementWorkbench | — | not_applicable | — |
+| GET | /payment-executions/:paymentId/existing-source/:type/:id | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /payment-executions/:paymentId/registration-options | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentOptions | — | not_applicable | — |
+| GET | /payment-executions/:executionId/voucher-ticket | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#downloadRegisteredPaymentVoucher | — | not_applicable | — |
+| GET | /payment-executions/notifications | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /payment-executions/recorded-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRecordedPaymentItems | — | not_applicable | — |
+| GET | /payment-executions/results/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentResult | — | not_applicable | — |
+| GET | /payment-executions/work-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentWorkItems | — | not_applicable | — |
 | GET | /payments/:paymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentActionCapability | — | not_applicable | — |
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
@@ -527,6 +534,9 @@
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
+| POST | /payment-executions/:paymentId/registrations | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#recordRegisteredPayment | registered-payment.register | covered | — |
+| POST | /payment-executions/:executionId/voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
+| POST | /payment-executions/:executionId/voucher | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |
 | POST | /payments/:paymentId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | — | not_applicable | — |

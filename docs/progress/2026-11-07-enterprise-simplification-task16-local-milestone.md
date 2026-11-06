@@ -2,7 +2,19 @@
 
 本收据记录本地实现、合成公开服务及真实浏览器证据；不是整票完成、迁移或发布资格。任务16/#398仍未关闭，17/24仍阻塞。真实PG正常提交、异常、响应丢失及竞争没有验证，资源、SQL执行/迁移、真实通知/银行/COS、交易、部署及生产写仍未授权。
 
-## 来源与下一暂停点
+## 本地里程碑来源（封存前检查点M16＋后继已审实现；非整票关闭）
+
+私有树已完成本地检查点 C16 `77a24fa6e1fe2571dcf43d95f4f61a35605189d5`，并将固定中央 `0aa691bf6eb35e719c9f28da64e710b294c06284` 合入为 M16 `7a6204a3553584e2363b9a8d99497ea6ee7de49c`。封存前基点为M16加后继已审实现，准确提交与clean seal身份由外部回执绑定；中央有202份迁移源码，本目录七份prepared片段不计新增迁移。私有树合入中央不等于把本轮实现集成中央：本地封存不代表已push或更新集成Draft，远端动作以主控独立回执为准；任务16/#398仍OPEN，17/24仍阻塞。
+
+最近受测的完整79项审查输入阶段已取得：登记公开HTTP68/68；Web原五目标71/71及受影响类型/lint；桌面八个既有真实场景（第1例原通过证据＋第2–8例各fresh续跑），手机三个关键场景（分次、现金私有凭证、丢响应原键恢复）3/3；七组严格治理全部ready，416动作/407个写消费者均被认可，728路由/0未分类；原纯工具编排369/369、0失败/0跳过；fresh Shared/API/Web构建与check:ui。旧全Web lint的883个warning及构建chunk warning保留，未抬阈值；后端相关旧套件、Shared及各阶段UI按原字节/语义桥接，不合算为新全API或全UI一次执行。
+
+受测79输入清单原SHA `2de99cae20a7735bb6663953601e146a98163e37449a8305f429bd22b6e53943` 是**本次文档/SQL整改之前的已冻结历史身份**，不能当后继候选新SHA。它包含本文件和PROGRESS旧内容；本轮整改后必须重新冻结，不在本文件预填包含自身的最终清单SHA。详细原证据：私有里程碑 `fc256b26136f100dacda0945d8e825635ee2af7591d59b9a371cd10397635253`、桌面/手机11场景索引 `39dc59ba3036a0167e7fa0119ac2ba10d4545a9ad019a67581c2bdcad65eaa73`、新完整两轴包 `63b2c1e96691556b9f01b698b4798bfb46dea34b550df1a23bf7beb4fdf302a6`，均在 `/private/tmp/jg-task16-evidence-20261106/` 下。原gov2/3/4严格失败和第2例启动前裸bind工具失败全部保留；端口瞬时TIME_WAIT原因未证明，后继运行器修正不改原失败历史。
+
+新完整79审查报告为 `jg-task16-source79-standards-review-20261107.md` 与 `jg-task16-source79-spec-review-20261107.md`：旧79提出文档摘要过时与prepared完整图约束遗漏两项P2，现已按已审候选源码/文档补修；私有候选Spec源码增量及应用后准确hash的Standards/Spec两轴复核均0新项，原P2分别CLOSED/CLOSED AT SOURCE；不能解释为PG通过。实际后置报告为 `/private/tmp/jg-task16-source79-standards-review-20261107.postapply-p2.md`（SHA256 `2c2faa5c76eef3d9b9d506110dee21d22cee21fc20d63fbe1a49b8fa815bde9e`）及 `/private/tmp/jg-task16-source79-spec-review-20261107.postapply.md`（SHA256 `cf59282e4f84d8313537a0306f8eeb6867bb4771e97f8728dd08425235aef073`）；它们绑定已应用的旧79清单eb502，不把本次纯文档状态同步冒新PG或新业务运行。可选重复建议不做本轮重构。官方prepare/verify的准确提交及source seal身份由外部回执绑定，不能由源码封包推定运行资格；完整PG driver、source-derived用例库存与资源/owner-runtime/COMMIT/响应丢失/竞争门未完成。两个PG准备模块只有一条未执行的NULL跨公司descriptor，不冒完整PG准备或执行通过。七份SQL保持SOURCE_ONLY_NOT_EXECUTED、不可迁移；本地合成及真实页面不能代替原生事务证明。37定向通知后继接力/全局UI、40/44泛用下载二次输入、43旧工资入口退役及42/44原生最终门分别保留。
+
+应用后准确79清单的两轴源码增量复核已完成、均0新项；本地里程碑提交及准确干净提交的prepare/verify身份以外部回执为准；后续继续完成PG driver/库存及准确候选流程；未经单独授权，不运行PG/SQL/资源/迁移、真实银行短信COS/交易、部署或生产写，不关闭#398。
+
+## 历史来源与当时暂停点（保原检查点身份）
 
 - 私有树：`/private/tmp/jg-enterprise-task16-payment-execution-20261106`；分支 `codex/enterprise-task16-payment-execution-20261106`；当前HEAD `084c22cb68184cee6b5c9f805ddc8e322f2a58fc`，基线 `94cb10946effa5f3fc3e17b1e652c467980c6a6d`。这是未提交WIP，不把HEAD冒当前全部代码来源。
 - 父控固定中央 `0aa691bf6eb35e719c9f28da64e710b294c06284` 尚未合入；本轮只读本地固定Git对象，未核远端live。其末笔仅2份文档，但相对私树base还包含19已整合代码和新增采购迁移，迁移源码201→202，不能当纯文档整合。
@@ -10,7 +22,7 @@
 - 文档更新前累计66份owned源，包括早期commit的10份，当前33份tracked dirty与31份untracked；只看dirty会漏 `me.service.ts` 与 `fund-account/testing/fund-account.synthetic-db.ts`。加本收据后重捕完整membership；不要只审下面32/34个窄包。
 - 先对累计tracked WIP及untracked白名单做独立Standards/Spec两轴审查；通过及问题修复后才允许首checkpoint commit。尚未Git写/执行hook/merge/generate/build/治理/369/官方prepare-verify/push。后续合固定中央及准确最终SHA仍须重新审查、必要门和独立整合，不合main。
 
-## 准确源码与合成服务证据
+## 历史32/34阶段的准确源码与合成服务证据
 
 | 阶段 | 准确范围与结果 | 原收据/指纹 |
 | --- | --- | --- |
@@ -19,7 +31,7 @@
 | Shared14 | 三个受影响文件及测试的独立旧同SHA桥接；不是本版重新跑 | `related-gates-receipt.json`、`current58-related-gates-plan.json`；后续合中央权限差额须重新核 |
 | 两新PG准备模块与原32合34 | API tsc 0；仅两文件eslint 0/0warning；34文件首尾同SHA。没有调用seed/run/native/HTTP/descriptor函数，没有构造Prisma、连接数据库或创建资源 | `registered-pg-first-source-static-receipt.json` SHA256 `22e5359f19134414368bec0ba7371687ff654eda8ce9bde2d5d83014c59b83d2`；两模块独立源码窄审0明确新缺口，非PG执行 |
 
-关键当前源SHA256（不可用后续版本替代上述日志）：
+历史32/34阶段源SHA256（不是当前WIP；不可用后续版本替代上述日志）：
 
 - 登记HTTP：`3ebfd3625a62b79ff9f994425888752be6d82a31b5f93a4f05773918bd8383f2`。
 - Request：`30eefa0ce489a4bc865d77ee91f91121b544b27d0c03497d136f69a917398b92`；Funding：`a12bebc3b95ad6a3a21ca8caaba83b37a3f377167994559f6f72d0ad045651f5`。
@@ -113,7 +125,7 @@ Panel当前 `f10f72bb4160bea51024be9285c8f1d4de04e42f834cf6ca497a74e72743cc5f`�
 
 ## 累计WIP提交前两轴初审及待修项（旧67包身份保留）
 
-本段为后继状态，不把原67源包的通过项迁移到未运行的新测试。Standards与Spec独立报告均绑定旧packet `24bdb55c96c44b243a0fbd19f1a07df7f13cdfa091e08a9b24a345a2031c79ab`、base94cb/HEAD084c/中央0aa。
+本段仅保留旧67包后继阶段的当时状态，当前结论以本收据开头摘要为准；不把原67源包的通过项迁移到未运行的新测试。Standards与Spec独立报告均绑定旧packet `24bdb55c96c44b243a0fbd19f1a07df7f13cdfa091e08a9b24a345a2031c79ab`、base94cb/HEAD084c/中央0aa。
 
 **Standards**：0硬规范违规，2个非阻断heuristic。`registered-payment-execution.service.ts:36–49`/domain helper的逐实付反复判域可能有查询放大；建议未来用事务内局部结果或批量读，但当前未测性能、不引入跨请求缓存，保当前角色/工资关系/最新状态新鲜性。`payment-request.service.ts:3282–3292,3700–3707`两处原来源重放判断重复；建议未来窄抽取，但当前不改变正常回执与P2002/P2034恢复各自独立事务、身份/指纹/金额日期复验及中文失败，不吞异常、不做通用workflow。均是维护建议，尚未修改，最终候选再评。原报告 `/private/tmp/jg-task16-wip-standards-precommit-review-20261107.md`。
 

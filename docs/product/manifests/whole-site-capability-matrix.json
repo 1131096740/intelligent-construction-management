@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "9e99e7c9d2fa7b13de4ff37f18809bbc6147403497750d419eeb8603cb60750b",
+      "sha256": "3fc133fca6dd25743063eefe944540e97ec766f7d31430bddd6f01aa8098eda0",
       "status": "ready",
       "summary": {
-        "routeCount": 718
+        "routeCount": 728
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "c3acd48c8e524c94069a165a37540d7f5463c18489225afe362f199e15ef27fc",
+      "sha256": "55a88091866cc493325b231c46cb03b85c09a2e1c64ee36592b522b6583d141f",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 42,
-        "exportedFunctionCount": 694,
-        "transportWrapperCount": 672,
+        "apiModuleCount": 43,
+        "exportedFunctionCount": 701,
+        "transportWrapperCount": 679,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 711,
-        "ticketFollowupCount": 4,
-        "requestEdgeCount": 699,
-        "productionConsumerCount": 585,
+        "mainRequestBindingCount": 719,
+        "ticketFollowupCount": 5,
+        "requestEdgeCount": 708,
+        "productionConsumerCount": 592,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,50 +42,50 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "883ebedc2ee2bc30c319c389a96dadb7c8bdcd0c56d5de9cdb33123ef3d46692",
+      "sha256": "2e3752904faf4c720ea5a3c45d8700e20301d9e343d5028334dfde680f4aa9b1",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 414,
-        "pageActionCount": 61,
+        "registeredActionCount": 416,
+        "pageActionCount": 63,
         "backgroundActionCount": 353,
-        "reachableVueFileCount": 208,
+        "reachableVueFileCount": 209,
         "routeRootCount": 74,
-        "totalVueFileCount": 221,
-        "parsedVueFileCount": 221,
-        "reachableProductionModuleCount": 357,
-        "templateEventDirectiveCount": 1321,
+        "totalVueFileCount": 222,
+        "parsedVueFileCount": 222,
+        "reachableProductionModuleCount": 360,
+        "templateEventDirectiveCount": 1334,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 405,
-        "candidateProductionMutationConsumerCount": 405,
-        "acceptedProductionMutationConsumerCount": 405,
-        "productionMutationConsumerPairCount": 405,
+        "coveredProductionMutationConsumerCount": 407,
+        "candidateProductionMutationConsumerCount": 407,
+        "acceptedProductionMutationConsumerCount": 407,
+        "productionMutationConsumerPairCount": 407,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "169feb46786490fdc1b5f14cbfd001e60f17386713e9b68680ecac3564bda702",
+      "sha256": "59803966a737aa1c8e10d996f4e1fb65a9fec3bd0b0a6c24d399f0addcab425b",
       "status": "ready",
       "summary": {
-        "routeCount": 718,
-        "exactRouteCount": 718,
-        "normalizedRouteCount": 718,
-        "classificationOverrideCount": 215,
-        "consumerSurfaceOverrideCount": 38,
-        "classificationOverrideSha256": "bf71cfcf21064a241fd96a24a3f003f1d75b900456bfa6a1b8ddd6f0091df6f7",
-        "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-        "derivedProductionPageCount": 503,
-        "pageRouteCount": 521,
+        "routeCount": 728,
+        "exactRouteCount": 728,
+        "normalizedRouteCount": 728,
+        "classificationOverrideCount": 217,
+        "consumerSurfaceOverrideCount": 40,
+        "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
+        "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
+        "derivedProductionPageCount": 511,
+        "pageRouteCount": 529,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 90,
-        "internalTaskCount": 37,
+        "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 574,
+          "web_api_wrapper": 582,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
-          "operator_endpoint": 35,
+          "operator_endpoint": 37,
           "none": 101
         },
         "blockerCount": 0
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 718,
-    "pageRouteCount": 521,
+    "routeCount": 728,
+    "pageRouteCount": 529,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 90,
-    "internalTaskRouteCount": 37,
+    "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 711,
+    "mainRequestBindingCount": 719,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 414,
-    "actionBindingCount": 477,
-    "acceptedActionBindingCount": 439,
+    "registeredActionCount": 416,
+    "actionBindingCount": 480,
+    "acceptedActionBindingCount": 442,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 405,
-    "coveredProductionMutationConsumerPairCount": 405,
+    "productionMutationConsumerPairCount": 407,
+    "coveredProductionMutationConsumerPairCount": 407,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -4991,7 +4991,8 @@
           "normalizedKey": "GET /fund-accounts",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
           ],
           "testConsumers": []
         }
@@ -7251,6 +7252,261 @@
           "testConsumers": [
             "apps/web-admin/src/api/payable-settlement.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/:paymentId/existing-source/:type/:id",
+        "normalizedKey": "GET /payment-executions/:param/existing-source/:param/:param",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "existingSource",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/:paymentId/registration-options",
+        "normalizedKey": "GET /payment-executions/:param/registration-options",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "registrationOptions",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "fetchRegisteredPaymentOptions",
+          "method": "GET",
+          "path": "/payment-executions/:param/registration-options",
+          "normalizedKey": "GET /payment-executions/:param/registration-options",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/:executionId/voucher-ticket",
+        "normalizedKey": "GET /payment-executions/:param/voucher-ticket",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "voucherTicket",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "downloadRegisteredPaymentVoucher",
+          "method": "GET",
+          "path": "/payment-executions/:param/voucher-ticket",
+          "normalizedKey": "GET /payment-executions/:param/voucher-ticket",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/notifications",
+        "normalizedKey": "GET /payment-executions/notifications",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "currentNotifications",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/recorded-items",
+        "normalizedKey": "GET /payment-executions/recorded-items",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "recordedItems",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "fetchRecordedPaymentItems",
+          "method": "GET",
+          "path": "/payment-executions/recorded-items",
+          "normalizedKey": "GET /payment-executions/recorded-items",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/results/:idempotencyKey",
+        "normalizedKey": "GET /payment-executions/results/:param",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "result",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "fetchRegisteredPaymentResult",
+          "method": "GET",
+          "path": "/payment-executions/results/:param",
+          "normalizedKey": "GET /payment-executions/results/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-executions/work-items",
+        "normalizedKey": "GET /payment-executions/work-items",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "workItems",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "fetchRegisteredPaymentWorkItems",
+          "method": "GET",
+          "path": "/payment-executions/work-items",
+          "normalizedKey": "GET /payment-executions/work-items",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -28556,6 +28812,204 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payment-executions/:paymentId/registrations",
+        "normalizedKey": "POST /payment-executions/:param/registrations",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "record",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "recordRegisteredPayment",
+          "method": "POST",
+          "path": "/payment-executions/:param/registrations",
+          "normalizedKey": "POST /payment-executions/:param/registrations",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "registered-payment.register",
+          "bindingIndex": 0,
+          "identity": "registered-payment.register\u0000apps/web-admin/src/api/registered-payment-execution.api.ts\u0000recordRegisteredPayment\u0000POST\u0000POST /payment-executions/:param/registrations\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "registrationPermission.canRegisterPayment",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "recordRegisteredPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payment-executions/:executionId/voucher-file-uploads",
+        "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "uploadVoucher",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "supplementRegisteredPaymentVoucher",
+          "method": "POST",
+          "path": "/payment-executions/:param/voucher-file-uploads",
+          "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "registered-payment.supplement-voucher",
+          "bindingIndex": 1,
+          "identity": "registered-payment.supplement-voucher\u0000apps/web-admin/src/api/registered-payment-execution.api.ts\u0000supplementRegisteredPaymentVoucher\u0000POST\u0000POST /payment-executions/:param/voucher-file-uploads\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "voucherPermission.canSupplementVoucher",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "supplementRegisteredPaymentVoucher",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payment-executions/:executionId/voucher",
+        "normalizedKey": "POST /payment-executions/:param/voucher",
+        "controller": "RegisteredPaymentExecutionController",
+        "handler": "attachVoucher",
+        "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "supplementRegisteredPaymentVoucher",
+          "method": "POST",
+          "path": "/payment-executions/:param/voucher",
+          "normalizedKey": "POST /payment-executions/:param/voucher",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "registered-payment.supplement-voucher",
+          "bindingIndex": 0,
+          "identity": "registered-payment.supplement-voucher\u0000apps/web-admin/src/api/registered-payment-execution.api.ts\u0000supplementRegisteredPaymentVoucher\u0000POST\u0000POST /payment-executions/:param/voucher\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "voucherPermission.canSupplementVoucher",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "supplementRegisteredPaymentVoucher",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
           ],
           "causalVerified": true,
           "accepted": true,
