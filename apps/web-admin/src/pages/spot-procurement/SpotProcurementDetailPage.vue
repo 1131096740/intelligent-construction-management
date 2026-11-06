@@ -1783,9 +1783,9 @@ watch(procurementId, () => {
   clearDetailRouteContext();
   void loadDetail();
 });
-onMounted(() => {window.addEventListener("beforeunload", beforeEditUnload); void loadDetail();});
+onMounted(() => {if (typeof window !== "undefined") window.addEventListener("beforeunload", beforeEditUnload); void loadDetail();});
 onBeforeUnmount(() => {
-  window.removeEventListener("beforeunload", beforeEditUnload);
+  if (typeof window !== "undefined") window.removeEventListener("beforeunload", beforeEditUnload);
   clearTimeout(editSaveTimer);
   reviewComponentActive = false;
   withdrawalComponentActive = false;

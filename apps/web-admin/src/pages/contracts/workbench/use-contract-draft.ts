@@ -1,3 +1,4 @@
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import type {
   ContractClauseDefinition,
   ContractCompanyEntitySelection,
@@ -267,6 +268,8 @@ export type ContractDraftSaveState =
  * sections do not understand stays untouched inside {@link extraDraftData}.
  */
 export interface ContractDraftFieldsModel {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   contractName: string;
   companyEntityId: string;
   layoutTemplateVersionId?: string | null;
@@ -443,6 +446,10 @@ export function companyEntitySyncPatch(companyEntityId: string) {
 }
 
 export interface InitializeDraftController {
+  preciseDraft: Ref<boolean>;
+  relationship: Ref<"" | "inside" | "outside" | "upward">;
+  setPreciseDraft: (enabled: boolean) => void;
+  setRelationship: (value: "" | "inside" | "outside" | "upward") => void;
   projectId: Ref<string>;
   contractTypeKey: Ref<string>;
   businessTemplateVersionId: Ref<string>;
@@ -656,6 +663,8 @@ function modelFromWorkbench(workbench: ContractDraftWorkbenchReadModel): Contrac
       ? { ...draftData["companyEntitySelection"] }
       : null,
     layoutTemplateVersionId: workbench.version.layoutTemplateVersionId ?? null,
+    ...(workbench.version.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 as const,
+      manualAmountYuan: workbench.version.amountSource === "manual" ? workbench.version.amountYuan ?? null : null } : {}),
     pricingNature: workbench.version.pricingNature ?? "",
     amountSource: workbench.version.amountSource ?? "",
     manualAmountCents:
@@ -1126,10 +1135,14 @@ function aggregateSerializationIssue(
 ): string | null {
   const draft = snapshot.draft;
   if (
-    draft.amountSource === "manual" &&
+    draft.amountSource === "manual" && draft.numericProtocolVersion !== 2 &&
     incompleteIntegerInput(draft.manualAmountCents)
   ) {
     return "合同金额仍是未完成的输入，请补充完整后再保存";
+  }
+  if (draft.numericProtocolVersion === 2 && draft.amountSource === "manual") {
+    try { normalizeBusinessAmount(draft.manualAmountYuan ?? null); }
+    catch { return "合同金额须填写规范数字，最多保留4位小数；请保留原输入后修改"; }
   }
   if (incompleteIntegerInput(draft.estimatedAmountCents)) {
     return "预计金额仍是未完成的输入，请补充完整后再保存";
@@ -1176,11 +1189,9 @@ function savePayloadFromSnapshot(
     currentWorkbench?.version as unknown as { changeType?: unknown }
   )?.changeType;
   const isChangeDraft = changeType === "change" || changeType === "supplement";
-  const paymentStages = paymentStagesFromModel(
-    draft,
-    currentWorkbench?.settlementMode?.value,
-    currentWorkbench?.contract.contractTypeKey ?? ""
-  );
+  const paymentStages = draft.extraDraftData.contractBasics
+    ? snapshot.paymentTerms?.stages ?? []
+    : paymentStagesFromModel(draft, currentWorkbench?.settlementMode?.value, currentWorkbench?.contract.contractTypeKey ?? "");
   const paymentTerms = isChangeDraft
     ? snapshot.paymentTerms
     : draft.paymentTermsOriginalText || paymentStages.length
@@ -1220,8 +1231,10 @@ function savePayloadFromSnapshot(
         defaultTaxRatePercent: draft.defaultTaxRatePercent,
         source: "contract_document"
       },
+      ...(draft.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 as const } : {}),
       ...(draft.amountSource === "manual"
-        ? { manualAmountCents: draft.manualAmountCents ?? "0" }
+        ? draft.numericProtocolVersion === 2 ? { manualAmountYuan: draft.manualAmountYuan ?? null }
+          : { manualAmountCents: draft.manualAmountCents ?? "0" }
         : {}),
       ...(draft.estimatedAmountCents === null
         ? {}
@@ -2849,6 +2862,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Draft creation (/contracts/new) ----------------------------------------
 
+  const initPreciseDraft = ref(false);
+  const initRelationship = ref<"" | "inside" | "outside" | "upward">("");
   const initProjectId = ref("");
   const initContractTypeKey = ref("");
   const initBusinessTemplateVersionId = ref("");
@@ -2860,8 +2875,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     () =>
       Boolean(initProjectId.value) &&
       Boolean(initContractTypeKey.value) &&
-      Boolean(initBusinessTemplateVersionId.value) &&
-      Boolean(initBusinessScenarioId.value) === Boolean(initScenarioTemplateMappingId.value)
+      (initPreciseDraft.value || Boolean(initBusinessTemplateVersionId.value) &&
+      Boolean(initBusinessScenarioId.value) === Boolean(initScenarioTemplateMappingId.value))
   );
 
   async function commitDraftCreation(): Promise<void> {
@@ -2876,7 +2891,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       amountLimitType: initAmountLimitType.value
     };
     const created = await createWorkbenchDraftWithCapability(
-      initBusinessScenarioId.value && initScenarioTemplateMappingId.value
+      initPreciseDraft.value ? { numericProtocolVersion: 2, projectId: initProjectId.value, contractTypeKey: initContractTypeKey.value,
+        amountLimitType: initAmountLimitType.value, ...(initRelationship.value ? { relationship: initRelationship.value } : {}) }
+        : initBusinessScenarioId.value && initScenarioTemplateMappingId.value
         ? {
             ...basePayload,
             businessScenarioId: initBusinessScenarioId.value,
@@ -2891,6 +2908,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   const initializeDraft: InitializeDraftController = {
+    preciseDraft: initPreciseDraft,
+    relationship: initRelationship,
+    setPreciseDraft: value => { initPreciseDraft.value = value; },
+    setRelationship: value => { initRelationship.value = value; },
     projectId: initProjectId,
     contractTypeKey: initContractTypeKey,
     businessTemplateVersionId: initBusinessTemplateVersionId,

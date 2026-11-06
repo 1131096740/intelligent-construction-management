@@ -104,8 +104,8 @@ function keepCreate() {createCloseConfirm.value = false; queueCreateSave();}
 function beforeCreateUnload(event: BeforeUnloadEvent) {
   if (createVisible.value && hasUnsavedCreate.value) {event.preventDefault(); event.returnValue = "";}
 }
-onMounted(() => window.addEventListener("beforeunload", beforeCreateUnload));
-onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeCreateUnload));
+onMounted(() => {if (typeof window !== "undefined") window.addEventListener("beforeunload", beforeCreateUnload);});
+onBeforeUnmount(() => {if (typeof window !== "undefined") window.removeEventListener("beforeunload", beforeCreateUnload);});
 onBeforeRouteLeave(() => {
   if (!createVisible.value || !hasUnsavedCreate.value) return true;
   createError.value = "当前填写尚未保存，请先确认单元格并保存，或关闭填写窗口后再离开";

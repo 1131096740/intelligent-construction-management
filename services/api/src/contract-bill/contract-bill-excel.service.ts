@@ -173,7 +173,7 @@ export class ContractBillExcelService {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("合同清单");
     const custom = this.schemaColumns(bill.schemaSnapshot);
-    sheet.addRow(["项目编号", "名称", "规格型号", "单位", "数量", "含税单价(元)", "税率(%)", "含税金额(元)", "不含税金额(元)", "税额(元)", "精度说明", ...custom.map(column => column.label)]);
+    sheet.addRow(["项目编号", "名称", "规格型号", "单位", "数量", bill.numericProtocolVersion === 2 && bill.pricingMode === "tax_exclusive" ? "不含税单价(元)" : "含税单价(元)", "税率(%)", "含税金额(元)", "不含税金额(元)", "税额(元)", "精度说明", ...custom.map(column => column.label)]);
     for (const row of rows) {
       const decimal = (kind: "taxInclusiveAmount" | "taxExclusiveAmount" | "taxAmount") => row.numericProtocolVersion === 2
         ? row[`${kind}Yuan`]?.toFixed(4) ?? null : businessAmountFromLegacyCents(row[`${kind}Cents`] ?? null);
@@ -221,8 +221,10 @@ export class ContractBillExcelService {
     const instructions = workbook.addWorksheet(INSTRUCTION_SHEET);
     instructions.addRow(["合同清单填写说明"]);
     instructions.addRow(["在『清单数据』第 2 行起填写；第 1 行为中文表头，请勿修改。"]);
-    instructions.addRow(["数量、含税单价和税率最多保留 4 位小数；不明确的数值留空，明确为零请填写 0。"]);
-    instructions.addRow(["数值列为文本格式，保留四位精度及大数原文；不含税单价由系统计算，无需填写。"]);
+    instructions.addRow([`数量、${bill.pricingMode === "tax_exclusive" ? "不含税" : "含税"}单价和税率最多保留 4 位小数；不明确的数值留空，明确为零请填写 0。`]);
+    instructions.addRow([bill.pricingMode === "tax_exclusive"
+      ? "本表按不含税单价填写；税率未确定时不计算含税金额，不能混用含税清单模板。"
+      : "数值列为文本格式，保留四位精度及大数原文；不含税单价由系统计算，无需填写。"]);
     instructions.addRow([bill.taxMode === "single_rate"
       ? `税率继承合同草稿：${bill.defaultTaxRatePercent?.toString() ?? "待确定"}%；无需填写。`
       : "税率留空继承合同默认税率，填写时须在 0 到 100 之间。"]);
@@ -346,7 +348,7 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
-      assertContractBillDerivedUnitPrices(existingRows);
+      assertContractBillDerivedUnitPrices(existingRows, bill.pricingMode);
       const importId = randomUUID();
       const preview = await this.buildPreview(bill, mode, buffer, existingRows, importId);
 
@@ -418,7 +420,7 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
-      assertContractBillDerivedUnitPrices(existingRows);
+      assertContractBillDerivedUnitPrices(existingRows, bill.pricingMode);
       const preview = await this.buildPreview(
         this.draftNumericContext(bill, input.numericProtocolVersion),
         mode,
@@ -494,7 +496,7 @@ export class ContractBillExcelService {
         where: { contractBillId: bill.id },
         orderBy: { sortOrder: "asc" }
       });
-      assertContractBillDerivedUnitPrices(existingRows);
+      assertContractBillDerivedUnitPrices(existingRows, bill.pricingMode);
       // 重新解析以拿到可落库的精确金额；同时再次校验，拒绝中途被改动的文件。
       const plan = await this.buildResolvedPlan(
         bill,
@@ -700,6 +702,10 @@ export class ContractBillExcelService {
       columnDefs = columnDefs.filter(column => column.code !== ROW_KEY_CODE);
       const labels: string[] = [];
       sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => { labels[column - 1] = this.rawCellText(cell); });
+      const expectedPriceLabel = bill.pricingMode === "tax_exclusive" ? "不含税单价(元)" : "含税单价(元)";
+      const oppositePriceLabel = bill.pricingMode === "tax_exclusive" ? "含税单价(元)" : "不含税单价(元)";
+      const priceIndex = columnDefs.findIndex(column => column.code === "unitPrice");
+      if (labels[priceIndex] === oppositePriceLabel) errors.push({ sheet: DATA_SHEET, row: 1, column: this.columnLetter(priceIndex + 1), message: `金额口径不一致，请下载当前${expectedPriceLabel}填写模板后重试，原文件与输入已保留` });
       if (labels.length !== columnDefs.length) errors.push({ sheet: DATA_SHEET, row: 1, column: "A", message: "中文表头列数与当前清单不一致，请重新下载填写模板" });
       columnDefs.forEach((column, index) => {
         if (labels[index] !== column.label) errors.push({ sheet: DATA_SHEET, row: 1, column: this.columnLetter(index + 1), message: `此列表头应为“${column.label}”，请保留模板中文表头` });
@@ -1403,8 +1409,9 @@ export class ContractBillExcelService {
       required: column.required
     }));
     const fields = new Map(bill.businessEntryDefinition?.fields.map((field) => [field.key, field]));
-    return [...CORE_FIELDS, ...custom].map((column) => ({
-      ...column, label: fields.get(column.code)?.excel.column ?? column.label
+    return [...CORE_FIELDS, ...custom].filter(column => !(bill.numericProtocolVersion === 2 && bill.pricingMode === "tax_exclusive" && column.code === "taxExclusiveUnitPrice")).map((column) => ({
+      ...column, label: bill.numericProtocolVersion === 2 && bill.pricingMode === "tax_exclusive" && column.code === "unitPrice"
+        ? "不含税单价(元)" : fields.get(column.code)?.excel.column ?? column.label
     })).concat({ code: ROW_KEY_CODE, label: ROW_KEY_CODE, required: false });
   }
 

@@ -1,25 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const workbench = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
 const governance = readFileSync(
   new URL("../contract-templates/ContractScenarioGovernancePage.vue", import.meta.url),
   "utf8"
 );
 
 describe("contract scenario web structure", () => {
-  it("uses scenario recommendations as the primary create path with explicit direct fallback", () => {
-    expect(workbench).toContain("listAvailableContractBusinessScenarios");
-    expect(workbench).toContain("recommendContractScenarioTemplates");
-    expect(workbench).toContain('selectionMode === "automatic"');
-    expect(workbench).toContain("selectionMode === 'choice_required'");
-    expect(workbench).toContain("从模板库直接选择");
-    expect(workbench).toContain("setBusinessScenarioSelection");
-    expect(workbench).toContain("canApplyContractScenarioResponse");
-    expect(workbench).toContain("preserveDirectPreset");
-    expect(workbench).toContain("directQueryPreset.value?.templateVersionId");
-  });
-
+  // CON-09 (2026-11-05 frozen specification): manual template selection
+  // replaces the former recommendation/automatic-selection source assertion.
+  // The real creation and selection behavior is covered by contract-grid-http.e2e.ts.
   it("keeps governance calls behind global-role checks and uses TDesign controls", () => {
     expect(governance).toContain("auth.user?.globalRoleKeys");
     expect(governance).toMatch(/if \(!canGovern\.value\)[\s\S]*return;[\s\S]*loadGovernance/u);

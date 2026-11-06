@@ -16,11 +16,12 @@ export function assertContractBillDerivedUnitPrices(
     quantity: Prisma.Decimal | null;
     taxExclusiveAmountCents: bigint | null;
     taxExclusiveUnitPrice?: Prisma.Decimal | string | null;
-  }>
+  }>,
+  pricingMode = "tax_inclusive"
 ): void {
   for (const row of rows) {
     if (row.numericProtocolVersion === 2 && row.numericSource === "decimal_input") {
-      const expected = calculateBusinessLineTaxAmounts(row.quantity?.toString() ?? null, row.unitPrice?.toString() ?? null, row.taxRate?.toString() ?? null).taxExclusiveUnitPrice;
+      const expected = pricingMode === "tax_exclusive" ? row.unitPrice?.toString() ?? null : calculateBusinessLineTaxAmounts(row.quantity?.toString() ?? null, row.unitPrice?.toString() ?? null, row.taxRate?.toString() ?? null).taxExclusiveUnitPrice;
       if (row.taxExclusiveUnitPrice == null && expected === null) continue;
       if (row.taxExclusiveUnitPrice != null && expected !== null && new Prisma.Decimal(row.taxExclusiveUnitPrice).eq(expected)) continue;
       throw new Error("四位清单派生单价与权威业务金额不一致");
@@ -54,7 +55,7 @@ export function assertContractBillDerivedUnitPrices(
 // 由行 CRUD 与 Excel 导入共享，避免重复的金额（分）求和逻辑。
 export async function recalculateBillAndContractAmount(
   tx: Prisma.TransactionClient,
-  bill: { id: string; contractVersionId: string; numericProtocolVersion?: number },
+  bill: { id: string; contractVersionId: string; numericProtocolVersion?: number; pricingMode?: string },
   version: {
     id: string;
     amountSource: string;
@@ -67,7 +68,7 @@ export async function recalculateBillAndContractAmount(
     where: { contractBillId: bill.id },
     orderBy: { sortOrder: "asc" }
   });
-  assertContractBillDerivedUnitPrices(rows);
+  assertContractBillDerivedUnitPrices(rows, bill.pricingMode);
   const totals = rows.reduce(
     (sum, row) =>
       row.taxInclusiveAmountCents === null ||
@@ -151,9 +152,9 @@ export function compatibleBillCents(amountYuan: string | null): bigint | null {
   return value;
 }
 
-export function sumContractBillBusinessAmounts(bills: ReadonlyArray<{ amountRole: string; numericProtocolVersion?: number; taxInclusiveAmountYuan?: Prisma.Decimal | null; taxInclusiveAmountCents: bigint }>): string | null {
+export function sumContractBillBusinessAmounts(bills: ReadonlyArray<{ amountRole: string; pricingMode?: string; numericProtocolVersion?: number; taxInclusiveAmountYuan?: Prisma.Decimal | null; taxExclusiveAmountYuan?: Prisma.Decimal | null; taxInclusiveAmountCents: bigint }>): string | null {
   return sumBillDecimals(bills.filter(bill => bill.amountRole === "included" || bill.amountRole === "provisional")
-    .map(bill => bill.numericProtocolVersion === 2 ? bill.taxInclusiveAmountYuan?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill.taxInclusiveAmountCents)));
+    .map(bill => bill.numericProtocolVersion === 2 ? (bill.pricingMode === "tax_exclusive" ? bill.taxExclusiveAmountYuan : bill.taxInclusiveAmountYuan)?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill.taxInclusiveAmountCents)));
 }
 
 function sumBillDecimals(values: readonly (string | null)[]) {

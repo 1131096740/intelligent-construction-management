@@ -14,7 +14,7 @@
     "mainRequestBindingCount": 702,
     "ticketFollowupCount": 4,
     "requestEdgeCount": 690,
-    "productionConsumerCount": 578,
+    "productionConsumerCount": 576,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -2157,9 +2157,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -2219,9 +2217,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -3352,7 +3348,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2261,
+          "sourceLine": 2269,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -3382,7 +3378,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2261,
+          "sourceLine": 2269,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template?numericProtocolVersion=2",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -3479,7 +3475,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1818,
+          "sourceLine": 1826,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -3560,7 +3556,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2261,
+          "sourceLine": 2269,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/export",
           "normalizedPath": "/contract-drafts/:param/bills/:param/export",
@@ -3866,7 +3862,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1336,
+          "sourceLine": 1344,
           "method": "GET",
           "path": "/business-parties/create-capability",
           "normalizedPath": "/business-parties/create-capability",
@@ -4096,7 +4092,8 @@
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+        "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
       ],
       "unreachableConsumers": []
     },
@@ -21210,6 +21207,18 @@
       "wrapper": "updateSettlementTemplateVersion",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "wrapper": "listAvailableContractBusinessScenarios",
+      "classification": "test_only",
+      "reason": "Task09 CON09 requires manual template selection without recommendations; these two wrappers have no production consumer after removing the former scenario recommendation flow. Retained API unit tests and backend APIs pending task43 retirement."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "wrapper": "recommendContractScenarioTemplates",
+      "classification": "test_only",
+      "reason": "Task09 CON09 requires manual template selection without recommendations; these two wrappers have no production consumer after removing the former scenario recommendation flow. Retained API unit tests and backend APIs pending task43 retirement."
     }
   ],
   "authTransportExceptions": [
