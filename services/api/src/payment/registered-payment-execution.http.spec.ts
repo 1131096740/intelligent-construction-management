@@ -10,6 +10,10 @@ import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-ent
 import { createApiValidationPipe } from "../validation/api-validation";
 import { RegisteredPaymentExecutionController } from "./registered-payment-execution.controller";
 import { RegisteredPaymentExecutionService } from "./registered-payment-execution.service";
+import { MeController } from "../me/me.controller";
+import { MeService } from "../me/me.service";
+import { FileService } from "../file/file.service";
+import { AuditService } from "../audit/audit.service";
 
 // Persistence and identity facts are synthetic. HTTP, role resolution, JWT,
 // permission/retirement guards and the business service remain real.
@@ -36,8 +40,8 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       updatedAt: new Date("2026-11-05T00:00:00Z")
     } });
     const module = await Test.createTestingModule({
-      controllers: [RegisteredPaymentExecutionController],
-      providers: [RegisteredPaymentExecutionService, { provide: PrismaService, useValue: database.prisma }]
+      controllers: [RegisteredPaymentExecutionController, MeController],
+      providers: [RegisteredPaymentExecutionService, MeService, AuditService, { provide: FileService, useValue: {} }, { provide: PrismaService, useValue: database.prisma }]
     }).compile();
     app = module.createNestApplication({ logger: false });
     const reflector = new Reflector();
@@ -87,5 +91,56 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       status: "returned", frozenNodes: [], currentNodeIndex: 0, applicantUserId: "employee", createdAt: new Date("2026-11-02T00:00:00Z")
     } });
     expect(await get("finance")).toMatchObject({ status: 200, body: { total: 0, items: [] } });
+  });
+  it("queries the canonical execution by the original request key and leaves an unseen result unconfirmed", async () => {
+    const key = "76b3c58b-d43a-479e-9d5a-7a729fa45099";
+    const path = `/payment-executions/results/${key}`;
+    const initial = await get("keeper", path);
+    expect(initial.status).toBe(200);
+    expect(initial.body).toEqual({ status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" });
+    await (database.prisma as unknown as { paymentExecution: { create(input: { data: Record<string, unknown> }): Promise<unknown> } }).paymentExecution.create({ data: {
+      id: "execution-a", idempotencyKey: key, paymentRequestId: "payment-a", paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: "company-a", companyEntityNameSnapshot: "甲公司", companyEntityCreditCodeSnapshot: "SYNTHETIC-COMPANY-A",
+      amountCents: 4000n, paidAt: new Date("2026-11-04T00:00:00Z"), executedByUserId: "finance", voucherFileId: "voucher-a"
+    } });
+    for (const actor of ["keeper", "finance"]) {
+      const observed = await get(actor, path);
+      expect(observed.status).toBe(200);
+      expect(observed.body).toMatchObject({ status: "recorded", execution: {
+        executionId: "execution-a", paymentId: "payment-a", amountCents: "4000", paidAt: "2026-11-04", voucherPending: false
+      } });
+    }
+    database.setRole("keeper", "employee");
+    expect((await get("keeper", path)).status).toBe(403);
+  });
+  it("keeps Me queue and card consistent after a partial fixture, full fixture and current duty revocation", async () => {
+    const payments = (database.prisma as unknown as { paymentRequest: { update(input: {where: {id: string}; data: Record<string, unknown>}): Promise<unknown> } }).paymentRequest;
+    await payments.update({ where: { id: "payment-a" }, data: { paidAmountCents: 4000n, status: "partially_paid" } });
+    for (const actor of ["finance", "keeper"]) {
+      const work = await get(actor, "/me/work-items");
+      expect(work.status).toBe(200);
+      expect(work.body.queues.pending.filter((item: {type: string}) => item.type === "payment_execution")).toEqual([
+        expect.objectContaining({ businessId: "payment-a", amountText: "¥60.00" })
+      ]);
+      const summary = await get(actor, "/me/workbench-summary");
+      expect(summary.status).toBe(200);
+      expect(summary.body.cards).toContainEqual(expect.objectContaining({ id: "approved_pending_payment", count: 1 }));
+    }
+    await payments.update({ where: { id: "payment-a" }, data: { paidAmountCents: 10000n, status: "paid" } });
+    expect((await get("keeper", "/me/work-items")).body.queues.pending).not.toContainEqual(expect.objectContaining({ type: "payment_execution" }));
+    expect((await get("keeper", "/me/workbench-summary")).body.cards).toContainEqual(expect.objectContaining({ id: "approved_pending_payment", count: 0 }));
+    database.setRole("keeper", "employee");
+    expect((await get("keeper", "/me/work-items")).body.queues.pending).not.toContainEqual(expect.objectContaining({ type: "payment_execution" }));
+    expect((await get("keeper", "/me/workbench-summary")).body.cards).not.toContainEqual(expect.objectContaining({ id: "approved_pending_payment" }));
+  });
+  it("projects the shared execution duty into the comprehensive director's actual Me queue and homepage count", async () => {
+    const work = await get("keeper", "/me/work-items");
+    expect(work.status).toBe(200);
+    expect(work.body.queues.pending).toContainEqual(expect.objectContaining({
+      type: "payment_execution", businessType: "payment_request", businessId: "payment-a"
+    }));
+    const summary = await get("keeper", "/me/workbench-summary");
+    expect(summary.status).toBe(200);
+    expect(summary.body.cards).toContainEqual(expect.objectContaining({ id: "approved_pending_payment", count: 1 }));
   });
 });

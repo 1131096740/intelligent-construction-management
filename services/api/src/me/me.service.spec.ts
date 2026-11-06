@@ -500,6 +500,7 @@ describe("MeService", () => {
 
   it("builds workbench cards only from projects where the user has matching roles", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -547,6 +548,7 @@ describe("MeService", () => {
 
   it("counts only current approval nodes in visible projects", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -623,6 +625,7 @@ describe("MeService", () => {
       updatedAt: new Date("2026-07-20T02:00:00.000Z")
     };
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -818,6 +821,7 @@ describe("MeService", () => {
 
   it("returns visible approval work items with business jump targets", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -913,6 +917,7 @@ describe("MeService", () => {
       updatedAt: new Date("2026-07-11T08:00:00.000Z")
     };
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -978,6 +983,7 @@ describe("MeService", () => {
       updatedAt: new Date("2026-07-11T08:00:00.000Z")
     };
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -1028,6 +1034,7 @@ describe("MeService", () => {
 
   it("returns pending approval work items accepted through standing delegation", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: {
         findMany: jest.fn().mockImplementation(({ where }: { where: { userId: string; projectId?: unknown } }) => {
@@ -1382,10 +1389,12 @@ describe("MeService", () => {
 
   it("shows remaining approved amount for partially paid execution work items", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "user-finance", isActive: true }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{positionId:"company-finance",projectId:null}]) },
       projectMember: {
-        findMany: jest.fn().mockResolvedValue([{ projectId: "project-1", positionKey: "finance_staff" }])
+        findMany: jest.fn().mockResolvedValue([])
       },
       project: {
         findMany: jest.fn().mockImplementation(({ where }: { where?: { isActive?: boolean } }) => {
@@ -1393,12 +1402,13 @@ describe("MeService", () => {
           return [{ id: "project-1", name: "测试项目" }];
         })
       },
-      position: { findMany: jest.fn() },
+      position: { findMany: jest.fn().mockResolvedValue([{id:"company-finance",key:"finance_staff"}]) },
       contractTakeover: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([
           {
             id: "payment-1",
+            status: "partially_paid", paymentSubjectType: "our_company",
             projectId: "project-1",
             code: "FK-001",
             requestedAmountCents: 8000000n,
@@ -1410,7 +1420,7 @@ describe("MeService", () => {
         count: jest.fn()
       },
       approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
-      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({id:"round-1",businessType:"payment_request",businessId:"payment-1",status:"approved"}) },
       contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
       contract: { findMany: jest.fn().mockResolvedValue([]) },
       settlement: { findMany: jest.fn().mockResolvedValue([]) }
@@ -1488,6 +1498,7 @@ describe("MeService", () => {
       updatedAt: new Date("2026-07-21T08:00:00.000Z")
     };
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -1544,6 +1555,7 @@ describe("MeService", () => {
 
   it("returns no workbench cards when the user has no relevant business permission", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -1773,6 +1785,7 @@ describe("MeService", () => {
 
   it("summarizes a spot-only approval queue and links to the Chinese workbench", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -1828,6 +1841,7 @@ describe("MeService", () => {
 
   it("shows the project manager parallel duty before the materials supervisor has acted", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -1886,6 +1900,7 @@ describe("MeService", () => {
 
   it("shows only the currently delegated parallel duty and closes it after either person acts", async () => {
     const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw: jest.fn(async (query: {strings: readonly string[]; values: readonly unknown[]}) => query.strings.join("").includes('FROM "ApprovalDelegation"') ? (query.values.includes("flow-1:1") ? [{id:"mandate",fromUserId:"original",toUserId:"delegate"}] : []) : query.strings.join("").includes("WITH members") ? [{projectId:"project-1",userId:"original",roleKey:"project_manager",userIsActive:true}] : []),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
@@ -1979,7 +1994,7 @@ describe("MeService", () => {
     expect(projectNames).toHaveBeenCalledWith(["project-1"]);
     expect(projectIdsFor).toHaveBeenCalled();
     expect(paymentExecutionWorkItems).toHaveBeenCalledWith(
-      ["project-1"],
+      "finance-1",
       expect.any(Map),
       undefined
     );

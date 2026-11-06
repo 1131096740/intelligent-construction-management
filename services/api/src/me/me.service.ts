@@ -1,3 +1,4 @@
+import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { fundReviewWorkItems } from "../fund-account/fund-account-work-items";
 import { generalRequestWorkItems } from "../general-procurement/general-procurement-request-work-items";
 import { generalRequestActor } from "../general-procurement/general-procurement-request-access";
@@ -519,20 +520,15 @@ export class MeService {
       });
     }
 
-    const paymentExecutionProjects = this.projectIdsFor(scopes, ["payment.execution"]);
-    if (paymentExecutionProjects.length) {
+    const paymentExecution = await new RegisteredPaymentExecutionService(this.prisma).visibleWorkItems(userId);
+    if (paymentExecution) {
       cards.push({
         id: "approved_pending_payment",
         title: "已批待付款",
-        count: await this.prisma.paymentRequest.count({
-          where: {
-            projectId: { in: paymentExecutionProjects },
-            status: { in: ["approved_pending_payment", "partially_paid"] }
-          }
-        }),
-        description: "付款审批已通过，等待出纳登记实付和凭证。",
+        count: paymentExecution.total,
+        description: "财务人员和综合部主管共同办理，实际付款后登记，凭证可后补。",
         targetPath: "/付款管理",
-        actionText: "去付款",
+        actionText: "登记实付",
         tone: "warning"
       });
     }
@@ -623,7 +619,7 @@ export class MeService {
         "warning"
       )),
       ...(await this.paymentExecutionWorkItems(
-        this.projectIdsFor(scopes, ["payment.execution"]),
+        userId,
         projectNameById
       )),
       ...(await this.spotPaymentExecutionWorkItems(
@@ -780,7 +776,7 @@ export class MeService {
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
       ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),
       ...(await this.paymentExecutionWorkItems(
-        this.projectIdsFor(scopes, ["payment.execution"]),
+        userId,
         projectNameById,
         undefined
       )),
@@ -1702,56 +1698,28 @@ export class MeService {
   }
 
   private async paymentExecutionWorkItems(
-    projectIds: string[],
+    userId: string,
     projectNameById: ReadonlyMap<string, string>,
     limit: number | undefined = 30
   ): Promise<WorkItem[]> {
-    if (!projectIds.length) {
-      return [];
-    }
-
-    const payments = await this.prisma.paymentRequest.findMany({
-      where: {
-        projectId: { in: projectIds },
-        status: { in: ["approved_pending_payment", "partially_paid"] }
-      },
-      orderBy: { updatedAt: "desc" },
-      ...(limit === undefined ? {} : { take: limit }),
-      select: {
-        id: true,
-        projectId: true,
-        code: true,
-        requestedAmountCents: true,
-        approvedAmountCents: true,
-        paidAmountCents: true,
-        updatedAt: true
-      }
-    });
-
-    return payments.map((payment) => {
-      const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
-      const balance = payableAmountCents - payment.paidAmountCents;
-      const remainingAmountCents = balance > 0n ? balance : 0n;
-
-      return {
-        id: `payment-execution:${payment.id}`,
-        type: "payment_execution",
-        projectId: payment.projectId,
-        businessType: "payment_request",
-        businessId: payment.id,
-        title: "登记实付与凭证",
-        projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
-        businessCode: payment.code,
-        amountText: this.amountText(
-          remainingAmountCents !== 0n ? remainingAmountCents : payableAmountCents
-        ),
-        currentNode: "财务/出纳实付",
-        stayedText: this.stayedText(payment.updatedAt),
-        nextAction: "登记实付并上传凭证",
-        targetPath: `/付款管理/${payment.code}`,
-        tone: "warning"
-      };
-    });
+    const result = await new RegisteredPaymentExecutionService(this.prisma).visibleWorkItems(userId);
+    const payments = result?.items ?? [];
+    return payments.slice(0, limit).map((payment) => ({
+      id: `payment-execution:${payment.paymentId}`,
+      type: "payment_execution",
+      projectId: payment.projectId,
+      businessType: "payment_request",
+      businessId: payment.paymentId,
+      title: "登记实际付款",
+      projectName: projectNameById.get(payment.projectId) ?? "项目付款",
+      businessCode: payment.code,
+      amountText: this.amountText(BigInt(payment.remainingAmountCents)),
+      currentNode: "财务人员/综合部主管共同办理",
+      stayedText: this.stayedText(new Date(payment.expectedPaymentUpdatedAt)),
+      nextAction: "实际付款后登记，凭证可后补",
+      targetPath: `/付款管理/${payment.code}`,
+      tone: "warning"
+    }));
   }
 
   private async spotPaymentExecutionWorkItems(
