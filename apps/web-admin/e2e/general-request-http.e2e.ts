@@ -52,8 +52,18 @@ for (const scope of ["company_daily", "project"] as const) test(`${scope}真实�
     const reviewer = await context.newPage(); await login(reviewer, phone); await reviewer.goto(`/综合采购申请/${encodeURIComponent(id)}`);
     await reviewer.getByRole("button", { name: "审批", exact: true }).click();
     const dialog = reviewer.locator(".t-dialog").filter({ hasText: "审批综合采购申请" });
+    const dialogContext = dialog.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' t-dialog__ctx ')][1]");
+    await expect(dialogContext).toHaveCount(1);
+    await expect(dialogContext).not.toHaveClass(/t-dialog-zoom__vue-enter-(?:from|active|to)/);
+    const reviewPath = `/api/general-procurements/${encodeURIComponent(id)}/review`; let reviewPostCount = 0;
+    reviewer.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname === reviewPath) reviewPostCount++; });
+    const reviewResponse = reviewer.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === reviewPath);
     await dialog.getByRole("button", { name: "批准", exact: true }).click();
-    await expect(dialog).toBeHidden(); await assertNoPageOverflow(reviewer); await context.close();
+    await expect(dialog).toBeHidden();
+    const response = await reviewResponse; expect(response.status()).toBe(201);
+    expect(reviewPostCount).toBe(1);
+    await info.attach(`review-${ids.indexOf(phone)}.json`, { body: JSON.stringify({ method: "POST", path: reviewPath, status: response.status(), count: reviewPostCount }), contentType: "application/json" });
+    await assertNoPageOverflow(reviewer); await context.close();
   }
   await page.reload(); await expect(page.getByText("待综合部采购", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "综合部归档", exact: true })).toHaveCount(0);

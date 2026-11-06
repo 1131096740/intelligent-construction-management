@@ -35,3 +35,15 @@
 证据根 `/private/tmp/jg-task20-output-path-fix-20261106-265b7bfe`。实际命令 `corepack pnpm@9.15.9 --filter @jiangkong/web-admin exec playwright test --config playwright.general-request.config.ts --project desktop-chromium --grep company_daily真实表格 --output /private/tmp/jg-task20-output-path-fix-20261106-265b7bfe/playwright-output`：1pass/8.1秒，生成唯一1366×1335 PNG于新root的case子目录，sha256 `3c37f1c27c4eea14dc1e3e9ae6f03792aa2504b423684370fbd83d4f6ddf961a`。`before-original-png.json`/`after-original-png.json`证明原目录全部37PNG（含6GREEN）路径/存在/字节/哈希集合完全不变。`verification.json`包含实际argv、默认/覆盖输出root、每张旧/新PNG哈希和业务diff0范围。
 
 E2E类型检查及仅改动e2e/config的scoped eslint均exit0；API/Prisma/Shared/Web src相对9aa diff0。未重跑无关529/18/369，原9aa全部通过与失败保持原来源。新cleancheckpoint/sourcepacket供最小增量复核，再由独立merger在自己的唯一目录运行18项；此处未合中央/push/close。
+
+## 原M浏览器17/1与仅测试入场同步修正
+
+7b最小路径增量两轴均0后，独立merger在准确本地M `f934181005bb2039261a157f6120ac9348f38bb2`（同7b tree）新跑后端529/Shared/Web168及相关检查通过，但原18浏览器首轮17pass/1fail（touch-WebKit/company_daily）完整保留。不能将此前作者18绿或前GET状态当作M首轮通过/点击后状态。中央未发布此M。
+
+独立被动P1-03记录trusted native点击在开窗约49ms命中DIV.t-dialog__body而非批准button，ctx仍enter-active/to，之后没有General GET/POST；不是后端审批拒绝。P2仅等待最近真实ctx入场类撤去，三次均原click命中BUTTON→两次fresh GET200→review201→重读待采购。因果资料 `/private/tmp/jg-task20-integration-7b1b7abb-20261106/p2-summary.json` SHA256 `8c6e04d12aea96f266fc6b2aaa982343fc5e7e8b85a58da67f587c6569e3bf67`，以及p1-sample-03、p2-enter-ready/normalized-action.diff、p2-sample-01–03 inspection，均未覆盖。generic approval-forms404已由只读调用链排除，不为其补路由或改权限。
+
+同一作者先formal同步该准确M，只在既有两种范围审批case中加入最近`.t-dialog__ctx`必须唯一存在、`t-dialog-zoom__vue-enter-from/active/to`已撤去的前置，再沿原批准click；缺ctx/不就绪在原预算失败，无fallback。另断言对应review POST201且仅一次，TestInfo只附method/path/status/count，不读headers或密码body。没有新全站等待抽象、DOM写、私有Vue实例、tap/force、禁动画、固定sleep或networkidle；原45秒场景、5秒隐藏、0retry、角色/状态/清单/reload全部断言保留。这是测试过早点击错点的同步修正，不宣称改了产品审批或所有WebKit问题。
+
+新自有证据root `/private/tmp/jg-task20-entry-ready-fix-20261106-bd044b42`：原失败touch-WebKit/company_daily新源一次1pass/9.3秒（target-output），其后原全18一次18pass/1.2分钟（full-output），E2E类型/仅改动e2e的eslint均exit0。`verification.json`记录实际argv/output root/原合同不变/产品源diff0；before/after-original37-png证明原37图完全不变，新1+6张图均在新自有root中。
+
+API/Schema/Shared/Web src/config/锁文件相对M空diff；只变e2e不属于API buildInputFiles扫描的services/api/src/shared/config输入（scripts/lib/whole-site-route-manifest.mjs:205–225）。未盲跑无变529/168/构建/治理/369；M尚未取得的治理/369不在本修正宣称通过，由独立merger在新准确source执行。最终仅本地clean候选与sourcepacket供原两轴增量复核；没有push/合中央/close/PG/SQL/迁移/实际资源、付款、PDF或部署。
