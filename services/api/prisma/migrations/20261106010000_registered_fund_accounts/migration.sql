@@ -82,6 +82,10 @@ BEGIN
    RAISE EXCEPTION 'source snapshots must be created atomically with their registration';
  END IF;
  SELECT * INTO STRICT parent FROM "FundAccountBalanceRegistration" WHERE "id" = NEW."registrationId";
+ -- A terminal UPDATE also refreshes xmin; it must not reopen a frozen snapshot.
+ IF parent."kind" = 'correction' AND parent."status" <> 'pending_review' THEN
+   RAISE EXCEPTION 'terminal correction source snapshots are immutable';
+ END IF;
  IF (parent."kind" = 'opening' AND NEW."previousSourceBatchId" IS NOT NULL) OR
     (parent."kind" = 'correction' AND (
       (EXISTS (SELECT 1 FROM "FundAccountSourceBatch" WHERE "registrationId" = parent."previousRegistrationId") AND

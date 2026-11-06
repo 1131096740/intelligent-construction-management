@@ -184,7 +184,7 @@ const GROUPS = [
       RUN_POL215_DATABASE: "1",
       RUN_REGISTERED_FUND_ACCOUNT_DATABASE: "1"
     },
-    pendingTests: 39,
+    pendingTests: 42,
     requiresOperatingLedgerWriteSecret: true
   },
   {

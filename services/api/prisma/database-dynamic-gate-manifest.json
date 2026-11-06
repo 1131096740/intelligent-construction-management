@@ -29,9 +29,9 @@
     "pendingFiles": 79,
     "fullyPendingSuites": 68,
     "partiallyPendingSuites": 11,
-    "pendingTests": 536,
+    "pendingTests": 539,
     "coveredFiles": 79,
-    "coveredTests": 536,
+    "coveredTests": 539,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -398,7 +398,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 169,
+      "pendingTests": 172,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -587,7 +587,7 @@
         },
         {
           "path": "services/api/src/database/fund-account-postgres.spec.ts",
-          "pendingTests": 9,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -713,7 +713,7 @@
     "ciEligible": {
       "groups": 22,
       "files": 78,
-      "tests": 535
+      "tests": 538
     },
     "manualOnly": {
       "groups": 1,

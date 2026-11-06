@@ -29,6 +29,7 @@ export function createFundAccountSyntheticDb() {
     project: [{ id: "project-a", name: "甲项目", isActive: true }],
     registeredFundAccount: [], fundAccountBalanceRegistration: [], fundAccountSourceBatch: [], auditLog: [], approvalInstance: [], approvalActionLog: [], approvalDelegation: []
   };
+  for (const model of Prisma.dmmf.datamodel.models) tables[model.name[0].toLowerCase() + model.name.slice(1)] ??= [];
   const roles: Record<string, string> = { finance: "finance_staff", director: "finance_director", keeper: "comprehensive_director", admin: "super_admin", employee: "employee", project_finance: "finance_staff", delegate: "employee", other_director: "finance_director" };
   const initialRoles = { ...roles };
   const passwordHash = hashSync("Synthetic15Password!", 4);
@@ -51,6 +52,8 @@ export function createFundAccountSyntheticDb() {
         return { ...row };
       });
     },
+    findFirst: async (args: Args = {}) => (await delegate(table).findMany(args))[0] ?? null,
+    count: async (args: Args = {}) => tables[table].filter(row => matches(row, args.where)).length,
     findUnique: async (args: Args) => {
       const row = tables[table].find(row => matches(row, args.where));
       return row ? { ...row, ...(args.include?.sources ? { sources: tables.fundAccountSourceBatch.filter(s => s.registrationId === row.id) } : {}) } : null;
@@ -83,11 +86,13 @@ export function createFundAccountSyntheticDb() {
       findMany: async ({ where }: Args = {}) => Object.keys(roles).map(id => ({ id, name: id === "director" ? "财务主管" : id === "delegate" ? "代办同事" : "合成人员", isActive: !inactiveUsers.has(id) })).filter(row => matches(row, where)),
       findUnique: async ({ where }: Args) => roles[String(where?.id)] ? ({ id: where?.id, name: where?.id === "director" ? "财务主管" : where?.id === "delegate" ? "代办同事" : "合成人员", phone: null, isActive: !inactiveUsers.has(String(where?.id)), sessionVersion: sessionVersions.get(String(where?.id)) ?? 0, passwordHash }) : null
     },
-    userPosition: { findMany: async ({ where }: Args) => Object.entries(roles).map(([userId, role]) => ({ userId, positionId: role, projectId: userId === "project_finance" ? "project-a" : null })).filter(row => matches(row, where)) },
-    position: { findMany: async ({ where }: Args) => [...new Set(Object.values(roles))].map(id => ({ id, key: id })).filter(row => matches(row, where)) },
-    $queryRaw: async (query: Prisma.Sql) => {
-      const sql = query.sql;
-      const id = String(query.values[0]);
+    userPosition: { count: async ({ where }: Args = {}) => Object.entries(roles).map(([userId, role]) => ({ userId, positionId: role, projectId: userId === "project_finance" ? "project-a" : null })).filter(row => matches(row, where)).length, findMany: async ({ where }: Args) => Object.entries(roles).map(([userId, role]) => ({ userId, positionId: role, projectId: userId === "project_finance" ? "project-a" : null })).filter(row => matches(row, where)) },
+    position: { findUnique: async ({ where }: Args) => [...new Set(Object.values(roles))].map(id => ({ id, key: id })).find(row => matches(row, where)) ?? null, findMany: async ({ where }: Args) => [...new Set(Object.values(roles))].map(id => ({ id, key: id })).filter(row => matches(row, where)) },
+    $queryRaw: async (query: Prisma.Sql | TemplateStringsArray, ...values: unknown[]) => {
+      const sql = Array.isArray(query) ? query.join("?") : (query as Prisma.Sql).sql;
+      const id = String(Array.isArray(query) ? values[0] : (query as Prisma.Sql).values[0]);
+      if (sql.includes('SELECT p."key" FROM "UserPosition"')) return roles[id] && !inactiveUsers.has(id) && id !== "project_finance" ? [{ key: roles[id] }] : [];
+      if (sql.includes('SELECT DISTINCT up."projectId"')) return id === "project_finance" ? [{ projectId: "project-a" }] : [];
       if (sql.includes('FROM "HandwrittenSignatureVersion"')) return missingSignatures.has(id) ? [] : [{ id: `signature-version:${id}`, fileId: `signature-file:${id}`, contentSha256: createHash("sha256").update(`synthetic-signature:${id}`).digest("hex") }];
       if (sql.includes('FROM "FileObject"')) {
         const actor = id.replace("signature-file:", "");

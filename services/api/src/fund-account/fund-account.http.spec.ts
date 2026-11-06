@@ -1,3 +1,6 @@
+import { MeController } from "../me/me.controller";
+import { MeService } from "../me/me.service";
+import { FileService } from "../file/file.service";
 import { type INestApplication } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
@@ -25,7 +28,7 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
   const database = createFundAccountSyntheticDb();
   const { prisma } = database;
   beforeAll(async () => {
-    const module = await Test.createTestingModule({ controllers: [FundAccountController, AuditController, ApprovalDelegationController], providers: [FundAccountService, ApprovalDelegationService, AuthService, JwtProvider, AuditService, { provide: PrismaService, useValue: prisma }] }).compile();
+    const module = await Test.createTestingModule({ controllers: [FundAccountController, AuditController, ApprovalDelegationController, MeController], providers: [FundAccountService, ApprovalDelegationService, AuthService, JwtProvider, AuditService, MeService, { provide: FileService, useValue: {} }, { provide: PrismaService, useValue: prisma }] }).compile();
     app = module.createNestApplication({ logger: false });
     const reflector = new Reflector();
     app.useGlobalGuards(new JwtAuthGuard(reflector, tokens, prisma as never), new RetiredWriteEntryGuard(), new PermissionGuard(reflector, prisma as never));
@@ -267,9 +270,33 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     try {
       const response = await post({ expectedApprovalInstanceId: pending.approvalInstanceId, reviewNote: "不应成功" }, "delegate", `/fund-accounts/registrations/${pending.id}/confirm`);
       expect([401, 403]).toContain(response.status);
+      const todos = await get("delegate", "/me/work-items");
+      if (mode === "actor_inactive") expect([401, 403]).toContain(todos.status);
+      else { expect(todos.status).toBe(200); expect(todos.body.queueMeta.pending.total).toBe(0); }
       expect((await get("finance")).body.accounts[1].balanceYuan).toBe("0.0000");
       expect((await get("finance", `/fund-accounts/registrations/${pending.id}`)).body.approvalEvidence).toEqual([]);
     } finally { if (mode === "expired") jest.useRealTimers(); }
+  });
+  it.each(["confirm", "withdraw"])("projects current fund duty and count for the actual director and exact delegate, then removes them after %s", async action => {
+    const { pending } = await delegatedPending();
+    for (const actor of ["director", "delegate"]) {
+      const items = await get(actor, "/me/work-items");
+      expect(items.status).toBe(200);
+      expect(items.body.queues.pending).toContainEqual(expect.objectContaining({ businessType: "fund_account_balance_registration", businessId: pending.id, targetPath: `/资金余额复核/${pending.id}` }));
+      expect(items.body.queueMeta.pending.total).toBe(1);
+      const summary = await get(actor, "/me/workbench-summary");
+      expect(summary.status).toBe(200);
+      expect(summary.body.cards).toContainEqual(expect.objectContaining({ id: "approval_todo", count: 1 }));
+    }
+    expect((await get("employee", "/me/work-items")).body.queueMeta.pending.total).toBe(0);
+    if (action === "confirm") expect((await post({ expectedApprovalInstanceId: pending.approvalInstanceId, reviewNote: "current duty" }, "delegate", `/fund-accounts/registrations/${pending.id}/confirm`)).status).toBe(201);
+    else expect((await post({ expectedApprovalInstanceId: pending.approvalInstanceId, reviewNote: "withdraw original correction", confirmationPassword: "Synthetic15Password!" }, "finance", `/fund-accounts/registrations/${pending.id}/withdraw`)).status).toBe(201);
+    expect((await get("finance")).body.accounts[1].balanceYuan).toBe("0.0000");
+    for (const actor of ["director", "delegate"]) {
+      expect((await get(actor, "/me/work-items")).body.queueMeta.pending.total).toBe(0);
+      const cards = (await get(actor, "/me/workbench-summary")).body.cards;
+      expect(cards.find((card: { id: string }) => card.id === "approval_todo")?.count ?? 0).toBe(0);
+    }
   });
   it("does not lend a delegator signature or let an ordinary delegate re-delegate someone else's duty", async () => {
     const { pending } = await delegatedPending();
@@ -296,11 +323,25 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     expect((await post({ expectedApprovalInstanceId: pending.approvalInstanceId, reviewNote: "本人实核", selfReviewReason: "本人核对原始凭据与差额", confirmationPassword: "Synthetic15Password!" }, "finance", path)).status).toBe(201);
     expect((await get("finance", `/fund-accounts/registrations/${pending.id}`)).body.approvalEvidence).toContainEqual(expect.objectContaining({ actorUserId: "finance", representedUserId: "director", signed: true, metadata: expect.objectContaining({ selfReview: true }) }));
   });
-  it("does not create a pending correction when no current finance duty holder exists", async () => {
+  it("retains a pending-configuration correction and hands its same round to a newly assigned current finance director", async () => {
     const opening = await post(basis);
     database.setRole("director", "employee"); database.setRole("other_director", "employee");
-    expect((await post({ ...basis, idempotencyKey: "no-duty", previousRegistrationId: opening.body.id }, "finance", "/fund-accounts/corrections")).status).toBe(409);
-    expect((await get()).body.accounts[1].history).toHaveLength(1);
+    const pending = await post({ ...basis, idempotencyKey: "no-duty", previousRegistrationId: opening.body.id }, "finance", "/fund-accounts/corrections");
+    expect(pending).toMatchObject({ status: 201, body: { status: "pending_review" } });
+    const before = (await get()).body.accounts[1];
+    expect(before.balanceYuan).toBe("0.0000");
+    expect(before.history).toHaveLength(2);
+    expect(before.history[0]).toMatchObject({ pendingConfiguration: true, canConfirm: false });
+    expect((await get("director", "/me/work-items")).body.queueMeta.pending.total).toBe(0);
+    expect((await get("finance", "/me/work-items")).body.queues.started).toContainEqual(expect.objectContaining({ businessId: pending.body.id, currentNode: "财务主管待配置" }));
+    expect((await post({ expectedApprovalInstanceId: pending.body.approvalInstanceId, reviewNote: "无岗不得办理" }, "director", `/fund-accounts/registrations/${pending.body.id}/confirm`)).status).toBe(403);
+    database.setRole("other_director", "finance_director");
+    const resumed = (await get("other_director")).body.accounts[1];
+    expect(resumed.history[0]).toMatchObject({ id: pending.body.id, approvalInstanceId: pending.body.approvalInstanceId, pendingConfiguration: false, canConfirm: true });
+    expect(resumed.balanceYuan).toBe("0.0000");
+    expect((await get("other_director", "/me/work-items")).body.queues.pending).toContainEqual(expect.objectContaining({ businessId: pending.body.id }));
+    expect((await get("other_director", "/me/workbench-summary")).body.cards).toContainEqual(expect.objectContaining({ id: "approval_todo", count: 1 }));
+    expect((await post({ expectedApprovalInstanceId: pending.body.approvalInstanceId, reviewNote: "补岗后复核同一原单" }, "other_director", `/fund-accounts/registrations/${pending.body.id}/confirm`)).status).toBe(201);
   });
   it("returns the exact actor's frozen success receipt after a delegated approval has completed, without repeating money or signature logs", async () => {
     const { pending } = await delegatedPending();

@@ -7,7 +7,7 @@ import { CompanyRoleResolverService } from "../auth/company-role-resolver.servic
 import { readFundReviewReceipt, makeFundReviewReceipt, fundReviewReceiptMetadata } from "./fund-account-receipt";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
-import { assertFundReviewerAvailable, fundReviewNodes, FUND_REVIEW_BUSINESS_TYPE, fundReviewDutyId, loadFundReviewDuty, resolveFundReviewIdentity } from "./fund-account-duty";
+import { fundReviewerAvailable, fundReviewNodes, FUND_REVIEW_BUSINESS_TYPE, fundReviewDutyId, loadFundReviewDuty, resolveFundReviewIdentity } from "./fund-account-duty";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { CorrectFundBalanceDto, ConfirmFundBalanceDto, RegisterFundBalanceDto } from "./fund-account.dto";
@@ -28,6 +28,7 @@ export class FundAccountService {
       ]);
       const roundIds = persisted.flatMap(account => account.registrations.map(row => row.approvalInstanceId).filter((id): id is string => Boolean(id)));
       const approvalLogs = roundIds.length ? await tx.approvalActionLog.findMany({ where: { approvalInstanceId: { in: roundIds } }, orderBy: { createdAt: "asc" } }) : [];
+      const reviewerAvailable = await fundReviewerAvailable(tx);
       const validPending = new Set<string>();
       const reviewable = new Set<string>();
       for (const row of persisted.flatMap(account => account.registrations).filter(row => row.status === "pending_review")) {
@@ -49,7 +50,7 @@ export class FundAccountService {
         return { ...scope, label: "系统登记余额", balanceYuan: current?.balanceYuan?.toFixed(4) ?? null,
           currentRegistrationId: current?.id ?? null, asOfDate: current?.asOfDate ?? null,
           custodianLabel: scope.kind === "public_cash" ? "当前综合部主管" : "财务",
-          sources: current?.sources.map(source => this.sourceView(source)) ?? [], projectBalances: this.projectBalances(current?.sources ?? []), history: history.map(row => ({ ...this.registrationView(row), approvalEvidence: approvalLogs.filter(log => log.approvalInstanceId === row.approvalInstanceId).map(log => ({ actorUserId: log.actorUserId, representedUserId: log.representedUserId, action: log.action, signed: Boolean(log.signatureVersionIdSnapshot && log.signatureSha256Snapshot && log.signatureFileIdSnapshot), signatureVersionId: log.signatureVersionIdSnapshot, signedAt: log.createdAt.toISOString(), metadata: log.metadata })), createdByName: actorName(row.createdByUserId), confirmedByName: row.confirmedByUserId ? actorName(row.confirmedByUserId) : null, closedByName: row.closedByUserId ? actorName(row.closedByUserId) : null, canWithdraw: validPending.has(row.id) && row.createdByUserId === actorUserId && roles.some(role => role === "finance_staff" || role === "finance_director"), canConfirm: reviewable.has(row.id), requiresSelfPassword: row.createdByUserId === actorUserId })),
+          sources: current?.sources.map(source => this.sourceView(source)) ?? [], projectBalances: this.projectBalances(current?.sources ?? []), history: history.map(row => ({ ...this.registrationView(row), pendingConfiguration: row.status === "pending_review" && !reviewerAvailable, approvalEvidence: approvalLogs.filter(log => log.approvalInstanceId === row.approvalInstanceId).map(log => ({ actorUserId: log.actorUserId, representedUserId: log.representedUserId, action: log.action, signed: Boolean(log.signatureVersionIdSnapshot && log.signatureSha256Snapshot && log.signatureFileIdSnapshot), signatureVersionId: log.signatureVersionIdSnapshot, signedAt: log.createdAt.toISOString(), metadata: log.metadata })), createdByName: actorName(row.createdByUserId), confirmedByName: row.confirmedByUserId ? actorName(row.confirmedByUserId) : null, closedByName: row.closedByUserId ? actorName(row.closedByUserId) : null, canWithdraw: validPending.has(row.id) && row.createdByUserId === actorUserId && roles.some(role => role === "finance_staff" || role === "finance_director"), canConfirm: reviewable.has(row.id), requiresSelfPassword: row.createdByUserId === actorUserId })),
           canRegisterBalance: !pendingReview && (roles.includes("finance_director") || (current ? roles.includes("finance_staff") : normalizedOpeningPermission(scope.kind, roles))),
           canRegisterOpening: !history.length && roles.some(role => scope.kind === "public_cash" ? role === "comprehensive_director" || role === "finance_director" : role === "finance_staff" || role === "finance_director"),
           canRequestCorrection: !pendingReview && Boolean(current) && roles.some(role => role === "finance_staff" || role === "finance_director"),
@@ -122,7 +123,6 @@ export class FundAccountService {
         if (current.sources.length ? !current.sources.some(previous => previous.id === source.previousSourceBatchId) : source.previousSourceBatchId !== null) throw new BadRequestException("更正来源快照必须关联原登记来源，不得当作新到账或新本金");
       }
       await this.validateProjects(tx, normalized.sources);
-      await assertFundReviewerAvailable(tx);
       const registrationId = randomUUID();
       const round = await tx.approvalInstance.create({ data: { flowType: "fund_account_balance_correction", businessType: FUND_REVIEW_BUSINESS_TYPE, businessId: registrationId, status: "approval_pending", currentNodeIndex: 0, frozenNodes: fundReviewNodes(), applicantUserId: actorUserId } });
       const row = await tx.fundAccountBalanceRegistration.create({ data: { id: registrationId, ...this.registrationData(normalized), accountId: account.id, version: Math.max(...versions.map(row => row.version)) + 1, kind: "correction", status: "pending_review", previousRegistrationId: current.id, approvalInstanceId: round.id, payloadFingerprint: fingerprint, createdByUserId: actorUserId } });

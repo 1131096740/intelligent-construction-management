@@ -27,7 +27,7 @@ describeDatabase("registered fund account PostgreSQL invariants (not executed du
       return tx.fundAccountBalanceRegistration.create({ data: { ...data, id, approvalInstanceId: roundId } });
     });
   }
-  async function close(id: string, status: "confirmed" | "returned" | "withdrawn") {
+  async function close(id: string, status: "confirmed" | "returned" | "withdrawn", appendZeroSource = false) {
     return prisma.$transaction(async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "FundAccountBalanceRegistration" WHERE "id" = ${id} FOR UPDATE`);
       const row = await tx.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id } });
@@ -36,7 +36,12 @@ describeDatabase("registered fund account PostgreSQL invariants (not executed du
       await tx.approvalInstance.update({ where: { id: row.approvalInstanceId! }, data: { status: action === "approve" ? "approved" : action === "reject" ? "rejected" : "withdrawn" } });
       const key = randomUUID();
       await tx.approvalActionLog.create({ data: { approvalInstanceId: row.approvalInstanceId!, actorUserId: actor, representedUserId: actor, action, approvedRoleKey: action === "approve" ? "finance_director" : null, signatureVersionIdSnapshot: action === "approve" ? "synthetic-version" : null, signatureFileIdSnapshot: action === "approve" ? "synthetic-file" : null, signatureSha256Snapshot: action === "approve" ? "a".repeat(64) : null, metadata: { fundReviewCommandKind: "fund_account_balance_review_v1", fundReviewCommandKey: key, fundReviewPayloadFingerprint: "a".repeat(64), fundReviewReceipt: { id, approvalInstanceId: row.approvalInstanceId, status } } } });
-      return tx.fundAccountBalanceRegistration.updateMany({ where: { id, status: "pending_review" }, data: status === "confirmed" ? { status, confirmedByUserId: actor, confirmedAt: new Date(), reviewNote: "合成复核" } : { status, closedByUserId: actor, closedAt: new Date(), closeReason: "合成退回或撤回" } });
+      const result = await tx.fundAccountBalanceRegistration.updateMany({ where: { id, status: "pending_review" }, data: status === "confirmed" ? { status, confirmedByUserId: actor, confirmedAt: new Date(), reviewNote: "合成复核" } : { status, closedByUserId: actor, closedAt: new Date(), closeReason: "合成退回或撤回" } });
+      if (appendZeroSource) {
+        const priorSource = await tx.fundAccountSourceBatch.findFirstOrThrow({ where: { registrationId: row.previousRegistrationId! } });
+        await tx.fundAccountSourceBatch.create({ data: { registrationId: id, lineNo: 1, amountYuan: new Prisma.Decimal(0), sourceStatus: "pending", projectStatus: "pending", previousSourceBatchId: priorSource.id } });
+      }
+      return result;
     });
   }
   it("binds scope key to the precise company and forbids a company-owned public cash account", async () => {
@@ -93,6 +98,25 @@ describeDatabase("registered fund account PostgreSQL invariants (not executed du
     await prisma.approvalActionLog.delete({where:{id:unrelated.id}});
     await expect(prisma.fundAccountBalanceRegistration.create({ data: { ...pending, version: 4, idempotencyKey: randomUUID(), status: "confirmed", confirmedByUserId: actor, confirmedAt: new Date(), reviewNote: "不允许跳过待复核" } })).rejects.toThrow();
   });
+  async function terminalSourceAppendIsRejected(status: "confirmed" | "returned" | "withdrawn") {
+    const container = await account();
+    const opening = await prisma.$transaction(async tx => {
+      const row = await tx.fundAccountBalanceRegistration.create({ data: registration(container.id) });
+      // Real zero is valid in the original opening transaction.
+      await tx.fundAccountSourceBatch.create({ data: { registrationId: row.id, lineNo: 1, amountYuan: new Prisma.Decimal(0), sourceStatus: "pending", projectStatus: "pending" } });
+      return row;
+    });
+    const pending = await correction({ ...registration(container.id), version: 2, kind: "correction", status: "pending_review", previousRegistrationId: opening.id, confirmedByUserId: null, confirmedAt: null });
+    // Legal review log + terminal UPDATE refresh xmin, but may not append a
+    // zero-valued source referencing the legitimate original source afterward.
+    await expect(close(pending.id, status, true)).rejects.toThrow();
+    expect((await prisma.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe("pending_review");
+    expect(await prisma.fundAccountSourceBatch.count({ where: { registrationId: pending.id } })).toBe(0);
+    await close(pending.id, status);
+  }
+  it("rejects zero source append after a legitimate confirmed UPDATE in the same closing transaction", async () => terminalSourceAppendIsRejected("confirmed"));
+  it("rejects zero source append after a legitimate returned UPDATE in the same closing transaction", async () => terminalSourceAppendIsRejected("returned"));
+  it("rejects zero source append after a legitimate withdrawn UPDATE in the same closing transaction", async () => terminalSourceAppendIsRejected("withdrawn"));
   it("rejects source snapshots added after the original reconciliation transaction", async () => {
     const container = await account();
     const opening = await prisma.fundAccountBalanceRegistration.create({ data: registration(container.id) });

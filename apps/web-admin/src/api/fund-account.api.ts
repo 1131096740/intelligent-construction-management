@@ -28,6 +28,7 @@ export interface FundBalanceRegistration {
   createdByName?: string;
   confirmedByName?: string | null;
   confirmedAt?: string | null;
+  pendingConfiguration?: boolean;
   requiresSelfPassword?: boolean;
   canConfirm?: boolean;
   canWithdraw?: boolean;

@@ -298,7 +298,7 @@ onMounted(load);
         <p>{{ entry.row.kind === 'opening' ? '期初余额登记' : '余额核对更正' }} · {{ ({ confirmed: '已核对登记', pending_review: '待财务主管复核', returned: '已退回待重新登记', withdrawn: '已撤回' })[entry.row.status] }}</p>
         <p>{{ amount(entry.row.balanceYuan) }} · 核对日期 {{ entry.row.asOfDate }}</p>
         <p>依据：{{ entry.row.evidenceReference }}</p><p>核对说明：{{ entry.row.reconciliationNote }}</p><p>原因：{{ entry.row.reason }}</p>
-        <p>登记人：{{ entry.row.createdByName || '原登记人员' }} · {{ entry.row.confirmedByName ? `核对人：${entry.row.confirmedByName}` : entry.row.status === 'pending_review' ? '等待复核' : entry.row.status === 'returned' ? '本次已退回' : '本次已撤回' }}</p>
+        <p>登记人：{{ entry.row.createdByName || '原登记人员' }} · {{ entry.row.confirmedByName ? `核对人：${entry.row.confirmedByName}` : entry.row.status === 'pending_review' ? entry.row.pendingConfiguration ? '财务主管待配置，保留原登记等待补岗复核' : '等待复核' : entry.row.status === 'returned' ? '本次已退回' : '本次已撤回' }}</p>
         <p v-if="entry.row.confirmedAt">
           核对登记时间（北京）：{{ chinaDateTimeInput(new Date(entry.row.confirmedAt)) }}
         </p>

@@ -16,11 +16,11 @@ export async function currentFundCompanyRoles(tx: Prisma.TransactionClient, user
   try { return await new CompanyRoleResolverService(tx as never).resolveActiveRoleScopesInTransaction(tx, userId); }
   catch { return []; }
 }
-export async function assertFundReviewerAvailable(tx: Prisma.TransactionClient) {
+export async function fundReviewerAvailable(tx: Prisma.TransactionClient) {
   const positions = await tx.position.findMany({ where: { key: "finance_director" }, select: { id: true } });
   const assignments = await tx.userPosition.findMany({ where: { projectId: null, positionId: { in: positions.map(position => position.id) } }, select: { userId: true } });
   const users = await tx.user.findMany({ where: { id: { in: assignments.map(row => row.userId) }, isActive: true }, select: { id: true } });
-  if (!users.length) throw new ConflictException("当前缺少有效公司级财务主管，不能跳过复核，请先安排职责人员");
+  return users.length > 0;
 }
 
 /** This is a bounded adapter for one company-level fund duty, reusing the
