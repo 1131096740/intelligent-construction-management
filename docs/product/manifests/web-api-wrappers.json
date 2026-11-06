@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 40,
-    "exportedFunctionCount": 679,
-    "transportWrapperCount": 657,
+    "apiModuleCount": 41,
+    "exportedFunctionCount": 685,
+    "transportWrapperCount": 663,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 696,
+    "mainRequestBindingCount": 702,
     "ticketFollowupCount": 4,
-    "requestEdgeCount": 684,
-    "productionConsumerCount": 563,
+    "requestEdgeCount": 690,
+    "productionConsumerCount": 578,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 369,
-    "reachableProductionModuleCount": 348
+    "productionModuleCount": 374,
+    "reachableProductionModuleCount": 355
   },
   "wrappers": [
     {
@@ -2497,6 +2497,176 @@
       "unreachableConsumers": []
     },
     {
+      "name": "confirmLayoutSourceMapping",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/source-mapping-confirmation",
+          "normalizedPath": "/contract-layout-template-versions/:param/source-mapping-confirmation",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmLayoutSourceMapping",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getLayoutCreationCapability",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-templates/creation-capability",
+          "normalizedPath": "/contract-layout-templates/creation-capability",
+          "normalizedKey": "GET /contract-layout-templates/creation-capability",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "getLayoutCreationCapability",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateManagementPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getLayoutSourcePositions",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-template-versions/:param/source-positions",
+          "normalizedPath": "/contract-layout-template-versions/:param/source-positions",
+          "normalizedKey": "GET /contract-layout-template-versions/:param/source-positions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "getLayoutSourcePositions",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getLayoutVersionMaintenanceCapability",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-template-versions/:param/maintenance-capability",
+          "normalizedPath": "/contract-layout-template-versions/:param/maintenance-capability",
+          "normalizedKey": "GET /contract-layout-template-versions/:param/maintenance-capability",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "getLayoutVersionMaintenanceCapability",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "listMaintainedLayouts",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "GET",
+          "path": "/contract-layout-templates/maintenance",
+          "normalizedPath": "/contract-layout-templates/maintenance",
+          "normalizedKey": "GET /contract-layout-templates/maintenance",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "listMaintainedLayouts",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateManagementPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "saveLayoutSourceMapping",
+      "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 12,
+          "method": "PATCH",
+          "path": "/contract-layout-template-versions/:param/source-mapping",
+          "normalizedPath": "/contract-layout-template-versions/:param/source-mapping",
+          "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "saveLayoutSourceMapping",
+              "templateRequest"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "abandonContractDraft",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -2698,10 +2868,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "confirmContractBillTransitions",
@@ -2934,10 +3104,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "createStandardClause",
@@ -3141,10 +3311,8 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-      ],
-      "productionConsumers": []
+      "productionConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "discardStandardClauseVersion",
@@ -3805,10 +3973,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "getLayoutTemplate",
@@ -3835,12 +4003,11 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-      ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue"
-      ]
+      ],
+      "unreachableConsumers": []
     },
     {
       "name": "heartbeatContractDraftEditLease",
@@ -3898,10 +4065,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "listBusinessParties",
@@ -4295,10 +4462,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "publishStandardClauseVersion",
@@ -4416,10 +4583,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "releaseContractDraftEditLease",
@@ -4824,10 +4991,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "submitContractDraft",
@@ -4915,10 +5082,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "submitStandardClauseVersion",
@@ -5152,10 +5319,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "unreachableConsumers": [
+      "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "productionConsumers": []
+      "unreachableConsumers": []
     },
     {
       "name": "uploadContractFormalApprovalFile",
@@ -11085,15 +11252,14 @@
         "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
         "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
         "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
         "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
         "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": [
-        "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-      ]
+      "unreachableConsumers": []
     },
     {
       "name": "uploadProjectAffiliateBusinessPrivateFile",
@@ -13316,7 +13482,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13333,7 +13499,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/archive",
           "normalizedPath": "/general-procurements/:param/archive",
@@ -13363,7 +13529,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13379,7 +13545,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/payments/:param/cancellation",
           "normalizedPath": "/general-procurements/:param/payments/:param/cancellation",
@@ -13408,7 +13574,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/create-options",
           "normalizedPath": "/general-procurements/create-options",
@@ -13424,7 +13590,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements",
           "normalizedPath": "/general-procurements",
@@ -13453,7 +13619,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13470,7 +13636,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/draft-deletion",
           "normalizedPath": "/general-procurements/:param/draft-deletion",
@@ -13500,7 +13666,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13516,6 +13682,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+        "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
         "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
@@ -13529,7 +13696,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements?:param",
           "normalizedPath": "/general-procurements",
@@ -13557,7 +13724,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/create-options",
           "normalizedPath": "/general-procurements/create-options",
@@ -13573,6 +13740,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
         "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
@@ -13586,7 +13754,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13603,7 +13771,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/review",
           "normalizedPath": "/general-procurements/:param/review",
@@ -13633,7 +13801,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13650,7 +13818,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/submission",
           "normalizedPath": "/general-procurements/:param/submission",
@@ -13680,7 +13848,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13697,7 +13865,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/draft",
           "normalizedPath": "/general-procurements/:param/draft",
@@ -13714,6 +13882,7 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
         "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
       ],
       "testConsumers": [],
@@ -13727,7 +13896,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13743,7 +13912,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/archive-file-uploads",
           "normalizedPath": "/general-procurements/:param/archive-file-uploads",
@@ -13771,7 +13940,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "GET",
           "path": "/general-procurements/:param",
           "normalizedPath": "/general-procurements/:param",
@@ -13788,7 +13957,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 27,
+          "sourceLine": 34,
           "method": "POST",
           "path": "/general-procurements/:param/withdrawal",
           "normalizedPath": "/general-procurements/:param/withdrawal",
@@ -20648,12 +20817,6 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "cloneLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "createContractNumberRule",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
@@ -20667,12 +20830,6 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "createDraftCheckpoint",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "createLayoutTemplate",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
@@ -20720,18 +20877,6 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "getLatestLayoutTemplatePreview",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "inspectLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "listContractDrafts",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
@@ -20750,19 +20895,7 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "publishLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "publishStandardClauseVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "queueLayoutTemplatePreview",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
@@ -20810,19 +20943,7 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "stopLayoutTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "submitContractTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "submitLayoutTemplateVersion",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },
@@ -20847,12 +20968,6 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "updateContractTemplateVersion",
-      "classification": "test_only",
-      "reason": "No production consumer; retained only by API unit tests."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "wrapper": "updateLayoutTemplateVersion",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },

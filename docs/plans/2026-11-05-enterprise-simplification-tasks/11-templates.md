@@ -1,6 +1,6 @@
 # 11：合同模板主管维护与版本隔离
 
-**状态：** `plan-confirmed` / `in-progress`；前置#390技术CLI及#387本地确认边界已关闭，已[领取#393](https://github.com/1131096740/intelligent-construction-management/issues/393#issuecomment-6659886831)。本轮用户已授权整套实施及 GitHub 工单推进；[#393](https://github.com/1131096740/intelligent-construction-management/issues/393) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `local-confirmed-complete` / `closed`；已按用户确认本地公开边界[关闭#393](https://github.com/1131096740/intelligent-construction-management/issues/393#issuecomment-6672821223)。准确集成`4327a75f`已推送Draft PR #428；真实PG、迁移、部署及生产变更仍未执行，不以本票结论替代发布门。
 
 **已确认公开验证边界：** 模板上传、解析、人工映射确认、版本维护/停用与新草稿选用的公开HTTP、公共服务及管理/选用UI；实际DOCX与真实浏览器连接合成数据库/私有文件适配器，覆盖主管维护、合同员选用、未确认映射不生效和历史正文/PDF下载隔离。真实PG约束仅准备，不执行；资源、迁移、真实短信、部署与生产写仍另需授权。
 
@@ -14,11 +14,15 @@
 
 **技术决定：** [技术方案](../2026-11-05-enterprise-simplification-technical-plan.md) D04。**公开验收：** [验收情景](../2026-11-05-enterprise-simplification-acceptance.md) A07、A09。
 
+## 本地候选状态（2026-11-06）
+
+已完成原业务及新增物理检查两轮独立Standards/Spec复审，余项均0，独立merger在准确4327重跑26项公开输出链、12份实际PDF物理检查及原369通过。[准确整合与边界](../../progress/2026-11-06-enterprise-simplification-task11-integrated.md)。原[初轮公开链交接](../../progress/2026-11-06-enterprise-simplification-task11-local.md)作为历史保留，原空白PDF不改写；受控字体配置只属本地测试运行条件，坏字体产品runtime仍可success的B限制及10/44实际环境门未解除。09新basics组合仍在其独立检查点，不私合WIP。
+
 ## 验收条件
 
-- [ ] CON-22：可新增/修改/停用模板、上传既有Word并确认自动填值位置；合同员选择使用；旧生成合同不随模板改变。
-- [ ] 模板上传、解析、映射预览、保存和新合同选用形成完整链；不靠自动猜测静默确定字段。
-- [ ] 版本停用不影响历史正文/PDF；权限、文件私有和错误提示以公开接口验证。
+- [x] CON-22：可新增/修改/停用模板、上传既有Word并确认自动填值位置；合同员选择使用；旧生成合同不随模板改变。
+- [x] 模板上传、解析、映射预览、保存和新合同选用形成完整链；不靠自动猜测静默确定字段。
+- [x] 版本停用不影响历史正文/PDF；权限、文件私有和错误提示以公开接口验证。
 
 ## 验证与边界
 

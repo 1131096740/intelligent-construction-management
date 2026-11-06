@@ -6823,14 +6823,18 @@ model GeneralProcurement {
   code                      String   @unique
   requestKey                String   @unique
   creationFingerprint       String
-  projectId                 String
-  companyEntityId           String
-  companyNameSnapshot       String
+  projectId                 String?
+  companyEntityId           String?
+  companyNameSnapshot       String?
   applicantUserId           String
   applicantNameSnapshot     String
   category                  String
   reason                    String
-  requestedAmountCents      BigInt
+  requestedAmountCents      BigInt?
+  estimatedAmount           Decimal? @db.Decimal(24, 4)
+  requestProtocolVersion    Int      @default(1)
+  scope                     String   @default("project")
+  lines                     Json     @default("[]")
   status                    String   @default("draft")
   revision                  Int      @default(1)
   approvalInstanceId        String?

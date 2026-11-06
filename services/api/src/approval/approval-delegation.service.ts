@@ -1,3 +1,5 @@
+import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyIdentity } from "../general-procurement/general-procurement-request-access";
+import { GeneralProcurementRequestNotificationService } from "../general-procurement/general-procurement-request-notification.service";
 import {SpotProcurementApprovalNotificationService} from "../spot-procurement/spot-procurement-approval-notification.service";
 import {Prisma} from "@prisma/client";
 import {activeApprovalNodeIndexes, isParallelApprovalRound} from "./parallel-approval-protocol";
@@ -23,7 +25,8 @@ export class ApprovalDelegationService {
     private readonly audit: AuditService = new AuditService(),
     @Optional()
     private readonly projectVisibility?: ProjectVisibilityService,
-    @Optional() private readonly notifications?: SpotProcurementApprovalNotificationService
+    @Optional() private readonly notifications?: SpotProcurementApprovalNotificationService,
+    @Optional() private readonly generalNotifications?: GeneralProcurementRequestNotificationService
   ) {}
 
   async create(fromUserId: string, input: CreateApprovalDelegationDto) {
@@ -31,6 +34,7 @@ export class ApprovalDelegationService {
       throw new Error("Prisma service is required to create approval delegation");
     }
 
+    if (input.resourceType === GENERAL_REQUEST_DUTY_RESOURCE) return this.createGeneralDutyDelegation(fromUserId, input);
     if (input.resourceType === SPOT_APPROVAL_DUTY_RESOURCE) return this.createDutyDelegation(fromUserId, input);
     const scope = delegationScope(input);
     // Retain the existing clearing creation contract; other historical consumers remain read-compatible.
@@ -94,6 +98,44 @@ export class ApprovalDelegationService {
     return delegation;
   }
 
+
+  private async generalDuty(tx: Prisma.TransactionClient, userId: string, resourceId: string, lock: boolean) {
+    const match = /^([^:]+):(0|[1-9][0-9]*)$/.exec(resourceId);
+    if (!match) return null;
+    if (lock) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${match[1]} FOR UPDATE`);
+    const round = await tx.approvalInstance.findUnique({ where: { id: match[1] } });
+    if (!round || round.businessType !== "general_procurement") return null;
+    const row = await tx.generalProcurement.findUnique({ where: { id: round.businessId } });
+    if (!row || row.requestProtocolVersion !== 2 || row.approvalInstanceId !== round.id || row.status !== "approval_pending" || round.status !== "in_progress") throw new ForbiddenException("该综合采购审批职责已结束或无权委托");
+    const identity = await generalRequestDutyIdentity(tx, this.projectVisibility ?? new ProjectVisibilityService(this.prisma!), row, round, Number(match[2]), userId, false, lock);
+    if (!identity) throw new ForbiddenException("当前账号不是该职责的有效审批人");
+    const project = row.projectId ? await tx.project.findUnique({ where: { id: row.projectId }, select: { name: true } }) : null;
+    const node = (round.frozenNodes as Array<Record<string, unknown>>)[Number(match[2])];
+    return { row, round, label: `${project?.name ?? "公司日常"} · ${row.code} · ${String(node.name)}` };
+  }
+
+  private async createGeneralDutyDelegation(fromUserId: string, input: CreateApprovalDelegationDto) {
+    if (!this.prisma) throw new BadRequestException("委托服务暂不可用，请稍后重试");
+    const scope = delegationScope(input);
+    if (!scope || scope.actionKey !== "general_procurement.approve" || scope.resourceType !== GENERAL_REQUEST_DUTY_RESOURCE || !input.toUserId || input.toUserId === fromUserId) throw new BadRequestException("请选择明确的综合采购审批职责和其他启用接收人");
+    const startsAt = new Date(input.startsAt), endsAt = new Date(input.endsAt);
+    if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt || endsAt <= new Date()) throw new BadRequestException("委托有效期不正确，请填写尚未结束的起止时间");
+    const result = await this.prisma.$transaction(async tx => {
+      const duty = await this.generalDuty(tx, fromUserId, scope.resourceId, true);
+      if (!duty) throw new ForbiddenException("该综合采购审批职责不存在或无权委托");
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${input.toUserId} FOR SHARE`);
+      const target = await tx.user.findUnique({ where: { id: input.toUserId }, select: { isActive: true } });
+      if (!target?.isActive) throw new BadRequestException("委托接收人不存在或已停用，请重新选择");
+      const delegation = await tx.approvalDelegation.create({ data: { fromUserId, toUserId: input.toUserId, startsAt, endsAt, ...scope } });
+      await this.generalNotifications?.queueInTransaction(tx, duty.row, duty.round);
+      await this.audit.record(tx, { actorUserId: fromUserId, action: "approval.delegation.create", businessType: "approval_delegation", businessId: delegation.id,
+        metadata: { ...scope, toUserId: input.toUserId, dutyLabel: duty.label, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() } });
+      return delegation;
+    });
+    await this.generalNotifications?.dispatchQueued().catch(() => undefined);
+    return result;
+  }
+
   private async duty(tx: Prisma.TransactionClient, userId: string, resourceId: string, lock: boolean) {
     const match = /^([^:]+):(0|[1-9][0-9]*)$/.exec(resourceId);
     if (!match) throw new BadRequestException("请选择明确的审批职责");
@@ -134,6 +176,7 @@ export class ApprovalDelegationService {
 
   async dutyCapability(userId: string, resourceId: string) {
     if (!this.prisma) return {canDelegate: false};
+    if (await this.generalDuty(this.prisma as never, userId, resourceId, false)) return { canDelegate: true };
     await this.duty(this.prisma as never, userId, resourceId, false);
     return {canDelegate: true};
   }
@@ -146,12 +189,21 @@ export class ApprovalDelegationService {
   async listDutyOptions(userId: string) {
     if (!this.prisma) return [];
     const rounds = await this.prisma.approvalInstance.findMany({where: {businessType: "spot_procurement_version", status: "approval_pending"}, orderBy: {createdAt: "desc"}});
-    const result: Array<{value: string; label: string}> = [];
+    const result: Array<{value: string; label: string; actionKey: BusinessAction; resourceType: string}> = [];
     for (const round of rounds) {
       if (!isParallelApprovalRound(round.frozenNodes)) continue;
       for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {
         const value = `${round.id}:${index}`;
-        try { const duty = await this.duty(this.prisma as never, userId, value, false); result.push({value, label: duty.label}); }
+        try { const duty = await this.duty(this.prisma as never, userId, value, false); result.push({value, label: duty.label, actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE}); }
+        catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
+      }
+    }
+    const generalRounds = await this.prisma.approvalInstance.findMany({ where: { businessType: "general_procurement", status: "in_progress" }, orderBy: { createdAt: "desc" } });
+    for (const round of generalRounds) {
+      if (!isParallelApprovalRound(round.frozenNodes)) continue;
+      for (const index of activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex)) {
+        const value = `${round.id}:${index}`;
+        try { const duty = await this.generalDuty(this.prisma as never, userId, value, false); if (duty) result.push({ value, label: duty.label, actionKey: "general_procurement.approve", resourceType: GENERAL_REQUEST_DUTY_RESOURCE }); }
         catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
       }
     }
@@ -177,7 +229,7 @@ export class ApprovalDelegationService {
         })
       : [];
     const nameById = new Map(users.map((user) => [user.id, user.name]));
-    const scopedIds = delegations.filter(row => row.resourceType === SPOT_APPROVAL_DUTY_RESOURCE).map(row => row.id);
+    const scopedIds = delegations.filter(row => [SPOT_APPROVAL_DUTY_RESOURCE, GENERAL_REQUEST_DUTY_RESOURCE].includes(row.resourceType ?? "")).map(row => row.id);
     const creationFacts = scopedIds.length ? await this.prisma.auditLog.findMany({where: {action: "approval.delegation.create", businessType: "approval_delegation", businessId: {in: scopedIds}}, orderBy: {createdAt: "asc"}, select: {businessId: true, metadata: true}}) : [];
     const labelById = new Map<string, string>();
     for (const fact of creationFacts) {
@@ -200,7 +252,7 @@ export class ApprovalDelegationService {
     }
 
     if (dutyId) {
-      await this.duty(this.prisma as never, userId, dutyId, false);
+      if (!(await this.generalDuty(this.prisma as never, userId, dutyId, false))) await this.duty(this.prisma as never, userId, dutyId, false);
       return this.prisma.user.findMany({where: {isActive: true, id: {not: userId}}, orderBy: {name: "asc"}, select: {id: true, name: true}});
     }
     const sameProjectUserIds = await this.sameProjectUserIds(userId);
@@ -222,7 +274,7 @@ export class ApprovalDelegationService {
       throw new Error("审批委托记录不存在或已被删除");
     }
 
-    if (delegation.resourceType === SPOT_APPROVAL_DUTY_RESOURCE) {
+    if ([SPOT_APPROVAL_DUTY_RESOURCE, GENERAL_REQUEST_DUTY_RESOURCE].includes(delegation.resourceType ?? "")) {
       return this.prisma.$transaction(async tx => {
         const instanceId = delegation.resourceId?.split(":")[0];
         if (instanceId) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${instanceId} FOR UPDATE`);

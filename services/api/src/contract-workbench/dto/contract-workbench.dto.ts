@@ -63,7 +63,7 @@ export interface SaveContractDraftDto {
   manualAmountCents?: string;
   estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
   paymentTermsOriginalText?: string;
   paymentStages?: Array<{
     name: string;
@@ -231,7 +231,7 @@ export class SaveContractDraftFieldsDto {
     typeMessage: "版式模板版本编号必须是文字",
     blankMessage: "版式模板版本编号不能为空白"
   })
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
 
   @IsObject({ message: "合同税务事实必须是对象" })
   @ValidateNested({ message: "合同税务事实必须是对象" })

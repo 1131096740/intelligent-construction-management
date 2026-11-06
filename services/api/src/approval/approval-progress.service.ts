@@ -1,3 +1,5 @@
+import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyId, generalRequestDutyIdentity, generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {SPOT_APPROVAL_DUTY_RESOURCE, spotApprovalDutyId} from "./spot-approval-duty-access";
 import { activeApprovalNodeIndexes, isParallelApprovalRound, isApprovalDutyComplete, isParallelDutyNotificationEvent } from "./parallel-approval-protocol";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
@@ -166,7 +168,7 @@ export class ApprovalProgressService {
         const version = await db.contractVersion.findUnique({ where: { id }, select: { contractId: true } });
         return version ? db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true } }) : null;
       }
-      case "general_procurement": return db.generalProcurement.findUnique({ where: { id }, select: { projectId: true, code: true, status: true, approvalInstanceId: true } });
+      case "general_procurement": return db.generalProcurement.findUnique({ where: { id }, select: { projectId: true, code: true, status: true, approvalInstanceId: true, requestProtocolVersion: true, scope: true, applicantUserId: true } });
       case "company_transfer": {
         const row = await db.companyTransfer.findUnique({ where: { id }, select: { code: true, status: true, approvalInstanceId: true } });
         return row ? { ...row, projectId: null } : null;
@@ -196,6 +198,7 @@ export class ApprovalProgressService {
     const business = await this.business(db, instance);
     if (!business) throw new NotFoundException("审批流程不存在或无权查看");
     const projectId = business.projectId;
+    const parallelGeneral = instance.businessType === "general_procurement" && "requestProtocolVersion" in business && business.requestProtocolVersion === 2 && isParallelApprovalRound(instance.frozenNodes);
     const [users, positions, assignments, members, logs, delegations, project] = await Promise.all([
       db.user.findMany({ select: { id: true, name: true, phone: true, isActive: true } }),
       db.position.findMany({ select: { id: true, key: true } }),
@@ -205,6 +208,7 @@ export class ApprovalProgressService {
       db.approvalDelegation.findMany({ where: { enabled: true, startsAt: { lte: new Date() }, endsAt: { gt: new Date() }, OR: [
         { actionKey: null, resourceType: null, resourceId: null },
         ...(instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).map(index => ({actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE, resourceId: spotApprovalDutyId(instance.id, index)})) : []),
+        ...(parallelGeneral ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).map(index => ({ actionKey: "general_procurement.approve", resourceType: GENERAL_REQUEST_DUTY_RESOURCE, resourceId: generalRequestDutyId(instance.id, index) })) : []),
         ...(instance.businessType === "fund_execution_case" ? [{ actionKey: "fund_execution_case.approve", resourceType: "fund_execution_case", resourceId: instance.businessId }] : [])
       ] } }),
       projectId ? db.project.findUnique({ where: { id: projectId }, select: { name: true, isActive: true } }) : Promise.resolve(null)
@@ -248,7 +252,17 @@ export class ApprovalProgressService {
       return { ...node, assignments: Array.isArray(node.assignments) ? node.assignments.filter(assignment => validAssignment(node, assignment)) : [] };
     }) : [];
     const legacyCandidates = (node: FrozenApprovalNode) => users.filter(u => u.isActive && resolveApprovalReviewIdentity({ node: { ...node, approvedRoleKeys: [] }, actorUserId: u.id, actorRoleKeys: allRoles(u.id), actorRoleScopes: roles.get(u.id), legacyContractRoute: instance.businessType === "contract_version" })).map(u => u.id);
-    const nodeIds = rawNodes.map((node, nodeIndex) => isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
+    const generalNodeIds: string[][] = [];
+    if (parallelGeneral && "scope" in business && "requestProtocolVersion" in business) {
+      for (const [index, node] of rawNodes.entries()) {
+        const ids: string[] = [];
+        if (isApprovalDutyComplete(node as unknown as Record<string, unknown>)) ids.push(...logs.filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId));
+        else for (const user of users) if (user.isActive && await generalRequestDutyIdentity(db as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma),
+          { projectId, scope: String(business.scope) }, instance, index, user.id)) ids.push(user.id);
+        generalNodeIds.push([...new Set(ids)]);
+      }
+    }
+    const nodeIds = rawNodes.map((node, nodeIndex) => parallelGeneral ? generalNodeIds[nodeIndex] : isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
       ? [...new Set(logs.filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId))]
       : [...new Set([
       ...(isGovernedFrozenApprovalNode(node) ? (typeof node.selectedUserId === "string" ? [node.selectedUserId] : frozenCandidateUserIds(node)) : legacyCandidates(node)),
@@ -269,6 +283,10 @@ export class ApprovalProgressService {
     }
     if ("applicantUserId" in business && typeof business.applicantUserId === "string") participants.add(business.applicantUserId);
     if ("handledByUserId" in business && typeof business.handledByUserId === "string") participants.add(business.handledByUserId);
+    if (parallelGeneral && "applicantUserId" in business && typeof business.applicantUserId === "string") {
+      const actor = await generalRequestActor(db as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), actorId, projectId);
+      if (generalRequestCanRead({ applicantUserId: business.applicantUserId }, actor)) participants.add(actorId);
+    }
     if (!participants.has(actorId)) throw new NotFoundException("审批流程不存在或无权查看");
     const activeIndexes = activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
     const current = rawNodes[instance.currentNodeIndex];
@@ -277,6 +295,7 @@ export class ApprovalProgressService {
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const pending = !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
       if (!user.isActive) return false;
+      if (parallelGeneral) return activeIndexes.some(index => generalNodeIds[index]?.includes(user.id));
       const actorRoleKeys = allRoles(user.id);
       const identity = activeIndexes.map(index => resolveApprovalReviewIdentity({
         node: rawNodes[index], actorUserId: user.id, actorRoleKeys, actorRoleScopes: roles.get(user.id), legacyContractRoute: instance.businessType === "contract_version",

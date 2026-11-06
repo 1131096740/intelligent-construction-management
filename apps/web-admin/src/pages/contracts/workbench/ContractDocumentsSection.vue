@@ -10,6 +10,7 @@
         <t-select
           v-model="layoutTemplateVersionId"
           data-field-key="layoutTemplateVersionId"
+          clearable
           :options="layoutOptions"
           :disabled="disabled || busy"
           placeholder="选择已发布版式"
@@ -22,7 +23,7 @@
         </span>
         <t-button
           theme="primary"
-          :disabled="disabled || busy || !layoutTemplateVersionId"
+          :disabled="disabled || busy || !layoutTemplateVersionId || !selectedLayoutIsPublished"
           @click="queueDocument"
         >
           生成合同文件
@@ -214,7 +215,8 @@
 import { formatUnknownApiError } from "../../../api/error-message";
 import PrivatePdfActions from "../../../components/files/PrivatePdfActions.vue";
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { computed, onUnmounted, ref, shallowRef, watch } from "vue";
+import { templateStatusLabel } from "../contract-labels";
 import {
   fetchContractDraftOperationCapabilities,
   listContractDocuments,
@@ -290,6 +292,7 @@ async function retryContractDocumentWithCapability(
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
+  layoutTemplateVersionId?: string | null;
   disabled: boolean;
   prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
   completeMutation?: (reload: boolean) => Promise<void>;
@@ -297,6 +300,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "reload"): void;
+  (event: "update:layoutTemplateVersionId", value: string | null): void;
 }>();
 
 const purposeLabelMap: Record<string, string> = {
@@ -311,8 +315,24 @@ const identityAttachmentLabels = {
 } as const;
 
 const layoutRecords = ref<Array<Record<string, unknown>>>([]);
-const layoutOptions = ref<Array<{ label: string; value: string }>>([]);
-const layoutTemplateVersionId = ref("");
+const layoutTemplateVersionId = computed({
+  get: () => (props.layoutTemplateVersionId === undefined ? props.workbench?.version.layoutTemplateVersionId : props.layoutTemplateVersionId) ?? "",
+  set: (value: string) => emit("update:layoutTemplateVersionId", value ? value : null)
+});
+const layoutOptions = computed(() => {
+  const options = layoutRecords.value.map(layout => ({
+    label: `${String(layout["name"] ?? "共享版式")} · V${String(layout["versionNo"] ?? "-")}`,
+    value: String(layout["layoutTemplateVersionId"] ?? layout["versionId"] ?? layout["id"] ?? ""),
+    disabled: false
+  }));
+  const selectedId = layoutTemplateVersionId.value;
+  if (selectedId && !options.some(option => option.value === selectedId)) {
+    const saved = props.workbench?.version.layoutTemplateSelection;
+    options.push({ value: selectedId, disabled: true, label: saved?.id === selectedId ? `${saved.name} · V${saved.versionNo}（${templateStatusLabel(saved.status)}）` : "当前已保存版式（待核对）" });
+  }
+  return options;
+});
+const selectedLayoutIsPublished = computed(() => layoutRecords.value.some(layout => String(layout["layoutTemplateVersionId"] ?? layout["versionId"] ?? layout["id"] ?? "") === layoutTemplateVersionId.value));
 const confirmationPassword = ref("");
 const downloadReason = ref("");
 const downloadDialogVisible = ref(false);
@@ -370,7 +390,6 @@ watch(
     rawDocuments.value = ((workbench?.documents ?? []) as unknown as WorkbenchDocument[]).map(
       (document) => ({ ...document })
     );
-    void loadLayouts();
   },
   { immediate: true }
 );
@@ -383,30 +402,20 @@ watch(hasActiveDocument, (active) => {
   }
 }, { immediate: true });
 
-onMounted(loadLayouts);
+watch(() => [props.workbench?.version.id, props.workbench?.contract.contractTypeKey], () => { void loadLayouts(); }, { immediate: true });
 onUnmounted(stopPolling);
 
 async function loadLayouts() {
   const contractTypeKey = props.workbench?.contract.contractTypeKey;
-  if (!contractTypeKey) {
-    layoutRecords.value = [];
-    layoutOptions.value = [];
-    return;
-  }
+  const expectedVersionId = versionId.value;
+  layoutRecords.value = [];
+  if (!contractTypeKey) return;
   try {
-    const layouts = (await listPublishedLayoutTemplates(contractTypeKey)) as Array<
-      Record<string, unknown>
-    >;
+    const layouts = (await listPublishedLayoutTemplates(contractTypeKey)) as Array<Record<string, unknown>>;
+    if (versionId.value !== expectedVersionId || props.workbench?.contract.contractTypeKey !== contractTypeKey) return;
     layoutRecords.value = layouts;
-    layoutOptions.value = layouts.map((layout) => ({
-      label: String(layout["name"] ?? layout["versionName"] ?? layout["id"] ?? "版式"),
-      value: String(layout["layoutTemplateVersionId"] ?? layout["versionId"] ?? layout["id"] ?? "")
-    }));
-    if (!layoutTemplateVersionId.value) {
-      layoutTemplateVersionId.value = layoutOptions.value[0]?.value ?? "";
-    }
   } catch (error) {
-    message.value = formatUnknownApiError(error, "版式模板加载失败");
+    if (versionId.value === expectedVersionId) message.value = formatUnknownApiError(error, "版式模板加载失败");
   }
 }
 
@@ -449,6 +458,8 @@ async function run(action: () => Promise<unknown>, success: string) {
 }
 
 async function queueDocument() {
+  const requestedLayoutId = layoutTemplateVersionId.value;
+  const requestedVersionId = versionId.value;
   let prepared = false;
   await run(
     async () => {
@@ -457,8 +468,11 @@ async function queueDocument() {
         : props.workbench;
       if (!current) throw new Error("合同草稿未保存，本次未生成文档");
       prepared = true;
+      if (!requestedLayoutId || current.version.id !== requestedVersionId || versionId.value !== requestedVersionId || layoutTemplateVersionId.value !== requestedLayoutId || current.version.layoutTemplateVersionId !== requestedLayoutId) {
+        throw new Error("所选版式尚未准确保存，请保留选择并重新保存后生成");
+      }
       await queueContractDocumentWithCapability(current.version.id, {
-        layoutTemplateVersionId: layoutTemplateVersionId.value,
+        layoutTemplateVersionId: requestedLayoutId,
         purpose: "external",
         attachmentFileIds: attachments.value.map((file) => file.id)
       });

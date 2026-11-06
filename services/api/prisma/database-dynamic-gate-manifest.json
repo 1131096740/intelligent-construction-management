@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 199,
-    "terminalMigration": "20261106001000_spot_material_request_v2",
-    "terminalMigrationChecksum": "402814facd525ede44f2a8b95ded55702cf24672ad615fc261c1b7c052525f50",
+    "expectedDirectoryCount": 200,
+    "terminalMigration": "20261106090000_general_procurement_requests",
+    "terminalMigrationChecksum": "33c8e9c6050f53a911ec9db6ec357f1bebcb52bf5b39fd82430ebdfaa4328183",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -29,9 +29,9 @@
     "pendingFiles": 78,
     "fullyPendingSuites": 67,
     "partiallyPendingSuites": 11,
-    "pendingTests": 525,
+    "pendingTests": 528,
     "coveredFiles": 78,
-    "coveredTests": 525,
+    "coveredTests": 528,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -636,11 +636,11 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 24,
+      "pendingTests": 27,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
-          "pendingTests": 12,
+          "pendingTests": 15,
           "suiteStatus": "fully_pending"
         },
         {
@@ -708,7 +708,7 @@
     "ciEligible": {
       "groups": 22,
       "files": 77,
-      "tests": 524
+      "tests": 527
     },
     "manualOnly": {
       "groups": 1,

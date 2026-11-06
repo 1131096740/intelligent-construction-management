@@ -1,6 +1,6 @@
 # 业务简化重构已确认任务与依赖图
 
-> 2026-11-05规格、2026-11-06执行更新；用户已确认方案与验收边界，授权193条规格、45任务及GitHub推进。父工单[#382](https://github.com/1131096740/intelligent-construction-management/issues/382)、子工单#383～#427已发布；编号及依赖边不变。当前8/45按各自边界关闭：01准备、02/03本地阶段PG待验、04本地、05补修后本地、06草稿表格本地、07本地、08文书技术CLI。11继续，15阶段收口边界待用户答复，09/19已领取、20就绪等待执行槽；09/15测试边界已确认。
+> 2026-11-05规格、2026-11-06执行更新；用户已确认方案与验收边界，授权193条规格、45任务及GitHub推进。父工单[#382](https://github.com/1131096740/intelligent-construction-management/issues/382)、子工单#383～#427已发布；编号及依赖边不变。当前8/45按各自边界关闭：01准备、02/03本地阶段PG待验、04本地、05补修后本地、06草稿表格本地、07本地、08文书技术CLI。11继续，15阶段收口边界待用户答复，09/19已安全检查点、20已领取；09/15测试边界已确认。
 
 > **2026-11-06 补修收口：** 05曾因委托全局guard接线遗漏重开，现与07同树整合于准确中央`ecbed5a4`，最终两轴0、中央API1151/Web5及原369通过后已重新关闭05并关闭07。此前5/45、6/45为历史里程碑；真实PG/迁移/资源、实时银行及部署未执行，16/42/44硬门保留。
 
@@ -12,13 +12,13 @@
 
 ## 执行原则
 
-业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05为local-confirmed-boundary-complete/pg-pending/github-closed，06为local-confirmed-boundary-complete/pg-pending/github-closed，08为technical-cli-complete/github-closed；07为local-confirmed-boundary-complete/pg-pending/github-closed，11为in-progress；15已领取但FND-01阶段收口边界待裁定，09/19已领取、20前置闭合等待执行槽。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。
+业务按可演示的端到端片拆；精度协议的expand/contract是宽改例外，中间由各业务片逐域迁移。前置验证和最终综合验收独立成片，不伪装为业务功能。只做前沿票据，遇新发现先记录，不擅自扩大共享Schema或相邻模块。01为prepared-complete/github-closed，04为local-confirmed-boundary-complete/github-closed；02/03按用户确认成为local-stage-complete/pg-pending/github-closed，05为local-confirmed-boundary-complete/pg-pending/github-closed，06为local-confirmed-boundary-complete/pg-pending/github-closed，08为technical-cli-complete/github-closed；07为local-confirmed-boundary-complete/pg-pending/github-closed，11为in-progress；15已领取但FND-01阶段收口边界待裁定，09/19检查点待后续门、20已领取。仅解除源码实施依赖，真实PG仍不计通过，16/42/44发布前硬门保留；其它阻塞边不变。迁移、受控资源及部署仍需各自具体授权。
 
 用户希望最终整体可用，因此实现可以逐片验证，用户侧统一切新机制；不提供旧结算/新结算双模式。最终资金提交、数据恢复、文书与权限有任何硬门未过，不宣布可上线。
 
 任务06已同树整合准确`e5e70bfd`并[关闭#388](https://github.com/1131096740/intelligent-construction-management/issues/388#issuecomment-6668246472)，中央API222/Web101/原369及治理就绪通过；PG524仅准备、不计执行。15仍开放，FND-01的26/27衔接未交付且阶段收口答复待收。[06收据](../../progress/2026-11-06-enterprise-simplification-task06-integrated.md)。
 
-任务11已[恢复完整链验证](https://github.com/1131096740/intelligent-construction-management/issues/393#issuecomment-6668306435)；[09领取](https://github.com/1131096740/intelligent-construction-management/issues/391#issuecomment-6668305412)、[19领取](https://github.com/1131096740/intelligent-construction-management/issues/401#issuecomment-6668305883)，20保持就绪未领取。三者既定公开测试边界不重复请求确认。
+任务11已[恢复完整链验证](https://github.com/1131096740/intelligent-construction-management/issues/393#issuecomment-6668306435)；[09领取](https://github.com/1131096740/intelligent-construction-management/issues/391#issuecomment-6668305412)、[19领取](https://github.com/1131096740/intelligent-construction-management/issues/401#issuecomment-6668305883)，20已[领取](https://github.com/1131096740/intelligent-construction-management/issues/402#issuecomment-6670639477)。三者既定公开测试边界不重复请求确认。
 
 ## 编号清单与真正阻塞边
 
