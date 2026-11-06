@@ -212,6 +212,7 @@
 </template>
 
 <script setup lang="ts">
+import { resolveCurrentContractBusinessType } from "../contract-labels";
 import { formatUnknownApiError } from "../../../api/error-message";
 import PrivatePdfActions from "../../../components/files/PrivatePdfActions.vue";
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
@@ -405,13 +406,12 @@ watch(hasActiveDocument, (active) => {
 
 const currentBusinessType = computed(() => {
   const workbench = props.workbench;
-  if (!workbench || workbench.version.status !== "draft") return workbench?.contract.contractTypeKey;
-  if (props.draftBusinessType !== undefined) return props.draftBusinessType;
-  const draftData = workbench.version.draftData;
-  const rawBasics = draftData?.contractBasics;
-  const rawType = rawBasics && typeof rawBasics === "object" && !Array.isArray(rawBasics) ? (rawBasics as Record<string, unknown>).businessType : undefined;
-  if (typeof rawType === "string" && ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"].includes(rawType)) return rawType;
-  return rawType !== undefined || workbench.version.signingSubjectType === "draft_unconfirmed" ? null : workbench.contract.contractTypeKey;
+  if (workbench?.version.status === "draft" && props.draftBusinessType !== undefined) return props.draftBusinessType;
+  return resolveCurrentContractBusinessType({
+    version: workbench?.version,
+    parentType: workbench?.contract.contractTypeKey,
+    contractBasics: workbench?.version.draftData?.contractBasics
+  });
 });
 watch(() => [props.workbench?.version.id, currentBusinessType.value], () => { void loadLayouts(); }, { immediate: true });
 onUnmounted(stopPolling);

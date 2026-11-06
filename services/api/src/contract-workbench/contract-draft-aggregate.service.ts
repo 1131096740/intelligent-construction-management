@@ -11,7 +11,7 @@ import {
 import { Prisma, type ContractBillRow } from "@prisma/client";
 import { readDeletedDraftRow, deletedRowPublicOriginalValues } from "../contract-bill/contract-bill-row-undo";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
-import { businessAmountFromLegacyCents, normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, contractPricingPolicy, normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
@@ -591,8 +591,10 @@ export class ContractDraftAggregateService {
         ]);
 
         const numericProtocolVersion = input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 || documentBills.some(bill => bill.numericProtocolVersion === 2) ? 2 : 1;
+        const pricingPolicy = contractPricingPolicy({ pricingNature: input.draft.pricingNature, amountLimitType: version.amountLimitType, hasPricedRows: documentBillRows.length > 0 });
+        const frameworkAmountUnknown = pricingPolicy.kind === "unlimited_framework" || (input.draft.pricingNature === "framework" && documentBills.length === 0);
         const amountYuan = numericProtocolVersion === 2
-          ? input.draft.pricingNature === "framework" ? null : input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills)
+          ? frameworkAmountUnknown ? null : input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills)
             : input.draft.numericProtocolVersion === 2 ? normalizeBusinessAmount(input.draft.manualAmountYuan ?? null)
               : businessAmountFromLegacyCents(fieldResult.amountCents)
           : null;

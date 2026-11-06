@@ -45,3 +45,16 @@ export function templateStatusLabel(value?: string | null) {
     "未知"
   );
 }
+
+export function resolveCurrentContractBusinessType(input: {
+  version?: { status?: string; signingSubjectType?: string };
+  parentType?: string;
+  contractBasics?: unknown;
+}): string | null | undefined {
+  if (input.version?.status !== "draft") return input.parentType;
+  const basics = input.contractBasics;
+  const rawType = basics && typeof basics === "object" && !Array.isArray(basics)
+    ? (basics as Record<string, unknown>).businessType : undefined;
+  if (typeof rawType === "string" && ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"].includes(rawType)) return rawType;
+  return rawType !== undefined || input.version.signingSubjectType === "draft_unconfirmed" ? null : input.parentType;
+}

@@ -1009,7 +1009,7 @@ import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
   normalizePublishedContractTemplates
 } from "../contract-templates/contract-template.config";
-import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
+import { contractTypeLabel, contractVersionStatusLabel, resolveCurrentContractBusinessType } from "./contract-labels";
 import { historicalTakeoverReturnTargetFromError } from "./contract-list.config";
 import { centsTextToYuanText } from "../../lib/money";
 import {
@@ -1410,14 +1410,11 @@ const contractId = computed(() => {
   return typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
 });
 const isNewDraft = computed(() => !contractId.value);
-const currentDraftBusinessType = computed(() => {
-  const data = model.extraDraftData.contractBasics;
-  if (workbench.value?.version.status !== "draft") return workbench.value?.contract.contractTypeKey;
-  const rawType = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>).businessType : undefined;
-  if (typeof rawType === "string" && ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"].includes(rawType)) return rawType;
-  if (rawType !== undefined || workbench.value?.version.signingSubjectType === "draft_unconfirmed") return null;
-  return workbench.value?.contract.contractTypeKey;
-});
+const currentDraftBusinessType = computed(() => resolveCurrentContractBusinessType({
+  version: workbench.value?.version,
+  parentType: workbench.value?.contract.contractTypeKey,
+  contractBasics: model.extraDraftData.contractBasics
+}));
 const editable = computed(() => {
   const status = workbench.value?.version.status;
   return status ? EDITABLE_STATUSES.has(status) : false;

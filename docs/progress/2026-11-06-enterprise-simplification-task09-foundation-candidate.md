@@ -34,3 +34,6 @@ API/product组合实跑954d03af，之后ec8222仅MD。最终候选追加仅MD。
 | CON23 | 新draft沿用自动编号协议，原号可空不露DBID | 正式提交编号12、历史原号34 |
 
 原完整矩阵保留于task09-pdf-physical-checkpoint.md；其“尚待用户确认”是当时状态，现以本轮确认及本收据为准。未执行真实PG/SQL/迁移/资源/短信/COS/银行/实际采购付款/main合并/部署/生产写，不启动10。
+
+
+2026-11-06独立完整审查发现Standards1P3/Spec1P2后追加最小补修：capped框架已知金额真实HTTP RED→GREEN，保留unlimited/未知及旧完全无清单；两个当前类型computed复用就近解析器。新相关API641、Web86、原新selection双端2与物理门、类型lintUI通过，待原两轴增量复核。[补修收据](2026-11-06-enterprise-simplification-task09-review-fixes.md)。
