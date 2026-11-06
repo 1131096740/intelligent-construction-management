@@ -4622,7 +4622,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "capability.availableActions",
+        "source": "creationCapability.availableActions",
         "key": "create_spot_procurement"
       },
       "wrappers": [
@@ -4647,7 +4647,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "capability.availableActions",
+        "source": "uploadCapability.availableActions",
         "key": "create_spot_procurement"
       },
       "wrappers": [
@@ -10428,6 +10428,31 @@
         {
           "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
           "name": "withdrawFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.create-draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "draftCapability.availableActions",
+        "key": "edit_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "updateSpotProcurementDraft"
         }
       ]
     }

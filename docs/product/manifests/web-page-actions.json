@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 413,
+    "registeredActionCount": 414,
     "pageActionCount": 61,
-    "backgroundActionCount": 352,
+    "backgroundActionCount": 353,
     "reachableVueFileCount": 208,
     "routeRootCount": 74,
     "totalVueFileCount": 221,
     "parsedVueFileCount": 221,
     "reachableProductionModuleCount": 357,
-    "templateEventDirectiveCount": 1311,
+    "templateEventDirectiveCount": 1321,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 404,
-    "candidateProductionMutationConsumerCount": 404,
-    "acceptedProductionMutationConsumerCount": 404,
-    "productionMutationConsumerPairCount": 404,
+    "coveredProductionMutationConsumerCount": 405,
+    "candidateProductionMutationConsumerCount": 405,
+    "acceptedProductionMutationConsumerCount": 405,
+    "productionMutationConsumerPairCount": 405,
     "blockerCount": 0
   },
   "evidence": {
@@ -26786,7 +26786,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2179,
+        "sourceLine": 2369,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26851,7 +26851,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2166,
+        "sourceLine": 2356,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26916,7 +26916,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1338,
+        "sourceLine": 1504,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26981,13 +26981,13 @@
         "event": "call",
         "handler": "createSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 507,
+        "sourceLine": 590,
         "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "capability.availableActions",
+        "source": "creationCapability.availableActions",
         "key": "create_spot_procurement",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -27032,6 +27032,71 @@
       ]
     },
     {
+      "id": "spot-procurement.create-draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 607,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "draftCapability.availableActions",
+        "key": "edit_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementDraft",
+          "method": "PATCH",
+          "path": "/spot-procurements/:param/draft",
+          "normalizedKey": "PATCH /spot-procurements/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/spot-procurements/:procurementId/draft",
+            "normalizedKey": "PATCH /spot-procurements/:param/draft",
+            "controller": "SpotProcurementController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateSpotProcurementDraftWithCapability",
+              "updateSpotProcurementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.create-file.upload",
       "usage": "background",
       "routePaths": [
@@ -27046,13 +27111,13 @@
         "event": "call",
         "handler": "uploadSpotProcurementCreateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 537,
+        "sourceLine": 627,
         "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "capability.availableActions",
+        "source": "uploadCapability.availableActions",
         "key": "create_spot_procurement",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -27111,7 +27176,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1356,
+        "sourceLine": 1522,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27176,7 +27241,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 1288,
+        "sourceLine": 1454,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27242,7 +27307,7 @@
         "event": "call",
         "handler": "deletePristineSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1269,
+        "sourceLine": 1435,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27308,7 +27373,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1228,
+        "sourceLine": 1394,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27575,7 +27640,7 @@
         "event": "call",
         "handler": "recreateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1307,
+        "sourceLine": 1473,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27705,7 +27770,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2078,
+        "sourceLine": 2268,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27771,7 +27836,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2098,
+        "sourceLine": 2288,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27837,7 +27902,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2118,
+        "sourceLine": 2308,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27903,7 +27968,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1825,
+        "sourceLine": 1998,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -27968,7 +28033,7 @@
         "event": "call",
         "handler": "createSpotProcurementVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1244,
+        "sourceLine": 1410,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28033,7 +28098,7 @@
         "event": "call",
         "handler": "voidSpotProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1322,
+        "sourceLine": 1488,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28098,7 +28163,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2138,
+        "sourceLine": 2328,
         "sourceColumn": 6
       },
       "semantic": "business_write",

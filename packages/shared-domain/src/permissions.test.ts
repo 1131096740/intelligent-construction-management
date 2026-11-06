@@ -157,7 +157,7 @@ describe("permission policy table", () => {
     const expectedRoles = [
       [
         "spot_procurement.create",
-        ["material_staff"]
+        ["material_staff", "material_director"]
       ],
       [
         "spot_procurement.approve",

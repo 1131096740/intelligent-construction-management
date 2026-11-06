@@ -25,7 +25,7 @@ import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
 import { RecordProcurementRefundDto } from "./dto/record-procurement-refund.dto";
 import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
-import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
+import { SpotProcurementSubmissionDto, UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
@@ -190,9 +190,10 @@ export class SpotProcurementController {
   @RequireProjectRole("spot_procurement.create")
   submit(
     @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: SpotProcurementSubmissionDto = {}
   ) {
-    return this.applications.submit(procurementId, user.id);
+    return this.applications.submit(procurementId, user.id, body);
   }
 
   @Post(":procurementId/payment-drafts")

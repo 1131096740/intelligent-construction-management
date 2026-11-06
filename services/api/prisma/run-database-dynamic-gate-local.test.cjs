@@ -153,8 +153,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 78, tests: 539 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 540);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 78, tests: 540 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 541);
 });
 
 test("manual task01 operator cannot run automatically on GitHub Actions", () => {
@@ -426,16 +426,16 @@ test("manifest preserves source inventory and one separately invoked task01 oper
     pendingFiles: 79,
     fullyPendingSuites: 68,
     partiallyPendingSuites: 11,
-    pendingTests: 540,
+    pendingTests: 541,
     coveredFiles: 79,
-    coveredTests: 540,
+    coveredTests: 541,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 539);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 540);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -519,7 +519,7 @@ test("POL-109 readiness ignores the Unix-only initialization server until TCP Po
   }
 });
 
-test("canonical manifest executes all 180 entry tests including the template workbench", () => {
+test("canonical manifest executes all 181 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -527,7 +527,7 @@ test("canonical manifest executes all 180 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 180,
+    pendingTests: 181,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -551,7 +551,7 @@ test("canonical manifest executes all 180 entry tests including the template wor
       },
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-        pendingTests: 11,
+        pendingTests: 12,
         suiteStatus: "fully_pending"
       },
       {
@@ -845,7 +845,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=540/u
+    /inventory\.coveredTests=26，派生值=541/u
   );
 });
 

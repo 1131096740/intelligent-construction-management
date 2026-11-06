@@ -1,3 +1,6 @@
+import { Prisma } from "@prisma/client";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
@@ -3274,7 +3277,7 @@ function parallelFormFixture() {
   const files = new FileService(prisma as never, {} as never, {read: async () => PNG_1X1} as never);
   const service = new ApprovalFormService(prisma as never, files, {record: async () => ({})} as never,
     {confirmPassword: async () => ({})} as never, {resolveBusinessDownloadAccess: async () => "allowed"} as never);
-  return { service, instance, logs, procurement };
+  return { service, instance, logs, procurement, prisma };
 }
 
 it("并联办理中下载当前轮未完成审批单，不读取旧缓存", async () => {
@@ -3324,7 +3327,7 @@ it("未知并联协议版本不能回退为旧串联证明", async () => {
 });
 
 
-function pdfDutyCoordinates(buffer: Buffer) {
+function pdfPublicTextItems(buffer: Buffer) {
   const pdfjs = require.resolve("pdfjs-dist/legacy/build/pdf.mjs", {paths: [resolve(__dirname, "../../../../apps/web-admin")]});
   const parsed = spawnSync(process.execPath, ["--input-type=module", "-e", `
     import {pathToFileURL} from "node:url";
@@ -3340,6 +3343,11 @@ function pdfDutyCoordinates(buffer: Buffer) {
   `, pdfjs], {input: buffer, maxBuffer: 4 * 1024 * 1024});
   if (parsed.status !== 0) throw new Error(`PDF公开输出坐标解析失败：${parsed.stderr.toString()}`);
   const items = JSON.parse(parsed.stdout.toString()) as Array<{page:number;text:string;x:number;y:number}>;
+  return items;
+}
+
+function pdfDutyCoordinates(buffer: Buffer) {
+  const items = pdfPublicTextItems(buffer);
   const duty = (word: string) => {
     const item = items.find(item => item.x < 100 && item.text.includes(word));
     if (!item) throw new Error(`PDF缺少冻结职责文字：${word}`);
@@ -3368,4 +3376,34 @@ it("公开PDF在空白、经理先签、全签时固定同一职责次序和签�
   const final = await download();
   expect({materials: final.materials, manager: final.manager}).toEqual({materials: empty.materials, manager: empty.manager});
   expect(final.managerSigner).toEqual(partial.managerSigner);
+});
+
+
+it.each([false, true])("零采公开审批PDF未知资料待确定、旧已知资料保留（known=%s）", async known => {
+  const {service, prisma} = parallelFormFixture();
+  Object.assign(prisma, {
+    spotProcurementVersion: {findUnique: jest.fn(async () => ({id: "version-1", procurementId: "procurement-1", versionNo: 1, reason: "现场补料", requestedArrivalAt: known ? new Date("2026-07-18T00:00:00Z") : null, totalAmountCents: null,
+      applicationDepartmentSnapshot: "工程部", applicationNameSnapshot: "申请人", purchaserDepartmentNameSnapshot: "物资部", purchaserNameSnapshot: "采购人"}))},
+    spotProcurementLine: {findMany: jest.fn(async () => [{id: "line-1", sortOrder: 1, materialName: "扎丝", specification: "规格甲", quantity: known ? new Prisma.Decimal("12.3456") : null, unit: known ? "米" : null, note: null}])}
+  });
+  const result = await service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核对申请未知值");
+  const document = await PDFDocument.load(result.buffer);
+  expect(document.getPageCount()).toBe(1);
+  expect(document.getPage(0).getWidth()).toBeCloseTo(595.28, 1);
+  expect(document.getPage(0).getHeight()).toBeCloseTo(841.89, 1);
+  const items = pdfPublicTextItems(result.buffer);
+  const text = items.map(item => item.text).join("\n");
+  expect(text).toContain("扎丝");
+  expect(text).toContain("规格甲");
+  if (known) {
+    expect(text).toContain("12.3456"); expect(text).toContain("2026-07-18"); expect(text).toContain("米");
+    expect(text).not.toContain("待确定");
+  } else {
+    expect(items.filter(item => item.text === "待确定")).toHaveLength(3);
+    expect(text).not.toMatch(/null|undefined|NaN/u);
+  }
+  const directory = mkdtempSync(resolve(tmpdir(), "jg-task19-public-pdf-"));
+  writeFileSync(resolve(directory, known ? "known.pdf" : "unknown.pdf"), result.buffer);
+  writeFileSync(resolve(directory, "text-items.json"), JSON.stringify({known, items, sha256: createHash("sha256").update(result.buffer).digest("hex")}, null, 2));
+  console.info(`TASK19_PUBLIC_PDF_ARTIFACT=${directory}`);
 });

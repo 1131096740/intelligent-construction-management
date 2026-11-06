@@ -29,12 +29,12 @@ export type SpotProcurementApplicationFormInput = {
   applicationName: string;
   purchaserDepartment: string;
   purchaserName: string;
-  requestedArrivalAt: Date;
+  requestedArrivalAt: Date | null;
   reason: string;
   lines: Array<{
     materialName: string;
     specification: string | null;
-    unit: string;
+    unit: string | null;
     quantity: string;
     note: string | null;
   }>;
@@ -92,7 +92,7 @@ export async function renderSpotProcurementApprovalForm(input: SpotProcurementAp
     ["单号", input.procurementCode], ["所属项目", input.projectName],
     ["申请人 / 部门", `${input.applicationName} / ${input.applicationDepartment}`],
     ["采购人 / 部门", `${input.purchaserName} / ${input.purchaserDepartment}`],
-    ["要求到货日期", input.requestedArrivalAt.toISOString().slice(0, 10)], ["采购原因", input.reason]
+    ["要求到货日期", input.requestedArrivalAt?.toISOString().slice(0, 10) ?? "待确定"], ["采购原因", input.reason]
   ] : [
     ["单号 / 项目", `${input.paymentCode} / ${input.projectName}`],
     ["付款公司 / 经办人", `${input.payerCompanyName} / ${input.handlerName}`],
@@ -103,7 +103,7 @@ export async function renderSpotProcurementApprovalForm(input: SpotProcurementAp
   if (input.kind === "application") {
     y = drawApprovalTable(doc, margin, y + 10,
       [{ header: "材料名称", width: 130 }, { header: "规格", width: 100 }, { header: "单位", width: 40 }, { header: "数量", width: 55 }, { header: "备注", width: width - 325 }],
-      input.lines.map(line => [line.materialName, line.specification ?? "", line.unit, line.quantity, line.note ?? ""]));
+      input.lines.map(line => [line.materialName, line.specification ?? "", line.unit ?? "待确定", line.quantity, line.note ?? ""]));
   }
   const signatureRows = frozenSlots
     ? frozenSlots.map(slot => [slot.position, slot.approval?.name ?? "", slot.approval?.signedAt ?? "", slot.approval && (slot.approval.comment || slot.approval.relationship) ? "见下方审批意见" : slot.approval ? "" : "待办理", ""])

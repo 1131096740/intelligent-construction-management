@@ -1,4 +1,5 @@
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
+import { spotPurchaseWorkItems } from "../spot-procurement/spot-purchase-work-items";
 import { fundReviewWorkItems } from "../fund-account/fund-account-work-items";
 import { generalRequestWorkItems } from "../general-procurement/general-procurement-request-work-items";
 import { generalRequestActor } from "../general-procurement/general-procurement-request-access";
@@ -586,6 +587,7 @@ export class MeService {
       "contract.submit"
     ]);
     const pending = [
+      ...(await spotPurchaseWorkItems(this.prisma as Prisma.TransactionClient, userId, this.projectIdsFor(scopes, ["spot_procurement.create"]))),
       ...(await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, "procurement")),
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
       ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient,userId)),

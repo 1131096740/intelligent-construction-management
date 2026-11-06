@@ -747,7 +747,7 @@ export class SpotProcurementReceiptService {
               materialName: line.materialName,
               specification: line.specification,
               unit: line.unit,
-              approvedQuantity: line.quantity.toString(),
+              approvedQuantity: line.quantity?.toString() ?? null,
               frozenUnitPrice: line.unitPrice?.toString() ?? null,
               qualifiedQuantity:
                 received?.qualifiedQuantity.toString() ?? null,

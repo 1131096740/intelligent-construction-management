@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { activeApprovalNodeIndexes, isParallelApprovalRound, SPOT_PARALLEL_NOTIFICATION_KIND } from "../approval/parallel-approval-protocol";
-import { loadEffectiveProjectApprovalAssignments } from "../approval/project-approval-assignments";
+import { loadProjectApprovalAssignments, loadEffectiveProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 
 const KIND = SPOT_PARALLEL_NOTIFICATION_KIND;
@@ -52,13 +52,27 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
     if (intents.length) await tx.approvalActionLog.createMany({ data: intents, skipDuplicates: true });
   }
 
+  async queuePurchaseInTransaction(tx: Prisma.TransactionClient, round: Pick<ApprovalInstance, "id" | "status" | "applicantUserId">,
+    projectId: string, businessCode: string): Promise<void> {
+    if (round.status !== "approved") return;
+    const assignments = await loadProjectApprovalAssignments(tx, projectId, ["material_staff"]);
+    const recipients = [...new Set(assignments.filter(row => row.userIsActive && row.projectId === projectId && row.roleKey === "material_staff").map(row => row.userId))];
+    if (recipients.length) await tx.approvalActionLog.createMany({ skipDuplicates: true, data: recipients.map(recipientId => ({
+      id: createHash("sha256").update(JSON.stringify([KIND, round.id, "purchase", recipientId])).digest("hex"),
+      approvalInstanceId: round.id, actorUserId: round.applicantUserId, action: "system_notification", metadata: {
+        kind: KIND, event: "queued", phase: "purchase", recipientId, projectId, businessCode, dutyName: "项目物资采购",
+        link: "/零星材料采购"
+      }
+    })) });
+  }
+
   /** Reconcile missing/replaced assignees after committed roster changes; only pending duties are enqueued. */
   async reconcilePending(): Promise<void> {
     if (this.busy || !this.sms.available()) return;
     this.busy = true;
     try {
       const rounds = await this.prisma.approvalInstance.findMany({
-        where: { businessType: "spot_procurement_version", flowType: "spot_procurement.approve", status: "approval_pending" },
+        where: { businessType: "spot_procurement_version", flowType: "spot_procurement.approve", status: { in: ["approval_pending", "approved"] } },
         orderBy: {id: "asc"}, take: 100, ...(this.cursor ? {cursor: {id: this.cursor}, skip: 1} : {})
       });
       this.cursor = rounds.length === 100 ? rounds.at(-1)!.id : undefined;
@@ -67,8 +81,11 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
         await this.prisma.$transaction(async tx => {
           await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${round.id} FOR UPDATE`);
           const current = await tx.approvalInstance.findUnique({where: {id: round.id}});
-          const business = current ? await this.currentBusiness(tx, current) : null;
-          if (current && business) await this.queueInTransaction(tx, current, business.projectId, business.code);
+          const business = current ? await this.currentBusiness(tx, current, current.status === "approved") : null;
+          if (current && business) {
+            if (current.status === "approved") await this.queuePurchaseInTransaction(tx, current, business.projectId, business.code);
+            else await this.queueInTransaction(tx, current, business.projectId, business.code);
+          }
         });
       }
       await this.dispatchQueued();
@@ -101,13 +118,17 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
         ]);
         if (claim || terminal) return null;
         const round = await tx.approvalInstance.findUnique({where: {id: intent.approvalInstanceId}});
-        const business = round ? await this.currentBusiness(tx, round) : null;
+        const purchase = data.phase === "purchase";
+        const business = round ? await this.currentBusiness(tx, round, purchase) : null;
         const index = Number(data.nodeIndex);
         const node = round && isParallelApprovalRound(round.frozenNodes) ? round.frozenNodes[index] : null;
-        const eligible = Boolean(round && business && node && activeApprovalNodeIndexes(round.frozenNodes, 0).includes(index));
-        const assignments = eligible ? await loadEffectiveProjectApprovalAssignments(tx, business!.projectId, node!.roleKeys as string[], String(data.recipientId)) : [];
-        const direct = assignments.some(row => row.userIsActive && row.userId === data.recipientId && (node!.roleKeys as string[]).includes(row.roleKey));
-        const delegated = !direct && eligible ? await delegatedSpotApprovalIdentity(tx, {instanceId: round!.id, nodeIndex: index,
+        const eligible = Boolean(round && business && (purchase || (node && activeApprovalNodeIndexes(round.frozenNodes, 0).includes(index))));
+        const roles = purchase ? ["material_staff"] : node?.roleKeys as string[] ?? [];
+        const assignments = eligible ? purchase
+          ? await loadProjectApprovalAssignments(tx, business!.projectId, roles, String(data.recipientId))
+          : await loadEffectiveProjectApprovalAssignments(tx, business!.projectId, roles, String(data.recipientId)) : [];
+        const direct = assignments.some(row => row.userIsActive && row.userId === data.recipientId && roles.includes(row.roleKey));
+        const delegated = !purchase && !direct && eligible ? await delegatedSpotApprovalIdentity(tx, {instanceId: round!.id, nodeIndex: index,
           actorUserId: String(data.recipientId), projectId: business!.projectId, pendingRoleKeys: node!.roleKeys as RoleKey[]}) : null;
         const user = direct || delegated
           ? await tx.user.findUnique({where: {id: String(data.recipientId)}, select: {id: true, phone: true, isActive: true}}) : null;
@@ -120,7 +141,7 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
       });
       if (!reservation) continue;
       // Reservation was committed before the external boundary. Crash/unknown stays non-retryable.
-      const outcome = await this.sms.send(reservation.phone, "零采申请审批", String(reservation.data.dutyName), String(reservation.data.businessCode))
+      const outcome = await this.sms.send(reservation.phone, reservation.data.phase === "purchase" ? "零星材料待采购" : "零采申请审批", String(reservation.data.dutyName), String(reservation.data.businessCode))
         .catch(() => ({status: "unknown" as const, message: "短信发送结果待确认，请勿重复发送"}));
       await this.appendEvent(this.prisma, intent, outcome.status, {
         ...reservation.data, message: outcome.message,
@@ -137,10 +158,10 @@ export class SpotProcurementApprovalNotificationService implements OnModuleInit,
     }]});
   }
 
-  private async currentBusiness(tx: Prisma.TransactionClient, round: ApprovalInstance) {
-    if (round.businessType !== "spot_procurement_version" || round.status !== "approval_pending" || !isParallelApprovalRound(round.frozenNodes)) return null;
+  private async currentBusiness(tx: Prisma.TransactionClient, round: ApprovalInstance, purchase = false) {
+    if (round.businessType !== "spot_procurement_version" || round.status !== (purchase ? "approved" : "approval_pending") || !isParallelApprovalRound(round.frozenNodes)) return null;
     const version = await tx.spotProcurementVersion.findUnique({where: {id: round.businessId}});
     const business = version ? await tx.spotProcurement.findUnique({where: {id: version.procurementId}}) : null;
-    return business && business.currentVersionId === round.businessId && business.status === "approval_pending" && (!this.pilot || this.pilot.isEnabled(business.projectId)) ? business : null;
+    return business && business.currentVersionId === round.businessId && business.status === (purchase ? "approved_in_progress" : "approval_pending") && (!purchase || version?.requestProtocolVersion === 2) && (!this.pilot || this.pilot.isEnabled(business.projectId)) ? business : null;
   }
 }

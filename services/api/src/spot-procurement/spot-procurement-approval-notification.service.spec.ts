@@ -10,8 +10,8 @@ function fixture() {
   const notices = new Map<string, {id: string; actorUserId: string; approvalInstanceId: string; action: string; metadata: Record<string, unknown>}>();
   const db = {
     approvalInstance: {findMany: async () => [round], findUnique: async () => round},
-    spotProcurementVersion: {findUnique: async () => ({id: "version-1", procurementId: "procurement-1"})},
-    spotProcurement: {findUnique: async () => ({id: "procurement-1", currentVersionId: "version-1", projectId: "project-1", code: "LXCG-001", status: "approval_pending"})},
+    spotProcurementVersion: {findUnique: async () => ({id: "version-1", procurementId: "procurement-1", requestProtocolVersion: 2})},
+    spotProcurement: {findUnique: async () => ({id: "procurement-1", currentVersionId: "version-1", projectId: "project-1", code: "LXCG-001", status: round.status === "approved" ? "approved_in_progress" : "approval_pending"})},
     approvalActionLog: {
       createMany: async ({data}: {data: Array<NonNullable<ReturnType<typeof notices.get>>>}) => {let count = 0; for (const item of data) if (!notices.has(item.id)) {notices.set(item.id, item); count++;} return {count};},
       findMany: async () => [...notices.values()],
@@ -30,7 +30,7 @@ function fixture() {
   const sent: string[] = [];
   const sms = {available: () => true, send: async (_phone: string, _label: string, duty: string) => {sent.push(duty); return {status: "accepted", message: "已提交"};}};
   const service = new SpotProcurementApprovalNotificationService(prisma as never, sms as never);
-  return {enableMandate: () => {mandateActive = true;}, revokeMandate: () => {mandateActive = false;}, service, round, sent, notices, sms, db, removeMaterials: () => {assignments = [];}, replaceMaterials: () => {assignments = [{projectId: "project-1", userId: "materials-new", roleKey: "material_director", userIsActive: true}];}, addManager: () => {assignments = [...assignments, {projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}];}};
+  return {enableMandate: () => {mandateActive = true;}, revokeMandate: () => {mandateActive = false;}, service, round, sent, notices, sms, db, removeMaterials: () => {assignments = [];}, replaceMaterials: () => {assignments = [{projectId: "project-1", userId: "materials-new", roleKey: "material_director", userIsActive: true}];}, addPurchaser: () => {assignments = [...assignments, {projectId: "project-1", userId: "purchaser-1", roleKey: "material_staff", userIsActive: true}];}, addManager: () => {assignments = [...assignments, {projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}];}};
 }
 
 it("自动消费已配职责，缺岗补齐后只发新职责新收件人一次", async () => {
@@ -112,4 +112,15 @@ it("委托撤销后尚未发送的受托通知取消，原岗位通知保留", a
   await service.dispatchQueued();
   expect(sent).toEqual(["物资主管"]);
   expect([...notices.values()].filter(row=>row.metadata.event==="cancelled" && row.metadata.recipientId==="delegate-1")).toHaveLength(1);
+});
+
+it("PUR-01 approved purchase notifies current project materials staff once and survives repeated reconciliation", async () => {
+  const {service, round, db, sent, addPurchaser, notices} = fixture();
+  round.status = "approved";
+  addPurchaser();
+  await service.queuePurchaseInTransaction(db as never, round as never, "project-1", "LXCG-001");
+  await service.dispatchQueued();
+  await service.reconcilePending();
+  expect(sent).toEqual(["项目物资采购"]);
+  expect([...notices.values()].filter(row => row.metadata.event === "accepted")).toHaveLength(1);
 });
