@@ -1,4 +1,10 @@
-import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
+import { Test } from "@nestjs/testing";
+import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
+import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
+import { PristineDraftDeletionService } from "../contract-workbench/pristine-draft-deletion.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
+import { attachApprovalSignatureFixture as attachBaseApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), lockEconomicProject: jest.fn().mockResolvedValue(undefined), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import {
   BadRequestException,
@@ -18,6 +24,20 @@ import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/b
 import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
 import { CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 
+// Each legacy synthetic contract has one explicit creation audit; negative provenance cases override it.
+function attachContractCreationAuditFixture(transaction: object) {
+  const tx = transaction as { $queryRaw?: jest.Mock };
+  const prior = tx.$queryRaw?.bind(tx);
+  tx.$queryRaw = jest.fn(async (query: { strings?: readonly string[] }, ...args: unknown[]) =>
+    query.strings?.join("").includes('"AuditLog"')
+      ? [{ actorUserId: "original-contract-creator" }]
+      : prior ? prior(query, ...args) : []);
+}
+function attachApprovalSignatureFixture(transaction: Parameters<typeof attachBaseApprovalSignatureFixture>[0]) {
+  attachBaseApprovalSignatureFixture(transaction);
+  attachContractCreationAuditFixture(transaction);
+}
+
 // Keep the production definition, ownership, authorization and snapshot services.
 // These legacy unit fixtures replace only the database boundary.
 function connectBusinessEntryFixture(
@@ -35,6 +55,7 @@ function connectBusinessEntryFixture(
     return candidate;
   };
   completeCommercialFixture(version as unknown as Record<string, unknown>);
+  attachContractCreationAuditFixture(transaction);
   const tx = transaction as Prisma.TransactionClient;
   const previousQueryRaw = tx.$queryRaw.bind(tx) as (...args: unknown[]) => Promise<unknown>;
   Object.assign(tx, { $queryRaw: jest.fn(async (...args: unknown[]) => {
@@ -482,6 +503,32 @@ describe("ContractService", () => {
         code: "IDEMPOTENCY_KEY_REUSED"
       })
     });
+  });
+
+  it.each([{}, { expectedRevision: 4, idempotencyKey: "da868e1b-302c-4397-8731-cc298dcfcd01" }])("rejects four-place draft submission over public HTTP before approval or business writes (%j)", async (body) => {
+    const version = { id: "version-1", contractId: "contract-1", status: "draft", changeType: "original", numericProtocolVersion: 2 };
+    const tx = {
+      $queryRaw: submitQueryLocks(version),
+      contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" }), update: jest.fn() },
+      contractVersion: { update: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      contractDraftSubmissionRequest: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      paymentRequest: { create: jest.fn() }
+    };
+    const service = new ContractService({ $transaction: jest.fn(async (run: (client: typeof tx) => unknown) => run(tx)) } as never, audit as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractService, useValue: service },
+      ...[ContractDraftAggregateService, ContractDraftEditLeaseService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication();
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const response = await fetch(`${await app.getUrl()}/contract-drafts/version-1/submission`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(409);
+      expect(await response.text()).toContain("四位金额草稿尚不能提交审批");
+      for (const write of [tx.contract.update, tx.contractVersion.update, tx.approvalInstance.create, tx.contractDraftSubmissionRequest.create, tx.paymentRequest.create, audit.record]) expect(write).not.toHaveBeenCalled();
+    } finally { await app.close(); }
   });
 
   it("does not recalculate a route for an existing in-progress contract", async () => {
@@ -2387,7 +2434,7 @@ name: "签批人甲",
         businessId: "contract-version-1",
         status: "in_progress",
         currentNodeIndex: 0,
-        frozenNodes: frozenRoute,
+        frozenNodes: frozenRoute.map(node => ({ ...node, originatorUserIds: ["original-contract-creator"] })),
         applicantUserId: "user-contract-staff"
       })
     });
@@ -3659,7 +3706,7 @@ name: "签批人甲",
       "staff-1"
     );
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ frozenNodes: frozenRoute })
+      data: expect.objectContaining({ frozenNodes: frozenRoute.map(node => ({ ...node, originatorUserIds: ["original-contract-creator"] })) })
     });
   });
 
@@ -4348,6 +4395,7 @@ name: "签批人甲",
       )
     } as unknown as PrismaService;
     const seals = { ensurePendingTask: jest.fn().mockResolvedValue({ id: "seal-1" }) };
+    attachContractCreationAuditFixture(tx);
     const service = new ContractService(
       prisma,
       audit as never,
@@ -4485,6 +4533,7 @@ name: "签批人甲",
       generateForInstance: jest.fn().mockRejectedValue(new Error("PDF renderer unavailable"))
     };
     const seals = { ensurePendingTask: jest.fn().mockResolvedValue({ id: "seal-1" }) };
+    attachContractCreationAuditFixture(tx);
     const service = new ContractService(
       prisma,
       audit as never,
@@ -4772,6 +4821,30 @@ name: "签批人甲",
     const service = new ContractService(prisma, audit as never, auth as never);
     return { service, tx };
   }
+
+  it("合同转交后原创建人审批仍须自审确认", async () => {
+    const { service, tx } = contractLeaderSelfReviewFixture();
+    const instance = await tx.approvalInstance.findFirst();
+    tx.approvalInstance.findFirst.mockResolvedValue({ ...instance, applicantUserId: "receiver" });
+    tx.$queryRaw.mockImplementation(async (query: { strings: string[] }) => query.strings.join("").includes('"AuditLog"') ? [{ actorUserId: "leader-1" }] : []);
+    await expect(service.reviewApproval("contract-version-1", "leader-1", {
+      ...contractReviewCoordinates(), decision: "approve"
+    })).rejects.toThrow("请填写自审原因");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it.each([[], [{ actorUserId: "a" }, { actorUserId: "b" }]])("合同创建来源缺失或多义时拒绝审批且零写入", async (...rows) => {
+    const { service, tx } = contractLeaderSelfReviewFixture();
+    const instance = await tx.approvalInstance.findFirst();
+    tx.approvalInstance.findFirst.mockResolvedValue({ ...instance, applicantUserId: "receiver" });
+    tx.$queryRaw.mockImplementation(async (query: { strings: string[] }) => query.strings.join("").includes('"AuditLog"') ? rows : []);
+    await expect(service.reviewApproval("contract-version-1", "leader-1", {
+      ...contractReviewCoordinates(), decision: "approve"
+    })).rejects.toThrow("联系合同主管核实");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
 
   it.each([
     [
@@ -5834,6 +5907,7 @@ name: "签批人甲",
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
+    attachContractCreationAuditFixture(tx);
     const service = new ContractService(prisma as never, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "transfer-user-1", {

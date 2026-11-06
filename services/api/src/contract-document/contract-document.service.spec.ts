@@ -1,3 +1,7 @@
+import { syntheticWordSource } from "../contract-template/template-management.test-support";
+import { readLayoutSourcePositions, prepareLayoutSourceMapping } from "../contract-template/layout-field-mapping";
+import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-document.service";
@@ -8,8 +12,16 @@ describe("ContractDocumentService", () => {
     documentContentRevision: 3,
     documentContentFingerprint
   };
+  // A valid confirmed source is this service fixture's selection precondition;
+  // actual manual confirmation and file conversion are covered through HTTP.
+  const source = syntheticWordSource();
+  const parsed = readLayoutSourcePositions(source);
+  const keys = ["contract.name", "party.owner.name", "party.counterparty.name", "contract.temporaryCode", "document.watermark"];
+  const { mapping } = prepareLayoutSourceMapping(source, "layout-file-1", 2, parsed.positions.slice(0, 5).map((position, index) => ({ positionId: position.positionId, start: index === 0 ? 5 : index === 4 ? 0 : 3, end: position.text.length, fieldKey: keys[index] })));
+  const sourceMapping = { ...mapping, confirmation: { sourceFileId: mapping.sourceFileId, sourceSha256: mapping.sourceSha256, draftRevision: 2, mappingFingerprint: mapping.fingerprint, previewJobId: "confirmed-preview", previewPdfFileId: "confirmed-pdf" } };
   const audit = { record: jest.fn() };
   const files = {
+    getFileBuffer: jest.fn().mockResolvedValue({ buffer: source, file: { id: "layout-file-1", storageStatus: "active", contentSha256: createHash("sha256").update(source).digest("hex") } }),
     assertCanDownloadFile: jest.fn(),
     linkFileReplacement: jest.fn()
   };
@@ -133,7 +145,9 @@ describe("ContractDocumentService", () => {
           layoutTemplateId: "layout-template-1",
           status: "published",
           docxFileId: "layout-file-1",
+          draftRevision: 2,
           placeholderSchema: {
+            sourceMapping,
             required: ["field.deliveryLocation"],
             fields: [{ key: "deliveryDate", required: true }],
             bills: []
@@ -559,6 +573,62 @@ describe("ContractDocumentService", () => {
 
     expect(tx.companyEntity.findUnique).not.toHaveBeenCalled();
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicitly saved template for a new pending draft instead of falling back to a built-in layout", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    Object.assign(version, { numericProtocolVersion: 2, signingSubjectType: "draft_unconfirmed", businessTemplateVersionId: null, layoutTemplateVersionId: null,
+      draftData: { contractName: "完整基础资料的新合同", contractBasics: { relationship: "inside", businessType: "material_purchase", amountBasis: "tax_inclusive" } } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{ roleKey: "party_a", snapshot: { name: "甲方" } }, { roleKey: "party_b", snapshot: { name: "乙方" } }] as never);
+    Object.assign(await tx.contract.findUnique({ where: { id: "contract-1" } }), { projectId: "project-1" });
+    const { service } = makeService(tx);
+    await expect(service.queue("version-1", "owner-1", { layoutTemplateVersionId: "layout-1", purpose: "draft" })).rejects.toThrow("请选择并保存模板");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("uses the current draft name in queued render facts without rewriting the parent contract", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    const parent = await tx.contract.findUnique({ where: { id: "contract-1" } });
+    const originalName = parent.name;
+    Object.assign(version, { draftData: { ...version.draftData, contractName: "仅本次草稿的新名称" } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const { service } = makeService(tx);
+    await service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 });
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.renderInput.values["contract.name"])
+      .toBe("仅本次草稿的新名称");
+    expect(parent.name).toBe(originalName);
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps incomplete basic information as a draft but locates the five key facts before generation", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    Object.assign(version, { draftData: { contractBasics: { amountBasis: "tax_inclusive" } } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const { service } = makeService(tx);
+    await expect(service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 }))
+      .rejects.toThrow("生成前请补充：");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("refuses a tax-exclusive v2 draft preview before document, version or audit writes while its renderer has inclusive labels", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    Object.assign(version, { numericProtocolVersion: 2, draftData: { ...version.draftData, contractBasics: { amountBasis: "tax_exclusive" } } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const { service } = makeService(tx);
+    await expect(service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 }))
+      .rejects.toThrow("不含税草稿文书尚待模板口径核对");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -1012,6 +1082,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           ...documentContentCoordinates,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: "vat_general",
           defaultTaxRatePercent: { toString: () => "9" },
@@ -1061,6 +1132,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           ...documentContentCoordinates,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: "vat_special",
           defaultTaxRatePercent: { toString: () => "13" },
@@ -1258,6 +1330,38 @@ describe("ContractDocumentService", () => {
     }, parties, [], "draft")).toThrow("合同已提交但我方主体冻结快照缺失");
   });
 
+  it("queues v2 document output with canonical four-place amounts and unchanged content coordinates", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, numericProtocolVersion: 2, amountYuan: new Prisma.Decimal("1.5340"), amountCents: 153n } as never);
+    tx.contractBill.findMany.mockResolvedValue([{ id: "bill-1", billKey: "materials" }]);
+    tx.contractBillRow.findMany.mockResolvedValue([{
+      contractBillId: "bill-1", itemCode: null, itemName: "四位项目", specification: null, unit: "项",
+      quantity: new Prisma.Decimal("1.2345"), unitPrice: new Prisma.Decimal("1.2345"), taxRate: null,
+      numericProtocolVersion: 2, numericSource: "decimal_input", numericReviewStatus: "verified", precisionPolicy: "four_decimal",
+      taxInclusiveAmountYuan: new Prisma.Decimal("1.5240"), taxExclusiveAmountYuan: null, taxAmountYuan: null,
+      taxInclusiveAmountCents: null, taxExclusiveAmountCents: null, taxAmountCents: null, taxExclusiveUnitPrice: null,
+      isProvisional: false, settlementBasis: null, customData: {}
+    }] as never);
+    const { service } = makeService(tx);
+    await service.queue("version-1", "owner-1", { layoutTemplateVersionId: "layout-1", purpose: "draft" });
+    const snapshot = tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot;
+    expect(snapshot).toMatchObject(documentContentCoordinates);
+    expect(snapshot.renderInput.values["contract.amount"]).toBe("1.5340");
+    expect(snapshot.renderInput.values["bill.materials"][0]).toMatchObject({ unitPrice: "1.2345", taxInclusiveAmount: "1.5240", taxExclusiveAmount: "—", taxAmount: "—", taxRatePercent: "—" });
+    expect(snapshot.renderInput.values["contract.amountUppercase"]).toBe("人民币壹元伍角叁分肆厘");
+  });
+
+  it("queues v2 sub-cent uppercase placeholders with the exact approved li/hao amount", async () => {
+    const tx = makeTx(); const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, numericProtocolVersion: 2, amountYuan: new Prisma.Decimal("1.5340"), amountCents: 153n } as never);
+    const layout = await tx.contractLayoutTemplateVersion.findUnique();
+    tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({ ...layout, inspectionReport: { placeholders: ["合同金额大写"] } } as never);
+    const { service } = makeService(tx);
+    await service.queue("version-1", "owner-1", { layoutTemplateVersionId: "layout-1", purpose: "draft" });
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.renderInput.values).toMatchObject({ "contract.amount": "1.5340", "contract.amountUppercase": "人民币壹元伍角叁分肆厘" });
+  });
+
   it("renders historical unknown tax and bill facts as dashes without recalculating amounts", async () => {
     const tx = makeTx({
       contractVersion: {
@@ -1267,6 +1371,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           ...documentContentCoordinates,
+          layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: null,
           defaultTaxRatePercent: null,

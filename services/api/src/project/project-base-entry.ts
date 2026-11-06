@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { MASTER_DATA_MAINTAINER_ROLES, type BusinessEntryValidationResult } from "@jiangkong/shared-domain";
+import { MASTER_DATA_MAINTAINER_ROLES, PROJECT_BASIC_MAINTAINER_ROLES, type BusinessEntryValidationResult } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY as registry } from "../business-entry-definition/business-entry-definition.scene-registry";
 export const PROJECT_CREATE_DEFINITION = registry.getSceneDefinition("project_create");
@@ -48,7 +48,7 @@ export async function freezeProjectCreation(tx: Prisma.TransactionClient, audit:
   const snapshot = registry.freezeSubmissionSnapshot({
     sceneKey: PROJECT_CREATE_DEFINITION.key, definitionVersion,
     target: { entityType: "project", entityId: project.id }, values
-  }, MASTER_DATA_MAINTAINER_ROLES);
+  }, PROJECT_BASIC_MAINTAINER_ROLES);
   const stored = await tx.businessEntrySubmissionSnapshot.create({ data: {
     projectId: project.id, sceneKey: snapshot.sceneKey, entityType: "project", entityId: project.id,
     revision: 1, definitionVersion,

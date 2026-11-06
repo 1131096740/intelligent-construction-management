@@ -1,9 +1,12 @@
+import {AuthService} from "../auth/auth.service";
+import {confirmApprovalSelfReview} from "../approval/approval-self-review";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { freezeFundExecutionEntryInTransaction } from "./fund-execution-entry.adapter";
@@ -86,6 +89,8 @@ export type ReviewFundExecutionApprovalInput = Readonly<{
   caseId: string;
   action: "approve" | "return_to_applicant";
   comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
 }>;
 
 type ApprovalFreeze = Readonly<{
@@ -190,7 +195,8 @@ export class FundExecutionService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly options: FundExecutionSelectionOptionsService,
-    private readonly canonicalAdapter: FundExecutionCanonicalAdapterService
+    private readonly canonicalAdapter: FundExecutionCanonicalAdapterService,
+    @Optional() private readonly auth?: AuthService
   ) {}
 
   async createCase(
@@ -345,12 +351,15 @@ export class FundExecutionService {
           lastApprovalActorUserId: string | null;
           holderNameSnapshot: string;
           classificationLineCount: number;
+          createdByUserId: string;
+          submittedByUserId: string | null;
           createdAt: Date;
         }>
       >(Prisma.sql`
         SELECT DISTINCT ON (case_row."caseKey")
                case_row."caseKey" AS "caseId", case_row."status",
                case_row."auditAction", case_row."revision", case_row."reason",
+               case_row."createdByUserId", case_row."submittedByUserId",
                execution."executionKind", execution."direction",
                execution."amountCents", execution."currencyCode",
                execution."occurredAt", approval."status" AS "approvalStatus",
@@ -476,7 +485,7 @@ export class FundExecutionService {
               canConfirm:
                 row.approvalStatus === "approved" &&
                 actorRoles.includes("finance_director")
-            })
+            }).map(action => (["approve", "return_approval"].includes(action.key) && [row.createdByUserId, row.submittedByUserId].includes(actorUserId)) ? {...action, requiresSelfReviewConfirmation: true} : action)
           };
         });
     });
@@ -512,6 +521,8 @@ export class FundExecutionService {
           approvalCurrentNodeIndex: number | null;
           approvalFrozenNodes: Prisma.JsonValue | null;
           classificationLineCount: number;
+          createdByUserId: string;
+          submittedByUserId: string | null;
           returnReason: string | null;
           createdAt: Date;
         }>
@@ -519,6 +530,7 @@ export class FundExecutionService {
         SELECT case_row."id" AS "internalCaseId",
                case_row."caseKey" AS "caseId", case_row."status",
                case_row."auditAction", case_row."revision", case_row."reason",
+               case_row."createdByUserId", case_row."submittedByUserId",
                execution."executionKind", execution."direction",
                execution."amountCents", execution."currencyCode",
                execution."occurredAt", approval."status" AS "approvalStatus",
@@ -591,7 +603,7 @@ export class FundExecutionService {
           canConfirm:
             row.approvalStatus === "approved" &&
             actorRoles.includes("finance_director")
-        })
+        }).map(action => (["approve", "return_approval"].includes(action.key) && [row.createdByUserId, row.submittedByUserId].includes(actorUserId)) ? {...action, requiresSelfReviewConfirmation: true} : action)
       };
     });
   }
@@ -1043,6 +1055,12 @@ export class FundExecutionService {
       if (!identity) {
         throw new ForbiddenException("当前用户不能处理该资金执行审批节点");
       }
+      const selfReview = await confirmApprovalSelfReview({
+        applicantUserId: instance.applicantUserId, originatorUserIds: [submitted.createdByUserId, submitted.submittedByUserId].filter((id): id is string => Boolean(id)),
+        actorUserId, actorRoleKeys: [...actorRoles, identity.approvedRoleKey], approvedRoleKey: identity.approvedRoleKey,
+        selfReviewReason: input.selfReviewReason, confirmationPassword: input.confirmationPassword,
+        ...(this.auth ? {confirmPassword: (password: string) => this.auth!.confirmPassword(actorUserId, password, tx)} : {})
+      });
       if (input.action === "return_to_applicant") {
         const comment = requiredText(input.comment, "退回审批必须填写原因");
         await tx.approvalActionLog.create({
@@ -1054,7 +1072,7 @@ export class FundExecutionService {
             representedUserId: identity.representedUserId,
             approvedRoleKey: identity.approvedRoleKey,
             metadata: {
-              fundExecutionApprovalStep: instance.currentNodeIndex + 1
+              fundExecutionApprovalStep: instance.currentNodeIndex + 1, ...selfReview.metadata
             },
             comment
           }
@@ -1078,7 +1096,7 @@ export class FundExecutionService {
           representedUserId: identity.representedUserId,
           approvedRoleKey: identity.approvedRoleKey,
           metadata: {
-            fundExecutionApprovalStep: instance.currentNodeIndex + 1
+            fundExecutionApprovalStep: instance.currentNodeIndex + 1, ...selfReview.metadata
           },
           comment: input.comment?.trim() || null,
           signatureFileIdSnapshot: signature.fileId,

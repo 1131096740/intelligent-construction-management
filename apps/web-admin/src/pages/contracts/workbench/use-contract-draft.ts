@@ -1,3 +1,4 @@
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import type {
   ContractClauseDefinition,
   ContractCompanyEntitySelection,
@@ -27,6 +28,7 @@ import {
   fetchContractCreateCapabilities,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
+  fetchContractDraftSaveResult,
   heartbeatContractDraftEditLease,
   queueContractDraftPreview,
   releaseContractDraftEditLease,
@@ -62,6 +64,7 @@ import {
   type ContractDraftLeaseView
 } from "./contract-draft-lease.state";
 import {
+  CONTRACT_WORKBENCH_AUTOSAVE_WINDOW_MS,
   acceptAggregateSaveServerVersion,
   beginAggregateSave,
   canMergeAggregateSaveDerivedFacts,
@@ -121,13 +124,16 @@ async function assertCurrentContractDraftOperationCapability(
       "合同草稿能力响应版本不一致，请刷新后重试"
     );
   }
+  if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
+    throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
+  }
   if (operationCapabilities.version.draftRevision !== expectedRevision) {
+    if (operation === "save_contract_draft" && Number.isInteger(operationCapabilities.version.draftRevision) && operationCapabilities.version.draftRevision > expectedRevision && operationCapabilities.draftOperationAvailableActions.includes(operation)) {
+      throw Object.assign(new Error("合同草稿已在其他页面更新"), { code: "DRAFT_REVISION_CONFLICT" });
+    }
     throw new ContractDraftAuthorityRefreshRequiredError(
       "合同草稿能力响应修订不一致，请刷新后重试"
     );
-  }
-  if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
-    throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
   }
 }
 
@@ -189,7 +195,8 @@ async function takeOverContractDraftEditLeaseWithCapability(
 async function autoSaveContractDraftAggregateWithCapability(
   contractVersionId: string,
   leaseToken: string,
-  payload: SaveContractDraftAggregatePayload
+  payload: SaveContractDraftAggregatePayload,
+  beforeDispatch: () => void
 ) {
   await assertCurrentContractDraftOperationCapability(
     contractVersionId,
@@ -197,13 +204,15 @@ async function autoSaveContractDraftAggregateWithCapability(
     "save_contract_draft",
     "当前用户不能保存合同草稿"
   );
+  beforeDispatch();
   return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
 }
 
 async function manualSaveContractDraftAggregateWithCapability(
   contractVersionId: string,
   leaseToken: string,
-  payload: SaveContractDraftAggregatePayload
+  payload: SaveContractDraftAggregatePayload,
+  beforeDispatch: () => void
 ) {
   await assertCurrentContractDraftOperationCapability(
     contractVersionId,
@@ -211,6 +220,7 @@ async function manualSaveContractDraftAggregateWithCapability(
     "save_contract_draft",
     "当前用户不能保存合同草稿"
   );
+  beforeDispatch();
   return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
 }
 
@@ -258,8 +268,11 @@ export type ContractDraftSaveState =
  * sections do not understand stays untouched inside {@link extraDraftData}.
  */
 export interface ContractDraftFieldsModel {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   contractName: string;
   companyEntityId: string;
+  layoutTemplateVersionId?: string | null;
   companyEntitySelection: ContractCompanyEntitySelection | null;
   pricingNature: string;
   amountSource: string;
@@ -294,6 +307,33 @@ export interface ContractDraftAggregateModel {
   paymentTerms: ContractDraftPaymentTermsModel | null;
   attachments: ContractDraftAttachmentModel[];
   negotiationDocuments: ContractDraftNegotiationDocumentsModel;
+}
+
+interface PendingDraftSaveIntent {
+  contractVersionId: string;
+  requestFingerprint: string;
+  state: Extract<AggregateSaveState<ContractDraftAggregateModel>, { kind: "saving" }>;
+}
+
+function isPendingDraftSaveIntent(value: unknown): value is PendingDraftSaveIntent {
+  if (!isRecord(value) || typeof value["contractVersionId"] !== "string" ||
+    typeof value["requestFingerprint"] !== "string" || !/^[a-f0-9]{64}$/u.test(value["requestFingerprint"]) || !isRecord(value["state"])) return false;
+  const state = value["state"];
+  const sections = ["draft", "parties", "bills", "payment_terms", "attachments", "negotiation_documents"];
+  return state["kind"] === "saving" && ["auto", "manual"].includes(String(state["saveKind"])) &&
+    typeof state["idempotencyKey"] === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(state["idempotencyKey"]) &&
+    ["serverRevision", "localGeneration", "sentGeneration", "ackedGeneration"].every(key => Number.isSafeInteger(state[key]) && Number(state[key]) >= 0) &&
+    ["changedSections", "sentChangedSections"].every(key => Array.isArray(state[key]) && state[key].every((item: unknown) => typeof item === "string" && sections.includes(item))) &&
+    ["sectionGenerations", "sentSectionGenerations"].every(key => {
+      const generations = state[key];
+      return isRecord(generations) && sections.every(section => Number.isSafeInteger(generations[section]) && Number(generations[section]) >= 0);
+    }) &&
+    isAggregateRecoverySnapshot(state["inFlightSnapshot"]);
+}
+
+async function transportPayloadFingerprint(payload: SaveContractDraftAggregatePayload): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(payload)));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function cloneContractDraftParty(
@@ -406,6 +446,10 @@ export function companyEntitySyncPatch(companyEntityId: string) {
 }
 
 export interface InitializeDraftController {
+  preciseDraft: Ref<boolean>;
+  relationship: Ref<"" | "inside" | "outside" | "upward">;
+  setPreciseDraft: (enabled: boolean) => void;
+  setRelationship: (value: "" | "inside" | "outside" | "upward") => void;
   projectId: Ref<string>;
   contractTypeKey: Ref<string>;
   businessTemplateVersionId: Ref<string>;
@@ -490,6 +534,11 @@ export interface UseContractDraft {
   authoritySnapshot: ComputedRef<ContractDraftAuthoritySnapshot | null>;
   saveState: Ref<ContractDraftSaveState>;
   saveError: Readonly<Ref<string>>;
+  pendingSaveResult: Readonly<Ref<boolean>>;
+  online: Readonly<Ref<boolean>>;
+  setEditorInput: (state: { pending: boolean; edited: boolean }) => void;
+  checkingSaveResult: Readonly<Ref<boolean>>;
+  checkSaveResult: () => Promise<boolean>;
   conflict: Ref<ContractDraftConflict | null>;
   /** Read-only dirty facts for route and component-close guards. */
   dirty: Readonly<Ref<boolean>>;
@@ -545,6 +594,7 @@ function emptyModel(): ContractDraftModel {
   return {
     contractName: "",
     companyEntityId: "",
+    layoutTemplateVersionId: null,
     companyEntitySelection: null,
     pricingNature: "",
     amountSource: "",
@@ -612,6 +662,9 @@ function modelFromWorkbench(workbench: ContractDraftWorkbenchReadModel): Contrac
     companyEntitySelection: isCompanyEntitySelection(draftData["companyEntitySelection"])
       ? { ...draftData["companyEntitySelection"] }
       : null,
+    layoutTemplateVersionId: workbench.version.layoutTemplateVersionId ?? null,
+    ...(workbench.version.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 as const,
+      manualAmountYuan: workbench.version.amountSource === "manual" ? workbench.version.amountYuan ?? null : null } : {}),
     pricingNature: workbench.version.pricingNature ?? "",
     amountSource: workbench.version.amountSource ?? "",
     manualAmountCents:
@@ -653,6 +706,7 @@ function aggregateModelFromWorkbench(
       snapshot: { ...party.snapshot }
     })),
     bills: workbench.bills.map((bill) => ({
+      numericProtocolVersion: 2,
       billKey: bill.billKey,
       expectedRevision: contractBillRevision(bill),
       rows: bill.rows.map(draftBillRowFromRead)
@@ -719,7 +773,7 @@ function draftBillRowFromRead(
     typeof row["sortOrder"] !== "number" ||
     typeof row["itemName"] !== "string" ||
     typeof row["unit"] !== "string" ||
-    typeof row["unitPrice"] !== "string"
+    (typeof row["unitPrice"] !== "string" && row["unitPrice"] !== null)
   ) {
     throw new Error("合同草稿协议错误：清单行缺少聚合保存所需字段");
   }
@@ -734,7 +788,7 @@ function draftBillRowFromRead(
       : {}),
     unit: row["unit"],
     ...(typeof row["quantity"] === "string" ? { quantity: row["quantity"] } : {}),
-    unitPrice: row["unitPrice"],
+    unitPrice: row["unitPrice"] ?? "",
     ...(typeof row["taxRatePercent"] === "string"
       ? { taxRatePercent: row["taxRatePercent"] }
       : {}),
@@ -743,9 +797,11 @@ function draftBillRowFromRead(
       ? { taxRateSource: row["taxRateSource"] }
       : {}),
     ...(row["precisionPolicy"] === "legacy" ||
-    row["precisionPolicy"] === "two_decimal"
+    row["precisionPolicy"] === "two_decimal" || row["precisionPolicy"] === "four_decimal"
       ? { precisionPolicy: row["precisionPolicy"] }
       : {}),
+    ...(row["numericSource"] === "legacy_cents" || row["numericSource"] === "decimal_input" ? { numericSource: row["numericSource"] } : {}),
+    ...(row["numericReviewStatus"] === "not_assessed" || row["numericReviewStatus"] === "verified" || row["numericReviewStatus"] === "review_required" ? { numericReviewStatus: row["numericReviewStatus"] } : {}),
     initialQuantity:
       typeof row["initialQuantity"] === "string"
         ? row["initialQuantity"]
@@ -791,6 +847,9 @@ function templateFieldKeySet(workbench: ContractDraftWorkbenchReadModel): Set<st
 function draftBillRowForSave(row: Record<string, unknown>): Record<string, unknown> {
   const payload = { ...row };
   delete payload["precisionPolicy"];
+  delete payload["numericSource"];
+  delete payload["numericReviewStatus"];
+  delete payload["restoreOriginalValues"];
   delete payload["initialQuantity"];
   delete payload["initialUnitPrice"];
   delete payload["initialTaxRatePercent"];
@@ -972,6 +1031,7 @@ function assignAggregateModel(
 function assignModel(target: ContractDraftModel, source: ContractDraftModel): void {
   target.contractName = source.contractName;
   target.companyEntityId = source.companyEntityId;
+  if (source.layoutTemplateVersionId !== undefined) target.layoutTemplateVersionId = source.layoutTemplateVersionId;
   target.companyEntitySelection = source.companyEntitySelection
     ? { ...source.companyEntitySelection }
     : null;
@@ -1075,10 +1135,14 @@ function aggregateSerializationIssue(
 ): string | null {
   const draft = snapshot.draft;
   if (
-    draft.amountSource === "manual" &&
+    draft.amountSource === "manual" && draft.numericProtocolVersion !== 2 &&
     incompleteIntegerInput(draft.manualAmountCents)
   ) {
     return "合同金额仍是未完成的输入，请补充完整后再保存";
+  }
+  if (draft.numericProtocolVersion === 2 && draft.amountSource === "manual") {
+    try { normalizeBusinessAmount(draft.manualAmountYuan ?? null); }
+    catch { return "合同金额须填写规范数字，最多保留4位小数；请保留原输入后修改"; }
   }
   if (incompleteIntegerInput(draft.estimatedAmountCents)) {
     return "预计金额仍是未完成的输入，请补充完整后再保存";
@@ -1125,11 +1189,9 @@ function savePayloadFromSnapshot(
     currentWorkbench?.version as unknown as { changeType?: unknown }
   )?.changeType;
   const isChangeDraft = changeType === "change" || changeType === "supplement";
-  const paymentStages = paymentStagesFromModel(
-    draft,
-    currentWorkbench?.settlementMode?.value,
-    currentWorkbench?.contract.contractTypeKey ?? ""
-  );
+  const paymentStages = draft.extraDraftData.contractBasics
+    ? snapshot.paymentTerms?.stages ?? []
+    : paymentStagesFromModel(draft, currentWorkbench?.settlementMode?.value, currentWorkbench?.contract.contractTypeKey ?? "");
   const paymentTerms = isChangeDraft
     ? snapshot.paymentTerms
     : draft.paymentTermsOriginalText || paymentStages.length
@@ -1156,6 +1218,7 @@ function savePayloadFromSnapshot(
       ...(draft.companyEntityId
         ? { companyEntityId: draft.companyEntityId }
         : {}),
+      ...(draft.layoutTemplateVersionId !== undefined ? { layoutTemplateVersionId: draft.layoutTemplateVersionId } : {}),
       draftData: draftDataFromModel(draft),
       clauses: draft.clauses.map((clause) => ({ ...clause })),
       pricingNature:
@@ -1168,8 +1231,10 @@ function savePayloadFromSnapshot(
         defaultTaxRatePercent: draft.defaultTaxRatePercent,
         source: "contract_document"
       },
+      ...(draft.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 as const } : {}),
       ...(draft.amountSource === "manual"
-        ? { manualAmountCents: draft.manualAmountCents ?? "0" }
+        ? draft.numericProtocolVersion === 2 ? { manualAmountYuan: draft.manualAmountYuan ?? null }
+          : { manualAmountCents: draft.manualAmountCents ?? "0" }
         : {}),
       ...(draft.estimatedAmountCents === null
         ? {}
@@ -1184,6 +1249,7 @@ function savePayloadFromSnapshot(
     })),
     bills: snapshot.bills.map((bill) => ({
       ...bill,
+      numericProtocolVersion: 2,
       rows: bill.rows.map(draftBillRowForSave)
     })),
     paymentTerms,
@@ -1235,9 +1301,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const workbench = ref<ContractDraftWorkbenchReadModel | null>(null);
   const authorityRefreshRequired = ref(false);
   const saveError = ref("");
+  const pendingSaveResult = ref(false);
+  const lastSaveValidationRejected = ref(false);
+  const online = ref(typeof navigator === "undefined" || navigator.onLine !== false);
+  const checkingSaveResult = ref(false);
+  const uncommittedInput = ref(false);
+  const pendingSaveIntent = shallowRef<PendingDraftSaveIntent | null>(null);
   const conflict = ref<ContractDraftConflict | null>(null);
   const formalSaveCompleted = ref(false);
   const lastSavedAt = ref<Date | null>(null);
+  let acknowledgedSave: { contractId: string; versionId: string; revision: number; savedAt: Date } | null = null;
   const aggregateSaveState = shallowRef<
     AggregateSaveState<ContractDraftAggregateModel>
   >(createAggregateSaveState(0));
@@ -1404,10 +1477,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const storage = getStorage();
     const identity = recoveryIdentity();
     if (!storage || !identity) return;
+    const state = aggregateSaveState.value;
+    const intent = pendingSaveIntent.value && (state.kind === "saving" || state.kind === "failed")
+      ? { ...pendingSaveIntent.value, state: { ...state, kind: "saving" as const } }
+      : pendingSaveIntent.value ?? undefined;
     writeContractDraftLocalRecovery(
       storage,
       identity,
-      cloneAggregateModel(aggregateModel)
+      cloneAggregateModel(aggregateModel),
+      Date.now(),
+      intent
     );
   }
 
@@ -1440,6 +1519,19 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       pendingLocalRecovery.value = found;
       localRecoveryError.value =
         "本机副本遗漏已有历史履约占用行，不能直接恢复或保存；请保留服务端清单并人工核对。";
+      return;
+    }
+    if (found.recovery.saveIntent !== undefined) {
+      pendingSaveResult.value = true;
+      if (!isPendingDraftSaveIntent(found.recovery.saveIntent) || found.recovery.saveIntent.contractVersionId !== identity.contractVersionId || workbench.value?.contract.ownerUserId !== identity.userId) {
+        authorityRefreshRequired.value = true;
+        saveError.value = "本机未确认的保存记录不完整或经办人已变化，请保留副本并联系合同部核对，暂不重复保存";
+        return;
+      }
+      pendingSaveIntent.value = found.recovery.saveIntent;
+      assignAggregateModel(aggregateModel, found.recovery.snapshot);
+      aggregateSaveState.value = { ...found.recovery.saveIntent.state, kind: "failed", serverRevision: currentRevision.value, reason: "保存结果待核对" };
+      saveError.value = "已恢复本机未确认的保存意图，请先核对保存结果；当前输入仍保留";
       return;
     }
     if (found.revisionMatches) {
@@ -1542,7 +1634,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const versionId = contractVersionId.value;
     const token = leaseToken;
     if (
-      disposed ||
+      disposed || !online.value ||
       !versionId ||
       !token ||
       !hasAuthorityOperation("heartbeat_contract_draft_edit_lease") ||
@@ -1666,6 +1758,34 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
   }
 
+  function onOffline(): void {
+    online.value = false;
+    cancelScheduledSave();
+    writeBackup();
+  }
+
+  async function onOnline(): Promise<void> {
+    online.value = true;
+    const versionId = contractVersionId.value;
+    if (!versionId || pendingSaveResult.value || activeSave) return;
+    try {
+      const fresh = await fetchContractDraftWorkbench(versionId);
+      if (contractVersionId.value !== versionId || disposed) return;
+      if (fresh.version.id !== versionId || fresh.version.draftRevision !== currentRevision.value) {
+        const state = aggregateSaveState.value;
+        if (state.kind === "dirty") {
+          const comparison = beginAggregateSave(state, cloneAggregateModel(aggregateModel), crypto.randomUUID(), "auto");
+          aggregateSaveState.value = failAggregateSave(comparison, "conflict", "断线期间合同已有更新");
+          await enterConflict(versionId);
+        } else requireAuthorityRefresh();
+        return;
+      }
+      if (await verifyLease()) scheduleSave();
+    } catch {
+      saveError.value = "连接尚未恢复稳定，当前输入已保留；请恢复连接后再保存";
+    }
+  }
+
   function cancelScheduledSave(): void {
     if (debounceTimer !== null) {
       clearTimeout(debounceTimer);
@@ -1677,7 +1797,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (debounceTimer !== null) return;
     if (
       disposed ||
-      !formalSaveCompleted.value ||
+      !online.value ||
+      uncommittedInput.value ||
+      pendingSaveResult.value ||
       pausedRef.value ||
       conflict.value !== null ||
       aggregateSaveState.value.kind !== "dirty"
@@ -1695,7 +1817,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function discardLocalState(): boolean {
-    if (activeSave || saveState.value === "saving") {
+    if (activeSave || saveState.value === "saving" || pendingSaveResult.value) {
       return false;
     }
     cancelScheduledSave();
@@ -1708,17 +1830,20 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     pausedRef.value = false;
     conflict.value = null;
     formalSaveCompleted.value = false;
+    acknowledgedSave = null;
     submissionCompleted.value = false;
     activeSubmission = null;
     pendingSubmissionRequest = null;
     lastSavedAt.value = null;
+    pendingSaveResult.value = false;
+    pendingSaveIntent.value = null;
     saveError.value = "";
     lease.value = { kind: "available", canTakeOver: false };
     return true;
   }
 
   function suspendAutosaveForLifecycleAction(): boolean {
-    if (activeSave || saveState.value === "saving") return false;
+    if (activeSave || saveState.value === "saving" || pendingSaveResult.value) return false;
     cancelScheduledSave();
     pausedRef.value = true;
     return true;
@@ -1975,15 +2100,19 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     );
     conflict.value = null;
     pausedRef.value = false;
-    formalSaveCompleted.value = Boolean(result.contract.code);
+    const matchingAck = acknowledgedSave?.contractId === result.contract.id && acknowledgedSave.versionId === result.version.id && acknowledgedSave.revision === result.version.draftRevision ? acknowledgedSave : null;
+    acknowledgedSave = matchingAck;
+    formalSaveCompleted.value = Boolean(result.contract.code) || matchingAck !== null;
     submissionCompleted.value = !["draft", "approval_rejected"].includes(
       result.version.status
     );
     activeSubmission = null;
     pendingSubmissionRequest = null;
-    lastSavedAt.value = null;
+    lastSavedAt.value = matchingAck?.savedAt ?? null;
     saveError.value = "";
     resetLifecycleState();
+    pendingSaveResult.value = false;
+    pendingSaveIntent.value = null;
     assignAggregateModel(aggregateModel, nextAggregate);
 
     inspectLocalRecovery();
@@ -2021,7 +2150,24 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Dirty tracking ----------------------------------------------------------
 
+  function setEditorInput(state: { pending: boolean; edited: boolean }): void {
+    uncommittedInput.value = state.pending;
+    if (state.pending) {
+      cancelScheduledSave();
+      if (state.edited) markDirty("bills");
+    } else scheduleSave();
+  }
+
   function markDirty(section: ContractDraftChangedSection = "draft"): void {
+    const rejected = aggregateSaveState.value;
+    if (lastSaveValidationRejected.value && rejected.kind === "failed" && !pendingSaveResult.value) {
+      aggregateSaveState.value = {
+        kind: "dirty", serverRevision: rejected.serverRevision, localGeneration: rejected.localGeneration,
+        ackedGeneration: rejected.ackedGeneration, changedSections: [...rejected.changedSections],
+        sectionGenerations: { ...rejected.sectionGenerations }, deadlineAt: Date.now() + CONTRACT_WORKBENCH_AUTOSAVE_WINDOW_MS
+      };
+      lastSaveValidationRejected.value = false;
+    }
     aggregateSaveState.value = markAggregateSaveEdited(
       aggregateSaveState.value,
       section
@@ -2080,6 +2226,22 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         "合同草稿保存回执缺少当前 authority 状态，请刷新后重试"
       );
     }
+    const acknowledgedRows = new Map<string, Map<string, string>>();
+    for (const [billKey, bindings] of Object.entries(result.billRowKeys ?? {})) {
+      const sentBill = savingState.inFlightSnapshot.bills.find(bill => bill.billKey === billKey);
+      const bound = new Map<string, string>();
+      const serverKeys = new Set<string>();
+      for (const binding of bindings) {
+        const sentRow = sentBill?.rows.find(row => row["clientRowKey"] === binding.clientRowKey);
+        if (!sentRow || !binding.rowKey || bound.has(binding.clientRowKey) || serverKeys.has(binding.rowKey) ||
+          (sentRow["rowKey"] && sentRow["rowKey"] !== binding.rowKey)) {
+          throw new ContractDraftAuthorityRefreshRequiredError("保存行核对信息不一致，请保留输入并核对本次保存结果");
+        }
+        bound.set(binding.clientRowKey, binding.rowKey);
+        serverKeys.add(binding.rowKey);
+      }
+      acknowledgedRows.set(billKey, bound);
+    }
     const draftOperationAvailableActions = [
       ...capability.draftOperationAvailableActions
     ];
@@ -2092,17 +2254,39 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       canMergeAggregateSaveDerivedFacts(savingState, ["draft", "bills"])
     ) {
-      currentWorkbench.version.amountCents =
-        result.amounts.taxInclusiveAmountCents;
+      if (result.versionAmount?.numericProtocolVersion === 2) {
+        Object.assign(currentWorkbench.version, result.versionAmount);
+        Object.assign(authorityReceipt.version, result.versionAmount);
+      } else {
+        currentWorkbench.version.amountCents = result.amounts.taxInclusiveAmountCents;
+      }
+    }
+    // Acknowledged concurrency coordinates advance even when newer local text
+    // prevents merging derived values from this older snapshot.
+    for (const bill of aggregateModel.bills) {
+      const revision = result.billRevisions[bill.billKey];
+      if (revision !== undefined) bill.expectedRevision = revision;
+      const bindings = acknowledgedRows.get(bill.billKey);
+      for (const row of bill.rows) {
+        const key = typeof row["clientRowKey"] === "string" ? bindings?.get(row["clientRowKey"]) : undefined;
+        if (key && !row["rowKey"]) { row["rowKey"] = key; delete row["restoreRef"]; delete row["restoreOriginalValues"]; }
+        const deletion = result.deletedRowRestoreRefs?.[bill.billKey]?.find(ref => ref.oldRowKey === row["rowKey"]);
+        if (deletion) { row["restoreRef"] = { saveIntentKey: deletion.saveIntentKey, oldRowKey: deletion.oldRowKey }; row["restoreOriginalValues"] = JSON.parse(JSON.stringify(deletion.originalValues)); delete row["rowKey"]; }
+      }
+    }
+    for (const bill of [...currentWorkbench.bills, ...authorityReceipt.bills]) {
+      const revision = result.billRevisions[bill.billKey];
+      if (revision !== undefined) bill.revision = revision;
+      const bindings = acknowledgedRows.get(bill.billKey);
+      if (bindings) Object.assign(bill, { acknowledgedRowKeys: Object.fromEntries(bindings) });
+      Object.assign(bill, { acknowledgedDeletions: result.deletedRowRestoreRefs?.[bill.billKey] ?? [] });
     }
     if (canMergeAggregateSaveDerivedFacts(savingState, ["bills"])) {
-      for (const bill of aggregateModel.bills) {
-        const revision = result.billRevisions[bill.billKey];
-        if (revision !== undefined) bill.expectedRevision = revision;
-      }
       for (const bill of currentWorkbench.bills) {
-        const revision = result.billRevisions[bill.billKey];
-        if (revision !== undefined) bill.revision = revision;
+        const decimal = result.billAmounts?.find(item => item.billKey === bill.billKey);
+        if (decimal) Object.assign(bill, decimal);
+        const authorityBill = authorityReceipt.bills.find(item => item.billKey === bill.billKey);
+        if (decimal && authorityBill) Object.assign(authorityBill, decimal);
       }
     }
     const allSections: ContractDraftChangedSection[] = [
@@ -2130,6 +2314,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const savingVersionId = contractVersionId.value;
     if (
       disposed ||
+      !online.value ||
+      uncommittedInput.value ||
+      pendingSaveResult.value ||
       !savingVersionId ||
       !authoritySnapshot.value?.canWrite
     ) {
@@ -2146,6 +2333,26 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
     if (stateBeforeSave.kind === "dirty") {
       const snapshot = cloneAggregateModel(aggregateModel);
+      let restoreHasLaterInput = false;
+      for (const bill of snapshot.bills) for (const row of bill.rows) {
+        if (!row["restoreRef"]) continue;
+        const original = row["restoreOriginalValues"];
+        if (!isRecord(original)) { saveError.value = "原行恢复信息不完整，请先核对原保存结果，当前输入已保留"; return false; }
+        const numericFields = new Set(["quantity", "unitPrice", "taxRatePercent"]);
+        const comparable = (field: string, value: unknown): string => {
+          if (numericFields.has(field)) {
+            if (value === null || value === undefined || value === "") return "null";
+            const text = String(value);
+            return /^-?\d+(?:\.\d+)?$/u.test(text) ? text.replace(/(\.\d*?)0+$/u, "$1").replace(/\.$/u, "") : text;
+          }
+          if (field === "customData" && isRecord(value)) return JSON.stringify(Object.keys(value).sort().map(key => [key, value[key] == null ? "" : String(value[key])]));
+          return String(value ?? "");
+        };
+        const fields = ["itemCode", "itemName", "specification", "unit", "quantity", "unitPrice", "taxRatePercent", "taxRateSource", "isProvisional", "settlementBasis", "customData"];
+        if (Object.keys(original).length !== fields.length || fields.some(field => !(field in original))) { saveError.value = "原行恢复信息不完整，请先核对原保存结果，当前输入已保留"; return false; }
+        restoreHasLaterInput ||= fields.some(field => comparable(field, row[field]) !== comparable(field, original[field]));
+        Object.assign(row, JSON.parse(JSON.stringify(original)) as Record<string, unknown>);
+      }
       const issue = aggregateSerializationIssue(snapshot, workbench.value);
       if (issue) {
         saveError.value = issue;
@@ -2158,6 +2365,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         crypto.randomUUID(),
         saveKind
       );
+      if (restoreHasLaterInput) aggregateSaveState.value = markAggregateSaveEdited(aggregateSaveState.value, "bills");
     } else if (stateBeforeSave.kind === "failed") {
       aggregateSaveState.value = beginAggregateSave(
         stateBeforeSave,
@@ -2206,21 +2414,48 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       return false;
     }
 
+    let receivedSaveResult = false;
+    let saveDispatched = false;
+    lastSaveValidationRejected.value = false;
     try {
+      const requestFingerprint = await transportPayloadFingerprint(payload);
+      const currentIntent = aggregateSaveState.value;
+      if (disposed || contractVersionId.value !== savingVersionId || leaseToken !== token || currentIntent.kind !== "saving" || currentIntent.idempotencyKey !== savingState.idempotencyKey) return false;
+      const beforeDispatch = () => {
+        const current = aggregateSaveState.value;
+        if (disposed || contractVersionId.value !== savingVersionId || leaseToken !== token || current.kind !== "saving" || current.idempotencyKey !== savingState.idempotencyKey) {
+          throw new ContractDraftAuthorityRefreshRequiredError("当前合同编辑状态已变化，请保留输入并刷新后重试");
+        }
+        pendingSaveIntent.value = { contractVersionId: savingVersionId, requestFingerprint, state: savingState };
+        writeBackup();
+        // Only a completed preflight/intent freeze reaches the write API call.
+        // An exception from this synchronous hook never marks a write attempted.
+        saveDispatched = true;
+      };
       const result = payload.saveKind === "auto"
         ? await autoSaveContractDraftAggregateWithCapability(
             savingVersionId,
             token,
-            payload
+            payload,
+            beforeDispatch
           )
         : await manualSaveContractDraftAggregateWithCapability(
             savingVersionId,
             token,
-            payload
+            payload,
+            beforeDispatch
           );
+      receivedSaveResult = true;
       // A late response from another route must never mutate the newly loaded
       // contract's revision, dirty state, backup, or conflict UI.
       if (contractVersionId.value !== savingVersionId) return true;
+      if (leaseToken !== token || result.serverRevision < currentRevision.value) {
+        pendingSaveResult.value = true;
+        aggregateSaveState.value = failAggregateSave(aggregateSaveState.value, "network", "编辑权或修订已变化，保存结果待核对");
+        saveError.value = "编辑权或修订已变化，当前输入已保留；请先核对本次保存结果";
+        writeBackup();
+        return false;
+      }
       if (result.contractVersionId !== savingVersionId) {
         throw new Error(
           "合同草稿协议错误：保存响应版本与请求版本不一致，已保留当前编辑内容"
@@ -2229,6 +2464,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       const responseState = aggregateSaveState.value;
       if (responseState.kind !== "saving") return false;
       mergeSafeSaveResult(result, responseState);
+      pendingSaveIntent.value = null;
+      pendingSaveResult.value = false;
       aggregateSaveState.value = completeAggregateSave(
         responseState,
         result.serverRevision,
@@ -2236,6 +2473,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       );
       formalSaveCompleted.value = true;
       lastSavedAt.value = new Date();
+      acknowledgedSave = { contractId: workbench.value!.contract.id, versionId: savingVersionId, revision: result.serverRevision, savedAt: lastSavedAt.value };
       if (aggregateSaveState.value.kind === "clean") {
         clearBackup();
       } else {
@@ -2245,6 +2483,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     } catch (error) {
       if (contractVersionId.value !== savingVersionId) return true;
       if (isConflictError(error)) {
+        pendingSaveIntent.value = null;
         aggregateSaveState.value = failAggregateSave(
           aggregateSaveState.value,
           "conflict",
@@ -2255,6 +2494,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       } else {
         const lostReason = leaseLossReason(error);
         if (lostReason) {
+          pendingSaveIntent.value = null;
           aggregateSaveState.value = failAggregateSave(
             aggregateSaveState.value,
             "readonly",
@@ -2262,7 +2502,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
           );
           loseLease(lostReason);
           saveError.value = "编辑租约已失效，页面已转为只读；未保存内容仍保留在本机。";
-        } else if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+        } else if (error instanceof ContractDraftAuthorityRefreshRequiredError && !receivedSaveResult) {
+          pendingSaveIntent.value = null;
           requireAuthorityRefresh();
           aggregateSaveState.value = failAggregateSave(
             aggregateSaveState.value,
@@ -2271,8 +2512,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
           );
           saveError.value = error.message;
         } else {
-          const message =
-            error instanceof Error ? error.message : "合同草稿保存失败";
+          const status = typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+          const rejected = !saveDispatched || (typeof status === "number" && status >= 400 && status < 500);
+          pendingSaveResult.value = !rejected && pendingSaveIntent.value !== null;
+          if (rejected) pendingSaveIntent.value = null;
+          lastSaveValidationRejected.value = saveDispatched && status === 400;
+          const message = pendingSaveResult.value
+            ? "保存结果待核对，当前输入已保留；请先核对结果，暂不重复保存"
+            : error instanceof Error ? error.message : "合同草稿保存失败";
           aggregateSaveState.value = failAggregateSave(
             aggregateSaveState.value,
             "network",
@@ -2284,6 +2531,45 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
       return false;
     }
+  }
+
+  async function checkSaveResult(): Promise<boolean> {
+    const intent = pendingSaveIntent.value;
+    if (!intent || checkingSaveResult.value || intent.contractVersionId !== contractVersionId.value) return false;
+    checkingSaveResult.value = true;
+    try {
+      const lookup = await fetchContractDraftSaveResult(intent.contractVersionId, intent.state.idempotencyKey);
+      if (lookup.status !== "saved" || lookup.result.requestFingerprint !== intent.requestFingerprint || lookup.result.contractVersionId !== intent.contractVersionId) {
+        saveError.value = "尚未核对到本次保存结果，原请求可能仍在处理；当前输入已保留，请稍后继续核对，暂不重复保存";
+        return false;
+      }
+      const fresh = await fetchContractDraftWorkbench(intent.contractVersionId);
+      if (fresh.version.draftRevision !== lookup.result.serverRevision || lookup.latestRevision !== lookup.result.serverRevision) {
+        pendingSaveResult.value = false;
+        pendingSaveIntent.value = null;
+        aggregateSaveState.value = { ...intent.state, kind: "conflict", reason: "本次保存已完成，之后又有内容更新" };
+        await enterConflict(intent.contractVersionId);
+        return false;
+      }
+      const current = aggregateSaveState.value;
+      if (current.kind !== "failed" && current.kind !== "saving") return false;
+      const acknowledged = { ...current, kind: "saving" as const };
+      mergeSafeSaveResult({ ...lookup.result, capability: { refreshRequired: false, draftOperationAvailableActions: fresh.draftOperationAvailableActions } }, acknowledged);
+      authorityRefreshRequired.value = false;
+      aggregateSaveState.value = completeAggregateSave(acknowledged, lookup.result.serverRevision, Date.now());
+      pendingSaveIntent.value = null;
+      pendingSaveResult.value = false;
+      lastSavedAt.value = new Date();
+      acknowledgedSave = { contractId: workbench.value!.contract.id, versionId: intent.contractVersionId, revision: lookup.result.serverRevision, savedAt: lastSavedAt.value };
+      formalSaveCompleted.value = true;
+      saveError.value = "";
+      if (aggregateSaveState.value.kind === "clean") clearBackup();
+      else { writeBackup(); scheduleSave(); }
+      return true;
+    } catch {
+      saveError.value = "暂时无法核对保存结果，当前输入仍保留；请恢复连接后继续核对，暂不重复保存";
+      return false;
+    } finally { checkingSaveResult.value = false; }
   }
 
   async function runScheduledSave(): Promise<void> {
@@ -2459,6 +2745,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         );
         return false;
       }
+      const matchingAck = acknowledgedSave?.contractId === fresh.contract.id && acknowledgedSave.versionId === fresh.version.id && acknowledgedSave.revision === fresh.version.draftRevision ? acknowledgedSave : null;
+      acknowledgedSave = matchingAck;
+      formalSaveCompleted.value = Boolean(fresh.contract.code) || matchingAck !== null;
+      lastSavedAt.value = matchingAck?.savedAt ?? null;
       workbench.value = structuredClone(fresh);
       workbenchReceipt.value = structuredClone(fresh);
       authorityRefreshRequired.value = false;
@@ -2572,6 +2862,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Draft creation (/contracts/new) ----------------------------------------
 
+  const initPreciseDraft = ref(false);
+  const initRelationship = ref<"" | "inside" | "outside" | "upward">("");
   const initProjectId = ref("");
   const initContractTypeKey = ref("");
   const initBusinessTemplateVersionId = ref("");
@@ -2583,8 +2875,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     () =>
       Boolean(initProjectId.value) &&
       Boolean(initContractTypeKey.value) &&
-      Boolean(initBusinessTemplateVersionId.value) &&
-      Boolean(initBusinessScenarioId.value) === Boolean(initScenarioTemplateMappingId.value)
+      (initPreciseDraft.value || Boolean(initBusinessTemplateVersionId.value) &&
+      Boolean(initBusinessScenarioId.value) === Boolean(initScenarioTemplateMappingId.value))
   );
 
   async function commitDraftCreation(): Promise<void> {
@@ -2599,7 +2891,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       amountLimitType: initAmountLimitType.value
     };
     const created = await createWorkbenchDraftWithCapability(
-      initBusinessScenarioId.value && initScenarioTemplateMappingId.value
+      initPreciseDraft.value ? { numericProtocolVersion: 2, projectId: initProjectId.value, contractTypeKey: initContractTypeKey.value,
+        amountLimitType: initAmountLimitType.value, ...(initRelationship.value ? { relationship: initRelationship.value } : {}) }
+        : initBusinessScenarioId.value && initScenarioTemplateMappingId.value
         ? {
             ...basePayload,
             businessScenarioId: initBusinessScenarioId.value,
@@ -2614,6 +2908,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   const initializeDraft: InitializeDraftController = {
+    preciseDraft: initPreciseDraft,
+    relationship: initRelationship,
+    setPreciseDraft: value => { initPreciseDraft.value = value; },
+    setRelationship: value => { initRelationship.value = value; },
     projectId: initProjectId,
     contractTypeKey: initContractTypeKey,
     businessTemplateVersionId: initBusinessTemplateVersionId,
@@ -2644,12 +2942,20 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", onVisibilityChange);
     }
+    if (typeof window !== "undefined") {
+      window.addEventListener("offline", onOffline);
+      window.addEventListener("online", onOnline);
+    }
     onScopeDispose(() => {
       disposed = true;
       cancelScheduledSave();
       releaseCurrentLease();
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("offline", onOffline);
+        window.removeEventListener("online", onOnline);
       }
       loadRequestId += 1;
       contractVersionId.value = null;
@@ -2666,6 +2972,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     authoritySnapshot,
     saveState,
     saveError: readonly(saveError),
+    pendingSaveResult: readonly(pendingSaveResult),
+    online: readonly(online),
+    checkingSaveResult: readonly(checkingSaveResult),
+    checkSaveResult,
     conflict,
     dirty: readonly(dirtyRef),
     isDirty: readonly(dirtyRef),
@@ -2682,6 +2992,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     requireAuthorityRefresh,
     reload: reloadWorkbench,
     markDirty,
+    setEditorInput,
     discardLocalState,
     saveNow,
     queuePreviewForCurrentRevision,

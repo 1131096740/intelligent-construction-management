@@ -1,3 +1,7 @@
+import { GeneralProcurementRequestNotificationModule } from "../general-procurement/general-procurement-request-notification.module";
+import { ApprovalRuleAssignmentsController } from "./approval-rule-assignments.controller";
+import { ApprovalRuleAssignmentsService } from "./approval-rule-assignments.service";
+import {SpotProcurementApprovalNotificationService} from "../spot-procurement/spot-procurement-approval-notification.service";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
@@ -16,9 +20,9 @@ import { SpotProcurementPilotService } from "../spot-procurement/spot-procuremen
 import { ApprovalSmsService } from "./approval-sms.service";
 
 @Module({
-  imports: [AuditModule, AuthModule, FileModule, SpotProcurementAccessModule],
-  controllers: [ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
-  providers: [ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
-  exports: [ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService]
+  imports: [GeneralProcurementRequestNotificationModule, AuditModule, AuthModule, FileModule, SpotProcurementAccessModule],
+  controllers: [ApprovalRuleAssignmentsController, ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
+  providers: [ApprovalRuleAssignmentsService, SpotProcurementApprovalNotificationService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
+  exports: [SpotProcurementApprovalNotificationService, ApprovalSmsService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService]
 })
 export class ApprovalModule {}

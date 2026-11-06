@@ -1578,3 +1578,20 @@ function deferred<T>() {
   });
   return { promise, reject, resolve };
 }
+
+it("新并联自审保留独立原因与本人密码直到对应职责POST，普通审批不混入确认字段", async () => {
+  mockApiFetch.mockReset();
+  mockApiFetch.mockResolvedValueOnce(jsonResponse(reviewDetail({availableActions:[{key:"review_approval",enabled:true,requiresSelfReviewConfirmation:true}]})));
+  const prepared=await prepareSpotProcurementReviewAction(reviewActionInput({requiresSelfReviewConfirmation:true,selfReviewReason:"  本人核对当前职责  ",confirmationPassword:"own-synthetic-password"}));
+  expect(prepared.status).toBe("ready");
+  if(prepared.status!=="ready")throw new Error("自审预检未通过");
+  mockApiFetch.mockResolvedValueOnce(jsonResponse({}));
+  await executeSpotProcurementReviewAction({decision:"approve",capture:()=>prepared.context,preflight:async()=>prepared,current:()=>true,complete:vi.fn(),fail:vi.fn(),finish:vi.fn()});
+  const body=JSON.parse(String(mockApiFetch.mock.calls[1]![1]?.body));
+  expect(body).toMatchObject({expectedNodeIndex:1,selfReviewReason:"本人核对当前职责",confirmationPassword:"own-synthetic-password"});
+});
+it("新并联自审缺独立原因先拒绝，不用普通驳回意见充当原因",async()=>{
+  mockApiFetch.mockReset();
+  await expect(prepareSpotProcurementReviewAction(reviewActionInput({decision:"reject",comment:"退回补充",requiresSelfReviewConfirmation:true,selfReviewReason:"",confirmationPassword:"own-password"}))).rejects.toThrow("自审原因");
+  expect(mockApiFetch).not.toHaveBeenCalled();
+});

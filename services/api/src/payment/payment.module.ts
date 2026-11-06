@@ -12,6 +12,9 @@ import { PaymentController } from "./payment.controller";
 import { PaymentAmountService } from "./payment-amount.service";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
+import { RegisteredPaymentExecutionController } from "./registered-payment-execution.controller";
+import { RegisteredPaymentExecutionService } from "./registered-payment-execution.service";
+import { RegisteredPaymentNotificationService } from "./registered-payment-notification.service";
 
 @Module({
   imports: [
@@ -25,8 +28,8 @@ import { PaymentRequestService } from "./payment-request.service";
     OperatingLedgerModule,
     ProjectFundingModule
   ],
-  controllers: [PaymentController],
-  providers: [PaymentAmountService, PaymentRequestService, PaymentReadService],
+  controllers: [PaymentController, RegisteredPaymentExecutionController],
+  providers: [PaymentAmountService, PaymentRequestService, PaymentReadService, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService],
   exports: [PaymentAmountService, PaymentRequestService, PaymentReadService]
 })
 export class PaymentModule {}

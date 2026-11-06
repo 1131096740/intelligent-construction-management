@@ -8,11 +8,11 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 383,
+    "activeBusinessActionCount": 407,
     "technicalActionCount": 9,
-    "activeBindingCount": 442,
-    "retiredWriteEntryCount": 88,
-    "retainedReadonlyExitCount": 11,
+    "activeBindingCount": 470,
+    "retiredWriteEntryCount": 78,
+    "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
     "blockerCount": 0
@@ -48,6 +48,38 @@
         "POST /projects/:param/affiliate-company-contracts/file-uploads"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-delegation.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /approval-delegations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "approval-delegation.revoke",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "DELETE /approval-delegations/:param"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -1948,6 +1980,40 @@
       "causalVerified": true
     },
     {
+      "id": "employee.admin-phone-change",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/users/:param/change-phone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "employee.admin-phone-change-sms",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/员工管理",
+        "/组织权限"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /account-security/users/:param/phone-change-sms"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "employee.admin-reset",
       "status": "unified_candidate",
       "usage": "background",
@@ -2453,6 +2519,89 @@
       "causalVerified": true
     },
     {
+      "id": "fund-account.confirm-correction",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/confirm"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.registerFundOpening",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/openings"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.requestFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.returnFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/return"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.withdrawFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/withdraw"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "fund-execution.case.confirm",
       "status": "unified_candidate",
       "usage": "background",
@@ -2699,6 +2848,23 @@
       "causalVerified": true
     },
     {
+      "id": "general-procurement.legacy.updateProcurement",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "GET /general-procurements/:param",
+        "POST /general-procurements/:param/draft"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "general-procurement.reviewProcurement",
       "status": "unified_candidate",
       "usage": "background",
@@ -2747,7 +2913,7 @@
         "POST /general-procurements/:param/draft"
       ],
       "bindingCount": 2,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -2927,6 +3093,168 @@
         "POST /files/:param/download-ticket"
       ],
       "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.clone",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/clone"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.create",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contract-layout-templates",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.inspect",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/inspection"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.mapping-confirm",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/source-mapping-confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.mapping-save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /contract-layout-template-versions/:param/source-mapping"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.preview",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/preview-generation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.publish",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/publication"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.save",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /contract-layout-template-versions/:param",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.stop",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/stop"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "layout-template.submit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "POST /contract-layout-template-versions/:param/submission"
+      ],
+      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -4434,6 +4762,22 @@
       "causalVerified": true
     },
     {
+      "id": "project.rename.name-warning",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/create-validation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "project.rename.validate",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -4577,6 +4921,41 @@
       ],
       "bindingCount": 1,
       "productionConsumerCount": 3,
+      "causalVerified": true
+    },
+    {
+      "id": "registered-payment.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /payment-executions/:param/registrations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "registered-payment.supplement-voucher",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /payment-executions/:param/voucher",
+        "POST /payment-executions/:param/voucher-file-uploads"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
       "causalVerified": true
     },
     {
@@ -5580,6 +5959,22 @@
       "causalVerified": true
     },
     {
+      "id": "spot-procurement.create-draft.update",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "capabilityKind": "detail_action",
+      "bindingKeys": [
+        "PATCH /spot-procurements/:param/draft"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "spot-procurement.create-file.upload",
       "status": "unified_candidate",
       "usage": "background",
@@ -6409,13 +6804,6 @@
   "retiredEntries": [
     {
       "method": "DELETE",
-      "path": "/approval-delegations/:delegationId",
-      "controller": "ApprovalDelegationController",
-      "handler": "revoke",
-      "status": "gone"
-    },
-    {
-      "method": "DELETE",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "deleteRow",
@@ -6440,13 +6828,6 @@
       "path": "/contract-business-scenarios/:scenarioId",
       "controller": "ContractTemplateController",
       "handler": "updateBusinessScenario",
-      "status": "gone"
-    },
-    {
-      "method": "PATCH",
-      "path": "/contract-layout-template-versions/:versionId",
-      "controller": "ContractTemplateController",
-      "handler": "updateLayoutDraftVersion",
       "status": "gone"
     },
     {
@@ -6496,13 +6877,6 @@
       "path": "/vat-rate-options/:optionId",
       "controller": "VatRateOptionController",
       "handler": "update",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/approval-delegations",
-      "controller": "ApprovalDelegationController",
-      "handler": "create",
       "status": "gone"
     },
     {
@@ -6563,13 +6937,6 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/clone",
-      "controller": "ContractTemplateController",
-      "handler": "cloneLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/discard",
       "controller": "ContractTemplateController",
       "handler": "discardLayout",
@@ -6577,51 +6944,9 @@
     },
     {
       "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/inspection",
-      "controller": "ContractTemplateController",
-      "handler": "inspectLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
-      "controller": "ContractTemplateController",
-      "handler": "queueLayoutPreview",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/publication",
-      "controller": "ContractTemplateController",
-      "handler": "publishLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/revoke",
       "controller": "ContractTemplateController",
       "handler": "revokeLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/stop",
-      "controller": "ContractTemplateController",
-      "handler": "stopLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-template-versions/:versionId/submission",
-      "controller": "ContractTemplateController",
-      "handler": "submitLayout",
-      "status": "gone"
-    },
-    {
-      "method": "POST",
-      "path": "/contract-layout-templates",
-      "controller": "ContractTemplateController",
-      "handler": "createLayout",
       "status": "gone"
     },
     {
@@ -7027,9 +7352,16 @@
   "readonlyLegacyEntries": [
     {
       "method": "GET",
-      "path": "/contract-layout-template-versions/:versionId/preview-generation",
+      "path": "/contract-business-scenarios/available",
       "controller": "ContractTemplateController",
-      "handler": "getLayoutPreview",
+      "handler": "listAvailableScenarios",
+      "status": "readonly"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/recommendations",
+      "controller": "ContractTemplateController",
+      "handler": "recommendScenarioTemplates",
       "status": "readonly"
     },
     {

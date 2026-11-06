@@ -29,9 +29,9 @@
 </template>
 <script setup lang="ts">
 import { onUnmounted, ref } from "vue";
-import { fetchAccountOptions, sendAccountSms, sendPhoneChangeSms } from "../api/employee-onboarding.api";
+import { fetchAccountOptions, sendAccountSms, sendPhoneChangeSms, sendAdminPhoneChangeSms } from "../api/employee-onboarding.api";
 import { formatUnknownApiError } from "../api/error-message";
-const props = defineProps<{ phone: string; purpose: "register" | "reset" | "change_phone"; modelValue: string; disabled?: boolean }>();
+const props = defineProps<{ phone: string; purpose: "register" | "reset" | "change_phone"; modelValue: string; disabled?: boolean; targetUserId?: string }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const sending = ref(false); const remaining = ref(0); const message = ref(""); const error = ref(false);
 let interval: ReturnType<typeof setInterval> | undefined;
@@ -40,9 +40,12 @@ async function sendCode() {
   if (sending.value || remaining.value > 0) return;
   sending.value = true; message.value = ""; error.value = false;
   try {
-    const result = props.purpose === "change_phone"
-      ? await sendPhoneChangeWithCapability(props.phone)
-      : await sendWithCapability(props.phone, props.purpose);
+    let result;
+    if (props.purpose === "change_phone") {
+      result = props.targetUserId
+        ? await sendAdminPhoneChangeWithCapability(props.targetUserId, props.phone)
+        : await sendPhoneChangeWithCapability(props.phone);
+    } else result = await sendWithCapability(props.phone, props.purpose);
     remaining.value = result.retryAfterSeconds;
     clearInterval(interval);
     interval = setInterval(() => { remaining.value = Math.max(0, remaining.value - 1); if (!remaining.value) clearInterval(interval); }, 1000);
@@ -61,6 +64,12 @@ async function sendPhoneChangeWithCapability(phone: string) {
   const operationAllowed = capability.smsEnabled;
   if (!operationAllowed) throw new Error("短信验证尚未开通，请联系综合部或董事长");
   return sendPhoneChangeSms(phone);
+}
+async function sendAdminPhoneChangeWithCapability(id: string, phone: string) {
+  const capability = await fetchAccountOptions();
+  const operationAllowed = capability.smsEnabled;
+  if (!operationAllowed) throw new Error("短信验证尚未开通，请联系综合部或董事长");
+  return sendAdminPhoneChangeSms(id, phone);
 }
 </script>
 <style scoped>

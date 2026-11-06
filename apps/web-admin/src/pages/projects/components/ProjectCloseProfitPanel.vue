@@ -4,6 +4,7 @@
       <div>
         <h2>项目收口与盈亏</h2>
         <p>七阶段逐项确认；金额、公司分配和历史版本均以同一经营快照为准。</p>
+        <p>工程完工后仍可继续办理结算、付款和查询历史，不等同停用项目或资金结清。</p>
       </div>
       <span v-if="workbench" class="snapshot-time">
         数据读取于 {{ formatDateTime(workbench.projection.readAt) }}

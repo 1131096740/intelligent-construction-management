@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 197,
-    "terminalMigration": "20261023100000_personnel_lifecycle",
-    "terminalMigrationChecksum": "3728120258fd924b194e8614760e5eac8d78c5c38c11b6ca6373c43c4945c662",
+    "expectedDirectoryCount": 202,
+    "terminalMigration": "20261106090000_general_procurement_requests",
+    "terminalMigrationChecksum": "33c8e9c6050f53a911ec9db6ec357f1bebcb52bf5b39fd82430ebdfaa4328183",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 77,
-    "fullyPendingSuites": 66,
+    "pendingFiles": 79,
+    "fullyPendingSuites": 68,
     "partiallyPendingSuites": 11,
-    "pendingTests": 511,
-    "coveredFiles": 77,
-    "coveredTests": 511,
+    "pendingTests": 541,
+    "coveredFiles": 79,
+    "coveredTests": 541,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -95,11 +95,11 @@
     },
     {
       "id": "payment_execution",
-      "pendingTests": 1,
+      "pendingTests": 2,
       "testFiles": [
         {
           "path": "services/api/src/database/payment-execution-concurrency.spec.ts",
-          "pendingTests": 1,
+          "pendingTests": 2,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -337,7 +337,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 172,
+      "pendingTests": 181,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -361,7 +361,7 @@
         },
         {
           "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-          "pendingTests": 3,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         },
         {
@@ -398,7 +398,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 157,
+      "pendingTests": 173,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -412,7 +412,7 @@
         },
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-          "pendingTests": 6,
+          "pendingTests": 9,
           "suiteStatus": "fully_pending"
         },
         {
@@ -562,7 +562,7 @@
         },
         {
           "path": "services/api/src/database/payable-settlement-concurrency.spec.ts",
-          "pendingTests": 19,
+          "pendingTests": 20,
           "suiteStatus": "fully_pending"
         },
         {
@@ -583,6 +583,11 @@
         {
           "path": "services/api/src/database/fund-movement-concurrency.spec.ts",
           "pendingTests": 5,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/fund-account-postgres.spec.ts",
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -636,11 +641,11 @@
     },
     {
       "id": "general_procurement",
-      "pendingTests": 24,
+      "pendingTests": 27,
       "testFiles": [
         {
           "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
-          "pendingTests": 12,
+          "pendingTests": 15,
           "suiteStatus": "fully_pending"
         },
         {
@@ -676,7 +681,44 @@
         "path": "services/api/prisma/run-contract-classification-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "enterprise_task01_entry",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/fund-execution/enterprise-task01-entry.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "node",
+        "path": "services/api/prisma/run-enterprise-task01-local.cjs",
+        "invocation": "task01_explicit_inputs",
+        "resourceHelper": "services/api/prisma/enterprise-task01-resources.cjs",
+        "imageId": "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
+        "sourceSha256": "7eaa6c921a54aa8e0ccd44fc75011c20feb35c711fffd1e46018de48e2ad1dea",
+        "resourceHelperSha256": "d7a6c11b13058881106c61cf608addc3aa4cc3e086985bc29071fb0106e7cb40"
+      },
+      "state": "executable_local_runner",
+      "issue": 383,
+      "executionStatus": "NOT_EXECUTED",
+      "scope": "first-case-tracer-only; explicit separate authorization and immutable inputs required",
+      "ciExecution": "manual-only"
     }
   ],
-  "remainingFiles": []
+  "remainingFiles": [],
+  "executionInventory": {
+    "ciEligible": {
+      "groups": 22,
+      "files": 78,
+      "tests": 540
+    },
+    "manualOnly": {
+      "groups": 1,
+      "files": 1,
+      "tests": 1
+    }
+  }
 }

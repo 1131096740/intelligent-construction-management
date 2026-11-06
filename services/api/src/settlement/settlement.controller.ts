@@ -81,7 +81,7 @@ export class SettlementController {
   @Get()
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
-    return this.settlementRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+    return this.settlementRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id), {actorUserId: user.id});
   }
 
   @Get("lifecycle-ledger")

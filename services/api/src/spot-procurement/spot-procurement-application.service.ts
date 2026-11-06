@@ -1,11 +1,17 @@
+import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
+import { delegatedSpotApprovalIdentity } from "../approval/spot-approval-duty-access";
+import { AuthService } from "../auth/auth.service";
+import { loadEffectiveProjectApprovalAssignments } from "../approval/project-approval-assignments";
+import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
-import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException
+  NotFoundException,
+  Optional
 } from "@nestjs/common";
 import {
   Prisma,
@@ -13,12 +19,13 @@ import {
   type SpotProcurementLine
 } from "@prisma/client";
 import {
+  normalizeBusinessAmount, normalizeBusinessQuantity, calculateBusinessLineAmount,
   resolveEffectiveRoleKeys,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { assertOrdinaryApplicantCannotReview, confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -50,7 +57,7 @@ import { BusinessEntryTransactionService } from "../business-entry-definition/bu
 import { BusinessEntryDefinitionService } from "../business-entry-definition/business-entry-definition.service";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 
-const CREATE_ROLES = new Set<RoleKey>(["material_staff"]);
+const CREATE_ROLES = new Set<RoleKey>(["material_staff", "material_director"]);
 const VOID_ROLES = new Set<RoleKey>(["project_manager", "finance_director"]);
 const ABNORMAL_TERMINATION_REQUEST_ROLES = new Set<RoleKey>([
   "finance_staff"
@@ -122,6 +129,8 @@ type TerminationFacts = {
 };
 
 type VersionLockRow = {
+  requestProtocolVersion?: number;
+  draftRevision?: number;
   id: string;
   procurementId: string;
   versionNo: number;
@@ -137,7 +146,8 @@ type VersionLockRow = {
   purchaserNameSnapshot: string;
   purchaserDepartmentId: string | null;
   purchaserDepartmentNameSnapshot: string;
-  requestedArrivalAt: Date;
+  requestedArrivalAt: Date | null;
+  estimatedTotalAmount: Prisma.Decimal | null;
   totalAmountCents: bigint | null;
   changeReason: string | null;
   changeSummary: Prisma.JsonValue | null;
@@ -180,7 +190,8 @@ type PurchaserSnapshot = {
 type PreparedDraft = {
   applicationDepartment: string;
   applicationName: string;
-  requestedArrivalAt: Date;
+  requestedArrivalAt: Date | null;
+  estimatedTotalAmount: Prisma.Decimal | null;
   purchaser: PurchaserSnapshot;
   reason: string;
   note: string | null;
@@ -188,8 +199,10 @@ type PreparedDraft = {
     sortOrder: number;
     materialName: string;
     specification: string | null;
-    unit: string;
-    quantity: Prisma.Decimal;
+    unit: string | null;
+    quantity: Prisma.Decimal | null;
+    estimatedUnitPrice: Prisma.Decimal | null;
+    estimatedAmount: Prisma.Decimal | null;
     note: string | null;
   }>;
   attachments: Array<{
@@ -209,7 +222,9 @@ export class SpotProcurementApplicationService {
     private readonly archives?: SpotProcurementPaymentArchiveService,
     private readonly balances?: SpotProcurementBalanceService,
     private readonly entryTransactions?: BusinessEntryTransactionService,
-    private readonly entryDefinitions?: BusinessEntryDefinitionService
+    private readonly entryDefinitions?: BusinessEntryDefinitionService,
+    @Optional() private readonly notifications?: SpotProcurementApprovalNotificationService,
+    @Optional() private readonly auth?: AuthService
   ) {}
 
   getCreateEntryDefinitions(actorUserId: string, projectId: string) {
@@ -221,12 +236,12 @@ export class SpotProcurementApplicationService {
       await this.requireCurrentPurchaser(tx, actorUserId, projectId, actorRoles);
       return {
         application: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinitionForRoles(
-          "spot_procurement.application",
+          "spot_procurement.request_v2",
           actorRoles,
           "edit"
         ),
         line: BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinitionForRoles(
-          "spot_procurement.application_line",
+          "spot_procurement.request_line_v2",
           actorRoles,
           "edit"
         )
@@ -349,9 +364,11 @@ export class SpotProcurementApplicationService {
           new Set([procurement.applicantUserId, actorUserId]),
           new Set(current.attachments?.map((attachment) => attachment.fileId) ?? [])
         );
+        this.requireDraftRevision(version, input);
+        this.requirePreparedProtocol(version, prepared);
         await tx.spotProcurementVersion.update({
           where: { id: version.id },
-          data: this.versionUpdateData(prepared)
+          data: { ...this.versionUpdateData(prepared), ...(version.requestProtocolVersion === 2 ? {draftRevision: version.draftRevision! + 1} : {}) }
         });
         await this.replaceVersionFacts(tx, version.id, prepared);
         await this.validateApplicationEntryDraft(
@@ -371,13 +388,14 @@ export class SpotProcurementApplicationService {
         });
         return this.applicationReadModel(procurement, {
           ...version,
-          ...this.versionUpdateData(prepared)
+          ...this.versionUpdateData(prepared),
+          ...(version.requestProtocolVersion === 2 ? {draftRevision: version.draftRevision! + 1} : {})
         });
       })
     );
   }
 
-  submit(procurementId: string, actorUserId: string) {
+  submit(procurementId: string, actorUserId: string, input: {expectedDraftRevision?: number; expectedVersionId?: string} = {}) {
     return this.runWrite(async () => {
       let approvalBusinessId: string | null = null;
       const result = await this.prisma.$transaction(async (tx) => {
@@ -386,6 +404,7 @@ export class SpotProcurementApplicationService {
         const version = await this.requireLockedCurrentVersion(tx, procurement);
         approvalBusinessId = version.id;
         this.assertEditableDraft(procurement, version);
+        this.requireDraftRevision(version, input);
         const actorRoles = await this.requireDraftOwnerRole(tx, procurement, actorUserId);
         const canonicalFacts = await this.requireCanonicalRealApplicationFacts(
           tx,
@@ -405,7 +424,7 @@ export class SpotProcurementApplicationService {
         );
         const now = new Date();
         const frozenNodes = procurementApprovalNodes(actorRoles);
-        await assertProjectApprovalNodesConfigured(tx, procurement.projectId, frozenNodes, procurement.applicantUserId);
+
         const approval = await tx.approvalInstance.create({
           data: {
             flowType: "spot_procurement.approve",
@@ -417,6 +436,7 @@ export class SpotProcurementApplicationService {
             applicantUserId: procurement.applicantUserId
           }
         });
+        await this.notifications?.queueInTransaction(tx, approval, procurement.projectId, procurement.code);
         await tx.spotProcurementVersion.update({
           where: { id: version.id },
           data: { status: "approval_pending", submittedAt: now }
@@ -441,6 +461,7 @@ export class SpotProcurementApplicationService {
           { ...version, status: "approval_pending" }
         );
       });
+      await this.notifications?.dispatchQueued().catch(() => undefined);
       if (approvalBusinessId) {
         await this.approvalForms.tryRefreshLatestForBusiness(
           SPOT_PROCUREMENT_BUSINESS_TYPES.application,
@@ -553,19 +574,29 @@ export class SpotProcurementApplicationService {
           throw new ConflictException("当前采购版本不在审批中");
         }
         const approval = await this.requireLockedApprovalInstance(tx, version.id, "approval_pending");
-        const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
+        const parallel = isParallelApprovalRound(approval.frozenNodes);
+        const reviewNodeIndex = parallel ? input.expectedNodeIndex : approval.currentNodeIndex;
+        if (!activeApprovalNodeIndexes(approval.frozenNodes, approval.currentNodeIndex).includes(reviewNodeIndex)) {
+          throw new ConflictException("该审批职责已处理或坐标已变化，请刷新页面后重试");
+        }
         const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
           approval.frozenNodes,
-          approval.currentNodeIndex
+          reviewNodeIndex
         );
-        const approvedRoleKey = pendingRoles.find((roleKey) => actorRoles.includes(roleKey));
+        const actorRoles = parallel
+          ? (await loadEffectiveProjectApprovalAssignments(tx, procurement.projectId, pendingRoles, actorUserId)).filter(row => row.userIsActive && row.userId === actorUserId && row.projectId === procurement.projectId).map(row => row.roleKey as RoleKey)
+          : await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
+        const delegation = parallel && !pendingRoles.some(role => actorRoles.includes(role))
+          ? await delegatedSpotApprovalIdentity(tx, {instanceId: approval.id, nodeIndex: reviewNodeIndex, actorUserId, projectId: procurement.projectId, pendingRoleKeys: pendingRoles}) : null;
+        const approvedRoleKey = pendingRoles.find((roleKey) => actorRoles.includes(roleKey)) ?? delegation?.approvedRoleKey;
+        const reviewRoleKeys = delegation && approvedRoleKey ? [...actorRoles, approvedRoleKey] : actorRoles;
         if (!approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本审批节点处理人");
         }
         assertOrdinaryApplicantCannotReview({
           applicantUserId: approval.applicantUserId,
           actorUserId,
-          actorRoleKeys: actorRoles,
+          actorRoleKeys: reviewRoleKeys,
           approvedRoleKey
         });
         if (
@@ -578,7 +609,7 @@ export class SpotProcurementApplicationService {
         if (
           input.expectedVersionId !== version.id ||
           input.expectedApprovalInstanceId !== approval.id ||
-          input.expectedNodeIndex !== approval.currentNodeIndex
+          input.expectedNodeIndex !== reviewNodeIndex
         ) {
           throw new ConflictException("采购审批坐标已变化，请刷新页面后重试");
         }
@@ -586,6 +617,11 @@ export class SpotProcurementApplicationService {
         if (input.decision !== "approve" && !comment) {
           throw new BadRequestException("驳回或退回采购申请时必须填写审批意见");
         }
+        const selfReview = await confirmApprovalSelfReview({
+          applicantUserId: approval.applicantUserId, actorUserId, actorRoleKeys: reviewRoleKeys, approvedRoleKey,
+          selfReviewReason: input.selfReviewReason, confirmationPassword: input.confirmationPassword,
+          ...(this.auth ? {confirmPassword: (password: string) => this.auth!.confirmPassword(actorUserId, password, tx)} : {})
+        });
         const revisionFacts =
           await this.requireCanonicalRealApplicationFacts(
             tx,
@@ -606,7 +642,7 @@ export class SpotProcurementApplicationService {
             actorUserId,
             comment,
             approvedRoleKey,
-            representedUserId: actorUserId,
+            representedUserId: delegation?.representedUserId ?? actorUserId,
             ...(signature
               ? {
                   signatureFileIdSnapshot: signature.fileId,
@@ -614,18 +650,18 @@ export class SpotProcurementApplicationService {
                   signatureVersionIdSnapshot: signature.versionId
                 }
               : {}),
-            metadata: { reviewRoleKey: approvedRoleKey }
+            metadata: { reviewRoleKey: approvedRoleKey, ...(delegation ? {delegationId: delegation.delegationId} : {}), ...selfReview.metadata }
           }, signature)
         });
-        if (input.decision === "reject") {
+        if (input.decision === "reject" && !parallel) {
           await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: "rejected" } });
           await tx.spotProcurementVersion.update({ where: { id: version.id }, data: { status: "rejected" } });
           await tx.spotProcurement.update({ where: { id: procurement.id }, data: { status: "draft" } });
           await this.recordReviewAudit(tx, actorUserId, version.id, procurement.id, input.decision, approvedRoleKey);
           return this.applicationReadModel({ ...procurement, status: "draft" }, { ...version, status: "rejected" });
         }
-        if (input.decision === "return_to_applicant") {
-          await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: "returned_to_applicant" } });
+        if (input.decision === "return_to_applicant" || (input.decision === "reject" && parallel)) {
+          await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: input.decision === "reject" ? "rejected" : "returned_to_applicant" } });
           const draft = await this.createRevisionFromVersion(
             tx,
             procurement,
@@ -641,13 +677,14 @@ export class SpotProcurementApplicationService {
           });
           return this.applicationReadModel({ ...procurement, status: "draft" }, draft);
         }
-        const nextNodes = this.approveCurrentNode(approval.frozenNodes, approval.currentNodeIndex, approvedRoleKey);
-        const isFinalNode = approval.currentNodeIndex >= nextNodes.length - 1;
+        const nextNodes = this.approveCurrentNode(approval.frozenNodes, reviewNodeIndex, approvedRoleKey);
+        const remaining = activeApprovalNodeIndexes(nextNodes, approval.currentNodeIndex + 1);
+        const isFinalNode = parallel ? remaining.length === 0 : approval.currentNodeIndex >= nextNodes.length - 1;
         if (!isFinalNode) {
           await tx.approvalInstance.update({
             where: { id: approval.id },
             data: {
-              currentNodeIndex: approval.currentNodeIndex + 1,
+              currentNodeIndex: parallel ? remaining[0] : approval.currentNodeIndex + 1,
               frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
             }
           });
@@ -668,6 +705,11 @@ export class SpotProcurementApplicationService {
           where: { id: procurement.id },
           data: { status: "approved_in_progress", currentVersionId: version.id, approvedAmountCents: null }
         });
+        if (version.requestProtocolVersion === 2) {
+          await this.notifications?.queuePurchaseInTransaction(tx, { ...approval, status: "approved" } as never, procurement.projectId, procurement.code);
+          await this.recordReviewAudit(tx, actorUserId, version.id, procurement.id, input.decision, approvedRoleKey);
+          return this.applicationReadModel({ ...procurement, status: "approved_in_progress" }, { ...version, status: "approved" });
+        }
         const payment = await tx.spotProcurementPayment.create({
           data: {
             projectId: procurement.projectId,
@@ -753,6 +795,7 @@ export class SpotProcurementApplicationService {
           `approval.${input.decision}`
         );
       }
+      await this.notifications?.dispatchQueued().catch(() => undefined);
       return result;
     });
   }
@@ -774,6 +817,9 @@ export class SpotProcurementApplicationService {
           throw new ConflictException("当前采购版本未完成审批或驳回，不能创建新版本");
         }
         const actorRoles = await this.requireDraftOwnerRole(tx, procurement, actorUserId);
+        if (previous.requestProtocolVersion === 2 && previous.status === "approved") {
+          throw new ConflictException("申请已全部批准，请另建申请补充需求，不能修订撤回采购待办");
+        }
         const purchaser = await this.requireFrozenPurchaser(tx, previous, actorUserId, procurement.projectId, actorRoles);
         const changeReason = requiredText(input.changeReason, "请填写采购版本变更原因");
         const previousFacts =
@@ -805,6 +851,7 @@ export class SpotProcurementApplicationService {
         if (execution) {
           throw new ConflictException("采购已发生真实付款，不能通过普通版本变更覆盖既有事实");
         }
+        this.requirePreparedProtocol(previous, prepared);
         const now = new Date();
         const draftPayments = payments.filter((payment) => payment.status === "draft").map((payment) => payment.id);
         if (draftPayments.length) {
@@ -822,6 +869,7 @@ export class SpotProcurementApplicationService {
         const version = await tx.spotProcurementVersion.create({
           data: {
             ...this.versionCreateData(procurement.id, previous.versionNo + 1, "draft", prepared, actorUserId),
+            requestProtocolVersion: previous.requestProtocolVersion ?? 1,
             changeReason,
             changeSummary: { changes: ["采购申请材料范围或数量已变更，重新审批"] }
           }
@@ -1237,6 +1285,29 @@ export class SpotProcurementApplicationService {
     });
   }
 
+  private requireDraftRevision(version: Pick<VersionLockRow, "id" | "requestProtocolVersion" | "draftRevision">, input: {expectedDraftRevision?: number; expectedVersionId?: string}) {
+    if (version.requestProtocolVersion === 2 && (input.expectedVersionId !== version.id || !Number.isSafeInteger(input.expectedDraftRevision) || input.expectedDraftRevision !== version.draftRevision))
+      throw new ConflictException("采购草稿已更新或版本已变化，请保留当前填写并核对服务器最新内容后再保存或提交");
+  }
+
+  private requirePreparedProtocol(version: Pick<VersionLockRow, "requestProtocolVersion">, prepared: PreparedDraft) {
+    if (version.requestProtocolVersion !== 2 && (prepared.estimatedTotalAmount !== null || prepared.lines.some(line => line.estimatedUnitPrice !== null || line.estimatedAmount !== null)))
+      throw new BadRequestException("旧版申请不接受新预计金额字段，请保留原单资料");
+    if (version.requestProtocolVersion !== 2 && (prepared.requestedArrivalAt === null || prepared.lines.some(line => line.quantity === null || line.unit === null)))
+      throw new BadRequestException("旧版申请仍需完整日期、单位和数量，请保留原单资料");
+  }
+
+  private requestQuantity(value: string | null | undefined) {
+    try { const text = normalizeBusinessQuantity(value ?? null); if (text === null) return null;
+      const quantity = new Prisma.Decimal(text); if (!quantity.greaterThan(0)) throw new Error("数量已知时须大于0，未知请留空"); return quantity;
+    } catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "数量格式不正确"); }
+  }
+
+  private estimateDecimal(value: string | null | undefined) {
+    try { const amount = normalizeBusinessAmount(value ?? null); return amount === null ? null : new Prisma.Decimal(amount); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "预计金额格式不正确"); }
+  }
+
   private async prepareDraft(
     tx: Prisma.TransactionClient,
     input: SpotProcurementDraftDto,
@@ -1244,8 +1315,8 @@ export class SpotProcurementApplicationService {
     allowedAttachmentUploaderUserIds: ReadonlySet<string>,
     preauthorizedAttachmentFileIds: ReadonlySet<string>
   ): Promise<PreparedDraft> {
-    const requestedArrivalAt = new Date(input.requestedArrivalAt);
-    if (Number.isNaN(requestedArrivalAt.getTime())) {
+    const requestedArrivalAt = input.requestedArrivalAt ? new Date(input.requestedArrivalAt) : null;
+    if (requestedArrivalAt && Number.isNaN(requestedArrivalAt.getTime())) {
       throw new BadRequestException("要求采购到位日期格式不正确");
     }
     const attachments = input.attachments ?? [];
@@ -1256,18 +1327,21 @@ export class SpotProcurementApplicationService {
       preauthorizedAttachmentFileIds
     );
     return {
-      applicationDepartment: requiredText(input.applicationDepartment, "申请部门不能为空"),
-      applicationName: requiredText(input.applicationName, "申请人不能为空"),
+      applicationDepartment: optionalText(input.applicationDepartment) ?? purchaser.departmentName,
+      applicationName: optionalText(input.applicationName) ?? purchaser.name,
       requestedArrivalAt,
+      estimatedTotalAmount: this.estimateDecimal(input.estimatedTotalAmount),
       purchaser,
-      reason: requiredText(input.reason, "采购原因不能为空"),
+      reason: optionalText(input.reason) ?? "",
       note: optionalText(input.note),
       lines: input.lines.map((line, index) => ({
         sortOrder: index + 1,
         materialName: requiredText(line.materialName, "材料名称不能为空"),
         specification: optionalText(line.specification),
-        unit: requiredText(line.unit, "材料单位不能为空"),
-        quantity: new Prisma.Decimal(line.quantity),
+        unit: optionalText(line.unit),
+        quantity: this.requestQuantity(line.quantity),
+        estimatedUnitPrice: this.estimateDecimal(line.estimatedUnitPrice),
+        estimatedAmount: line.estimatedAmount != null ? this.estimateDecimal(line.estimatedAmount) : this.estimateDecimal(calculateBusinessLineAmount(line.quantity ?? null, line.estimatedUnitPrice ?? null)),
         note: optionalText(line.note)
       })),
       attachments: attachments.map((attachment) => ({
@@ -1287,6 +1361,8 @@ export class SpotProcurementApplicationService {
   ) {
     return {
       procurementId,
+      requestProtocolVersion: 2,
+      draftRevision: 1,
       versionNo,
       status,
       reason: prepared.reason,
@@ -1301,6 +1377,7 @@ export class SpotProcurementApplicationService {
       purchaserDepartmentId: prepared.purchaser.departmentId,
       purchaserDepartmentNameSnapshot: prepared.purchaser.departmentName,
       requestedArrivalAt: prepared.requestedArrivalAt,
+      estimatedTotalAmount: prepared.estimatedTotalAmount,
       totalAmountCents: null,
       createdByUserId
     };
@@ -1312,7 +1389,8 @@ export class SpotProcurementApplicationService {
       note: prepared.note,
       applicationDepartmentSnapshot: prepared.applicationDepartment,
       applicationNameSnapshot: prepared.applicationName,
-      requestedArrivalAt: prepared.requestedArrivalAt
+      requestedArrivalAt: prepared.requestedArrivalAt,
+      estimatedTotalAmount: prepared.estimatedTotalAmount
     };
   }
 
@@ -1326,14 +1404,17 @@ export class SpotProcurementApplicationService {
     return {
       applicationDepartment: version.applicationDepartmentSnapshot,
       applicationName: version.applicationNameSnapshot,
-      requestedArrivalAt: version.requestedArrivalAt.toISOString(),
+      requestedArrivalAt: version.requestedArrivalAt?.toISOString() ?? null,
+      estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null,
       reason: version.reason,
       note: version.note,
       lines: lines.map((line) => ({
         materialName: line.materialName,
         specification: line.specification ?? undefined,
         unit: line.unit,
-        quantity: line.quantity.toString(),
+        quantity: line.quantity?.toString() ?? null,
+        estimatedUnitPrice: line.estimatedUnitPrice?.toString() ?? null,
+        estimatedAmount: line.estimatedAmount?.toString() ?? null,
         note: line.note ?? undefined
       })),
       attachments: attachments.map((attachment) => ({
@@ -1358,6 +1439,7 @@ export class SpotProcurementApplicationService {
       data: {
         procurementId: procurement.id,
         versionNo: source.versionNo + 1,
+        requestProtocolVersion: source.requestProtocolVersion ?? 1,
         status: "draft",
         reason: source.reason,
         note: source.note,
@@ -1371,6 +1453,7 @@ export class SpotProcurementApplicationService {
         purchaserDepartmentId: source.purchaserDepartmentId,
         purchaserDepartmentNameSnapshot: source.purchaserDepartmentNameSnapshot,
         requestedArrivalAt: source.requestedArrivalAt,
+        estimatedTotalAmount: source.estimatedTotalAmount,
         totalAmountCents: null,
         changeReason,
         changeSummary: { changes: [] },
@@ -1386,6 +1469,8 @@ export class SpotProcurementApplicationService {
           specification: line.specification,
           unit: line.unit,
           quantity: line.quantity,
+          estimatedUnitPrice: line.estimatedUnitPrice,
+          estimatedAmount: line.estimatedAmount,
           invoiceMode: null,
           invoiceType: null,
           vatRateOptionId: null,
@@ -1466,7 +1551,7 @@ export class SpotProcurementApplicationService {
       tx,
       actorUserId,
       {
-        sceneKey: "spot_procurement.application",
+        sceneKey: version.requestProtocolVersion === 2 ? "spot_procurement.request_v2" : "spot_procurement.application",
         definitionVersion: 1,
         expectedRevision: 0,
         operation: "edit",
@@ -1474,9 +1559,10 @@ export class SpotProcurementApplicationService {
         values: {
           applicationDepartment: version.applicationDepartmentSnapshot,
           applicationName: version.applicationNameSnapshot,
-          requestedArrivalAt: version.requestedArrivalAt.toISOString().slice(0, 10),
+          requestedArrivalAt: version.requestedArrivalAt?.toISOString().slice(0, 10) ?? null,
           reason: version.reason,
-          note: version.note
+          note: version.note,
+          ...(version.requestProtocolVersion === 2 ? { estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null } : {})
         }
       }
     );
@@ -1485,7 +1571,7 @@ export class SpotProcurementApplicationService {
         tx,
         actorUserId,
         {
-          sceneKey: "spot_procurement.application_line",
+          sceneKey: version.requestProtocolVersion === 2 ? "spot_procurement.request_line_v2" : "spot_procurement.application_line",
           definitionVersion: 1,
           expectedRevision: 0,
           operation: "edit",
@@ -1494,7 +1580,8 @@ export class SpotProcurementApplicationService {
             materialName: line.materialName,
             specification: line.specification,
             unit: line.unit,
-            quantity: line.quantity.toString(),
+            quantity: line.quantity?.toString() ?? null,
+        ...(version.requestProtocolVersion === 2 ? { estimatedUnitPrice: line.estimatedUnitPrice?.toString() ?? null, estimatedAmount: line.estimatedAmount?.toString() ?? null } : {}),
             note: line.note
           }
         }
@@ -1514,10 +1601,10 @@ export class SpotProcurementApplicationService {
       throw new ConflictException("零采统一填写校验服务未启用");
     }
     const applicationDefinition = BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition(
-      "spot_procurement.application"
+      version.requestProtocolVersion === 2 ? "spot_procurement.request_v2" : "spot_procurement.application"
     );
     const lineDefinition = BUSINESS_ENTRY_DEFINITION_REGISTRY.getSceneDefinition(
-      "spot_procurement.application_line"
+      version.requestProtocolVersion === 2 ? "spot_procurement.request_line_v2" : "spot_procurement.application_line"
     );
     if (requestedVersions && (
       requestedVersions.application !== applicationDefinition.version ||
@@ -1526,7 +1613,7 @@ export class SpotProcurementApplicationService {
       throw new ConflictException("零采填写定义已更新，请刷新后重试");
     }
     const validate = async (
-      sceneKey: "spot_procurement.application" | "spot_procurement.application_line",
+      sceneKey: "spot_procurement.application" | "spot_procurement.application_line" | "spot_procurement.request_v2" | "spot_procurement.request_line_v2",
       definitionVersion: number,
       entityType: "spot_procurement_version" | "spot_procurement_line",
       entityId: string,
@@ -1552,21 +1639,22 @@ export class SpotProcurementApplicationService {
       }
     };
     await validate(
-      "spot_procurement.application",
+      version.requestProtocolVersion === 2 ? "spot_procurement.request_v2" : "spot_procurement.application",
       applicationDefinition.version,
       "spot_procurement_version",
       version.id,
       {
         applicationDepartment: version.applicationDepartmentSnapshot,
         applicationName: version.applicationNameSnapshot,
-        requestedArrivalAt: version.requestedArrivalAt.toISOString().slice(0, 10),
+        requestedArrivalAt: version.requestedArrivalAt?.toISOString().slice(0, 10) ?? null,
         reason: version.reason,
-        note: version.note
+        note: version.note,
+        ...(version.requestProtocolVersion === 2 ? { estimatedTotalAmount: version.estimatedTotalAmount?.toString() ?? null } : {})
       }
     );
     for (const line of facts.lines) {
       await validate(
-        "spot_procurement.application_line",
+        version.requestProtocolVersion === 2 ? "spot_procurement.request_line_v2" : "spot_procurement.application_line",
         lineDefinition.version,
         "spot_procurement_line",
         line.id,
@@ -1574,7 +1662,8 @@ export class SpotProcurementApplicationService {
           materialName: line.materialName,
           specification: line.specification,
           unit: line.unit,
-          quantity: line.quantity.toString(),
+          quantity: line.quantity?.toString() ?? null,
+        ...(version.requestProtocolVersion === 2 ? { estimatedUnitPrice: line.estimatedUnitPrice?.toString() ?? null, estimatedAmount: line.estimatedAmount?.toString() ?? null } : {}),
           note: line.note
         }
       );
@@ -1587,6 +1676,7 @@ export class SpotProcurementApplicationService {
     version: VersionLockRow,
     options: { requireNoDownstreamFacts?: boolean } = {}
   ): Promise<FrozenVersionFacts> {
+    if (version.requestProtocolVersion !== undefined && ![1, 2].includes(version.requestProtocolVersion)) throw new ConflictException("申请版本暂不支持，请联系管理员核对");
     const facts = await this.loadFrozenVersionFacts(tx, version.id);
     const hasLegacyRootFacts = [
       procurement.supplierPartyId,
@@ -1629,6 +1719,9 @@ export class SpotProcurementApplicationService {
       throw new ConflictException(
         "当前采购申请的新版表单事实不完整，暂不支持办理，请联系管理员处理"
       );
+    }
+    if (version.requestProtocolVersion !== 2 && (version.requestedArrivalAt === null || facts.lines.some(line => line.quantity === null || line.unit === null))) {
+      throw new ConflictException("旧版申请资料不完整，请保留原单并联系管理员核对");
     }
     if (options.requireNoDownstreamFacts) {
       const [payments, receipt] = await Promise.all([
@@ -1679,7 +1772,7 @@ export class SpotProcurementApplicationService {
     _projectId: string,
     actorRoles: RoleKey[]
   ): Promise<PurchaserSnapshot> {
-    this.requireAnyRole(actorRoles, CREATE_ROLES, "采购人必须是本项目物资员或物资主管");
+    this.requireAnyRole(await currentSpotMaterialRoleKeys(tx, actorUserId, actorRoles), CREATE_ROLES, "采购人必须是本项目物资员或当前公司物资主管");
     const user = await tx.user.findUnique({
       where: { id: actorUserId },
       select: { id: true, name: true, departmentId: true, isActive: true }
@@ -2008,7 +2101,7 @@ export class SpotProcurementApplicationService {
       throw new ForbiddenException("只有采购人可以修改并提交采购");
     }
     const roles = await this.loadActorRoleKeys(tx, actorUserId, procurement.projectId);
-    this.requireAnyRole(roles, CREATE_ROLES, "当前用户不再具备采购创建岗位");
+    this.requireAnyRole(await currentSpotMaterialRoleKeys(tx, actorUserId, roles), CREATE_ROLES, "当前用户不再具备采购创建岗位");
     return roles;
   }
 
@@ -2025,7 +2118,7 @@ export class SpotProcurementApplicationService {
       actorUserId,
       procurement.projectId
     );
-    this.requireAnyRole(roles, CREATE_ROLES, "当前经办人不再具备物资岗位");
+    this.requireAnyRole(await currentSpotMaterialRoleKeys(tx, actorUserId, roles), CREATE_ROLES, "当前经办人不再具备物资岗位");
   }
 
   private assertEditableDraft(procurement: ProcurementLockRow, version: VersionLockRow) {
@@ -2108,7 +2201,7 @@ export class SpotProcurementApplicationService {
         "supplierPartyId", "supplierKey", "supplierNameSnapshot", "handlerUserId",
         "applicationDepartmentSnapshot", "applicationNameSnapshot", "purchaserNameSnapshot",
         "purchaserDepartmentId", "purchaserDepartmentNameSnapshot", "requestedArrivalAt",
-        "totalAmountCents", "changeReason", "changeSummary", "submittedAt", "approvedAt", "createdByUserId"
+        "requestProtocolVersion", "draftRevision", "estimatedTotalAmount", "totalAmountCents", "changeReason", "changeSummary", "submittedAt", "approvedAt", "createdByUserId"
       FROM "SpotProcurementVersion"
       WHERE "id" = ${procurement.currentVersionId} AND "procurementId" = ${procurement.id}
       LIMIT 1 FOR UPDATE
@@ -2161,7 +2254,7 @@ export class SpotProcurementApplicationService {
     });
   }
 
-  private applicationReadModel(procurement: Pick<ProcurementLockRow, "id" | "projectId" | "code" | "status">, version: Pick<VersionLockRow, "id" | "versionNo" | "status">) {
+  private applicationReadModel(procurement: Pick<ProcurementLockRow, "id" | "projectId" | "code" | "status">, version: Pick<VersionLockRow, "id" | "versionNo" | "status" | "draftRevision" | "requestProtocolVersion">) {
     return {
       procurementId: procurement.id,
       projectId: procurement.projectId,
@@ -2171,6 +2264,7 @@ export class SpotProcurementApplicationService {
       versionId: version.id,
       versionNo: version.versionNo,
       versionStatus: version.status,
+      ...(version.requestProtocolVersion === 2 ? {draftRevision: version.draftRevision, requestProtocolVersion: 2} : {}),
       totalAmountCents: null,
       amountStatus: "pending_payment_application"
     };

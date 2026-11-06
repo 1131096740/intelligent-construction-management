@@ -1,3 +1,4 @@
+import { CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -11,7 +12,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
-import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
+import { contractCommercialEntryDefinition, CONTRACT_PARTY_ENTRY_DEFINITION, CONTRACT_PAYMENT_STAGE_ENTRY_DEFINITION, CONTRACT_PAYMENT_TERMS_ENTRY_DEFINITION, contractBasicEntryValues, contractCommercialEntryValues, contractPartyRoleName, resolveContractTemplateEntry, resolveContractBillEntries } from "../contract-workbench/contract-business-entry-definition";
 import {
   approvalElapsedHours,
   canRemindApproval,
@@ -23,6 +24,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
+import { resolveContractOriginators } from "./contract-originators";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import {
@@ -103,6 +105,7 @@ interface ContractApprovalAssignment {
 }
 
 interface ContractApprovalNode {
+  originatorUserIds?: string[];
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
@@ -242,6 +245,8 @@ export class ContractService {
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
+    if (input.numericProtocolVersion === 2) return this.createPreciseDraft(input, actorUserId);
+    if (!input.businessTemplateVersionId?.trim()) throw new BadRequestException("请选择已发布的合同模板");
     const normalizedPaymentStages = this.normalizePaymentStages(input.paymentStages);
     const signingSubjectType = normalizeContractSigningSubjectType(input.signingSubjectType);
     if (Boolean(input.businessScenarioId) !== Boolean(input.scenarioTemplateMappingId)) {
@@ -261,7 +266,7 @@ export class ContractService {
         : null;
       const lockedTemplate = await lockBusinessTemplateVersion(
         tx,
-        input.businessTemplateVersionId
+        input.businessTemplateVersionId!
       );
       const templateVersion = lockedTemplate?.version;
 
@@ -465,6 +470,44 @@ export class ContractService {
       });
 
       return { contract, version: { ...version, amountCents: String(version.amountCents ?? 0n) }, terms };
+    });
+  }
+
+  private async createPreciseDraft(input: CreateContractDraftDto, actorUserId: string) {
+    const businessTypes = ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract", "other"];
+    if (!businessTypes.includes(input.contractTypeKey)) throw new BadRequestException("请选择材料采购、机械租赁、劳务分包、专业分包或其他业务类型");
+    if (input.relationship !== undefined && !["inside", "outside", "upward"].includes(input.relationship)) throw new BadRequestException("合同关系不正确，请重新选择");
+    if (input.signingSubjectType !== undefined || input.businessTemplateVersionId !== undefined || input.businessScenarioId !== undefined || input.scenarioTemplateMappingId !== undefined || input.paymentStages !== undefined) {
+      throw new BadRequestException("新版合同请先保存基础草稿，再手动选择模板和填写实际约定");
+    }
+    return this.prisma.$transaction(async tx => {
+      const [project] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+        SELECT "id", "isActive" FROM "Project" WHERE "id" = ${input.projectId} FOR UPDATE
+      `);
+      if (!project?.isActive) throw new BadRequestException("项目不存在或已停用，不能新建合同草稿");
+      const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).replaceAll("-", "");
+      const temporaryCode = `草稿-${date}-${Math.floor(Math.random() * 100_000_000).toString().padStart(8, "0")}`;
+      const contract = await tx.contract.create({ data: { projectId: input.projectId, contractTypeKey: input.contractTypeKey,
+        ownerUserId: actorUserId, name: "", counterparty: "", code: null, temporaryCode } });
+      const billDefinition = { key: "main", name: "合同清单", amountRole: "included", pricingMode: "tax_inclusive", quantityScale: 4, unitPriceScale: 4, columns: [] };
+      const version = await tx.contractVersion.create({ data: {
+        contractId: contract.id, versionNo: 1, changeType: "original", status: "draft", numericProtocolVersion: 2,
+        signingSubjectType: "draft_unconfirmed", amountCents: 0n, amountYuan: null, amountLimitType: input.amountLimitType ?? "capped",
+        pricingNature: "unit_price", amountSource: "bill_sum", contractGovernanceVersion: 1,
+        taxFactStatus: "draft", invoiceType: null, defaultTaxRatePercent: null, taxMode: "single_rate", taxFactSource: "contract_document",
+        businessTemplateVersionId: null, layoutTemplateVersionId: null,
+        draftData: { contractName: "", fieldValues: {}, partyValues: {}, contractBasics: {
+          ...(input.relationship ? { relationship: input.relationship } : {}), businessType: input.contractTypeKey, amountBasis: "tax_inclusive", invoiceStatus: "pending", settlementText: ""
+        } },
+        templateSnapshot: { fieldSchema: [], billSchema: [billDefinition], clauseSchema: [], attachmentSchema: [], validationSchema: [] }, clauseSnapshot: []
+      } });
+      await tx.contractBill.createMany({ data: [{ contractVersionId: version.id, billKey: "main", name: billDefinition.name,
+        amountRole: "included", pricingMode: "tax_inclusive", numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4,
+        schemaSnapshot: billDefinition, taxInclusiveAmountYuan: null, taxExclusiveAmountYuan: null, taxAmountYuan: null }] });
+      const terms = await tx.paymentTermsVersion.create({ data: { contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "draft", originalText: input.paymentTermsOriginalText?.trim() ?? "" } });
+      await this.audit.record(tx, { actorUserId, action: "contract.draft.create", businessType: "contract", businessId: contract.id,
+        metadata: { projectId: input.projectId, numericProtocolVersion: 2, contractTypeKey: input.contractTypeKey, relationship: input.relationship ?? null, temporaryCode } });
+      return { contract, version: { ...version, amountCents: null, amountYuan: null }, terms };
     });
   }
 
@@ -1881,6 +1924,9 @@ export class ContractService {
         ) {
           throw new ForbiddenException("只有合同经办人可以提交该合同审批");
         }
+        if (version.numericProtocolVersion === 2) {
+          throw new ConflictException(CONTRACT_PRECISE_SUBMISSION_REASON);
+        }
         if (submissionRequest) {
           await tx.$queryRaw(Prisma.sql`
             SELECT "contractVersionId" FROM "ContractDraftEditLease"
@@ -2048,12 +2094,13 @@ export class ContractService {
           } as unknown as Prisma.JsonValue;
         }
 
-        const frozenNodes = await this.approvalNodesForSubmission(
+        const originatorUserIds = await resolveContractOriginators(tx, version.id);
+        const frozenNodes = (await this.approvalNodesForSubmission(
           tx,
           version,
           contract,
           actorUserId
-        );
+        )).map(node => ({ ...node, originatorUserIds }));
 
         if (!formalCode) {
           if (!this.businessNumbers) {
@@ -2138,7 +2185,7 @@ export class ContractService {
           }, submittedAt.toISOString());
         };
         const commercialEntrySnapshot = await freezeEntry(
-          CONTRACT_COMMERCIAL_ENTRY_DEFINITION.key, CONTRACT_COMMERCIAL_ENTRY_DEFINITION.version,
+          contractCommercialEntryDefinition(version).key, contractCommercialEntryDefinition(version).version,
           "contract_version", version.id, contractCommercialEntryValues(version)
         );
         const parties = await tx.contractPartySnapshot.findMany({
@@ -2784,23 +2831,7 @@ export class ContractService {
       }
       const approvedRoleKey = identity.approvedRoleKey;
 
-      const selfReview = await confirmApprovalSelfReview({
-        applicantUserId: expectedInstance.applicantUserId,
-        actorUserId,
-        actorRoleKeys: identity.representedUserId === actorUserId &&
-          !identity.viaAssignment
-          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
-          : actorRoleKeys,
-        approvedRoleKey,
-        representedUserId: identity.representedUserId,
-        viaAssignment: identity.viaAssignment,
-        allowContractDirectorSelfReview: true,
-        selfReviewReason: input.selfReviewReason,
-        confirmationPassword: input.confirmationPassword,
-        confirmPassword: this.auth
-          ? (password) => this.auth!.confirmPassword(actorUserId, password)
-          : undefined
-      });
+
 
       const activeInstance = activeInstances.length === 1
         ? activeInstances[0]
@@ -2819,6 +2850,25 @@ export class ContractService {
         throw contractApprovalReviewConflict();
       }
       const instance = expectedInstance;
+
+      const selfReview = await confirmApprovalSelfReview({
+        applicantUserId: expectedInstance.applicantUserId,
+        originatorUserIds: expectedInstance.applicantUserId === actorUserId ? [] : await resolveContractOriginators(tx, version.id, expectedInstance.frozenNodes),
+        actorUserId,
+        actorRoleKeys: identity.representedUserId === actorUserId &&
+          !identity.viaAssignment
+          ? Array.from(new Set([...actorRoleKeys, approvedRoleKey]))
+          : actorRoleKeys,
+        approvedRoleKey,
+        representedUserId: identity.representedUserId,
+        viaAssignment: identity.viaAssignment,
+        allowContractDirectorSelfReview: true,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
+      });
 
       const auditCoordinates = {
         expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),

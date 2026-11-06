@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import type { BusinessEntryDraftPayload, BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 import BusinessEntryForm from "../../../components/BusinessEntryForm.vue";
 import { fetchProjectCreateCapability, validateProjectCreation, type CreateProjectPayload } from "../../../api/core-flow-read.api";
@@ -10,6 +10,9 @@ const emit = defineEmits<{ save: [values: CreateProjectPayload] }>();
 const definition = shallowRef<BusinessEntrySceneDefinition | null>(null);
 const createActions = ref<string[]>([]);
 const draft = ref<BusinessEntryDraftPayload>({ sceneKey: "project_create", values: { code: "", name: "" } });
+const warnings = ref<string[]>([]);
+const pendingConfirmation = ref("");
+watch(() => draft.value.values, () => { warnings.value = []; pendingConfirmation.value = ""; }, { deep: true });
 const errors = ref<Array<{ fieldKey?: string; message: string }>>([]);
 const message = ref("");
 const busy = ref(false);
@@ -43,7 +46,16 @@ async function submit() {
     const result = await validateProjectCreationWithCapability(values);
     if (!active) return;
     errors.value = result.validation.errors;
-    if (result.validation.valid) emit("save", { ...values, definitionVersion: result.definitionVersion });
+    warnings.value = result.validation.warnings;
+    if (result.validation.valid) {
+      const signature = JSON.stringify(result.validation.values);
+      if (warnings.value.length && pendingConfirmation.value !== signature) {
+        pendingConfirmation.value = signature;
+        return;
+      }
+      pendingConfirmation.value = "";
+      emit("save", { ...values, definitionVersion: result.definitionVersion });
+    }
   } catch (error) { if (active) message.value = formatUnknownApiError(error, "项目预检失败，请稍后重试"); }
   finally { if (active) busy.value = false; }
 }
@@ -64,12 +76,19 @@ async function submit() {
     >
       {{ message }}
     </p>
+    <p
+      v-for="warning in warnings"
+      :key="warning"
+      role="status"
+    >
+      {{ warning }}
+    </p>
     <t-button
       v-if="createActions.includes('create_project')"
       :disabled="!definition || busy || saving"
       @click="submit"
     >
-      {{ busy || saving ? "新增中" : "新增项目" }}
+      {{ busy || saving ? "新增中" : pendingConfirmation ? "确认同名并新增" : "新增项目" }}
     </t-button>
   </div>
 </template>

@@ -148,6 +148,10 @@ export interface ContractTemplateSchema {
 // ---------------------------------------------------------------------------
 
 export interface ContractBillReadModel {
+  numericProtocolVersion?: number;
+  taxInclusiveAmountYuan?: string | null;
+  taxExclusiveAmountYuan?: string | null;
+  taxAmountYuan?: string | null;
   businessEntryDefinition?: import("./business-entry-definition").BusinessEntrySceneDefinition;
   id: string;
   billKey: string;
@@ -224,6 +228,7 @@ export function contractPricingPolicy(input: {
 }
 
 export interface ContractWorkbenchReadModel {
+  draftSubmissionUnavailableReason?: string;
   settlementModeEntry?: {
     definition: import("./business-entry-definition").BusinessEntrySceneDefinition;
     values: { settlementMode: ContractSettlementMode | null };
@@ -258,8 +263,13 @@ export interface ContractWorkbenchReadModel {
     draftRevision: number;
     documentContentRevision: number;
     documentContentFingerprint: string | null;
+    layoutTemplateVersionId?: string | null;
+    layoutTemplateSelection?: { id: string; name: string; versionNo: number; status: string } | null;
     contractGovernanceVersion?: number | null;
-    amountCents: MoneyCents;
+    signingSubjectType?: "our_company" | "affiliate" | "draft_unconfirmed";
+    numericProtocolVersion?: number;
+    amountYuan?: string | null;
+    amountCents: MoneyCents | null;
     estimatedAmountCents: MoneyCents | null;
     amountLimitType: "capped" | "unlimited";
     pricingNature: string;

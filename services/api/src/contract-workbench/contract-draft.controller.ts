@@ -7,12 +7,15 @@ import {
   Headers,
   Inject,
   Param,
+  ParseUUIDPipe,
   Post,
+  Req,
   Put,
   UploadedFile,
   UseInterceptors
 } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { createHash } from "node:crypto";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractService } from "../contract/contract.service";
@@ -46,13 +49,27 @@ export class ContractDraftController {
     private readonly documents: ContractDocumentService
   ) {}
 
+  @Get(":contractVersionId/save-requests/:idempotencyKey")
+  @RequireProjectRole("contract.create")
+  saveResult(
+    @Param("contractVersionId") contractVersionId: string,
+    @Param("idempotencyKey", new ParseUUIDPipe({ version: "4" })) idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
+  ) {
+    return this.aggregate.getSaveResult(contractVersionId, user.id, idempotencyKey, numericProtocol);
+  }
+
   @Get(":contractVersionId/workbench")
   @RequireProjectRole("contract.create")
   workbench(
     @Param("contractVersionId") contractVersionId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
   ) {
-    return this.aggregate.getWorkbench(contractVersionId, user.id);
+    return numericProtocol === undefined
+      ? this.aggregate.getWorkbench(contractVersionId, user.id)
+      : this.aggregate.getWorkbench(contractVersionId, user.id, numericProtocol);
   }
 
   @Put(":contractVersionId")
@@ -61,13 +78,16 @@ export class ContractDraftController {
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string,
     @Body() body: SaveContractDraftAggregateDto,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request?: { body: unknown }
   ) {
+    if (!request) return this.aggregate.saveAggregate(contractVersionId, user.id, leaseToken, body);
     return this.aggregate.saveAggregate(
       contractVersionId,
       user.id,
       leaseToken,
-      body
+      body,
+      createHash("sha256").update(JSON.stringify(request.body)).digest("hex")
     );
   }
 

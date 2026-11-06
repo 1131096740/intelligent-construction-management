@@ -82,7 +82,7 @@ export class PaymentController {
     if (view !== undefined || page !== undefined || pageSize !== undefined) {
       return this.paymentRead.listLedger({ view, page, pageSize }, visibleProjectIds, user.id);
     }
-    return this.paymentRead.listRecent(limit, visibleProjectIds);
+    return this.paymentRead.listRecent(limit, visibleProjectIds, {actorUserId: user.id});
   }
 
   @Post(":paymentId/approval")

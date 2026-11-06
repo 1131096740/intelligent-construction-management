@@ -1,3 +1,6 @@
+import { resolveContractDraftBusinessType } from "./contract-draft-basics";
+import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
+import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -5,12 +8,15 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ContractBillRow } from "@prisma/client";
+import { readDeletedDraftRow, deletedRowPublicOriginalValues } from "../contract-bill/contract-bill-row-undo";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, contractPricingPolicy, normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
+import { sumContractBillBusinessAmounts, compatibleBillCents } from "../contract-bill/contract-bill-totals";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
@@ -22,6 +28,13 @@ import type {
   SaveContractDraftAggregateDto,
   SaveContractDraftAttachmentDto
 } from "./dto/contract-workbench.dto";
+
+function publicSaveSnapshot(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const snapshot = { ...value as Record<string, unknown> };
+  delete snapshot["_rowUndo"];
+  return snapshot;
+}
 
 const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft"]);
 
@@ -44,19 +57,42 @@ export class ContractDraftAggregateService {
     private readonly audit: AuditService
   ) {}
 
-  async getWorkbench(contractVersionId: string, actorUserId: string) {
-    const { version, templateEntry, billEntries } = await this.prisma.$transaction(async (tx) => {
+  async getSaveResult(contractVersionId: string, actorUserId: string, idempotencyKey: string, numericProtocol?: string) {
+    return this.prisma.$transaction(async tx => {
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      if (!version) throw new NotFoundException("未找到合同草稿，不能核对保存结果");
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对该草稿的保存结果");
+      assertContractDraftNumericProtocol(version, numericProtocol);
+      const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey } });
+      if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId) {
+        // Absence cannot prove that a disconnected write is not still in flight.
+        return { status: "unknown" as const };
+      }
+      return { status: "saved" as const, result: publicSaveSnapshot(receipt.responseSnapshot), latestRevision: version.draftRevision };
+    });
+  }
+
+  async getWorkbench(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
+    const { version, templateEntry, billEntries, layoutTemplateSelection } = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
       if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
-      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version) };
+      const layout = version.layoutTemplateVersionId ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: version.layoutTemplateVersionId } }) : null;
+      const layoutTemplate = layout ? await tx.contractLayoutTemplate.findUnique({ where: { id: layout.layoutTemplateId } }) : null;
+      const layoutTemplateSelection = layout && layoutTemplate ? { id: layout.id, name: layoutTemplate.name, versionNo: layout.versionNo, status: layout.status } : null;
+      return { version, templateEntry: await resolveContractTemplateEntry(tx, version), billEntries: await resolveContractBillEntries(tx, version), layoutTemplateSelection };
     });
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
-    const legacyReadModel = await this.workbench.getDraftFromExactVersion(
-      version,
-      actorUserId
-    );
+    const legacyReadModel = await (numericProtocol === undefined ? this.workbench.getDraftFromExactVersion(version, actorUserId)
+      : this.workbench.getDraftFromExactVersion(version, actorUserId, numericProtocol));
+    if (numericProtocol !== undefined && numericProtocol !== "2") {
+      throw new BadRequestException("金额读取格式不受支持，请刷新页面后重试");
+    }
+    if (version.numericProtocolVersion === 2 && numericProtocol !== "2") {
+      throw new ConflictException("合同金额精度已升级，请刷新页面后重新读取");
+    }
     const settlementModeHistory = version.settlementModeConfirmedAt
       ? await this.prisma.businessEntrySubmissionSnapshot.findMany({
           where: { projectId: legacyReadModel.contract.projectId, sceneKey: "contract_settlement_mode", entityType: "contract_version", entityId: version.id },
@@ -102,6 +138,8 @@ export class ContractDraftAggregateService {
       ...legacyWithoutCheckpoints,
       version: {
         ...legacyReadModel.version,
+        layoutTemplateSelection,
+        ...(version.numericProtocolVersion === 2 && legacyReadModel.version.amountYuan == null ? { amountCents: null } : {}),
         draftLifecycleKind: legacyReadModel.lifecycleKind
       },
       draft: version.draftData,
@@ -122,6 +160,16 @@ export class ContractDraftAggregateService {
       },
       bills: legacyReadModel.bills.map((bill) => ({
         ...bill,
+        ...(bill.numericProtocolVersion === 2 ? {
+          taxInclusiveAmountCents: bill.taxInclusiveAmountYuan == null ? null : bill.taxInclusiveAmountCents,
+          taxExclusiveAmountCents: bill.taxExclusiveAmountYuan == null ? null : bill.taxExclusiveAmountCents,
+          taxAmountCents: bill.taxAmountYuan == null ? null : bill.taxAmountCents,
+          rows: bill.rows.map(row => ({ ...row, ...(row.numericProtocolVersion === 2 ? {
+            taxInclusiveAmountCents: row.taxInclusiveAmountYuan == null ? null : row.taxInclusiveAmountCents,
+            taxExclusiveAmountCents: row.taxExclusiveAmountYuan == null ? null : row.taxExclusiveAmountCents,
+            taxAmountCents: row.taxAmountYuan == null ? null : row.taxAmountCents
+          } : {}) }))
+        } : {}),
         businessEntryDefinition: billEntries.find((entry) => entry.billId === bill.id)?.definition
       })),
       businessEntry: {
@@ -130,6 +178,7 @@ export class ContractDraftAggregateService {
       },
       attachments,
       draftOperationAvailableActions,
+      ...(version.numericProtocolVersion === 2 ? { draftSubmissionUnavailableReason: CONTRACT_PRECISE_SUBMISSION_REASON } : {}),
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,
@@ -198,7 +247,8 @@ export class ContractDraftAggregateService {
     contractVersionId: string,
     actorUserId: string,
     rawLeaseToken: string,
-    input: SaveContractDraftAggregateDto
+    input: SaveContractDraftAggregateDto,
+    transportFingerprint?: string
   ) {
     const requestSha256 = this.sha256(this.stableJson(input));
     try {
@@ -239,6 +289,9 @@ export class ContractDraftAggregateService {
             contract.ownerUserId === actorUserId,
             await this.isContractDirector(actorUserId)
           );
+        }
+        if (version.numericProtocolVersion === 2 && input.draft.amountSource === "manual" && input.draft.numericProtocolVersion !== 2) {
+          throw new ConflictException("合同金额精度已升级，请刷新页面并保留四位合同金额后重试");
         }
         await tx.$queryRaw(Prisma.sql`
           SELECT "contractVersionId" FROM "ContractDraftEditLease"
@@ -303,6 +356,15 @@ export class ContractDraftAggregateService {
           });
         }
 
+        const currentDraftBusinessType = version.status === "draft"
+          ? resolveContractDraftBusinessType(input.draft.draftData, contract.contractTypeKey, version.signingSubjectType)
+          : contract.contractTypeKey;
+        const effectiveLayoutTemplateVersionId = input.draft.layoutTemplateVersionId === undefined
+          ? version.layoutTemplateVersionId : input.draft.layoutTemplateVersionId;
+        if (effectiveLayoutTemplateVersionId && effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId) {
+          await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, currentDraftBusinessType);
+        }
+
         await tx.$queryRaw(Prisma.sql`
           SELECT "id" FROM "ContractBill"
           WHERE "contractVersionId" = ${contractVersionId}
@@ -348,6 +410,24 @@ export class ContractDraftAggregateService {
         ) {
           throw new BadRequestException("合同清单集合已变化，请刷新后重试");
         }
+        // Validate the version-level default even when an empty bill has no rows
+        // through which the four-place line calculator could validate it.
+        if (input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 ||
+          currentBills.some((bill) => bill.numericProtocolVersion === 2) ||
+          input.bills.some((bill) => bill.numericProtocolVersion === 2)) {
+          const rate = input.draft.taxFacts.defaultTaxRatePercent;
+          const storedRate = version.defaultTaxRatePercent?.toString();
+          const unchangedStoredRate = storedRate !== undefined &&
+            (storedRate.split(".")[1]?.length ?? 0) > 4 &&
+            rate === storedRate;
+          if (!unchangedStoredRate && rate !== null) {
+            try {
+              if (normalizeBusinessAmount(rate) === null) throw new Error("empty tax rate transport");
+            } catch {
+              throw new BadRequestException("默认税率须填写规范数字，最多保留4位小数；请保留原输入后修改");
+            }
+          }
+        }
         await this.assertNegotiationReferences(tx, contractVersionId, input);
         await this.files.assertCanBindContractDraftAttachments(
           tx,
@@ -358,6 +438,9 @@ export class ContractDraftAggregateService {
 
         const effectiveChangedSections = new Set<string>();
         const billRevisions: Record<string, number> = {};
+        const billRowKeys: Record<string, Array<{ clientRowKey: string; rowKey: string }>> = {};
+        const deletedRows: Record<string, Prisma.InputJsonObject[]> = {};
+        const restoreSources = new Map<string, { snapshot: Record<string, unknown>; undo: { version: number; deletedRows: Record<string, unknown[]>; restoredKeys: string[]; pricingModes: Record<string, string> } }>();
         const billVersionContext = {
           ...version,
           pricingNature: input.draft.pricingNature,
@@ -371,14 +454,62 @@ export class ContractDraftAggregateService {
           taxMode: input.draft.taxFacts.taxMode
         };
         for (const bill of currentBills) {
+          const billInput = inputBillsByKey.get(bill.billKey)!;
+          const trustedRestores = new Map<string, ContractBillRow>();
+          for (const row of billInput.rows) {
+            const ref = row.restoreRef;
+            if (!ref) continue;
+            if (billInput.numericProtocolVersion !== 2 || row.rowKey !== undefined || typeof ref !== "object" || Array.isArray(ref) || Object.keys(ref).length !== 2 ||
+              typeof ref.saveIntentKey !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(ref.saveIntentKey) ||
+              typeof ref.oldRowKey !== "string" || !ref.oldRowKey || ref.oldRowKey.length > 128) throw new BadRequestException("撤销来源格式不正确，请保留输入并核对原保存结果");
+            let source = restoreSources.get(ref.saveIntentKey);
+            if (!source) {
+              const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey: ref.saveIntentKey } });
+              if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId || receipt.expiresAt <= now || !receipt.responseSnapshot || typeof receipt.responseSnapshot !== "object" || Array.isArray(receipt.responseSnapshot)) throw new BadRequestException("原删除记录不属于当前经办人的合同草稿或已过期");
+              const snapshot = receipt.responseSnapshot as Record<string, unknown>;
+              const undo = snapshot["_rowUndo"] as { version?: unknown; deletedRows?: unknown; restoredKeys?: unknown; pricingModes?: unknown } | undefined;
+              if (!undo || undo.version !== 1 || !undo.deletedRows || typeof undo.deletedRows !== "object" || Array.isArray(undo.deletedRows) || !Array.isArray(undo.restoredKeys) || undo.restoredKeys.some(key => typeof key !== "string")) throw new BadRequestException("原保存记录没有可核对的删除事实，不能恢复该行");
+              if (!undo.pricingModes || typeof undo.pricingModes !== "object" || Array.isArray(undo.pricingModes)) {
+                throw new BadRequestException("原删除记录的金额口径缺少可核对依据，请保留草稿并联系合同部核对后恢复");
+              }
+              source = { snapshot, undo: { version: 1, deletedRows: undo.deletedRows as Record<string, unknown[]>, restoredKeys: [...undo.restoredKeys], pricingModes: undo.pricingModes as Record<string, string> } };
+              restoreSources.set(ref.saveIntentKey, source);
+            }
+            const requestedBasics = input.draft.draftData.contractBasics;
+            const targetPricingMode = requestedBasics && typeof requestedBasics === "object" && !Array.isArray(requestedBasics)
+              ? (requestedBasics as Record<string, unknown>).amountBasis ?? bill.pricingMode : bill.pricingMode;
+            if (source.undo.pricingModes[bill.billKey] !== bill.pricingMode || source.undo.pricingModes[bill.billKey] !== targetPricingMode) {
+              throw new BadRequestException("原删除记录的金额口径与当前草稿不一致，请保留草稿并先核对口径，不能直接恢复原行");
+            }
+            const consumedKey = JSON.stringify([bill.billKey, ref.oldRowKey]);
+            if (source.undo.restoredKeys.includes(consumedKey)) throw new BadRequestException("该删除记录已经恢复，不能重复恢复");
+            const candidates = source.undo.deletedRows[bill.billKey];
+            if (!Array.isArray(candidates)) throw new BadRequestException("原删除记录不属于当前清单");
+            const matches = candidates.filter(fact => fact && typeof fact === "object" && !Array.isArray(fact) && (fact as Record<string, unknown>)["rowKey"] === ref.oldRowKey);
+            if (matches.length !== 1) throw new BadRequestException("原删除记录不包含该行，不能恢复");
+            trustedRestores.set(row.clientRowKey, readDeletedDraftRow(matches[0], bill.id));
+            source.undo.restoredKeys.push(consumedKey);
+          }
           const result = await this.bills.replaceRowsInTransaction(
             tx,
             actorUserId,
             billVersionContext,
             bill,
-            inputBillsByKey.get(bill.billKey)!
+            { ...billInput, ...(
+              input.draft.draftData.contractBasics && typeof input.draft.draftData.contractBasics === "object" &&
+              ["tax_inclusive", "tax_exclusive"].includes((input.draft.draftData.contractBasics as Record<string, unknown>).amountBasis as string)
+                ? { pricingMode: (input.draft.draftData.contractBasics as { amountBasis: "tax_inclusive" | "tax_exclusive" }).amountBasis } : {}) },
+            trustedRestores
           );
           billRevisions[bill.billKey] = result.revision;
+          billRowKeys[bill.billKey] = result.rowKeys ?? [];
+          deletedRows[bill.billKey] = result.deletedRows ?? [];
+          for (const row of billInput.rows) if (row.restoreRef) {
+            const restored = result.rowKeys?.find(binding => binding.clientRowKey === row.clientRowKey);
+            if (!restored) throw new BadRequestException("恢复行回执不完整，请核对保存结果");
+            await this.audit.record(tx, { actorUserId, action: "contract.draft.row.restore", businessType: "contract_version", businessId: contractVersionId,
+              metadata: { billKey: bill.billKey, originalSaveIntentKey: row.restoreRef.saveIntentKey, oldRowKey: row.restoreRef.oldRowKey, newRowKey: restored.rowKey, restoreSaveIntentKey: input.idempotencyKey } });
+          }
           if (result.changed) effectiveChangedSections.add("bills");
         }
         const partyResult = await this.parties.replaceContractPartiesInTransaction(
@@ -405,11 +536,14 @@ export class ContractDraftAggregateService {
         if (attachmentResult.changed) {
           effectiveChangedSections.add("attachments");
         }
+        const fieldInput = input.draft.layoutTemplateVersionId === undefined
+          ? { ...input, draft: { ...input.draft, layoutTemplateVersionId: version.layoutTemplateVersionId ?? undefined } }
+          : input;
         const fieldResult =
           await this.workbench.prepareAggregateDraftFieldsInTransaction(
             tx,
             version,
-            input
+            fieldInput
           );
         if (fieldResult.changed) effectiveChangedSections.add("draft");
         if (fieldResult.workbenchReferencesChanged) {
@@ -456,6 +590,16 @@ export class ContractDraftAggregateService {
             : Promise.resolve([])
         ]);
 
+        const numericProtocolVersion = input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2 || documentBills.some(bill => bill.numericProtocolVersion === 2) ? 2 : 1;
+        const pricingPolicy = contractPricingPolicy({ pricingNature: input.draft.pricingNature, amountLimitType: version.amountLimitType, hasPricedRows: documentBillRows.length > 0 });
+        const frameworkAmountUnknown = pricingPolicy.kind === "unlimited_framework" || (input.draft.pricingNature === "framework" && documentBills.length === 0);
+        const amountYuan = numericProtocolVersion === 2
+          ? frameworkAmountUnknown ? null : input.draft.amountSource === "bill_sum" ? sumContractBillBusinessAmounts(documentBills)
+            : input.draft.numericProtocolVersion === 2 ? normalizeBusinessAmount(input.draft.manualAmountYuan ?? null)
+              : businessAmountFromLegacyCents(fieldResult.amountCents)
+          : null;
+        if (numericProtocolVersion === 2) Object.assign(fieldResult.data, { numericProtocolVersion, amountYuan, amountCents: compatibleBillCents(amountYuan) ?? 0n });
+
         const changed = effectiveChangedSections.size > 0;
         const documentContentChangedSections = [...effectiveChangedSections]
           .filter((section) => section !== "negotiation_documents")
@@ -469,7 +613,7 @@ export class ContractDraftAggregateService {
         const calculatedDocumentContentFingerprint =
           calculateContractDocumentContentFingerprint({
             templateSnapshot: version.templateSnapshot,
-            layoutTemplateVersionId: input.draft.layoutTemplateVersionId ?? null,
+            layoutTemplateVersionId: effectiveLayoutTemplateVersionId ?? null,
             parties: documentParties.map((party) => ({
               roleKey: party.roleKey,
               displayOrder: party.displayOrder,
@@ -481,6 +625,7 @@ export class ContractDraftAggregateService {
               pricingNature: input.draft.pricingNature,
               amountSource: input.draft.amountSource,
               amountCents: fieldResult.amountCents.toString(),
+              ...(numericProtocolVersion === 2 ? { numericProtocolVersion, amountYuan } : {}),
               estimatedAmountCents:
                 fieldResult.estimatedAmountCents?.toString() ?? null,
               amountAdjustmentReason: input.draft.amountAdjustmentReason ?? null,
@@ -495,6 +640,9 @@ export class ContractDraftAggregateService {
                 schemaSnapshot: bill.schemaSnapshot,
                 sourceExcelFileId: bill.sourceExcelFileId,
                 taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+                ...(bill.numericProtocolVersion === 2 ? { numericProtocolVersion: 2,
+                  taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                  taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null } : {}),
                 taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
                 taxAmountCents: bill.taxAmountCents.toString(),
                 rows: documentBillRows
@@ -512,6 +660,9 @@ export class ContractDraftAggregateService {
                     taxRateSource: row.taxRateSource,
                     pricingFactStatus: row.pricingFactStatus,
                     precisionPolicy: row.precisionPolicy,
+                    ...(row.numericProtocolVersion === 2 ? { numericProtocolVersion: 2, numericSource: row.numericSource, numericReviewStatus: row.numericReviewStatus,
+                      taxInclusiveAmountYuan: row.taxInclusiveAmountYuan?.toFixed(4) ?? null,
+                      taxExclusiveAmountYuan: row.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: row.taxAmountYuan?.toFixed(4) ?? null } : {}),
                     taxInclusiveAmountCents:
                       row.taxInclusiveAmountCents?.toString() ?? null,
                     taxExclusiveAmountCents:
@@ -661,6 +812,12 @@ export class ContractDraftAggregateService {
         for (const bill of refreshedBills) {
           billRevisions[bill.billKey] = bill.revision;
         }
+        const decimalAmounts = numericProtocolVersion === 2 ? Object.fromEntries(
+          (["taxInclusiveAmount", "taxExclusiveAmount", "taxAmount"] as const).flatMap(kind => {
+            const amount = sumBusinessAmounts(refreshedBills.filter(bill => bill.amountRole === "included" || bill.amountRole === "provisional")
+              .map(bill => bill.numericProtocolVersion === 2 ? bill[`${kind}Yuan`]?.toFixed(4) ?? null : businessAmountFromLegacyCents(bill[`${kind}Cents`])));
+            return [[`${kind}Yuan`, amount], [`${kind}Cents`, compatibleBillCents(amount)?.toString() ?? null]];
+          })) : {};
         const isDirector = await this.isContractDirector(actorUserId);
         const response = {
           contractVersionId,
@@ -670,6 +827,17 @@ export class ContractDraftAggregateService {
           documentContentFingerprint,
           documentContentChangedSections,
           savedAt: now.toISOString(),
+          ...(numericProtocolVersion === 2 ? {
+            ...(transportFingerprint ? { requestFingerprint: transportFingerprint } : {}),
+            billRowKeys,
+            deletedRowRestoreRefs: Object.fromEntries(Object.entries(deletedRows).map(([billKey, rows]) => [billKey, rows.map(row => ({ saveIntentKey: input.idempotencyKey, oldRowKey: row["rowKey"], originalValues: deletedRowPublicOriginalValues(row) }))])),
+            versionAmount: { numericProtocolVersion: 2, amountYuan, amountCents: compatibleBillCents(amountYuan)?.toString() ?? null },
+            billAmounts: refreshedBills.filter(bill => bill.numericProtocolVersion === 2).map(bill => ({ billKey: bill.billKey, numericProtocolVersion: 2,
+              taxInclusiveAmountYuan: bill.taxInclusiveAmountYuan?.toFixed(4) ?? null, taxExclusiveAmountYuan: bill.taxExclusiveAmountYuan?.toFixed(4) ?? null, taxAmountYuan: bill.taxAmountYuan?.toFixed(4) ?? null,
+              taxInclusiveAmountCents: bill.taxInclusiveAmountYuan == null ? null : bill.taxInclusiveAmountCents.toString(),
+              taxExclusiveAmountCents: bill.taxExclusiveAmountYuan == null ? null : bill.taxExclusiveAmountCents.toString(),
+              taxAmountCents: bill.taxAmountYuan == null ? null : bill.taxAmountCents.toString() }))
+          } : {}),
           effectiveChangedSections: [...effectiveChangedSections].sort(),
           amounts: {
             taxInclusiveAmountCents: refreshedBills
@@ -692,7 +860,8 @@ export class ContractDraftAggregateService {
                 bill.amountRole === "provisional"
               )
               .reduce((sum, bill) => sum + bill.taxAmountCents, 0n)
-              .toString()
+              .toString(),
+            ...(numericProtocolVersion === 2 ? { numericProtocolVersion: 2, ...decimalAmounts } : {})
           },
           billRevisions,
           issueCounts: {},
@@ -702,7 +871,7 @@ export class ContractDraftAggregateService {
           capability: {
             refreshRequired: false,
             draftOperationAvailableActions: this.projectDraftOperationCapabilities(
-              version,
+              { ...version, numericProtocolVersion },
               true,
               isDirector,
               false
@@ -712,6 +881,9 @@ export class ContractDraftAggregateService {
             status: documentContentChanged ? "document_invalidated" : "unchanged"
           }
         };
+        for (const [idempotencyKey, source] of restoreSources) await tx.contractDraftSaveRequest.update({
+          where: { idempotencyKey }, data: { responseSnapshot: { ...source.snapshot, _rowUndo: source.undo } as Prisma.InputJsonObject }
+        });
         await tx.contractDraftSaveRequest.create({
           data: {
             idempotencyKey: input.idempotencyKey,
@@ -720,7 +892,7 @@ export class ContractDraftAggregateService {
             resultRevision,
             saveKind: input.saveKind,
             requestSha256,
-            responseSnapshot: response,
+            responseSnapshot: numericProtocolVersion === 2 ? { ...response, _rowUndo: { version: 1, deletedRows, restoredKeys: [], pricingModes: Object.fromEntries(currentBills.map(bill => [bill.billKey, bill.pricingMode])) } } : response,
             createdByUserId: actorUserId,
             expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
           }
@@ -823,10 +995,12 @@ export class ContractDraftAggregateService {
       changeType: string;
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
+      numericProtocolVersion?: number;
     },
     isOwner: boolean,
     isDirector: boolean
   ) {
+    responseSnapshot = publicSaveSnapshot(responseSnapshot);
     if (this.hasCompleteSaveReceipt(responseSnapshot, resultRevision)) {
       return responseSnapshot;
     }
@@ -896,6 +1070,7 @@ export class ContractDraftAggregateService {
       changeType: string;
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
+      numericProtocolVersion?: number;
     },
     isOwner: boolean,
     isDirector: boolean,
@@ -929,7 +1104,7 @@ export class ContractDraftAggregateService {
         ...(version.contractGovernanceVersion === 1 ? [
           "set_contract_authorization"
         ] : []),
-        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
+        ...(version.status === "draft" && version.numericProtocolVersion !== 2 ? ["submit_contract_draft"] : []),
         ...(version.contractGovernanceVersion === 1 ? [
           "upload_contract_formal_approval_file",
           "upload_contract_counterparty_signed_files",

@@ -1,3 +1,15 @@
+import { Reflector } from "@nestjs/core";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { PermissionGuard } from "../auth/guards/permission.guard";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
+import { JwtTokenService } from "../auth/jwt-token.service";
+import { hash } from "bcryptjs";
+import { AuthService } from "../auth/auth.service";
+import { Test } from "@nestjs/testing";
+import { SpotProcurementController } from "./spot-procurement.controller";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
+import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { mockConfiguredApprovalAssignments } from "../../prisma/fixtures/project-approval-configuration";
 import "reflect-metadata";
 import { ConflictException } from "@nestjs/common";
@@ -197,7 +209,9 @@ function context(roleKey = "material_staff") {
       undefined,
       balances as never,
       entryTransactions as never,
-      entryDefinitions as never
+      entryDefinitions as never,
+      undefined,
+      new AuthService(prisma as never, {} as never)
     )
   };
 }
@@ -299,6 +313,105 @@ function mockAbandonmentLocks(
   tx.$queryRaw.mockResolvedValueOnce(options.archiveRecords ?? []);
 }
 
+describe("PUR-01 production material request", () => {
+  it("allows the company material director to create through JWT and every production write guard", async () => {
+    const { service, tx } = context();
+    tx.userPosition.findMany.mockImplementation(({ where }: { where: { projectId: string | null } }) => Promise.resolve(where.projectId === null ? [{ positionId: "director-position" }] : []));
+    tx.position.findMany.mockResolvedValue([{ id: "director-position", key: "material_director" }] as never);
+    tx.projectMember.findMany.mockResolvedValue([]);
+    tx.$queryRaw.mockResolvedValue([]);
+    const module = await Test.createTestingModule({ controllers: [SpotProcurementController], providers: [
+      { provide: SpotProcurementApplicationService, useValue: service },
+      { provide: SpotProcurementReadService, useValue: {} },
+      { provide: SpotProcurementSettlementService, useValue: {} },
+      { provide: SpotProcurementPaymentService, useValue: {} }
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    const tokens = new JwtTokenService();
+    app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, tx as never), new PermissionGuard(new Reflector(), tx as never), new RetiredWriteEntryGuard());
+    app.useGlobalPipes(createApiValidationPipe());
+    await app.listen(0, "127.0.0.1");
+    try {
+      const response = await fetch(`${await app.getUrl()}/spot-procurements`, { method: "POST", headers: {
+        "content-type": "application/json", authorization: `Bearer ${tokens.signAccessToken({ id: "material-1", name: "物资主管", phone: "13800000001" })}`
+      }, body: JSON.stringify({ projectId: "project-1", lines: [{ materialName: "铲子" }] }) });
+      expect({ status: response.status, body: await response.json() }).toEqual(expect.objectContaining({ status: 201 }));
+      const count = tx.spotProcurement.create.mock.calls.length;
+      const downgrade = await fetch(`${await app.getUrl()}/spot-procurements`, {method:"POST", headers:{"content-type":"application/json",authorization:`Bearer ${tokens.signAccessToken({id:"material-1",name:"物资主管",phone:null})}`},body:JSON.stringify({projectId:"project-1",requestProtocolVersion:1,lines:[{materialName:"客户端不得降级"}]})});
+      expect(downgrade.status).toBe(400);
+      tx.userPosition.findMany.mockResolvedValue([]);
+      tx.projectMember.findMany.mockResolvedValue([{positionKey: "material_director"}]);
+      const invalidScope = await fetch(`${await app.getUrl()}/spot-procurements`, {method: "POST", headers: {"content-type":"application/json", authorization: `Bearer ${tokens.signAccessToken({id:"material-1",name:"旧主管",phone:null})}`}, body: JSON.stringify({projectId:"project-1",lines:[{materialName:"没有公司岗位的申请"}]})});
+      expect(invalidScope.status).toBe(403);
+      tx.projectMember.findMany.mockImplementation(({where}: {where: {projectId: string}}) => Promise.resolve(where.projectId === "project-1" ? [{positionKey: "material_staff"}] : []));
+      const second = await fetch(`${await app.getUrl()}/spot-procurements`, {method: "POST", headers: {"content-type":"application/json", authorization: `Bearer ${tokens.signAccessToken({id:"material-1",name:"物资员",phone:null})}`}, body: JSON.stringify({projectId:"project-2",lines:[{materialName:"跨项目材料"}]})});
+      expect(second.status).toBe(403);
+      const invalid = await fetch(`${await app.getUrl()}/spot-procurements`, {method: "POST", headers: {"content-type":"application/json", authorization: `Bearer ${tokens.signAccessToken({id:"material-1",name:"物资员",phone:null})}`}, body: JSON.stringify({projectId:"project-1",lines:[{materialName:"扎丝",quantity:"1.23456"}]})});
+      expect(invalid.status).toBe(400);
+      tx.user.findUnique.mockResolvedValue({id:"material-1",name:"已停用人员",departmentId:null,isActive:false} as never);
+      const disabled = await fetch(`${await app.getUrl()}/spot-procurements`, {method: "POST", headers: {"content-type":"application/json", authorization: `Bearer ${tokens.signAccessToken({id:"material-1",name:"物资员",phone:null})}`}, body: JSON.stringify({projectId:"project-1",lines:[{materialName:"扎丝"}]})});
+      expect(disabled.status).toBe(401);
+      expect(tx.spotProcurement.create).toHaveBeenCalledTimes(count);
+
+    } finally { await app.close(); }
+  });
+
+  it("retains known four-decimal estimates and never substitutes unknown quantity with zero", async () => {
+    const { service, tx } = context();
+    await service.createDraft("material-1", { ...realFormDraft, estimatedTotalAmount: "1200.1234", lines: [
+      { materialName: "扎丝", quantity: "1.2345", estimatedUnitPrice: "1.2345" },
+      { materialName: "帆布", estimatedUnitPrice: "20.0000" }
+    ] } as never);
+    expect(tx.spotProcurementVersion.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ estimatedTotalAmount: expect.objectContaining({}) }) }));
+    const saved = tx.spotProcurementLine.createMany.mock.calls[0][0].data;
+    expect(saved[0].estimatedAmount.toString()).toBe("1.524");
+    expect(saved[0].quantity.toString()).toBe("1.2345");
+    expect(saved[1].estimatedAmount).toBeNull();
+    expect(saved[1].quantity).toBeNull();
+    expect(saved[1].estimatedUnitPrice.toString()).toBe("20");
+  });
+
+  it.each(["save", "submit"])("rejects stale v2 %s before changing a line, snapshot, approval or audit", async action => {
+    const {service, tx, audit, entryTransactions} = context();
+    tx.$queryRaw.mockResolvedValueOnce([procurement()]).mockResolvedValueOnce([{...version(), requestProtocolVersion: 2, draftRevision: 4}]);
+    const call = action === "save" ? service.updateDraft("procurement-1", "material-1", {...realFormDraft, expectedDraftRevision: 3, expectedVersionId: "version-1"} as never)
+      : Reflect.apply(service.submit, service, ["procurement-1", "material-1", {expectedDraftRevision: 3, expectedVersionId: "version-1"}]);
+    await expect(call).rejects.toMatchObject({status: 409});
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(entryTransactions.freezeSubmissionSnapshotInTransaction).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each(["save", "submit"])("rejects a late old-version %s after return even when both revisions are one", async action => {
+    const {service, tx, audit} = context();
+    tx.$queryRaw.mockResolvedValueOnce([procurement()]).mockResolvedValueOnce([{...version(), id: "version-2", requestProtocolVersion: 2, draftRevision: 1}]);
+    const input = {expectedVersionId: "version-1", expectedDraftRevision: 1};
+    await expect(action === "save" ? service.updateDraft("procurement-1", "material-1", {...realFormDraft, ...input}) : service.submit("procurement-1", "material-1", input)).rejects.toMatchObject({status: 409});
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled(); expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled(); expect(tx.approvalInstance.create).not.toHaveBeenCalled(); expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("saves a director request for another project without inventing an arrival date, quantity or unit", async () => {
+    const { service, tx } = context("material_director");
+    tx.userPosition.findMany.mockImplementation(({where}: {where: {projectId: string | null}}) => Promise.resolve(where.projectId === null ? [{positionId: "director-position"}] : []));
+    tx.position.findMany.mockResolvedValue([{id:"director-position",key:"material_director"}] as never);
+    tx.$queryRaw.mockResolvedValue([]);
+    const result = await service.createDraft("material-1", {
+      ...realFormDraft,
+      requestedArrivalAt: undefined,
+      lines: [{ materialName: "铲子" }]
+    } as never);
+    expect(result.status).toBe("draft");
+    expect(tx.spotProcurementVersion.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ requestedArrivalAt: null })
+    }));
+    expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.arrayContaining([expect.objectContaining({ materialName: "铲子", quantity: null, unit: null })])
+    }));
+  });
+});
+
 describe("SpotProcurementApplicationService real-form application", () => {
   it("requires an explicit confirmation before the finance director can terminate a paid procurement", async () => {
     const pipe = createApiValidationPipe();
@@ -393,11 +506,11 @@ describe("SpotProcurementApplicationService real-form application", () => {
     });
 
     expect(entryDefinitions.validateDraftInTransaction.mock.calls).toEqual([
-      [tx, "spot_procurement.application", "project-1", "material-1", expect.objectContaining({
+      [tx, "spot_procurement.request_v2", "project-1", "material-1", expect.objectContaining({
         definitionVersion: 1,
         target: { entityType: "spot_procurement_version", entityId: "version-1" }
       })],
-      [tx, "spot_procurement.application_line", "project-1", "material-1", expect.objectContaining({
+      [tx, "spot_procurement.request_line_v2", "project-1", "material-1", expect.objectContaining({
         definitionVersion: 1,
         target: { entityType: "spot_procurement_line", entityId: "line-1" }
       })]
@@ -443,13 +556,14 @@ describe("SpotProcurementApplicationService real-form application", () => {
     }
   });
 
-  it("requires same-project material staff even when the requester is a material director", async () => {
+  it("PUR-01公司物资主管仍可提交本人草稿，不因发起而跳过主管职责", async () => {
     const { service, tx } = context("material_director");
+    tx.userPosition.findMany.mockImplementation(({where}: {where: {projectId: string | null}}) => Promise.resolve(where.projectId === null ? [{positionId: "director-position"}] : []));
+    tx.position.findMany.mockResolvedValue([{id:"director-position",key:"material_director"}] as never);
     tx.$queryRaw.mockResolvedValueOnce([procurement()]).mockResolvedValueOnce([version()]);
     mockConfiguredApprovalAssignments(tx);
-    await expect(service.submit("procurement-1", "material-1")).rejects.toThrow("当前用户不再具备采购创建岗位");
-    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
-    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    await expect(service.submit("procurement-1", "material-1")).resolves.toMatchObject({status: "approval_pending"});
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith(expect.objectContaining({data: expect.objectContaining({frozenNodes: expect.arrayContaining([expect.objectContaining({roleKeys: ["material_director"]})])})}));
   });
 
   it("freezes the locked current version and each real line before creating approval facts", async () => {
@@ -1752,6 +1866,19 @@ describe("SpotProcurementApplicationService real-form application", () => {
     expect(approvalForms.tryRefreshLatestForBusiness).not.toHaveBeenCalled();
   });
 
+  it("preserves the approved v2 request and purchase task before any revision preparation or write", async () => {
+    const { service, tx, audit } = context("material_staff");
+    tx.$queryRaw.mockResolvedValueOnce([procurement("approved_in_progress")])
+      .mockResolvedValueOnce([{...version("approved"),requestProtocolVersion:2}]);
+    await expect(service.createVersion("procurement-1", "material-1", {...realFormDraft,changeReason:"新增需求"}))
+      .rejects.toMatchObject({status:409,message:"申请已全部批准，请另建申请补充需求，不能修订撤回采购待办"});
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.findMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("refuses a normal procurement version change after any real payment", async () => {
     const { service, tx } = context("material_staff");
     tx.$queryRaw
@@ -2155,4 +2282,193 @@ describe("SpotProcurementApplicationService real-form application", () => {
       message: "只有本项目财务主管可以确认异常终止"
     });
   });
+});
+
+
+it("并联申请允许项目经理先同意，仍等待物资主管", async () => {
+  const { service, tx } = context("project_manager");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")])
+    .mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0,
+      applicantUserId: "material-1", frozenNodes: [
+        { name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel" },
+        { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" }
+      ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+  queueActiveSignature(tx.$queryRaw);
+  await expect(service.review("procurement-1", "manager-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1
+  })).resolves.toMatchObject({ status: "approval_pending", versionStatus: "approval_pending" });
+});
+
+
+it("缺岗仍可提交，新轮冻结并联职责协议", async () => {
+  const { service, tx } = context();
+  tx.$queryRaw.mockResolvedValueOnce([procurement()]).mockResolvedValueOnce([version()]);
+  mockConfiguredApprovalAssignments(tx);
+  await expect(service.submit("procurement-1", "material-1")).resolves.toMatchObject({ status: "approval_pending" });
+  expect(tx.approvalInstance.create).toHaveBeenCalledWith({data: expect.objectContaining({ frozenNodes: [
+    { name: "物资部主管审批", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel" },
+    { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" }
+  ] })});
+});
+
+
+it("并联任一驳回直接回到可编辑新草稿，保留原制单人", async () => {
+  const { service, tx } = context("project_manager");
+  tx.spotProcurementVersion.create.mockImplementation(async ({ data }) => ({ ...version(), ...data, id: "version-2" }));
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], approvedRoleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+  await expect(service.review("procurement-1", "manager-1", {
+    decision: "reject", comment: "请修改需求", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1
+  })).resolves.toMatchObject({ status: "draft", versionStatus: "draft", currentVersionId: "version-2" });
+});
+
+it("经理先办后物资主管完成最后职责，才转入采购后继", async () => {
+  const { service, tx } = context("material_director");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], approvedRoleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "director-1", roleKey: "material_director", userIsActive: true}]).mockResolvedValueOnce([]);
+  queueActiveSignature(tx.$queryRaw);
+  await expect(service.review("procurement-1", "director-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0
+  })).resolves.toMatchObject({ status: "approved_in_progress", versionStatus: "approved" });
+});
+
+it("兼岗人员不能再次处理已经同意的同一职责", async () => {
+  const { service, tx } = context("material_director");
+  tx.projectMember.findMany.mockResolvedValue([{positionKey: "material_director"}, {positionKey: "project_manager"}]);
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 1, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], approvedRoleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  await expect(service.review("procurement-1", "both-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0
+  })).rejects.toMatchObject({status: 409});
+});
+
+
+it("合成HTTP并联经理职责可先同意，错误职责不越权", async () => {
+  const { service, tx } = context("project_manager");
+  const round = { id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+    {name: "物资", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+    {name: "项目", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+  ] };
+  const module = await Test.createTestingModule({ controllers: [SpotProcurementController], providers: [
+    {provide: SpotProcurementApplicationService, useValue: service},
+    {provide: SpotProcurementReadService, useValue: null},
+    {provide: SpotProcurementSettlementService, useValue: null},
+    {provide: SpotProcurementPaymentService, useValue: null}
+  ] }).compile();
+  const app = module.createNestApplication({logger: false});
+  app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => { request.user = {id: "manager-1"}; next(); });
+  app.useGlobalPipes(createApiValidationPipe());
+  await app.listen(0, "127.0.0.1");
+  try {
+    const url = `${await app.getUrl()}/spot-procurements/procurement-1/approval`;
+    const post = (index: number) => fetch(url, {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: index})});
+    tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")]).mockResolvedValueOnce([round]);
+    tx.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    expect((await post(0)).status).toBe(403);
+    tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")]).mockResolvedValueOnce([round]);
+    tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+    queueActiveSignature(tx.$queryRaw);
+    const response = await post(1);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({status: "approval_pending", versionStatus: "approval_pending"});
+  } finally { await app.close(); }
+});
+
+it("停用或调离后的旧链接不能用旧岗位上下文驳回并联申请", async () => {
+  const {service, tx} = context("project_manager");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ]}]).mockResolvedValueOnce([]);
+  await expect(service.review("procurement-1", "manager-1", {decision: "reject", comment: "旧链接办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toMatchObject({status: 403});
+});
+
+it.each(["approve", "reject", "return_to_applicant"] as const)("本人%s缺少自审原因时拒绝办理", async (decision) => {
+  const {service, tx} = context("project_manager");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ]}]).mockResolvedValueOnce([{projectId: "project-1", userId: "material-1", roleKey: "project_manager", userIsActive: true}]);
+  await expect(service.review("procurement-1", "material-1", {decision, comment: "本人办理", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).rejects.toThrow("请填写自审原因");
+});
+
+
+it("本人逐职责审批带自审原因和本人密码后可以办理", async () => {
+  const {service, tx} = context("project_manager");
+  tx.user.findUnique.mockResolvedValue({id: "material-1", name: "制单人", departmentId: "department-1", isActive: true, passwordHash: await hash("synthetic-current-password", 4)} as never);
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ]}]).mockResolvedValueOnce([{projectId: "project-1", userId: "material-1", roleKey: "project_manager", userIsActive: true}]);
+  queueActiveSignature(tx.$queryRaw, "material-1");
+  await expect(service.review("procurement-1", "material-1", {decision: "approve", selfReviewReason: "兼任项目经理，核对本职责", confirmationPassword: "synthetic-current-password", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1} as never)).resolves.toMatchObject({status: "approval_pending"});
+});
+
+it("有效临时委托只办理指定的未完成职责并使用实办人签名", async () => {
+  const {service, tx} = context("employee");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资主管", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ]}]).mockResolvedValueOnce([])
+    .mockResolvedValueOnce([{id: "delegation-1", fromUserId: "manager-1"}])
+    .mockResolvedValueOnce([{projectId: "project-1", userId: "manager-1", roleKey: "project_manager", userIsActive: true}]);
+  queueActiveSignature(tx.$queryRaw, "delegate-1");
+  await expect(service.review("procurement-1", "delegate-1", {decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 1})).resolves.toMatchObject({status: "approval_pending"});
+});
+
+it.each([undefined, "wrong-password"])("新并联本人办理缺少或错误密码不能写入：%s", async password => {
+  const {service, tx} = context("project_manager");
+  tx.user.findUnique.mockResolvedValue({id:"material-1",name:"制单人",isActive:true,passwordHash:await hash("synthetic-current-password",4)} as never);
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id:"approval-1",status:"approval_pending",currentNodeIndex:0,applicantUserId:"material-1",frozenNodes:[
+      {name:"物资主管",mode:"any",roleKeys:["material_director"],protocolVersion:1,executionMode:"parallel"},
+      {name:"项目经理",mode:"any",roleKeys:["project_manager"],protocolVersion:1,executionMode:"parallel"}
+    ]}]).mockResolvedValueOnce([{projectId:"project-1",userId:"material-1",roleKey:"project_manager",userIsActive:true}]);
+  await expect(service.review("procurement-1","material-1",{decision:"approve",selfReviewReason:"核对本职责",confirmationPassword:password,expectedVersionId:"version-1",expectedApprovalInstanceId:"approval-1",expectedNodeIndex:1})).rejects.toThrow(password ? "密码不正确" : "当前密码");
+  expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+});
+
+it.each([false, true])("受托人无有效委托或委托人已失去职责均零写入：%s", async hasMandate => {
+  const {service, tx}=context("employee");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([version("approval_pending")])
+    .mockResolvedValueOnce([{id:"approval-1",status:"approval_pending",currentNodeIndex:0,applicantUserId:"material-1",frozenNodes:[
+      {name:"物资主管",mode:"any",roleKeys:["material_director"],protocolVersion:1,executionMode:"parallel"},
+      {name:"项目经理",mode:"any",roleKeys:["project_manager"],protocolVersion:1,executionMode:"parallel"}
+    ]}]).mockResolvedValueOnce([]).mockResolvedValueOnce(hasMandate ? [{id:"mandate",fromUserId:"former-manager"}] : []).mockResolvedValueOnce([]);
+  await expect(service.review("procurement-1","delegate-1",{decision:"approve",expectedVersionId:"version-1",expectedApprovalInstanceId:"approval-1",expectedNodeIndex:1})).rejects.toThrow("当前用户不是本审批节点处理人");
+  expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+});
+
+it("PUR-01 v2末岗仅进入项目采购待办，不创建收货或付款草稿", async () => {
+  const { service, tx } = context("material_director");
+  tx.$queryRaw.mockResolvedValueOnce([procurement("approval_pending")]).mockResolvedValueOnce([{...version("approval_pending"), requestProtocolVersion: 2}])
+    .mockResolvedValueOnce([{ id: "approval-1", status: "approval_pending", currentNodeIndex: 0, applicantUserId: "material-1", frozenNodes: [
+      {name: "物资", mode: "any", roleKeys: ["material_director"], protocolVersion: 1, executionMode: "parallel"},
+      {name: "项目", mode: "any", roleKeys: ["project_manager"], approvedRoleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel"}
+    ] }]);
+  tx.$queryRaw.mockResolvedValueOnce([{projectId: "project-1", userId: "director-1", roleKey: "material_director", userIsActive: true}]).mockResolvedValueOnce([]);
+  queueActiveSignature(tx.$queryRaw);
+  await expect(service.review("procurement-1", "director-1", {
+    decision: "approve", expectedVersionId: "version-1", expectedApprovalInstanceId: "approval-1", expectedNodeIndex: 0
+  })).resolves.toMatchObject({ status: "approved_in_progress", versionStatus: "approved" });
+  expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+  expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
 });

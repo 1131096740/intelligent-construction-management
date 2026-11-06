@@ -1,3 +1,7 @@
+import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
+import { ModuleRef } from "@nestjs/core";
+import { assertGeneratedContractFileAccess } from "../contract-document/contract-generated-file-access";
+import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "../approval/approval-business-facts";
 import { resolveLayoutTemplateFileAccess } from "../contract-template/layout-template-file-access";
 import {companyTransferRoles} from "../company-transfer/company-transfer.access";
@@ -10,6 +14,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  Optional,
   ServiceUnavailableException,
   type OnModuleInit
 } from "@nestjs/common";
@@ -742,7 +747,8 @@ export class FileService {
     private readonly spotAccess: SpotProcurementAccessService =
       new SpotProcurementAccessService(prisma),
     private readonly companyRoles: CompanyRoleResolverService =
-      new CompanyRoleResolverService(prisma)
+      new CompanyRoleResolverService(prisma),
+    @Optional() private readonly moduleRef?: ModuleRef
   ) {
     this.assertDownloadSecret();
   }
@@ -1410,6 +1416,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "SettlementTemplatePreviewJob" WHERE "previewXlsxFileId" = ${fileId} OR "previewPdfFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ProjectOwnerContract" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "PaymentExecution" WHERE "voucherFileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "RegisteredPaymentVoucher" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementAttachment" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementPayment" WHERE "supportingAttachmentFileId" = ${fileId} OR "merchantPaymentProofFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SpotProcurementPaymentExecution" WHERE "voucherFileId" = ${fileId}
@@ -1945,6 +1952,26 @@ export class FileService {
     actorUserId: string,
     delegatorUserId?: string
   ): Promise<GlobalInvoiceFileAccessContext | undefined> {
+    const registeredVoucher = await tx.$queryRaw<Array<{executionId:string;verifiedExecutionId:string|null;paymentRequestId:string|null;contentSha256:string}>>(Prisma.sql`
+      /* registered_payment_voucher_download */
+      SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256"
+      FROM "RegisteredPaymentVoucher" voucher
+      LEFT JOIN "RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId"
+      LEFT JOIN "PaymentExecution" execution ON execution."id" = voucher."executionId"
+      WHERE voucher."fileId" = ${file.id}
+    `);
+    if (registeredVoucher.length) {
+      const actor = await tx.user.findUnique({where:{id:actorUserId},select:{isActive:true}});
+      if (actor?.isActive !== true) throw new ForbiddenException("当前账号已停用或不存在，不能读取付款凭证");
+      const binding = registeredVoucher[0];
+      if (registeredVoucher.length !== 1 || !binding.verifiedExecutionId || !binding.paymentRequestId || file.storageStatus !== "active" || binding.contentSha256 !== file.contentSha256 || await hasNonReceiptBusinessFileBinding(tx,[file.id],[{table:"RegisteredPaymentVoucher",column:"fileId"}])) throw new ForbiddenException("付款凭证正式来源或内容校验不一致，暂不能下载");
+      const payment = await tx.paymentRequest.findUnique({where:{id:binding.paymentRequestId}});
+      if (!payment || !(await new ProjectVisibilityService(this.prisma).visibleProjectIdsInTransaction(tx,actorUserId)).includes(payment.projectId) ||
+        !(await sensitiveBusinessReadAllowed(tx,"payment_request",payment.id,actorUserId,await this.loadActorRoleKeys(tx,actorUserId,payment.projectId)))) {
+        throw new ForbiddenException("当前账号无权读取该付款凭证");
+      }
+      return;
+    }
     const wageEvidenceAccess = await this.resolveWageEvidenceFileAccess(
       tx,
       file.id,
@@ -2258,6 +2285,12 @@ export class FileService {
       ? await tx.generalProcurement.findFirst({ where: { archiveFileId: file.id } })
       : null;
     if (procurement) {
+      if (procurement.requestProtocolVersion === 2) {
+        const actor = await generalRequestActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
+        if (generalRequestCanRead(procurement, actor)) return;
+        throw new ForbiddenException("当前账号无权下载该采购归档资料");
+      }
+      if (!procurement.projectId) throw new ForbiddenException("当前账号无权下载该采购归档资料");
       const actor = await generalProcurementActor(tx, new ProjectVisibilityService(this.prisma), actorUserId, procurement.projectId);
       if (canReadGeneralProcurement(procurement, actor)) return;
       throw new ForbiddenException("当前账号无权下载该采购归档资料");
@@ -2485,10 +2518,9 @@ export class FileService {
     }
 
     const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);
-    if (layoutAccess !== null) {
-      if (layoutAccess) return;
-      throw new ForbiddenException("当前账号无权查看该合同版式资料");
-    }
+    if (layoutAccess === false) throw new ForbiddenException("当前账号无权查看该合同版式资料");
+    if (await assertGeneratedContractFileAccess(tx, file, actorUserId, this.moduleRef)) return;
+    if (layoutAccess === true) return;
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
@@ -2529,12 +2561,8 @@ export class FileService {
 
       if (
         settlement &&
-        (await this.hasProjectRole(
-          tx,
-          actorUserId,
-          settlement.projectId,
-          ARCHIVE_FILE_DOWNLOAD_ROLES
-        ))
+        (await sensitiveBusinessReadAllowed(tx, "settlement", settlement.id, actorUserId,
+          await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId), settlement.preparedByUserId))
       ) {
         return;
       }
@@ -2550,7 +2578,7 @@ export class FileService {
 
       if (
         payment &&
-        (await this.hasProjectRole(tx, actorUserId, payment.projectId, PAYMENT_FILE_DOWNLOAD_ROLES))
+        (await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorUserId, await this.loadActorRoleKeys(tx, actorUserId, payment.projectId)))
       ) {
         return;
       }
@@ -3016,6 +3044,8 @@ export class FileService {
     // The preparer must be able to deliver their frozen copy to the counterparty,
     // including project engineers who are not archive administrators.
     if (preparerUserId === actorUserId) return true;
+    if (document.settlementId) return sensitiveBusinessReadAllowed(tx, "settlement", document.settlementId, actorUserId,
+      await this.loadActorRoleKeys(tx, actorUserId, projectId), preparerUserId);
     return this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES);
   }
 

@@ -1,3 +1,5 @@
+import { CompanyEntityService } from "../company-entity/company-entity.service";
+import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -674,7 +676,12 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).resolves.toBe(1);
   });
 
-  it("confirms a cross-company service path while reusing voucher and authorization evidence", async () => {
+  it("confirms a cross-company service path while reusing voucher and authorization evidence", () => confirmCrossCompanyService(true));
+
+  // Prepared only: the existing explicit RUN_PAYABLE_SETTLEMENT_DATABASE gate remains mandatory.
+  it("task07 continues a frozen cross-company payment after both directory companies stop new selections", () => confirmCrossCompanyService(false));
+
+  async function confirmCrossCompanyService(directoryActive: boolean) {
     const fixture = await createEligibleServiceFixture(observer, 1_000n, true);
     const authority = await createPayerAuthority(observer, fixture);
     const createdAuthority = await issuePayerAuthority(observer, authority);
@@ -754,6 +761,15 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         reauthorizedAt: new Date("2026-08-27T08:30:00.000Z")
       }
     });
+    if (!directoryActive) {
+      const chairman = await observer.position.upsert({ where: { key: "chairman" }, update: {}, create: { key: "chairman", name: "董事长" } });
+      await observer.userPosition.create({ data: { userId: fixture.actorUserId, positionId: chairman.id, projectId: null } });
+      const companies = new CompanyEntityService(observer as never, new CompanyEntityAccess(observer as never), new AuditService());
+      const frozen = await observer.contractVersion.findUniqueOrThrow({ where: { id: fixture.contractVersionId } });
+      const before = await observer.companyEntityVersion.findUniqueOrThrow({ where: { id: frozen.companyEntityVersionId! } });
+      for (const id of new Set([fixture.debtorCompanyId, fixture.executionPayerCompanyId])) await companies.updateStatus(id, fixture.actorUserId, { isActive: false });
+      expect(await observer.companyEntityVersion.findUnique({ where: { id: before.id } })).toEqual(before);
+    }
     const service = realService(
       observer,
       new AuditService(),
@@ -820,7 +836,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
       select: { evidenceFileId: true }
     });
     expect(relationship.evidenceFileId).toBe(execution.voucherFileId);
-  });
+  }
 
   it("rolls back case, allocation, receipt and audit when the real service audit step fails", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);

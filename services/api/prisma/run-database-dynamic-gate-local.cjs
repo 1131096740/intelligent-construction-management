@@ -11,6 +11,8 @@ const {
 const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
+const { Script } = require("node:vm");
 const {
   assertManifestBaseline,
   deriveMigrationBaseline
@@ -31,6 +33,29 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const SUITE_STATUSES = new Set(["fully_pending", "partial_pending"]);
 const RUNNER_KINDS = new Set(["workspaceScript", "apiScript", "node"]);
+const TASK01_GROUP = "enterprise_task01_entry";
+const TASK01_DRIVER = "services/api/prisma/run-enterprise-task01-local.cjs";
+const TASK01_HELPER = "services/api/prisma/enterprise-task01-resources.cjs";
+const TASK01_IMAGE = "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d";
+const TASK01_FLAGS = ["--task01-packet", "--task01-inputs", "--task01-inputs-sha256", "--task01-artifacts", "--task01-confirm"];
+
+function ciExecutionFor(group) {
+  const category = group.ciExecution === undefined ? "automatic" : group.ciExecution;
+  if (!["automatic", "manual-only"].includes(category) || (group.id !== TASK01_GROUP && category !== "automatic")) {
+    fail("CI执行分类无效；旧组必须继续全部进入CI");
+  }
+  if (group.id === TASK01_GROUP && category !== "manual-only") fail("任务01必须显式登记manual-only");
+  return category;
+}
+
+function executionInventory(groups) {
+  const result = { ciEligible: { groups: 0, files: 0, tests: 0 }, manualOnly: { groups: 0, files: 0, tests: 0 } };
+  for (const group of groups) {
+    const bucket = ciExecutionFor(group) === "automatic" ? result.ciEligible : result.manualOnly;
+    bucket.groups += 1; bucket.files += group.testFiles?.length ?? 0; bucket.tests += group.pendingTests;
+  }
+  return result;
+}
 
 function fail(message) {
   throw new Error(message);
@@ -100,6 +125,23 @@ function assertRunGatedPgSpecsRegistered(registeredPaths) {
 function validateRunner(runner, groupId, rootPackage, apiPackage) {
   if (!runner || !RUNNER_KINDS.has(runner.kind)) {
     fail(`coveredGroups.${groupId}.runner.kind 不受支持`);
+  }
+  if (groupId === TASK01_GROUP || runner.invocation === "task01_explicit_inputs") {
+    if (groupId !== TASK01_GROUP || runner.kind !== "node" || runner.path !== TASK01_DRIVER
+      || runner.resourceHelper !== TASK01_HELPER || runner.imageId !== TASK01_IMAGE || runner.invocation !== "task01_explicit_inputs"
+      || Object.keys(runner).sort().join(",") !== "imageId,invocation,kind,path,resourceHelper,resourceHelperSha256,sourceSha256") {
+      fail("任务01只允许固定operator、资源helper与准确镜像");
+    }
+    // Bind the reviewed executable bodies, not postgres:16 strings in comments.
+    // Parsing compiles syntax only: neither module is imported or executed here.
+    for (const [relative, expected] of [[TASK01_DRIVER, runner.sourceSha256], [TASK01_HELPER, runner.resourceHelperSha256]]) {
+      const source = readFileSync(resolveRepositoryPath(relative, "task01 source"));
+      if (!/^[a-f0-9]{64}$/u.test(expected ?? "") || createHash("sha256").update(source).digest("hex") !== expected) {
+        fail("任务01固定执行源码哈希不匹配");
+      }
+      new Script(source.toString("utf8"), { filename: relative });
+    }
+    return;
   }
   if (runner.kind === "workspaceScript") {
     if (!rootPackage.scripts?.[runner.script]) {
@@ -199,6 +241,7 @@ function validateManifest(manifest) {
     fail("coveredGroups 不能为空");
   }
   for (const group of manifest.coveredGroups) {
+    ciExecutionFor(group);
     if (!group.id || seenGroupIds.has(group.id)) {
       fail(`coveredGroups id 缺失或重复：${group.id ?? "missing"}`);
     }
@@ -248,6 +291,15 @@ function validateManifest(manifest) {
 
   assertRunGatedPgSpecsRegistered(seenPaths);
 
+  const execution = executionInventory(manifest.coveredGroups);
+  for (const category of ["ciEligible", "manualOnly"]) {
+    for (const count of ["groups", "files", "tests"]) {
+      if (manifest.executionInventory?.[category]?.[count] !== execution[category][count]) {
+        fail(`CI执行分类库存漂移：${category}.${count}`);
+      }
+    }
+  }
+
   const derived = {
     pendingFiles: seenPaths.size,
     fullyPendingSuites,
@@ -282,6 +334,7 @@ function parseArguments(argv) {
     groups: []
   };
   const modes = new Set();
+  const task01 = {};
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--list") {
@@ -300,12 +353,22 @@ function parseArguments(argv) {
       const group = argv[++index];
       if (!group) fail("--group 缺少数据库组名称");
       options.groups.push(group);
+    } else if (TASK01_FLAGS.includes(argument)) {
+      if (Object.hasOwn(task01, argument)) fail(`任务01独立参数重复：${argument}`);
+      task01[argument] = argv[++index];
+      if (!task01[argument] || task01[argument].startsWith("--")) fail(`任务01独立参数缺少值：${argument}`);
     } else {
       fail(`未知参数：${argument}`);
     }
   }
   if (modes.size > 1) fail("--list、--validate-manifest 与 --execute 只能选择一个");
   options.mode = [...modes][0] ?? "preview";
+  if (Object.keys(task01).length) {
+    if (options.mode !== "execute" || !options.groups.includes(TASK01_GROUP)) {
+      fail("任务01独立参数只能用于显式单独执行任务01组");
+    }
+    options.task01 = task01;
+  }
   if (options.mode !== "execute" && (options.candidateSha || options.confirmation)) {
     fail("--candidate-sha 与 --confirm 只能和 --execute 一起使用");
   }
@@ -343,6 +406,19 @@ function assertExecutionArguments(options, manifest) {
     fail(
       `--execute 必须提供 --confirm ${manifest.executionPolicy.confirmation}`
     );
+  }
+  const selected = selectCoveredGroups(manifest, options.groups);
+  if (selected.some(group => group.id === TASK01_GROUP)) {
+    if (options.groups.length !== 1 || options.groups[0] !== TASK01_GROUP || selected.length !== 1) {
+      fail("任务01必须显式单独选择，不能默认all或与旧组混跑");
+    }
+    if (!options.task01 || TASK01_FLAGS.some(flag => !options.task01[flag])) fail("任务01必须提供全部独立输入和确认串");
+    if (options.task01["--task01-confirm"] !== "LOCAL_TASK01_HTTP_PG") fail("任务01必须独立确认 LOCAL_TASK01_HTTP_PG");
+    if (!/^[a-f0-9]{64}$/u.test(options.task01["--task01-inputs-sha256"])) fail("任务01输入清单SHA256必须为完整64位");
+    for (const flag of ["--task01-packet", "--task01-inputs", "--task01-artifacts"]) {
+      const value = options.task01[flag];
+      if (!path.isAbsolute(value) || !value.startsWith("/private/tmp/") || path.normalize(value) !== value) fail("任务01独立路径必须是准确/private/tmp绝对路径");
+    }
   }
 }
 
@@ -524,7 +600,13 @@ async function resolveLocalDocker(environment, image) {
   return { endpoint, imageId };
 }
 
-function resolveGroupCommand(group) {
+function resolveGroupCommand(group, options = {}) {
+  if (group.id === TASK01_GROUP) {
+    if (!options.task01 || TASK01_FLAGS.some(flag => !options.task01[flag])) fail("任务01必须提供全部独立输入和确认串");
+    return { command: process.execPath, args: [resolveRepositoryPath(TASK01_DRIVER, "task01 driver"),
+      "--packet", options.task01["--task01-packet"], "--inputs", options.task01["--task01-inputs"],
+      "--inputs-sha256", options.task01["--task01-inputs-sha256"], "--artifacts", options.task01["--task01-artifacts"]] };
+  }
   // This dispatcher runs only after the gate's real generate + build preflight.
   // Standalone pnpm entry points retain their normal preparation lifecycle.
   const pol108Shards = {
@@ -572,6 +654,18 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
   assertSafeExecutionEnvironment(sourceEnv);
   const coveredGroups = selectCoveredGroups(manifest, options.groups);
   const coverage = selectedCoverage(coveredGroups);
+  if (coveredGroups.length === 1 && coveredGroups[0].id === TASK01_GROUP) {
+    if (sourceEnv.GITHUB_ACTIONS === "true") fail("任务01仅限本机独立授权，禁止GitHub Actions自动执行");
+    // The operator owns its exact source/dependency/build/TLS/ACL admissions.
+    // No generic build, Docker discovery, temporary resource or SQL precedes it.
+    const environment = { PATH: sourceEnv.PATH ?? "", LANG: "C", LC_ALL: "C", NODE_ENV: "test",
+      JG_TASK01_EXECUTION_APPROVED: "LOCAL_TASK01_HTTP_PG", JG_TASK01_EXPECTED_SOURCE_SHA: options.candidateSha.toLowerCase() };
+    const resolved = resolveGroupCommand(coveredGroups[0], options);
+    await runCommand(resolved.command, resolved.args, { env: environment, forwardOutput: true });
+    return { status: "task01-operator-completed", scope: "first-case-tracer-only", candidateSha: options.candidateSha,
+      driverReceiptPath: path.join(options.task01["--task01-artifacts"], "task01-receipt.json"),
+      coveredTests: 1, fullDynamicGate: false, executionInventory: executionInventory(coveredGroups), ciExecution: "manual-only" };
+  }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-gate-")
   );
@@ -646,6 +740,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       containerImageId: dockerReceipt.imageId,
       coveredTests: coverage.coveredTests,
       coveredFiles: coverage.coveredFiles,
+      executionInventory: executionInventory(coveredGroups),
       remainingTests: manifest.inventory.remainingTests,
       remainingFiles: manifest.inventory.remainingFiles,
       groups: groupReceipts
@@ -672,6 +767,7 @@ function preview(manifest, validation, options) {
     gate: manifest.id,
     mode: options.mode,
     executed: false,
+    executionInventory: executionInventory(coveredGroups),
     manifestValid: true,
     migrationCount: validation.migrationCount,
     terminalMigration: validation.terminalMigration,
@@ -686,6 +782,7 @@ function preview(manifest, validation, options) {
   if (options.mode === "list") {
     payload.coveredGroups = coveredGroups.map((group) => ({
       id: group.id,
+      ciExecution: ciExecutionFor(group),
       pendingTests: group.pendingTests,
       testFiles: group.testFiles.map((file) => file.path),
       runner: group.runner

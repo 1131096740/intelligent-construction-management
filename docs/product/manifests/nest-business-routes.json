@@ -220,6 +220,60 @@
     },
     {
       "method": "GET",
+      "path": "/approval-delegations/:delegationId/revoke-capability",
+      "normalizedKey": "GET /approval-delegations/:param/revoke-capability",
+      "controller": "ApprovalDelegationController",
+      "handler": "revokeCapability",
+      "sourceFile": "services/api/src/approval/approval-delegation.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/approval-delegations/duty-capability",
+      "normalizedKey": "GET /approval-delegations/duty-capability",
+      "controller": "ApprovalDelegationController",
+      "handler": "dutyCapability",
+      "sourceFile": "services/api/src/approval/approval-delegation.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/approval-delegations/duty-options",
+      "normalizedKey": "GET /approval-delegations/duty-options",
+      "controller": "ApprovalDelegationController",
+      "handler": "dutyOptions",
+      "sourceFile": "services/api/src/approval/approval-delegation.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/approval-delegations/user-options",
       "normalizedKey": "GET /approval-delegations/user-options",
       "controller": "ApprovalDelegationController",
@@ -310,6 +364,24 @@
     },
     {
       "method": "GET",
+      "path": "/approval-rule-assignments",
+      "normalizedKey": "GET /approval-rule-assignments",
+      "controller": "ApprovalRuleAssignmentsController",
+      "handler": "read",
+      "sourceFile": "services/api/src/approval/approval-rule-assignments.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/archives",
       "normalizedKey": "GET /archives",
       "controller": "ArchiveController",
@@ -347,7 +419,7 @@
       "isPublic": false,
       "requiredPositions": [
         "chairman",
-        "general_manager",
+        "finance_director",
         "super_admin"
       ],
       "requiredProjectAction": null,
@@ -369,7 +441,7 @@
       "isPublic": false,
       "requiredPositions": [
         "chairman",
-        "general_manager",
+        "finance_director",
         "super_admin"
       ],
       "requiredProjectAction": null,
@@ -797,6 +869,24 @@
     },
     {
       "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/bills/:billKey/export",
+      "normalizedKey": "GET /contract-drafts/:param/bills/:param/export",
+      "controller": "ContractDraftBillExcelController",
+      "handler": "exportData",
+      "sourceFile": "services/api/src/contract-bill/contract-draft-bill-excel.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/contract-drafts/:contractVersionId/bills/:billKey/template",
       "normalizedKey": "GET /contract-drafts/:param/bills/:param/template",
       "controller": "ContractDraftBillExcelController",
@@ -808,6 +898,24 @@
       "isPublic": false,
       "requiredPositions": [],
       "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/save-requests/:idempotencyKey",
+      "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+      "controller": "ContractDraftController",
+      "handler": "saveResult",
+      "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -889,6 +997,26 @@
     },
     {
       "method": "GET",
+      "path": "/contract-layout-template-versions/:versionId/maintenance-capability",
+      "normalizedKey": "GET /contract-layout-template-versions/:param/maintenance-capability",
+      "controller": "ContractTemplateController",
+      "handler": "getLayoutVersionMaintenanceCapability",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/contract-layout-template-versions/:versionId/preview-generation",
       "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
       "controller": "ContractTemplateController",
@@ -901,6 +1029,26 @@
       "requiredPositions": [
         "contract_director",
         "contract_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-template-versions/:versionId/source-positions",
+      "normalizedKey": "GET /contract-layout-template-versions/:param/source-positions",
+      "controller": "ContractTemplateController",
+      "handler": "layoutSourcePositions",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -940,6 +1088,46 @@
       "requiredPositions": [
         "contract_director",
         "contract_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-templates/creation-capability",
+      "normalizedKey": "GET /contract-layout-templates/creation-capability",
+      "controller": "ContractTemplateController",
+      "handler": "getLayoutCreationCapability",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-templates/maintenance",
+      "normalizedKey": "GET /contract-layout-templates/maintenance",
+      "controller": "ContractTemplateController",
+      "handler": "listMaintainedLayouts",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -1742,6 +1930,90 @@
       "isPublic": false,
       "requiredPositions": [],
       "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts",
+      "normalizedKey": "GET /fund-accounts",
+      "controller": "FundAccountController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/:scopeKey",
+      "normalizedKey": "GET /fund-accounts/:param",
+      "controller": "FundAccountController",
+      "handler": "readAccount",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/registrations/:registrationId",
+      "normalizedKey": "GET /fund-accounts/registrations/:param",
+      "controller": "FundAccountController",
+      "handler": "readRegistration",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/registrations/:registrationId/review",
+      "normalizedKey": "GET /fund-accounts/registrations/:param/review",
+      "controller": "FundAccountController",
+      "handler": "readReview",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -2619,6 +2891,132 @@
         "finance_director",
         "finance_staff"
       ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:paymentId/existing-source/:type/:id",
+      "normalizedKey": "GET /payment-executions/:param/existing-source/:param/:param",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "existingSource",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:paymentId/registration-options",
+      "normalizedKey": "GET /payment-executions/:param/registration-options",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "registrationOptions",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:executionId/voucher-ticket",
+      "normalizedKey": "GET /payment-executions/:param/voucher-ticket",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "voucherTicket",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/notifications",
+      "normalizedKey": "GET /payment-executions/notifications",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "currentNotifications",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/recorded-items",
+      "normalizedKey": "GET /payment-executions/recorded-items",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "recordedItems",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/results/:idempotencyKey",
+      "normalizedKey": "GET /payment-executions/results/:param",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "result",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/work-items",
+      "normalizedKey": "GET /payment-executions/work-items",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "workItems",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -3584,7 +3982,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -3714,7 +4112,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -3729,13 +4127,10 @@
       "sourceFile": "services/api/src/project/project.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "positions",
+      "guardAuthorization": "project_action",
       "isPublic": false,
-      "requiredPositions": [
-        "chairman",
-        "comprehensive_director"
-      ],
-      "requiredProjectAction": null,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -4719,8 +5114,27 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-layout-template-versions/:versionId/source-mapping",
+      "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+      "controller": "ContractTemplateController",
+      "handler": "saveLayoutSourceMapping",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -4779,8 +5193,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -4927,7 +5340,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -5300,6 +5713,48 @@
       "guardAuthorization": "public",
       "isPublic": true,
       "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/users/:id/change-phone",
+      "normalizedKey": "POST /account-security/users/:param/change-phone",
+      "controller": "AccountSecurityController",
+      "handler": "changeUserPhone",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/account-security/users/:id/phone-change-sms",
+      "normalizedKey": "POST /account-security/users/:param/phone-change-sms",
+      "controller": "AccountSecurityController",
+      "handler": "adminPhoneChangeSms",
+      "sourceFile": "services/api/src/auth/account-security.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director"
+      ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -6393,8 +6848,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6414,8 +6868,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6435,8 +6888,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6456,8 +6908,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6507,6 +6958,26 @@
     },
     {
       "method": "POST",
+      "path": "/contract-layout-template-versions/:versionId/source-mapping-confirmation",
+      "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+      "controller": "ContractTemplateController",
+      "handler": "confirmLayoutSourceMapping",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/stop",
       "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
       "controller": "ContractTemplateController",
@@ -6537,8 +7008,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6558,8 +7028,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6705,8 +7174,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6726,8 +7194,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6807,8 +7274,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -6828,8 +7294,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -8041,6 +8506,106 @@
     },
     {
       "method": "POST",
+      "path": "/fund-accounts/corrections",
+      "normalizedKey": "POST /fund-accounts/corrections",
+      "controller": "FundAccountController",
+      "handler": "requestCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/openings",
+      "normalizedKey": "POST /fund-accounts/openings",
+      "controller": "FundAccountController",
+      "handler": "registerOpening",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/confirm",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+      "controller": "FundAccountController",
+      "handler": "confirmCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/return",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+      "controller": "FundAccountController",
+      "handler": "returnCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/withdraw",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+      "controller": "FundAccountController",
+      "handler": "withdrawCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
       "path": "/fund-executions/cases",
       "normalizedKey": "POST /fund-executions/cases",
       "controller": "FundExecutionController",
@@ -9176,6 +9741,60 @@
     },
     {
       "method": "POST",
+      "path": "/payment-executions/:paymentId/registrations",
+      "normalizedKey": "POST /payment-executions/:param/registrations",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "record",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payment-executions/:executionId/voucher",
+      "normalizedKey": "POST /payment-executions/:param/voucher",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "attachVoucher",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/payment-executions/:executionId/voucher-file-uploads",
+      "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+      "controller": "RegisteredPaymentExecutionController",
+      "handler": "uploadVoucher",
+      "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
+    },
+    {
+      "method": "POST",
       "path": "/payments",
       "normalizedKey": "POST /payments",
       "controller": "PaymentController",
@@ -9456,7 +10075,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -11580,7 +12199,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "project.master_data.manage",
+      "requiredProjectAction": "project.basics.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -13122,8 +13741,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -13163,8 +13781,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -13184,8 +13801,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

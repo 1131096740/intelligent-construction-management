@@ -54,6 +54,8 @@ export class SaveContractTaxFactsDto {
 }
 
 export interface SaveContractDraftDto {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   expectedRevision: number;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
@@ -63,7 +65,7 @@ export interface SaveContractDraftDto {
   manualAmountCents?: string;
   estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
   paymentTermsOriginalText?: string;
   paymentStages?: Array<{
     name: string;
@@ -176,6 +178,13 @@ export class SaveContractClauseDto implements ContractClauseDefinition {
 
 export class SaveContractDraftFieldsDto {
   @IsOptional()
+  @IsIn([2], { message: "合同数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: 2;
+
+  @Allow()
+  manualAmountYuan?: string | null;
+
+  @IsOptional()
   @IsRequiredText({
     requiredMessage: "公司主体编号不能为空",
     typeMessage: "公司主体编号必须是文字",
@@ -231,7 +240,7 @@ export class SaveContractDraftFieldsDto {
     typeMessage: "版式模板版本编号必须是文字",
     blankMessage: "版式模板版本编号不能为空白"
   })
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
 
   @IsObject({ message: "合同税务事实必须是对象" })
   @ValidateNested({ message: "合同税务事实必须是对象" })
@@ -240,6 +249,10 @@ export class SaveContractDraftFieldsDto {
 }
 
 export class SaveContractDraftBillDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn([1, 2], { message: "清单数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: number;
+
   @IsRequiredText({
     requiredMessage: "合同清单键不能为空",
     typeMessage: "合同清单键必须是文字",

@@ -333,7 +333,10 @@ export interface SpotProcurementReceiptWorkbenchReadModel {
   updatedAt: string;
 }
 
+export interface SpotProcurementPurchaseTask {pending: boolean; canHandle: boolean; label: string; requiresReceipt: false; note: string | null}
+
 export interface SpotProcurementListItemReadModel {
+  purchaseTask?: SpotProcurementPurchaseTask;
   id: string;
   code: string;
   project: SpotProcurementProjectSummary;
@@ -361,7 +364,10 @@ export interface SpotProcurementListItemReadModel {
   applicationName?: string;
   purchaserName?: string;
   purchaserDepartment?: string;
-  requestedArrivalAt?: string;
+  requestedArrivalAt?: string | null;
+  requestProtocolVersion?: number;
+  draftRevision?: number;
+  estimatedTotalAmount?: string | null;
 }
 
 export interface SpotProcurementListReadModel {
@@ -494,7 +500,10 @@ export interface SpotProcurementVersionReadModel {
   applicationName?: string;
   purchaserName?: string;
   purchaserDepartment?: string;
-  requestedArrivalAt?: string;
+  requestedArrivalAt?: string | null;
+  requestProtocolVersion?: number;
+  draftRevision?: number;
+  estimatedTotalAmount?: string | null;
 }
 
 export interface SpotProcurementLineReadModel {
@@ -502,8 +511,10 @@ export interface SpotProcurementLineReadModel {
   sortOrder: number;
   materialName: string;
   specification: string | null;
-  unit: string;
-  quantity: string;
+  unit: string | null;
+  quantity: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedAmount?: string | null;
   invoiceMode: InvoiceMode;
   invoiceType: VatInvoiceType | null;
   vatRateOptionId: string | null;
@@ -544,6 +555,7 @@ export interface SpotProcurementPaymentInvoiceReadModel {
 }
 
 export interface SpotProcurementDetailReadModel {
+  purchaseTask?: SpotProcurementPurchaseTask;
   procurement: {
     id: string;
     code: string;
@@ -852,8 +864,10 @@ export interface SpotProcurementPaymentListQuery {
 export interface SpotProcurementLinePayload {
   materialName: string;
   specification?: string;
-  unit: string;
-  quantity: string;
+  unit?: string | null;
+  quantity?: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedAmount?: string | null;
   note?: string;
 }
 
@@ -863,14 +877,17 @@ export interface SpotProcurementAttachmentPayload {
 }
 
 export interface SpotProcurementDraftPayload {
+  expectedDraftRevision?: number;
+  expectedVersionId?: string;
   entryDefinitionVersions?: {
     application: number;
     line: number;
   };
-  applicationDepartment: string;
-  applicationName: string;
-  requestedArrivalAt: string;
-  reason: string;
+  applicationDepartment?: string;
+  applicationName?: string;
+  requestedArrivalAt?: string | null;
+  estimatedTotalAmount?: string | null;
+  reason?: string;
   note?: string | null;
   lines: SpotProcurementLinePayload[];
   attachments?: SpotProcurementAttachmentPayload[];
@@ -891,6 +908,8 @@ export interface CreateSpotProcurementVersionPayload extends SpotProcurementDraf
 }
 
 export interface SpotProcurementReviewDecisionPayload {
+  selfReviewReason?: string;
+  confirmationPassword?: string;
   decision: SpotProcurementReviewDecision;
   comment?: string;
 }
@@ -908,6 +927,9 @@ export type SpotProcurementReviewActionDecision =
   | "return_to_applicant";
 
 export interface SpotProcurementReviewActionContext {
+  requiresSelfReviewConfirmation?: boolean;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
   ownerScope: string;
   routeGeneration: number;
   detailEpoch: number;
@@ -1223,6 +1245,8 @@ export interface AttachSpotProcurementReceiptPhotoPayload {
 }
 
 export interface SpotProcurementWriteReadModel {
+  draftRevision?: number;
+  requestProtocolVersion?: number;
   procurementId: string;
   projectId: string;
   code: string;
@@ -1747,9 +1771,9 @@ export function createSpotProcurementVersion(
   );
 }
 
-export function submitSpotProcurement(procurementId: string) {
+export function submitSpotProcurement(procurementId: string, body?: {expectedDraftRevision?: number; expectedVersionId?: string}) {
   return postJson<SpotProcurementWriteReadModel>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/submission`
+    `/spot-procurements/${encodeURIComponent(procurementId)}/submission`, body
   );
 }
 
@@ -1823,6 +1847,7 @@ function reviewSpotProcurementActionPayload(
   return {
     decision,
     ...(decision !== "approve" ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation ? {selfReviewReason: context.selfReviewReason, confirmationPassword: context.confirmationPassword} : {}),
     expectedVersionId: context.expectedVersionId,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex
@@ -1837,6 +1862,10 @@ function normalizeSpotProcurementReviewAction(
   const expectedVersionId = input.expectedVersionId.trim();
   const expectedApprovalInstanceId =
     input.expectedApprovalInstanceId.trim();
+  const requiresSelfReviewConfirmation = input.requiresSelfReviewConfirmation === true;
+  const selfReviewReason = requiresSelfReviewConfirmation ? input.selfReviewReason?.trim() : undefined;
+  const confirmationPassword = requiresSelfReviewConfirmation ? input.confirmationPassword : undefined;
+  if (requiresSelfReviewConfirmation && (!selfReviewReason || !confirmationPassword?.trim())) throw new Error("请填写自审原因并输入本人当前密码");
   const comment =
     input.decision !== "approve" ? input.comment?.trim() ?? "" : undefined;
   if (
@@ -1862,6 +1891,7 @@ function normalizeSpotProcurementReviewAction(
     );
   }
   return Object.freeze({
+    ...(requiresSelfReviewConfirmation ? {requiresSelfReviewConfirmation, selfReviewReason, confirmationPassword} : {}),
     ownerScope,
     routeGeneration: input.routeGeneration,
     detailEpoch: input.detailEpoch,
@@ -1888,6 +1918,7 @@ function assertSpotProcurementReviewPreflight(
     preflight.procurement.id !== context.procurementId ||
     preflight.currentVersion.id !== context.expectedVersionId ||
     enabledReviewActions.length !== 1 ||
+    Boolean(enabledReviewActions[0]?.requiresSelfReviewConfirmation) !== Boolean(context.requiresSelfReviewConfirmation) ||
     coordinates?.expectedVersionId !== context.expectedVersionId ||
     coordinates.expectedApprovalInstanceId !==
       context.expectedApprovalInstanceId ||

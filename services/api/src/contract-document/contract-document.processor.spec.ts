@@ -19,6 +19,7 @@ jest.mock("./pdf-normalizer", () => ({
   }))
 }));
 jest.mock("./contract-docx-extractor", () => ({
+  ...jest.requireActual("./contract-docx-extractor"),
   extractContractDocx: jest.fn((buffer: Buffer) => ({
     blocks: [{ kind: "paragraph", path: "p:000001", text: buffer.toString() }],
     normalizedSha256: buffer.toString()
@@ -45,6 +46,13 @@ jest.mock("./contract-document-comparison", () => ({
     ]
   }))
 }));
+
+import PizZip from "pizzip";
+function previewWordSource() {
+  const zip = new PizZip();
+  zip.file("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>template</w:t></w:r></w:p></w:body></w:document>');
+  return zip.generate({ type: "nodebuffer" });
+}
 
 import { PrismaService } from "../database/prisma.service";
 import { extractContractDocx } from "./contract-docx-extractor";
@@ -1098,7 +1106,7 @@ describe("ContractDocumentProcessor", () => {
     const files = {
       getFileBuffer: jest.fn().mockResolvedValue({
         file: { id: "layout-file" },
-        buffer: Buffer.from("template")
+        buffer: previewWordSource()
       }),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "preview-pdf" })
     };
@@ -1112,7 +1120,7 @@ describe("ContractDocumentProcessor", () => {
 
     expect(prisma.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
     expect(mockedRender).toHaveBeenCalledWith(
-      Buffer.from("template"),
+      previewWordSource(),
       expect.objectContaining({
         values: expect.objectContaining({
           "contract.name": "预览合同",
@@ -1198,7 +1206,7 @@ describe("ContractDocumentProcessor", () => {
       draftRevision: 3
     });
     const files = {
-      getFileBuffer: jest.fn().mockResolvedValue({ buffer: Buffer.from("template") }),
+      getFileBuffer: jest.fn().mockResolvedValue({ buffer: previewWordSource() }),
       uploadPrivateFile: jest.fn().mockResolvedValue({ id: "orphan-preview-pdf" })
     };
     const processor = new ContractDocumentProcessor(

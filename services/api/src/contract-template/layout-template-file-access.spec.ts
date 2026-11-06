@@ -27,7 +27,7 @@ describe("版式资料访问沿用版式资源查看规则", () => {
     for (const role of ["employee", "chairman", "finance_staff", "super_admin", "contract_staff", "contract_director"]) {
       const { tx, fileId } = fixture(status, role);
       await expect(resolveLayoutTemplateFileAccess(tx as never, fileId, "reader", "application/pdf"))
-        .resolves.toBe(["contract_staff", "contract_director"].includes(role));
+        .resolves.toBe(role === "contract_director" || role === "contract_staff" && ["stopped", "revoked"].includes(status));
       expect(tx.userPosition.findMany).toHaveBeenCalledWith({ where: { userId: "reader", projectId: null } });
     }
   });
@@ -38,7 +38,7 @@ describe("版式资料访问沿用版式资源查看规则", () => {
     await expect(resolveLayoutTemplateFileAccess(tx as never, fileId, "reader", "application/pdf")).resolves.toBe(false);
   });
   it("当前修订最新成功任务才可作为草稿样张，孤立和被取代的任务拒绝", async () => {
-    const { tx } = fixture("draft", "contract_staff");
+    const { tx } = fixture("draft", "contract_director");
     tx.contractLayoutTemplateVersion.findMany.mockResolvedValue([]);
     tx.contractLayoutPreviewJob.findMany.mockResolvedValue([{ id: "job", layoutTemplateVersionId: "v1", status: "succeeded", sourceRevision: 2 } as never]);
     tx.contractLayoutPreviewJob.findFirst.mockResolvedValue({ id: "job" } as never);

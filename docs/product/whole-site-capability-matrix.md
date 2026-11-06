@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `48c012340c53a82081c55ceecbbdfa09233a13e182a9f612ea5f1337d6d30bb0` |
-| webApiWrappers | ready | `520198da309bc6126be03abe266b15eb05372f5b9da7ea9b7591979e00d1e604` |
-| webPageActions | ready | `7653178b171afd9f810862e06de37747a1f0c85419e8e1a1fab38f7175f08cab` |
-| routeUsage | ready | `44f164edc05438c727fa708f83777657498a442c9a259b65cb97bcaceb5e5bc0` |
+| nestRoutes | ready | `3fc133fca6dd25743063eefe944540e97ec766f7d31430bddd6f01aa8098eda0` |
+| webApiWrappers | ready | `55a88091866cc493325b231c46cb03b85c09a2e1c64ee36592b522b6583d141f` |
+| webPageActions | ready | `2e3752904faf4c720ea5a3c45d8700e20301d9e343d5028334dfde680f4aa9b1` |
+| routeUsage | ready | `59803966a737aa1c8e10d996f4e1fb65a9fec3bd0b0a6c24d399f0addcab425b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 695 |
-| pageRouteCount | 489 |
+| routeCount | 728 |
+| pageRouteCount | 529 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 99 |
-| internalTaskRouteCount | 37 |
+| exitCandidateRouteCount | 90 |
+| internalTaskRouteCount | 39 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 688 |
+| mainRequestBindingCount | 719 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 392 |
-| actionBindingCount | 452 |
-| acceptedActionBindingCount | 415 |
+| registeredActionCount | 416 |
+| actionBindingCount | 480 |
+| acceptedActionBindingCount | 442 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 382 |
-| coveredProductionMutationConsumerPairCount | 382 |
+| productionMutationConsumerPairCount | 407 |
+| coveredProductionMutationConsumerPairCount | 407 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -39,7 +39,7 @@
 
 | 方法 | 路径 | 用途 | 消费面 | Web wrapper | 动作 | 写入覆盖 | 阻塞 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DELETE | /approval-delegations/:delegationId | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | — | not_applicable | — |
+| DELETE | /approval-delegations/:delegationId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | approval-delegation.revoke | covered | — |
 | DELETE | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow | — | not_applicable | — |
 | DELETE | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction | contract-draft.delete-pristine | covered | — |
 | DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | covered | — |
@@ -50,12 +50,16 @@
 | GET | /account-security/options | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchAccountOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/allocation-options/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingAllocationOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/options | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchAffiliateClearingAuthorityOptions | — | not_applicable | — |
+| GET | /approval-delegations/:delegationId/revoke-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationRevokeCapability | — | not_applicable | — |
 | GET | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listApprovalDelegations | — | not_applicable | — |
+| GET | /approval-delegations/duty-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationDutyCapability | — | not_applicable | — |
+| GET | /approval-delegations/duty-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationDutyOptions | — | not_applicable | — |
 | GET | /approval-delegations/user-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationUserOptions | — | not_applicable | — |
 | GET | /approval-forms/:businessType/:businessId/capability | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#approvalDocumentCapability | — | not_applicable | — |
 | GET | /approval-forms | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#listApprovalDocuments | — | not_applicable | — |
 | GET | /approval-progress/:instanceId | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchApprovalProgress | — | not_applicable | — |
 | GET | /approval-progress | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchRelatedApprovals | — | not_applicable | — |
+| GET | /approval-rule-assignments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalRuleAssignments | — | not_applicable | — |
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
@@ -79,17 +83,23 @@
 | GET | /company-transfers/export | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#exportCompanyTransfers | — | not_applicable | — |
 | GET | /contract-bank-verifications | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#fetchBankVerifications | — | not_applicable | — |
 | GET | /contract-bills/:billId/excel-template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-business-scenarios/available | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listAvailableContractBusinessScenarios | — | not_applicable | — |
+| GET | /contract-business-scenarios/available | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#listAvailableContractBusinessScenarios | — | not_applicable | — |
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
-| GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
+| GET | /contract-business-scenarios/recommendations | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/bills/:billKey/export | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#exportContractDraftBill | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/save-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSaveResult | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
 | GET | /contract-economic-reviews | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchEconomicReviews | — | not_applicable | — |
 | GET | /contract-economic-reviews/counterparties | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#fetchContractCounterparties | — | not_applicable | — |
 | GET | /contract-ended-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#fetchContractEndedApplicationRetentionPreview | — | not_applicable | — |
-| GET | /contract-layout-template-versions/:versionId/preview-generation | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
+| GET | /contract-layout-template-versions/:versionId/maintenance-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutVersionMaintenanceCapability | — | not_applicable | — |
+| GET | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
+| GET | /contract-layout-template-versions/:versionId/source-positions | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutSourcePositions | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
 | GET | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedLayoutTemplates | — | not_applicable | — |
+| GET | /contract-layout-templates/creation-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#getLayoutCreationCapability | — | not_applicable | — |
+| GET | /contract-layout-templates/maintenance | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#listMaintainedLayouts | — | not_applicable | — |
 | GET | /contract-number-rules | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listContractNumberRules<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchActiveContractNumberRules | — | not_applicable | — |
 | GET | /contract-proxy-executions/bank-options | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#fetchCompanyBankEvents | — | not_applicable | — |
 | GET | /contract-proxy-executions | page | web_api_wrapper | apps/web-admin/src/api/contract-proxy-execution.api.ts#fetchContractProxyExecutions | — | not_applicable | — |
@@ -127,6 +137,10 @@
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-file.download-private-file-by-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
+| GET | /fund-accounts/:scopeKey | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccount | — | not_applicable | — |
+| GET | /fund-accounts | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccounts | — | not_applicable | — |
+| GET | /fund-accounts/registrations/:registrationId | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundBalanceRegistration | — | not_applicable | — |
+| GET | /fund-accounts/registrations/:registrationId/review | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundReview | — | not_applicable | — |
 | GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId/classification-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseOptions | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseActions<br>apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseDetail | — | not_applicable | — |
@@ -136,7 +150,7 @@
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
-| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
+| GET | /general-procurements/:id | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment<br>apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementDetail<br>apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#submitProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#updateProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive<br>apps/web-admin/src/api/general-procurement.api.ts#withdrawProcurement | general-procurement.archiveProcurement<br>general-procurement.cancelProcurementPayment<br>general-procurement.delete-draft<br>general-procurement.legacy.updateProcurement<br>general-procurement.reviewProcurement<br>general-procurement.submitProcurement<br>general-procurement.updateProcurement<br>general-procurement.uploadProcurementArchive<br>general-procurement.withdrawProcurement | not_applicable | — |
 | GET | /general-procurements/create-options | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#createProcurement<br>apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementOptions | general-procurement.createProcurement | not_applicable | — |
 | GET | /general-procurements | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#fetchProcurementList | — | not_applicable | — |
 | GET | /global-invoices/capabilities | page | web_api_wrapper | apps/web-admin/src/api/global-invoice.api.ts#fetchGlobalInvoiceCapabilities | — | not_applicable | — |
@@ -169,6 +183,13 @@
 | GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchWagePayableCases | — | not_applicable | — |
 | GET | /payable-settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementWorkbench | — | not_applicable | — |
+| GET | /payment-executions/:paymentId/existing-source/:type/:id | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /payment-executions/:paymentId/registration-options | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentOptions | — | not_applicable | — |
+| GET | /payment-executions/:executionId/voucher-ticket | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#downloadRegisteredPaymentVoucher | — | not_applicable | — |
+| GET | /payment-executions/notifications | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /payment-executions/recorded-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRecordedPaymentItems | — | not_applicable | — |
+| GET | /payment-executions/results/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentResult | — | not_applicable | — |
+| GET | /payment-executions/work-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentWorkItems | — | not_applicable | — |
 | GET | /payments/:paymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentActionCapability | — | not_applicable | — |
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
@@ -269,7 +290,8 @@
 | PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | company-entity.update | covered | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |
 | PATCH | /contract-business-scenarios/:scenarioId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario | — | not_applicable | — |
-| PATCH | /contract-layout-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | — | not_applicable | — |
+| PATCH | /contract-layout-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | layout-template.save | covered | — |
+| PATCH | /contract-layout-template-versions/:versionId/source-mapping | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#saveLayoutSourceMapping | layout-template.mapping-save | covered | — |
 | PATCH | /contract-number-rules/:ruleId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractNumberRule | — | not_applicable | — |
 | PATCH | /contract-scenario-template-mappings/:mappingId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractScenarioMapping | — | not_applicable | — |
 | PATCH | /contract-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion | — | not_applicable | — |
@@ -291,7 +313,7 @@
 | PATCH | /settlement-template-workbench/versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#updateSettlementTemplateVersion | template-workbench.save<br>template-workbench.save-source | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentDraft | spot-procurement-payment.draft.update | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/payer | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentPayer | spot-procurement-payment.payer.update | covered | — |
-| PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.draft.update | covered | — |
+| PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.create-draft.update<br>spot-procurement.draft.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | spot-procurement-receipt.draft.update | covered | — |
 | PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
 | POST | /account-security/applications/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
@@ -300,12 +322,14 @@
 | POST | /account-security/recovery-code | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#generateRecoveryCode | employee.generate-recovery | covered | — |
 | POST | /account-security/reset-with-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetPasswordWithSms | employee.sms-reset | covered | — |
 | POST | /account-security/sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendAccountSms | employee.sms | covered | — |
+| POST | /account-security/users/:id/change-phone | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#changeUserPhone | employee.admin-phone-change | covered | — |
+| POST | /account-security/users/:id/phone-change-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendAdminPhoneChangeSms | employee.admin-phone-change-sms | covered | — |
 | POST | /account-security/users/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
 | POST | /affiliate-clearing-authorities/:authorityId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /approval-delegations | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | not_applicable | — |
+| POST | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | approval-delegation.create | covered | — |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | approval-documents.download-form<br>contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
 | POST | /approval-progress/:instanceId/remind | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#remindApprovalBySms | approval-progress.remind-by-sms | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |
@@ -359,15 +383,16 @@
 | POST | /contract-economic-reviews/settlement-coverage | page | web_api_wrapper | apps/web-admin/src/api/contract-economic-review.api.ts#prepareEconomicSettlement | contract-economic-review.prepareEconomicSettlement | covered | — |
 | POST | /contract-ended-retention/:contractVersionId/hold-release | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#releaseContractEndedApplicationRetentionHold | contract-ended-retention.release-hold | covered | — |
 | POST | /contract-ended-retention/:contractVersionId/holds | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#createContractEndedApplicationRetentionHold | contract-ended-retention.create-hold | covered | — |
-| POST | /contract-layout-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | — | not_applicable | — |
+| POST | /contract-layout-template-versions/:versionId/clone | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | layout-template.clone | covered | — |
 | POST | /contract-layout-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#discardLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/inspection | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/preview-generation | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#queueLayoutTemplatePreview | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/publication | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion | — | not_applicable | — |
+| POST | /contract-layout-template-versions/:versionId/inspection | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion | layout-template.inspect | covered | — |
+| POST | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueLayoutTemplatePreview | layout-template.preview | covered | — |
+| POST | /contract-layout-template-versions/:versionId/publication | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion | layout-template.publish | covered | — |
 | POST | /contract-layout-template-versions/:versionId/revoke | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#revokeLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/stop | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-template-versions/:versionId/submission | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion | — | not_applicable | — |
-| POST | /contract-layout-templates | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate | — | not_applicable | — |
+| POST | /contract-layout-template-versions/:versionId/source-mapping-confirmation | page | web_api_wrapper | apps/web-admin/src/api/contract-template-mapping.api.ts#confirmLayoutSourceMapping | layout-template.mapping-confirm | covered | — |
+| POST | /contract-layout-template-versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | layout-template.stop | covered | — |
+| POST | /contract-layout-template-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion | layout-template.submit | covered | — |
+| POST | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate | layout-template.create | covered | — |
 | POST | /contract-negotiation-rounds/:roundId/close | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#closeContractNegotiationRound | — | not_applicable | — |
 | POST | /contract-number-rules/:ruleId/stop | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#stopContractNumberRule | — | not_applicable | — |
 | POST | /contract-number-rules | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createContractNumberRule | — | not_applicable | — |
@@ -447,7 +472,12 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
+| POST | /fund-accounts/corrections | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#requestFundCorrection | fund-account.requestFundCorrection | covered | — |
+| POST | /fund-accounts/openings | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#registerFundOpening | fund-account.registerFundOpening | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#confirmFundCorrection | fund-account.confirm-correction | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#returnFundCorrection | fund-account.returnFundCorrection | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/withdraw | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#withdrawFundCorrection | fund-account.withdrawFundCorrection | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
 | POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
@@ -460,7 +490,7 @@
 | POST | /general-procurements/:id/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#uploadProcurementArchive | general-procurement.uploadProcurementArchive | covered | — |
 | POST | /general-procurements/:id/archive | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#archiveProcurement | general-procurement.archiveProcurement | covered | — |
 | POST | /general-procurements/:id/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#deleteProcurementDraft | general-procurement.delete-draft | covered | — |
-| POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.updateProcurement | covered | — |
+| POST | /general-procurements/:id/draft | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#updateProcurement | general-procurement.legacy.updateProcurement<br>general-procurement.updateProcurement | covered | — |
 | POST | /general-procurements/:id/payments/:claimId/cancellation | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#cancelProcurementPayment | general-procurement.cancelProcurementPayment | covered | — |
 | POST | /general-procurements/:id/review | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#reviewProcurement | general-procurement.reviewProcurement | covered | — |
 | POST | /general-procurements/:id/submission | page | web_api_wrapper | apps/web-admin/src/api/general-procurement.api.ts#submitProcurement | general-procurement.submitProcurement | covered | — |
@@ -504,6 +534,9 @@
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
+| POST | /payment-executions/:paymentId/registrations | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#recordRegisteredPayment | registered-payment.register | covered | — |
+| POST | /payment-executions/:executionId/voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
+| POST | /payment-executions/:executionId/voucher | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |
 | POST | /payments/:paymentId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | — | not_applicable | — |
@@ -630,7 +663,7 @@
 | POST | /projects/:projectId/upstream-fund-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact | project.upstream-fund.record | covered | — |
 | POST | /projects/:projectId/upstream-settlements/:upstreamSettlementId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamSettlement | — | not_applicable | — |
 | POST | /projects/:projectId/upstream-settlements | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement | — | not_applicable | — |
-| POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate | covered | — |
+| POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate<br>project.rename.name-warning | covered | — |
 | POST | /projects | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProject | project.create | covered | — |
 | POST | /settlement-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#cloneSettlementTemplateVersion | — | not_applicable | — |
 | POST | /settlement-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#discardSettlementTemplateVersion | — | not_applicable | — |

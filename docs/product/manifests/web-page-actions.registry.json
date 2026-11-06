@@ -4622,7 +4622,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "capability.availableActions",
+        "source": "creationCapability.availableActions",
         "key": "create_spot_procurement"
       },
       "wrappers": [
@@ -4647,7 +4647,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
-        "source": "capability.availableActions",
+        "source": "uploadCapability.availableActions",
         "key": "create_spot_procurement"
       },
       "wrappers": [
@@ -6598,6 +6598,31 @@
         {
           "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
           "name": "validateBusinessEntryDraft"
+        }
+      ]
+    },
+    {
+      "id": "project.rename.name-warning",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectRenameForm.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "validateProjectNameWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_project"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "validateProjectCreation"
         }
       ]
     },
@@ -9136,7 +9161,7 @@
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "capability.canEdit"
+        "source": "editCapability.canEdit"
       },
       "wrappers": [
         {
@@ -9901,6 +9926,583 @@
         {
           "apiFile": "apps/web-admin/src/api/approval-progress.api.ts",
           "name": "remindApprovalBySms"
+        }
+      ]
+    },
+    {
+      "id": "employee.admin-phone-change",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限",
+        "/员工管理"
+      ],
+      "sourceFile": "apps/web-admin/src/components/AccountPhoneChangeDialog.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "changeUserPhoneWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canManageUsers"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "changeUserPhone"
+        }
+      ]
+    },
+    {
+      "id": "employee.admin-phone-change-sms",
+      "usage": "background",
+      "routePaths": [
+        "/组织权限",
+        "/员工管理"
+      ],
+      "sourceFile": "apps/web-admin/src/components/SmsCodeField.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "sendAdminPhoneChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.smsEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/employee-onboarding.api.ts",
+          "name": "sendAdminPhoneChangeSms"
+        }
+      ]
+    },
+    {
+      "id": "approval-delegation.create",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createDelegationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canDelegate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createApprovalDelegation"
+        }
+      ]
+    },
+    {
+      "id": "approval-delegation.revoke",
+      "usage": "background",
+      "routePaths": [
+        "/委托台账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "revokeDelegationWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canRevoke"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "revokeApprovalDelegation"
+        }
+      ]
+    },
+    {
+      "id": "general-procurement.legacy.updateProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProcurementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canEdit"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "name": "updateProcurement"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.create",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createLayoutWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "createLayoutTemplate"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.save",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveDraftSourceWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "save_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "updateLayoutTemplateVersion"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.inspect",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "inspectWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "inspect_source"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "inspectLayoutTemplateVersion"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.preview",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "queuePreviewWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "preview_source"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "queueLayoutTemplatePreview"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.submit",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCurrentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "submit_version"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "submitLayoutTemplateVersion"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.publish",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "publishCurrentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "publish_version"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "publishLayoutTemplateVersion"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.clone",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "cloneCurrentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "clone_version"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "cloneLayoutTemplateVersion"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.stop",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "stopCurrentVersionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "risk_stop"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "stopLayoutTemplateVersion"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.mapping-save",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveMappingWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "map_source"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+          "name": "saveLayoutSourceMapping"
+        }
+      ]
+    },
+    {
+      "id": "layout-template.mapping-confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmMappingWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "confirm_source"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+          "name": "confirmLayoutSourceMapping"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.confirm-correction",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/资金余额复核/:registrationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirm"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "review.canConfirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "confirmFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.registerFundOpening",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitOpeningBalance"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "editing.canRegisterBalance"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "registerFundOpening"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.requestFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitCorrectionBalance"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "editing.canRegisterBalance"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "requestFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.returnFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/资金余额复核/:registrationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "returnBalanceCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "review.canConfirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "returnFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "fund-account.withdrawFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户",
+        "/资金余额复核/:registrationId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "withdrawBalanceCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "withdrawal.canWithdraw"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "name": "withdrawFundCorrection"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.create-draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "draftCapability.availableActions",
+        "key": "edit_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "updateSpotProcurementDraft"
+        }
+      ]
+    },
+    {
+      "id": "registered-payment.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registrationPermission.canRegisterPayment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "name": "recordRegisteredPayment"
+        }
+      ]
+    },
+    {
+      "id": "registered-payment.supplement-voucher",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "saveVoucher"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "voucherPermission.canSupplementVoucher"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "name": "supplementRegisteredPaymentVoucher"
         }
       ]
     }

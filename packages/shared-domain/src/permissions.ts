@@ -7,6 +7,7 @@ import { GLOBAL_BUSINESS_ROLE_KEYS, RoleKey } from "./roles";
  * 这些是后端写接口真正要守的关口。
  */
 export const BUSINESS_ACTIONS = [
+  "fund_account.balance.review",
   "business_party.create",
   "contract.create",
   "contract.draft.delete",
@@ -55,6 +56,7 @@ export const BUSINESS_ACTIONS = [
   "project.financing_quota.approve",
   "project.financing_quota.terminate",
   "project.operating_profile.manage",
+  "project.basics.manage",
   "project.master_data.manage",
   "operating_projection.detail.read",
   "necessary_expense_reserve.read",
@@ -115,6 +117,7 @@ export const BUSINESS_ACTIONS = [
   "expense_claim.repayment.confirm",
   "expense_claim.repayment.reverse",
   "spot_procurement.create",
+  "general_procurement.approve",
   "spot_procurement.approve",
   "spot_procurement.payment.submit",
   "spot_procurement.payment.approve",
@@ -162,6 +165,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  * - `settlement.approve` / `payment.approve` 这里只做粗放行；具体节点顺序、会签与路由由后端审批实例校验。
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
+  "fund_account.balance.review": ["finance_director"],
   "business_party.create": ["comprehensive_director", "chairman"],
   "contract.create": ["contract_staff", "contract_director"],
   "contract.draft.delete": ["contract_staff", "contract_director"],
@@ -262,6 +266,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "project.financing_quota.terminate": ["finance_director"],
   "project.operating_profile.manage": ["finance_staff", "finance_director"],
+  "project.basics.manage": ["comprehensive_director", "chairman", "general_manager"],
   "project.master_data.manage": ["comprehensive_director", "chairman"],
   "operating_projection.detail.read": ["finance_staff", "finance_director"],
   "necessary_expense_reserve.read": [
@@ -419,7 +424,8 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "expense_claim.repayment.record": ["finance_staff"],
   "expense_claim.repayment.confirm": ["finance_director"],
   "expense_claim.repayment.reverse": ["finance_director"],
-  "spot_procurement.create": ["material_staff"],
+  "spot_procurement.create": ["material_staff", "material_director"],
+  "general_procurement.approve": ["comprehensive_director", "project_manager"],
   "spot_procurement.approve": ["material_director", "project_manager"],
   "spot_procurement.payment.submit": ["material_staff", "material_director"],
   "spot_procurement.payment.approve": [

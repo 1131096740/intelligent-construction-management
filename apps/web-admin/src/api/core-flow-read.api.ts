@@ -75,8 +75,8 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   );
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path);
+async function readJson<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
@@ -128,7 +128,8 @@ export function fetchContractDetail(contractId: string, options?: { versionId?: 
     ? `?versionId=${encodeURIComponent(options.versionId)}`
     : "";
   return readJson<ContractDetailReadModel>(
-    `/contracts/${encodeURIComponent(contractId)}${query}`
+    `/contracts/${encodeURIComponent(contractId)}${query}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -2665,7 +2666,7 @@ export interface ProjectActionCapabilityReadModel {
 }
 
 export function validateProjectCreation(body: CreateProjectPayload) {
-  return postJson<BusinessEntryValidationResult>("/projects/create-validation", body);
+  return postJson<BusinessEntryValidationResult & { warnings: string[] }>("/projects/create-validation", body);
 }
 
 export function fetchProjectCreateCapability() {
@@ -3626,7 +3627,7 @@ export async function downloadProjectExpenseApprovalPdf(
 }
 
 export function fetchContractLedger() {
-  return readJson<ContractLedgerListReadModel>("/contracts");
+  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" });
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
@@ -3669,7 +3670,8 @@ export function fetchContractLifecycleLedger(
     pageSize: String(pageSize)
   });
   return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/lifecycle-ledger?${query.toString()}`
+    `/contracts/lifecycle-ledger?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -3688,12 +3690,13 @@ export function fetchContractWorkbenchLedger(
     pageSize: String(pageSize)
   });
   return readJson<ContractWorkbenchLedgerPage<ContractLifecycleLedgerRow>>(
-    `/contracts/workbench?${query.toString()}`
+    `/contracts/workbench?${query.toString()}`,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
 export function downloadContractLedgerExport() {
-  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
+  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败", { "x-contract-numeric-protocol": "2" });
 }
 
 export function fetchSettlementContractOptions(projectId: string) {
@@ -7141,9 +7144,10 @@ function saveBlob(blob: Blob, fileName: string): void {
 async function downloadWorkbook(
   path: string,
   fallbackFileName: string,
-  fallbackError: string
+  fallbackError: string,
+  headers?: Record<string, string>
 ): Promise<void> {
-  const response = await apiFetch(path);
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, fallbackError);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -7296,6 +7300,11 @@ export function generateSettlementPdfArchive(
 }
 
 export interface ApprovalDelegationReadModel {
+  reviewPath?: string;
+  actionKey?: string | null;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  scopeLabel?: string;
   id: string;
   fromUserId: string;
   fromUserName?: string;
@@ -7312,18 +7321,24 @@ export interface UserOptionReadModel {
   name: string;
 }
 
-export interface CreateApprovalDelegationPayload {
-  toUserId: string;
-  startsAt: string;
-  endsAt: string;
-}
+export type ApprovalDelegationDutyScope =
+  | { actionKey: "spot_procurement.approve"; resourceType: "spot_procurement_approval_duty" }
+  | { actionKey: "general_procurement.approve"; resourceType: "general_procurement_approval_duty" }
+  | { actionKey: "fund_account.balance.review"; resourceType: "fund_account_balance_review_duty" };
+export type CreateApprovalDelegationPayload = {
+  resourceId?: string; toUserId: string; startsAt: string; endsAt: string;
+} & (ApprovalDelegationDutyScope | { actionKey?: never; resourceType?: never });
 
 export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
 }
 
-export function fetchApprovalDelegationUserOptions() {
-  return readJson<UserOptionReadModel[]>("/approval-delegations/user-options");
+export function fetchApprovalDelegationDutyOptions() {
+  return readJson<Array<{value: string; label: string} & ApprovalDelegationDutyScope>>("/approval-delegations/duty-options");
+}
+
+export function fetchApprovalDelegationUserOptions(dutyId?: string) {
+  return readJson<UserOptionReadModel[]>(`/approval-delegations/user-options${dutyId ? `?dutyId=${encodeURIComponent(dutyId)}` : ""}`);
 }
 
 export function createApprovalDelegation(body: CreateApprovalDelegationPayload) {
@@ -7342,4 +7357,20 @@ export function fetchContractFinancialBalances(input:{projectId?:string;companyE
  if(input.companyEntityId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/company/${encodeURIComponent(input.companyEntityId)}?${query}`);
  query.set("scopeKind","projects");
  return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/as-of?${query}`);
+}
+
+export interface ApprovalRuleAssignmentsReadModel {
+  projects: Array<{id: string; name: string}>;
+  projectId: string | null;
+  roles: Array<{roleKey: string; people: Array<{id: string; name: string}>; missing: boolean}>;
+}
+export function fetchApprovalRuleAssignments(projectId?: string) {
+  return readJson<ApprovalRuleAssignmentsReadModel>(`/approval-rule-assignments${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`);
+}
+
+export function fetchApprovalDelegationDutyCapability(dutyId: string) {
+  return readJson<{canDelegate: boolean; actionKey?: CreateApprovalDelegationPayload["actionKey"]; resourceType?: CreateApprovalDelegationPayload["resourceType"]; resourceId?: string}>(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(dutyId)}`);
+}
+export function fetchApprovalDelegationRevokeCapability(id: string) {
+  return readJson<{canRevoke: boolean}>(`/approval-delegations/${encodeURIComponent(id)}/revoke-capability`);
 }

@@ -1,3 +1,5 @@
+import { CompanyEntityService } from "../company-entity/company-entity.service";
+import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -21,9 +23,7 @@ const EXPECTED_MIGRATION_COUNT = (
     loadCanonicalMigrationBaseline: () => { expectedDirectoryCount: number };
   }
 ).loadCanonicalMigrationBaseline().expectedDirectoryCount;
-const COMPANY_ENTITY_ID = "payment-execution-company";
 const COMPANY_ENTITY_NAME = "付款实付并发验收建设有限公司";
-const COMPANY_ENTITY_CREDIT_CODE = "91310000PAYEXEC0001";
 
 describe("payment execution PostgreSQL concurrency", () => {
   const integrationTest =
@@ -83,6 +83,34 @@ describe("payment execution PostgreSQL concurrency", () => {
     },
     90_000
   );
+
+  // Prepared only; never auto-starts resources. The existing explicit opt-in and dedicated DB guard apply.
+  integrationTest("task07 preserves remaining-amount and idempotency races for approved frozen inactive-company payments", async () => {
+    const databaseUrl = assertDedicatedDatabase();
+    const clients = [0,1,2].map(() => new PrismaClient({datasources:{db:{url:databaseUrl}}}));
+    const fixture = fixtureIds();
+    const gates: Array<Deferred<void>> = [];
+    const pending: Array<Promise<unknown>> = [];
+    try {
+      await Promise.all(clients.map(client=>client.$connect()));
+      await assertFullyMigrated(clients[2]!);
+      await seedFixture(clients[0]!,fixture);
+      const chairman=await clients[0]!.position.upsert({where:{key:"chairman"},update:{},create:{key:"chairman",name:"董事长"}});
+      await clients[0]!.userPosition.create({data:{userId:fixture.actorUserId,positionId:chairman.id,projectId:null}});
+      const archive=new CompanyEntityService(clients[0] as never,new CompanyEntityAccess(clients[0] as never),new AuditService());
+      const frozen=await clients[0]!.companyEntityVersion.findUniqueOrThrow({where:{id:fixture.companyVersionId}});
+      await archive.updateStatus(fixture.companyId,fixture.actorUserId,{isActive:false});
+      expect(await clients[0]!.companyEntityVersion.findUnique({where:{id:fixture.companyVersionId}})).toEqual(frozen);
+      await verifyRemainingCompetition(clients,fixture,gates,pending);
+      await verifyIdempotentReplay(clients,fixture,gates,pending);
+      await verifyFundingShortageZeroWrite(clients[0]!,fixture);
+    } finally {
+      for(const gate of gates)gate.resolve();
+      await Promise.allSettled(pending);
+      await cleanupFixture(clients[0]!,fixture).catch(()=>undefined);
+      await Promise.allSettled(clients.map(client=>client.$disconnect()));
+    }
+  },90000);
 });
 
 type Deferred<T> = {
@@ -114,6 +142,10 @@ function fixtureIds() {
   });
   return {
     prefix,
+    companyId: `${prefix}_company`,
+    companyVersionId: `${prefix}_company_version`,
+    companyCreditCode: `PE${prefix.slice(4, 20).toUpperCase()}`,
+    verifierUserId: `${prefix}_verifier`,
     actorUserId: `${prefix}_finance`,
     scenarios: {
       remaining: scenario("remaining"),
@@ -333,22 +365,26 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
   });
   await client.companyEntity.create({
     data: {
-      id: COMPANY_ENTITY_ID,
+      id: fixture.companyId,
       name: COMPANY_ENTITY_NAME,
-      unifiedSocialCreditCode: COMPANY_ENTITY_CREDIT_CODE,
+      unifiedSocialCreditCode: fixture.companyCreditCode,
       dataStatus: "complete",
       currentVersionNo: 1,
       isActive: true
     }
   });
 
+  await client.companyEntityVersion.create({ data: { id: fixture.companyVersionId, companyEntityId: fixture.companyId, versionNo: 1, name: COMPANY_ENTITY_NAME, unifiedSocialCreditCode: fixture.companyCreditCode, isActive: true, action: "test_fixture", actorUserId: fixture.actorUserId } });
   for (const scenario of Object.values(fixture.scenarios)) {
     const cashAmountCents = scenario.label === "shortage" ? 200n : 1_000n;
     await seedScenario(
       client,
       fixture.actorUserId,
       scenario,
-      cashAmountCents
+      cashAmountCents,
+      fixture.companyId,
+      fixture.companyVersionId,
+      fixture.companyCreditCode
     );
   }
 
@@ -366,11 +402,12 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
     }))
   });
   const position=await client.position.upsert({where:{key:"finance_director"},create:{key:"finance_director",name:"财务负责人"},update:{}});
-  await client.userPosition.create({data:{userId:fixture.actorUserId,positionId:position.id}});
+  await client.user.create({data:{id:fixture.verifierUserId,name:"独立账户核验人",isActive:true}});
+  await client.userPosition.create({data:{userId:fixture.verifierUserId,positionId:position.id}});
   const verificationId=randomUUID();
-  const newBankEvidence=async()=>{const id=randomUUID();await client.fileObject.create({data:{id,bucket:"local-private",objectKey:`${fixture.prefix}/${id}.pdf`,originalName:"银行核验.pdf",mimeType:"application/pdf",sizeBytes:128,uploadedByUserId:fixture.actorUserId,contentSha256:"a".repeat(64),storageStatus:"active"}});return id;};
+  const newBankEvidence=async()=>{const id=randomUUID();await client.fileObject.create({data:{id,bucket:"local-private",objectKey:`${fixture.prefix}/${id}.pdf`,originalName:"银行核验.pdf",mimeType:"application/pdf",sizeBytes:128,uploadedByUserId:fixture.verifierUserId,contentSha256:"a".repeat(64),storageStatus:"active"}});return id;};
   const evidenceId=await newBankEvidence();
-  await client.$queryRaw`SELECT * FROM public."jg_issue_payment_execution_payer_verification_trusted"(${JSON.stringify({id:verificationId,reference:randomUUID(),holderCompanyEntityId:COMPANY_ENTITY_ID,holderNameSnapshot:COMPANY_ENTITY_NAME,holderCreditCodeSnapshot:COMPANY_ENTITY_CREDIT_CODE,verificationReference:randomUUID(),verifiedByUserId:fixture.actorUserId,verifiedAt:new Date(Date.now()-120000).toISOString(),verificationEvidenceFileId:evidenceId,verificationEvidenceContentSha256:"a".repeat(64),status:"verified",sourceType:"bank_account_legal_holder",sourceRecordId:randomUUID()})}::JSONB)`;
+  await client.$queryRaw`SELECT * FROM public."jg_issue_payment_execution_payer_verification_trusted"(${JSON.stringify({id:verificationId,reference:randomUUID(),holderCompanyEntityId:fixture.companyId,holderNameSnapshot:COMPANY_ENTITY_NAME,holderCreditCodeSnapshot:fixture.companyCreditCode,verificationReference:randomUUID(),verifiedByUserId:fixture.verifierUserId,verifiedAt:new Date(Date.now()-120000).toISOString(),verificationEvidenceFileId:evidenceId,verificationEvidenceContentSha256:"a".repeat(64),status:"verified",sourceType:"bank_account_legal_holder",sourceRecordId:randomUUID()})}::JSONB)`;
   const amounts={remainingA:700n,remainingB:700n,replay:400n,crossShared:300n,shortage:500n};
   for(const [key,file] of Object.entries(fixture.vouchers))await new VerifiedBankTransactionObservationService(client as never).record({reference:`bank-${file}`,payerVerificationId:verificationId,transactionSourceType:"isolated_payment_test",transactionSourceId:randomUUID(),transactionSourceIdentity:randomUUID().replaceAll("-","").repeat(2),transactionEvidenceFileId:await newBankEvidence(),transactionExecutedByUserId:fixture.actorUserId,amountCents:amounts[key as keyof typeof amounts],currencyCode:"CNY",direction:"outflow",occurredAt:new Date(Date.now()-60000),createdByUserId:fixture.actorUserId,auditRequestId:randomUUID()});
 }
@@ -379,7 +416,10 @@ async function seedScenario(
   client: PrismaClientType,
   actorUserId: string,
   scenario: Scenario,
-  cashAmountCents: bigint
+  cashAmountCents: bigint,
+  companyId: string,
+  companyVersionId: string,
+  companyCreditCode: string
 ) {
   await client.project.create({
     data: {
@@ -414,7 +454,7 @@ async function seedScenario(
       code: `${scenario.contractId}_code`,
       name: `付款实付并发验收合同 ${scenario.label}`,
       counterparty: "付款实付并发验收相对方",
-      companyEntityId: COMPANY_ENTITY_ID,
+      companyEntityId: companyId,
       companyEntityName: COMPANY_ENTITY_NAME,
       contractTypeKey: "material_purchase",
       ownerUserId: actorUserId
@@ -430,9 +470,10 @@ async function seedScenario(
       amountCents: 10_000n,
       effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
       signingSubjectType: "our_company",
-      companyEntityIdSnapshot: COMPANY_ENTITY_ID,
+      companyEntityIdSnapshot: companyId,
+      companyEntityVersionId: companyVersionId,
       companyEntityNameSnapshot: COMPANY_ENTITY_NAME,
-      companyEntityCreditCodeSnapshot: COMPANY_ENTITY_CREDIT_CODE,
+      companyEntityCreditCodeSnapshot: companyCreditCode,
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: {}
@@ -1055,7 +1096,7 @@ async function cleanupFixture(
     where: { id: { startsWith } }
   });
   await client.companyEntity.deleteMany({
-    where: { id: COMPANY_ENTITY_ID }
+    where: { id: fixture.companyId }
   });
 }
 

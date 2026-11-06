@@ -100,6 +100,7 @@ async function ensureOk(
   }
 
   const error = new Error(message) as Error & {
+    status?: number;
     code?: string;
     conflictReason?: string;
     projectId?: string;
@@ -113,6 +114,7 @@ async function ensureOk(
       status: "document_invalidated" | "unchanged" | "refresh_required";
     };
   };
+  error.status = response.status;
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
   if (projectId) error.projectId = projectId;
@@ -123,8 +125,8 @@ async function ensureOk(
   throw error;
 }
 
-async function readJson<T>(path: string, preserveErrorCode = false): Promise<T> {
-  const response = await apiFetch(path);
+async function readJson<T>(path: string, preserveErrorCode = false, headers?: Record<string, string>): Promise<T> {
+  const response = await apiFetch(path, headers ? { headers } : undefined);
   await ensureOk(response, "读取失败", preserveErrorCode);
   return response.json() as Promise<T>;
 }
@@ -243,10 +245,16 @@ type CreateWorkbenchDraftBasePayload = {
   signingSubjectType?: "affiliate" | "our_company";
 };
 
-export type CreateWorkbenchDraftPayload = CreateWorkbenchDraftBasePayload & (
+export type CreateWorkbenchDraftPayload = (CreateWorkbenchDraftBasePayload & (
   | { businessScenarioId: string; scenarioTemplateMappingId: string }
   | { businessScenarioId?: never; scenarioTemplateMappingId?: never }
-);
+)) | {
+  numericProtocolVersion: 2;
+  projectId: string;
+  contractTypeKey: string;
+  amountLimitType: "capped" | "unlimited";
+  relationship?: "inside" | "outside" | "upward";
+};
 
 export interface CreateWorkbenchDraftReadModel {
   contract: { id: string };
@@ -312,6 +320,8 @@ export interface ContractDraftLeaseHeartbeat {
 }
 
 export interface ContractDraftFieldsPayload {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
   clauses: ContractClauseDefinition[];
@@ -320,7 +330,7 @@ export interface ContractDraftFieldsPayload {
   manualAmountCents?: string;
   estimatedAmountCents?: string;
   amountAdjustmentReason?: string;
-  layoutTemplateVersionId?: string;
+  layoutTemplateVersionId?: string | null;
   taxFacts: {
     invoiceType: ContractInvoiceType | null;
     taxMode: ContractTaxMode;
@@ -337,6 +347,7 @@ export interface ContractDraftPartyModel {
 }
 
 export interface ContractDraftBillModel {
+  numericProtocolVersion?: number;
   billKey: string;
   expectedRevision: number;
   rows: Array<Record<string, unknown>>;
@@ -385,15 +396,24 @@ export interface SaveContractDraftAggregatePayload {
 }
 
 export interface SaveContractDraftAggregateResult {
+  requestFingerprint?: string;
+  billRowKeys?: Record<string, Array<{ clientRowKey: string; rowKey: string }>>;
+  deletedRowRestoreRefs?: Record<string, Array<{ saveIntentKey: string; oldRowKey: string; originalValues: Record<string, unknown> }>>;
   contractVersionId: string;
   draftRevision: number;
   serverRevision: number;
   savedAt: string;
   effectiveChangedSections: ContractDraftChangedSection[];
+  versionAmount?: { numericProtocolVersion: 2; amountYuan: string | null; amountCents: string | null };
+  billAmounts?: Array<{ billKey: string; numericProtocolVersion: 2; taxInclusiveAmountYuan: string | null; taxExclusiveAmountYuan: string | null; taxAmountYuan: string | null; taxInclusiveAmountCents: string | null; taxExclusiveAmountCents: string | null; taxAmountCents: string | null }>;
   amounts: {
-    taxInclusiveAmountCents: string;
-    taxExclusiveAmountCents: string;
-    taxAmountCents: string;
+    numericProtocolVersion?: 2;
+    taxInclusiveAmountYuan?: string | null;
+    taxExclusiveAmountYuan?: string | null;
+    taxAmountYuan?: string | null;
+    taxInclusiveAmountCents: string | null;
+    taxExclusiveAmountCents: string | null;
+    taxAmountCents: string | null;
   };
   billRevisions: Record<string, number>;
   issueCounts: Record<string, number>;
@@ -411,14 +431,22 @@ export interface SaveContractDraftAggregateResult {
 
 export function fetchContractWorkbench(contractId: string) {
   return readJson<ContractWorkbenchReadModel>(
-    `/contract-workbench/${encodeURIComponent(contractId)}`
+    `/contract-workbench/${encodeURIComponent(contractId)}`, false, { "x-contract-numeric-protocol": "2" }
+  );
+}
+
+export function fetchContractDraftSaveResult(contractVersionId: string, idempotencyKey: string) {
+  return readJson<{ status: "unknown" } | { status: "saved"; result: SaveContractDraftAggregateResult; latestRevision: number }>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/save-requests/${encodeURIComponent(idempotencyKey)}`, false,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
 export function fetchContractDraftWorkbench(contractVersionId: string) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
-    true
+    true,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -427,7 +455,8 @@ export function fetchContractDraftOperationCapabilities(
 ) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
-    true
+    true,
+    { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -1131,7 +1160,7 @@ export function checkContractSubmissionReadiness(contractVersionId: string) {
 }
 
 export function listContractDrafts(scope: "my" | "voided") {
-  return readJson<unknown[]>(`/contract-workbench?scope=${scope}`);
+  return readJson<unknown[]>(`/contract-workbench?scope=${scope}`, false, { "x-contract-numeric-protocol": "2" });
 }
 
 export interface SaveContractDraftPayload {
@@ -1185,9 +1214,8 @@ export function confirmContractSettlementMode(
   contractVersionId: string,
   body: ConfirmContractSettlementModePayload
 ) {
-  return postJson<SaveContractDraftResult>(
-    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
-    body
+  return postJsonWithHeaders<SaveContractDraftResult>(
+    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`, body, { "x-contract-numeric-protocol": "2" }
   );
 }
 
@@ -1267,10 +1295,7 @@ export function applyContractTypeChange(
 ) {
   // Backend requires explicit `confirmed: true` (ApplyContractTypeChangeDto) so the
   // migration only runs after the user accepts the preview.
-  return postJson<unknown>(`/contract-workbench/${contractVersionId}/type-change`, {
-    ...body,
-    confirmed: true
-  });
+  return postJsonWithHeaders<unknown>(`/contract-workbench/${contractVersionId}/type-change`, { ...body, confirmed: true }, { "x-contract-numeric-protocol": "2" });
 }
 
 export interface TransferContractDraftPayload {
@@ -2224,17 +2249,25 @@ export async function downloadContractDraftBillExcelTemplate(
   billKey: string
 ): Promise<void> {
   return downloadBillExcelTemplateFromPath(
-    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/template`,
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/template?numericProtocolVersion=2`,
     `合同清单模板-${billKey}.xlsx`
+  );
+}
+
+export async function exportContractDraftBill(contractVersionId: string, billKey: string): Promise<void> {
+  return downloadBillExcelTemplateFromPath(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/export`,
+    "合同清单.xlsx", "导出合同清单失败，请稍后重试"
   );
 }
 
 async function downloadBillExcelTemplateFromPath(
   path: string,
-  fallbackFileName: string
+  fallbackFileName: string,
+  errorMessage = "下载清单模板失败"
 ): Promise<void> {
   const response = await apiFetch(path);
-  await ensureOk(response, "下载清单模板失败");
+  await ensureOk(response, errorMessage);
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
@@ -2245,6 +2278,8 @@ async function downloadBillExcelTemplateFromPath(
 }
 
 export interface ContractDraftBillExcelImportPreview {
+  sourceColumns?: Array<{ key: string; label: string; column: string }>;
+  sourceRows?: Array<{ sheet: string; row: number; values: Record<string, string> }>;
   billKey: string;
   targetBillRevision: number;
   rows: ContractBillCandidateRowInput[];
@@ -2263,11 +2298,11 @@ export interface ContractDraftBillExcelImportPreview {
 export function previewContractDraftBillExcelImport(
   contractVersionId: string,
   billKey: string,
-  body: { fileId: string }
+  body: { fileId: string; mode?: "append" | "replace" }
 ) {
   return postJson<ContractDraftBillExcelImportPreview>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/import-preview`,
-    body
+    { ...body, numericProtocolVersion: 2 }
   );
 }
 

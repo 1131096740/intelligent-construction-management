@@ -1,3 +1,5 @@
+import { Test } from "@nestjs/testing";
+import { ContractWorkbenchController } from "./contract-workbench.controller";
 import { Prisma } from "@prisma/client";
 import { ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
@@ -191,6 +193,84 @@ describe("ContractWorkbenchService", () => {
       ...overrides
     };
   }
+
+  it("negotiates legacy workbench HTTP aliases and lists without turning a v2 unknown or four-place amount into cents", async () => {
+    const tx = ownedVersionTx();
+    const version = { ...(await tx.contractVersion.findUnique()), numericProtocolVersion: 2, amountYuan: null as Prisma.Decimal | null };
+    const contract = await tx.contract.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const prisma = { ...withEmptyDraftLifecycleModels(tx),
+      contract: { ...tx.contract, findMany: jest.fn().mockResolvedValue([contract]) },
+      contractVersion: { ...tx.contractVersion, findFirst: jest.fn().mockImplementation(async () => version), findMany: jest.fn().mockResolvedValue([version]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { ...tx.contractGeneratedDocument, findMany: jest.fn().mockResolvedValue([]) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) }, position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ContractWorkbenchService(prisma as never, audit as never);
+    const module = await Test.createTestingModule({ controllers: [ContractWorkbenchController], providers: [{ provide: ContractWorkbenchService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1"); const base = await app.getUrl();
+      expect((await fetch(`${base}/contract-workbench/contract-1`)).status).toBe(409);
+      expect((await fetch(`${base}/contract-workbench?scope=my`)).status).toBe(409);
+      for (const amount of [null, "0.0000", "1.5340"]) {
+        version.amountYuan = amount === null ? null : new Prisma.Decimal(amount);
+        const response = await fetch(`${base}/contract-workbench/contract-1`, { headers: { "x-contract-numeric-protocol": "2" } });
+        expect(response.status).toBe(200);
+        expect((await response.json()).version).toMatchObject({ amountYuan: amount, amountCents: amount === null ? null : amount === "0.0000" ? "0" : "153" });
+      }
+      expect((await fetch(`${base}/contract-workbench?scope=my`, { headers: { "x-contract-numeric-protocol": "2" } })).status).toBe(200);
+    } finally { await app.close(); }
+  });
+
+  it("rejects an old HTTP draft writer before any version or bill writes can erase a v2 amount", async () => {
+    const tx = ownedVersionTx();
+    tx.contractVersion.findUnique.mockResolvedValue({ ...(await tx.contractVersion.findUnique()), numericProtocolVersion: 2, amountYuan: new Prisma.Decimal("1.5340") } as never);
+    const service = makeService(tx);
+    const module = await Test.createTestingModule({ controllers: [ContractWorkbenchController], providers: [{ provide: ContractWorkbenchService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const response = await fetch(`${await app.getUrl()}/contract-workbench/version-1`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: 4, draftData: {}, clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "153", taxFacts: VALID_TAX_FACTS }) });
+      expect(response.status).toBe(409);
+      expect(await response.text()).toContain("精度已升级");
+      for (const [path, body] of [["checkpoints", {}], ["checkpoints/old-point/restore", {}], ["type-change", { expectedRevision: 4, targetBusinessTemplateVersionId: "target", confirmed: true }]] as const) {
+        const old = await fetch(`${await app.getUrl()}/contract-workbench/version-1/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        expect({ path, status: old.status }).toEqual({ path, status: 409 });
+      }
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled(); expect(tx.contractBill.createMany).not.toHaveBeenCalled(); expect(audit.record).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it("preserves canonical four-place bills through a declared v2 HTTP type change rather than replacing them for their expanded scale", async () => {
+    const tx = ownedVersionTx(); const original = await tx.contractVersion.findUnique();
+    const version = { ...original, numericProtocolVersion: 2, amountSource: "bill_sum", amountYuan: new Prisma.Decimal("1.5340") };
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const originalBills = await tx.contractBill.findMany();
+    const bill = { ...originalBills[0], numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4,
+      taxInclusiveAmountYuan: new Prisma.Decimal("1.5340"), taxExclusiveAmountYuan: new Prisma.Decimal("1.5340"), taxAmountYuan: new Prisma.Decimal(0) };
+    tx.contractBill.findMany.mockResolvedValue([bill]);
+    const target = { id: "target", templateId: "template-2", status: "published", ...TEMPLATE_SNAPSHOT };
+    const transaction = { ...tx, contractBusinessTemplateVersion: { findUnique: jest.fn().mockResolvedValue(target) },
+      contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" }) },
+      contract: { ...tx.contract, update: jest.fn().mockResolvedValue({ id: "contract-1" }) }
+    };
+    const service = makeService(transaction);
+    const module = await Test.createTestingModule({ controllers: [ContractWorkbenchController], providers: [{ provide: ContractWorkbenchService, useValue: service }] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    try {
+      await app.listen(0, "127.0.0.1");
+      const response = await fetch(`${await app.getUrl()}/contract-workbench/version-1/type-change`, { method: "POST", headers: { "content-type": "application/json", "x-contract-numeric-protocol": "2" }, body: JSON.stringify({ expectedRevision: 4, targetBusinessTemplateVersionId: "target", confirmed: true }) });
+      expect(response.status).toBe(201);
+      expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled(); expect(tx.contractBill.deleteMany).not.toHaveBeenCalled();
+      expect(tx.contractBill.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ quantityScale: 4, unitPriceScale: 4 }) }));
+      expect(tx.contractVersion.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amountYuan: "1.5340" }) }));
+      expect(await response.json()).toMatchObject({ numericProtocolVersion: 2, amountYuan: "1.5340", amountCents: "153" });
+    } finally { await app.close(); }
+  });
 
   function hardFormalDraftTx() {
     return ownedVersionTx({
@@ -2838,7 +2918,7 @@ describe("ContractWorkbenchService", () => {
     });
   });
 
-  it("projects remainder-cancellation capability from one batched lineage lookup", async () => {
+  it.each([1, 2])("projects remainder-cancellation capability from one batched lineage lookup for protocol %s", async (numericProtocolVersion) => {
     const version = {
       id: "version-2",
       contractId: "contract-1",
@@ -2979,6 +3059,10 @@ describe("ContractWorkbenchService", () => {
         expectedOccupancyToken: null
       }]
     ]));
+    if (numericProtocolVersion === 2) {
+      Object.assign((await prisma.contractVersion.findFirst())!, { numericProtocolVersion: 2, amountYuan: null });
+      for (const bill of await prisma.contractBill.findMany()) Object.assign(bill, { numericProtocolVersion: 2 });
+    }
     const service = new ContractWorkbenchService(
       prisma,
       audit as never,
@@ -2986,7 +3070,12 @@ describe("ContractWorkbenchService", () => {
       { remainderCancellationFacts } as never
     );
 
-    const result = await service.getDraft("contract-1", "owner-1");
+    const result = await service.getDraft("contract-1", "owner-1", numericProtocolVersion === 2 ? "2" : undefined);
+    if (numericProtocolVersion === 2) {
+      expect(result.availableActions).toContainEqual(expect.objectContaining({ key: "contract-bill.remainder-cancellation", enabled: false, disabledReason: expect.stringContaining("核对") }));
+      expect(result.bills[0]?.rows[0]).toMatchObject({ availableActions: [expect.objectContaining({ enabled: false, disabledReason: expect.stringContaining("核对") })] });
+      return;
+    }
 
     expect(remainderCancellationFacts).toHaveBeenCalledTimes(1);
     expect(remainderCancellationFacts).toHaveBeenCalledWith(

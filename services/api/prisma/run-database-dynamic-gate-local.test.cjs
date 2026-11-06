@@ -14,6 +14,7 @@ const {
   inheritedDatabaseTargetNames,
   loadManifest,
   parseArguments,
+  resolveGroupCommand,
   validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
 const { deriveMigrationBaseline } = require("./migration-baseline.cjs");
@@ -56,6 +57,146 @@ const runnerPath = path.join(
   __dirname,
   "run-database-dynamic-gate-local.cjs"
 );
+
+const task01Args = ["--task01-packet", "/private/tmp/packet.json", "--task01-inputs", "/private/tmp/inputs.json",
+  "--task01-inputs-sha256", "b".repeat(64), "--task01-artifacts", "/private/tmp/new-task01-artifacts",
+  "--task01-confirm", "LOCAL_TASK01_HTTP_PG"];
+const task01Execute = ["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE",
+  "--group", "enterprise_task01_entry"];
+
+test("task01 operator lists real explicit inputs without execution or inherited target use", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--list", "--group", "enterprise_task01_entry"], {
+    encoding: "utf8", env: { PATH: "", NODE_ENV: "test", DATABASE_URL: "postgresql://must-not-use.invalid/db" }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.executed, false);
+  assert.equal(report.coveredTests, 1);
+  assert.equal(report.remainingTests, 0);
+  assert.equal(report.coveredGroups[0].runner.path, "services/api/prisma/run-enterprise-task01-local.cjs");
+  assert.equal(report.coveredGroups[0].runner.invocation, "task01_explicit_inputs");
+  assert.doesNotMatch(result.stdout, /must-not-use/u);
+});
+
+test("task01 operator rejects missing inputs, wrong confirmation and mixed groups before any executable lookup", () => {
+  const wrongConfirm = [...task01Args]; wrongConfirm[wrongConfirm.length - 1] = "yes";
+  const wrongSha = [...task01Args]; wrongSha[wrongSha.indexOf("--task01-inputs-sha256") + 1] = "bad";
+  for (const [argv, expected] of [
+    [task01Execute, /任务01必须提供全部独立输入/u],
+    [[...task01Execute, ...wrongConfirm], /LOCAL_TASK01_HTTP_PG/u],
+    [[...task01Execute, ...wrongSha], /任务01输入清单SHA256/u],
+    [[...task01Execute, ...task01Args, "--group", "payment_execution"], /任务01必须显式单独选择/u]
+  ]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...argv], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, expected);
+    assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+  }
+});
+
+test("task01 inputs cannot be supplied to preview or an existing database group", () => {
+  for (const argv of [["--list", ...task01Args],
+    ["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE", "--group", "payment_execution", ...task01Args]]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...argv], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /任务01独立参数只能/u);
+  }
+});
+
+test("task01 rejects default all, unknown and duplicate independent flags without tools", () => {
+  for (const [argv, expected] of [
+    [["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE"], /任务01必须显式单独选择/u],
+    [[...task01Execute, ...task01Args, "--task01-packet", "/private/tmp/again.json"], /任务01独立参数重复/u],
+    [[...task01Execute, ...task01Args, "--task01-command", "arbitrary"], /未知参数/u]
+  ]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...argv], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, expected);
+    assert.doesNotMatch(result.stderr, /ENOENT|spawn/u);
+  }
+});
+
+test("task01 existing dispatcher forwards exactly the four fixed driver inputs", () => {
+  const options = parseArguments([...task01Execute, ...task01Args]);
+  const manifest = loadManifest();
+  assert.doesNotThrow(() => assertExecutionArguments(options, manifest));
+  const resolved = resolveGroupCommand(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry"), options);
+  assert.deepEqual(resolved, { command: process.execPath, args: [path.join(__dirname, "run-enterprise-task01-local.cjs"),
+    "--packet", "/private/tmp/packet.json", "--inputs", "/private/tmp/inputs.json", "--inputs-sha256", "b".repeat(64),
+    "--artifacts", "/private/tmp/new-task01-artifacts"] });
+});
+
+test("task01 registration binds reviewed source bodies and cannot substitute an arbitrary helper", () => {
+  for (const mutate of [runner => { runner.sourceSha256 = "0".repeat(64); },
+    runner => { runner.resourceHelper = "arbitrary.cjs"; },
+    runner => { runner.environment = { JG_TASK01_EXECUTION_APPROVED: "injected" }; }]) {
+    const manifest = loadManifest();
+    mutate(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").runner);
+    assert.throws(() => validateManifest(manifest), /任务01固定执行源码哈希不匹配|任务01只允许固定operator/u);
+  }
+});
+
+test("CI classification cannot move an old group out or make the manual operator automatic", () => {
+  for (const mutate of [
+    manifest => { manifest.coveredGroups[0].ciExecution = "manual-only"; },
+    manifest => { manifest.coveredGroups[0].ciExecution = "unknown"; },
+    manifest => { manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").ciExecution = "automatic"; },
+    manifest => { delete manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").ciExecution; }
+  ]) {
+    const manifest = loadManifest(); mutate(manifest);
+    assert.throws(() => validateManifest(manifest), /CI执行分类|任务01必须显式登记manual-only/u);
+  }
+});
+
+test("public inventory distinguishes CI eligible tests from the explicitly manual operator", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--validate-manifest"], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.executed, false);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 78, tests: 540 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 541);
+});
+
+test("manual task01 operator cannot run automatically on GitHub Actions", () => {
+  const script = `
+    const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');
+    const file = ${JSON.stringify(runnerPath)}; const fixture = new Module(file, module);
+    fixture.filename = file; fixture.paths = Module._nodeModulePaths(path.dirname(file));
+    fixture._compile(fs.readFileSync(file, 'utf8').replace(/^#!.*\\n/u, '') +
+      '\\nresolveGroupCommand = () => { throw new Error("COMMAND_RESOLUTION_REACHED"); };', file);
+    fixture.exports.main(${JSON.stringify([...task01Execute, ...task01Args])})
+      .catch(error => { process.stderr.write(error.message); process.exitCode = 1; });
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], {
+    encoding: "utf8", env: { PATH: "", NODE_ENV: "test", GITHUB_ACTIONS: "true" }
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /禁止GitHub Actions自动执行/u);
+  assert.doesNotMatch(result.stderr, /spawn|ENOENT/u);
+});
+
+test("task01 dispatch handles real child stdout without interpreting inherited output as a captured receipt", () => {
+  // Existing dispatcher seam, real subprocess/stdio transport. Only command
+  // resolution is substituted; no driver/helper import, fake SQL or PG result.
+  const hook = `\nresolveGroupCommand = () => ({ command: process.execPath, args: ${JSON.stringify(["-e", 'process.stdout.write("real-child-stdout-not-json\\n")'])} });`;
+  const script = `
+    const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');
+    const file = ${JSON.stringify(runnerPath)};
+    const fixture = new Module(file, module); fixture.filename = file;
+    fixture.paths = Module._nodeModulePaths(path.dirname(file));
+    fixture._compile(fs.readFileSync(file, 'utf8').replace(/^#!.*\\n/u, '') + ${JSON.stringify(hook)}, file);
+    fixture.exports.main(${JSON.stringify([...task01Execute, ...task01Args])})
+      .then(result => process.stdout.write('DISPATCH_RESULT=' + JSON.stringify(result) + '\\n'))
+      .catch(error => { process.stderr.write(error.name + ':' + error.message); process.exitCode = 1; });
+  `;
+  const child = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /real-child-stdout-not-json/u);
+  const line = child.stdout.split("\n").find(value => value.startsWith("DISPATCH_RESULT="));
+  const result = JSON.parse(line.slice("DISPATCH_RESULT=".length));
+  assert.equal(result.fullDynamicGate, false);
+  assert.equal(result.driverReceiptPath, "/private/tmp/new-task01-artifacts/task01-receipt.json");
+});
 
 test("fund verifier SQL completes without depending on Docker interactive stdin EOF", () => {
   const sql = readFileSync(path.join(__dirname, "migrations/20260814120000_operating_ledger_runtime_write_guard/migration.sql"), "utf8");
@@ -276,24 +417,26 @@ test("settlement draft readiness waits beyond the bootstrap socket-only server",
   assert.equal(dockerCalls.length, 2);
 });
 
-test("manifest derives all 511 pending tests as executable local coverage", () => {
+test("manifest preserves source inventory and one separately invoked task01 operator", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 77,
-    fullyPendingSuites: 66,
+    pendingFiles: 79,
+    fullyPendingSuites: 68,
     partiallyPendingSuites: 11,
-    pendingTests: 511,
-    coveredFiles: 77,
-    coveredTests: 511,
+    pendingTests: 541,
+    coveredFiles: 79,
+    coveredTests: 541,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 540);
+  assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
 test("canonical manifest executes all 14 POL-108 PG16 tests across three independent shards", () => {
@@ -376,7 +519,7 @@ test("POL-109 readiness ignores the Unix-only initialization server until TCP Po
   }
 });
 
-test("canonical manifest executes all 172 entry tests including the template workbench", () => {
+test("canonical manifest executes all 181 entry tests including the template workbench", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -384,7 +527,7 @@ test("canonical manifest executes all 172 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 172,
+    pendingTests: 181,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -408,7 +551,7 @@ test("canonical manifest executes all 172 entry tests including the template wor
       },
       {
         path: "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
-        pendingTests: 3,
+        pendingTests: 12,
         suiteStatus: "fully_pending"
       },
       {
@@ -702,7 +845,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=511/u
+    /inventory\.coveredTests=26，派生值=541/u
   );
 });
 
@@ -781,7 +924,7 @@ test("list mode exposes only the requested database group and stays read-only", 
     payload.coveredGroups.map((group) => group.id),
     ["payment_execution"]
   );
-  assert.equal(payload.coveredTests, 1);
+  assert.equal(payload.coveredTests, 2);
   assert.equal(payload.coveredFiles, 1);
   assert.doesNotMatch(result.stdout, /preview-must-not-use/u);
 });

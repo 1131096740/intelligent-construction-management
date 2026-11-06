@@ -1,3 +1,6 @@
+import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
+import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
+import { confirmedLayoutSourceMapping, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import {
   BadRequestException,
   ConflictException,
@@ -22,6 +25,7 @@ import { FileService } from "../file/file.service";
 import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
 import {
   formatChineseUppercaseMoney,
+  formatChineseUppercaseBusinessAmount,
   formatMoneyCents
 } from "./contract-docx-renderer";
 
@@ -53,6 +57,7 @@ export interface ContractDocumentInputSnapshot {
   documentContentRevision: number;
   documentContentFingerprint: string;
   templateFileId: string;
+  layoutSourceMapping?: LayoutSourceMapping;
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
   requiredKeys: string[];
@@ -119,6 +124,26 @@ export class ContractDocumentService {
           contractVersionId,
           actorUserId
         );
+        const draftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : {};
+        const basics = draftData.contractBasics && typeof draftData.contractBasics === "object" && !Array.isArray(draftData.contractBasics) ? draftData.contractBasics : {};
+        if (version.status === "draft" && version.numericProtocolVersion === 2 && basics.amountBasis === "tax_exclusive") {
+          throw new BadRequestException("当前不含税草稿文书尚待模板口径核对，请保留资料，暂不能生成");
+        }
+        if (version.status === "draft" && draftData.contractBasics !== undefined) {
+          const parties = await tx.contractPartySnapshot.findMany({ where: { contractVersionId: version.id } });
+          const namedParty = (role: string) => parties.some(party => party.roleKey === role && party.snapshot && typeof party.snapshot === "object" && !Array.isArray(party.snapshot) && typeof party.snapshot.name === "string" && party.snapshot.name.trim());
+          const missing = [
+            ...(!ownedContract.projectId ? ["项目"] : []),
+            ...(typeof draftData.contractName !== "string" || !draftData.contractName.trim() ? ["合同名称"] : []),
+            ...(!["inside", "outside", "upward"].includes(String(basics.relationship ?? "")) ? ["合同关系"] : []),
+            ...(!namedParty("party_a") ? ["甲方"] : []),
+            ...(!namedParty("party_b") ? ["乙方"] : [])
+          ];
+          if (missing.length) throw new BadRequestException(`生成前请补充：${missing.join("、")}。草稿内容已保留，可继续填写。`);
+        }
+        if (version.status === "draft" && version.numericProtocolVersion === 2 && version.signingSubjectType === "draft_unconfirmed" && !version.layoutTemplateVersionId) {
+          throw new BadRequestException("请选择并保存模板，再生成当前合同草稿；填写内容已保留");
+        }
         let contract = ownedContract;
         if (version.changeType === "historical_takeover") {
           throw new BadRequestException(
@@ -156,18 +181,12 @@ export class ContractDocumentService {
         if (!layoutTemplateVersionId) {
           throw new BadRequestException("合同草稿尚未选择文件版式，不能生成预览");
         }
-        const layout = await tx.contractLayoutTemplateVersion.findUnique({
-          where: { id: layoutTemplateVersionId }
-        });
-        if (!layout || layout.status !== "published") {
-          throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
+        if (!command && version.layoutTemplateVersionId !== layoutTemplateVersionId) {
+          throw new ConflictException("请先保存当前选择的合同版式，再生成文档");
         }
-        const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
-          where: { id: layout.layoutTemplateId }
-        });
-        if (!layoutTemplate || layoutTemplate.contractTypeKey !== contract.contractTypeKey) {
-          throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
-        }
+        const layout = await assertSelectableLayoutVersion(tx, this.files, layoutTemplateVersionId, version.status === "draft"
+          ? resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType)
+          : contract.contractTypeKey);
         this.assertInternalReviewReady(
           input.purpose,
           version.readinessSnapshot,
@@ -243,10 +262,12 @@ export class ContractDocumentService {
             })
           : [];
         assertContractBillDerivedUnitPrices(rows);
+        const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
         const inputSnapshot: ContractDocumentInputSnapshot = {
           documentContentRevision: documentContent.revision,
           documentContentFingerprint: documentContent.fingerprint,
           templateFileId: layout.docxFileId,
+          ...(layoutSourceMapping ? { layoutSourceMapping } : {}),
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
             values: this.renderValues(
@@ -580,7 +601,9 @@ export class ContractDocumentService {
       });
       if (
         !layoutTemplate ||
-        layoutTemplate.contractTypeKey !== contract.contractTypeKey
+        layoutTemplate.contractTypeKey !== (version.status === "draft"
+          ? resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType)
+          : contract.contractTypeKey)
       ) {
         throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
       }
@@ -988,6 +1011,8 @@ export class ContractDocumentService {
     version: {
       status: string;
       amountCents: bigint;
+      numericProtocolVersion?: number;
+      amountYuan?: Prisma.Decimal | null;
       invoiceType: string | null;
       defaultTaxRatePercent: Prisma.Decimal | null;
       draftData: Prisma.JsonValue;
@@ -1003,6 +1028,11 @@ export class ContractDocumentService {
       id: string;
       billKey: string;
       rows: Array<{
+        numericProtocolVersion?: number;
+        numericSource?: string;
+        taxInclusiveAmountYuan?: Prisma.Decimal | null;
+        taxExclusiveAmountYuan?: Prisma.Decimal | null;
+        taxAmountYuan?: Prisma.Decimal | null;
         itemCode: string | null;
         itemName: string;
         specification: string | null;
@@ -1022,11 +1052,12 @@ export class ContractDocumentService {
     purpose: ContractDocumentPurpose
   ) {
     const values: Record<string, unknown> = {
-      "contract.name": contract.name,
+      "contract.name": version.status === "draft" && this.isObject(version.draftData) && typeof version.draftData.contractName === "string" && version.draftData.contractName.trim()
+        ? version.draftData.contractName : contract.name,
       "contract.temporaryCode": contract.temporaryCode ?? "",
       "contract.code": contract.code ?? "",
-      "contract.amount": formatMoneyCents(version.amountCents),
-      "contract.amountUppercase": formatChineseUppercaseMoney(version.amountCents),
+      "contract.amount": version.numericProtocolVersion === 2 ? version.amountYuan?.toFixed(4) ?? "待确定" : formatMoneyCents(version.amountCents),
+      "contract.amountUppercase": version.numericProtocolVersion === 2 ? formatChineseUppercaseBusinessAmount(version.amountYuan?.toFixed(4) ?? null) : formatChineseUppercaseMoney(version.amountCents),
       "document.watermark":
         purpose === "draft"
           ? "草稿"
@@ -1123,10 +1154,10 @@ export class ContractDocumentService {
     }
     for (const bill of bills) {
       values[`bill.${bill.billKey}`] = bill.rows.map((row) => {
-        const taxInclusiveUnitPrice = row.unitPrice?.toFixed(2) ?? "—";
+        const taxInclusiveUnitPrice = row.numericProtocolVersion === 2 ? row.unitPrice?.toString() ?? "—" : row.unitPrice?.toFixed(2) ?? "—";
         const taxExclusiveUnitPrice =
           row.taxExclusiveUnitPrice != null
-            ? row.taxExclusiveUnitPrice.toFixed(6)
+            ? row.taxExclusiveUnitPrice.toFixed(row.numericProtocolVersion === 2 && row.numericSource === "decimal_input" ? 4 : 6)
             : row.quantity && row.taxExclusiveAmountCents !== null
               ? deriveSixDecimalUnitPriceFromAmountCents(
                   row.taxExclusiveAmountCents,
@@ -1144,9 +1175,9 @@ export class ContractDocumentService {
           taxInclusiveUnitPrice,
           taxExclusiveUnitPrice,
           taxRatePercent: row.taxRate ? `${row.taxRate.toString()}%` : "—",
-          taxInclusiveAmount: this.moneyText(row.taxInclusiveAmountCents),
-          taxExclusiveAmount: this.moneyText(row.taxExclusiveAmountCents),
-          taxAmount: this.moneyText(row.taxAmountCents),
+          taxInclusiveAmount: row.numericProtocolVersion === 2 ? row.taxInclusiveAmountYuan?.toFixed(4) ?? "—" : this.moneyText(row.taxInclusiveAmountCents),
+          taxExclusiveAmount: row.numericProtocolVersion === 2 ? row.taxExclusiveAmountYuan?.toFixed(4) ?? "—" : this.moneyText(row.taxExclusiveAmountCents),
+          taxAmount: row.numericProtocolVersion === 2 ? row.taxAmountYuan?.toFixed(4) ?? "—" : this.moneyText(row.taxAmountCents),
           isProvisional: row.isProvisional,
           settlementBasis: row.settlementBasis ?? ""
         };

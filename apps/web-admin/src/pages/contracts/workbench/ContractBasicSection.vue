@@ -4,6 +4,7 @@
       {{ mode === "settlement" ? "结算方式" : "基础信息" }}
     </h2>
 
+    <p v-if="mode !== 'settlement'" class="field-help">金额口径按本合同约定选择；切换不会换算已填写单价，请逐项核对当前草稿价格。</p>
     <div class="field-grid">
       <BusinessEntryForm
         v-if="mode !== 'settlement' && basicDefinition"
@@ -152,15 +153,18 @@ const basicDefinition = computed(() => props.definition ? {
   ...props.definition,
   fields: props.definition.fields.map((field) => ({
     ...field,
+    required: props.model.numericProtocolVersion === 2 && field.key === "companyEntityId" ? false : field.required,
     readOnly: field.readOnly || (field.key === "contractName"
       ? props.nameDisabled ?? props.disabled
-      : props.companyDisabled ?? props.disabled)
+      : field.key === "companyEntityId" ? props.companyDisabled ?? props.disabled : props.disabled)
   }))
 } : null);
 const basicEntry = computed<BusinessEntryDraftPayload>(() => ({
   sceneKey: props.definition?.key ?? "contract_basic",
   definitionVersion: props.definition?.version,
-  values: { contractName: props.model.contractName, companyEntityId: props.model.companyEntityId }
+  values: { amountBasis: "tax_inclusive", invoiceStatus: props.model.invoiceType ?? "pending",
+    ...(props.model.extraDraftData?.contractBasics as Record<string, unknown> ?? {}),
+    contractName: props.model.contractName, companyEntityId: props.model.companyEntityId }
 }));
 
 function updateBasicEntry(entry: BusinessEntryDraftPayload) {
@@ -173,6 +177,13 @@ function updateBasicEntry(entry: BusinessEntryDraftPayload) {
       entry.values.companyEntityId !== props.model.companyEntityId) {
     Object.assign(patch, companyEntitySyncPatch(entry.values.companyEntityId));
   }
+  const basics = { ...(props.model.extraDraftData?.contractBasics as Record<string, unknown> ?? {}) };
+  for (const key of ["relationship", "businessType", "amountBasis", "invoiceStatus", "settlementText"]) {
+    if (typeof entry.values[key] === "string") basics[key] = entry.values[key];
+  }
+  patch.extraDraftData = { ...props.model.extraDraftData, contractBasics: basics };
+  if (basics.invoiceStatus === "vat_general" || basics.invoiceStatus === "vat_special") patch.invoiceType = basics.invoiceStatus;
+  else if (basics.invoiceStatus === "none" || basics.invoiceStatus === "pending") patch.invoiceType = null;
   emit("update", patch);
 }
 const loading = ref(false);
@@ -259,6 +270,10 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+}
+
+.field-grid > .business-entry-form {
+  grid-column: 1 / -1;
 }
 
 .field {
