@@ -30,15 +30,16 @@ export class GeneralProcurementRequestService {
     const seen = new Set<string>();
     const lines: GeneralProcurementRequestLine[] = input.lines.map((line, index) => {
       if (!line.name?.trim()) throw new BadRequestException(`第${index + 1}行请填写采购名称`);
-      if (seen.has(line.id)) throw new BadRequestException("采购清单存在重复行，请重新添加");
-      seen.add(line.id);
+      const id = line.id.toLowerCase();
+      if (seen.has(id)) throw new BadRequestException("采购清单存在重复行，请重新添加");
+      seen.add(id);
       const decimal = (value: string | null | undefined, label: string, quantity = false) => {
         try { return quantity ? normalizeBusinessQuantity(value?.trim() || null) : normalizeBusinessAmount(value?.trim() || null); }
         catch (error) { throw new BadRequestException(`第${index + 1}行${label}：${error instanceof Error ? error.message : "请填写有效数值"}`); }
       };
       const date = line.requiredOn?.trim() || null;
       if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) throw new BadRequestException(`第${index + 1}行到位日期无效`);
-      return { id: line.id, name: line.name.trim(), specification: line.specification?.trim() || null, unit: line.unit?.trim() || null,
+      return { id, name: line.name.trim(), specification: line.specification?.trim() || null, unit: line.unit?.trim() || null,
         quantity: decimal(line.quantity, "数量", true), unitPrice: decimal(line.unitPrice, "预计单价"), estimatedAmount: decimal(line.estimatedAmount, "预计总价"),
         requiredOn: date, note: line.note?.trim() || null };
     });

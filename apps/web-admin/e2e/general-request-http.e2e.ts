@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { errors, expect, test, type Page } from "@playwright/test";
 test.beforeEach(({ page }) => { page.on("pageerror", error => { throw error; }); });
 async function login(page: Page, phone = "13800000000") {
   await page.goto("/login");
@@ -118,4 +118,46 @@ test("历史申请仅编辑既有草稿，保留原协议与已知金额", async
   expect(response.request().postDataJSON()).toMatchObject({ requestedAmountCents: "12345", reason: `历史用途已核对-${info.project.name}` });
   expect(response.request().postDataJSON().requestProtocolVersion).toBeUndefined();
   await expect(drawer).toBeHidden(); await expect(page.getByText(`用途：历史用途已核对-${info.project.name}`, { exact: true }).first()).toBeVisible();
+});
+
+test("未确认中文缓冲受真实刷新关闭与放弃保护，空编辑器不算改动", async ({ page }, info) => {
+  await login(page); await page.goto("/综合采购申请");
+  await page.getByRole("button", { name: "新建综合采购申请", exact: true }).click();
+  const drawer = page.locator(".t-drawer--open"); const text = "尚未确认的中文软件需求";
+  const cell = drawer.locator('revo-grid [data-rgrow="0"][data-rgcol="0"]').first();
+  await cell.dblclick(); const editor = drawer.locator("revogr-edit input"); await editor.fill(text);
+  await expect(editor).toHaveValue(text); await expect(cell).not.toContainText(text);
+  const posts: string[] = []; page.on("request", request => { if (request.method() === "POST" && request.url().endsWith("/general-procurements")) posts.push(request.postData() ?? ""); });
+  if (info.project.name === "desktop-chromium") {
+    const originalUrl = page.url(); const committedNavigations: string[] = [];
+    page.on("framenavigated", frame => { if (frame === page.mainFrame()) committedNavigations.push(frame.url()); });
+    const refreshDialog = page.waitForEvent("dialog", { timeout: 5000 });
+    const reload = page.reload({ waitUntil: "commit", timeout: 5000 }).then(
+      () => ({ completed: true as const }), (error: unknown) => ({ completed: false as const, error }));
+    const dialog = await refreshDialog; expect(dialog.type()).toBe("beforeunload"); await dialog.dismiss();
+    const outcome = await reload; expect(outcome.completed).toBe(false);
+    if (!outcome.completed) {
+      // A dismissed native beforeunload can abort immediately or leave navigation waiting for its commit deadline.
+      // Only those two cancellation outcomes are allowed, after the actual native dialog was dismissed.
+      expect(outcome.error instanceof errors.TimeoutError || (outcome.error instanceof Error && outcome.error.message.includes("net::ERR_ABORTED"))).toBe(true);
+    }
+    expect(page.url()).toBe(originalUrl); expect(committedNavigations).toEqual([]);
+    await expect(editor).toHaveValue(text); expect(posts).toHaveLength(0);
+    const closeDialog = page.waitForEvent("dialog", { timeout: 5000 });
+    await page.close({ runBeforeUnload: true }); const closing = await closeDialog;
+    expect(closing.type()).toBe("beforeunload"); await closing.dismiss(); expect(page.isClosed()).toBe(false);
+    await expect(editor).toHaveValue(text);
+  }
+  // Mobile browsers do not guarantee OS/tab beforeunload. Exercise the actual app close path on every device.
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  const confirm = page.locator(".t-dialog").filter({ hasText: "保留当前填写" });
+  await expect(confirm).toBeVisible(); await confirm.getByRole("button", { name: "继续填写", exact: true }).click();
+  expect(posts).toHaveLength(0); await expect(cell).toContainText(text);
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await confirm.getByRole("button", { name: "放弃当前填写", exact: true }).click(); await expect(drawer).toBeHidden();
+  await page.getByRole("button", { name: "新建综合采购申请", exact: true }).click();
+  await drawer.locator('revo-grid [data-rgrow="0"][data-rgcol="0"]').first().dblclick();
+  await expect(drawer.locator("revogr-edit input")).toHaveValue("");
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(drawer).toBeHidden(); await expect(confirm).toBeHidden(); expect(posts).toHaveLength(0);
 });

@@ -39,6 +39,7 @@ function matches(row: Row, where: Row = {}): boolean {
       if ("not" in condition) return row[key] !== condition.not;
       if (condition.lte instanceof Date) return row[key] instanceof Date && row[key] <= condition.lte;
       if (condition.gt instanceof Date) return row[key] instanceof Date && row[key] > condition.gt;
+      if (typeof condition.gt === "string") return typeof row[key] === "string" && row[key] > condition.gt;
       if (typeof condition.contains === "string") return String(row[key]).includes(condition.contains);
       if (Array.isArray(condition.path)) { let current: unknown = row[key]; for (const part of condition.path) current = current && typeof current === "object" ? (current as Row)[String(part)] : undefined; return current === condition.equals; }
     }
@@ -67,6 +68,24 @@ export async function createGeneralRequestHarness(port = 0) {
   for (const name of names) {
     const rows = () => tables[name] ?? (tables[name] = []);
     const find = ({ where = {} }: { where?: Row } = {}) => rows().filter(row => matches(row, where));
+    type Query = { where?: Row; orderBy?: Row | Row[]; take?: number; skip?: number; cursor?: Row };
+    const queryRows = (query: Query = {}) => {
+      let result = find(query);
+      const orders = query.orderBy ? (Array.isArray(query.orderBy) ? query.orderBy : [query.orderBy]) : [];
+      if (orders.length) result.sort((a, b) => {
+        for (const order of orders) for (const [key, direction] of Object.entries(order)) {
+          const left = a[key] instanceof Date ? a[key].getTime() : a[key];
+          const right = b[key] instanceof Date ? b[key].getTime() : b[key];
+          if (left === right) continue;
+          return (String(left) < String(right) ? -1 : 1) * (direction === "desc" ? -1 : 1);
+        }
+        return 0;
+      });
+      if (query.cursor) { const index = result.findIndex(row => matches(row, query.cursor)); result = index < 0 ? [] : result.slice(index); }
+      if (query.skip) result = result.slice(query.skip);
+      if (query.take !== undefined) result = query.take >= 0 ? result.slice(0, query.take) : result.slice(query.take);
+      return result;
+    };
     const update = (row: Row, data: Row) => {
       for (const [key, value] of Object.entries(data)) row[key] = value && typeof value === "object" && "increment" in value ? Number(row[key]) + Number(value.increment) : value;
       row.updatedAt = new Date(); return structuredClone(row);
@@ -74,8 +93,8 @@ export async function createGeneralRequestHarness(port = 0) {
     operations[name] = {
       findUnique: async (query: { where?: Row }) => structuredClone(find(query)[0] ?? null),
       findUniqueOrThrow: async (query: { where?: Row }) => { const row = find(query)[0]; if (!row) throw new Error("合成记录不存在"); return structuredClone(row); },
-      findFirst: async (query: { where?: Row }) => structuredClone(find(query)[0] ?? null),
-      findMany: async (query: { where?: Row } = {}) => structuredClone(find(query)), count: async (query: { where?: Row } = {}) => find(query).length,
+      findFirst: async (query: Query) => structuredClone(queryRows(query)[0] ?? null),
+      findMany: async (query: Query = {}) => structuredClone(queryRows(query)), count: async (query: { where?: Row } = {}) => find(query).length,
       create: async ({ data }: { data: Row }) => { const row = { id: randomUUID(), enabled: true, revision: 1, status: "draft", requestProtocolVersion: 1, scope: "project", lines: [], submissions: [], approvalInstanceId: null, createdAt: new Date(), updatedAt: new Date(), ...data }; rows().push(row); return structuredClone(row); },
       createMany: async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => { let count = 0; for (const row of data) { if (skipDuplicates && rows().some(old => old.id === row.id)) continue; rows().push({ createdAt: new Date(), ...row }); count++; } return { count }; },
       update: async ({ where, data }: { where: Row; data: Row }) => { const row = find({ where })[0]; if (!row) throw new Error("合成记录不存在"); return update(row, data); },

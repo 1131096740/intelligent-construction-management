@@ -17,6 +17,12 @@ const reason = ref(""); const estimate = ref(""); const requestKey = ref(""); co
 const pendingPayload = ref<(ProcurementRequestDraft & { requestKey: string })>();
 const baseline = ref(""); const dirty = computed(() => baseline.value !== JSON.stringify([scope.value, projectId.value, companyEntityId.value, category.value, reason.value, estimate.value, lines.value]));
 const closeConfirm = ref(false); const history = ref<GeneralProcurementRequestLine[][]>([]); const editorPending = ref(false);
+const editorBuffered = ref(false);
+const hasUnsaved = computed(() => dirty.value || Boolean(pendingPayload.value) || editorBuffered.value);
+function editorInput(state: { pending: boolean; edited: boolean }) {
+  editorPending.value = state.pending;
+  editorBuffered.value = state.pending && (editorBuffered.value || state.edited);
+}
 const auth = useAuthStore(); const ownerId = ref("");
 function changeLines(next: GeneralProcurementRequestLine[]) {
   if (JSON.stringify(next) === JSON.stringify(lines.value)) return;
@@ -31,11 +37,11 @@ function keydown(event: KeyboardEvent) {
   if (target instanceof HTMLElement && target.closest("input, textarea, [contenteditable=true]")) return;
   event.preventDefault(); undoLast();
 }
-function beforeUnload(event: BeforeUnloadEvent) { if (props.visible && (dirty.value || pendingPayload.value)) { event.preventDefault(); event.returnValue = ""; } }
+function beforeUnload(event: BeforeUnloadEvent) { if (props.visible && hasUnsaved.value) { event.preventDefault(); event.returnValue = ""; } }
 onMounted(() => window.addEventListener("beforeunload", beforeUnload));
 onBeforeUnmount(() => window.removeEventListener("beforeunload", beforeUnload));
 onBeforeRouteLeave(() => {
-  if (!props.visible || (!dirty.value && !pendingPayload.value)) return true;
+  if (!props.visible || !hasUnsaved.value) return true;
   error.value = "当前填写尚未保存，请先保存草稿或取消本次填写后再离开";
   return false;
 });
@@ -43,7 +49,7 @@ const blankLine = (): GeneralProcurementRequestLine => ({ id: crypto.randomUUID(
 let generation = 0;
 watch(() => props.visible, async visible => {
   const own = ++generation; if (!visible || legacy.value) return;
-  loading.value = true; error.value = ""; history.value = []; editorPending.value = false; ownerId.value = auth.user?.id ?? ""; pendingPayload.value = undefined; requestKey.value = crypto.randomUUID();
+  loading.value = true; error.value = ""; history.value = []; editorPending.value = false; editorBuffered.value = false; ownerId.value = auth.user?.id ?? ""; pendingPayload.value = undefined; requestKey.value = crypto.randomUUID();
   try {
     const result = await fetchProcurementOptions(); if (own !== generation || !props.visible) return;
     if (result.requestEntryDefinition?.key !== "general_procurement.request" || result.requestEntryDefinition.version !== 2) throw new Error("申请字段已更新，请刷新后再填写");
@@ -55,7 +61,7 @@ watch(() => props.visible, async visible => {
   } catch (cause) { error.value = formatUnknownApiError(cause, "申请表读取失败，请重试"); }
   finally { if (own === generation) loading.value = false; }
 });
-function close() { if (busy.value) return; if (dirty.value || pendingPayload.value) closeConfirm.value = true; else emit("update:visible", false); }
+function close() { if (busy.value) return; if (hasUnsaved.value) closeConfirm.value = true; else emit("update:visible", false); }
 let createMayHaveSent = false;
 async function save() {
   if (busy.value || loading.value) return; busy.value = true; error.value = ""; createMayHaveSent = true;
@@ -184,7 +190,7 @@ async function updateProcurementWithCapability(id: string, body: Parameters<type
         :lines="lines"
         :readonly="busy || !!pendingPayload"
         @update:lines="changeLines"
-        @editor-input="editorPending = $event.pending"
+        @editor-input="editorInput"
       />
       <t-space break-line>
         <t-button

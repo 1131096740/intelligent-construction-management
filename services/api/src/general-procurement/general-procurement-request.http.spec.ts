@@ -194,6 +194,60 @@ describe("任务20综合采购申请公开HTTP（合成持久层，无PG）", ()
       submissions: [{ definitionSnapshot: { key: "general_procurement.request", version: 2 }, estimatedAmount: "1.5340", requestedAmountCents: null }] });
   });
 
+  it("公开保存将合法大写行UUID规范为小写，编辑与重读保持同一行身份", async () => {
+    const input = draft(); input.lines[0].id = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
+    const created = await harness.request("/general-procurements", input); expect(created.status).toBe(201);
+    const root = `/general-procurements/${created.body.id}`;
+    expect((await harness.request(root)).body.lines[0].id).toBe(input.lines[0].id.toLowerCase());
+    expect((await harness.request(`${root}/draft`, { ...input, requestKey: undefined, revision: 1 })).status).toBe(201);
+    expect((await harness.request(root)).body).toMatchObject({ revision: 2, lines: [{ id: input.lines[0].id.toLowerCase() }] });
+  });
+
+  it("大小写等价的重复行在公开创建和编辑写前拒绝，状态与审计不变化", async () => {
+    const input = draft(); input.lines[0].id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const created = await harness.request("/general-procurements", input); expect(created.status).toBe(201);
+    const rows = structuredClone(harness.tables.generalProcurement), audit = structuredClone(harness.tables.auditLog);
+    const duplicate = { ...input, requestKey: randomUUID(), lines: [input.lines[0], { ...input.lines[0], id: input.lines[0].id.toUpperCase() }] };
+    expect((await harness.request("/general-procurements", duplicate)).status).toBe(400);
+    expect((await harness.request(`/general-procurements/${created.body.id}/draft`, { ...duplicate, requestKey: undefined, revision: 1 })).status).toBe(400);
+    expect(harness.tables.generalProcurement).toEqual(rows); expect(harness.tables.auditLog).toEqual(audit);
+  });
+
+  async function populatedRequest(related: boolean, count: number) {
+    const created = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId });
+    expect(created.status).toBe(201); expect((await harness.request(`/general-procurements/${created.body.id}/submission`, { revision: 1 })).status).toBe(201);
+    const row = harness.tables.generalProcurement.find(item => item.id === created.body.id)!;
+    const round = harness.tables.approvalInstance.find(item => item.id === row.approvalInstanceId)!;
+    row.updatedAt = new Date("2025-01-01");
+    for (let i = 0; i < count; i++) {
+      const id = randomUUID(), roundId = randomUUID();
+      harness.tables.generalProcurement.push({ ...structuredClone(row), id, approvalInstanceId: roundId, projectId: related ? harness.projectId : randomUUID(), updatedAt: new Date(2026, 0, 1, 0, 0, i) });
+      harness.tables.approvalInstance.push({ ...structuredClone(round), id: roundId, businessId: id });
+    }
+    return created.body.id;
+  }
+  it("100条更新的无关申请不挤掉本人唯一较旧待办，公开列表及计数保持1", async () => {
+    const id = await populatedRequest(false, 100);
+    // The adapter must reproduce Prisma ordering and truncation before this is a useful public counterexample.
+    const firstPage = await harness.db.generalProcurement.findMany({ orderBy: { updatedAt: "desc" }, take: 100 });
+    expect(firstPage).toHaveLength(100); expect(firstPage.some((row: { id: string }) => row.id === id)).toBe(false);
+    const ordered = await harness.db.generalProcurement.findMany({ orderBy: { id: "asc" }, take: 2 });
+    expect(await harness.db.generalProcurement.findMany({ orderBy: { id: "asc" }, cursor: { id: ordered[0].id }, skip: 1, take: 1 })).toEqual([ordered[1]]);
+    const todos = await harness.request("/me/work-items", undefined, harness.managerId);
+    expect(todos.status).toBe(200); expect(todos.body.queues.pending).toEqual([expect.objectContaining({ businessId: id, currentNode: "项目经理" })]);
+    const summary = await harness.request("/me/workbench-summary", undefined, harness.managerId);
+    expect(summary.status).toBe(200); expect(summary.body.cards).toEqual(expect.arrayContaining([expect.objectContaining({ id: "approval_todo", count: 1 })]));
+  });
+  it("本人跨过100条分页后的全部当前职责都计数，展示页仍按既有容量返回", async () => {
+    await populatedRequest(true, 101);
+    const todos = await harness.request("/me/work-items", undefined, harness.managerId);
+    expect(todos.status).toBe(200); expect(todos.body.queueMeta.pending.total).toBe(102);
+    expect(todos.body.queues.pending).toHaveLength(30);
+    expect(todos.body.queues.pending[0].businessId).toBe(harness.tables.generalProcurement.at(-1)!.id);
+    const summary = await harness.request("/me/workbench-summary", undefined, harness.managerId);
+    expect(summary.status).toBe(200); expect(summary.body.cards).toEqual(expect.arrayContaining([expect.objectContaining({ id: "approval_todo", count: 102 })]));
+  });
+
   it("同一自然人兼综合主管和项目经理仍分别两次自审与当前签名，不按人合并职责", async () => {
     harness.tables.userPosition.push({ userId: harness.directorId, positionId: "project_manager", projectId: harness.projectId });
     const created = await harness.request("/general-procurements", { ...draft(), scope: "project", projectId: harness.projectId }, harness.directorId);
