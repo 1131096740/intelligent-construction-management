@@ -1,8 +1,8 @@
 ## 当前执行（2026-11-06，业务简化整套实施，父工单 #382）
 
-- [~] 16封存前检查点为M16 `7a6204a3` 加后继已审实现，准确提交/clean seal身份由外部回执绑定；已合固定中央 `0aa691bf`（202份迁移源码），本轮业务尚未集成中央。受测79输入阶段公开HTTP68/68、桌面8场景（1+7跨次）/手机关键3场景、七组治理、原369/369及fresh Shared/API/Web构建与检查已通过；各自准确源/桥接边界见[本地里程碑](docs/progress/2026-11-07-enterprise-simplification-task16-local-milestone.md)。旧79双轴提出的文档同步与prepared完整图P2已按已审候选补修，私有候选及应用后精确hash两轴源码复核均0新项；source seal身份由外部回执绑定，原生门仍待完成；PG driver/库存/clean seal及真实提交安全未完成，不关#398、不解除17/24。后续本账本16旧局部记录仅保原SHA历史，不覆盖本条当前摘要。
+- [~] 16本地实现里程碑准确候选 `214e71880f045f9b02310046958cc3d79d55bbd7` 已独立同树合入中央 `f913a3136c299c2feaf3f1083348752bf00df338`，不是整票关闭。中央fresh Shared/API/Web构建、check:ui、原七组check-only治理及原369/369（0失败/0跳过）一次通过；728路由/679 wrappers/719绑定/416动作/407写消费者/0阻塞。候选79输入逐项无变，68公开HTTP、Web71及桌面8（1+7跨次）/手机3按原准确源证据桥接，不冒新中央全API/UI全跑。生成首败、R2文件名后验失败与R3字节守卫失败均保留；R3仅经主控独立token核实格式化及同模型索引位置归整后认可，未改Schema或放宽业务门。当前仍13/45按阶段关闭，#398 OPEN，17/24阻塞；完整PG driver/可运行库存与真实提交/故障/丢响应/竞争/ACL未证明，七份prepared SQL不可迁移。中央最终文档提交、准确source prepare/verify及推送仍待主控后续阶段，不把候选clean seal当中央新封包。[本地整合收据](docs/progress/2026-11-07-enterprise-simplification-task16-integrated-local.md)。下方16旧局部与“尚未集成”记录仅保原SHA历史，不覆盖本条；10仍独立本地实施、12等待10，本轮A4未集成。
 
-- [~] 10私有树新版边距已取得实际双格式红绿：原PDF表宽差2.8pt→0，两组8089全文字形关联及签署行108例外保留；API类型/full lint通过。此前45项拆表、新增条款双端2/2为各自旧阶段证据；新版旧版本兼容、删除/重排等UI及完整物理/治理/终审仍未完成。10/16业务未集成本分支，12仍等10；原生Word分页不计通过。[检查点](docs/progress/2026-11-07-enterprise-simplification-local-checkpoint.md)。
+- [~] 10私有树新版边距已取得实际双格式红绿：原PDF表宽差2.8pt→0，两组8089全文字形关联及签署行108例外保留；API类型/full lint通过。此前45项拆表、新增条款双端2/2为各自旧阶段证据；新版旧版本兼容、删除/重排等UI及完整物理/治理/终审仍未完成。10业务未集成本分支，12仍等10；原生Word分页不计通过。[检查点](docs/progress/2026-11-07-enterprise-simplification-local-checkpoint.md)。
 
 - [~] 文档提交b7d7c8ee推送意外触发既有自动CI含PG执行；已取消并核最终无活动job，10成功/7失败/9取消保留，不计10/16验收。不得再声称本轮远端零PG；私有候选真实PG门继续未满足，后续推送须避免未授权自动PG。[事件记录](docs/progress/2026-11-06-enterprise-simplification-auto-ci-boundary.md)。
 
