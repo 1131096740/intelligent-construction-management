@@ -35,7 +35,7 @@ export function mapDelegationLedgerRows(
 ): DelegationLedgerRow[] {
   return rows.map((row) => ({
     ...row,
-    scopeLabel: row.scopeLabel ?? (row.resourceType === "spot_procurement_approval_duty" ? "指定零星申请审批职责" : "历史合同/结算/付款审批"),
+    scopeLabel: row.scopeLabel ?? (row.resourceType === "fund_account_balance_review_duty" ? "指定资金余额核对复核职责" : row.resourceType === "spot_procurement_approval_duty" ? "指定零星申请审批职责" : "历史合同/结算/付款审批"),
     actingLabel: formatActingLabel(row, currentUserId),
     ...formatDeadline(row, now)
   }));

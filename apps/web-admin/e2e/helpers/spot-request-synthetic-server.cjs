@@ -14,6 +14,8 @@ const {Test}=req('@nestjs/testing');
 const {Reflector}=req('@nestjs/core');
 const shared=req('@jiangkong/shared-domain');
 const load=(file,key)=>req(path.join(root,'services/api/dist',file+'.js'))[key];
+const MeController=load('me/me.controller','MeController');
+const MeService=load('me/me.service','MeService');
 const Controller=load('spot-procurement/spot-procurement.controller','SpotProcurementController');
 const Application=load('spot-procurement/spot-procurement-application.service','SpotProcurementApplicationService');
 const ProgressController=load('approval/approval-progress.controller','ApprovalProgressController');
@@ -66,8 +68,8 @@ for(const model of Object.keys(state))db[model]={
  aggregate:async()=>({_max:{revision:null}})
 };
 db.$executeRaw=async()=>0;
-db.$queryRaw=async query=>{
- const sql=query.strings?.join(' ')??String(query);const values=query.values??[];
+db.$queryRaw=async (query,...parameters)=>{
+ const sql=Array.isArray(query)?query.join(' '):query.strings?.join(' ')??String(query);const values=Array.isArray(query)?parameters:query.values??[];
  if(sql.includes('WITH members')) {const roles=state.projectMember.filter(row=>values.includes(row.projectId)&&values.includes(row.positionKey)).map(row=>({projectId:row.projectId,userId:row.userId,roleKey:row.positionKey,userIsActive:state.user.find(user=>user.id===row.userId)?.isActive===true}));return clone(roles.filter(row=>!sql.includes('AND pm."userId" =')||values.includes(row.userId)));}
  if(sql.includes('FROM "UserPosition" up')) return clone(state.userPosition.filter(row=>row.projectId===null).flatMap(row=>{const position=state.position.find(item=>item.id===row.positionId);return position&&values.includes(position.key)&&(!sql.includes('AND up."userId" =')||values.includes(row.userId))?[{projectId:project.id,userId:row.userId,roleKey:position.key,userIsActive:state.user.find(user=>user.id===row.userId)?.isActive===true}]:[];}));
  if(sql.includes('pg_advisory'))return [];
@@ -87,8 +89,8 @@ async function main(){
  const transactions=new Transactions(definitions,transactionRegistry,store);
  const applications=new Application(db,audit,pilot,{tryRefreshLatestForBusiness:async()=>undefined},undefined,undefined,transactions,entries);
  const reads=new Reads(db,visibility,access,pilot);
- const module=await Test.createTestingModule({controllers:[Controller,ProgressController],providers:[{provide:ProgressService,useValue:new ProgressService(db,{available:()=>false},undefined,pilot)},{provide:Application,useValue:applications},{provide:Reads,useValue:reads},{provide:Settlement,useValue:{}},{provide:Payment,useValue:{}}]}).compile();
- const app=module.createNestApplication({logger:false});
+ const module=await Test.createTestingModule({controllers:[Controller,ProgressController,MeController],providers:[{provide:MeService,useValue:new MeService(db,{},audit)},{provide:ProgressService,useValue:new ProgressService(db,{available:()=>false},undefined,pilot)},{provide:Application,useValue:applications},{provide:Reads,useValue:reads},{provide:Settlement,useValue:{}},{provide:Payment,useValue:{}}]}).compile();
+ const app=module.createNestApplication({logger:["error"]});
  app.getHttpAdapter().getInstance().set('json replacer',load('api-json-replacer','apiJsonReplacer'));
  app.use(req('express').json());
  app.use((request,response,next)=>{

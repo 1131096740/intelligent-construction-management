@@ -93,6 +93,8 @@ describe("任务20综合采购申请公开HTTP（合成持久层，无PG）", ()
     expect(options.status).toBe(200);
     expect(options.body).toHaveLength(1);
     expect(options.body[0]).toMatchObject({ actionKey: "general_procurement.approve", resourceType: "general_procurement_approval_duty" });
+    const freshCapability = await harness.request(`/approval-delegations/duty-capability?dutyId=${encodeURIComponent(options.body[0].value)}`, undefined, harness.directorId);
+    expect(freshCapability).toMatchObject({ status: 200, body: { canDelegate: true, actionKey: "general_procurement.approve", resourceType: "general_procurement_approval_duty", resourceId: options.body[0].value } });
     const delegated = await harness.request("/approval-delegations", { toUserId: harness.outsiderId, startsAt: new Date(Date.now() - 1000).toISOString(), endsAt: new Date(Date.now() + 60000).toISOString(),
       actionKey: options.body[0].actionKey, resourceType: options.body[0].resourceType, resourceId: options.body[0].value }, harness.directorId);
     expect(delegated.status).toBe(201);

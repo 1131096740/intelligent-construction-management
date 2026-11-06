@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 709,
-    "exactRouteCount": 709,
-    "normalizedRouteCount": 709,
+    "routeCount": 718,
+    "exactRouteCount": 718,
+    "normalizedRouteCount": 718,
     "classificationOverrideCount": 215,
     "consumerSurfaceOverrideCount": 38,
     "classificationOverrideSha256": "bf71cfcf21064a241fd96a24a3f003f1d75b900456bfa6a1b8ddd6f0091df6f7",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-    "derivedProductionPageCount": 494,
-    "pageRouteCount": 512,
+    "derivedProductionPageCount": 503,
+    "pageRouteCount": 521,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 37,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 565,
+      "web_api_wrapper": 574,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 565,
+    "productionWrapperRouteCount": 574,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -4240,6 +4240,182 @@
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts",
+      "normalizedKey": "GET /fund-accounts",
+      "controller": "FundAccountController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "fetchFundAccounts",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts",
+            "normalizedKey": "GET /fund-accounts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/:scopeKey",
+      "normalizedKey": "GET /fund-accounts/:param",
+      "controller": "FundAccountController",
+      "handler": "readAccount",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "fetchFundAccount",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/:param",
+            "normalizedKey": "GET /fund-accounts/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/registrations/:registrationId",
+      "normalizedKey": "GET /fund-accounts/registrations/:param",
+      "controller": "FundAccountController",
+      "handler": "readRegistration",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "fetchFundBalanceRegistration",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/registrations/:param",
+            "normalizedKey": "GET /fund-accounts/registrations/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-accounts/registrations/:registrationId/review",
+      "normalizedKey": "GET /fund-accounts/registrations/:param/review",
+      "controller": "FundAccountController",
+      "handler": "readReview",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "fetchFundReview",
+            "method": "GET",
+            "normalizedPath": "/fund-accounts/registrations/:param/review",
+            "normalizedKey": "GET /fund-accounts/registrations/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
             ]
           }
         ],
@@ -17791,6 +17967,221 @@
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/corrections",
+      "normalizedKey": "POST /fund-accounts/corrections",
+      "controller": "FundAccountController",
+      "handler": "requestCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "requestFundCorrection",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/corrections",
+            "normalizedKey": "POST /fund-accounts/corrections",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/openings",
+      "normalizedKey": "POST /fund-accounts/openings",
+      "controller": "FundAccountController",
+      "handler": "registerOpening",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "registerFundOpening",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/openings",
+            "normalizedKey": "POST /fund-accounts/openings",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/confirm",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+      "controller": "FundAccountController",
+      "handler": "confirmCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "confirmFundCorrection",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/registrations/:param/confirm",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/return",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+      "controller": "FundAccountController",
+      "handler": "returnCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "fund_account.balance.review",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "returnFundCorrection",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/registrations/:param/return",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/fund-accounts/registrations/:registrationId/withdraw",
+      "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+      "controller": "FundAccountController",
+      "handler": "withdrawCorrection",
+      "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+            "wrapper": "withdrawFundCorrection",
+            "method": "POST",
+            "normalizedPath": "/fund-accounts/registrations/:param/withdraw",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
             ]
           }
         ],

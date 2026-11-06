@@ -157,6 +157,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "付款",
     items: [
+      { label: "资金账户", path: "/资金账户", requiredGlobalRoleKeys: fundsWorkbenchRoleKeys },
       { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
       {
         label: "资金执行案件",
@@ -500,6 +501,16 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "结算管理/:settlementId",
         component: () => import("../pages/settlements/SettlementDetailPage.vue")
+      },
+      {
+        path: "资金余额复核/:registrationId",
+        component: () => import("../pages/funds/FundAccountsPage.vue"),
+        meta: { title: "本次余额核对复核" }
+      },
+      {
+        path: "资金账户",
+        component: () => import("../pages/funds/FundAccountsPage.vue"),
+        meta: { requiredGlobalRoleKeys: fundsWorkbenchRoleKeys, title: "资金账户" }
       },
       {
         path: "统一资金办理工作台",

@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `6fd6ae4daa872b9a88240581fc9b4e5dea78f77d2624c8d089ae8c1ca9d55ce3` |
-| webApiWrappers | ready | `8a0b946b3e0ce329f0dbfc7db6eda5d820f0b4b51a90c67e7bca86c6fe7a8707` |
-| webPageActions | ready | `960d78f6e5c4debcfe4a3ae6566c01bf0c6e713447058dc769b66228df6ce1db` |
-| routeUsage | ready | `587a02c62578acbb00b834675595f79480f339f8a458a514e6899860a4fdec82` |
+| nestRoutes | ready | `9e99e7c9d2fa7b13de4ff37f18809bbc6147403497750d419eeb8603cb60750b` |
+| webApiWrappers | ready | `c3acd48c8e524c94069a165a37540d7f5463c18489225afe362f199e15ef27fc` |
+| webPageActions | ready | `02674b86c29026a74c498ec75ed438074f0829be99c1369507d82d3443876716` |
+| routeUsage | ready | `169feb46786490fdc1b5f14cbfd001e60f17386713e9b68680ecac3564bda702` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 709 |
-| pageRouteCount | 512 |
+| routeCount | 718 |
+| pageRouteCount | 521 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 702 |
+| mainRequestBindingCount | 711 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 409 |
-| actionBindingCount | 472 |
-| acceptedActionBindingCount | 434 |
+| registeredActionCount | 414 |
+| actionBindingCount | 477 |
+| acceptedActionBindingCount | 439 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 400 |
-| coveredProductionMutationConsumerPairCount | 400 |
+| productionMutationConsumerPairCount | 405 |
+| coveredProductionMutationConsumerPairCount | 405 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -137,6 +137,10 @@
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-file.download-private-file-by-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
+| GET | /fund-accounts/:scopeKey | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccount | — | not_applicable | — |
+| GET | /fund-accounts | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundAccounts | — | not_applicable | — |
+| GET | /fund-accounts/registrations/:registrationId | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundBalanceRegistration | — | not_applicable | — |
+| GET | /fund-accounts/registrations/:registrationId/review | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#fetchFundReview | — | not_applicable | — |
 | GET | /fund-executions/capabilities | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCapabilities | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId/classification-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseOptions | — | not_applicable | — |
 | GET | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseActions<br>apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCaseDetail | — | not_applicable | — |
@@ -462,6 +466,11 @@
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
+| POST | /fund-accounts/corrections | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#requestFundCorrection | fund-account.requestFundCorrection | covered | — |
+| POST | /fund-accounts/openings | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#registerFundOpening | fund-account.registerFundOpening | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#confirmFundCorrection | fund-account.confirm-correction | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#returnFundCorrection | fund-account.returnFundCorrection | covered | — |
+| POST | /fund-accounts/registrations/:registrationId/withdraw | page | web_api_wrapper | apps/web-admin/src/api/fund-account.api.ts#withdrawFundCorrection | fund-account.withdrawFundCorrection | covered | — |
 | POST | /fund-executions/cases/:caseId/approval-actions | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#reviewFundExecutionCase | fund-execution.case.review-approve<br>fund-execution.case.review-return | covered | — |
 | POST | /fund-executions/cases/:caseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#confirmFundExecutionCase | fund-execution.case.confirm | covered | — |
 | POST | /fund-executions/cases/:caseId/return | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#returnFundExecutionCase | fund-execution.case.return | covered | — |
