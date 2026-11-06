@@ -17,7 +17,7 @@
     "totalVueFileCount": 220,
     "parsedVueFileCount": 220,
     "reachableProductionModuleCount": 355,
-    "templateEventDirectiveCount": 1302,
+    "templateEventDirectiveCount": 1303,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 399,
     "candidateProductionMutationConsumerCount": 399,
@@ -11990,7 +11990,7 @@
         "event": "call",
         "handler": "createProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 84,
+        "sourceLine": 90,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12610,7 +12610,7 @@
         "event": "call",
         "handler": "updateProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 91,
+        "sourceLine": 97,
         "sourceColumn": 0
       },
       "semantic": "business_write",

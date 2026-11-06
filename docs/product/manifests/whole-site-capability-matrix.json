@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "a424d688142543c45f1b8281321ba2fe10903f98e49527ee89b1e320616b6ab6",
+      "sha256": "6d27ded277ed10b8f2d6173aafc7d985049ab37432e79769aad69fcd3aadf037",
       "status": "ready",
       "summary": {
         "registeredActionCount": 408,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 220,
         "parsedVueFileCount": 220,
         "reachableProductionModuleCount": 355,
-        "templateEventDirectiveCount": 1302,
+        "templateEventDirectiveCount": 1303,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 399,
         "candidateProductionMutationConsumerCount": 399,
