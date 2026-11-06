@@ -1,6 +1,6 @@
 # 06：合同草稿先实现统一表格与保存导入
 
-**状态：** `plan-confirmed` / `in-progress`；前置#384按本地阶段完成/PG待验关闭，已[领取#388](https://github.com/1131096740/intelligent-construction-management/issues/388#issuecomment-6656214904)。用户确认草稿公开HTTP、实际Excel导入和桌面/手机真实浏览器表格，连接本地HTTP与合成服务端数据，覆盖键盘/批量/撤销/保存断线/导入错误；不以原型localStorage代替后端。真实PG案例只准备；资源、迁移、真实短信和部署/生产写仍无授权，16/42/44硬门保留。
+**状态：** `plan-confirmed` / `local-confirmed-boundary-complete` / `pg-pending` / `github-closed`；已按确认公开边界[关闭#388](https://github.com/1131096740/intelligent-construction-management/issues/388#issuecomment-6668246472)。准确候选`2a54a581`两轴复审0，同树中央`e5e70bfd`实际API222/Web101及原369通过；当前24真实HTTP桌面/触摸浏览器证据按同tree继承，旧112仅绑定9f。草稿保存/导入/撤销/断线在合成服务端数据验证；不是原型localStorage替代后端。PG524库存仅准备未执行，198迁移仅源码；16/42/44真实门、资源/迁移/真实短信/部署及生产写授权边界不变。[整合与失败保留](../../progress/2026-11-06-enterprise-simplification-task06-integrated.md)。原验收条款及需求映射保留，不代表后续采购/报销/历史业务均已采用表格。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

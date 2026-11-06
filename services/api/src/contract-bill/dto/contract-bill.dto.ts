@@ -90,6 +90,10 @@ export class CancelBillRowRemainderDto {
 }
 
 export class SaveContractBillRowDto {
+  @IsOptional()
+  @IsObject({ message: "撤销来源格式不正确" })
+  restoreRef?: { saveIntentKey: string; oldRowKey: string };
+
   @IsRequiredText({
     requiredMessage: "客户端清单行键不能为空",
     typeMessage: "客户端清单行键必须是文字",

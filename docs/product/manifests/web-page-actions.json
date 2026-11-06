@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 402,
+    "registeredActionCount": 413,
     "pageActionCount": 61,
-    "backgroundActionCount": 341,
-    "reachableVueFileCount": 201,
-    "routeRootCount": 72,
-    "totalVueFileCount": 215,
-    "parsedVueFileCount": 215,
-    "reachableProductionModuleCount": 348,
-    "templateEventDirectiveCount": 1258,
+    "backgroundActionCount": 352,
+    "reachableVueFileCount": 208,
+    "routeRootCount": 74,
+    "totalVueFileCount": 221,
+    "parsedVueFileCount": 221,
+    "reachableProductionModuleCount": 357,
+    "templateEventDirectiveCount": 1321,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 392,
-    "candidateProductionMutationConsumerCount": 392,
-    "acceptedProductionMutationConsumerCount": 392,
-    "productionMutationConsumerPairCount": 392,
+    "coveredProductionMutationConsumerCount": 404,
+    "candidateProductionMutationConsumerCount": 404,
+    "acceptedProductionMutationConsumerCount": 404,
+    "productionMutationConsumerPairCount": 404,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 369,
-    "reachableProductionModuleCount": 348,
-    "totalVueFileCount": 215,
-    "parsedVueFileCount": 215
+    "totalProductionModuleCount": 376,
+    "reachableProductionModuleCount": 357,
+    "totalVueFileCount": 221,
+    "parsedVueFileCount": 221
   },
   "actions": [
     {
@@ -3180,7 +3180,7 @@
         "event": "call",
         "handler": "previewContractDraftBillExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 51,
+        "sourceLine": 54,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3246,7 +3246,7 @@
         "event": "call",
         "handler": "uploadContractBillImportFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 32,
+        "sourceLine": 34,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3511,7 +3511,7 @@
         "event": "action-handler",
         "handler": "executeFocusedBillRemainderCancellation",
         "kind": "prop_callback",
-        "sourceLine": 504,
+        "sourceLine": 509,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -3876,7 +3876,7 @@
         "event": "confirm",
         "handler": "confirmContractDocumentDownload",
         "kind": "event",
-        "sourceLine": 179,
+        "sourceLine": 180,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3942,7 +3942,7 @@
         "event": "call",
         "handler": "queueContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 236,
+        "sourceLine": 238,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4008,7 +4008,7 @@
         "event": "call",
         "handler": "retryContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 273,
+        "sourceLine": 275,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4074,7 +4074,7 @@
         "event": "call",
         "handler": "uploadContractDocumentFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 254,
+        "sourceLine": 256,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4141,7 +4141,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 975,
+        "sourceLine": 983,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4248,7 +4248,7 @@
         "event": "call",
         "handler": "autoSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 189,
+        "sourceLine": 194,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4314,7 +4314,7 @@
         "event": "call",
         "handler": "createWorkbenchDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 94,
+        "sourceLine": 96,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4381,7 +4381,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 942,
+        "sourceLine": 950,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4488,7 +4488,7 @@
         "event": "call",
         "handler": "acquireContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 134,
+        "sourceLine": 139,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4555,7 +4555,7 @@
         "event": "call",
         "handler": "heartbeatContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 147,
+        "sourceLine": 152,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4622,7 +4622,7 @@
         "event": "call",
         "handler": "releaseContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 161,
+        "sourceLine": 166,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4689,7 +4689,7 @@
         "event": "call",
         "handler": "takeOverContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 175,
+        "sourceLine": 180,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4756,7 +4756,7 @@
         "event": "call",
         "handler": "manualSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 203,
+        "sourceLine": 210,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4823,7 +4823,7 @@
         "event": "call",
         "handler": "queueContractDraftPreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 217,
+        "sourceLine": 226,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4890,7 +4890,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1167,
+        "sourceLine": 1175,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8439,7 +8439,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1151,
+        "sourceLine": 1159,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8505,7 +8505,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1109,
+        "sourceLine": 1117,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8571,7 +8571,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1122,
+        "sourceLine": 1130,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8637,7 +8637,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1135,
+        "sourceLine": 1143,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8704,7 +8704,7 @@
         "event": "call",
         "handler": "submitContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 230,
+        "sourceLine": 239,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12062,7 +12062,7 @@
         "event": "call",
         "handler": "archiveProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 109,
+        "sourceLine": 111,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12162,7 +12162,7 @@
         "event": "call",
         "handler": "cancelProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 121,
+        "sourceLine": 123,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12262,7 +12262,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 127,
+        "sourceLine": 129,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12328,7 +12328,7 @@
         "event": "call",
         "handler": "createProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 77,
+        "sourceLine": 90,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12428,7 +12428,7 @@
         "event": "call",
         "handler": "deleteProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 39,
+        "sourceLine": 41,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12528,7 +12528,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 133,
+        "sourceLine": 135,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12631,6 +12631,107 @@
       ]
     },
     {
+      "id": "general-procurement.legacy.updateProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 44,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canEdit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProcurementWithCapability",
+              "updateProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/draft",
+          "normalizedKey": "POST /general-procurements/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/draft",
+            "normalizedKey": "POST /general-procurements/:param/draft",
+            "controller": "GeneralProcurementController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProcurementWithCapability",
+              "updateProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "general-procurement.reviewProcurement",
       "usage": "background",
       "routePaths": [
@@ -12645,7 +12746,7 @@
         "event": "call",
         "handler": "reviewProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 97,
+        "sourceLine": 99,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12745,7 +12846,7 @@
         "event": "call",
         "handler": "submitProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 91,
+        "sourceLine": 93,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12847,13 +12948,13 @@
         "event": "call",
         "handler": "updateProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 95,
+        "sourceLine": 97,
         "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "capability.canEdit",
+        "source": "editCapability.canEdit",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -12880,9 +12981,11 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
@@ -12916,9 +13019,11 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
@@ -12947,7 +13052,7 @@
         "event": "call",
         "handler": "uploadProcurementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 115,
+        "sourceLine": 117,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13047,7 +13152,7 @@
         "event": "call",
         "handler": "withdrawProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 103,
+        "sourceLine": 105,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13671,7 +13776,8 @@
       "ownerRoutePaths": [
         "/合同工作台/:contractId",
         "/合同工作台/新建",
-        "/合同模板库/版式/:layoutTemplateId"
+        "/合同模板库/版式/:layoutTemplateId",
+        "/合同模板库/版式/:layoutTemplateId/维护"
       ],
       "sourceFile": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
       "trigger": {
@@ -13778,6 +13884,757 @@
               "bodyKind": "none"
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "layout-template.clone",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "cloneCurrentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 495,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "clone_version",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "cloneLayoutTemplateVersion",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/clone",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/clone",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/clone",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/clone",
+            "controller": "ContractTemplateController",
+            "handler": "cloneLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "cloneCurrentWithCapability",
+              "cloneLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.create",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createLayoutWithCapability",
+        "kind": "background_call",
+        "sourceLine": 431,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canCreate",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "createLayoutTemplate",
+          "method": "POST",
+          "path": "/contract-layout-templates",
+          "normalizedKey": "POST /contract-layout-templates",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-templates",
+            "normalizedKey": "POST /contract-layout-templates",
+            "controller": "ContractTemplateController",
+            "handler": "createLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createLayoutWithCapability",
+              "createLayoutTemplate"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createLayoutWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.inspect",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "inspectWithCapability",
+        "kind": "background_call",
+        "sourceLine": 451,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "inspect_source",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "inspectLayoutTemplateVersion",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/inspection",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/inspection",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/inspection",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/inspection",
+            "controller": "ContractTemplateController",
+            "handler": "inspectLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "inspectWithCapability",
+              "inspectLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.mapping-confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmMappingWithCapability",
+        "kind": "background_call",
+        "sourceLine": 97,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "confirm_source",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+          "wrapper": "confirmLayoutSourceMapping",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/source-mapping-confirmation",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/source-mapping-confirmation",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+            "controller": "ContractTemplateController",
+            "handler": "confirmLayoutSourceMapping",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmMappingWithCapability",
+              "confirmLayoutSourceMapping"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.mapping-save",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveMappingWithCapability",
+        "kind": "background_call",
+        "sourceLine": 86,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "map_source",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+          "wrapper": "saveLayoutSourceMapping",
+          "method": "PATCH",
+          "path": "/contract-layout-template-versions/:param/source-mapping",
+          "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/contract-layout-template-versions/:versionId/source-mapping",
+            "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+            "controller": "ContractTemplateController",
+            "handler": "saveLayoutSourceMapping",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveMappingWithCapability",
+              "saveLayoutSourceMapping"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.preview",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "queuePreviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 462,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "preview_source",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "queueLayoutTemplatePreview",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/preview-generation",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/preview-generation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/preview-generation",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/preview-generation",
+            "controller": "ContractTemplateController",
+            "handler": "queueLayoutPreview",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "queuePreviewWithCapability",
+              "queueLayoutTemplatePreview"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.publish",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "publishCurrentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 484,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "publish_version",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "publishLayoutTemplateVersion",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/publication",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/publication",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/publication",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/publication",
+            "controller": "ContractTemplateController",
+            "handler": "publishLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "publishCurrentWithCapability",
+              "publishLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.save",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveDraftSourceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 439,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "save_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "updateLayoutTemplateVersion",
+          "method": "PATCH",
+          "path": "/contract-layout-template-versions/:param",
+          "normalizedKey": "PATCH /contract-layout-template-versions/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/contract-layout-template-versions/:versionId",
+            "normalizedKey": "PATCH /contract-layout-template-versions/:param",
+            "controller": "ContractTemplateController",
+            "handler": "updateLayoutDraftVersion",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveDraftSourceWithCapability",
+              "updateLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveDraftSourceWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.stop",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "stopCurrentVersionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 506,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "risk_stop",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "stopLayoutTemplateVersion",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/stop",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/stop",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
+            "controller": "ContractTemplateController",
+            "handler": "stopLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "stopCurrentVersionWithCapability",
+              "stopLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "layout-template.submit",
+      "usage": "background",
+      "routePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "ownerRoutePaths": [
+        "/合同模板库/版式/:layoutTemplateId/维护"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCurrentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 473,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "submit_version",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "submitLayoutTemplateVersion",
+          "method": "POST",
+          "path": "/contract-layout-template-versions/:param/submission",
+          "normalizedKey": "POST /contract-layout-template-versions/:param/submission",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-layout-template-versions/:versionId/submission",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/submission",
+            "controller": "ContractTemplateController",
+            "handler": "submitLayout",
+            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCurrentWithCapability",
+              "submitLayoutTemplateVersion"
+            ]
+          },
+          "ticketFollowups": []
         }
       ]
     },

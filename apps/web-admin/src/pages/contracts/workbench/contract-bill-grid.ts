@@ -2,6 +2,9 @@ import {
   isContractBillCustomColumn,
   normalizeTaxRatePercent,
   normalizeBusinessAmount,
+  businessAmountFromLegacyCents,
+  calculateBusinessLineTaxAmounts,
+  sumBusinessAmounts,
   type DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import type {
@@ -19,6 +22,10 @@ import type {
 import { fourDecimalInputMessage } from "./contract-bill-editor";
 
 export interface ContractBillCandidateRow {
+  numericProtocolVersion?: number;
+  taxInclusiveAmountYuan?: string | null;
+  restoreRef?: { saveIntentKey: string; oldRowKey: string };
+  restoreOriginalValues?: Record<string, unknown>;
   clientRowKey: string;
   rowKey?: string;
   itemCode: string;
@@ -124,6 +131,9 @@ export function copyBillCandidateRow(
     rowKey: undefined,
     customData: { ...source.customData }
   };
+  delete copied.taxInclusiveAmountYuan;
+  delete copied.restoreRef;
+  delete copied.restoreOriginalValues;
   delete copied.precisionPolicy;
   delete copied.initialQuantity;
   delete copied.initialUnitPrice;
@@ -388,6 +398,10 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
   return {
     clientRowKey,
     rowKey: row.rowKey,
+    ...(typeof row.numericProtocolVersion === "number" ? { numericProtocolVersion: row.numericProtocolVersion } : {}),
+    ...(row.taxInclusiveAmountYuan !== undefined ? { taxInclusiveAmountYuan: typeof row.taxInclusiveAmountYuan === "string" ? row.taxInclusiveAmountYuan : null } : {}),
+    ...(row.restoreRef ? { restoreRef: { ...row.restoreRef } } : {}),
+    ...(row.restoreOriginalValues ? { restoreOriginalValues: JSON.parse(JSON.stringify(row.restoreOriginalValues)) as Record<string, unknown> } : {}),
     itemCode: textValue(row.itemCode),
     itemName: textValue(row.itemName),
     specification: textValue(row.specification),
@@ -646,4 +660,28 @@ function pricingInputsEqual(
     current.taxRatePercent === next.taxRatePercent &&
     current.taxRateSource === next.taxRateSource
   );
+}
+
+
+export function previewBillRowGross(row: ContractBillCandidateRow, bill: WorkbenchBill): { value: string | null; invalid: boolean; historical: boolean } {
+  const unchanged = row.initialQuantity !== undefined && row.initialUnitPrice !== undefined &&
+    decimalEquivalent(row.quantity, row.initialQuantity) && decimalEquivalent(row.unitPrice, row.initialUnitPrice);
+  if (unchanged && hasUnchangedLegacyPricingFacts(row, bill)) {
+    try {
+      const value = row.numericProtocolVersion === 2 && row.taxInclusiveAmountYuan !== undefined
+        ? row.taxInclusiveAmountYuan : businessAmountFromLegacyCents(row.taxInclusiveAmountCents ?? null);
+      return { value, invalid: false, historical: true };
+    } catch { return { value: null, invalid: true, historical: true }; }
+  }
+  try {
+    if (fourDecimalInputMessage(row.quantity, "数量", true) || fourDecimalInputMessage(row.unitPrice, "含税单价", false)) return { value: null, invalid: true, historical: false };
+    const value = calculateBusinessLineTaxAmounts(row.quantity || null, row.unitPrice || null, effectiveTaxRate(row, bill) || null).taxInclusiveAmountYuan;
+    return { value, invalid: false, historical: false };
+  } catch { return { value: null, invalid: true, historical: false }; }
+}
+export function previewBillGross(rows: readonly ContractBillCandidateRow[], bill: WorkbenchBill): string {
+  const values = rows.map(row => previewBillRowGross(row, bill));
+  if (values.some(value => value.invalid)) return "请先修改输入";
+  const amount = sumBusinessAmounts(values.map(value => value.value));
+  return amount === null ? "待确定" : `${amount} 元`;
 }

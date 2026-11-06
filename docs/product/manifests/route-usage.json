@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 711,
-    "exactRouteCount": 711,
-    "normalizedRouteCount": 711,
-    "classificationOverrideCount": 222,
+    "routeCount": 718,
+    "exactRouteCount": 718,
+    "normalizedRouteCount": 718,
+    "classificationOverrideCount": 213,
     "consumerSurfaceOverrideCount": 38,
-    "classificationOverrideSha256": "abf0d2a85071ce3551832115d47fbd5fd8cf97b327803b7521b9c78138d8a1df",
+    "classificationOverrideSha256": "0c1e6ff2a25e48ed9fa78c0dd797e84af2a1732fb5fd033b69d1ff1db638fa4a",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-    "derivedProductionPageCount": 489,
-    "pageRouteCount": 507,
+    "derivedProductionPageCount": 505,
+    "pageRouteCount": 523,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 97,
+    "exitCandidateCount": 88,
     "internalTaskCount": 37,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 560,
+      "web_api_wrapper": 576,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 108
+      "none": 99
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 560,
+    "productionWrapperRouteCount": 576,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -2061,6 +2061,47 @@
     },
     {
       "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/save-requests/:idempotencyKey",
+      "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+      "controller": "ContractDraftController",
+      "handler": "saveResult",
+      "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractDraftSaveResult",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/save-requests/:param",
+            "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/contract-drafts/:contractVersionId/workbench",
       "normalizedKey": "GET /contract-drafts/:param/workbench",
       "controller": "ContractDraftController",
@@ -2274,6 +2315,49 @@
     },
     {
       "method": "GET",
+      "path": "/contract-layout-template-versions/:versionId/maintenance-capability",
+      "normalizedKey": "GET /contract-layout-template-versions/:param/maintenance-capability",
+      "controller": "ContractTemplateController",
+      "handler": "getLayoutVersionMaintenanceCapability",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+            "wrapper": "getLayoutVersionMaintenanceCapability",
+            "method": "GET",
+            "normalizedPath": "/contract-layout-template-versions/:param/maintenance-capability",
+            "normalizedKey": "GET /contract-layout-template-versions/:param/maintenance-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/contract-layout-template-versions/:versionId/preview-generation",
       "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
       "controller": "ContractTemplateController",
@@ -2292,18 +2376,73 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "getLatestLayoutTemplatePreview",
+            "method": "GET",
+            "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
+            "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-template-versions/:versionId/source-positions",
+      "normalizedKey": "GET /contract-layout-template-versions/:param/source-positions",
+      "controller": "ContractTemplateController",
+      "handler": "layoutSourcePositions",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+            "wrapper": "getLayoutSourcePositions",
+            "method": "GET",
+            "normalizedPath": "/contract-layout-template-versions/:param/source-positions",
+            "normalizedKey": "GET /contract-layout-template-versions/:param/source-positions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue",
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "GET",
@@ -2379,7 +2518,95 @@
             "normalizedPath": "/contract-layout-templates/:param",
             "normalizedKey": "GET /contract-layout-templates/:param",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-templates/creation-capability",
+      "normalizedKey": "GET /contract-layout-templates/creation-capability",
+      "controller": "ContractTemplateController",
+      "handler": "getLayoutCreationCapability",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+            "wrapper": "getLayoutCreationCapability",
+            "method": "GET",
+            "normalizedPath": "/contract-layout-templates/creation-capability",
+            "normalizedKey": "GET /contract-layout-templates/creation-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateManagementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-layout-templates/maintenance",
+      "normalizedKey": "GET /contract-layout-templates/maintenance",
+      "controller": "ContractTemplateController",
+      "handler": "listMaintainedLayouts",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+            "wrapper": "listMaintainedLayouts",
+            "method": "GET",
+            "normalizedPath": "/contract-layout-templates/maintenance",
+            "normalizedKey": "GET /contract-layout-templates/maintenance",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateManagementPage.vue"
             ]
           }
         ],
@@ -4712,6 +4939,7 @@
             "normalizedKey": "GET /general-procurements/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+              "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
               "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           },
@@ -4742,6 +4970,7 @@
             "normalizedPath": "/general-procurements/:param",
             "normalizedKey": "GET /general-procurements/:param",
             "productionConsumers": [
+              "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
               "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           },
@@ -4814,6 +5043,7 @@
             "normalizedKey": "GET /general-procurements/create-options",
             "productionConsumers": [
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
+              "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
               "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           }
@@ -10665,26 +10895,79 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "updateLayoutTemplateVersion",
+            "method": "PATCH",
+            "normalizedPath": "/contract-layout-template-versions/:param",
+            "normalizedKey": "PATCH /contract-layout-template-versions/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-layout-template-versions/:versionId/source-mapping",
+      "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+      "controller": "ContractTemplateController",
+      "handler": "saveLayoutSourceMapping",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+            "wrapper": "saveLayoutSourceMapping",
+            "method": "PATCH",
+            "normalizedPath": "/contract-layout-template-versions/:param/source-mapping",
+            "normalizedKey": "PATCH /contract-layout-template-versions/:param/source-mapping",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "PATCH",
@@ -10761,8 +11044,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -14244,26 +14526,36 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "cloneLayoutTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/clone",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/clone",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14277,8 +14569,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -14310,26 +14601,36 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "inspectLayoutTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/inspection",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/inspection",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14343,26 +14644,36 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "queueLayoutTemplatePreview",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/preview-generation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14383,18 +14694,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "publishLayoutTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/publication",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/publication",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14430,6 +14752,49 @@
     },
     {
       "method": "POST",
+      "path": "/contract-layout-template-versions/:versionId/source-mapping-confirmation",
+      "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+      "controller": "ContractTemplateController",
+      "handler": "confirmLayoutSourceMapping",
+      "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-template-mapping.api.ts",
+            "wrapper": "confirmLayoutSourceMapping",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/source-mapping-confirmation",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/source-mapping-confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutSourceMappingPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/contract-layout-template-versions/:versionId/stop",
       "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
       "controller": "ContractTemplateController",
@@ -14447,18 +14812,29 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "stopLayoutTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/stop",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14472,26 +14848,36 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "submitLayoutTemplateVersion",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-template-versions/:param/submission",
+            "normalizedKey": "POST /contract-layout-template-versions/:param/submission",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14505,26 +14891,36 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "createLayoutTemplate",
+            "method": "POST",
+            "normalizedPath": "/contract-layout-templates",
+            "normalizedKey": "POST /contract-layout-templates",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -14770,8 +15166,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -14803,8 +15198,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -14932,8 +15326,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -14965,8 +15358,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -17527,6 +17919,7 @@
               "apps/web-admin/src/components/ContractProxyExecutionPanel.vue",
               "apps/web-admin/src/components/UpwardContractAmountPanel.vue",
               "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
@@ -18326,6 +18719,7 @@
             "normalizedPath": "/general-procurements/:param/draft",
             "normalizedKey": "POST /general-procurements/:param/draft",
             "productionConsumers": [
+              "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
               "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
             ]
           }
@@ -28413,8 +28807,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -28478,8 +28871,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
@@ -28511,8 +28903,7 @@
       "guardAuthorization": "positions",
       "isPublic": false,
       "requiredPositions": [
-        "contract_director",
-        "contract_staff"
+        "contract_director"
       ],
       "requiredProjectAction": null,
       "authorizationCombination": null,

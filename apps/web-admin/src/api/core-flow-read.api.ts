@@ -7321,21 +7321,20 @@ export interface UserOptionReadModel {
   name: string;
 }
 
-export interface CreateApprovalDelegationPayload {
-  actionKey?: "spot_procurement.approve" | "fund_account.balance.review";
-  resourceType?: "spot_procurement_approval_duty" | "fund_account_balance_review_duty";
-  resourceId?: string;
-  toUserId: string;
-  startsAt: string;
-  endsAt: string;
-}
+export type ApprovalDelegationDutyScope =
+  | { actionKey: "spot_procurement.approve"; resourceType: "spot_procurement_approval_duty" }
+  | { actionKey: "general_procurement.approve"; resourceType: "general_procurement_approval_duty" }
+  | { actionKey: "fund_account.balance.review"; resourceType: "fund_account_balance_review_duty" };
+export type CreateApprovalDelegationPayload = {
+  resourceId?: string; toUserId: string; startsAt: string; endsAt: string;
+} & (ApprovalDelegationDutyScope | { actionKey?: never; resourceType?: never });
 
 export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
 }
 
 export function fetchApprovalDelegationDutyOptions() {
-  return readJson<Array<{value: string; label: string; actionKey?: CreateApprovalDelegationPayload["actionKey"]; resourceType?: CreateApprovalDelegationPayload["resourceType"]}>>("/approval-delegations/duty-options");
+  return readJson<Array<{value: string; label: string} & ApprovalDelegationDutyScope>>("/approval-delegations/duty-options");
 }
 
 export function fetchApprovalDelegationUserOptions(dutyId?: string) {

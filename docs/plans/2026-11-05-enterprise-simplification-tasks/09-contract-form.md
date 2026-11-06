@@ -1,6 +1,6 @@
 # 09：合同单页基础资料与手动选模板
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#391](https://github.com/1131096740/intelligent-construction-management/issues/391) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；已实时回读全部前置关闭，已[领取#391](https://github.com/1131096740/intelligent-construction-management/issues/391#issuecomment-6668305412)。测试依用户已确认公开边界，以最新中央隔离实施；真实PG仅准备，资源/迁移/真实交易/部署及生产写仍另需授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 

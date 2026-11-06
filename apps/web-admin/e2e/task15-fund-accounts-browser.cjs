@@ -2,11 +2,13 @@
 // Actual production Vue route + local HTTP controller/service/guards/DTO.
 // Only auth identities and persistence are synthetic. No page.route mocks.
 const { chromium, expect } = require("@playwright/test");
-const { readFileSync, writeFileSync } = require("node:fs");
+const { mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const { resolve } = require("node:path");
 const root = resolve(__dirname, "../../..");
 if (process.cwd() !== root) throw new Error("Requires the task15 isolated worktree");
-const fixture = JSON.parse(readFileSync("/private/tmp/jg-task15-synthetic-server.json", "utf8"));
+const evidenceDirectory = resolve(process.env.FUND_ACCOUNT_BROWSER_OUTPUT ?? "apps/web-admin/test-results/task15-fund-accounts");
+mkdirSync(evidenceDirectory, { recursive: true });
+const fixture = JSON.parse(readFileSync(process.env.FUND_ACCOUNT_SYNTHETIC_RECEIPT ?? "/private/tmp/jg-task15-synthetic-server.json", "utf8"));
 const base = "http://127.0.0.1:61815";
 if (new URL(fixture.url).hostname !== "127.0.0.1") throw new Error("Synthetic HTTP must be loopback");
 const failures = [];
@@ -48,7 +50,7 @@ const failures = [];
     await expect(card).toContainText("出资方待核对");
     await expect(card).toContainText("项目归属待核对");
     await page.reload(); await expect(card).toContainText("80000.0000");
-    await page.screenshot({ path: "/private/tmp/jg-task15-ui-desktop-cash.png", fullPage: true });
+    await page.screenshot({ path: resolve(evidenceDirectory, "ui-desktop-cash.png"), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     results.push({ case: "desktop-cash-opening-retry-reload", passed: true, viewport: "1366x900" });
     await context.close();
@@ -59,7 +61,7 @@ const failures = [];
     const mobileDialog = await fillBasis(finance.page, "50000", "公司启用期初");
     await mobileDialog.getByRole("button", { name: "添加来源归属", exact: true }).click();
     await mobileDialog.locator('[aria-label="来源金额1"] input').fill("50000");
-    await finance.page.screenshot({ path: "/private/tmp/jg-task15-ui-mobile-form.png", fullPage: true });
+    await finance.page.screenshot({ path: resolve(evidenceDirectory, "ui-mobile-form.png"), fullPage: true });
     expect(await finance.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await mobileDialog.getByRole("button", { name: "确认提交", exact: true }).click();
     await expect(company).toContainText("50000.0000");
@@ -87,7 +89,7 @@ const failures = [];
     await expect(director.page.getByText("余额核对更正已复核，原登记与来源记录继续保留", { exact: true })).toBeVisible();
     await director.page.locator(".fund-accounts__tabs").getByText("各公司资金", { exact: true }).click();
     await expect(finalCompany).toContainText("80000.0000");
-    await director.page.screenshot({ path: "/private/tmp/jg-task15-ui-desktop-correction.png", fullPage: true });
+    await director.page.screenshot({ path: resolve(evidenceDirectory, "ui-desktop-correction.png"), fullPage: true });
     results.push({ case: "desktop-50000-to-80000-reviewed-correction", passed: true });
     await director.context.close();
     async function http(actor, path, body) {
@@ -125,7 +127,7 @@ const failures = [];
     expect(delegateCommands).toHaveLength(2);
     expect(delegateCommands[1]).toEqual(delegateCommands[0]);
     expect(await delegatePage.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
-    await delegatePage.screenshot({path:"/private/tmp/jg-task15-ui-delegate-phone.png",fullPage:true});
+    await delegatePage.screenshot({path:resolve(evidenceDirectory, "ui-delegate-phone.png"),fullPage:true});
     const signed=await http("finance",`/fund-accounts/registrations/${pending.id}`);
     expect(signed.status).toBe("confirmed");
     expect(signed.approvalEvidence).toHaveLength(1);
@@ -169,17 +171,17 @@ const failures = [];
     expect(afterClosure.history.filter(row=>row.status==="returned")).toHaveLength(1);
     expect(afterClosure.history.filter(row=>row.status==="withdrawn")).toHaveLength(1);
     expect(afterClosure.canRequestCorrection).toBe(true);
-    await maker.page.screenshot({path:"/private/tmp/jg-task15-ui-return-withdraw-history.png",fullPage:true});
+    await maker.page.screenshot({path:resolve(evidenceDirectory, "ui-return-withdraw-history.png"),fullPage:true});
     await maker.page.getByRole("button",{name:"查看核对及签批凭据",exact:true}).nth(2).click();
     const evidenceDialog=maker.page.locator(".t-dialog:visible");
     await expect(evidenceDialog).toContainText("已冻结本人手写签名");
     await expect(evidenceDialog).toContainText("代办同事");
     await expect(evidenceDialog).toContainText("代表财务主管");
-    await maker.page.screenshot({path:"/private/tmp/jg-task15-ui-delegate-signature-evidence.png",fullPage:true});
+    await maker.page.screenshot({path:resolve(evidenceDirectory, "ui-delegate-signature-evidence.png"),fullPage:true});
     results.push({case:"returned-correction-resubmission-and-owner-withdrawal-preserve-effective-balance",passed:true});
     await maker.context.close();
     expect(failures).toEqual([]);
-    writeFileSync("/private/tmp/jg-task15-browser-result.json", JSON.stringify({ passed: true, results, failures }, null, 2));
-  } catch (error) { writeFileSync("/private/tmp/jg-task15-browser-result.json", JSON.stringify({ passed: false, results, failures, error: String(error) }, null, 2)); throw error; }
+    writeFileSync(resolve(evidenceDirectory, "browser-result.json"), JSON.stringify({ passed: true, results, failures }, null, 2));
+  } catch (error) { writeFileSync(resolve(evidenceDirectory, "browser-result.json"), JSON.stringify({ passed: false, results, failures, error: String(error) }, null, 2)); throw error; }
   finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

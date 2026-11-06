@@ -217,8 +217,13 @@ const delegationInput = computed(() => {
   const selected = duties.value.find(option => option.value === draft.resourceId);
   if (!selected) throw new Error("所选职责已不在当前可委托清单，请刷新后重选");
   const { actionKey, resourceType } = selected;
-  if (!((actionKey === "spot_procurement.approve" && resourceType === "spot_procurement_approval_duty") || (actionKey === "fund_account.balance.review" && resourceType === "fund_account_balance_review_duty"))) throw new Error("所选职责范围不完整或不受支持，请刷新后重选");
-  return {toUserId:draft.toUserId,startsAt,endsAt,actionKey,resourceType,resourceId:selected.value};
+  if (!((actionKey === "spot_procurement.approve" && resourceType === "spot_procurement_approval_duty") || (actionKey === "fund_account.balance.review" && resourceType === "fund_account_balance_review_duty") || (actionKey === "general_procurement.approve" && resourceType === "general_procurement_approval_duty"))) throw new Error("所选职责范围不完整或不受支持，请刷新后重选");
+  const scope = actionKey === "spot_procurement.approve"
+    ? { actionKey, resourceType: "spot_procurement_approval_duty" as const }
+    : actionKey === "general_procurement.approve"
+      ? { actionKey, resourceType: "general_procurement_approval_duty" as const }
+      : { actionKey, resourceType: "fund_account_balance_review_duty" as const };
+  return { ...scope, toUserId:draft.toUserId,startsAt,endsAt,resourceId:selected.value};
 });
 async function saveDelegation() {
   if(saving.value)return; createError.value="";

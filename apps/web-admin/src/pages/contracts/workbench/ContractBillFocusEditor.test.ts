@@ -189,7 +189,7 @@ describe("ContractBillFocusEditor aggregate editing", () => {
     expect(previewImport).toHaveBeenCalledWith(
       "version-1",
       "materials",
-      { fileId: "file-1" }
+      { fileId: "file-1", mode: "append" }
     );
     expect(controller.replaceConfirmVisible.value).toBe(true);
     expect(controller.rows.value).toEqual(before);
@@ -197,6 +197,7 @@ describe("ContractBillFocusEditor aggregate editing", () => {
 
     controller.confirmImportReplace();
     expect(controller.rows.value).toEqual([
+      ...before,
       expect.objectContaining({ clientRowKey: "import-1", itemName: "导入钢筋" })
     ]);
     expect(emit).toHaveBeenCalledWith("update:rows", controller.rows.value);
@@ -213,6 +214,7 @@ describe("ContractBillFocusEditor aggregate editing", () => {
     });
     const controller = createContractBillFocusController(options);
 
+    controller.importMode.value = "replace";
     await controller.previewExcel(new File(["xlsx"], "空清单.xlsx"));
     controller.confirmImportReplace();
 
@@ -368,6 +370,7 @@ describe("ContractBillFocusEditor aggregate editing", () => {
       }
     });
 
+    controller.importMode.value = "replace";
     await controller.previewExcel(new File(["xlsx"], "遗漏历史行.xlsx"));
 
     expect(controller.replaceConfirmVisible.value).toBe(false);

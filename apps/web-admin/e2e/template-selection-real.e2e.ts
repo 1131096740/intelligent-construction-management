@@ -1,0 +1,83 @@
+import { writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { expect, test } from "@playwright/test";
+
+test("合同员显式选用模板并通过真实保存与生成链保持历史", async ({ page }) => {
+  const input = JSON.parse(process.env.TEMPLATE_SELECTION_INPUT ?? "{}");
+  const account = input.staff;
+  await page.goto("/login?redirect=" + encodeURIComponent(`/合同工作台/${input.contractId}?versionId=${input.versionId}`));
+  await page.getByPlaceholder("请输入手机号").fill(account.phone);
+  await page.getByPlaceholder("请输入密码").fill(account.password);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "合同文档", exact: true })).toBeVisible();
+  const selector = page.locator(".document-controls").getByPlaceholder("选择已发布版式", { exact: true });
+  await expect(selector).toBeVisible();
+  await expect(page.getByRole("button", { name: "生成合同文件", exact: true })).toBeDisabled();
+  await expect(selector).toHaveValue("");
+  const savedChoice = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith(`/contract-drafts/${input.versionId}`) && response.request().postDataJSON()?.draft?.layoutTemplateVersionId === input.second.id);
+  await selector.click();
+  await page.getByText("模板乙 · V1", { exact: true }).click();
+  const saved = await savedChoice;
+  expect(saved.status()).toBe(200);
+  expect(saved.request().headers()["x-contract-draft-lease"]).toBeTruthy();
+  const login = await page.request.post("/api/auth/login", { data: { phone: account.phone, password: account.password } });
+  expect(login.status()).toBe(201);
+  const auth = await login.json();
+  const headers = { authorization: `Bearer ${auth.tokens.accessToken}`, "x-contract-numeric-protocol": "2" };
+  const read = await page.request.get(`/api/contract-drafts/${input.versionId}/workbench`, { headers });
+  expect(read.status()).toBe(200);
+  expect(await read.json()).toMatchObject({ version: { layoutTemplateVersionId: input.second.id } });
+  // A real route leave disposes the editor and releases its in-memory lease.
+  // Hard browser reload is separately recorded as held_elsewhere, not bypassed here.
+  const released = page.waitForResponse(response => response.request().method() === "DELETE" && response.url().endsWith(`/contract-drafts/${input.versionId}/edit-lease`));
+  await page.getByRole("link", { name: "首页", exact: true }).click();
+  expect((await released).status()).toBe(200);
+  await page.goto(`/合同工作台/${input.contractId}?versionId=${input.versionId}`);
+  await expect(selector).toHaveValue("模板乙 · V1");
+  const queued = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith(`/contract-workbench/${input.versionId}/documents`));
+  await page.getByRole("button", { name: "生成合同文件", exact: true }).click();
+  const queue = await queued;
+  expect(queue.status()).toBe(201);
+  expect(queue.request().postDataJSON()).toMatchObject({ layoutTemplateVersionId: input.second.id, purpose: "external" });
+  await expect(page.locator(".document-row")).toContainText("状态 已生成");
+  const documents = await page.request.get(`/api/contract-workbench/${input.versionId}/documents`, { headers });
+  const history = (await documents.json()).find((row: { status: string }) => row.status === "success");
+  expect(history).toMatchObject({ layoutTemplateVersionId: input.second.id, docxFileId: expect.any(String), pdfFileId: expect.any(String) });
+  async function historicalPdfHash() {
+    const ticket = await page.request.post(`/api/files/${history.pdfFileId}/download-ticket`, { headers, data: { confirmationPassword: account.password, downloadReason: "核对模板变更前后的历史合同文件" } });
+    expect(ticket.status()).toBe(201);
+    const download = await page.request.get("/api" + (await ticket.json()).downloadUrl);
+    expect(download.status()).toBe(200);
+    return createHash("sha256").update(await download.body()).digest("hex");
+  }
+  const before = await historicalPdfHash();
+  const directorLogin = await page.request.post("/api/auth/login", { data: input.director });
+  expect(directorLogin.status()).toBe(201);
+  const director = await directorLogin.json();
+  expect((await page.request.post(`/api/contract-layout-template-versions/${input.second.id}/stop`, { headers: { authorization: `Bearer ${director.tokens.accessToken}` } })).status()).toBe(201);
+  const releasedAgain = page.waitForResponse(response => response.request().method() === "DELETE" && response.url().endsWith(`/contract-drafts/${input.versionId}/edit-lease`));
+  await page.getByRole("link", { name: "首页", exact: true }).click();
+  expect((await releasedAgain).status()).toBe(200);
+  await page.goto(`/合同工作台/${input.contractId}?versionId=${input.versionId}`);
+  await expect(selector).toHaveValue("模板乙 · V1（已停用）");
+  await expect(page.getByRole("button", { name: "生成合同文件", exact: true })).toBeDisabled();
+  expect(await historicalPdfHash()).toBe(before);
+  const cleared = page.waitForResponse(response => response.request().method() === "PUT" && response.url().endsWith(`/contract-drafts/${input.versionId}`) && response.request().postDataJSON()?.draft?.layoutTemplateVersionId === null);
+  await selector.hover();
+  await page.locator(".document-controls .t-input__suffix-clear").click();
+  expect((await cleared).status()).toBe(200);
+  const clearedRead = await page.request.get(`/api/contract-drafts/${input.versionId}/workbench`, { headers });
+  expect(await clearedRead.json()).toMatchObject({ version: { layoutTemplateVersionId: null, layoutTemplateSelection: null } });
+  await expect(selector).toHaveValue("");
+  await expect(page.getByRole("button", { name: "生成合同文件", exact: true })).toBeDisabled();
+  const noFallback = await page.request.post(`/api/contract-drafts/${input.versionId}/preview-generation`, { headers, data: { sourceRevision: (await (await page.request.get(`/api/contract-drafts/${input.versionId}/workbench`, { headers })).json()).version.draftRevision } });
+  expect(noFallback.status()).toBe(400);
+  expect((await noFallback.json()).message).toContain("尚未选择");
+  expect(await historicalPdfHash()).toBe(before);
+  const finalList = await page.request.get(`/api/contract-workbench/${input.versionId}/documents`, { headers });
+  expect(finalList.status()).toBe(200);
+  const finalRecord = (await finalList.json()).find((row: { id: string }) => row.id === history.id);
+  expect(finalRecord).toMatchObject({ id: history.id, status: "stale", docxFileId: history.docxFileId, pdfFileId: history.pdfFileId });
+  await writeFile(process.env.TEMPLATE_SELECTION_RECEIPT_PATH!, JSON.stringify({ generatedDocumentId: history.id, docxFileId: history.docxFileId, pdfFileId: history.pdfFileId, statusBeforeClear: "success", statusAfterClear: finalRecord.status, pdfSha256BeforeStop: before, pdfSha256AfterStopAndClear: await historicalPdfHash() }, null, 2));
+
+});
