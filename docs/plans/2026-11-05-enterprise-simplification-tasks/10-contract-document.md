@@ -1,6 +1,6 @@
 # 10：完整合同独立标签编辑同步及双格式导出
 
-**状态：** `plan-confirmed` / `not-started`；前置工单未关闭，尚未实施。本轮用户已授权整套实施及 GitHub 工单推进；[#392](https://github.com/1131096740/intelligent-construction-management/issues/392) 已发布，归属父工单 [#382](https://github.com/1131096740/intelligent-construction-management/issues/382)。迁移、受控实验、部署与生产变更仍按各自具体授权执行。
+**状态：** `plan-confirmed` / `in-progress`；已实时核08/09前置关闭并[领取#392](https://github.com/1131096740/intelligent-construction-management/issues/392#issuecomment-6676495364)。用户已确认完整正文公开HTTP/服务/双端真实UI和实际DOCX/PDF物理测试边界；从最新干净中央隔离实施，真实PG仅准备，资源/迁移/真实业务/部署与生产写仍另需授权。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
