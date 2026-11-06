@@ -54,6 +54,8 @@ export class SaveContractTaxFactsDto {
 }
 
 export interface SaveContractDraftDto {
+  numericProtocolVersion?: 2;
+  manualAmountYuan?: string | null;
   expectedRevision: number;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
@@ -175,6 +177,13 @@ export class SaveContractClauseDto implements ContractClauseDefinition {
 }
 
 export class SaveContractDraftFieldsDto {
+  @IsOptional()
+  @IsIn([2], { message: "合同数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: 2;
+
+  @Allow()
+  manualAmountYuan?: string | null;
+
   @IsOptional()
   @IsRequiredText({
     requiredMessage: "公司主体编号不能为空",

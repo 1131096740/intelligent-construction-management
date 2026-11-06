@@ -334,6 +334,9 @@ describe("registered fund accounts public HTTP (synthetic database)", () => {
     expect(before.history[0]).toMatchObject({ pendingConfiguration: true, canConfirm: false });
     expect((await get("director", "/me/work-items")).body.queueMeta.pending.total).toBe(0);
     expect((await get("finance", "/me/work-items")).body.queues.started).toContainEqual(expect.objectContaining({ businessId: pending.body.id, currentNode: "财务主管待配置" }));
+    database.setRole("finance", "employee");
+    expect((await get("finance", "/me/work-items")).body.queues.started).toEqual([]);
+    database.setRole("finance", "finance_staff");
     expect((await post({ expectedApprovalInstanceId: pending.body.approvalInstanceId, reviewNote: "无岗不得办理" }, "director", `/fund-accounts/registrations/${pending.body.id}/confirm`)).status).toBe(403);
     database.setRole("other_director", "finance_director");
     const resumed = (await get("other_director")).body.accounts[1];

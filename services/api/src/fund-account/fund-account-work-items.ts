@@ -1,12 +1,13 @@
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import type { PrismaService } from "../database/prisma.service";
 import type { WorkItem } from "../me/me.service";
-import { FUND_REVIEW_BUSINESS_TYPE, fundReviewDutyId, fundReviewerAvailable, loadFundReviewDuty, resolveFundReviewIdentity } from "./fund-account-duty";
+import { FUND_REVIEW_BUSINESS_TYPE, currentFundCompanyRoles, fundReviewDutyId, fundReviewerAvailable, loadFundReviewDuty, resolveFundReviewIdentity } from "./fund-account-duty";
 
 /** Current duty projection only. No task records or balance mutations. */
 export async function fundReviewWorkItems(prisma: PrismaService, userId: string, mode: "pending" | "started" | "delegated" = "pending"): Promise<WorkItem[]> {
   if (!prisma.fundAccountBalanceRegistration?.findMany) return [];
   return prisma.$transaction(async tx => {
+    if (mode === "started" && !(await currentFundCompanyRoles(tx, userId)).some(role => role === "finance_staff" || role === "finance_director")) return [];
     const rows = await tx.fundAccountBalanceRegistration.findMany({ where: { kind: "correction", status: "pending_review", ...(mode === "started" ? { createdByUserId: userId } : {}) }, orderBy: { createdAt: "desc" } });
     const items: WorkItem[] = [];
     for (const row of rows) {

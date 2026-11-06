@@ -134,6 +134,14 @@ export class CreatePaymentTermsStageDto {
 /** Minimal payload to seed a workbench draft from a published business template. */
 export class CreateContractDraftDto {
   @ValidateIf((_object, value) => value !== undefined)
+  @IsIn([2], { message: "合同数值版本不正确，请刷新工作台" })
+  numericProtocolVersion?: 2;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["inside", "outside", "upward"], { message: "合同关系不正确，请重新选择" })
+  relationship?: "inside" | "outside" | "upward";
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsIn(["affiliate", "our_company"], { message: "合同签约主体类型不正确" })
   signingSubjectType?: "affiliate" | "our_company";
 
@@ -155,12 +163,13 @@ export class CreateContractDraftDto {
   })
   contractTypeKey!: string;
 
+  @ValidateIf((object, value) => object.numericProtocolVersion !== 2 || value !== undefined)
   @IsRequiredText({
     requiredMessage: "合同模板版本不能为空",
     typeMessage: "合同模板版本编号必须是文字",
     blankMessage: "合同模板版本不能为空白"
   })
-  businessTemplateVersionId!: string;
+  businessTemplateVersionId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsRequiredText({

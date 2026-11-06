@@ -1,0 +1,67 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import PizZip from "pizzip";
+import { createTemplateTestServer } from "./template-management.test-support";
+import { publishMappedSelectionLayout } from "./template-selection.test-support";
+import { createTask09Draft, saveTask09Draft } from "./task09-draft-template.test-support";
+type Server = Awaited<ReturnType<typeof createTemplateTestServer>>;
+
+describe("task09 new draft business type authority for manual layout selection", () => {
+  let server: Server;
+  beforeAll(async () => { server = await createTemplateTestServer({ draftWorkbench: true }); });
+  afterAll(async () => { await server.app.close(); });
+  it("uses validated incoming type for the same PUT and persisted current type for generation, preserving parent classification", async () => {
+    const layout = await publishMappedSelectionLayout(server, "其他业务手选样张", "other");
+    const draft = await createTask09Draft(server);
+    const saved = await saveTask09Draft(server, draft, "other", layout.id);
+    expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
+    const read = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json());
+    expect(read).toMatchObject({ contract: { contractTypeKey: "material_purchase" }, version: { layoutTemplateVersionId: layout.id, draftData: { contractBasics: { businessType: "other" } } } });
+    const queue = await fetch(`${await server.app.getUrl()}/contract-workbench/${draft.version.id}/documents`, { method: "POST", headers: draft.headers, body: JSON.stringify({ purpose: "external", layoutTemplateVersionId: layout.id }) });
+    const queued = await queue.json() as { id: string; status: string };
+    expect({ status: queue.status, body: queued }).toMatchObject({ status: 201, body: { status: "queued" } });
+    await server.processor.processNext();
+    const outputs = await fetch(`${await server.app.getUrl()}/contract-workbench/${draft.version.id}/documents`, { headers: draft.headers }).then(response => response.json()) as Array<{ id: string; status: string; docxFileId: string; pdfFileId: string }>;
+    const output = outputs.find(value => value.id === queued.id)!;
+    expect(output).toMatchObject({ status: "success", docxFileId: expect.any(String), pdfFileId: expect.any(String) });
+    const ticket = await fetch(`${await server.app.getUrl()}/files/${output.docxFileId}/download-ticket`, { method: "POST", headers: draft.headers, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对新建合同手选模板实际正文" }) });
+    expect(ticket.status).toBe(201);
+    const download = await fetch(`${await server.app.getUrl()}${(await ticket.json() as { downloadUrl: string }).downloadUrl}`);
+    expect(download.status).toBe(200);
+    const docx = Buffer.from(await download.arrayBuffer());
+    const xml = new PizZip(docx).file("word/document.xml")!.asText();
+    expect(xml).toContain("上游新建当前合同名称"); expect(xml.match(/当前单甲方/gu)).toHaveLength(2); expect(xml.match(/当前单乙方/gu)).toHaveLength(2);
+    expect(xml).toContain("本项普通约定按原文保留"); expect(xml).not.toContain("样张核对");
+    const directory = await mkdtemp(join(tmpdir(), "jg-task09-new-selected-docx-"));
+    const pdf = await server.files.getFileBuffer(output.pdfFileId);
+    const rawSource = await server.files.getFileBuffer(layout.fileId);
+    await writeFile(join(directory, "source.docx"), rawSource.buffer);
+    await writeFile(join(directory, "published-source-binding.json"), JSON.stringify(layout, null, 2));
+    await writeFile(join(directory, "generated.docx"), docx); await writeFile(join(directory, "generated.pdf"), pdf.buffer);
+    await writeFile(join(directory, "receipt.json"), JSON.stringify({ scope: "real new create / guarded save / manual published layout / actual DOCX; synthetic persistence", output, sourceSha256: layout.sourceSha256, rawDocxSha256: createHash("sha256").update(rawSource.buffer).digest("hex"), mappingFingerprint: layout.mappingFingerprint, docxSha256: createHash("sha256").update(docx).digest("hex"), pdfSha256: createHash("sha256").update(pdf.buffer).digest("hex"), pdfVisualGate: "FAILED in formal task11 local renderer: Chinese glyph failure; new PDF trace has only missing glyph0; no visual success claimed" }, null, 2));
+    console.info(`任务09新建手选实际DOCX证据：${directory}`);
+  }, 30_000);
+  it("retains an old selected ID on type-only save but rejects its generation before creating a document", async () => {
+    const layout = await publishMappedSelectionLayout(server, "原材料手选样张");
+    const draft = await createTask09Draft(server);
+    const first = await saveTask09Draft(server, draft, "material_purchase", layout.id);
+    expect(first.status === 200 ? "OK" : await first.text()).toBe("OK");
+    expect((await saveTask09Draft(server, draft, "other")).status).toBe(200);
+    const before = await server.store.prisma.contractGeneratedDocument.count();
+    const queue = await fetch(`${await server.app.getUrl()}/contract-workbench/${draft.version.id}/documents`, { method: "POST", headers: draft.headers, body: JSON.stringify({ purpose: "external", layoutTemplateVersionId: layout.id }) });
+    expect({ status: queue.status, body: await queue.json() }).toMatchObject({ status: 400, body: { message: expect.stringContaining("重新选择") } });
+    expect(await server.store.prisma.contractGeneratedDocument.count()).toBe(before);
+  }, 30_000);
+  it("rejects missing or invalid new-pending type without falling back to the parent or writing rows", async () => {
+    const draft = await createTask09Draft(server);
+    const before = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json());
+    for (const invalid of [undefined, "generic_contract"]) {
+      const response = await saveTask09Draft(server, draft, invalid);
+      expect(response.status).toBe(400);
+    }
+    const after = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json());
+    expect(after).toEqual(before);
+  });
+});

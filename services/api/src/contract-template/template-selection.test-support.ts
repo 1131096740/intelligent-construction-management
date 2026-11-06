@@ -21,7 +21,7 @@ export async function seedSelectionDraft(server: Server, includeBill = false, na
 }
 
 /** Preparation uses the actual public maintenance routes and local converter. */
-export async function publishMappedSelectionLayout(server: Server, name = "真实手动选版样张") {
+export async function publishMappedSelectionLayout(server: Server, name = "真实手动选版样张", contractTypeKey = "material_purchase") {
   const token = await loginTemplateActor(server, "director");
   const base = await server.app.getUrl();
   const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
@@ -34,7 +34,7 @@ export async function publishMappedSelectionLayout(server: Server, name = "真�
   const response = await fetch(base + "/files", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: upload });
   if (response.status !== 201) throw new Error("真实模板源上传前置失败");
   const file = await response.json() as { id: string };
-  const layout = await request("/contract-layout-templates", "POST", { name, contractTypeKey: "material_purchase", docxFileId: file.id, placeholderSchema: { bills: [] } }) as { template: { id: string }; version: { id: string } };
+  const layout = await request("/contract-layout-templates", "POST", { name, contractTypeKey, docxFileId: file.id, placeholderSchema: { bills: [] } }) as { template: { id: string }; version: { id: string } };
   const path = `/contract-layout-template-versions/${layout.version.id}`;
   const source = await request(path + "/source-positions") as { sourceSha256: string; positions: Array<{ positionId: string; text: string }> };
   const keys = ["contract.name", "party.owner.name", "party.counterparty.name", "contract.temporaryCode", "document.watermark"];
@@ -47,7 +47,7 @@ export async function publishMappedSelectionLayout(server: Server, name = "真�
   await request(path + "/source-mapping-confirmation", "POST", { expectedRevision: 2, sourceFileId: file.id, sourceSha256: source.sourceSha256, mappingFingerprint: mapping.mappingFingerprint });
   await request(path + "/submission", "POST");
   await request(path + "/publication", "POST", { changeSummary: "真实字段、正文、签章与样张确认" });
-  return { id: layout.version.id, templateId: layout.template.id, fileId: file.id, sourceSha256: source.sourceSha256, mappingFingerprint: mapping.mappingFingerprint };
+  return { id: layout.version.id, templateId: layout.template.id, fileId: file.id, sourceSha256: source.sourceSha256, mappingFingerprint: mapping.mappingFingerprint, sourcePositions: source.positions, bindings };
 }
 
 export async function saveSelectionThroughHttp(server: Server, versionId: string, layoutId: string | null, oldLeaseToken?: string) {

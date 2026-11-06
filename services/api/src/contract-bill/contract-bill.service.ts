@@ -131,6 +131,7 @@ export class ContractBillService {
     input: {
       expectedRevision: number;
       numericProtocolVersion?: number;
+      pricingMode?: "tax_inclusive" | "tax_exclusive";
       rows: SaveContractBillRowDto[];
     },
     trustedRestores: ReadonlyMap<string, ContractBillRow> = new Map()
@@ -145,6 +146,14 @@ export class ContractBillService {
       where: { contractBillId: bill.id },
       orderBy: { sortOrder: "asc" }
     });
+    const pricingMode = input.pricingMode ?? bill.pricingMode;
+    const repricingBasis = pricingMode !== bill.pricingMode;
+    if (!["tax_inclusive", "tax_exclusive"].includes(pricingMode) || (repricingBasis && numericProtocolVersion !== 2)) {
+      throw new BadRequestException("请使用新版草稿填写合同计价口径");
+    }
+    if (repricingBasis && (trustedRestores.size > 0 || existingRows.some(row => row.numericProtocolVersion !== 2 || row.numericSource !== "decimal_input" || row.remainderDisposition === "cancelled"))) {
+      throw new BadRequestException("历史原值或已取消余量不能切换金额口径，请保留原记录并联系合同部核对");
+    }
     const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
     const validationRows = input.rows.map(row => {
       if (!row.restoreRef) return row;
@@ -176,7 +185,7 @@ export class ContractBillService {
         idempotencyKey: "aggregate-save",
         rows: validationRows.map((row) => ({ ...row }))
       },
-      { ...bill, numericProtocolVersion, requestedNumericProtocolVersion: numericProtocolVersion },
+      { ...bill, pricingMode, repricingBasis, numericProtocolVersion, requestedNumericProtocolVersion: numericProtocolVersion },
       version,
       validationByKey
     );
@@ -198,7 +207,7 @@ export class ContractBillService {
     });
     const newRows = parsed.rows.filter((row) => !row.rowKey);
     const rowKeys = parsed.rows.flatMap(row => row.rowKey ? [{ clientRowKey: row.clientRowKey, rowKey: row.rowKey }] : []);
-    const changed = (bill.numericProtocolVersion ?? 1) !== numericProtocolVersion || deletedRows.length > 0 || updatedRows.length > 0 || newRows.length > 0;
+    const changed = repricingBasis || (bill.numericProtocolVersion ?? 1) !== numericProtocolVersion || deletedRows.length > 0 || updatedRows.length > 0 || newRows.length > 0;
     if (!changed) {
       return {
         changed: false,
@@ -238,7 +247,7 @@ export class ContractBillService {
         contractVersionId: bill.contractVersionId,
         revision: input.expectedRevision
       },
-      data: { revision: { increment: 1 }, ...(numericProtocolVersion === 2 ? { numericProtocolVersion, quantityScale: 4, unitPriceScale: 4 } : {}) }
+      data: { revision: { increment: 1 }, ...(numericProtocolVersion === 2 ? { numericProtocolVersion, pricingMode, quantityScale: 4, unitPriceScale: 4 } : {}) }
     });
     if (billGate.count !== 1) {
       throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
@@ -274,7 +283,7 @@ export class ContractBillService {
         actorUserId
       });
     }
-    const rows = await recalculateBillAndContractAmount(tx, { ...bill, numericProtocolVersion }, version, {
+    const rows = await recalculateBillAndContractAmount(tx, { ...bill, pricingMode, numericProtocolVersion }, version, {
       updateContractVersionAmount: false
     });
     return {
@@ -1219,6 +1228,7 @@ export class ContractBillService {
       pricingMode: string;
       numericProtocolVersion?: number;
       requestedNumericProtocolVersion?: number;
+      repricingBasis?: boolean;
       schemaSnapshot: Prisma.JsonValue;
     },
     version: {
@@ -1296,7 +1306,7 @@ export class ContractBillService {
         taxMode: version.taxMode,
         defaultTaxRatePercent: version.defaultTaxRatePercent
       },
-      existing
+      bill.repricingBasis ? undefined : existing
     );
     const columns = this.schemaColumns(bill.schemaSnapshot);
     for (const column of columns) {
@@ -1445,7 +1455,8 @@ export class ContractBillService {
       assertContractBillDerivedUnitPrices(
         value.rows as Parameters<
           typeof assertContractBillDerivedUnitPrices
-        >[0]
+        >[0],
+        typeof value.pricingMode === "string" ? value.pricingMode : "tax_inclusive"
       );
     }
     return this.convertReadValue(value) as T;

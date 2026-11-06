@@ -27,7 +27,7 @@ async function http(actor, path, body) {
   }
   async function pendingView(page, count) {
     await page.goto(`${base}/${encodeURIComponent("审批中心")}`);
-    await page.getByRole("tab", { name: `待我审批 ${count}`, exact: true }).click();
+    await page.locator(".tab-bar").getByText(`待我审批 ${count}`, { exact: true }).click();
     await expect(page.locator(".approval-item")).toHaveCount(count);
   }
   try {

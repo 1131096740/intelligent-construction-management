@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { businessAmountFromLegacyCents, businessAmountToLegacyCents, calculateBusinessLineTaxAmounts, normalizeBusinessAmount, normalizeBusinessQuantity, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, businessAmountToLegacyCents, calculateBusinessLineTaxAmounts, calculateBusinessLineAmount, normalizeBusinessAmount, normalizeBusinessQuantity, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { calculateBillRow } from "../money/decimal-money";
 
@@ -260,7 +260,10 @@ function normalizeOptional(value: string | null | undefined) {
 }
 
 function resolveFourDecimalFacts(input: ResolveContractBillRowFactsInput, context: ContractBillRowPricingContext, existing?: ExistingContractBillRowFacts): ResolvedContractBillRowFacts {
-  if (context.pricingMode !== "tax_inclusive") throw new ContractBillRowFactsValidationException("row", "历史不含税清单请先核对计价依据，不能自动改算");
+  if (!["tax_inclusive", "tax_exclusive"].includes(context.pricingMode)) throw new ContractBillRowFactsValidationException("row", "清单计价口径不正确，请核对后再保存");
+  if (context.pricingMode === "tax_exclusive" && existing && (existing.numericProtocolVersion !== 2 || existing.numericSource === "legacy_cents")) {
+    throw new ContractBillRowFactsValidationException("row", "历史不含税原值需先核对，请保留原记录，不能自动改算");
+  }
   const quantity = normalizeOptional(input.quantity);
   const price = normalizeOptional(input.unitPrice);
   const submittedRate = normalizeOptional(input.taxRatePercent);
@@ -311,8 +314,17 @@ function resolveFourDecimalFacts(input: ResolveContractBillRowFactsInput, contex
   const nextPrice = normalized(price, "unitPrice");
   const nextRate = normalized(rate, "taxRatePercent");
   if (nextQuantity !== null && new Prisma.Decimal(nextQuantity).lte(0)) throw new ContractBillRowFactsValidationException("quantity", "数量必须大于0；待确定时请留空");
-  let calculated: ReturnType<typeof calculateBusinessLineTaxAmounts>;
-  try { calculated = calculateBusinessLineTaxAmounts(nextQuantity, nextPrice, nextRate); }
+  let calculated: { taxInclusiveAmountYuan: string | null; taxExclusiveAmountYuan: string | null; taxAmountYuan: string | null; taxExclusiveUnitPrice: string | null };
+  try {
+    if (context.pricingMode === "tax_inclusive") calculated = calculateBusinessLineTaxAmounts(nextQuantity, nextPrice, nextRate);
+    else {
+      const net = calculateBusinessLineAmount(nextQuantity, nextPrice);
+      if (nextRate !== null && new Prisma.Decimal(nextRate).gt(100)) throw new Error("税率必须在0到100之间");
+      const tax = net === null || nextRate === null ? null : new Prisma.Decimal(net).mul(nextRate).div(100).toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP).toFixed(4);
+      const gross = tax === null || net === null ? null : new Prisma.Decimal(net).plus(tax).toFixed(4);
+      calculated = { taxExclusiveAmountYuan: net, taxInclusiveAmountYuan: gross, taxAmountYuan: tax, taxExclusiveUnitPrice: nextPrice };
+    }
+  }
   catch (error) { throw new ContractBillRowFactsValidationException("row", error instanceof Error ? error.message : "行金额无法计算，请核对数量与单价"); }
   const compatible = (value: string | null) => {
     let cents: string | null;
@@ -331,7 +343,7 @@ function resolveFourDecimalFacts(input: ResolveContractBillRowFactsInput, contex
     quantity: nextQuantity, unitPrice: nextPrice, taxRatePercent: nextRate, taxRateSource,
     pricingFactStatus: nextPrice !== null && nextRate !== null && (nextQuantity !== null || (context.pricingNature === "framework" && context.amountLimitType === "unlimited")) ? "confirmed" : "unconfirmed",
     precisionPolicy: "four_decimal", numericProtocolVersion: 2, numericSource: "decimal_input", numericReviewStatus: "verified",
-    ...calculated, taxInclusiveAmountCents: netCents === null ? null : grossCents, taxExclusiveAmountCents: grossCents === null ? null : netCents,
+    ...calculated, taxInclusiveAmountCents: grossCents, taxExclusiveAmountCents: netCents,
     taxAmountCents: grossCents === null || netCents === null ? null : grossCents - netCents
   };
 }

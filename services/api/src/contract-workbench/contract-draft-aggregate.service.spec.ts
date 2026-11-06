@@ -1,3 +1,9 @@
+import { Reflector } from "@nestjs/core";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { PermissionGuard } from "../auth/guards/permission.guard";
+import { JwtTokenService } from "../auth/jwt-token.service";
+import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 import { Prisma } from "@prisma/client";
 import { Test } from "@nestjs/testing";
@@ -672,6 +678,43 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       )
     };
   }
+
+  it.each([["1.5340", "fixed_total"], [null, "fixed_total"], ["0.0000", "fixed_total"], [null, "framework"]] as const)("persists independent contract basics and four-place amount %s with %s over guarded public HTTP", async (amount, nature) => {
+    const { service, tx, prisma } = makeSaveService({ realWorkbench: true });
+    Object.assign(prisma, { contract: tx.contract, contractVersion: tx.contractVersion, user: { findUnique: async () => ({ id: "owner-1", name: "合成合同员", isActive: true, sessionVersion: 0, mustChangePassword: false }) }, projectMember: { findMany: async () => [] } });
+    prisma.userPosition.findMany.mockResolvedValue([{ userId: "owner-1", positionId: "contract-role", projectId: null }] as never);
+    prisma.position.findMany.mockResolvedValue([{ id: "contract-role", key: "contract_staff" }] as never);
+    const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
+      { provide: ContractDraftAggregateService, useValue: service },
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+    ] }).compile();
+    const app = module.createNestApplication({ logger: false });
+    const tokens = new JwtTokenService();
+    app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, prisma as never), new PermissionGuard(new Reflector(), prisma as never), new RetiredWriteEntryGuard());
+    app.useGlobalPipes(createApiValidationPipe());
+    try {
+      await app.listen(0, "127.0.0.1");
+      const input = aggregateInput();
+      const basics = { relationship: "upward", businessType: "other", amountBasis: "tax_exclusive", settlementText: "按双方实际确认结算", invoiceStatus: "none" };
+      input.draft.draftData = { contractName: "施工企业合作框架", fieldValues: {}, contractBasics: basics } as never;
+      Object.assign(input.draft, { numericProtocolVersion: 2, pricingNature: nature, amountSource: nature === "framework" ? "bill_sum" : "manual", ...(nature === "framework" ? {} : { manualAmountYuan: amount }) });
+      delete (input.draft as Record<string, unknown>).manualAmountCents;
+      input.draft.taxFacts = { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } as never;
+      const url = `${await app.getUrl()}/contract-drafts/cv-1`;
+      const headers = { "content-type": "application/json", "x-contract-draft-lease": leaseToken };
+      expect((await fetch(url, { method: "PUT", headers, body: JSON.stringify(input) })).status).toBe(401);
+      const response = await fetch(url, { method: "PUT", headers: { ...headers, authorization: `Bearer ${tokens.signAccessToken({ id: "owner-1", name: "合成合同员", phone: null, sessionVersion: 0 })}` }, body: JSON.stringify(input) });
+      const body = await response.json();
+      expect({ status: response.status, error: body.message }).toEqual({ status: 200, error: undefined });
+      const saved = tx.contractVersion.updateMany.mock.calls[0][0].data;
+      expect(saved.draftData.contractBasics).toEqual(basics);
+      expect(saved.numericProtocolVersion).toBe(2);
+      expect(saved.amountYuan).toBe(amount);
+      expect(body.versionAmount).toMatchObject({ numericProtocolVersion: 2, amountYuan: amount, amountCents: amount === null ? null : amount === "1.5340" ? "153" : "0" });
+      expect(saved.invoiceType).toBeNull();
+      expect(saved.defaultTaxRatePercent).toBeNull();
+    } finally { await app.close(); }
+  });
 
   it.each([
     { rate: "1.23456", stored: null },

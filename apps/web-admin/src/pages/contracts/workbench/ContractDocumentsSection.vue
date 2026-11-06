@@ -212,6 +212,7 @@
 </template>
 
 <script setup lang="ts">
+import { resolveCurrentContractBusinessType } from "../contract-labels";
 import { formatUnknownApiError } from "../../../api/error-message";
 import PrivatePdfActions from "../../../components/files/PrivatePdfActions.vue";
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
@@ -293,6 +294,7 @@ async function retryContractDocumentWithCapability(
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   layoutTemplateVersionId?: string | null;
+  draftBusinessType?: string | null;
   disabled: boolean;
   prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
   completeMutation?: (reload: boolean) => Promise<void>;
@@ -402,17 +404,26 @@ watch(hasActiveDocument, (active) => {
   }
 }, { immediate: true });
 
-watch(() => [props.workbench?.version.id, props.workbench?.contract.contractTypeKey], () => { void loadLayouts(); }, { immediate: true });
+const currentBusinessType = computed(() => {
+  const workbench = props.workbench;
+  if (workbench?.version.status === "draft" && props.draftBusinessType !== undefined) return props.draftBusinessType;
+  return resolveCurrentContractBusinessType({
+    version: workbench?.version,
+    parentType: workbench?.contract.contractTypeKey,
+    contractBasics: workbench?.version.draftData?.contractBasics
+  });
+});
+watch(() => [props.workbench?.version.id, currentBusinessType.value], () => { void loadLayouts(); }, { immediate: true });
 onUnmounted(stopPolling);
 
 async function loadLayouts() {
-  const contractTypeKey = props.workbench?.contract.contractTypeKey;
+  const contractTypeKey = currentBusinessType.value;
   const expectedVersionId = versionId.value;
   layoutRecords.value = [];
   if (!contractTypeKey) return;
   try {
     const layouts = (await listPublishedLayoutTemplates(contractTypeKey)) as Array<Record<string, unknown>>;
-    if (versionId.value !== expectedVersionId || props.workbench?.contract.contractTypeKey !== contractTypeKey) return;
+    if (versionId.value !== expectedVersionId || currentBusinessType.value !== contractTypeKey) return;
     layoutRecords.value = layouts;
   } catch (error) {
     if (versionId.value === expectedVersionId) message.value = formatUnknownApiError(error, "版式模板加载失败");

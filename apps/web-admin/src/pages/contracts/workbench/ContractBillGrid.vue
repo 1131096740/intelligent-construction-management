@@ -126,14 +126,13 @@ const customColumns = computed<EditableColumn[]>(() =>
 
 const resolvedCoreColumns = computed(() => coreColumns.map((column) => {
   const configured = configuredColumns.value.find((candidate) => candidate.key === column.key);
-  return configured
-    ? { ...column, label: configured.label, required: configured.required }
-    : column;
+  const resolved = configured ? { ...column, label: configured.label, required: configured.required } : column;
+  return column.key === "unitPrice" && props.bill.pricingMode === "tax_exclusive" ? { ...resolved, label: "不含税单价" } : resolved;
 }));
 const quantityColumn = computed(() =>
   resolvedCoreColumns.value.find((column) => column.key === "quantity") ?? coreColumns[4]!
 );
-const editableColumns = computed(() => [...resolvedCoreColumns.value, ...customColumns.value]);
+const editableColumns = computed(() => [...resolvedCoreColumns.value.filter(column => props.bill.pricingMode !== "tax_exclusive" || column.key !== "taxExclusiveUnitPrice"), ...customColumns.value]);
 const displayErrors = computed(() =>
   Array.from(
     new Map(
@@ -182,7 +181,7 @@ const columns = computed<ColumnRegular[]>(() =>
       };
     }
   })), {
-    prop: "__grossPreview", name: "当前行含税合计", size: 160, readonly: true,
+    prop: "__grossPreview", name: props.bill.pricingMode === "tax_exclusive" ? "当前行不含税金额" : "当前行含税合计", size: 160, readonly: true,
     cellProperties: () => ({ className: "contract-bill-grid__cell--number contract-bill-grid__cell--authoritative" })
   }, {
     prop: "__rowActions", name: "行操作", size: 220, readonly: true,
@@ -719,7 +718,7 @@ function cellKey(clientRowKey: string, field: string) {
             />
           </label>
           <label class="contract-bill-grid__field">
-            <span>含税单价 *</span>
+            <span>{{ props.bill.pricingMode === "tax_exclusive" ? "不含税" : "含税" }}单价 *</span>
             <t-input
               :model-value="row.unitPrice"
               :disabled="readonly"

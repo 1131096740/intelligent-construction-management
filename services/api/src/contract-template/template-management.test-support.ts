@@ -1,3 +1,6 @@
+import { ContractController } from "../contract/contract.controller";
+import { ProjectController } from "../project/project.controller";
+import { ProjectService } from "../project/project.service";
 import { ContractCutoverGuard } from "../contract-cutover/contract-cutover.guard";
 import { OperationalWriteFreezeGuard } from "../operational-write-freeze/operational-write-freeze.guard";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
@@ -97,7 +100,7 @@ export class TemplateSyntheticStore {
       findFirst: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy)[0] ?? null,
       findMany: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy),
       create: async ({ data }: { data: Row }) => {
-        const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
+        const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contract" ? { voidedAt: null } : {}), ...(name === "contractVersion" ? { baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, documentContentRevision: 1, documentContentFingerprint: null, readinessSnapshot: null, companyEntityId: null, companyEntityNameSnapshot: null, estimatedAmountCents: null, estimatedAmountYuan: null, settlementMode: "none", settlementModeConfirmedAt: null, latestDraftPreviewDocumentId: null } : {}), ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
         this.apply(row, data, name);
         this.rows[name].push(row);
         return fixtureClone(row);
@@ -126,7 +129,7 @@ export class TemplateSyntheticStore {
         return fixtureClone(row);
       },
       deleteMany: async ({ where }: { where?: Row } = {}) => { const selected = find(where); this.rows[name] = this.rows[name].filter(row => !selected.includes(row)); return { count: selected.length }; },
-      createMany: async ({ data }: { data: Row[] }) => { for (const row of data) this.rows[name].push({ id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...row }); return { count: data.length }; },
+      createMany: async ({ data }: { data: Row[] }) => { for (const row of data) this.rows[name].push({ id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...(name === "contractBill" ? { revision: 1, taxInclusiveAmountCents: 0n, taxExclusiveAmountCents: 0n, taxAmountCents: 0n, sourceExcelFileId: null } : {}), ...row }); return { count: data.length }; },
       count: async ({ where }: { where?: Row } = {}) => find(where).length
     };
   }
@@ -231,6 +234,7 @@ export class TemplateSyntheticStore {
       }
       const id = query.values[0];
       if (typeof id !== "string" || !query.values.every(value => value === id)) throw new Error("合成锁投影参数不符");
+      if (text === 'SELECT "id", "isActive" FROM "Project" WHERE "id" = ? FOR UPDATE') { const project = await this.prisma.project.findUnique({ where: { id } }); return project ? [project] : []; }
       const version = await this.prisma.contractVersion.findUnique({ where: { id } });
       if (text === 'SELECT c.* FROM "Contract" c INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id" WHERE cv."id" = ? FOR UPDATE OF c') {
         const contract = version ? await this.prisma.contract.findUnique({ where: { id: version.contractId } }) : null;
@@ -297,7 +301,7 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
   const audit = new AuditService(prisma);
   const tokens = new JwtTokenService();
   const auth = new AuthService(prisma, tokens, audit);
-  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
+  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
     { provide: PrivateFileStorage, useValue: storage }, ProjectVisibilityService, ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
@@ -308,8 +312,10 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
     ...(options.draftWorkbench ? [
       { provide: ContractDraftAggregateService, useFactory: (files: FileService) => new ContractDraftAggregateService(prisma, new ContractWorkbenchService(prisma, audit), new ContractBillService(prisma, audit), new BusinessPartyService(prisma, audit), files, audit), inject: [FileService] },
       { provide: ContractDraftEditLeaseService, useFactory: () => new ContractDraftEditLeaseService(prisma, auth, audit) },
-      // Create/submit/delete are outside this fixture; actual aggregate/lease/document routes above are used.
-      { provide: ContractService, useValue: {} }, { provide: PristineDraftDeletionService, useValue: {} }
+      // Real creation and read-only project choices join the same guarded workbench seam.
+      { provide: ContractService, useFactory: () => new ContractService(prisma, audit) },
+      { provide: ContractWorkbenchService, useFactory: () => new ContractWorkbenchService(prisma, audit) },
+      { provide: ProjectService, useFactory: () => new ProjectService(prisma, audit, auth) }, { provide: PristineDraftDeletionService, useValue: {} }
     ] : []),
     // Only the real template scene is exercised; unrelated domains and Excel are not invoked.
     { provide: BusinessEntryExcelService, useValue: {} },

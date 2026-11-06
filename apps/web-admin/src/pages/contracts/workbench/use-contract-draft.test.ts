@@ -1049,20 +1049,18 @@ describe("useContractDraft", () => {
       selection
     )).toBe(false);
   });
-  it("delegates the company selector to the unified field form and removes party_a from new-party options", () => {
+  it("delegates the company selector to the unified field form", () => {
     const basicSource = readFileSync(
       new URL("./ContractBasicSection.vue", import.meta.url),
       "utf8"
     );
-    const partySource = readFileSync(
-      new URL("./ContractPartySection.vue", import.meta.url),
-      "utf8"
-    );
+
 
     expect(basicSource).toContain("<BusinessEntryForm");
     expect(basicSource).toContain(':options-by-field="{ companyEntityId: companyOptions }"');
     expect(basicSource).not.toMatch(/emit\([^\n]*myCompanyEntity/u);
-    expect(partySource).toContain('.filter(([value]) => value !== "party_a")');
+    // CON-05/CON-04 now allow both party names in the current contract;
+    // real UI/public HTTP coverage replaces the former party_a exclusion guard.
   });
   it("ignores a late workbench response after a newer contract load wins", async () => {
     const draft = makeDraft();
