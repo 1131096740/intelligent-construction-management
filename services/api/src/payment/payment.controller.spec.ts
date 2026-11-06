@@ -647,7 +647,7 @@ describe("PaymentController authorization wiring", () => {
     const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
 
     await controller.list({ id: "user-1" } as never, "50");
-    expect(paymentRead.listRecent).toHaveBeenCalledWith("50", ["project-1"]);
+    expect(paymentRead.listRecent).toHaveBeenCalledWith("50", ["project-1"], {actorUserId:"user-1"});
     expect(paymentRead.listLedger).not.toHaveBeenCalled();
 
     await controller.list(

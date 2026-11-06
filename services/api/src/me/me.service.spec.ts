@@ -1388,6 +1388,14 @@ describe("MeService", () => {
   });
 
   it("shows remaining approved amount for partially paid execution work items", async () => {
+    const payment = {
+      id: "payment-1", status: "partially_paid", paymentSubjectType: "our_company",
+      sourceType: "contract_due", contractId: "contract-1", contractVersionId: "version-1",
+      projectId: "project-1", code: "FK-001", requestedAmountCents: 8000000n,
+      approvedAmountCents: 5000000n, paidAmountCents: 2000000n,
+      updatedAt: new Date("2026-07-07T08:00:00.000Z")
+    };
+    const approvedRound:Record<string,unknown>={id:"round-1",businessType:"payment_request",businessId:"payment-1",flowType:"payment.approve",status:"approved",createdAt:new Date("2026-07-07T07:00:00Z"),updatedAt:new Date("2026-07-07T07:00:00Z")};
     const prisma = {
       $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
@@ -1405,23 +1413,36 @@ describe("MeService", () => {
       position: { findMany: jest.fn().mockResolvedValue([{id:"company-finance",key:"finance_staff"}]) },
       contractTakeover: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
       paymentRequest: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "payment-1",
-            status: "partially_paid", paymentSubjectType: "our_company",
-            projectId: "project-1",
-            code: "FK-001",
-            requestedAmountCents: 8000000n,
-            approvedAmountCents: 5000000n,
-            paidAmountCents: 2000000n,
-            updatedAt: new Date("2026-07-07T08:00:00.000Z")
-          }
-        ]),
+        findMany: jest.fn().mockResolvedValue([payment]),
+        findUnique: jest.fn().mockResolvedValue(payment),
         count: jest.fn()
       },
       approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
-      approvalInstance: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({id:"round-1",businessType:"payment_request",businessId:"payment-1",status:"approved"}) },
-      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany:jest.fn(async({where={},orderBy,take}:{where?:Record<string,unknown>;orderBy?:Record<string,string>;take?:number}={})=>{
+          const selected=Object.entries(where).every(([field,value])=>{
+            if(value && typeof value==="object" && "in" in value && Array.isArray(value.in))return value.in.includes(approvedRound[field]);
+            if(value instanceof Date)return approvedRound[field] instanceof Date && (approvedRound[field] as Date).getTime()===value.getTime();
+            return approvedRound[field]===value;
+          })?[approvedRound]:[];
+          if(orderBy){
+            const [field,direction]=Object.entries(orderBy)[0];
+            if(!["createdAt","updatedAt"].includes(field)||!["asc","desc"].includes(direction))throw new Error("Unsupported Me fixture round ordering");
+            selected.sort((a,b)=>{
+              const left=a[field],right=b[field];
+              if(!(left instanceof Date)||!(right instanceof Date))throw new Error("Me fixture round timestamps must be real dates");
+              return (left.getTime()-right.getTime())*(direction==="desc"?-1:1);
+            });
+          }
+          return take===undefined?selected:selected.slice(0,take);
+        }),
+        findFirst:jest.fn().mockResolvedValue(approvedRound)
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({id:"version-1",contractId:"contract-1",status:"active",signingSubjectType:"our_company",companyEntityIdSnapshot:"company-1",companyEntityNameSnapshot:"测试公司",companyEntityCreditCodeSnapshot:"SYNTHETIC-COMPANY-1"})
+      },
+      paymentExecution: {findMany:jest.fn().mockResolvedValue([])},
       contract: { findMany: jest.fn().mockResolvedValue([]) },
       settlement: { findMany: jest.fn().mockResolvedValue([]) }
     };

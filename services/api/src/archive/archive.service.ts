@@ -1,3 +1,4 @@
+import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { CONTRACT_RELATIONSHIP_LABELS, downstreamContractRelationship } from "@jiangkong/shared-domain";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
@@ -28,7 +29,7 @@ export class ArchiveService {
           ]
         }
       : undefined;
-    const [contractArchives, settlementArchives, paymentVouchers, archiveRecords, spotArchives] =
+    const [contractArchives, settlementArchives, rawPaymentVouchers, archiveRecords, spotArchives] =
       await Promise.all([
         this.prisma.contractArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
         this.prisma.settlementArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
@@ -40,6 +41,7 @@ export class ArchiveService {
         }),
         this.findSpotArchives(take, visibleProjectIds)
       ]);
+    const paymentVouchers = await Promise.all(rawPaymentVouchers.map(async row=>({...row,voucherFileId:await paymentExecutionVoucherFileId(this.prisma,row)})));
     const governedSettlementEvidence = await this.findGovernedSettlementEvidence(
       visibleProjectIds,
       take
@@ -201,20 +203,20 @@ export class ArchiveService {
           projectId: payment?.projectId,
           id: `voucher-${row.id}`,
           contractRelationshipLabel:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(versionById.get(payment?.contractVersionId??"")??{})],
-          documentNo: row.voucherFileId,
+          documentNo: row.voucherFileId ?? "凭证待补充",
           fileId: row.voucherFileId,
-          fileSizeBytes: fileById.get(row.voucherFileId)?.sizeBytes ?? 0,
+          fileSizeBytes: row.voucherFileId ? fileById.get(row.voucherFileId)?.sizeBytes ?? 0 : 0,
           documentType: "付款凭证",
           businessRef: payment?.code ?? row.paymentRequestId,
           project: this.projectName(projectById, payment?.projectId),
-          fileSource: this.fileName(fileById, row.voucherFileId),
-          archiveStatus: "已上传",
-          statusTone: "success" as ArchiveTone,
+          fileSource: row.voucherFileId ? this.fileName(fileById, row.voucherFileId) : "实付已登记，凭证待补充",
+          archiveStatus: row.voucherFileId ? "已上传" : "待补充",
+          statusTone: (row.voucherFileId ? "success" : "warning") as ArchiveTone,
           uploadDepartment: "财务部",
           confirmedBy: userById.get(row.executedByUserId)?.name ?? "经办人未读取",
           lastAction: this.date(row.createdAt),
-          canDownload: true,
-          disabledReason: null,
+          canDownload: Boolean(row.voucherFileId),
+          disabledReason: row.voucherFileId ? null : "实付已登记，凭证待补充",
           createdAt: row.createdAt
         };
       }),

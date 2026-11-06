@@ -148,7 +148,8 @@ const OPERATING_SUPPORTED_SUBJECT_KIND_SET = new Set([
   "construction_enterprise",
   "participating_company",
   "downstream_counterparty",
-  "employee"
+  "employee",
+  "public_cash"
 ]);
 const OPERATING_SUBJECT_ROLE_SET = new Set<string>(OPERATING_SUBJECT_ROLES);
 const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
@@ -170,7 +171,8 @@ const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
     "owner",
     "construction_enterprise",
     "participating_company",
-    "employee"
+    "employee",
+    "public_cash"
   ]),
   payee: new Set([
     "owner",
@@ -185,7 +187,8 @@ const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
   ]),
   fund_holder: new Set([
     "construction_enterprise",
-    "participating_company"
+    "participating_company",
+    "public_cash"
   ])
 };
 const OPERATING_SUBJECT_ROLE_LABELS: Readonly<Record<OperatingSubjectRole, string>> = {
@@ -801,7 +804,8 @@ export class OperatingLedgerService {
       tx,
       input,
       impact.subject,
-      ownershipOccurredAt
+      ownershipOccurredAt,
+      impact.subjectRole
     );
     const snapshot = impact.impactSnapshot ?? {};
     if (!subjectSnapshot) return snapshot;
@@ -819,20 +823,35 @@ export class OperatingLedgerService {
         tx,
         input,
         subject,
-        ownershipOccurredAt
+        ownershipOccurredAt,
+        FACT_SUBJECT_ROLE_BY_PROPERTY[role as keyof OperatingFactSubjects]
       );
       if (subjectSnapshot) snapshot[role] = subjectSnapshot;
     }
     return snapshot as Prisma.InputJsonObject;
   }
 
+  private async registeredActualCompanySnapshot(tx: OperatingLedgerTransaction, input: AppendOperatingFactInput, subject: OperatingSubjectReference, role?: OperatingSubjectRole): Promise<Prisma.InputJsonObject|null> {
+    if (role !== "actual_payer" || subject.kind !== "participating_company" || input.sourceType !== "payment_execution") return null;
+    const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:input.sourceBusinessId}});
+    if (!funding) return null;
+    const [execution,account] = await Promise.all([tx.paymentExecution.findUnique({where:{id:funding.executionId}}),tx.registeredFundAccount.findUnique({where:{id:funding.accountId}})]);
+    const request = execution ? await tx.paymentRequest.findUnique({where:{id:execution.paymentRequestId}}) : null;
+    const frozen = funding.actualPayerSnapshot;
+    if (funding.actualPayerKind !== "participating_company" || funding.actualPayerId !== subject.id || account?.kind !== "company" || account.companyEntityId !== subject.id || execution?.amountCents !== input.amountCents || request?.projectId !== input.projectId || !frozen || typeof frozen !== "object" || Array.isArray(frozen) || frozen.companyEntityId !== subject.id || typeof frozen.name !== "string" || !frozen.name.trim()) throw new BadRequestException("登记资金实际付款公司必须由同一正式实付及冻结资金容器核实，不能自报免除参与资格");
+    return {kind:subject.kind,id:subject.id,companyEntityId:subject.id,name:frozen.name,creditCode:typeof frozen.creditCode === "string"?frozen.creditCode:null,authority:"registered_payment_funding",accountId:account.id};
+  }
+
   private async resolveImpactSubjectSnapshot(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
     subject?: OperatingSubjectReference,
-    ownershipOccurredAt: Date = input.occurredAt
+    ownershipOccurredAt: Date = input.occurredAt,
+    role?: OperatingSubjectRole
   ) {
     if (!subject) return undefined;
+    const registered = await this.registeredActualCompanySnapshot(tx,input,subject,role);
+    if (registered) return registered;
     if (subject.kind === "construction_enterprise") {
       const assignment = await tx.projectAffiliateAssignment.findFirst({
         where: {
@@ -979,7 +998,7 @@ export class OperatingLedgerService {
       throw new BadRequestException("正式经营事实的施工企业快照与当前档案不一致");
     }
 
-    for (const subject of Object.values(input.subjects)) {
+    for (const [role,subject] of Object.entries(input.subjects)) {
       if (!subject) continue;
       if (subject.kind === "construction_enterprise") {
         if (![assignment.businessPartyId, assignment.businessPartyVersionId].includes(subject.id)) {
@@ -987,7 +1006,15 @@ export class OperatingLedgerService {
         }
         continue;
       }
+      if (subject.kind === "public_cash") {
+        const funding = input.sourceType === "payment_execution" ? await tx.registeredPaymentFunding.findUnique({where:{executionId:input.sourceBusinessId}}) : null;
+        const execution = funding ? await tx.paymentExecution.findUnique({where:{id:funding.executionId}}) : null;
+        const account = funding ? await tx.registeredFundAccount.findUnique({where:{id:funding.accountId}}) : null;
+        if (subject.id !== "public_cash" || funding?.actualPayerKind !== "public_cash" || funding.actualPayerId !== subject.id || account?.kind !== "public_cash" || account.companyEntityId !== null || execution?.amountCents !== input.amountCents) throw new BadRequestException("公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代");
+        continue;
+      }
       if (subject.kind !== "participating_company") continue;
+      if (role === "actualPayer" && await this.registeredActualCompanySnapshot(tx,input,subject,"actual_payer")) continue;
       const participant = await tx.projectParticipatingCompany.findFirst({
         where: {
           projectId: input.projectId,
@@ -1346,7 +1373,8 @@ function allowedSubjectKindsLabel(kinds: ReadonlySet<OperatingSubjectKind>): str
     construction_enterprise: "施工企业",
     participating_company: "我方公司",
     downstream_counterparty: "下游相对方",
-    employee: "员工"
+    employee: "员工",
+    public_cash: "公共现金"
   };
   return [...kinds].map((kind) => labels[kind] ?? kind).join("或");
 }

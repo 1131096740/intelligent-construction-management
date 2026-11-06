@@ -1,3 +1,4 @@
+import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import { Prisma } from "@prisma/client";
 import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
@@ -1655,12 +1656,13 @@ export class ContractReadService {
         }];
       });
     });
+    const executionVoucherViews = await Promise.all(paymentExecutions.map(async row=>({...row,voucherFileId:await paymentExecutionVoucherFileId(this.prisma,row)})));
     const precisionDraft = version.numericProtocolVersion === 2 && version.status === "draft";
     const financialReadModel = precisionDraft ? {
       summary: [], settlementRows: [], paymentRows: [],
       calculationNote: "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
     } : this.settlementPayment(version.amountCents, settlements, settlementArchiveFiles,
-      paymentRequests, paymentExecutions, projectProxyPayments, historicalBalance);
+      paymentRequests, executionVoucherViews, projectProxyPayments, historicalBalance);
     if (!precisionDraft && actorUserId && (!hasSensitiveLedgerReadRole("settlement", roleKeys) || !hasSensitiveLedgerReadRole("payment_request", roleKeys))) {
       financialReadModel.summary = [];
       financialReadModel.calculationNote = "仅展示本人发起或参与的结算及付款记录；因资料权限范围有限，不展示汇总余额，请由有权岗位核对。";
@@ -1890,7 +1892,7 @@ export class ContractReadService {
       paymentRequestId: string;
       amountCents: bigint;
       paidAt: Date;
-      voucherFileId: string;
+      voucherFileId: string | null;
     }>,
     projectProxyPayments: Array<{
       settlementId: string | null;

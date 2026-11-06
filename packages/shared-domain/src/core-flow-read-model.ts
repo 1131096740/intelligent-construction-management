@@ -392,6 +392,14 @@ export interface SettlementDetailReadModel {
 }
 
 export interface PaymentDetailReadModel {
+  /** Protocol ownership is independent of actor authority and fund capacity. */
+  registeredExecutionCapability?: {
+    supportedDomain: boolean;
+    allowedActor: boolean;
+    workflowReady: boolean;
+    canSupplementVoucher: boolean;
+    blockedReason: string | null;
+  };
   projectId?:string;
   businessEntryHistory?: import("./business-entry-definition").BusinessEntryFrozenSnapshot[];
   financeEntry?: {

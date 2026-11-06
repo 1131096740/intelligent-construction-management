@@ -1,3 +1,4 @@
+import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { assertFrozenCompanyIdentity } from "../company-entity/frozen-company-identity";
 import {transferRepaymentUsage} from "../company-transfer/company-transfer-legacy";
 import { createHash, randomUUID } from "node:crypto";
@@ -1436,7 +1437,7 @@ export class PayableRegistryService {
       companyEntityIdSnapshot: string;
       companyEntityNameSnapshot?: string;
       companyEntityCreditCodeSnapshot?: string;
-      voucherFileId?: string;
+      voucherFileId?: string | null;
     }>,
     originalDebtorCompanyId?: string,
     actorUserId?: string,
@@ -1718,7 +1719,7 @@ export class PayableRegistryService {
       settlementCase: { id: string };
       execution: {
         id: string;
-        voucherFileId: string;
+        voucherFileId: string | null;
       };
       request?: {
         id: string;
@@ -1759,6 +1760,8 @@ export class PayableRegistryService {
     amountCents: bigint
   ) {
     if (payer.actualPayerCompanyId === originalDebtorCompanyId) return null;
+    const voucherFileId = await paymentExecutionVoucherFileId(tx,context.execution);
+    if (!voucherFileId) throw new ConflictException("原实付凭证待补，不能替代此既有跨主体核销的正式凭证要求");
     const facts = assertProxySettlementFacts({
       originalDebtorCompanyId,
       approvedPayerCompanyId: payer.approvedPayerCompanyId,
@@ -1767,7 +1770,7 @@ export class PayableRegistryService {
       currencyCode: "CNY",
       paymentExecutionId: context.execution.id,
       settlementCaseId: context.settlementCase.id,
-      voucherFileId: context.execution.voucherFileId
+      voucherFileId
     });
     const existing = await tx.interEntityRelationshipEntry.findFirst({
       where: {

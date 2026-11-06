@@ -6174,6 +6174,7 @@ export class HistoricalWageTakeoverService {
       }
     });
     if (!execution) throw new ConflictException("B级既有付款执行不存在，不能伪造历史结清证明");
+    if (!execution.voucherFileId) throw new ConflictException("既有付款执行凭证待补，不能替代原B级银行认领及工资结清证明");
     const [request, payerAttestation, claim, voucher] = await Promise.all([
       tx.paymentRequest.findUnique({
         where: { id: execution.paymentRequestId },
@@ -6195,7 +6196,7 @@ export class HistoricalWageTakeoverService {
       throw new ConflictException("B级既有付款执行缺少有效银行 observation/claim 证据链，不能用于历史工资结清");
     }
     const requestFingerprint = historicalPaymentRequestFingerprint(request);
-    const executionFingerprint = historicalPaymentExecutionFingerprint(execution);
+    const executionFingerprint = historicalPaymentExecutionFingerprint({...execution,voucherFileId:execution.voucherFileId});
     if (
       execution.paymentRequestId !== evidence.paymentRequestId ||
       request.id !== evidence.paymentRequestId || request.sourceType !== evidence.paymentRequestSourceType || request.projectId !== evidence.paymentRequestProjectId ||

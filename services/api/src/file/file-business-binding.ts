@@ -7,6 +7,7 @@ const FILE_BUSINESS_BINDING_LOCK_NAMESPACE = 190_731;
 const FILE_BUSINESS_BINDING_LOCK_KEY = 13;
 
 export const NON_RECEIPT_FILE_BINDINGS = [
+  { table: "RegisteredPaymentVoucher", columns: ["fileId"] },
  {table:"CompanyTransfer",columns:["evidenceFileId"]},
   { table: "ContractBankVerificationRequest", columns: ["evidenceFileId", "holderEvidenceFileId"] },
   { table: "ContractProxyExecution", columns: ["evidenceFileId"] },

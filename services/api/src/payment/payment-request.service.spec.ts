@@ -138,6 +138,81 @@ describe("PaymentRequestService", () => {
     return buffer.toString("hex").toUpperCase();
   }
 
+  /** Stateful persistence facts for the five legacy final-approval cases.
+   * Approval/signature/role services stay real; no production fallback is used. */
+  async function attachPaymentNotificationPersistence(tx: {
+    paymentRequest: {findFirst:jest.Mock;update:jest.Mock};
+    approvalInstance: {findFirst:jest.Mock;update:jest.Mock};
+    approvalActionLog: {create:jest.Mock};
+    user: {findUnique:jest.Mock};
+  }, knownUserIds: string[]) {
+    const initialPayment=await tx.paymentRequest.findFirst({where:{id:"payment-1"}});
+    const initialRound=await tx.approvalInstance.findFirst({where:{id:"approval-instance-1"}});
+    if (!initialPayment || !initialRound || !(initialRound.updatedAt instanceof Date)) throw new Error("Legacy approval fixture must contain its real request, round and frozen CAS date");
+    const payment:Record<string,unknown>={...initialPayment,contractId:"contract-1",contractVersionId:"contract-version-1",settlementId:"settlement-1",sourceType:"settlement",paidAmountCents:0n};
+    const round:Record<string,unknown>={...initialRound,businessType:"payment_request",businessId:payment.id,flowType:"payment.approve",status:"in_progress",createdAt:new Date(initialRound.updatedAt.getTime())};
+    tx.paymentRequest.update.mockImplementation(async ({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+      if(where.id!==payment.id) throw new Error("Unexpected request in legacy approval fixture");
+      Object.assign(payment,data);return {...payment};
+    });
+    Object.assign(tx.paymentRequest,{findUnique:jest.fn(async ({where}:{where:{id:string}})=>where.id===payment.id?{...payment}:null)});
+    tx.approvalInstance.findFirst.mockImplementation(async ({where}:{where?:Record<string,unknown>})=>Object.entries(where??{}).every(([field,value])=>round[field]===value)?{...round}:null);
+    Object.assign(tx.approvalInstance,{findMany:jest.fn(async({where={},orderBy,take}:{where?:Record<string,unknown>;orderBy?:Record<string,string>|Array<Record<string,string>>;take?:number}={})=>{
+      const selected=Object.entries(where).every(([field,value])=>{
+        if(value && typeof value==="object" && "in" in value && Array.isArray(value.in))return value.in.includes(round[field]);
+        if(value instanceof Date){const actual=round[field];return actual instanceof Date && actual.getTime()===value.getTime();}
+        return round[field]===value;
+      })?[{...round}]:[];
+      if(orderBy){
+        const entries=(Array.isArray(orderBy)?orderBy:[orderBy]).flatMap(item=>Object.entries(item));
+        for(const [field,direction] of entries)if(!["createdAt","updatedAt","id"].includes(field)||!["asc","desc"].includes(direction))throw new Error("Unexpected legacy approval round ordering");
+        selected.sort((a,b)=>{
+          for(const [field,direction] of entries){
+            const left=a[field],right=b[field];
+            const difference=left instanceof Date&&right instanceof Date?left.getTime()-right.getTime():typeof left==="string"&&typeof right==="string"?left.localeCompare(right):NaN;
+            if(Number.isNaN(difference))throw new Error("Legacy round sort values must match real persistence types");
+            if(difference)return difference*(direction==="desc"?-1:1);
+          }
+          return 0;
+        });
+      }
+      return take===undefined?selected:selected.slice(0,take);
+    })});
+    tx.approvalInstance.update.mockImplementation(async ({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+      if(where.id!==round.id) throw new Error("Unexpected round in legacy approval fixture");
+      Object.assign(round,data);return {...round};
+    });
+    Object.assign(tx,{
+      contractVersion:{findUnique:jest.fn(async ({where}:{where:{id:string}})=>where.id===payment.contractVersionId?{
+        id:payment.contractVersionId,contractId:payment.contractId,status:"active",signingSubjectType:"our_company",
+        companyEntityIdSnapshot:payment.companyEntityIdSnapshot,companyEntityNameSnapshot:payment.companyEntityNameSnapshot,companyEntityCreditCodeSnapshot:payment.companyEntityCreditCodeSnapshot
+      }:null)},
+      paymentExecution:{findMany:jest.fn(async ({where}:{where:{paymentRequestId:string}})=>{
+        if(where.paymentRequestId!==payment.id) throw new Error("Unexpected execution relation in legacy approval fixture");
+        return [];
+      })}
+    });
+    const actions=new Map<string,Record<string,unknown>>();
+    tx.approvalActionLog.create.mockImplementation(async ({data}:{data:Record<string,unknown>})=>{
+      const action={id:"87ae6b8a-1bee-4459-a1c4-9ef5d82ac415",createdAt:new Date("2026-07-31T01:01:01Z"),...data};
+      actions.set(action.id,{...action});return {...action};
+    });
+    Object.assign(tx.approvalActionLog,{
+      findUnique:jest.fn(async ({where}:{where:{id:string}})=>actions.get(where.id)??null),
+      createMany:jest.fn(async ({data,skipDuplicates}:{data:Array<Record<string,unknown>>;skipDuplicates?:boolean})=>{
+        let count=0;
+        for(const value of data){
+          if(typeof value.id!=="string") throw new Error("Outbox fixture requires its stable primary key");
+          if(actions.has(value.id)){if(skipDuplicates)continue;throw new Error("Duplicate outbox fixture primary key");}
+          actions.set(value.id,{createdAt:new Date("2026-07-31T01:01:01Z"),...value});count++;
+        }
+        return {count};
+      })
+    });
+    const users=await Promise.all(knownUserIds.map(id=>tx.user.findUnique({where:{id}})));
+    Object.assign(tx.user,{findMany:jest.fn(async ()=>users.filter(user=>user?.isActive))});
+  }
+
   function approvalRoleTables(roleKey: string) {
     return {
       userPosition: {
@@ -4236,6 +4311,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
 
   it("付款领导自审成功后只记录修剪后的原因和自审标记", async () => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
+    await attachPaymentNotificationPersistence(tx,["leader-1"]);
 
     await service.reviewApproval("payment-1", "leader-1", {
       ...paymentReviewCoordinates,
@@ -4360,6 +4436,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...approvalRoleTables("chairman")
     };
     attachApprovalSignatureFixture(tx);
+    await attachPaymentNotificationPersistence(tx,["chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4554,6 +4631,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...approvalRoleTables("chairman")
     };
     attachApprovalSignatureFixture(tx);
+    await attachPaymentNotificationPersistence(tx,["chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -4654,6 +4732,7 @@ name: "签批人甲",
         }]),
       ...financingUsageUpdates()
     };
+    await attachPaymentNotificationPersistence(tx,["delegate-user-1","delegator-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
@@ -5194,6 +5273,7 @@ user: { findUnique: jest.fn(async ({where}: {where: {id: string}}) => ({ id: whe
       ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
+    await attachPaymentNotificationPersistence(tx,["transfer-user-1","chairman-1"]);
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };

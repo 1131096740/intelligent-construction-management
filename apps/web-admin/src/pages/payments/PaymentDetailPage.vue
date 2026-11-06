@@ -32,6 +32,28 @@
     </BusinessDetailHeader>
 
     <section
+      v-if="routePaymentId() && registeredExecutionCapability?.supportedDomain !== false"
+      id="registered-payment-entry"
+      aria-label="统一实付办理"
+    >
+      <t-alert
+        v-if="registeredExecutionCapability?.supportedDomain && registeredExecutionCapability.blockedReason"
+        theme="warning"
+        :message="registeredExecutionCapability.blockedReason"
+      />
+      <t-alert
+        v-if="registeredDetailRefreshWarning"
+        theme="warning"
+        :message="registeredDetailRefreshWarning"
+      />
+      <RegisteredPaymentExecutionPanel
+        :key="routePaymentId()"
+        :payment-reference="routePaymentId()"
+        @recorded="refreshRegisteredPaymentDetail"
+      />
+    </section>
+
+    <section
       v-if="detailLoading && !paymentDetail"
       class="detail-loading-skeleton"
       aria-label="正在读取付款详情"
@@ -294,7 +316,7 @@
             </div>
 
             <div
-              v-if="isPaymentActionEnabled('record_execution')"
+              v-if="!registeredExecutionCapability?.supportedDomain && isPaymentActionEnabled('record_execution')"
               class="action-group"
             >
               <div class="action-title">
@@ -747,6 +769,7 @@ import {
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
+import { fetchRecordedPaymentItems } from "../../api/registered-payment-execution.api";
 import {
   createPrivateFileDownloadTicket,
   createPaymentExecutionRecordAttemptState,
@@ -785,6 +808,7 @@ import MoneyInput from "../../components/MoneyInput.vue";
 import BusinessEntryReadonlySnapshot from "../../components/BusinessEntryReadonlySnapshot.vue";
 import BusinessEntryGrid from "../../components/BusinessEntryGrid.vue";
 import PaymentFinanceEntryForm from "./PaymentFinanceEntryForm.vue";
+import RegisteredPaymentExecutionPanel from "./RegisteredPaymentExecutionPanel.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import {
@@ -871,6 +895,7 @@ const activeTab = ref("overview");
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const actionBusy = ref("");
 const actionMessage = ref("");
+const registeredDetailRefreshWarning = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
 const paymentVoucherFiles = ref<UploadFile[]>([]);
 const paymentPdfArchiveFiles = ref<UploadFile[]>([]);
@@ -969,6 +994,7 @@ const paymentDetailHeaderView = computed(() => {
     }))
   );
 });
+const registeredExecutionCapability = computed(() => paymentDetail.value?.registeredExecutionCapability);
 const paymentTraceRulesView = computed(() => paymentDetail.value?.traceRules ?? []);
 const paymentExecutionAllocationRowsView = computed<PaymentExecutionAllocationRow[]>(() =>
   (paymentDetail.value?.executionAllocations ?? []).map((allocation) => ({
@@ -1033,7 +1059,7 @@ const paymentActionByKey = computed(
 );
 const paymentOperationalActions = computed(() =>
   (paymentDetail.value?.availableActions ?? []).filter(
-    (action) => action.key !== "abandon_application"
+    (action) => action.key !== "abandon_application" && !(registeredExecutionCapability.value?.supportedDomain && action.key === "record_execution")
   )
 );
 const paymentDraftActionSubject = computed(() => ({
@@ -1062,6 +1088,7 @@ function paymentReviewActionEnabled(key: "review_approval") {
   );
 }
 function paymentExecutionActionEnabled() {
+  if (registeredExecutionCapability.value?.supportedDomain) return false;
   return Boolean(
     paymentApprovalCapability.value?.availableActions.some(
       (action) =>
@@ -1152,10 +1179,40 @@ function openChainLink(to: string) {
 
 function openPrimaryAction() {
   if (!paymentHeaderPrimaryAction.value) return;
+  if (registeredExecutionCapability.value?.supportedDomain && paymentHeaderPrimaryAction.value.key === "record_execution") {
+    requestAnimationFrame(() => {
+      document.getElementById("registered-payment-entry")?.scrollIntoView({ block: "start" });
+    });
+    return;
+  }
   activeTab.value = "process";
   requestAnimationFrame(() => {
     document.querySelector(".action-grid")?.scrollIntoView({ block: "start" });
   });
+}
+
+async function refreshRegisteredPaymentDetail(paymentId: string, paymentReference: string) {
+  const reference = routePaymentId();
+  const generation = paymentDetailRouteGeneration;
+  const isCurrent = () => reference === routePaymentId() && generation === paymentDetailRouteGeneration;
+  if (!reference || (reference !== paymentReference && reference !== paymentId)) return;
+  registeredDetailRefreshWarning.value = "";
+  try {
+    // The successful write/query already confirmed payment. This read only
+    // resolves its canonical ID against the current route before refreshing.
+    const history = await fetchRecordedPaymentItems();
+    if (!isCurrent()) return;
+    const current = history.items.find(item => item.paymentId === paymentId && (item.paymentId === reference || item.code === reference));
+    if (!current) {
+      registeredDetailRefreshWarning.value = "实际付款已登记，详情关联资料暂未核对，请点击刷新重新读取；无需重复登记。";
+      return;
+    }
+    const refreshed = await reloadPaymentDetail();
+    if (!isCurrent()) return;
+    if (!refreshed) registeredDetailRefreshWarning.value = "实际付款已登记，付款详情暂未刷新，请点击刷新核对；无需重复登记。";
+  } catch {
+    if (isCurrent()) registeredDetailRefreshWarning.value = "实际付款已登记，付款详情暂未刷新，请点击刷新核对；无需重复登记。";
+  }
 }
 
 async function reloadPaymentDetail() {
@@ -1193,6 +1250,7 @@ async function reloadPaymentDetail() {
     paymentApprovalCapabilityGeneration += 1;
     paymentApprovalCapability.value = serverDetail;
     paymentDetail.value = viewDetail;
+    registeredDetailRefreshWarning.value = "";
     if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
       paymentActionForm.downloadFileId = evidenceFileIds[0] ?? "";
     }
@@ -1295,6 +1353,7 @@ function clearPaymentDetailTransientState() {
   paymentDetailLoadError.value = "";
   activeTab.value = "overview";
   actionMessage.value = "";
+  registeredDetailRefreshWarning.value = "";
   paymentVoucherFiles.value = [];
   paymentPdfArchiveFiles.value = [];
   sensitiveAction.visible = false;
@@ -1795,6 +1854,7 @@ function paymentExecutionSelectionIsCurrent(
   const capability = paymentApprovalCapability.value;
   return (
     paymentExecutionComponentActive &&
+    !registeredExecutionCapability.value?.supportedDomain &&
     selection.ownerScope === paymentExecutionOwnerScope &&
     selection.routeGeneration === paymentDetailRouteGeneration &&
     selection.detailEpoch === paymentDetailEpoch &&

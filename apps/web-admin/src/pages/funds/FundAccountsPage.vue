@@ -2,7 +2,7 @@
 import { chinaDateOnly, chinaDateTimeInput } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchFundAccounts, registerFundOpening, requestFundCorrection, confirmFundCorrection, returnFundCorrection, withdrawFundCorrection, type FundAccount, type FundAccountSource, type FundAccountsReadModel, type FundBalanceRegistration } from "../../api/fund-account.api";
+import { fetchFundReview, fetchFundAccount, fetchFundBalanceRegistration, fetchFundAccounts, registerFundOpening, requestFundCorrection, confirmFundCorrection, returnFundCorrection, withdrawFundCorrection, type FundAccount, type FundAccountSource, type FundRegisteredPayment, type FundAccountsReadModel, type FundBalanceRegistration } from "../../api/fund-account.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import JgWorkbenchShell from "../../components/JgWorkbenchShell.vue";
 const route = useRoute();
@@ -18,6 +18,11 @@ const saving = ref(false);
 const formError = ref("");
 const success = ref("");
 const sources = ref<FundAccountSource[]>([]);
+const coveredExecutionIds = ref<string[]>([]);
+const coverageConfirmed = ref(false);
+const coveragePaymentLabel = (payment: FundRegisteredPayment) => `${payment.code} · ${payment.paidAt} · ¥${payment.amountYuan} · ${payment.registeredByName} · ${payment.openingEvidence}`;
+const coverageOptions = computed(() => (editing.value?.registeredPayments ?? []).map(payment=>({label:coveragePaymentLabel(payment),value:payment.executionId})));
+const availableAmount = (value: string | null) => value === null ? "可用金额待核对" : `¥${value}`;
 const lineageOptions = ref<Array<{label:string;value:string}>>([]);
 const today = () => chinaDateOnly();
 const form = reactive({ balanceYuan: "", asOfDate: today(), evidenceReference: "", reconciliationNote: "", reason: "", idempotencyKey: "" });
@@ -62,10 +67,11 @@ async function open(account: FundAccount, kind: "opening" | "correction") {
   try {
     const loadedAccount = await fetchFundAccount(account.scopeKey);
     if (revision !== selectionRevision) return;
-    lineageOptions.value = loadedAccount.sources.map((original, no) => ({label: `原来源${no + 1}：${original.sourceName || "出资方待核对"} · ${original.amountYuan}元`, value: original.id!}));
+    lineageOptions.value = loadedAccount.sources.map((original, no) => ({label: `原来源${no + 1}：${original.sourceName || "出资方待核对"} · ${original.amountYuan ?? "可用分摊待核对"}元`, value: original.id!}));
     mode.value = kind; formError.value = ""; success.value = "";
     Object.assign(form, { balanceYuan: kind === "correction" ? loadedAccount.balanceYuan ?? "" : "", asOfDate: today(), evidenceReference: "", reconciliationNote: "", reason: "", idempotencyKey: crypto.randomUUID() });
-    sources.value = kind === "correction" ? loadedAccount.sources.map(source => ({ amountYuan: source.amountYuan, sourceStatus: source.sourceStatus, sourceName: source.sourceName, projectStatus: source.projectStatus, projectId: source.projectId, previousSourceBatchId: source.id })) : [];
+    coveredExecutionIds.value = []; coverageConfirmed.value = false;
+    sources.value = kind === "correction" ? loadedAccount.sources.map(source => ({ amountYuan: source.amountYuan ?? "", sourceStatus: source.sourceStatus, sourceName: source.sourceName, projectStatus: source.projectStatus, projectId: source.projectId, previousSourceBatchId: source.id })) : [];
     const permission = await fetchFundAccount(account.scopeKey);
     if (revision !== selectionRevision) return;
     if (permission.scopeKey !== loadedAccount.scopeKey || permission.currentRegistrationId !== loadedAccount.currentRegistrationId) throw new Error("原有效登记已变化，请刷新后重新核对，原依据不会被自动替换");
@@ -76,7 +82,8 @@ function addSource() { sources.value.push({ amountYuan: "", sourceStatus: "pendi
 const balanceInput = computed(() => ({
   ...form, scopeKey: editing.value!.scopeKey, balanceYuan: form.balanceYuan.trim() || null,
   sources: sources.value.map(source => ({ ...source, sourceName: source.sourceStatus === "known" ? source.sourceName : null, projectId: source.projectStatus === "project" ? source.projectId : null })),
-  previousRegistrationId: editing.value!.currentRegistrationId ?? undefined
+  previousRegistrationId: editing.value!.currentRegistrationId ?? undefined,
+  ...(mode.value === "correction" ? {coveredExecutionIds:[...coveredExecutionIds.value]} : {})
 }));
 async function submitOpeningBalance() {
   saving.value = true; formError.value = "";
@@ -89,6 +96,7 @@ async function submitOpeningBalance() {
   saving.value = false;
 }
 async function submitCorrectionBalance() {
+  if (coverageOptions.value.length && !coverageConfirmed.value) { formError.value = "请明确本次核对金额已包含的实付清单，并确认未勾选实付继续扣减"; return; }
   saving.value = true; formError.value = "";
   const input = balanceInput.value;
   const request = requestFundCorrection(input);
@@ -254,7 +262,7 @@ onMounted(load);
             v-for="(project, index) in account.projectBalances"
             :key="index"
           >
-            {{ projectName(project) }}：¥{{ project.amountYuan }}
+            {{ projectName(project) }}：{{ availableAmount(project.amountYuan) }}
           </li>
         </ul>
         <h3>来源与项目归属</h3>
@@ -269,9 +277,12 @@ onMounted(load);
             v-for="(source, index) in account.sources"
             :key="source.id || index"
           >
-            ¥{{ source.amountYuan }} · {{ source.sourceStatus === 'known' ? source.sourceName : '出资方待核对' }} · {{ projectName(source) }}
+            {{ availableAmount(source.amountYuan) }}<span v-if="source.pendingAllocation">（原核对 ¥{{ source.reconciledAmountYuan }}，实付分摊待核对）</span> · {{ source.sourceStatus === 'known' ? source.sourceName : '出资方待核对' }} · {{ projectName(source) }}
           </li>
         </ul>
+        <p v-if="account.unallocatedPaymentAmountYuan && account.unallocatedPaymentAmountYuan !== '0.0000'">
+          已扣实付 ¥{{ account.unallocatedPaymentAmountYuan }} 的来源分摊待核对；账户余额已扣减，不会再向各来源重复扣款。
+        </p>
         <p>来源金额是同一余额的归属快照，不是另一份账户余额或新到账。</p>
       </t-card>
     </div>
@@ -389,6 +400,13 @@ onMounted(load);
             aria-label="登记或更正原因"
           />
         </t-form-item>
+        <t-form-item v-if="mode === 'correction' && coverageOptions.length" label="本次核对已包含的实付">
+          <div>
+            <p>只勾选已包含在本次核对金额内的实付。待复核新增实付不自动并入，未覆盖部分继续扣减。</p>
+            <t-checkbox-group v-model="coveredExecutionIds" :options="coverageOptions" aria-label="本次核对已包含的实付清单" @change="coverageConfirmed = false" />
+            <t-checkbox v-model="coverageConfirmed" aria-label="确认实付覆盖清单">我已核对所选清单；未选任何实付表示本次没有覆盖实付。</t-checkbox>
+          </div>
+        </t-form-item>
         <t-alert
           theme="info"
           message="余额已知时，请逐项填写来源金额，合计须等于核对余额；来源和项目可分别待核对。"
@@ -496,6 +514,8 @@ onMounted(load);
       @close="closeReview"
     >
       <p>核对余额：{{ amount(review?.balanceYuan ?? null) }}。确认后保留原登记，来源快照不作为新到账或收入。</p>
+      <p>仅下列冻结实付已包含在本次核对金额内，待审新增实付仍扣减；未选择表示没有覆盖。</p>
+      <ul><li v-for="payment in review?.coveredPayments ?? []" :key="payment.executionId">{{ coveragePaymentLabel(payment) }}</li></ul>
       <t-textarea
         v-model="reviewNote"
         aria-label="复核结论"
@@ -588,6 +608,8 @@ onMounted(load);
     >
       <p>核对日期：{{ evidence.asOfDate }} · {{ amount(evidence.balanceYuan) }}</p>
       <p>原依据：{{ evidence.evidenceReference }}</p>
+      <p>本次核对已包含的冻结实付清单：</p>
+      <ul><li v-for="payment in evidence.coveredPayments ?? []" :key="payment.executionId">{{ coveragePaymentLabel(payment) }}</li></ul>
       <p v-if="!evidence.approvalEvidence?.length">
         本次为期初核对登记或尚未签批；核对依据与审计记录继续保留。
       </p>
