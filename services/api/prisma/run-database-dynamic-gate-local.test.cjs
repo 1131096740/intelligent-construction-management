@@ -153,8 +153,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 77, tests: 527 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 528);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 22, files: 78, tests: 539 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 540);
 });
 
 test("manual task01 operator cannot run automatically on GitHub Actions", () => {
@@ -423,19 +423,19 @@ test("manifest preserves source inventory and one separately invoked task01 oper
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 78,
-    fullyPendingSuites: 67,
+    pendingFiles: 79,
+    fullyPendingSuites: 68,
     partiallyPendingSuites: 11,
-    pendingTests: 528,
-    coveredFiles: 78,
-    coveredTests: 528,
+    pendingTests: 540,
+    coveredFiles: 79,
+    coveredTests: 540,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 527);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 539);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -845,7 +845,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=528/u
+    /inventory\.coveredTests=26，派生值=540/u
   );
 });
 

@@ -3,7 +3,7 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 200,
+    "expectedDirectoryCount": 201,
     "terminalMigration": "20261106090000_general_procurement_requests",
     "terminalMigrationChecksum": "33c8e9c6050f53a911ec9db6ec357f1bebcb52bf5b39fd82430ebdfaa4328183",
     "postgresMajorVersion": 16,
@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 78,
-    "fullyPendingSuites": 67,
+    "pendingFiles": 79,
+    "fullyPendingSuites": 68,
     "partiallyPendingSuites": 11,
-    "pendingTests": 528,
-    "coveredFiles": 78,
-    "coveredTests": 528,
+    "pendingTests": 540,
+    "coveredFiles": 79,
+    "coveredTests": 540,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -398,7 +398,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 161,
+      "pendingTests": 173,
       "testFiles": [
         {
           "path": "services/api/src/database/operating-takeover-constraints.spec.ts",
@@ -584,6 +584,11 @@
           "path": "services/api/src/database/fund-movement-concurrency.spec.ts",
           "pendingTests": 5,
           "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/fund-account-postgres.spec.ts",
+          "pendingTests": 12,
+          "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
@@ -707,8 +712,8 @@
   "executionInventory": {
     "ciEligible": {
       "groups": 22,
-      "files": 77,
-      "tests": 527
+      "files": 78,
+      "tests": 539
     },
     "manualOnly": {
       "groups": 1,

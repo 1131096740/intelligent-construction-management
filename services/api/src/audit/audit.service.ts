@@ -23,6 +23,11 @@ const DRAFT_DELETION_ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "fund_account.opening.register": "登记资金期初余额",
+  "fund_account.correction.request": "申请余额核对更正",
+  "fund_account.correction.withdraw": "撤回余额核对更正",
+  "fund_account.correction.return": "退回余额核对更正",
+  "fund_account.correction.confirm": "复核余额核对更正",
   ...DRAFT_DELETION_ACTION_LABELS,
   ...FILE_DOWNLOAD_AUDIT_ACTION_LABELS,
   "auth.login": "登录",
@@ -48,6 +53,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  fund_account_balance: "资金余额核对",
   expense_claim: "费用申请",
   general_procurement: "综合采购",
   spot_procurement: "零星采购",

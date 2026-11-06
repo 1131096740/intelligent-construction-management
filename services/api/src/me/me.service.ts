@@ -1,3 +1,4 @@
+import { fundReviewWorkItems } from "../fund-account/fund-account-work-items";
 import { generalRequestWorkItems } from "../general-procurement/general-procurement-request-work-items";
 import { generalRequestActor } from "../general-procurement/general-procurement-request-access";
 import {scopedSpotDutyNodeIndexes, SPOT_APPROVAL_DUTY_RESOURCE} from "../approval/spot-approval-duty-access";
@@ -499,18 +500,20 @@ export class MeService {
       toUserId: userId, enabled: true, actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE,
       startsAt: {lte: new Date()}, endsAt: {gt: new Date()}
     }, select: {id: true}}) : null;
-    if (approvalProjects.length || scopedSpotMandate) {
+    const fundReviewTodos = await fundReviewWorkItems(this.prisma, userId);
+    if (approvalProjects.length || scopedSpotMandate || fundReviewTodos.length) {
       const approvalCounts = await this.countApprovalTodos(scopes, userId);
+      approvalCounts.total += fundReviewTodos.length;
       cards.push({
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
+        description: `${fundReviewTodos.length ? `余额核对 ${fundReviewTodos.length} · ` : ""}${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
           approvalCounts.spotProcurement || approvalCounts.spotPayment
             ? ` · 零星采购 ${approvalCounts.spotProcurement} · 零星付款 ${approvalCounts.spotPayment}`
             : ""
         }`,
-        targetPath: this.approvalTargetPath(approvalCounts),
+        targetPath: fundReviewTodos.length ? "/审批中心" : this.approvalTargetPath(approvalCounts),
         actionText: "去处理",
         tone: "primary"
       });
@@ -2233,6 +2236,7 @@ export class MeService {
     }
 
     items.push(...await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, mode));
+    items.push(...await fundReviewWorkItems(this.prisma, userId, mode));
     return items;
   }
 

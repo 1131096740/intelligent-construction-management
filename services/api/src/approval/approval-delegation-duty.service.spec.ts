@@ -70,7 +70,7 @@ it("新建委托省略全部scope也拒绝，不新增历史无界standing授权
 });
 it("当前职责办理或失岗即撤销新建委托能力，撤销能力只属本人未撤销记录",async()=>{
  const {service,round}=fixture();
- await expect(service.dutyCapability("manager","round-1:1")).resolves.toEqual({canDelegate:true});
+ await expect(service.dutyCapability("manager","round-1:1")).resolves.toEqual({canDelegate:true,actionKey:"spot_procurement.approve",resourceType:"spot_procurement_approval_duty",resourceId:"round-1:1"});
  await service.create("manager",input());
  await expect(service.revokeCapability("other-user","mandate-1")).resolves.toEqual({canRevoke:false});
  await expect(service.revokeCapability("manager","mandate-1")).resolves.toEqual({canRevoke:true});

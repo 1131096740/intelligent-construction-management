@@ -8,6 +8,7 @@ const tasks = [
   { path: "/综合采购申请", label: "综合采购", description: "办公、设备等采购申请" },
   { path: "/合同工作台", label: "合同与用章", description: "起草、审批、签署与归档" },
   { path: "/结算工作台", label: "办理结算", description: "核对工程量、金额和依据" },
+  { path: "/资金账户", label: "资金账户", description: "核对公司登记余额与公共现金、查看来源和核对记录" },
   { path: "/统一资金办理工作台", label: "办理付款", description: "登记实付、凭证与核对" },
   { path: "/公司互转台账", label: "公司资金互转", description: "申请调剂、领导审批、到账核对与往来归还" },
   { path: "/项目经营", label: "项目经营", description: "查看项目账、资金和接管状态" },

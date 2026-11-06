@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 399,
+    "activeBusinessActionCount": 404,
     "technicalActionCount": 9,
-    "activeBindingCount": 461,
+    "activeBindingCount": 466,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -2513,6 +2513,89 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /expense-claims/:param/submission"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.confirm-correction",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/confirm"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.registerFundOpening",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/openings"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.requestFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.returnFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/return"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "fund-account.withdrawFundCorrection",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /fund-accounts/registrations/:param/withdraw"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

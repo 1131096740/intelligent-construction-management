@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 408,
-    "pageActionCount": 56,
+    "registeredActionCount": 413,
+    "pageActionCount": 61,
     "backgroundActionCount": 352,
-    "reachableVueFileCount": 207,
-    "routeRootCount": 72,
-    "totalVueFileCount": 220,
-    "parsedVueFileCount": 220,
-    "reachableProductionModuleCount": 355,
-    "templateEventDirectiveCount": 1293,
+    "reachableVueFileCount": 208,
+    "routeRootCount": 74,
+    "totalVueFileCount": 221,
+    "parsedVueFileCount": 221,
+    "reachableProductionModuleCount": 357,
+    "templateEventDirectiveCount": 1311,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 399,
-    "candidateProductionMutationConsumerCount": 399,
-    "acceptedProductionMutationConsumerCount": 399,
-    "productionMutationConsumerPairCount": 399,
+    "coveredProductionMutationConsumerCount": 404,
+    "candidateProductionMutationConsumerCount": 404,
+    "acceptedProductionMutationConsumerCount": 404,
+    "productionMutationConsumerPairCount": 404,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 374,
-    "reachableProductionModuleCount": 355,
-    "totalVueFileCount": 220,
-    "parsedVueFileCount": 220
+    "totalProductionModuleCount": 376,
+    "reachableProductionModuleCount": 357,
+    "totalVueFileCount": 221,
+    "parsedVueFileCount": 221
   },
   "actions": [
     {
@@ -227,7 +227,7 @@
         "event": "call",
         "handler": "createDelegationWithCapability",
         "kind": "background_call",
-        "sourceLine": 171,
+        "sourceLine": 178,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -291,7 +291,7 @@
         "event": "call",
         "handler": "revokeDelegationWithCapability",
         "kind": "background_call",
-        "sourceLine": 177,
+        "sourceLine": 207,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11101,6 +11101,344 @@
             "localCallChain": [
               "submitExpenseClaimWithCapability",
               "submitExpenseClaim"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-account.confirm-correction",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirm",
+        "kind": "event",
+        "sourceLine": 546,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "review.canConfirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "confirmFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/confirm",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/registrations/:registrationId/confirm",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/confirm",
+            "controller": "FundAccountController",
+            "handler": "confirmCorrection",
+            "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "fund_account.balance.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirm",
+              "confirmFundCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-account.registerFundOpening",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitOpeningBalance",
+        "kind": "event",
+        "sourceLine": 475,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "editing.canRegisterBalance",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "registerFundOpening",
+          "method": "POST",
+          "path": "/fund-accounts/openings",
+          "normalizedKey": "POST /fund-accounts/openings",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/openings",
+            "normalizedKey": "POST /fund-accounts/openings",
+            "controller": "FundAccountController",
+            "handler": "registerOpening",
+            "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "comprehensive_director",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitOpeningBalance",
+              "registerFundOpening"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-account.requestFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitCorrectionBalance",
+        "kind": "event",
+        "sourceLine": 482,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "editing.canRegisterBalance",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "requestFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/corrections",
+          "normalizedKey": "POST /fund-accounts/corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/corrections",
+            "normalizedKey": "POST /fund-accounts/corrections",
+            "controller": "FundAccountController",
+            "handler": "requestCorrection",
+            "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCorrectionBalance",
+              "requestFundCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-account.returnFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "returnBalanceCorrection",
+        "kind": "event",
+        "sourceLine": 539,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "review.canConfirm",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "returnFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/return",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/registrations/:registrationId/return",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/return",
+            "controller": "FundAccountController",
+            "handler": "returnCorrection",
+            "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "fund_account.balance.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnBalanceCorrection",
+              "returnFundCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "fund-account.withdrawFundCorrection",
+      "usage": "page_action",
+      "routePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "ownerRoutePaths": [
+        "/资金余额复核/:registrationId",
+        "/资金账户"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/funds/FundAccountsPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "withdrawBalanceCorrection",
+        "kind": "event",
+        "sourceLine": 560,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "withdrawal.canWithdraw",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-account.api.ts",
+          "wrapper": "withdrawFundCorrection",
+          "method": "POST",
+          "path": "/fund-accounts/registrations/:param/withdraw",
+          "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/fund-accounts/registrations/:registrationId/withdraw",
+            "normalizedKey": "POST /fund-accounts/registrations/:param/withdraw",
+            "controller": "FundAccountController",
+            "handler": "withdrawCorrection",
+            "sourceFile": "services/api/src/fund-account/fund-account.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/funds/FundAccountsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawBalanceCorrection",
+              "withdrawFundCorrection"
             ]
           },
           "ticketFollowups": []
