@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { inspectActualTemplatePdf } from "./template-pdf-physical.test-support";
 import PizZip from "pizzip";
 import { createTemplateTestServer, syntheticWordSource } from "./template-management.test-support";
 import { loginTemplateActor, seedSelectionDraft, saveSelectionThroughHttp } from "./template-selection.test-support";
@@ -43,6 +43,7 @@ describe("identifiable legacy source without mapping through actual queued worke
     const finished = await server.store.prisma.contractGeneratedDocument.findUnique({ where: { id: job.id } });
     expect(finished).toMatchObject({ status: "success", docxFileId: expect.any(String), pdfFileId: expect.any(String) });
     const pdf = await server.files.getFileBuffer(String(finished!.pdfFileId));
+    inspectActualTemplatePdf(source, pdf.buffer, "public legacy historical worker output");
     return { id, old, finished: finished!, pdf, director, sourceHash: createHash("sha256").update(source).digest("hex") };
   }
   it("keeps original no-mapping rendering while new selection fills supported canonical aliases", async () => {
@@ -61,7 +62,7 @@ describe("identifiable legacy source without mapping through actual queued worke
     expect(xml).toContain("甲方签章：实际甲方"); expect(xml).toContain("乙方签章：实际乙方");
     expect(xml).toContain("手动选版草稿"); expect(xml.match(/实际甲方/gu)).toHaveLength(2); expect(xml.match(/实际乙方/gu)).toHaveLength(2);
     const pdf = await server.files.getFileBuffer(String(output!.pdfFileId));
-    const text = execFileSync(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", ["-c", "import sys,pymupdf;d=pymupdf.open(stream=sys.stdin.buffer.read(),filetype='pdf');print(''.join(p.get_text() for p in d))"], { input: pdf.buffer, encoding: "utf8" });
+    const text = inspectActualTemplatePdf(docx.buffer, pdf.buffer, "public selected/legacy generated document");
     expect(text).toMatch(/甲方：\s*实际甲方/u); expect(text).toMatch(/乙方：\s*实际乙方/u);
     expect(text).toMatch(/甲方签章：\s*实际甲方/u); expect(text).toMatch(/乙方签章：\s*实际乙方/u);
     expect(text).toContain("手动选版草稿"); expect(text.match(/实际甲方/gu)).toHaveLength(2); expect(text.match(/实际乙方/gu)).toHaveLength(2);

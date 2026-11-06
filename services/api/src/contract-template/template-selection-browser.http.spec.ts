@@ -1,3 +1,4 @@
+import { inspectActualTemplatePdf } from "./template-pdf-physical.test-support";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -35,6 +36,7 @@ describe("saved template selection in the real contract workbench browser", () =
       if (!completed) throw new Error("浏览器链未留下实际成功文书");
       const docx = await server.files.getFileBuffer(completed.docxFileId);
       const pdf = await server.files.getFileBuffer(completed.pdfFileId);
+      inspectActualTemplatePdf(docx.buffer, pdf.buffer, "real browser same successful history ID");
       expect(createHash("sha256").update(pdf.buffer).digest("hex")).toBe(witnessed.pdfSha256BeforeStop);
       await writeFile(join(directory, "generated.docx"), docx.buffer);
       await writeFile(join(directory, "generated.pdf"), pdf.buffer);

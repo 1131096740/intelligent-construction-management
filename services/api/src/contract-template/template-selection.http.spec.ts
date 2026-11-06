@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { inspectActualTemplatePdf } from "./template-pdf-physical.test-support";
 import PizZip from "pizzip";
 import { loginTemplateActor, seedSelectionDraft, publishMappedSelectionLayout, saveSelectionThroughHttp } from "./template-selection.test-support";
 import { randomUUID } from "node:crypto";
@@ -90,7 +90,7 @@ describe("manual template selection through existing real aggregate HTTP authori
     expect(xml).toContain("本项普通约定按原文保留");
     expect(xml).not.toContain("合成甲方公司");
     const pdf = await server.files.getFileBuffer(output.pdfFileId);
-    const text = execFileSync(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", ["-c", "import sys,pymupdf; d=pymupdf.open(stream=sys.stdin.buffer.read(),filetype='pdf'); print(''.join(p.get_text() for p in d))"], { input: pdf.buffer, encoding: "utf8" });
+    const text = inspectActualTemplatePdf(docx.buffer, pdf.buffer, "public selected/legacy generated document");
     expect(text).toContain("手动选版草稿");
     expect(text.match(/实际甲方/gu)).toHaveLength(2);
     expect(text.match(/实际乙方/gu)).toHaveLength(2);
@@ -120,6 +120,7 @@ describe("manual template selection through existing real aggregate HTTP authori
     const success = (await fetch(`${base}/contract-workbench/${first.draft.versionId}/documents`, { headers }).then(response => response.json()) as Array<{ id: string; status: string; pdfFileId: string }>).find(value => value.id === first.job.id)!;
     expect(success.status).toBe("success");
     const original = await server.files.getFileBuffer(success.pdfFileId);
+    inspectActualTemplatePdf((await server.files.getFileBuffer(layout.fileId)).buffer, original.buffer, "public real worker retry output");
     const stopped = await failedJob();
     const director = await loginTemplateActor(server, "director");
     expect((await fetch(`${base}/contract-layout-template-versions/${layout.id}/stop`, { method: "POST", headers: { authorization: `Bearer ${director}` } })).status).toBe(201);

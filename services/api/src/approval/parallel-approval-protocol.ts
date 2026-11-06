@@ -28,7 +28,7 @@ export function activeApprovalNodeIndexes(nodes: unknown, currentNodeIndex: numb
 export const SPOT_PARALLEL_NOTIFICATION_KIND = "spot_parallel_duty_notification_v1";
 export function isParallelDutyNotificationEvent(log: { action: string; metadata?: unknown }): boolean {
   const value = log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata) ? log.metadata as Record<string, unknown> : {};
-  return log.action === "system_notification" && value.kind === SPOT_PARALLEL_NOTIFICATION_KIND &&
+  return log.action === "system_notification" && [SPOT_PARALLEL_NOTIFICATION_KIND, "general_request_duty_notification_v2"].includes(String(value.kind)) &&
     ["queued", "dispatch_claimed", "accepted", "failed", "unknown", "cancelled"].includes(String(value.event)) &&
     typeof value.recipientId === "string" && value.recipientId.trim().length > 0 &&
     Number.isInteger(value.nodeIndex) && Number(value.nodeIndex) >= 0;

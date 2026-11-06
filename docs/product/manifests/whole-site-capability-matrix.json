@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "3e47a8029110a3858d17782f8bcd613c995d95278d9f10ba1bfc12bcf78053a6",
+      "sha256": "c5db735a29963d0e17b363652dae9e98bd636d1a72ca936039d8b14a769ecd02",
       "status": "ready",
       "summary": {
         "apiModuleCount": 41,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "ec0c60153a0305902e4d467470b7815e0a34fd15c2e29fd3f0fbc35caa772a41",
+      "sha256": "b9ed0ae980b638327ffcb8ff221d4c08de439f5af2fff660d45cfff390372a93",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 407,
+        "registeredActionCount": 408,
         "pageActionCount": 56,
-        "backgroundActionCount": 351,
-        "reachableVueFileCount": 205,
+        "backgroundActionCount": 352,
+        "reachableVueFileCount": 207,
         "routeRootCount": 72,
-        "totalVueFileCount": 218,
-        "parsedVueFileCount": 218,
-        "reachableProductionModuleCount": 353,
-        "templateEventDirectiveCount": 1280,
+        "totalVueFileCount": 220,
+        "parsedVueFileCount": 220,
+        "reachableProductionModuleCount": 355,
+        "templateEventDirectiveCount": 1293,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 398,
-        "candidateProductionMutationConsumerCount": 398,
-        "acceptedProductionMutationConsumerCount": 398,
-        "productionMutationConsumerPairCount": 398,
+        "coveredProductionMutationConsumerCount": 399,
+        "candidateProductionMutationConsumerCount": 399,
+        "acceptedProductionMutationConsumerCount": 399,
+        "productionMutationConsumerPairCount": 399,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "404dbb1f4a0e39121ec379712ba48d9f0f754c37cd230e561eb5150c42695b0a",
+      "sha256": "75538dfeb499dcf16776b5aa715603749f7bdc509673dbabad939e19e9f6175c",
       "status": "ready",
       "summary": {
         "routeCount": 709,
@@ -104,12 +104,12 @@
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 407,
-    "actionBindingCount": 469,
-    "acceptedActionBindingCount": 432,
+    "registeredActionCount": 408,
+    "actionBindingCount": 471,
+    "acceptedActionBindingCount": 433,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 398,
-    "coveredProductionMutationConsumerPairCount": 398,
+    "productionMutationConsumerPairCount": 399,
+    "coveredProductionMutationConsumerPairCount": 399,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -5378,6 +5378,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
@@ -5414,6 +5415,7 @@
           "normalizedKey": "GET /general-procurements/:param",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
@@ -5521,6 +5523,31 @@
           "blockerCodes": []
         },
         {
+          "actionId": "general-procurement.legacy.updateProcurement",
+          "bindingIndex": 0,
+          "identity": "general-procurement.legacy.updateProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000updateProcurement\u0000GET\u0000GET /general-procurements/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.canEdit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
+        {
           "actionId": "general-procurement.reviewProcurement",
           "bindingIndex": 0,
           "identity": "general-procurement.reviewProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000reviewProcurement\u0000GET\u0000GET /general-procurements/:param\u00000",
@@ -5579,16 +5606,18 @@
           "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
           "capability": {
             "kind": "server_boolean",
-            "source": "capability.canEdit",
+            "source": "editCapability.canEdit",
             "serverDerived": true,
             "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "updateProcurement",
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
@@ -5692,6 +5721,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
@@ -25191,6 +25221,7 @@
           "normalizedKey": "POST /general-procurements/:param/draft",
           "bodyKind": "json",
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "testConsumers": []
@@ -25199,12 +25230,12 @@
       "authTransports": [],
       "actions": [
         {
-          "actionId": "general-procurement.updateProcurement",
+          "actionId": "general-procurement.legacy.updateProcurement",
           "bindingIndex": 1,
-          "identity": "general-procurement.updateProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000updateProcurement\u0000POST\u0000POST /general-procurements/:param/draft\u00001",
+          "identity": "general-procurement.legacy.updateProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000updateProcurement\u0000POST\u0000POST /general-procurements/:param/draft\u00001",
           "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
           "capability": {
             "kind": "server_boolean",
             "source": "capability.canEdit",
@@ -25214,9 +25245,36 @@
           "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
           "wrapper": "updateProcurement",
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "general-procurement.updateProcurement",
+          "bindingIndex": 1,
+          "identity": "general-procurement.updateProcurement\u0000apps/web-admin/src/api/general-procurement.api.ts\u0000updateProcurement\u0000POST\u0000POST /general-procurements/:param/draft\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "editCapability.canEdit",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,

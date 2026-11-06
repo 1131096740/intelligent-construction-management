@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import PizZip from "pizzip";
 import { createTemplateTestServer } from "./template-management.test-support";
 import { publishMappedSelectionLayout } from "./template-selection.test-support";
+import { inspectActualTemplatePdf } from "./template-pdf-physical.test-support";
 
 describe("task09 true new contract to published Word selection in desktop and mobile", () => {
   it("uses real create, save, selectors, queue and downloadable DOCX with all production guards", async () => {
@@ -34,6 +35,8 @@ describe("task09 true new contract to published Word selection in desktop and mo
         expect(xml).toContain("新建手选"); expect(xml).toContain("实际合同");
         expect(xml.match(/新建当前甲方/gu)).toHaveLength(2); expect(xml.match(/新建当前乙方/gu)).toHaveLength(2);
         expect(xml).toContain("本项普通约定按原文保留"); expect(xml).not.toContain("样张核对");
+        const sharedPhysicalText = inspectActualTemplatePdf(await readFile(receipt.docxPath), await readFile(receipt.pdfPath), `task09-${entry.name}`);
+        expect(sharedPhysicalText).toContain("新建当前甲方");
         const physicalDirectory = join(folder, "pdf-physical");
         const inspected = await promisify(execFile)(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", [
           resolve(__dirname, "task09-pdf-physical-inspector.py"), "--docx", receipt.docxPath,

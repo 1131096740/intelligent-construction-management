@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 407,
+    "registeredActionCount": 408,
     "pageActionCount": 56,
-    "backgroundActionCount": 351,
-    "reachableVueFileCount": 205,
+    "backgroundActionCount": 352,
+    "reachableVueFileCount": 207,
     "routeRootCount": 72,
-    "totalVueFileCount": 218,
-    "parsedVueFileCount": 218,
-    "reachableProductionModuleCount": 353,
-    "templateEventDirectiveCount": 1280,
+    "totalVueFileCount": 220,
+    "parsedVueFileCount": 220,
+    "reachableProductionModuleCount": 355,
+    "templateEventDirectiveCount": 1293,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 398,
-    "candidateProductionMutationConsumerCount": 398,
-    "acceptedProductionMutationConsumerCount": 398,
-    "productionMutationConsumerPairCount": 398,
+    "coveredProductionMutationConsumerCount": 399,
+    "candidateProductionMutationConsumerCount": 399,
+    "acceptedProductionMutationConsumerCount": 399,
+    "productionMutationConsumerPairCount": 399,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 372,
-    "reachableProductionModuleCount": 353,
-    "totalVueFileCount": 218,
-    "parsedVueFileCount": 218
+    "totalProductionModuleCount": 374,
+    "reachableProductionModuleCount": 355,
+    "totalVueFileCount": 220,
+    "parsedVueFileCount": 220
   },
   "actions": [
     {
@@ -11724,7 +11724,7 @@
         "event": "call",
         "handler": "archiveProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 109,
+        "sourceLine": 111,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11824,7 +11824,7 @@
         "event": "call",
         "handler": "cancelProcurementPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 121,
+        "sourceLine": 123,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11924,7 +11924,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 127,
+        "sourceLine": 129,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11990,7 +11990,7 @@
         "event": "call",
         "handler": "createProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 77,
+        "sourceLine": 90,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12090,7 +12090,7 @@
         "event": "call",
         "handler": "deleteProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 39,
+        "sourceLine": 41,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12190,7 +12190,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 133,
+        "sourceLine": 135,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12293,6 +12293,107 @@
       ]
     },
     {
+      "id": "general-procurement.legacy.updateProcurement",
+      "usage": "background",
+      "routePaths": [
+        "/综合采购申请/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/综合采购申请",
+        "/综合采购申请/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 44,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.canEdit",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "method": "GET",
+          "path": "/general-procurements/:param",
+          "normalizedKey": "GET /general-procurements/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/general-procurements/:id",
+            "normalizedKey": "GET /general-procurements/:param",
+            "controller": "GeneralProcurementController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProcurementWithCapability",
+              "updateProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "updateProcurement",
+          "method": "POST",
+          "path": "/general-procurements/:param/draft",
+          "normalizedKey": "POST /general-procurements/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/general-procurements/:id/draft",
+            "normalizedKey": "POST /general-procurements/:param/draft",
+            "controller": "GeneralProcurementController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProcurementWithCapability",
+              "updateProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "general-procurement.reviewProcurement",
       "usage": "background",
       "routePaths": [
@@ -12307,7 +12408,7 @@
         "event": "call",
         "handler": "reviewProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 97,
+        "sourceLine": 99,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12407,7 +12508,7 @@
         "event": "call",
         "handler": "submitProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 91,
+        "sourceLine": 93,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12509,13 +12610,13 @@
         "event": "call",
         "handler": "updateProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 95,
+        "sourceLine": 97,
         "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
         "kind": "server_boolean",
-        "source": "capability.canEdit",
+        "source": "editCapability.canEdit",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -12542,9 +12643,11 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
@@ -12578,9 +12681,11 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
             "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
           ],
           "causalVerified": true,
@@ -12609,7 +12714,7 @@
         "event": "call",
         "handler": "uploadProcurementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 115,
+        "sourceLine": 117,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12709,7 +12814,7 @@
         "event": "call",
         "handler": "withdrawProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 103,
+        "sourceLine": 105,
         "sourceColumn": 0
       },
       "semantic": "business_write",

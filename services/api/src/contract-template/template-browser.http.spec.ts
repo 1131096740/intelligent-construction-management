@@ -1,6 +1,7 @@
+import { inspectActualTemplatePdf } from "./template-pdf-physical.test-support";
 import PizZip from "pizzip";
 import { createHash } from "node:crypto";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -31,6 +32,21 @@ describe("template UI against actual local HTTP services", () => {
         maxBuffer: 4 * 1024 * 1024
       });
       await writeFile(join(artifactDirectory, "browser.log"), result.stdout + result.stderr);
+      // Inspect actual published previews in both real browser variants.
+      {
+        const director = await loginTemplateActor(server, "director");
+        const base = await server.app.getUrl();
+        const headers = { authorization: `Bearer ${director}` };
+        const maintained = await fetch(base + "/contract-layout-templates/maintenance", { headers }).then(response => response.json()) as Array<{ name: string; versions: Array<{ id: string; status: string }> }>;
+        const published = maintained.find(template => template.name === "浏览器显式映射模板")!.versions.find(version => version.status === "published")!;
+        const previewResponse = await fetch(`${base}/contract-layout-template-versions/${published.id}/preview-generation`, { headers });
+        expect(previewResponse.status).toBe(200);
+        const preview = await previewResponse.json() as { status: string; previewPdfFileId: string };
+        expect(preview.status).toBe("succeeded");
+        const pdf = await server.files.getFileBuffer(preview.previewPdfFileId);
+        const text = inspectActualTemplatePdf(source, pdf.buffer, repeated ? "real supervisor duplicate-source preview" : "real supervisor unique-source preview");
+        expect(text).toContain("浏览器甲方"); expect(text).toContain("浏览器乙方");
+      }
       if (repeated) {
         const director = await loginTemplateActor(server, "director");
         const base = await server.app.getUrl();
@@ -72,7 +88,7 @@ describe("template UI against actual local HTTP services", () => {
         expect(actualXml).toContain("手工条款：本项普通约定按原文保留。");
         expect(actualXml.match(/<w:p>/gu)).toHaveLength(9);
         expect(actualXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/gu)).toEqual(originalXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/gu));
-        const text = execFileSync(process.env.TEMPLATE_PDF_INSPECTOR_PYTHON ?? "python3", ["-c", "import sys,pymupdf;d=pymupdf.open(stream=sys.stdin.buffer.read(),filetype='pdf');print(''.join(p.get_text() for p in d))"], { input: pdf.buffer, encoding: "utf8" });
+        const text = inspectActualTemplatePdf(docx.buffer, pdf.buffer, "real supervisor duplicate mapping worker output");
         expect(text).toContain("甲方：实际甲方 乙方：实际乙方");
         expect(text).toContain("附注：本段其他文字保留。");
         expect(text).toContain("手工条款：本项普通约定按原文保留。");
