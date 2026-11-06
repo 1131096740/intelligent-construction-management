@@ -333,7 +333,10 @@ export interface SpotProcurementReceiptWorkbenchReadModel {
   updatedAt: string;
 }
 
+export interface SpotProcurementPurchaseTask {pending: boolean; canHandle: boolean; label: string; requiresReceipt: false; note: string | null}
+
 export interface SpotProcurementListItemReadModel {
+  purchaseTask?: SpotProcurementPurchaseTask;
   id: string;
   code: string;
   project: SpotProcurementProjectSummary;
@@ -361,7 +364,10 @@ export interface SpotProcurementListItemReadModel {
   applicationName?: string;
   purchaserName?: string;
   purchaserDepartment?: string;
-  requestedArrivalAt?: string;
+  requestedArrivalAt?: string | null;
+  requestProtocolVersion?: number;
+  draftRevision?: number;
+  estimatedTotalAmount?: string | null;
 }
 
 export interface SpotProcurementListReadModel {
@@ -494,7 +500,10 @@ export interface SpotProcurementVersionReadModel {
   applicationName?: string;
   purchaserName?: string;
   purchaserDepartment?: string;
-  requestedArrivalAt?: string;
+  requestedArrivalAt?: string | null;
+  requestProtocolVersion?: number;
+  draftRevision?: number;
+  estimatedTotalAmount?: string | null;
 }
 
 export interface SpotProcurementLineReadModel {
@@ -502,8 +511,10 @@ export interface SpotProcurementLineReadModel {
   sortOrder: number;
   materialName: string;
   specification: string | null;
-  unit: string;
-  quantity: string;
+  unit: string | null;
+  quantity: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedAmount?: string | null;
   invoiceMode: InvoiceMode;
   invoiceType: VatInvoiceType | null;
   vatRateOptionId: string | null;
@@ -544,6 +555,7 @@ export interface SpotProcurementPaymentInvoiceReadModel {
 }
 
 export interface SpotProcurementDetailReadModel {
+  purchaseTask?: SpotProcurementPurchaseTask;
   procurement: {
     id: string;
     code: string;
@@ -852,8 +864,10 @@ export interface SpotProcurementPaymentListQuery {
 export interface SpotProcurementLinePayload {
   materialName: string;
   specification?: string;
-  unit: string;
-  quantity: string;
+  unit?: string | null;
+  quantity?: string | null;
+  estimatedUnitPrice?: string | null;
+  estimatedAmount?: string | null;
   note?: string;
 }
 
@@ -863,14 +877,17 @@ export interface SpotProcurementAttachmentPayload {
 }
 
 export interface SpotProcurementDraftPayload {
+  expectedDraftRevision?: number;
+  expectedVersionId?: string;
   entryDefinitionVersions?: {
     application: number;
     line: number;
   };
-  applicationDepartment: string;
-  applicationName: string;
-  requestedArrivalAt: string;
-  reason: string;
+  applicationDepartment?: string;
+  applicationName?: string;
+  requestedArrivalAt?: string | null;
+  estimatedTotalAmount?: string | null;
+  reason?: string;
   note?: string | null;
   lines: SpotProcurementLinePayload[];
   attachments?: SpotProcurementAttachmentPayload[];
@@ -1228,6 +1245,8 @@ export interface AttachSpotProcurementReceiptPhotoPayload {
 }
 
 export interface SpotProcurementWriteReadModel {
+  draftRevision?: number;
+  requestProtocolVersion?: number;
   procurementId: string;
   projectId: string;
   code: string;
@@ -1752,9 +1771,9 @@ export function createSpotProcurementVersion(
   );
 }
 
-export function submitSpotProcurement(procurementId: string) {
+export function submitSpotProcurement(procurementId: string, body?: {expectedDraftRevision?: number; expectedVersionId?: string}) {
   return postJson<SpotProcurementWriteReadModel>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/submission`
+    `/spot-procurements/${encodeURIComponent(procurementId)}/submission`, body
   );
 }
 

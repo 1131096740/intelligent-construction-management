@@ -392,7 +392,7 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain("历史单据，未按新流程采集");
   });
 
-  it("keeps the procurement application free of supplier, price and tax fields", () => {
+  it("PUR03 keeps request estimates separate from actual supplier and tax facts", () => {
     const workbench = pageSource("SpotProcurementWorkbenchPage.vue");
     const detail = pageSource("SpotProcurementDetailPage.vue");
     const editor = pageSource(
@@ -401,13 +401,13 @@ describe("spot procurement web pages", () => {
 
     expect(workbench).toContain("物资用途及采购原因");
     expect(workbench).toContain("要求采购到位日期");
-    expect(editor).toContain("采购申请只确认材料范围和数量");
-    expect(detail).toContain("价格在付款申请中确定");
+    expect(editor).toContain("规格、单位、数量、预计单价及金额未知可留空");
+    expect(detail).toContain("申请预计与实际采购分开");
     expect(detail).toContain("系统申请单编号");
     expect(`${workbench}\n${editor}`).not.toMatch(
       /fetchVatRateOptions|unitPrice|invoiceMode|vatRateOptionId|supplierName/u
     );
-    expect(`${workbench}\n${detail}\n${editor}`).toContain("最多 2 位小数");
+    expect(editor).toContain("数量（可空，最多4位）");
     expect(`${workbench}\n${detail}\n${editor}`).not.toMatch(/最多\s*6\s*位小数/u);
   });
 
@@ -1000,7 +1000,7 @@ describe("spot procurement web pages", () => {
     expect(procurement).toContain('title: "采购编号"');
     expect(procurement).toContain('title: "申请人 / 采购人"');
     expect(procurement).toContain('title: "材料与原因摘要"');
-    expect(procurement).toContain('title: "关联付款 / 收货"');
+    expect(procurement).toContain('title: "采购待办 / 付款"');
     expect(procurement).toContain('title: "状态 / 当前办理"');
     expect(procurement).toContain('title: "更新时间"');
     expect(procurement).toContain("row.receiptWorkbench.materialSummary");
@@ -1760,7 +1760,7 @@ describe("spot procurement web pages", () => {
 
       expect(spotPageRuntime.submitProcurement).toHaveBeenCalledTimes(1);
       expect(spotPageRuntime.submitProcurement).toHaveBeenCalledWith(
-        "procurement-a"
+        "procurement-a", undefined
       );
       expect(spotPageRuntime.fetchDetail).toHaveBeenCalledTimes(1);
       expect(bindings.actionMessage.value).toBe("采购 B 已加载");

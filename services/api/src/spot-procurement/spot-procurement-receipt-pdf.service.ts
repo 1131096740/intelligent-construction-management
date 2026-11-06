@@ -509,7 +509,7 @@ export class SpotProcurementReceiptPdfService {
         received.receiptRevisionNo !== sourceRevisionNo ||
         received.procurementId !== revision.procurementId ||
         received.procurementVersionId !== revision.procurementVersionId ||
-        !decimalEquals(received.approvedQuantitySnapshot, line.quantity)
+        (line.quantity === null || !decimalEquals(received.approvedQuantitySnapshot, line.quantity))
       ) {
         throw new Error("收货 PDF 明细坐标或审批数量快照不一致");
       }
@@ -530,7 +530,7 @@ export class SpotProcurementReceiptPdfService {
         sortOrder: line.sortOrder,
         materialName: line.materialName,
         specification: line.specification,
-        unit: line.unit,
+        unit: line.unit ?? "待确定",
         frozenUnitPrice:
           line.unitPrice === null
             ? "付款申请确定"

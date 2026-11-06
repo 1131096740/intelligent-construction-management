@@ -1,3 +1,4 @@
+import {runPreparedSpotRequestV2HttpCases} from "./spot-request-v2.http.pg.prepared";
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
@@ -693,6 +694,12 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
         }
       });
     } finally { smsGateway.enabled = false; }
+  }, 60_000);
+
+  (enabled ? it : it.skip)("PUR01新2：未知申请、保存CAS、并联通过只建采购待办及退回旧请求失效（仅准备）", async () => {
+    await runPreparedSpotRequestV2HttpCases({projectId: projectIds.api,
+      request: async (actor, path, method, body) => json(path, {applicant, director, manager}[actor], method, body)
+    });
   }, 60_000);
 
   (enabled && process.env.RUN_POL115_BROWSER === "1" ? it : it.skip)("桌面和手机走真实零采申请页面", async () => {

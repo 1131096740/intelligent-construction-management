@@ -10042,7 +10042,8 @@
             "normalizedKey": "GET /spot-procurements/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
             ]
           },
           {
@@ -11803,7 +11804,8 @@
             "normalizedPath": "/spot-procurements/:param/draft",
             "normalizedKey": "PATCH /spot-procurements/:param/draft",
             "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
             ]
           }
         ],

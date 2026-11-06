@@ -1,3 +1,4 @@
+import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
 import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
 import {isParallelApprovalRound} from "../approval/parallel-approval-protocol";
 import { ForbiddenException, Injectable } from "@nestjs/common";
@@ -150,7 +151,7 @@ export class SpotProcurementAccessService {
     const existingIds = procurements.map((procurement) => procurement.id);
     const versions = await client.spotProcurementVersion.findMany({
       where: { procurementId: { in: existingIds } },
-      select: { id: true, procurementId: true, handlerUserId: true }
+      select: { id: true, procurementId: true, handlerUserId: true, requestProtocolVersion: true }
     });
     const approvals = versions.length
       ? await client.approvalInstance.findMany({
@@ -224,7 +225,11 @@ export class SpotProcurementAccessService {
       actorUserId,
       procurements.map((procurement) => procurement.projectId)
     );
+    for (const [projectId, roles] of effectiveRolesByProjectId) effectiveRolesByProjectId.set(projectId, await currentSpotMaterialRoleKeys(client, actorUserId, roles));
     for (const procurement of procurements) {
+      const current = versions.find(version => version.id === procurement.currentVersionId);
+      if (procurement.status === "approved_in_progress" && current?.requestProtocolVersion === 2 &&
+        (effectiveRolesByProjectId.get(procurement.projectId) ?? []).some(role => role === "material_staff" || role === "material_director")) allowedIds.add(procurement.id);
       const requiredRoles = requiredRolesByProcurementId.get(procurement.id);
       if (
         requiredRoles?.size &&

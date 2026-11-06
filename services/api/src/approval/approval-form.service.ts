@@ -1404,7 +1404,7 @@ export class ApprovalFormService {
           materialName: line.materialName,
           specification: line.specification,
           unit: line.unit,
-          quantity: decimalText(line.quantity),
+          quantity: line.quantity === null ? "待确定" : decimalText(line.quantity),
           note: line.note
         })),
         signatures: {
