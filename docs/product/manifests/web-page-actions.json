@@ -26786,7 +26786,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2344,
+        "sourceLine": 2369,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26851,7 +26851,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2331,
+        "sourceLine": 2356,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -26916,7 +26916,7 @@
         "event": "call",
         "handler": "downloadSpotProcurementApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1479,
+        "sourceLine": 1504,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27176,7 +27176,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementDraftFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1497,
+        "sourceLine": 1522,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27241,7 +27241,7 @@
         "event": "call",
         "handler": "abandonSpotProcurementApplicationWithCapability",
         "kind": "background_call",
-        "sourceLine": 1429,
+        "sourceLine": 1454,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27307,7 +27307,7 @@
         "event": "call",
         "handler": "deletePristineSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1410,
+        "sourceLine": 1435,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27373,7 +27373,7 @@
         "event": "call",
         "handler": "updateSpotProcurementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1369,
+        "sourceLine": 1394,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27640,7 +27640,7 @@
         "event": "call",
         "handler": "recreateSpotProcurementPaymentDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1448,
+        "sourceLine": 1473,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27770,7 +27770,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2243,
+        "sourceLine": 2268,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27836,7 +27836,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2263,
+        "sourceLine": 2288,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27902,7 +27902,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2283,
+        "sourceLine": 2308,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -27968,7 +27968,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1973,
+        "sourceLine": 1998,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -28033,7 +28033,7 @@
         "event": "call",
         "handler": "createSpotProcurementVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1385,
+        "sourceLine": 1410,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28098,7 +28098,7 @@
         "event": "call",
         "handler": "voidSpotProcurementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1463,
+        "sourceLine": 1488,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28163,7 +28163,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2303,
+        "sourceLine": 2328,
         "sourceColumn": 6
       },
       "semantic": "business_write",
