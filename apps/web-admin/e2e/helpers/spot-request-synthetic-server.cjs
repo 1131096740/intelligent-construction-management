@@ -7,7 +7,11 @@ process.umask(0o077);
 for (const key of ['DATABASE_URL','DIRECT_URL','DIRECT_DATABASE_URL','SHADOW_DATABASE_URL']) delete process.env[key];
 Object.assign(process.env,{NODE_ENV:'test',APPROVAL_SMS_ENABLED:'false',AUTH_SMS_ENABLED:'false',SMS_ENABLED:'false'});
 const root = path.resolve(__dirname,'../../../..');
-if (process.cwd() !== path.join(root,'apps/web-admin') || !root.includes('jg-enterprise-task19-spot-request-20261106')) throw Error('Private task19 cwd required');
+const allowedPrivateRoots = new Set([
+ '/private/tmp/jg-enterprise-task19-spot-request-20261106',
+ '/private/tmp/jg-enterprise-integration-20261105-r2'
+]);
+if (path.resolve(process.cwd()) !== path.join(root,'apps/web-admin') || !allowedPrivateRoots.has(root)) throw Error('Exact private task19 or integration cwd required');
 const req = createRequire(path.join(root,'services/api/package.json'));
 const {Prisma}=req('@prisma/client');
 const {Test}=req('@nestjs/testing');
