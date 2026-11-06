@@ -3,24 +3,24 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 718,
-    "classificationOverrideCount": 215,
-    "derivedProductionPageCount": 503,
-    "classificationOverrideSha256": "bf71cfcf21064a241fd96a24a3f003f1d75b900456bfa6a1b8ddd6f0091df6f7",
-    "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
+    "routeCount": 728,
+    "classificationOverrideCount": 217,
+    "derivedProductionPageCount": 511,
+    "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
+    "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
     "usageCounts": {
-      "page": 521,
+      "page": 529,
       "external_takeover": 70,
       "exit_candidate": 90,
-      "internal_task": 37,
+      "internal_task": 39,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 574,
+      "web_api_wrapper": 582,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
-      "operator_endpoint": 35,
+      "operator_endpoint": 37,
       "none": 101
     }
   },
@@ -1314,6 +1314,18 @@
       "path": "/contract-business-scenarios/recommendations",
       "usage": "exit_candidate",
       "reason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:paymentId/existing-source/:type/:id",
+      "usage": "internal_task",
+      "reason": "task16_current_company_finance_or_comprehensive_role_authorized_source_identity_read_only_no_web_consumer_options_to_results_is_user_entry_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/notifications",
+      "usage": "internal_task",
+      "reason": "task16_current_company_role_own_directed_notification_status_read_only_no_dispatch_no_web_consumer_task37_global_ui_pending_not_production_usage_proof"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1552,6 +1564,18 @@
       "path": "/operating-takeovers/historical-wage/scopes/selection-ref",
       "consumerSurface": "operator_endpoint",
       "reason": "pol_219_non_production_historical_wage_takeover_operator_workflow"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/:paymentId/existing-source/:type/:id",
+      "consumerSurface": "operator_endpoint",
+      "reason": "task16_current_company_finance_or_comprehensive_role_authorized_source_identity_read_only_no_web_consumer_options_to_results_is_user_entry_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/payment-executions/notifications",
+      "consumerSurface": "operator_endpoint",
+      "reason": "task16_current_company_role_own_directed_notification_status_read_only_no_dispatch_no_web_consumer_task37_global_ui_pending_not_production_usage_proof"
     }
   ]
 }

@@ -9,8 +9,12 @@ export interface FundAccountSource {
   projectId: string | null;
   previousSourceBatchId?: string | null;
 }
+export interface FundRegisteredPayment { executionId: string; paymentId: string; code: string; amountCents: string; amountYuan: string; paidAt: string; registeredByName: string; openingEvidence: string }
+export interface FundAvailableSource extends Omit<FundAccountSource, "amountYuan"> { amountYuan: string | null; reconciledAmountYuan?: string | null; pendingAllocation?: boolean }
 export interface FundBalanceRegistration {
   id: string;
+  coveredExecutionIds?: string[];
+  coveredPayments?: FundRegisteredPayment[];
   approvalInstanceId: string | null;
   account?: FundAccount;
   projects?: Array<{ id: string; name: string }>;
@@ -47,8 +51,10 @@ export interface FundAccount {
   currentRegistrationId: string | null;
   asOfDate: string | null;
   custodianLabel: string;
-  sources: FundAccountSource[];
-  projectBalances: Array<Pick<FundAccountSource, "projectStatus" | "projectId" | "amountYuan">>;
+  registeredPayments?: FundRegisteredPayment[];
+  unallocatedPaymentAmountYuan?: string;
+  sources: FundAvailableSource[];
+  projectBalances: Array<Pick<FundAvailableSource, "projectStatus" | "projectId" | "amountYuan">>;
   history: FundBalanceRegistration[];
   canRegisterBalance: boolean;
   canRegisterOpening: boolean;
@@ -58,6 +64,7 @@ export interface FundAccount {
 export interface FundAccountsReadModel { accounts: FundAccount[]; projects: Array<{ id: string; name: string }>; notice: string }
 export interface FundReviewCommandInput { expectedApprovalInstanceId: string; idempotencyKey: string; reviewNote: string; selfReviewReason?: string; confirmationPassword?: string }
 export interface RegisterFundBalanceInput {
+  coveredExecutionIds?: string[];
   scopeKey: string;
   balanceYuan: string | null;
   asOfDate: string;

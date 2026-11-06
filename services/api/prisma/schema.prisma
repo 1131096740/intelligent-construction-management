@@ -161,10 +161,13 @@ model HandwrittenSignatureHandoff {
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
 model RegisteredFundAccount {
   id String @id @default(uuid())
+  writeRevision Int @default(0)
   scopeKey String @unique
   kind String
   companyEntityId String? @unique
   company CompanyEntity? @relation(fields: [companyEntityId], references: [id], onDelete: Restrict)
+  registeredPayments RegisteredPaymentFunding[]
+  allocations RegisteredFundPaymentAllocation[]
   registrations FundAccountBalanceRegistration[]
   createdAt DateTime @default(now())
 }
@@ -178,6 +181,7 @@ model FundAccountBalanceRegistration {
   previousRegistrationId String?
   approvalInstanceId String? @unique
   balanceYuan Decimal? @db.Decimal(24,4)
+  coveredExecutionIds String[] @default([])
   asOfDate String
   evidenceReference String
   reconciliationNote String
@@ -193,6 +197,7 @@ model FundAccountBalanceRegistration {
   closeReason String?
   createdAt DateTime @default(now())
   account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  payments RegisteredPaymentFunding[]
   sources FundAccountSourceBatch[]
   @@unique([accountId, version])
   @@unique([id, accountId])
@@ -209,6 +214,7 @@ model FundAccountSourceBatch {
   projectStatus String
   projectId String?
   previousSourceBatchId String?
+  allocations RegisteredFundPaymentAllocation[]
   registration FundAccountBalanceRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
   @@unique([registrationId, lineNo])
 }
@@ -2325,6 +2331,7 @@ model ProjectRosterMember {
 }
 
 model Contract {
+  registeredHistoryRevision RegisteredContractHistoryRevision?
   id                        String    @id @default(uuid())
   projectId                 String
   source                    String    @default("system")
@@ -3395,9 +3402,13 @@ model PaymentExecution {
   amountCents                     BigInt
   paidAt                          DateTime
   executedByUserId                String
-  voucherFileId                   String   @unique
+  voucherFileId                   String?  @unique
   payerAttestationFingerprint     String?
   createdAt                       DateTime @default(now())
+
+  registeredVoucher RegisteredPaymentVoucher?
+  registeredFunding RegisteredPaymentFunding?
+  registeredPaymentEvent RegisteredPaymentEvent?
 
   payableSettlementCases         PayableSettlementCase[]
   payableSettlementAllocations   PayableSettlementAllocation[]
@@ -5757,6 +5768,7 @@ model ApprovalDelegation {
 }
 
 model FileObject {
+  registeredPaymentVouchers RegisteredPaymentVoucher[]
   id                                     String                                @id @default(uuid())
   bucket                                 String
   objectKey                              String
@@ -6761,7 +6773,7 @@ model InterEntityRelationshipEntry {
   approvedPayerSnapshot                 Json
   amountCents                           BigInt
   currencyCode                          String    @default("CNY")
-  evidenceFileId                        String
+  evidenceFileId                        String?
   evidenceClaimId                       String?
   evidenceUploadedByUserId              String?
   evidenceContentSha256                 String?
@@ -7137,4 +7149,67 @@ model SpotPaymentAuditSource {
   projectId String
   procurementId String
   createdAt DateTime @default(now())
+}
+
+// One canonical PaymentExecution; this immutable receipt freezes only funding
+// attribution and the actor's opening-inclusion declaration, never another payment.
+model RegisteredPaymentFunding {
+  executionId String @id
+  operatingLedgerEffectiveDateAtRegistration DateTime? @db.Date
+  actualPayerKind String
+  actualPayerId String
+  actualPayerSnapshot Json
+  accountId String
+  balanceRegistrationId String
+  openingTreatment String
+  openingReason String
+  openingEvidence String
+  contractHistoryConfirmation Json?
+  payloadFingerprint String
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  registration FundAccountBalanceRegistration @relation(fields: [balanceRegistrationId, accountId], references: [id, accountId], onDelete: Restrict)
+  allocations RegisteredFundPaymentAllocation[]
+  @@unique([executionId, accountId])
+}
+
+model RegisteredFundPaymentAllocation {
+  id String @id @default(uuid())
+  executionId String
+  accountId String
+  sourceBatchId String
+  amountCents BigInt
+  funding RegisteredPaymentFunding @relation(fields: [executionId, accountId], references: [executionId, accountId], onDelete: Restrict)
+  account RegisteredFundAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  source FundAccountSourceBatch @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  @@unique([executionId, sourceBatchId])
+  @@index([accountId, sourceBatchId])
+}
+
+// Durable payment source event, committed with the fact and allocations.
+// This is not the approval notification outbox or a delivery receipt.
+model RegisteredPaymentEvent {
+  executionId String @id
+  eventType String @default("payment_execution.registered")
+  payload Json
+  createdAt DateTime @default(now())
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+}
+
+// A later private voucher is evidence for the same immutable payment fact.
+model RegisteredPaymentVoucher {
+  executionId String @id
+  fileId String @unique
+  file FileObject @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  uploadedByUserId String
+  contentSha256 String
+  createdAt DateTime @default(now())
+  execution PaymentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
+}
+
+// Technical serialization coordinate only; never a payment or balance fact.
+model RegisteredContractHistoryRevision {
+  contractId String @id
+  revision BigInt @default(0)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }

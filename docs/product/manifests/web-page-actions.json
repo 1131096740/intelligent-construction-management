@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 414,
-    "pageActionCount": 61,
+    "registeredActionCount": 416,
+    "pageActionCount": 63,
     "backgroundActionCount": 353,
-    "reachableVueFileCount": 208,
+    "reachableVueFileCount": 209,
     "routeRootCount": 74,
-    "totalVueFileCount": 221,
-    "parsedVueFileCount": 221,
-    "reachableProductionModuleCount": 357,
-    "templateEventDirectiveCount": 1321,
+    "totalVueFileCount": 222,
+    "parsedVueFileCount": 222,
+    "reachableProductionModuleCount": 360,
+    "templateEventDirectiveCount": 1334,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 405,
-    "candidateProductionMutationConsumerCount": 405,
-    "acceptedProductionMutationConsumerCount": 405,
-    "productionMutationConsumerPairCount": 405,
+    "coveredProductionMutationConsumerCount": 407,
+    "candidateProductionMutationConsumerCount": 407,
+    "acceptedProductionMutationConsumerCount": 407,
+    "productionMutationConsumerPairCount": 407,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 376,
-    "reachableProductionModuleCount": 357,
-    "totalVueFileCount": 221,
-    "parsedVueFileCount": 221
+    "totalProductionModuleCount": 379,
+    "reachableProductionModuleCount": 360,
+    "totalVueFileCount": 222,
+    "parsedVueFileCount": 222
   },
   "actions": [
     {
@@ -11124,7 +11124,7 @@
         "event": "click",
         "handler": "confirm",
         "kind": "event",
-        "sourceLine": 546,
+        "sourceLine": 568,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11189,7 +11189,7 @@
         "event": "click",
         "handler": "submitOpeningBalance",
         "kind": "event",
-        "sourceLine": 475,
+        "sourceLine": 495,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11258,7 +11258,7 @@
         "event": "click",
         "handler": "submitCorrectionBalance",
         "kind": "event",
-        "sourceLine": 482,
+        "sourceLine": 502,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11327,7 +11327,7 @@
         "event": "click",
         "handler": "returnBalanceCorrection",
         "kind": "event",
-        "sourceLine": 539,
+        "sourceLine": 561,
         "sourceColumn": 10
       },
       "semantic": "business_write",
@@ -11393,7 +11393,7 @@
         "event": "confirm",
         "handler": "withdrawBalanceCorrection",
         "kind": "event",
-        "sourceLine": 560,
+        "sourceLine": 582,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -16654,7 +16654,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalApprove",
         "kind": "event",
-        "sourceLine": 678,
+        "sourceLine": 700,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -16719,7 +16719,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalReject",
         "kind": "event",
-        "sourceLine": 693,
+        "sourceLine": 715,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -16784,7 +16784,7 @@
         "event": "call",
         "handler": "abandonPaymentRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2057,
+        "sourceLine": 2116,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16849,7 +16849,7 @@
         "event": "call",
         "handler": "downloadPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 2081,
+        "sourceLine": 2140,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16914,7 +16914,7 @@
         "event": "call",
         "handler": "delegatePaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2069,
+        "sourceLine": 2128,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16979,7 +16979,7 @@
         "event": "call",
         "handler": "downloadPaymentPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2154,
+        "sourceLine": 2213,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17044,7 +17044,7 @@
         "event": "call",
         "handler": "recordPaymentFinanceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2104,
+        "sourceLine": 2163,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17109,7 +17109,7 @@
         "event": "call",
         "handler": "recordPaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2116,
+        "sourceLine": 2175,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17210,7 +17210,7 @@
         "event": "call",
         "handler": "generatePaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2095,
+        "sourceLine": 2154,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17275,7 +17275,7 @@
         "event": "call",
         "handler": "transferPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2133,
+        "sourceLine": 2192,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17340,7 +17340,7 @@
         "event": "call",
         "handler": "withdrawPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2145,
+        "sourceLine": 2204,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -17405,7 +17405,7 @@
         "event": "confirm",
         "handler": "confirmPaymentExecution",
         "kind": "event",
-        "sourceLine": 708,
+        "sourceLine": 730,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -22436,6 +22436,174 @@
             "localCallChain": [
               "validateProjectUpstreamFundDraftWithDefinition",
               "validateBusinessEntryDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "registered-payment.register",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submit",
+        "kind": "event",
+        "sourceLine": 745,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "registrationPermission.canRegisterPayment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "recordRegisteredPayment",
+          "method": "POST",
+          "path": "/payment-executions/:param/registrations",
+          "normalizedKey": "POST /payment-executions/:param/registrations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payment-executions/:paymentId/registrations",
+            "normalizedKey": "POST /payment-executions/:param/registrations",
+            "controller": "RegisteredPaymentExecutionController",
+            "handler": "record",
+            "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submit",
+              "recordRegisteredPayment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "registered-payment.supplement-voucher",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "saveVoucher",
+        "kind": "event",
+        "sourceLine": 682,
+        "sourceColumn": 12
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "voucherPermission.canSupplementVoucher",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "supplementRegisteredPaymentVoucher",
+          "method": "POST",
+          "path": "/payment-executions/:param/voucher",
+          "normalizedKey": "POST /payment-executions/:param/voucher",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payment-executions/:executionId/voucher",
+            "normalizedKey": "POST /payment-executions/:param/voucher",
+            "controller": "RegisteredPaymentExecutionController",
+            "handler": "attachVoucher",
+            "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveVoucher",
+              "supplementRegisteredPaymentVoucher"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/registered-payment-execution.api.ts",
+          "wrapper": "supplementRegisteredPaymentVoucher",
+          "method": "POST",
+          "path": "/payment-executions/:param/voucher-file-uploads",
+          "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payment-executions/:executionId/voucher-file-uploads",
+            "normalizedKey": "POST /payment-executions/:param/voucher-file-uploads",
+            "controller": "RegisteredPaymentExecutionController",
+            "handler": "uploadVoucher",
+            "sourceFile": "services/api/src/payment/registered-payment-execution.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveVoucher",
+              "supplementRegisteredPaymentVoucher"
             ]
           },
           "ticketFollowups": []

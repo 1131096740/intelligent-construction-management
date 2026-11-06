@@ -42,7 +42,12 @@ export function createFundAccountSyntheticDb() {
       let rows = tables[table].filter(row => matches(row, args.where));
       if (args.orderBy) {
         const [key, direction] = Object.entries(args.orderBy)[0];
-        rows = [...rows].sort((a, b) => String(a[key]).localeCompare(String(b[key]), "zh") * (direction === "desc" ? -1 : 1));
+        rows = [...rows].sort((a, b) => {
+          const left = a[key]; const right = b[key];
+          const leftValue = left instanceof Date ? left.toISOString() : String(left);
+          const rightValue = right instanceof Date ? right.toISOString() : String(right);
+          return leftValue.localeCompare(rightValue, "zh") * (direction === "desc" ? -1 : 1);
+        });
       }
       return rows.map(row => {
         if (table === "registeredFundAccount" && args.include?.registrations) {

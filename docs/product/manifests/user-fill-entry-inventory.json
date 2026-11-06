@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 405,
+    "activeBusinessActionCount": 407,
     "technicalActionCount": 9,
-    "activeBindingCount": 467,
+    "activeBindingCount": 470,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -4921,6 +4921,41 @@
       ],
       "bindingCount": 1,
       "productionConsumerCount": 3,
+      "causalVerified": true
+    },
+    {
+      "id": "registered-payment.register",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /payment-executions/:param/registrations"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "registered-payment.supplement-voucher",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理",
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /payment-executions/:param/voucher",
+        "POST /payment-executions/:param/voucher-file-uploads"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
       "causalVerified": true
     },
     {

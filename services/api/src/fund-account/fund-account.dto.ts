@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsIn, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from "class-validator";
 export class FundAccountSourceDto {
   @IsString({ message: "来源金额请填写数字文本，最多保留四位小数" }) amountYuan!: string;
   @IsIn(["pending", "known"], { message: "请选择出资方已知或待核对" }) sourceStatus!: "pending" | "known";
@@ -19,6 +19,7 @@ export class RegisterFundBalanceDto {
   @IsArray({ message: "来源归属请按明细填写" }) @ValidateNested({ each: true, message: "来源归属明细不正确，请逐项核对" }) @Type(() => FundAccountSourceDto) sources!: FundAccountSourceDto[];
 }
 export class CorrectFundBalanceDto extends RegisterFundBalanceDto {
+  @IsOptional() @IsArray({ message: "请明确本次核对已包含的实付清单" }) @ArrayMaxSize(1000) @IsUUID("4", { each: true, message: "已包含实付引用格式不正确" }) coveredExecutionIds?: string[];
   @IsString({ message: "原登记选择已失效，请刷新账户后核对" }) previousRegistrationId!: string;
 }
 export class ConfirmFundBalanceDto {

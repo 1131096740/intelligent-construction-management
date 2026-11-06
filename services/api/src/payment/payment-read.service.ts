@@ -3,7 +3,12 @@ import type { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
 import { contractClassifications } from "../contract-ledger/contract-classification-read";
-import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { PaymentRequestService } from "./payment-request.service";
+import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
+import { currentRegisteredPaymentDomain } from "./registered-payment-domain";
+import { assertRegisteredPaymentActor } from "./registered-payment-funding";
+import { paymentExecutionVoucherFileId } from "./payment-execution-voucher";
 import type {
   BusinessEntryFrozenSnapshot,
   BusinessEntrySceneDefinition,
@@ -51,7 +56,16 @@ import {
 import { loadSettlementPaymentConfirmationFacts } from "./settlement-confirmation-facts";
 import { PAYMENT_FINANCE_ENTRY_DEFINITION } from "./payment-business-entry-definition";
 
+type RegisteredExecutionCapability = {
+  supportedDomain: boolean;
+  allowedActor: boolean;
+  workflowReady: boolean;
+  canSupplementVoucher: boolean;
+  blockedReason: string | null;
+};
+
 type PaymentDetailLifecycleProjection = {
+  registeredExecutionCapability?: RegisteredExecutionCapability;
   lifecycleKind: "approval_draft" | "formal_record";
   ledgerView: "formal_ledger" | "returned_for_revision" | "ended";
   nextStep: string;
@@ -142,7 +156,9 @@ export class PaymentReadService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional()
-    private readonly projectVisibility?: ProjectVisibilityService
+    private readonly projectVisibility?: ProjectVisibilityService,
+    @Optional()
+    private readonly payments?: PaymentRequestService
   ) {}
 
   private async latestPaymentApproval(paymentId: string) {
@@ -221,7 +237,16 @@ export class PaymentReadService {
           orderBy: { createdAt: "desc" }
         })
       : [];
-    const voucherRows = executions.filter((execution) => execution.voucherFileId);
+    const executionVoucherViews = await Promise.all(
+      executions.map(async (execution) => ({
+        ...execution,
+        voucherFileId: await paymentExecutionVoucherFileId(this.prisma, {
+          id: execution.id,
+          voucherFileId: execution.voucherFileId ?? null
+        })
+      }))
+    );
+    const voucherRows = executionVoucherViews.filter((execution) => execution.voucherFileId);
     const fileIds = Array.from(
       new Set([
         ...voucherRows.map((execution) => execution.voucherFileId as string),
@@ -812,6 +837,45 @@ export class PaymentReadService {
     };
   }
 
+  /** This projection runs only after the existing Detail read authorization.
+   * Domain ownership never depends on actor permission or available funds. */
+  private async registeredDetailCapability(paymentId: string, actorUserId?: string): Promise<RegisteredExecutionCapability | undefined> {
+    if (!this.payments || !actorUserId) return undefined;
+    const capability = await this.prisma.$transaction(async tx => {
+      const unsupported: RegisteredExecutionCapability = { supportedDomain: false, allowedActor: false, workflowReady: false, canSupplementVoucher: false, blockedReason: null };
+      const domain = await currentRegisteredPaymentDomain(tx,paymentId);
+      if (!domain.supportedDomain || !domain.payment) return unsupported;
+      const {payment,version,executions} = domain;
+      let allowedActor = true;
+      try { await assertRegisteredPaymentActor(tx,actorUserId); }
+      catch (error) { if (!(error instanceof ForbiddenException)) throw error; allowedActor = false; }
+      const contract = await tx.contract.findUnique({where:{id:payment.contractId}});
+      const round = await currentRegisteredPaymentApproval(tx,payment.id);
+      const frozenContractReady = Boolean(contract && version && version.contractId === contract.id && contract.projectId === payment.projectId && version.signingSubjectType === "our_company" && version.companyEntityIdSnapshot && version.companyEntityNameSnapshot && version.companyEntityCreditCodeSnapshot);
+      const remaining = (payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents;
+      const workflowReady = frozenContractReady && Boolean(round) && ["approved_pending_payment","partially_paid"].includes(payment.status) && remaining > 0n;
+      let canSupplementVoucher = false;
+      if (allowedActor && executions.length) {
+        const receipts = await tx.registeredPaymentFunding.findMany({where:{executionId:{in:executions.map(row=>row.id)}}});
+        for (const execution of executions) if (receipts.some(row=>row.executionId === execution.id) && await paymentExecutionVoucherFileId(tx,execution) === null) { canSupplementVoucher = true; break; }
+      }
+      const blockedReason = !allowedActor ? "当前账号无统一实付办理权限，请联系有权财务或综合部主管办理"
+        : !frozenContractReady ? "付款申请的冻结主体依据尚未齐备，请核对原资料"
+        : !round ? "当前付款审批尚未通过，请核对最新审批轮次"
+        : !workflowReady ? "当前申请已付清或已关闭，不能新增实付登记" : null;
+      return {supportedDomain:true,allowedActor,workflowReady,canSupplementVoucher,blockedReason};
+    },{isolationLevel:"Serializable"});
+    if (capability.supportedDomain && capability.allowedActor && capability.workflowReady) {
+      try { await this.payments.registeredExecutionOptions(paymentId,actorUserId); }
+      catch (error) {
+        if (error instanceof ForbiddenException) return {...capability,allowedActor:false,canSupplementVoucher:false,blockedReason:"当前账号无统一实付办理权限，请联系有权财务或综合部主管办理"};
+        if (error instanceof ConflictException) return {...capability,workflowReady:false,blockedReason:error.message};
+        throw error;
+      }
+    }
+    return capability;
+  }
+
   async getDetail(
     paymentId: string,
     visibleProjectIds?: string[],
@@ -850,6 +914,7 @@ export class PaymentReadService {
     if (!ledgerVisible && !currentApprovalActor) {
       throw new NotFoundException("未找到付款申请，请刷新付款台账后重试");
     }
+    const registeredExecutionCapability = await this.registeredDetailCapability(payment.id,actorUserId);
 
     const isContractAdvance = payment.sourceType === "contract_advance";
     const isContractLevelPayment = isContractAdvance || payment.sourceType === "contract_due" || !payment.settlementId;
@@ -1269,6 +1334,7 @@ export class PaymentReadService {
       blockedReasons,
       lifecycleUpdatedAt: payment.updatedAt instanceof Date ? payment.updatedAt.toISOString() : null,
       executionCoverages: this.executionCoverages(payment.code, executions, financeRecords, evidenceFiles),
+      ...(registeredExecutionCapability ? {registeredExecutionCapability} : {}),
       traceRules: [
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
@@ -1279,9 +1345,18 @@ export class PaymentReadService {
           : "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
-        "实付登记必须上传付款凭证并写入审计日志"
+        registeredExecutionCapability?.supportedDomain
+          ? registeredExecutionCapability.allowedActor && (registeredExecutionCapability.workflowReady || registeredExecutionCapability.canSupplementVoucher)
+            ? "系统外已实际付款后在统一办理区登记，电子凭证可后补并标待补充；实付及补充均保留审计"
+            : registeredExecutionCapability.blockedReason ?? "当前申请不能新增统一实付登记，请核对原业务状态"
+          : "实付登记必须上传付款凭证并写入审计日志"
       ],
-      executionBlockMessage: this.executionBlockMessage(payment.status, execution.complete),
+      executionBlockMessage: registeredExecutionCapability?.supportedDomain
+        ? !registeredExecutionCapability.allowedActor ? registeredExecutionCapability.blockedReason ?? "请联系有权财务或综合部主管办理"
+          : registeredExecutionCapability.canSupplementVoucher ? "实际付款已经登记，电子凭证可后补；请在统一办理区查看原记录，不重复登记付款。"
+          : registeredExecutionCapability.workflowReady ? "系统外已实际付款后在统一办理区登记金额、实际日期和资金来源；电子凭证可后补并标待补充。"
+          : registeredExecutionCapability.blockedReason ?? "当前申请不能新增统一实付登记，请核对原业务状态"
+        : this.executionBlockMessage(payment.status, execution.complete),
       ...(paymentDirectSummary
         ? { directPaymentSummary: paymentDirectSummary }
         : {}),

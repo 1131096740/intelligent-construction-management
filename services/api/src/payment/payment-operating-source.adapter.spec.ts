@@ -192,6 +192,7 @@ function paymentTx(executionOverrides: Record<string, unknown> = {}) {
     ...executionOverrides
   };
   return {
+    registeredPaymentFunding: { findUnique: jest.fn().mockResolvedValue(null) },
     project: {
       findUnique: jest.fn().mockResolvedValue({
         operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")

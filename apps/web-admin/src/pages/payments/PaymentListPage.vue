@@ -20,6 +20,7 @@
         </t-button>
       </template>
     </BusinessPageHeader>
+    <RegisteredPaymentExecutionPanel />
     <ContractRelationshipLedger initial-section="payments" />
 
 
@@ -226,6 +227,7 @@
 </template>
 
 <script setup lang="ts">
+import RegisteredPaymentExecutionPanel from "./RegisteredPaymentExecutionPanel.vue";
 import { formatUnknownApiError } from "../../api/error-message";
 import ContractRelationshipLedger from "../../components/ContractRelationshipLedger.vue";
 import type { DraftLedgerView } from "@jiangkong/shared-domain";
