@@ -241,6 +241,35 @@ function billFixture(options: {
 }
 
 describe("ContractBillExcelService", () => {
+  it("roundtrips visible net-price v2 Excel without inventing tax and rejects the opposite basis header", async () => {
+    const { service, bill, version, fileService, tx } = billFixture({ rows: [] });
+    Object.assign(bill, { numericProtocolVersion: 2, pricingMode: "tax_exclusive" });
+    Object.assign(version, { defaultTaxRatePercent: null, pricingNature: "unit_price" });
+    const exported = await service.exportDraftTemplate("version-1", "main", "owner-1", "2");
+    const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(exported.buffer as never);
+    const sheet = workbook.getWorksheet(DATA_SHEET)!;
+    const labels = sheet.getRow(1).values as string[];
+    expect(labels).toContain("不含税单价(元)");
+    expect(labels).not.toContain("含税单价(元)");
+    sheet.addRow(["", "不含税材料", "", "吨", "1.2345", "1.2345", "", "否", ""]);
+    sheet.addRow(["", "待补价格", "", "吨", "1.0000", null, "", "否", ""]);
+    sheet.addRow(["", "真实零价格", "", "吨", "1.0000", "0.0000", "", "否", ""]);
+    jest.mocked(fileService.getFileBuffer).mockResolvedValue({ buffer: Buffer.from(await workbook.xlsx.writeBuffer()) } as never);
+    const preview = await service.previewDraftImport("version-1", "main", "owner-1", { fileId: "file-net", numericProtocolVersion: 2 });
+    expect(preview.errors).toEqual([]);
+    expect(preview.rows[0]).toMatchObject({ quantity: "1.2345", unitPrice: "1.2345" });
+    expect(preview.rows[1]).toMatchObject({ quantity: "1", unitPrice: "" });
+    expect(preview.rows[2]).toMatchObject({ quantity: "1", unitPrice: "0" });
+    expect(preview.rows[2]).not.toHaveProperty("taxRatePercent");
+    expect(version.defaultTaxRatePercent).toBeNull();
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    sheet.getRow(1).getCell(6).value = "含税单价(元)";
+    jest.mocked(fileService.getFileBuffer).mockResolvedValue({ buffer: Buffer.from(await workbook.xlsx.writeBuffer()) } as never);
+    const wrong = await service.previewDraftImport("version-1", "main", "owner-1", { fileId: "file-opposite", numericProtocolVersion: 2 });
+    expect(wrong.errors.some(error => error.message.includes("金额口径不一致"))).toBe(true);
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+  });
+
   it("previews explicit v2 draft Excel through HTTP with four-place values and no database writes", async () => {
     const { service, fileService, tx, version } = billFixture({ rows: [] });
     Object.assign(version, { defaultTaxRatePercent: new Prisma.Decimal(0) });

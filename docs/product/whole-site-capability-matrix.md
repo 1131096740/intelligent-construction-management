@@ -7,18 +7,18 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `6fd6ae4daa872b9a88240581fc9b4e5dea78f77d2624c8d089ae8c1ca9d55ce3` |
-| webApiWrappers | ready | `f16c3ed20a36949d55029b02f34e4593e739a988d740be95129c152f9254d45f` |
-| webPageActions | ready | `6d27ded277ed10b8f2d6173aafc7d985049ab37432e79769aad69fcd3aadf037` |
-| routeUsage | ready | `a117a75725d84ce98d4f33b992768a1f246f503d0acc4e1ab9e6a9dbd8d0f5d4` |
+| webApiWrappers | ready | `c5db735a29963d0e17b363652dae9e98bd636d1a72ca936039d8b14a769ecd02` |
+| webPageActions | ready | `b9ed0ae980b638327ffcb8ff221d4c08de439f5af2fff660d45cfff390372a93` |
+| routeUsage | ready | `75538dfeb499dcf16776b5aa715603749f7bdc509673dbabad939e19e9f6175c` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 709 |
-| pageRouteCount | 514 |
+| pageRouteCount | 512 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 88 |
+| exitCandidateRouteCount | 90 |
 | internalTaskRouteCount | 37 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 702 |
@@ -83,9 +83,9 @@
 | GET | /company-transfers/export | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#exportCompanyTransfers | — | not_applicable | — |
 | GET | /contract-bank-verifications | page | web_api_wrapper | apps/web-admin/src/api/contract-bank-verification.api.ts#fetchBankVerifications | — | not_applicable | — |
 | GET | /contract-bills/:billId/excel-template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-business-scenarios/available | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listAvailableContractBusinessScenarios | — | not_applicable | — |
+| GET | /contract-business-scenarios/available | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#listAvailableContractBusinessScenarios | — | not_applicable | — |
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
-| GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
+| GET | /contract-business-scenarios/recommendations | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/export | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#exportContractDraftBill | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/save-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftSaveResult | — | not_applicable | — |

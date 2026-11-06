@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "f16c3ed20a36949d55029b02f34e4593e739a988d740be95129c152f9254d45f",
+      "sha256": "c5db735a29963d0e17b363652dae9e98bd636d1a72ca936039d8b14a769ecd02",
       "status": "ready",
       "summary": {
         "apiModuleCount": 41,
@@ -32,7 +32,7 @@
         "mainRequestBindingCount": 702,
         "ticketFollowupCount": 4,
         "requestEdgeCount": 690,
-        "productionConsumerCount": 578,
+        "productionConsumerCount": 576,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "6d27ded277ed10b8f2d6173aafc7d985049ab37432e79769aad69fcd3aadf037",
+      "sha256": "b9ed0ae980b638327ffcb8ff221d4c08de439f5af2fff660d45cfff390372a93",
       "status": "ready",
       "summary": {
         "registeredActionCount": 408,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 220,
         "parsedVueFileCount": 220,
         "reachableProductionModuleCount": 355,
-        "templateEventDirectiveCount": 1303,
+        "templateEventDirectiveCount": 1293,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 399,
         "candidateProductionMutationConsumerCount": 399,
@@ -64,29 +64,29 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "a117a75725d84ce98d4f33b992768a1f246f503d0acc4e1ab9e6a9dbd8d0f5d4",
+      "sha256": "75538dfeb499dcf16776b5aa715603749f7bdc509673dbabad939e19e9f6175c",
       "status": "ready",
       "summary": {
         "routeCount": 709,
         "exactRouteCount": 709,
         "normalizedRouteCount": 709,
-        "classificationOverrideCount": 213,
+        "classificationOverrideCount": 215,
         "consumerSurfaceOverrideCount": 38,
-        "classificationOverrideSha256": "0c1e6ff2a25e48ed9fa78c0dd797e84af2a1732fb5fd033b69d1ff1db638fa4a",
+        "classificationOverrideSha256": "bf71cfcf21064a241fd96a24a3f003f1d75b900456bfa6a1b8ddd6f0091df6f7",
         "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
-        "derivedProductionPageCount": 496,
-        "pageRouteCount": 514,
+        "derivedProductionPageCount": 494,
+        "pageRouteCount": 512,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 88,
+        "exitCandidateCount": 90,
         "internalTaskCount": 37,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 567,
+          "web_api_wrapper": 565,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 35,
-          "none": 99
+          "none": 101
         },
         "blockerCount": 0
       }
@@ -94,9 +94,9 @@
   },
   "summary": {
     "routeCount": 709,
-    "pageRouteCount": 514,
+    "pageRouteCount": 512,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 88,
+    "exitCandidateRouteCount": 90,
     "internalTaskRouteCount": 37,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 702,
@@ -1507,7 +1507,8 @@
           "normalizedKey": "GET /business-parties",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
+            "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
@@ -2162,8 +2163,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
@@ -2172,9 +2173,7 @@
           "path": "/contract-business-scenarios/available?projectId=:param",
           "normalizedKey": "GET /contract-business-scenarios/available",
           "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
           ]
@@ -2249,8 +2248,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
@@ -2259,9 +2258,7 @@
           "path": "/contract-business-scenarios/recommendations?:param",
           "normalizedKey": "GET /contract-business-scenarios/recommendations",
           "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
           ]

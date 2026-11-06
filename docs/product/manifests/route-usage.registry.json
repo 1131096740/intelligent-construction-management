@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 709,
-    "classificationOverrideCount": 213,
-    "derivedProductionPageCount": 496,
-    "classificationOverrideSha256": "0c1e6ff2a25e48ed9fa78c0dd797e84af2a1732fb5fd033b69d1ff1db638fa4a",
+    "classificationOverrideCount": 215,
+    "derivedProductionPageCount": 494,
+    "classificationOverrideSha256": "bf71cfcf21064a241fd96a24a3f003f1d75b900456bfa6a1b8ddd6f0091df6f7",
     "consumerSurfaceOverrideSha256": "3b71acbbd5b304d3589ced222d0c7f364ddea35efbc235f2791f093fcd951a60",
     "usageCounts": {
-      "page": 514,
+      "page": 512,
       "external_takeover": 70,
-      "exit_candidate": 88,
+      "exit_candidate": 90,
       "internal_task": 37,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 567,
+      "web_api_wrapper": 565,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 35,
-      "none": 99
+      "none": 101
     }
   },
   "overrides": [
@@ -1302,6 +1302,18 @@
       "path": "/settlements/:settlementId/approval-reminder",
       "usage": "exit_candidate",
       "reason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/available",
+      "usage": "exit_candidate",
+      "reason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/recommendations",
+      "usage": "exit_candidate",
+      "reason": "task09_CON09_manual_selection_replaces_recommendation_test_only_read_candidate_no_deletion_authorization"
     }
   ],
   "consumerSurfaceOverrides": [

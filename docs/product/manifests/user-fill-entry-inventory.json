@@ -12,7 +12,7 @@
     "technicalActionCount": 9,
     "activeBindingCount": 461,
     "retiredWriteEntryCount": 78,
-    "retainedReadonlyExitCount": 10,
+    "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
     "blockerCount": 0
@@ -7216,6 +7216,20 @@
     }
   ],
   "readonlyLegacyEntries": [
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/available",
+      "controller": "ContractTemplateController",
+      "handler": "listAvailableScenarios",
+      "status": "readonly"
+    },
+    {
+      "method": "GET",
+      "path": "/contract-business-scenarios/recommendations",
+      "controller": "ContractTemplateController",
+      "handler": "recommendScenarioTemplates",
+      "status": "readonly"
+    },
     {
       "method": "GET",
       "path": "/contract-workbench",

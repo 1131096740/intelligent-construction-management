@@ -15,6 +15,26 @@ import {
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it("excludes pending new drafts from formal options while retaining a real effective version beside a pending change", async () => {
+    const prisma = {
+      contract: { findMany: jest.fn().mockResolvedValue([
+        { id: "pending", name: "未提交", code: null, temporaryCode: "草稿", contractTypeKey: "other", source: "system" },
+        { id: "effective", name: "有效原合同", code: "HT-真实编号", temporaryCode: null, contractTypeKey: "material_purchase", source: "system" }
+      ]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([
+        { id: "pending-v1", contractId: "pending", versionNo: 1, status: "draft", signingSubjectType: "draft_unconfirmed", amountCents: 0n },
+        { id: "effective-v2", contractId: "effective", versionNo: 2, status: "draft", signingSubjectType: "draft_unconfirmed", amountCents: 0n },
+        { id: "effective-v1", contractId: "effective", versionNo: 1, status: "effective", signingSubjectType: "our_company", amountCents: 12345n }
+      ]) },
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ContractReadService(prisma as never);
+    const options = await service.listCreateOptions("project-1");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({ contractId: "effective", contractVersionId: "effective-v1", amountCents: "12345", paymentSubjectType: "our_company" });
+  });
+
   it("negotiates v2 draft list/detail HTTP amounts and never presents the draft's placeholder as financial capacity", async () => {
     const now = new Date("2026-11-05T02:00:00.000Z");
     const contract = { id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", code: null, temporaryCode: "草稿一", name: "精确金额草稿", counterparty: "合成单位", updatedAt: now };

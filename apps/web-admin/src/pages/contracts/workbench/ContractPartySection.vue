@@ -4,7 +4,7 @@
       合作单位与角色
     </h2>
     <p class="section-hint">
-      从一阶段合作单位档案中选择，或录入临时快照。资质附件引用与有效期用于归档校验。
+      甲方、乙方可搜索已有单位，或直接填写本合同使用的名称；不会自动创建共用单位档案。
     </p>
 
     <div class="party-list">
@@ -88,6 +88,13 @@
       </p>
 
       <div class="party-fields">
+        <label class="field">
+          <span class="field-label">搜索已有单位</span>
+          <t-input v-model="partySearch" :disabled="disabled || busy" placeholder="输入单位名称或信用代码" />
+          <t-button variant="outline" :disabled="disabled || searching" :loading="searching" @click="searchParties">搜索已有单位</t-button>
+          <t-select v-if="partyOptions.length" :options="partyOptions" :disabled="disabled" placeholder="选择后带入当前合同名称" @change="useSearchedParty" />
+          <span v-if="searchMessage" class="section-hint">{{ searchMessage }}</span>
+        </label>
         <label class="field">
           <span class="field-label">合同角色</span>
           <t-select
@@ -189,6 +196,7 @@
 import { computed, reactive, ref } from "vue";
 import {
   fetchContractDraftOperationCapabilities,
+  listBusinessParties,
   uploadContractWorkbenchPrivateFile,
   type ContractDraftPartyModel
 } from "../../../api/contract-workbench.api";
@@ -239,7 +247,6 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const roleOptions = Object.entries(ROLE_LABELS)
-  .filter(([value]) => value !== "party_a")
   .map(([value, label]) => ({ label, value }));
 const ATTACHMENT_LABELS: Record<string, string> = {
   business_license: "营业执照",
@@ -359,6 +366,33 @@ const attachmentCards = reactive<AttachmentCard[]>([
     ]
   }
 ]);
+const partySearch = ref("");
+const searching = ref(false);
+const searchMessage = ref("");
+const partyCandidates = ref<Array<{ id: string; name: string; unifiedSocialCreditCode?: string }>>([]);
+const partyOptions = computed(() => partyCandidates.value.map(party => ({ value: party.id, label: party.name })));
+async function searchParties() {
+  searching.value = true;
+  searchMessage.value = "";
+  try {
+    const result = await listBusinessParties(partySearch.value);
+    partyCandidates.value = result.flatMap(value => {
+      if (!value || typeof value !== "object") return [];
+      const party = value as Record<string, unknown>;
+      return party.status === "active" && typeof party.id === "string" && typeof party.name === "string"
+        ? [{ id: party.id, name: party.name, ...(typeof party.unifiedSocialCreditCode === "string" ? { unifiedSocialCreditCode: party.unifiedSocialCreditCode } : {}) }] : [];
+    });
+    if (!partyCandidates.value.length) searchMessage.value = "未找到可用单位，可直接填写当前合同名称。";
+  } catch { searchMessage.value = "单位搜索失败，已保留填写内容，可重试或直接填写名称。"; }
+  finally { searching.value = false; }
+}
+function useSearchedParty(value: string) {
+  const party = partyCandidates.value.find(party => party.id === value);
+  if (!party || props.disabled) return;
+  form.name = party.name;
+  form.unifiedSocialCreditCode = party.unifiedSocialCreditCode ?? "";
+  searchMessage.value = "已带入当前合同，其他资料请按实际约定核对。";
+}
 const busy = ref(false);
 const message = ref("");
 const deleteVisible = ref(false);

@@ -40,6 +40,48 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
   const integrationTest =
     process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1" ? it : it.skip;
 
+  // Task 09 PREPARED ONLY: no resource/SQL execution is authorised in this run.
+  integrationTest("creates a pending v2 draft without a legacy template and preserves its four-place or unknown facts under the real subject CHECK", async () => {
+    const client = new PrismaClient({ datasources: { db: { url: contractDraftAggregateDatabaseUrl(process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL) } } });
+    const ids = makeIds("task09-new-v2");
+    const audit = new AuditService();
+    let created = false;
+    try {
+      await client.user.create({ data: { id: ids.owner, name: "新合同合成经办人" } });
+      await client.project.create({ data: { id: ids.project, code: `DRAFT-09-${randomUUID()}`, name: "新合同合成项目" } });
+      const contracts = new ContractService(client as never, audit);
+      const result = await contracts.createDraft({ numericProtocolVersion: 2, projectId: ids.project, contractTypeKey: "other", relationship: "upward" }, ids.owner);
+      ids.contract = result.contract.id; ids.version = result.version.id; created = true;
+      const bill = await client.contractBill.findFirstOrThrow({ where: { contractVersionId: ids.version } }); ids.billA = bill.id;
+      const workbench = new ContractWorkbenchService(client as never, audit);
+      const aggregate = new ContractDraftAggregateService(client as never, workbench, new ContractBillService(client as never, audit), new BusinessPartyService(client as never, audit), { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
+      const initial = await aggregate.getWorkbench(ids.version, ids.owner, "2");
+      expect(initial.version).toMatchObject({ signingSubjectType: "draft_unconfirmed", amountYuan: null, amountCents: null, businessTemplateVersionId: null });
+      expect(initial.bills).toHaveLength(1); expect(initial.paymentTerms).toMatchObject({ originalText: "", stages: [] });
+      const lease = await new ContractDraftEditLeaseService(client as never, {} as never, audit).acquire(ids.version, ids.owner);
+      const base = aggregateInput(randomUUID());
+      await aggregate.saveAggregate(ids.version, ids.owner, lease.token, { ...base, changedSections: ["draft", "bills"], draft: { ...base.draft,
+        numericProtocolVersion: 2, manualAmountYuan: "1.5340", manualAmountCents: undefined,
+        draftData: { contractName: "仅保存未完整的新合同", contractBasics: { businessType: "other", relationship: "upward", amountBasis: "tax_exclusive", invoiceStatus: "none" } }
+      }, bills: [{ billKey: "main", expectedRevision: 1, numericProtocolVersion: 2, rows: [] }] });
+      const saved = await aggregate.getWorkbench(ids.version, ids.owner, "2");
+      expect(saved.version).toMatchObject({ amountYuan: "1.5340", amountCents: "153", status: "draft" });
+      expect(saved.parties).toEqual([]); expect(saved.version.taxFacts.defaultTaxRatePercent).toBeNull();
+      expect(saved.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+      await expect(client.contractVersion.update({ where: { id: ids.version }, data: { status: "effective" } })).rejects.toThrow();
+      expect((await aggregate.getWorkbench(ids.version, ids.owner, "2")).version.status).toBe("draft");
+    } finally {
+      if (created) {
+        const terms = await client.paymentTermsVersion.findMany({ where: { contractVersionId: ids.version }, select: { id: true } });
+        await client.paymentTermsStage.deleteMany({ where: { paymentTermsVersionId: { in: terms.map(term => term.id) } } });
+        await client.paymentTermsVersion.deleteMany({ where: { contractVersionId: ids.version } });
+        await client.auditLog.deleteMany({ where: { businessId: ids.contract } });
+      }
+      await cleanupDraft(client, ids);
+      await client.$disconnect();
+    }
+  });
+
   // PREPARED / NOT RUN: requires separately authorised migrations/resources.
   // Real domain services + PG + public HTTP; synthetic actor injection exercises
   // draft ownership, not production login or global permission guard wiring.

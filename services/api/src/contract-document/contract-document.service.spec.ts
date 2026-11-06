@@ -576,6 +576,62 @@ describe("ContractDocumentService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("requires an explicitly saved template for a new pending draft instead of falling back to a built-in layout", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    Object.assign(version, { numericProtocolVersion: 2, signingSubjectType: "draft_unconfirmed", businessTemplateVersionId: null, layoutTemplateVersionId: null,
+      draftData: { contractName: "完整基础资料的新合同", contractBasics: { relationship: "inside", businessType: "material_purchase", amountBasis: "tax_inclusive" } } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    tx.contractPartySnapshot.findMany.mockResolvedValue([{ roleKey: "party_a", snapshot: { name: "甲方" } }, { roleKey: "party_b", snapshot: { name: "乙方" } }] as never);
+    Object.assign(await tx.contract.findUnique({ where: { id: "contract-1" } }), { projectId: "project-1" });
+    const { service } = makeService(tx);
+    await expect(service.queue("version-1", "owner-1", { layoutTemplateVersionId: "layout-1", purpose: "draft" })).rejects.toThrow("请选择并保存模板");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("uses the current draft name in queued render facts without rewriting the parent contract", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    const parent = await tx.contract.findUnique({ where: { id: "contract-1" } });
+    const originalName = parent.name;
+    Object.assign(version, { draftData: { ...version.draftData, contractName: "仅本次草稿的新名称" } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const { service } = makeService(tx);
+    await service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 });
+    expect(tx.contractGeneratedDocument.create.mock.calls[0][0].data.inputSnapshot.renderInput.values["contract.name"])
+      .toBe("仅本次草稿的新名称");
+    expect(parent.name).toBe(originalName);
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps incomplete basic information as a draft but locates the five key facts before generation", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    Object.assign(version, { draftData: { contractBasics: { amountBasis: "tax_inclusive" } } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const { service } = makeService(tx);
+    await expect(service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 }))
+      .rejects.toThrow("生成前请补充：");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("refuses a tax-exclusive v2 draft preview before document, version or audit writes while its renderer has inclusive labels", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
+    Object.assign(version, { numericProtocolVersion: 2, draftData: { ...version.draftData, contractBasics: { amountBasis: "tax_exclusive" } } });
+    tx.contractVersion.findUnique.mockResolvedValue(version);
+    const { service } = makeService(tx);
+    await expect(service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 }))
+      .rejects.toThrow("不含税草稿文书尚待模板口径核对");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("queues the saved current revision as an idempotent draft preview command", async () => {
     const tx = makeTx();
     const { service } = makeService(tx);

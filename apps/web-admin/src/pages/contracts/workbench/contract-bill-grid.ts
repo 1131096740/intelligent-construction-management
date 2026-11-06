@@ -4,6 +4,7 @@ import {
   normalizeBusinessAmount,
   businessAmountFromLegacyCents,
   calculateBusinessLineTaxAmounts,
+  calculateBusinessLineAmount,
   sumBusinessAmounts,
   type DetailActionReadModel
 } from "@jiangkong/shared-domain";
@@ -674,6 +675,9 @@ export function previewBillRowGross(row: ContractBillCandidateRow, bill: Workben
     } catch { return { value: null, invalid: true, historical: true }; }
   }
   try {
+    if (bill.numericProtocolVersion === 2 && bill.pricingMode === "tax_exclusive") {
+      return { value: calculateBusinessLineAmount(row.quantity || null, row.unitPrice || null), invalid: false, historical: false };
+    }
     if (fourDecimalInputMessage(row.quantity, "数量", true) || fourDecimalInputMessage(row.unitPrice, "含税单价", false)) return { value: null, invalid: true, historical: false };
     const value = calculateBusinessLineTaxAmounts(row.quantity || null, row.unitPrice || null, effectiveTaxRate(row, bill) || null).taxInclusiveAmountYuan;
     return { value, invalid: false, historical: false };
@@ -682,6 +686,8 @@ export function previewBillRowGross(row: ContractBillCandidateRow, bill: Workben
 export function previewBillGross(rows: readonly ContractBillCandidateRow[], bill: WorkbenchBill): string {
   const values = rows.map(row => previewBillRowGross(row, bill));
   if (values.some(value => value.invalid)) return "请先修改输入";
+  const known = values.flatMap(value => value.value === null ? [] : [value.value]);
+  if (known.length > 0 && known.length < values.length) return `部分已知 ${sumBusinessAmounts(known)} 元，部分金额待确定`;
   const amount = sumBusinessAmounts(values.map(value => value.value));
   return amount === null ? "待确定" : `${amount} 元`;
 }
