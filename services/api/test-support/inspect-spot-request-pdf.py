@@ -7,7 +7,7 @@ from pathlib import Path
 import pymupdf
 from fontTools.ttLib import TTFont
 from fontTools.cffLib import CFFFontSet
-from fontTools.pens.recordingPen import RecordingPen
+from fontTools.pens.boundsPen import BoundsPen
 
 pdf_path, kind, output = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
 if kind not in ["known", "unknown"]: raise ValueError("Explicit fixture kind required")
@@ -46,9 +46,10 @@ for page_no, page in enumerate(pdf):
             outlines_found = []
             for outlines, order in candidates:
                 if gid >= len(order): continue
-                pen = RecordingPen()
+                pen = BoundsPen(outlines)
                 outlines[order[gid]].draw(pen)
-                outlines_found.append(bool(pen.value))
+                bounds = pen.bounds
+                outlines_found.append(bounds is not None and bounds[2] > bounds[0] and bounds[3] > bounds[1])
             if not any(outlines_found): empty.append({"code": code, "glyph": gid})
             checked.add((span["font"], gid))
     if abs(page.rect.width - 595.28) > 1 or abs(page.rect.height - 841.89) > 1: failures.append("NOT_A4_PORTRAIT")
