@@ -24,6 +24,10 @@ function nativeAdapters() {
       return startTask01Postgres({ ...resourceOptions, runId: context.runId, sourceSha: context.source.candidateSha,
         artifactsDir: path.join(context.options.artifactsDir, "resource-private"), ownerPassword: context.credentials.owner, signal: context.signal });
     },
+    async verifyOwnerTransport(context, command) {
+      const { verifyTask16OwnerTls } = require("./task16-owner-tls.cjs");
+      return verifyTask16OwnerTls(context, command);
+    },
     async migrateBaseline(context, command, processBoundary) {
       const { migrateTask16Baseline } = require("./task16-baseline-migrations.cjs");
       return migrateTask16Baseline(context, command, processBoundary);
@@ -74,9 +78,14 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     }
   }
 
+  if (injectedAdapters?.verifyOwnerTransport && typeof injectedAdapters.verifyOwnerTransport === "object" && Object.keys(injectedAdapters.verifyOwnerTransport).join(",") === "command" && typeof injectedAdapters.verifyOwnerTransport.command === "function") {
+    const command = injectedAdapters.verifyOwnerTransport.command;
+    adapters.verifyOwnerTransport = context => nativeAdapters().verifyOwnerTransport(context, command);
+  }
+
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
-    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED" };
+    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED", ownerRestorationOutcome: "NOT_NEEDED", ownerPrivateErasureOutcome: "NOT_NEEDED" };
   const controller = new AbortController();
   const onCallerAbort = () => controller.abort();
   const context = { options, runId: randomUUID(), signal: controller.signal, readOnlyCommand: simulation ? injectedAdapters.readOnlyCommand : undefined,
@@ -104,6 +113,8 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     context.resource = await stage("startResource");
     need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
     context.ownerTransport = await stage("verifyOwnerTransport");
+    if (context.ownerTransport?.ownerPrivateErasureOutcome === "ERASED") receipt.ownerPrivateErasureOutcome = "ERASED";
+    if (context.ownerTransport?.ownerRestorationOutcome === "CORRECT_PRESENTATION_RESTORED") receipt.ownerRestorationOutcome = "CORRECT_PRESENTATION_RESTORED";
     receipt.migrationOutcome = "UNKNOWN_DO_NOT_RETRY";
     context.migrations = await stage("migrateBaseline");
     receipt.migrationOutcome = "MIGRATION_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
@@ -123,6 +134,8 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
+    if (["NOT_NEEDED", "PENDING", "ERASED", "UNKNOWN_DO_NOT_CONTINUE"].includes(error?.ownerPrivateErasureOutcome)) receipt.ownerPrivateErasureOutcome = error.ownerPrivateErasureOutcome;
+    if (["NOT_NEEDED", "RESTORE_REQUIRED", "CORRECT_PRESENTATION_RESTORED", "UNKNOWN_DO_NOT_CONTINUE"].includes(error?.ownerRestorationOutcome)) receipt.ownerRestorationOutcome = error.ownerRestorationOutcome;
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.migrationOutcome)) receipt.migrationOutcome = error.migrationOutcome;
     receipt.failureCode = typeof error?.code === "string" && /^(?:TASK16|TASK01)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_DRIVER_STAGE_FAILED";
   } finally {

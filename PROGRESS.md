@@ -1,3 +1,8 @@
+## 任务16 B4 owner TLS 源码准备（2026-11-08，未提交）
+
+- [~] 从准确4d07c5c1独立准备owner阶段/专用三模式probe，固定资源/CA/源码/工具/五runtime树与双通道DB身份；CA/SAN/明文具体拒绝、SAN恢复及私有擦除首败保留。初版107模拟/静态后，Standards擦除unknown被目录清理覆盖P2已公开红绿补修；原107＋新增1＝108模拟、原CLI25及两受影响CJS语法/lint通过，增量独立复核待主控。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-owner-tls-local.md)。
+- [ ] native仍缺六能力、资源前闭门；本片未实际运行SQL/TLS/probe/Prisma/进程清理，#398和17/24、16/42/44门保持。未提交推送/合main/部署生产；下方B3远端误触发事故历史保留，今后提交与最终pushHEAD须[skip ci]。
+
 ## 当前接续（2026-11-08，B3自动CI事故已停止并登记）
 
 - [~] B3源码合入`27d14904`、文档头`fe70bb931e1dfba344d585acb311247f6156f292`的本机独立82模拟＋原CLI25、六语法/定向lint通过；后继仅事故收据及本账本文档，六源码未变，不重跑或冒新源码验收。[B3整合](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-migrations-integrated.md)。
