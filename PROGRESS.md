@@ -1,3 +1,8 @@
+## 当前接续（2026-11-07，任务16离线准备工具已本地整合）
+
+- [~] 离线CLI作者提交88b4304f已独立合入中央 `b36e3e530b41af66b1be0972bc652be6d0230331`；中央Node20双语法及原25公开CLI新跑全过，准确干净b36源码prepare/verify通过（3253源码/202迁移/七SQL/一静态案件）。本次新增整合文档不冒b36封包覆盖后继SHA；后继准确封包见外部收据。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-offline-packet-integrated.md)。
+- [ ] 仅source-only工具入integration，未推送、合main或关票；#398仍OPEN、17/24阻塞、13/45不变，16/42/44真实PG门保留，无SQL/PG/资源/真实业务/部署/生产操作。任务10仍私有实施，12等待10。下方未提交状态为原历史，不代表本次工具仍未整合。
+
 ## 当前接续（2026-11-07，任务16离线准备工具，本地）
 
 - [~] 用户已确认的专用prepare/verify CLI已实现：准确Git源码/202迁移/七片SQL/唯一静态case-handler绑定、外部包SHA及篡改拒绝。Node20语法与25项公开CLI测试通过，准确95a源码实际prepare/verify通过；属主执行位两向RED→GREEN、旧23/旧包均保留。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-offline-packet-local.md)。
