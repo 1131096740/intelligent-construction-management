@@ -4,6 +4,13 @@
 // Native execution remains disabled until every required adapter is implemented
 // and independently reviewed. Source packets and approval-reference strings are
 // not authority to create resources or execute SQL.
+const Module = require("node:module");
+const EARLY_LOADER = Object.freeze({
+ freshCli: require.main===module && process.argv[1]===__filename && process.execArgv.length===0 && !process.env.NODE_OPTIONS && !process.env.NODE_PATH && !(process._preload_modules?.length) && Object.keys(require.cache).every(file=>file===__filename),
+ hooks:Object.freeze({load:Module._load,resolve:Module._resolveFilename,find:Module._findPath,require:Module.prototype.require,extensions:Object.freeze(Object.fromEntries([".js",".json",".node"].map(ext=>[ext,Module._extensions[ext]])))})
+});
+const EARLY_DRIVER_SHA=require("./task16-runtime-inputs.cjs").readQualifiedTask16File(__filename,{maxBytes:64*1024*1024,code:"TASK16_DRIVER_SOURCE_FILE"}).sha256;
+let nativeAttempted=false;
 const path = require("node:path");
 const { randomBytes, randomUUID } = require("node:crypto");
 
@@ -43,6 +50,10 @@ function nativeAdapters() {
     async installRegisteredAccess(context) {
       const {installTask16RegisteredAccess}=require("./task16-registered-access.cjs");
       return installTask16RegisteredAccess(context);
+    },
+    async connectRestrictedClients(context,boundary) {
+      const {connectTask16RestrictedClients}=require("./task16-restricted-clients.cjs");
+      return connectTask16RestrictedClients(context,boundary);
     }
     // Unimplemented stages are absent, never no-op functions returning success.
   };
@@ -88,13 +99,23 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     adapters.verifyOwnerTransport = context => nativeAdapters().verifyOwnerTransport(context, command);
   }
 
+  if(injectedAdapters?.connectRestrictedClients && typeof injectedAdapters.connectRestrictedClients==="object") {
+    const boundary=injectedAdapters.connectRestrictedClients;
+    if(Object.keys(boundary).sort().join(",")==="command,createClient"&&[boundary.command,boundary.createClient].every(fn=>typeof fn==="function")) {
+      const fixed={command:boundary.command,createClient:boundary.createClient};
+      adapters.connectRestrictedClients=context=>nativeAdapters().connectRestrictedClients(context,fixed);
+    }
+  }
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
-    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED", ownerRestorationOutcome: "NOT_NEEDED", ownerPrivateErasureOutcome: "NOT_NEEDED", baselineAccessOutcome: "NOT_ATTEMPTED", registeredAccessOutcome: "NOT_ATTEMPTED" };
+    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED", ownerRestorationOutcome: "NOT_NEEDED", ownerPrivateErasureOutcome: "NOT_NEEDED", baselineAccessOutcome: "NOT_ATTEMPTED", registeredAccessOutcome: "NOT_ATTEMPTED", clientConnectionOutcome:"NOT_ATTEMPTED", clientCleanupOutcome:"NOT_NEEDED" };
   const controller = new AbortController();
   const onCallerAbort = () => controller.abort();
   const context = { options, runId: randomUUID(), signal: controller.signal, readOnlyCommand: simulation ? injectedAdapters.readOnlyCommand : undefined,
     credentials: { owner: randomBytes(48).toString("hex"), runtime: randomBytes(48).toString("hex"), observer: randomBytes(48).toString("hex") } };
+  Object.defineProperties(context,{nativeLoaderFacts:{value:EARLY_LOADER,writable:false},simulation:{value:simulation,writable:false}});
+  const nativeReentry=!simulation&&nativeAttempted;
+  if(!simulation)nativeAttempted=true;
   let failed;
   let normalCaseCompleted = false;
   async function stage(name) {
@@ -105,6 +126,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
   }
   try {
     validateOptions(options);
+    need(!nativeReentry,"TASK16_DRIVER_NATIVE_REENTRY");
     if (options.signal !== undefined) {
       need(options.signal instanceof AbortSignal, "TASK16_DRIVER_SIGNAL");
       options.signal.addEventListener("abort", onCallerAbort, { once: true });
@@ -112,7 +134,13 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     }
     receipt.missingCapabilities = REQUIRED.filter(name => typeof adapters[name] !== "function");
     need(receipt.missingCapabilities.length === 0, "TASK16_DRIVER_CAPABILITIES_INCOMPLETE");
+    if(!simulation)need(EARLY_LOADER.freshCli===true,"TASK16_DRIVER_FRESH_CLI_REQUIRED");
     context.source = await stage("verifySource");
+    const clientEntryWitness=structuredClone(context.source?.runtimeAdmission?.clientEntry);
+    if(clientEntryWitness?.identity)Object.freeze(clientEntryWitness.identity);
+    if(clientEntryWitness)Object.freeze(clientEntryWitness);
+    Object.defineProperty(context,"clientEntryWitness",{value:clientEntryWitness,writable:false,enumerable:false});
+    if(!simulation)need(context.source.executionFiles?.some(row=>row.path==="services/api/prisma/run-task16-registered-pg-local.cjs"&&row.sha256===EARLY_DRIVER_SHA),"TASK16_DRIVER_RUNNING_SOURCE_CHANGED");
     need(context.source && /^[a-f0-9]{40}$/u.test(context.source.candidateSha), "TASK16_DRIVER_SOURCE_IDENTITY");
     receipt.sourceSha = context.source.candidateSha;
     context.resource = await stage("startResource");
@@ -135,7 +163,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     receipt.registeredAccessOutcome = "UNKNOWN_DO_NOT_RETRY";
     context.registeredAccess = await stage("installRegisteredAccess");
     receipt.registeredAccessOutcome = "REGISTERED_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
+    receipt.clientConnectionOutcome="UNKNOWN_DO_NOT_RETRY";
     context.clients = await stage("connectRestrictedClients");
+    receipt.clientConnectionOutcome="CLIENT_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
     need(typeof context.clients?.close === "function", "TASK16_DRIVER_CLIENT_HANDLES");
     context.application = await stage("startApplication");
     need(typeof context.application?.close === "function", "TASK16_DRIVER_APPLICATION_HANDLE");
@@ -146,6 +176,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
+    if(["NOT_ATTEMPTED","UNKNOWN_DO_NOT_RETRY"].includes(error?.clientConnectionOutcome))receipt.clientConnectionOutcome=error.clientConnectionOutcome;
+    if(["NOT_NEEDED","DISCONNECTED","UNKNOWN_DO_NOT_CONTINUE"].includes(error?.clientCleanupOutcome))receipt.clientCleanupOutcome=error.clientCleanupOutcome;
+    if(error?.clientCleanupOutcome==="UNKNOWN_DO_NOT_CONTINUE")receipt.cleanupFailures.push("clients");
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.installationOutcome)) receipt.installationOutcome = error.installationOutcome;
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.registeredAccessOutcome)) receipt.registeredAccessOutcome = error.registeredAccessOutcome;
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.baselineAccessOutcome)) receipt.baselineAccessOutcome = error.baselineAccessOutcome;
@@ -158,8 +191,8 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     controller.abort();
     for (const [name, handle] of [["application", context.application], ["clients", context.clients], ["resource", context.resource]]) {
       if (!handle) continue;
-      try { need(typeof handle.close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await handle.close(); }
-      catch { receipt.cleanupFailures.push(name); }
+      try { need(typeof handle.close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await handle.close(); if(name==="clients")receipt.clientCleanupOutcome="CLIENT_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; }
+      catch { receipt.cleanupFailures.push(name); if(name==="clients")receipt.clientCleanupOutcome="UNKNOWN_DO_NOT_CONTINUE"; }
     }
     receipt.resource = resourceReceipt(context.resource, failed);
     if (context.resource || failed?.resourceReceipt) {
