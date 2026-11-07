@@ -1,3 +1,8 @@
+## 任务16 B5 baseline角色/权限源码准备（2026-11-08，未提交）
+
+- [~] 准确8e80独立准备installBaselineAccess：新Task16逐列manifest及普通helper/系统xmin、既有七表十七函数owner例外、角色/ledger/身份同事务与提交后矩阵；版本仅锁所需updatedAt权限配runtime实际更新拒绝guard，Project零DML/无SD桥。原108＋新19＝127模拟、原CLI25、六语法/CJS lint/API类型与src lint通过，独立双轴待主控。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-access-local.md)。
+- [ ] 默认仍缺五原生stage、资源前拒绝；七片/B6最终combined权限及owner fixture合法assignment种子仍后续前提。实际SQL/ACL/PG/物理lock或DML/COMMIT/竞争/清理未验，#398及17/24、16/42/44门与13/45保持。未commit/push/main/部署生产；所有未来提交与最终pushHEAD须[skip ci]。
+
 ## 当前接续（2026-11-08，任务16 B4 owner TLS源码已整合）
 
 - [~] 作者`1cb6d9d7`已合中央`1446e9de0c7179be42703eae4a44ce0f41b237b6`，最终manifest9fb68双轴增量0；原擦除UNKNOWN被覆盖P2已公开红绿关闭。中央独立108模拟＋原CLI25、十CJS语法/定向lint全过；准确干净merge封包3285源码/202迁移/七SQL/一case。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-owner-tls-integrated.md)。后继文档头及远端收据单列，不以旧包覆盖。

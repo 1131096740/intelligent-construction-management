@@ -1,0 +1,1135 @@
+{
+  "legacyFunctionOwners": {
+    "public.\"pol275_reject_reconciliation_mutation\"()": "jg_pol275_owner",
+    "public.\"pol275_jsonb_has_exact_keys\"(JSONB, TEXT[])": "jg_pol275_owner",
+    "public.\"pol275_jsonb_is_nonempty_string_v1\"(JSONB, BOOLEAN)": "jg_pol275_owner",
+    "public.\"pol275_jsonb_is_cents_v1\"(JSONB, BOOLEAN, BOOLEAN)": "jg_pol275_owner",
+    "public.\"pol275_jsonb_is_positive_integer_v1\"(JSONB)": "jg_pol275_owner",
+    "public.\"pol275_utf16_sort_key_v1\"(TEXT)": "jg_pol275_owner",
+    "public.\"pol275_jcs_v1\"(JSONB)": "jg_pol275_owner",
+    "public.\"pol275_active_coverage_occupancy\"(TEXT)": "jg_pol275_owner",
+    "public.\"pol275_relation_insert_guard\"()": "jg_pol275_owner",
+    "public.\"pol275_clearing_impact_link_guard\"()": "jg_pol275_owner",
+    "public.\"pol275_relation_set_hash_v1\"(TEXT)": "jg_pol275_owner",
+    "public.\"pol275_assert_reconciliation_closure\"(TEXT)": "jg_pol275_owner",
+    "public.\"pol275_required_v1_confirmation_guard\"()": "jg_pol275_owner",
+    "public.\"pol275_confirmation_closure_trigger\"()": "jg_pol275_owner",
+    "public.\"pol275_reconciliation_closure_trigger\"()": "jg_pol275_owner",
+    "public.\"pol275_append_reconciliation_set\"(TEXT, TEXT)": "jg_pol275_owner",
+    "public.\"pol214_clearing_allocation_guard\"()": "jg_pol275_owner"
+  },
+  "legacyRelationOwners": {
+    "ClearingReconciliationItem": "jg_pol275_owner",
+    "ClearingReconciliationRevision": "jg_pol275_owner",
+    "ClearingReconciliationCoverage": "jg_pol275_owner",
+    "ClearingReconciliationResolution": "jg_pol275_owner",
+    "ClearingReconciliationDefinitionReversal": "jg_pol275_owner",
+    "ClearingReconciliationResolutionLine": "jg_pol275_owner",
+    "ClearingReconciliationDecisionSeal": "jg_pol275_owner"
+  },
+  "functionProofs": [
+    {
+      "signature": "public.assert_inter_entity_relationship_lineage(text,text)",
+      "owner": "jg_task01_owner",
+      "securityDefiner": false,
+      "body": "\nDECLARE\n  case_status TEXT;\n  case_execution_id TEXT;\n  execution_company_id TEXT;\n  approved_payer_company_id TEXT;\n  request_project_id TEXT;\n  request_contract_id TEXT;\n  request_contract_version_id TEXT;\n  execution_voucher_file_id TEXT;\n  allocation_count BIGINT;\n  allocation_amount_cents BIGINT;\n  cross_allocation_count BIGINT;\n  debtor_count BIGINT;\n  project_count BIGINT;\n  source_count BIGINT;\n  source_type TEXT;\n  source_aggregate_id TEXT;\n  debtor_company_id TEXT;\n  project_id TEXT;\n  root_record RECORD;\n  invalid_binding_count BIGINT;\nBEGIN\n  SELECT settlement_case.\"status\", settlement_case.\"paymentExecutionId\"\n  INTO case_status, case_execution_id\n  FROM \"PayableSettlementCase\" settlement_case\n  WHERE settlement_case.\"id\" = p_settlement_case_id;\n  IF NOT FOUND OR case_status IS DISTINCT FROM 'confirmed' THEN\n    RETURN;\n  END IF;\n  IF case_execution_id IS DISTINCT FROM p_payment_execution_id THEN\n    RAISE EXCEPTION 'inter_entity_relationship_execution_missing';\n  END IF;\n\n  SELECT COALESCE(attestation.\"holderCompanyEntityId\", execution.\"companyEntityIdSnapshot\"),\n         version.\"companyEntityIdSnapshot\",\n         request.\"projectId\",\n         request.\"contractId\",\n         request.\"contractVersionId\",\n         execution.\"voucherFileId\"\n  INTO execution_company_id, approved_payer_company_id, request_project_id,\n       request_contract_id, request_contract_version_id, execution_voucher_file_id\n  FROM \"PaymentExecution\" execution\n  INNER JOIN \"PaymentRequest\" request\n    ON request.\"id\" = execution.\"paymentRequestId\"\n  INNER JOIN \"ContractVersion\" version\n    ON version.\"id\" = request.\"contractVersionId\"\n  LEFT JOIN \"PaymentExecutionPayerAttestation\" attestation\n    ON attestation.\"paymentExecutionId\" = execution.\"id\"\n  WHERE execution.\"id\" = p_payment_execution_id;\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'inter_entity_relationship_execution_missing';\n  END IF;\n\n  SELECT COUNT(*)::BIGINT,\n         COALESCE(SUM(allocation.\"amountCents\"), 0),\n         COUNT(*) FILTER (\n           WHERE allocation.\"debtorCompanyId\" IS DISTINCT FROM execution_company_id\n         )::BIGINT,\n         COUNT(DISTINCT allocation.\"debtorCompanyId\")::BIGINT,\n         COUNT(DISTINCT allocation.\"beneficiaryProjectId\")::BIGINT,\n         COUNT(DISTINCT allocation.\"sourceAggregateId\")::BIGINT,\n         MIN(allocation.\"sourceType\"),\n         MIN(allocation.\"sourceAggregateId\"),\n         MIN(allocation.\"debtorCompanyId\"),\n         MIN(allocation.\"beneficiaryProjectId\")\n  INTO allocation_count, allocation_amount_cents, cross_allocation_count,\n       debtor_count, project_count, source_count, source_type,\n       source_aggregate_id, debtor_company_id, project_id\n  FROM \"PayableSettlementAllocation\" allocation\n  WHERE allocation.\"settlementCaseId\" = p_settlement_case_id;\n  IF cross_allocation_count = 0 THEN\n    RETURN;\n  END IF;\n  IF allocation_count = 0\n     OR cross_allocation_count <> allocation_count\n     OR debtor_count <> 1\n     OR project_count <> 1\n     OR source_count <> 1\n     OR source_type IS DISTINCT FROM 'wage_payable_ref' THEN\n    RAISE EXCEPTION 'inter_entity_relationship_source_lineage_invalid';\n  END IF;\n\n  SELECT root.*\n  INTO root_record\n  FROM \"InterEntityRelationshipEntry\" root\n  WHERE root.\"settlementCaseId\" = p_settlement_case_id\n    AND root.\"paymentExecutionId\" = p_payment_execution_id\n    AND root.\"entryKind\" = 'proxy_payment'\n    AND root.\"direction\" = 'increase'\n    AND root.\"status\" = 'confirmed'\n    AND root.\"adjustsEntryId\" IS NULL\n  FOR UPDATE;\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'inter_entity_relationship_required';\n  END IF;\n  IF root_record.\"originalDebtorCompanyId\" IS DISTINCT FROM debtor_company_id\n     OR root_record.\"creditorCompanyId\" IS DISTINCT FROM execution_company_id\n     OR root_record.\"approvedPayerCompanyId\" IS DISTINCT FROM approved_payer_company_id\n     OR root_record.\"evidenceFileId\" IS DISTINCT FROM execution_voucher_file_id\n     OR root_record.\"projectId\" IS DISTINCT FROM project_id\n     OR root_record.\"projectId\" IS DISTINCT FROM request_project_id\n     OR root_record.\"contractId\" IS DISTINCT FROM request_contract_id\n     OR root_record.\"contractVersionId\" IS DISTINCT FROM request_contract_version_id\n     OR root_record.\"sourceType\" IS DISTINCT FROM source_type\n     OR root_record.\"sourceAggregateId\" IS DISTINCT FROM source_aggregate_id\n     OR root_record.\"sourceAllocationCount\" IS DISTINCT FROM allocation_count::INTEGER\n     OR root_record.\"sourceAllocationAmountCents\" IS DISTINCT FROM allocation_amount_cents\n     OR root_record.\"amountCents\" IS DISTINCT FROM allocation_amount_cents THEN\n    RAISE EXCEPTION 'inter_entity_relationship_source_lineage_invalid';\n  END IF;\n\n  SELECT COUNT(*)::BIGINT\n  INTO invalid_binding_count\n  FROM \"PaymentExecutionWagePayableBinding\" binding\n  LEFT JOIN \"PayableSettlementAllocation\" allocation\n    ON allocation.\"settlementCaseId\" = p_settlement_case_id\n   AND allocation.\"payableRef\" = binding.\"wagePayableRefId\"\n  WHERE binding.\"paymentExecutionId\" = p_payment_execution_id\n    AND (\n      allocation.\"id\" IS NULL\n      OR binding.\"debtorCompanyId\" IS DISTINCT FROM root_record.\"originalDebtorCompanyId\"\n      OR binding.\"projectId\" IS DISTINCT FROM root_record.\"projectId\"\n      OR binding.\"amountCents\" > allocation.\"amountCents\"\n    );\n  IF invalid_binding_count > 0 THEN\n    RAISE EXCEPTION 'inter_entity_relationship_binding_lineage_invalid';\n  END IF;\nEND;\n",
+      "source": "services/api/prisma/migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql"
+    }
+  ],
+  "schemaVersion": 1,
+  "purpose": "task16-baseline-existing-object-acl-not-final-registered-acceptance",
+  "caseId": "registered.null-cross-company.commit",
+  "runtime": {
+    "role": "jg_task01_runtime",
+    "tables": [
+      {
+        "table": "ApprovalInstance",
+        "select": [
+          "applicantUserId",
+          "businessId",
+          "businessType",
+          "createdAt",
+          "currentNodeIndex",
+          "flowType",
+          "frozenNodes",
+          "id",
+          "status",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/registered-payment-approval.ts:8"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "AuditLog",
+        "select": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "createdAt",
+          "id",
+          "ipAddress",
+          "metadata",
+          "userAgent"
+        ],
+        "insert": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "id",
+          "metadata"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/audit/audit.service.ts:91"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "BankTransactionClaim",
+        "select": [
+          "paymentExecutionId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/prisma/migrations/20260831120000_pol13d_fund_execution_v7/migration.sql:1176"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "CompanyEntity",
+        "select": [
+          "createdAt",
+          "currentVersionNo",
+          "dataStatus",
+          "id",
+          "isActive",
+          "name",
+          "registeredAddress",
+          "unifiedSocialCreditCode",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/fund-account/fund-account.service.ts:267",
+          "services/api/src/payment/payment-request.service.ts:3173"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "Contract",
+        "select": [
+          "businessScenarioId",
+          "code",
+          "companyEntityId",
+          "companyEntityName",
+          "contractTypeKey",
+          "counterparty",
+          "createdAt",
+          "finalSettlementId",
+          "id",
+          "name",
+          "ownerUserId",
+          "projectId",
+          "scenarioSnapshot",
+          "scenarioTemplateMappingId",
+          "settlementClosedAt",
+          "source",
+          "temporaryCode",
+          "updatedAt",
+          "voidedAt",
+          "voidedReason"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:3169"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "ContractProxyExecution",
+        "select": [
+          "amountCents",
+          "entryKind",
+          "frozenSource",
+          "sourceRef",
+          "status"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/contract-ledger/contract-proxy-capacity.ts:6"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "ContractTakeover",
+        "select": [
+          "abandonReason",
+          "abandonedAt",
+          "abandonedByUserId",
+          "acceptanceConclusion",
+          "activatedAt",
+          "activatedByUserId",
+          "activationIdempotencyKey",
+          "balanceSourceSummary",
+          "confirmedAt",
+          "confirmedByUserId",
+          "contractId",
+          "contractVersionId",
+          "createdAt",
+          "createdByUserId",
+          "evidenceSummary",
+          "historicalAdvanceDeductedCents",
+          "historicalAdvancePaidCents",
+          "historicalApprovalPendingPaymentCents",
+          "historicalApprovedPendingPaymentCents",
+          "historicalBalanceConfirmedAt",
+          "historicalBalanceConfirmedByUserId",
+          "historicalInitialSettlementId",
+          "historicalPaidCents",
+          "historicalProxyPaidCents",
+          "historicalRetentionReleasedCents",
+          "historicalRetentionWithheldCents",
+          "historicalSettledCents",
+          "id",
+          "importRowNo",
+          "lifecycleStatus",
+          "otherConfirmedOccupancyCents",
+          "paymentTermsVersionId",
+          "projectId",
+          "responsibleUserId",
+          "reviewComment",
+          "signedAt",
+          "submittedAt",
+          "submittedByUserId",
+          "suggestedTakeoverLevel",
+          "takeoverBatchId",
+          "takeoverCutoffDate",
+          "takeoverLevel",
+          "takeoverLevelAdjustmentReason",
+          "takeoverStatus",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/registered-payment-contract-history.ts:24",
+          "services/api/src/payment/payment-request.service.ts:419"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "ContractVersion",
+        "select": [
+          "abandonReason",
+          "abandonedAt",
+          "abandonedByUserId",
+          "affiliateAssignmentId",
+          "affiliateBusinessPartyVersionId",
+          "affiliateCreditCodeSnapshot",
+          "affiliateNameSnapshot",
+          "amountAdjustmentReason",
+          "amountCents",
+          "amountLimitType",
+          "amountSource",
+          "amountYuan",
+          "baseVersionId",
+          "businessTemplateVersionId",
+          "changeAmountCents",
+          "changeDirection",
+          "changeReason",
+          "changeType",
+          "clauseSnapshot",
+          "companyEntityCreditCodeSnapshot",
+          "companyEntityIdSnapshot",
+          "companyEntityNameSnapshot",
+          "companyEntityRegisteredAddressSnapshot",
+          "companyEntityVersionId",
+          "contractGovernanceVersion",
+          "contractId",
+          "copiedFromContractVersionId",
+          "createdAt",
+          "cumulativeDecreaseCents",
+          "cumulativeIncreaseCents",
+          "defaultTaxRatePercent",
+          "documentContentFingerprint",
+          "documentContentRevision",
+          "draftData",
+          "draftRevision",
+          "effectiveAt",
+          "endedAt",
+          "estimatedAmountCents",
+          "firstSubmittedAt",
+          "id",
+          "invoiceType",
+          "latestDraftPreviewDocumentId",
+          "layoutTemplateVersionId",
+          "numericProtocolVersion",
+          "originalBaseAmountCents",
+          "pricingNature",
+          "readinessSnapshot",
+          "settlementMode",
+          "settlementModeConfirmedAt",
+          "settlementModeConfirmedByUserId",
+          "settlementModeSource",
+          "signingSubjectType",
+          "status",
+          "supersedesVersionId",
+          "taxFactEvidenceFileId",
+          "taxFactExplanation",
+          "taxFactRevision",
+          "taxFactSource",
+          "taxFactStatus",
+          "taxFactsFrozenAt",
+          "taxMode",
+          "templateSnapshot",
+          "updatedAt",
+          "versionNo"
+        ],
+        "insert": [],
+        "update": [
+          "updatedAt"
+        ],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:3168",
+          "services/api/src/payment/payment-request.service.ts:1806"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates",
+        "lockOnlyUpdate": {
+          "columns": [
+            "updatedAt"
+          ],
+          "requiresGuard": "jg_task16_runtime_version_read_only",
+          "runtimeActualUpdate": "DENIED",
+          "ownerSeed": "allowed"
+        }
+      },
+      {
+        "table": "FundAccountBalanceRegistration",
+        "select": [
+          "accountId",
+          "approvalInstanceId",
+          "asOfDate",
+          "balanceYuan",
+          "closeReason",
+          "closedAt",
+          "closedByUserId",
+          "confirmedAt",
+          "confirmedByUserId",
+          "createdAt",
+          "createdByUserId",
+          "evidenceReference",
+          "id",
+          "idempotencyKey",
+          "kind",
+          "payloadFingerprint",
+          "previousRegistrationId",
+          "reason",
+          "reconciliationNote",
+          "reviewNote",
+          "status",
+          "version",
+          "xmin"
+        ],
+        "insert": [
+          "accountId",
+          "asOfDate",
+          "balanceYuan",
+          "confirmedAt",
+          "confirmedByUserId",
+          "createdByUserId",
+          "evidenceReference",
+          "id",
+          "idempotencyKey",
+          "kind",
+          "payloadFingerprint",
+          "previousRegistrationId",
+          "reason",
+          "reconciliationNote",
+          "status",
+          "version"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/fund-account/fund-account.service.ts:106",
+          "services/api/src/payment/registered-payment-funding.ts:86"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates",
+        "systemColumnEvidence": "services/api/prisma/migrations/20261106010000_registered_fund_accounts/migration.sql:81"
+      },
+      {
+        "table": "FundAccountSourceBatch",
+        "select": [
+          "amountYuan",
+          "id",
+          "lineNo",
+          "previousSourceBatchId",
+          "projectId",
+          "projectStatus",
+          "registrationId",
+          "sourceName",
+          "sourceStatus"
+        ],
+        "insert": [
+          "amountYuan",
+          "id",
+          "lineNo",
+          "previousSourceBatchId",
+          "projectId",
+          "projectStatus",
+          "registrationId",
+          "sourceName",
+          "sourceStatus"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/fund-account/fund-account.service.ts:283",
+          "services/api/src/payment/registered-payment-funding.ts:51"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "HistoricalWageSummaryPaymentExecutionLink",
+        "select": [
+          "id",
+          "paymentExecutionId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/registered-payment-domain.ts:6"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "InterEntityRelationshipEntry",
+        "select": [
+          "actualPayerVerificationContentSha256",
+          "actualPayerVerificationEvidenceFileId",
+          "adjustsEntryId",
+          "amountCents",
+          "approvedPayerCompanyId",
+          "approvedPayerSnapshot",
+          "authorizationEvidenceContentSha256",
+          "authorizationEvidenceFileId",
+          "confirmedAt",
+          "confirmedByUserId",
+          "contractId",
+          "contractVersionId",
+          "createdAt",
+          "createdByUserId",
+          "creditorCompanyId",
+          "creditorSnapshot",
+          "currencyCode",
+          "debtorSnapshot",
+          "direction",
+          "entryKind",
+          "evidenceClaimId",
+          "evidenceContentSha256",
+          "evidenceFileId",
+          "evidenceUploadedByUserId",
+          "executionAllocationLineId",
+          "fundExecutionCaseId",
+          "fundExecutionId",
+          "id",
+          "idempotencyKey",
+          "originalDebtorCompanyId",
+          "payloadFingerprint",
+          "paymentExecutionId",
+          "projectId",
+          "reason",
+          "reauthorizationReference",
+          "reauthorizedAt",
+          "reauthorizedByUserId",
+          "settlementCaseId",
+          "sourceAggregateId",
+          "sourceAllocationAmountCents",
+          "sourceAllocationCount",
+          "sourceType",
+          "status"
+        ],
+        "insert": [
+          "amountCents",
+          "approvedPayerCompanyId",
+          "approvedPayerSnapshot",
+          "confirmedAt",
+          "confirmedByUserId",
+          "contractId",
+          "contractVersionId",
+          "createdByUserId",
+          "creditorCompanyId",
+          "creditorSnapshot",
+          "currencyCode",
+          "debtorSnapshot",
+          "direction",
+          "entryKind",
+          "evidenceFileId",
+          "id",
+          "idempotencyKey",
+          "originalDebtorCompanyId",
+          "payloadFingerprint",
+          "paymentExecutionId",
+          "projectId",
+          "reason",
+          "sourceAggregateId",
+          "sourceAllocationAmountCents",
+          "sourceAllocationCount",
+          "sourceType",
+          "status"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/registered-payment-funding.ts:148",
+          "services/api/src/payment/registered-payment-execution.service.ts:64"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "OperatingFact",
+        "select": [
+          "actualPayerSubjectId",
+          "actualPayerSubjectKind",
+          "adjustsFactId",
+          "affiliateAssignmentId",
+          "affiliateBusinessPartyVersionId",
+          "affiliateCreditCodeSnapshot",
+          "affiliateNameSnapshot",
+          "amountCents",
+          "approvedPayerSubjectId",
+          "approvedPayerSubjectKind",
+          "basisSnapshot",
+          "confirmedAt",
+          "confirmedByUserId",
+          "costBearingCompanySubjectId",
+          "costBearingCompanySubjectKind",
+          "createdAt",
+          "creditorSubjectId",
+          "creditorSubjectKind",
+          "currencyCode",
+          "debtorSubjectId",
+          "debtorSubjectKind",
+          "direction",
+          "entryKind",
+          "evidenceLevel",
+          "factKind",
+          "fundExecutionCaseId",
+          "fundExecutionId",
+          "historicalTakeoverBatchId",
+          "id",
+          "idempotencyKey",
+          "isBeforeOperatingLedgerEffectiveDate",
+          "occurredAt",
+          "operatingLedgerEffectiveDateSnapshot",
+          "operatingLevel",
+          "payeeSubjectId",
+          "payeeSubjectKind",
+          "paymentExecutionId",
+          "projectId",
+          "recordedAt",
+          "recordedByUserId",
+          "sourceBusinessCode",
+          "sourceBusinessId",
+          "sourceSnapshot",
+          "sourceType",
+          "sourceVersion",
+          "status",
+          "subjectSnapshot"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/registered-payment-execution.service.ts:62"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "PayableSettlementCase",
+        "select": [
+          "id",
+          "paymentExecutionId",
+          "status"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/prisma/migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql:634"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "PaymentExecution",
+        "select": [
+          "amountCents",
+          "companyEntityCreditCodeSnapshot",
+          "companyEntityIdSnapshot",
+          "companyEntityNameSnapshot",
+          "createdAt",
+          "executedByUserId",
+          "id",
+          "idempotencyKey",
+          "paidAt",
+          "payerAttestationFingerprint",
+          "paymentRequestId",
+          "paymentSubjectType",
+          "settlementId",
+          "voucherFileId"
+        ],
+        "insert": [
+          "amountCents",
+          "companyEntityCreditCodeSnapshot",
+          "companyEntityIdSnapshot",
+          "companyEntityNameSnapshot",
+          "executedByUserId",
+          "id",
+          "idempotencyKey",
+          "paidAt",
+          "paymentRequestId",
+          "paymentSubjectType",
+          "settlementId",
+          "voucherFileId"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:3287",
+          "services/api/src/payment/payment-request.service.ts:3520",
+          "services/api/src/payment/registered-payment-execution.service.ts:59"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "PaymentExecutionAllocation",
+        "select": [
+          "allocationType",
+          "amountCents",
+          "settlementId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:1760"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "PaymentExecutionWagePayableBinding",
+        "select": [
+          "id",
+          "paymentExecutionId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/registered-payment-domain.ts:5"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "PaymentRequest",
+        "select": [
+          "abandonReason",
+          "abandonedAt",
+          "abandonedByUserId",
+          "amountCalculationExplanation",
+          "approvedAmountCents",
+          "code",
+          "contractId",
+          "contractVersionId",
+          "createdAt",
+          "dueDate",
+          "id",
+          "paidAmountCents",
+          "paymentMatter",
+          "paymentSubjectType",
+          "paymentTermsStageId",
+          "paymentTermsVersionId",
+          "projectId",
+          "requestedAmountCents",
+          "settlementId",
+          "sourceType",
+          "status",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [
+          "paidAmountCents",
+          "status",
+          "updatedAt"
+        ],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:3164",
+          "services/api/src/payment/payment-request.service.ts:3609"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "Position",
+        "select": [
+          "createdAt",
+          "id",
+          "key",
+          "name",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/auth/auth.service.ts:103"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "Project",
+        "select": [
+          "code",
+          "constructionEnterpriseLockedAt",
+          "createdAt",
+          "id",
+          "isActive",
+          "name",
+          "operatingLedgerEffectiveDate",
+          "takeoverCompletedDate",
+          "takeoverStatus",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/fund-account/fund-account.service.ts:279",
+          "services/api/src/operating-ledger/operating-source-replay.service.ts:131"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "ProjectMember",
+        "select": [
+          "createdAt",
+          "id",
+          "positionKey",
+          "projectId",
+          "userId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/auth/auth.service.ts:99"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "ProjectProxyPayment",
+        "select": [
+          "amountCents",
+          "settlementId",
+          "voidedAt"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:1703"
+        ],
+        "readReason": "Explicit projection plus WHERE columns"
+      },
+      {
+        "table": "RefreshToken",
+        "select": [
+          "createdAt",
+          "expiresAt",
+          "id",
+          "revokedAt",
+          "tokenHash",
+          "userId"
+        ],
+        "insert": [
+          "expiresAt",
+          "id",
+          "tokenHash",
+          "userId"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/auth/auth.service.ts:443"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "RegisteredFundAccount",
+        "select": [
+          "companyEntityId",
+          "createdAt",
+          "id",
+          "kind",
+          "scopeKey"
+        ],
+        "insert": [
+          "companyEntityId",
+          "id",
+          "kind",
+          "scopeKey"
+        ],
+        "update": [],
+        "evidence": [
+          "services/api/src/fund-account/fund-account.service.ts:109",
+          "services/api/src/payment/registered-payment-funding.ts:83"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "Settlement",
+        "select": [
+          "amountCents",
+          "calculationVersion",
+          "code",
+          "contractId",
+          "contractVersionId",
+          "createdAt",
+          "fieldReviewerRoleKey",
+          "fieldReviewerUserId",
+          "finalCumulativeAmountCents",
+          "finalDeclarationSnapshot",
+          "finalDeclarationVersion",
+          "finalNoFurtherOrdinarySettlements",
+          "finalNoOutstandingSettlements",
+          "finalPriorSettlementsIncluded",
+          "finalScopeCompleted",
+          "finalWithinContractCap",
+          "governanceVersion",
+          "id",
+          "invoiceTypeSnapshot",
+          "isFinal",
+          "paidAmountCents",
+          "payableAmountCents",
+          "paymentTermsVersionId",
+          "periodEnd",
+          "periodLabel",
+          "periodStart",
+          "preparedByUserId",
+          "preparerSignatureFileId",
+          "preparerSignatureSha256",
+          "preparerSignatureVersionId",
+          "processId",
+          "projectId",
+          "settlementTemplateVersionId",
+          "sourceSnapshotToken",
+          "sourceTakeoverId",
+          "sourceType",
+          "status",
+          "taxFactRevisionSnapshot",
+          "updatedAt"
+        ],
+        "insert": [],
+        "update": [
+          "paidAmountCents",
+          "status",
+          "updatedAt"
+        ],
+        "evidence": [
+          "services/api/src/payment/payment-request.service.ts:3439",
+          "services/api/src/payment/payment-request.service.ts:3617"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "User",
+        "select": [
+          "createdAt",
+          "departmentId",
+          "id",
+          "isActive",
+          "lastLoginAt",
+          "mustChangePassword",
+          "name",
+          "passwordHash",
+          "phone",
+          "recoveryCodeHash",
+          "requiresChairmanManagement",
+          "sessionVersion",
+          "signatureFileId",
+          "temporaryPasswordExpiresAt",
+          "updatedAt",
+          "wxOpenid"
+        ],
+        "insert": [],
+        "update": [
+          "lastLoginAt",
+          "updatedAt"
+        ],
+        "evidence": [
+          "services/api/src/auth/auth.service.ts:46",
+          "services/api/src/auth/guards/jwt-auth.guard.ts:37"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      },
+      {
+        "table": "UserPosition",
+        "select": [
+          "createdAt",
+          "id",
+          "positionId",
+          "projectId",
+          "userId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/auth/auth.service.ts:98"
+        ],
+        "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
+      }
+    ],
+    "functions": [
+      "public.assert_inter_entity_relationship_lineage(text,text)",
+      "public.jg_task01_connection_identity()"
+    ]
+  },
+  "observer": {
+    "role": "jg_task01_observer",
+    "tables": [
+      {
+        "table": "AuditLog",
+        "select": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "metadata"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "FundAccountBalanceRegistration",
+        "select": [
+          "accountId",
+          "balanceYuan",
+          "id"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "InterEntityRelationshipEntry",
+        "select": [
+          "amountCents",
+          "creditorCompanyId",
+          "direction",
+          "entryKind",
+          "id",
+          "originalDebtorCompanyId",
+          "paymentExecutionId",
+          "projectId",
+          "sourceType",
+          "status"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "OperatingFact",
+        "select": [
+          "id",
+          "sourceBusinessId",
+          "sourceType"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "OperatingImpactEntry",
+        "select": [
+          "id",
+          "sourceBusinessId",
+          "sourceType"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "PaymentExecution",
+        "select": [
+          "amountCents",
+          "id",
+          "idempotencyKey",
+          "paymentRequestId",
+          "voucherFileId"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "PaymentRequest",
+        "select": [
+          "approvedAmountCents",
+          "id",
+          "paidAmountCents",
+          "status"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      },
+      {
+        "table": "Settlement",
+        "select": [
+          "id",
+          "paidAmountCents",
+          "payableAmountCents"
+        ],
+        "insert": [],
+        "update": [],
+        "evidence": [
+          "services/api/src/database/registered-payment-postgres.cases.ts:29"
+        ],
+        "readReason": "Observer explicit projection+predicate; seven-fragment objects excluded"
+      }
+    ],
+    "functions": [
+      "public.jg_task01_connection_identity()"
+    ]
+  },
+  "sources": [
+    {
+      "path": "services/api/prisma/migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql",
+      "sha256": "9d7aae81f62752499e0be7acb487116eab846bf12e5792291d9bf42b1f15f067"
+    },
+    {
+      "path": "services/api/prisma/migrations/20260831120000_pol13d_fund_execution_v7/migration.sql",
+      "sha256": "a166b7105343f6a19b629de1ba64073a167106731e114eb273db2a848dc22378"
+    },
+    {
+      "path": "services/api/prisma/migrations/20260909100000_pol275_clearing_reconciliation_repair/migration.sql",
+      "sha256": "47d90c84c5e9a9f7cca8463ff3332c63ab43f0e96dff0296e00693bcc3e81903"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261106010000_registered_fund_accounts/migration.sql",
+      "sha256": "7d166c653254955caefe874a868f30332a53caea2009e7018d84deb5f9e506cd"
+    },
+    {
+      "path": "services/api/prisma/schema.prisma",
+      "sha256": "73cbea3e3cb34cdb083b1456d2fc0e3dc9e0e9af8ae97b1869ab8a8434cea64a"
+    },
+    {
+      "path": "services/api/src/audit/audit.service.ts",
+      "sha256": "abaafdbcdbad73a47d722783040ebb2630e235ba6409b5f95111650a6c0dbb13"
+    },
+    {
+      "path": "services/api/src/auth/auth.service.ts",
+      "sha256": "cb7eec0cd3bbeeae91656353c3e56214f6fbe6128f2cae95426bcab23d1fb724"
+    },
+    {
+      "path": "services/api/src/auth/guards/jwt-auth.guard.ts",
+      "sha256": "84ba2dd6ea62a47e6f95299a4ce20d65edeca5f960b878c9101e729be85155a6"
+    },
+    {
+      "path": "services/api/src/contract-ledger/contract-proxy-capacity.ts",
+      "sha256": "02a6c37490e70100dbaa3fa9744e1fcf99e446b798d02106f2165e1e390b6329"
+    },
+    {
+      "path": "services/api/src/database/registered-payment-postgres.cases.ts",
+      "sha256": "49a80afb9b8739c8648096ee221ddcfc5031e8addc32c924993085bd47d37ad2"
+    },
+    {
+      "path": "services/api/src/database/registered-payment-postgres.fixture.ts",
+      "sha256": "c3254c1bbbe2c6a689ea35ad003f70b02efa8a16ce3023b223e1e844b67ebb77"
+    },
+    {
+      "path": "services/api/src/fund-account/fund-account.service.ts",
+      "sha256": "a12120840a49d0d98d0f18fddffebbc7bf3df8d2d24edf2e6395eb0eb44bcf43"
+    },
+    {
+      "path": "services/api/src/operating-ledger/operating-source-replay.service.ts",
+      "sha256": "267f2e20499126983c1a4a319783e939d406de2218e72f929f536ce945dc5f1e"
+    },
+    {
+      "path": "services/api/src/payment/payment-request.service.ts",
+      "sha256": "9fa1abc584a762d3dbdd5f0b9df1c20d6d52dabf3be268eed8ba07078100be45"
+    },
+    {
+      "path": "services/api/src/payment/registered-payment-approval.ts",
+      "sha256": "7bd7d6e0614eb2a95d9cb1c42e5f1801f009c44554b902afffa088005cb78f3b"
+    },
+    {
+      "path": "services/api/src/payment/registered-payment-contract-history.ts",
+      "sha256": "519ad244b4f1c2cd794488a3aa376fbf9ce0717c40295c1e1a95c9f80c1af557"
+    },
+    {
+      "path": "services/api/src/payment/registered-payment-domain.ts",
+      "sha256": "fabdc71ab393cf3eb80f5a6c39075f1326f28ef0e3a184e8aacf9ecb2ef682cc"
+    },
+    {
+      "path": "services/api/src/payment/registered-payment-execution.service.ts",
+      "sha256": "b6793f4208bcf4e34c50ee6863a0d980c1dea24fa8e7da8b68b3956760290ee2"
+    },
+    {
+      "path": "services/api/src/payment/registered-payment-funding.ts",
+      "sha256": "a12bebc3b95ad6a3a21ca8caaba83b37a3f377167994559f6f72d0ad045651f5"
+    }
+  ],
+  "registeredDeltaDeferredToFollowingStage": {
+    "newTables": [
+      "RegisteredPaymentFunding",
+      "RegisteredFundPaymentAllocation",
+      "RegisteredPaymentEvent",
+      "RegisteredPaymentVoucher",
+      "RegisteredContractHistoryRevision"
+    ],
+    "newColumns": {
+      "RegisteredFundAccount": [
+        "writeRevision"
+      ],
+      "FundAccountBalanceRegistration": [
+        "coveredExecutionIds"
+      ]
+    },
+    "runtimeNewFunctions": [
+      "jg_registered_history_read_revision(text)",
+      "jg_registered_history_lock_revision(text)",
+      "jg_registered_operating_scope_lock(text)"
+    ],
+    "postFragmentInvokerHelperClosure": "Separate registered-stage signatures/effective matrix; no speculative baseline EXECUTE grants",
+    "blanketGrantAfterHistory": "PROHIBITED"
+  },
+  "limits": [
+    "Runtime Project DML denied",
+    "ContractVersion UPDATE(updatedAt) requires paired exact enabled runtime-DML-denial guard",
+    "No DELETE/TRUNCATE/REFERENCES/TRIGGER/table-level grant",
+    "No grant option/membership/ownership/DDL",
+    "Seven-fragment new columns/tables excluded",
+    "Frozen normal-case only; not general application access"
+  ]
+}
