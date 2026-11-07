@@ -1,3 +1,8 @@
+## Current continuation (2026-11-08): Task16 B3 source integrated
+
+- [~] Reviewed B3 author `bbb6e6c1` merged as `27d14904b137e8fb8023f539dd1bd6d047507ee0`. Original Spec1/Standards2 P2 findings closed by independent follow-ups; central fresh82 simulated tests plus original CLI25, six CJS syntax and targeted lint passed. Clean exact merge source-only prepare/verify:3277 source/202 migrations/7 SQL/1 case. [Independent integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-migrations-integrated.md); final documentation head packet/readback recorded externally.
+- [ ] Source/mock stage only: default7 native capabilities still fail before resources; no actual migration/SQL/PG/process-group execution, TLS/ACL/COMMIT/concurrency/cleanup or financial acceptance. #398 OPEN,17/24 and16/42/44 blocked gates,13/45 unchanged. No main merge/deployment/production. Earlier uncommitted notes below remain chronological history.
+
 ## 任务16 B3 baseline迁移adapter源码（2026-11-08，未提交）
 
 - [~] 新原生stage源码绑定准确202/schema、owner/DB/TLS/source资源身份、固定Prisma argv/env/输出与超时预算及完整ledger后验；初版72模拟后，双轴三项P2已补实际目录/await后封存重核、进程组settle与缺stdio错误监听，原72＋新增10=82模拟、原CLI25、六语法/CJS lint/API类型与src lint通过，增量独立复核待主控。default仍缺7原生stage、资源前拒绝，实际迁移/PG/进程杀止均未运行。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-migrations-local.md)。无真实资源/SQL/生产操作，#398与16/42/44门保持。
