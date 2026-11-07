@@ -1,3 +1,8 @@
+## Current continuation (2026-11-08): B5 baseline access source integrated
+
+- [~] Author `d3ae561d` merged `ad1f4d61045b919223b59cfbbaab5111afa88ed8`; reviewed freeze d2fa2 with Standards/Spec0. Central independent127 mock tests plus original CLI25,6CJS syntax/lint, JSON decode and diff check passed;8 source pins unchanged. Clean merge source-only seal 3292/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-access-integrated.md); final docs head seal/readback separately recorded.
+- [ ] SQL_NOT_EXECUTED_NOT_PARSED; actual effective ACL/PG/locks/negative DML, B6 combined7fragments/fixture assignment remain unverified. Default5 stages closed before resources;#398 OPEN/17-24 and16-42-44 gates/13of45 unchanged. All commits/finalpush HEAD [skip ci];empty checks notCIpass,fe70 incident retained. No main/deploy/production.
+
 ## 任务16 B5 baseline角色/权限源码准备（2026-11-08，未提交）
 
 - [~] 准确8e80独立准备installBaselineAccess：新Task16逐列manifest及普通helper/系统xmin、既有七表十七函数owner例外、角色/ledger/身份同事务与提交后矩阵；版本仅锁所需updatedAt权限配runtime实际更新拒绝guard，Project零DML/无SD桥。原108＋新19＝127模拟、原CLI25、六语法/CJS lint/API类型与src lint通过，独立双轴待主控。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-access-local.md)。
