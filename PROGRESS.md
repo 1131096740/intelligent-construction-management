@@ -1,3 +1,8 @@
+## Current continuation (2026-11-08): B8a limiter ACL source integrated
+
+- [~] Author `975b8702` merged `8ce1251fd8cd67bf8ac1c17e77086056b425c238`;77adfreeze dualreview0. Fresh central232=222+10 mocks/originalCLI25,3CJS syntaxlint/2JSON/diff passed;allsource/42pins match. Clean merge seal3309/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-rate-limit-acl-integrated.md); finaldocs exactseal/remote separate.
+- [ ] Only runtimeAuthRateLimit exact3column SELECT/INSERT+UPDATEhits+whole-table DELETE (ACL cannot limit expiryWHERE). Observer/before/otherrelation/broadpermissions stay denied. SQL_NOT_EXECUTED_NOT_PARSED;realAuth/PG/ACL/login/cleanup/financial/App-seed-case3stages remain unproven. #398/17-24/16-42-44/13of45 unchanged. All commits/finalHEAD[skip ci],emptychecks notCIpass,fe70history retained. No main/Issueclose/deploy/production.
+
 ## 任务16 B8a限流技术ACL源码准备（2026-11-08，未提交）
 
 - [~] 从准确6310fa20独立准备AuthRateLimit最小runtime三列SELECT/INSERT、UPDATE(hits)和唯一该表DELETE；before/observer/其它表删除及宽权限仍拒，共用B6/B7 checker与同一matrix proof不分叉，原39＋Auth三source pins/44函数及guards不变。公开wire/非法sealed profile红绿及旧222＋新增10＝232模拟、CLI25/类型/lint/语法/来源检查见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-rate-limit-acl-local.md)，冻结双轴待主控。
