@@ -1,3 +1,8 @@
+## 当前接续（2026-11-08，任务16 B2运行时准入源码已整合）
+
+- [~] B2作者`260dfeff`已独立合中央`3efe47653006e71edae8b6caac070ab437466e25`，原两个P2及后验残留实际红绿并双轴0未关闭；中央43模拟＋原CLI25新跑全过、四CJS语法/定向lint过。准确干净3efe source prepare/verify为3272源码/202迁移/七SQL/一case；最终文档头封包与远端另记。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-runtime-admission-integrated.md)。
+- [ ] 不把合成协议和真实source CLI拼成当前实际runtime闭包通过；default仍缺八原生stage、资源前拒绝。真实PG/SQL/ACL/TLS/COMMIT/竞争/清理及#398、17/24/16/42/44门保持，13/45不变。10独立候选验收且12等待；未合main、部署或生产，下方未提交仅原历史。
+
 ## 任务16 B2运行时准入源码（2026-11-07，未提交）
 
 - [~] 新只读runtime准入已替换B1占位，绑定外部输入SHA、工具/当前执行根及候选成员、worktree/构建见证、5树与链接闭包、前后manifest及版本metadata。新22＋原21=43模拟、原CLI25、四语法/CJS lint/API类型与src lint通过；两项Standards P2已逐片公开红绿补修（全部内容读统一qualified FD/工具流式后验、同父二次run新鲜resolve），原轴增量复审待主控。默认仍缺8原生stage，在资源前拒绝，非完整driver。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-runtime-admission-local.md)。无真实资源/SQL/生产操作，#398和16/42/44门保持。
