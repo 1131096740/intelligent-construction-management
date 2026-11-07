@@ -1,3 +1,8 @@
+## Current continuation (2026-11-08): B7 restricted clients source integrated
+
+- [~] Author `6a6f2435` merged `a71244d089526cf2485e88ebb73c68a120d3801a`;v3freeze7aa4 dual-review0. Central fresh222=189+otherACL1+clients32, originalCLI25,11CJS syntax/lint,2JSON/diff passed;13sourcehashes/39sourcepins unchanged. Clean merge seal3307/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-restricted-clients-integrated.md); finaldocs exactseal/remote separately recorded.
+- [ ] Ownfake protocols only;SQL_NOT_EXECUTED_NOT_PARSED,no real sharedPrisma/SDK/TLS/listener/PG/physicaldisconnect/financial proof. Default3 App/seed/case and legalfixture/realPG gates remain;#398/17-24/16-42-44/13of45 unchanged. All commits/finalHEAD [skip ci],emptychecks notCIpass;fe70incident retained. No main/Issueclose/deploy/production.
+
 ## 任务16 B7三角色客户端源码准备（2026-11-08，未提交）
 
 - [~] 从准确62a7独立准备connectRestrictedClients：父实际Class/模块闭包与fresh一次CLI准入、qualified client/build/source/工具及CA见证、三OID/PID/readonly会话、先登记再connect/逆序清理；B6唯一TEMP checker复用及旧其它ACL witness连续，初版216被双轴两distinct P2拒绝，v2 then项已闭、环境仍有dotenv同类残留；已原public RED/GREEN把三dotenv路径缺失纳统一跨await复核，原220＋新增2＝222模拟与CLI25/API类型/lint/十一CJS静态，新v3冻结与双轴增量待主控。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-restricted-clients-local.md)。
