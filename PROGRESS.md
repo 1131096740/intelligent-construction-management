@@ -1,3 +1,7 @@
+## 任务16安装阶段源码增量（2026-11-07，未提交）
+
+- [~] 新私有树从95a fast-forward至fc2dcada，新增仅导入惰性的单事务七片SQL安装函数；用户确认“仅源码与模拟测试”。真实离线CLI封包核验＋owner适配器模拟18/18、两CJS语法/定向lint、API类型/src lint通过，独立复核及整合待主控。无真实SQL/PG/资源或生产操作，#398及16/42/44门保持；[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-installer-source-local.md)。
+
 ## 当前接续（2026-11-07，任务16离线准备工具已本地整合）
 
 - [~] 离线CLI作者提交88b4304f已独立合入中央 `b36e3e530b41af66b1be0972bc652be6d0230331`；中央Node20双语法及原25公开CLI新跑全过，准确干净b36源码prepare/verify通过（3253源码/202迁移/七SQL/一静态案件）。本次新增整合文档不冒b36封包覆盖后继SHA；后继准确封包见外部收据。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-offline-packet-integrated.md)。
