@@ -1,3 +1,8 @@
+## 当前接续（2026-11-08，任务16 B4 owner TLS源码已整合）
+
+- [~] 作者`1cb6d9d7`已合中央`1446e9de0c7179be42703eae4a44ce0f41b237b6`，最终manifest9fb68双轴增量0；原擦除UNKNOWN被覆盖P2已公开红绿关闭。中央独立108模拟＋原CLI25、十CJS语法/定向lint全过；准确干净merge封包3285源码/202迁移/七SQL/一case。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-owner-tls-integrated.md)。后继文档头及远端收据单列，不以旧包覆盖。
+- [ ] 仅源码/模拟，default仍缺六原生能力、资源前闭门；真实probe/TLS/PG/SQL/物理擦除/资金/清理未验。#398 OPEN、17/24及16/42/44门、13/45保持。所有提交及最终push HEAD须`[skip ci]`，准确新头无Actions/空checks也非CI通过；下方fe70远端事故完整保留。未合main、部署或生产。
+
 ## 任务16 B4 owner TLS 源码准备（2026-11-08，未提交）
 
 - [~] 从准确4d07c5c1独立准备owner阶段/专用三模式probe，固定资源/CA/源码/工具/五runtime树与双通道DB身份；CA/SAN/明文具体拒绝、SAN恢复及私有擦除首败保留。初版107模拟/静态后，Standards擦除unknown被目录清理覆盖P2已公开红绿补修；原107＋新增1＝108模拟、原CLI25及两受影响CJS语法/lint通过，增量独立复核待主控。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-owner-tls-local.md)。
