@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，B3自动CI事故已停止并登记）
+
+- [~] B3源码合入`27d14904`、文档头`fe70bb931e1dfba344d585acb311247f6156f292`的本机独立82模拟＋原CLI25、六语法/定向lint通过；后继仅事故收据及本账本文档，六源码未变，不重跑或冒新源码验收。[B3整合](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-migrations-integrated.md)。
+- [!] fe70推送遗漏既有`[skip ci]`要求，误触发CI `42396726261`；已取消并核最终26 job=25取消/1失败、0活动。17个PG job执行到setup/依赖/PDF准备，34个明确PG镜像/分片步骤跳过、5个PG job未启动；未据元数据排除所有远端副作用，不计CI通过。[事故及规则依据](docs/progress/2026-11-08-enterprise-simplification-b3-auto-ci-boundary.md)。后继文档提交必须带`[skip ci]`，准确新头封包/无Actions运行回读另存外部，不抹旧失败。
+- [ ] 默认仍缺七原生stage，真实PG/TLS/ACL/资金/竞争/清理未验；#398 OPEN，17/24与16/42/44门、13/45保持。未合main、部署或写生产。下方旧无PG/未提交描述仅属各自本机阶段历史，不覆盖本次远端事故。
+
 ## Current continuation (2026-11-08): Task16 B3 source integrated
 
 - [~] Reviewed B3 author `bbb6e6c1` merged as `27d14904b137e8fb8023f539dd1bd6d047507ee0`. Original Spec1/Standards2 P2 findings closed by independent follow-ups; central fresh82 simulated tests plus original CLI25, six CJS syntax and targeted lint passed. Clean exact merge source-only prepare/verify:3277 source/202 migrations/7 SQL/1 case. [Independent integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-migrations-integrated.md); final documentation head packet/readback recorded externally.
