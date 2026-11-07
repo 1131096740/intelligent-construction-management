@@ -1,3 +1,8 @@
+## Current continuation (2026-11-08): B6 registered access source integrated
+
+- [~] Author `8d9a7171` merged `de5445938f57f3f5d756024196b9fcb3f202ac4c`; final859c freeze Standards1/Spec3 P2 closed/current0. Central fresh189=128+34+27, originalCLI25,12CJS syntax/lint,2JSON/diff passed;allsource pins unchanged. Clean merge source packet3300/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-registered-access-integrated.md); finaldocs seal/remote separately recorded.
+- [ ] SQL_NOT_EXECUTED_NOT_PARSED; mocks are not actual ACL/PG/function-catalog/negativeDML/locks/COMMIT/cleanup proof. Default4 native stages remain closed before resources, legal fixture assignment and#398/17-24/16-42-44 gates/13of45 unchanged. All commits/finalHEAD [skip ci],empty checks notCIpass;fe70 incident preserved. No main/deployment/production.
+
 ## 任务16 B6 registered权限源码准备（2026-11-08，未提交）
 
 - [~] 从准确90bc独立准备七片native交接和installRegisteredAccess：首份资源见证/B5角色OID/source连续、qualified FD、44完整终态函数source、14表catalog见证、精确combined逐列/函数矩阵及三组锁专用ALWAYS保护。初版181被双轴四P2拒绝，已逐公开seam红绿补proof形状/observer最小投影/44函数接口/无条件全UPDATE保护；当前128＋installer34＋registered27共189模拟与原CLI25、API类型/src lint/十二CJS静态结果见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-registered-access-local.md)，最终冻结/独立双轴待主控。
