@@ -37,11 +37,12 @@ function nativeAdapters() {
       return installTask16BaselineAccess(context);
     },
     async installPreparedSql(context) {
-      const { installTask16RegisteredSql } = require("./task16-registered-sql-installer.cjs");
-      return installTask16RegisteredSql({ resource: context.resource, packetFile: context.options.packetFile,
-        expectedPacketSha256: context.options.expectedPacketSha256,
-        expectedResource: context.resource.getReceipt(), ownerRole: "jg_task01_owner", runtimeRole: "jg_task01_runtime",
-        authorizationReference: context.source.inputs.authorizationReference });
+      const {installTask16PreparedStage}=require("./task16-prepared-install-stage.cjs");
+      return installTask16PreparedStage(context);
+    },
+    async installRegisteredAccess(context) {
+      const {installTask16RegisteredAccess}=require("./task16-registered-access.cjs");
+      return installTask16RegisteredAccess(context);
     }
     // Unimplemented stages are absent, never no-op functions returning success.
   };
@@ -89,7 +90,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
 
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
-    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED", ownerRestorationOutcome: "NOT_NEEDED", ownerPrivateErasureOutcome: "NOT_NEEDED", baselineAccessOutcome: "NOT_ATTEMPTED" };
+    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED", ownerRestorationOutcome: "NOT_NEEDED", ownerPrivateErasureOutcome: "NOT_NEEDED", baselineAccessOutcome: "NOT_ATTEMPTED", registeredAccessOutcome: "NOT_ATTEMPTED" };
   const controller = new AbortController();
   const onCallerAbort = () => controller.abort();
   const context = { options, runId: randomUUID(), signal: controller.signal, readOnlyCommand: simulation ? injectedAdapters.readOnlyCommand : undefined,
@@ -116,6 +117,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     receipt.sourceSha = context.source.candidateSha;
     context.resource = await stage("startResource");
     need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
+    const initialReceipt=structuredClone(context.resource.getReceipt());
+    const witness=Object.freeze(Object.fromEntries(["runId","sourceSha","containerId","networkId","daemonId","endpoint","imageId","databaseName","port"].map(key=>[key,initialReceipt[key]])));
+    Object.defineProperty(context,"resourceWitness",{value:witness,writable:false,configurable:false,enumerable:true});
     context.ownerTransport = await stage("verifyOwnerTransport");
     if (context.ownerTransport?.ownerPrivateErasureOutcome === "ERASED") receipt.ownerPrivateErasureOutcome = "ERASED";
     if (context.ownerTransport?.ownerRestorationOutcome === "CORRECT_PRESENTATION_RESTORED") receipt.ownerRestorationOutcome = "CORRECT_PRESENTATION_RESTORED";
@@ -128,7 +132,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     receipt.installationOutcome = "UNKNOWN_DO_NOT_RETRY";
     context.installation = await stage("installPreparedSql");
     receipt.installationOutcome = "INSTALLATION_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
-    await stage("installRegisteredAccess");
+    receipt.registeredAccessOutcome = "UNKNOWN_DO_NOT_RETRY";
+    context.registeredAccess = await stage("installRegisteredAccess");
+    receipt.registeredAccessOutcome = "REGISTERED_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
     context.clients = await stage("connectRestrictedClients");
     need(typeof context.clients?.close === "function", "TASK16_DRIVER_CLIENT_HANDLES");
     context.application = await stage("startApplication");
@@ -140,6 +146,8 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
+    if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.installationOutcome)) receipt.installationOutcome = error.installationOutcome;
+    if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.registeredAccessOutcome)) receipt.registeredAccessOutcome = error.registeredAccessOutcome;
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.baselineAccessOutcome)) receipt.baselineAccessOutcome = error.baselineAccessOutcome;
     if (["NOT_NEEDED", "PENDING", "ERASED", "UNKNOWN_DO_NOT_CONTINUE"].includes(error?.ownerPrivateErasureOutcome)) receipt.ownerPrivateErasureOutcome = error.ownerPrivateErasureOutcome;
     if (["NOT_NEEDED", "RESTORE_REQUIRED", "CORRECT_PRESENTATION_RESTORED", "UNKNOWN_DO_NOT_CONTINUE"].includes(error?.ownerRestorationOutcome)) receipt.ownerRestorationOutcome = error.ownerRestorationOutcome;
