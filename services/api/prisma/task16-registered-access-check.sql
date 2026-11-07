@@ -49,7 +49,9 @@ BEGIN
    IF rel.relkind='S' THEN
     IF pg_catalog.has_sequence_privilege(role_oid,rel.oid,'USAGE,SELECT,UPDATE') THEN RAISE EXCEPTION 'task16 sequence capability mismatch'; END IF;
    ELSE
-    IF pg_catalog.has_table_privilege(role_oid,rel.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'task16 table-level capability rejected'; END IF;
+    IF pg_catalog.has_table_privilege(role_oid,rel.oid,'SELECT,INSERT,UPDATE,TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'task16 table-level capability rejected'; END IF;
+    expected:=final_stage AND role_name='jg_task01_runtime' AND rel.oid=pg_catalog.to_regclass('public."AuthRateLimit"') AND rel.relkind='r' AND coalesce(role_plan->'technicalAuthRateLimitDelete'='true'::jsonb,false);
+    IF pg_catalog.has_table_privilege(role_oid,rel.oid,'DELETE') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'task16 exact technical delete matrix mismatch'; END IF;
     SELECT value INTO table_plan FROM pg_catalog.jsonb_array_elements(role_plan->'tables') WHERE value->>'table'=rel.relname;
     FOR col IN SELECT a.attnum,a.attname FROM pg_catalog.pg_attribute a WHERE a.attrelid=rel.oid AND a.attnum<>0 AND NOT a.attisdropped LOOP
      FOREACH op IN ARRAY ARRAY['select','insert','update','references'] LOOP

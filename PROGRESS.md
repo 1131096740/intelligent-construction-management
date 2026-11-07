@@ -1,3 +1,8 @@
+## 任务16 B8a限流技术ACL源码准备（2026-11-08，未提交）
+
+- [~] 从准确6310fa20独立准备AuthRateLimit最小runtime三列SELECT/INSERT、UPDATE(hits)和唯一该表DELETE；before/observer/其它表删除及宽权限仍拒，共用B6/B7 checker与同一matrix proof不分叉，原39＋Auth三source pins/44函数及guards不变。公开wire/非法sealed profile红绿及旧222＋新增10＝232模拟、CLI25/类型/lint/语法/来源检查见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-rate-limit-acl-local.md)，冻结双轴待主控。
+- [ ] DELETE是技术表级能力，不是仅过期行ACL；未改产品限流/Schema/迁移、未用新Nest工厂，实际SDK/SQL解析执行/PG/权限/登录和物理清理仍未验。默认三stage资源前拒绝，#398/依赖硬门及13/45保持；未commit/push/main/部署/生产，future所有提交和最终push HEAD均[skip ci]。
+
 ## Current continuation (2026-11-08): B7 restricted clients source integrated
 
 - [~] Author `6a6f2435` merged `a71244d089526cf2485e88ebb73c68a120d3801a`;v3freeze7aa4 dual-review0. Central fresh222=189+otherACL1+clients32, originalCLI25,11CJS syntax/lint,2JSON/diff passed;13sourcehashes/39sourcepins unchanged. Clean merge seal3307/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-restricted-clients-integrated.md); finaldocs exactseal/remote separately recorded.

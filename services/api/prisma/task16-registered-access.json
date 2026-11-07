@@ -90,6 +90,28 @@
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
       {
+        "table": "AuthRateLimit",
+        "select": [
+          "expiresAt",
+          "hits",
+          "key"
+        ],
+        "insert": [
+          "expiresAt",
+          "hits",
+          "key"
+        ],
+        "update": [
+          "hits"
+        ],
+        "evidence": [
+          "services/api/src/auth/auth-rate-limit.service.ts:29",
+          "services/api/src/auth/auth-rate-limit.service.ts:34",
+          "services/api/prisma/schema.prisma:109"
+        ],
+        "readReason": "Existing login limiter deleteMany predicate and upsert scalar return; table DELETE is technical capability, not a row-filtered ACL"
+      },
+      {
         "table": "BankTransactionClaim",
         "select": [
           "paymentExecutionId"
@@ -1039,7 +1061,8 @@
       "public.jg_registered_payment_source_matches(text,text,bigint,text,text)",
       "public.jg_registered_timestamp_iso(timestamp without time zone)",
       "public.jg_task01_connection_identity()"
-    ]
+    ],
+    "technicalAuthRateLimitDelete": true
   },
   "observer": {
     "role": "jg_task01_observer",
@@ -2222,6 +2245,22 @@
         "insert": [],
         "update": [
           "updatedAt"
+        ]
+      },
+      {
+        "table": "AuthRateLimit",
+        "select": [
+          "expiresAt",
+          "hits",
+          "key"
+        ],
+        "insert": [
+          "expiresAt",
+          "hits",
+          "key"
+        ],
+        "update": [
+          "hits"
         ]
       },
       {
@@ -4194,8 +4233,20 @@
       "sha256": "abaafdbcdbad73a47d722783040ebb2630e235ba6409b5f95111650a6c0dbb13"
     },
     {
+      "path": "services/api/src/auth/auth-rate-limit.service.ts",
+      "sha256": "d8aca915267a5a1c87928a5857a07c52eadec44929b586cb8a0748defe40998d"
+    },
+    {
+      "path": "services/api/src/auth/auth.module.ts",
+      "sha256": "c11ea91ed944a0c1dc24fb3beb9e6c495a38523141f08ef8ff369d7f6c0f2612"
+    },
+    {
       "path": "services/api/src/auth/auth.service.ts",
       "sha256": "cb7eec0cd3bbeeae91656353c3e56214f6fbe6128f2cae95426bcab23d1fb724"
+    },
+    {
+      "path": "services/api/src/auth/guards/account-rate-limit.guard.ts",
+      "sha256": "7b69e428f6780dcf6ee3b050192224ed0ec2ea3f865f6921e24db0c691dee470"
     },
     {
       "path": "services/api/src/auth/guards/jwt-auth.guard.ts",
@@ -4252,7 +4303,8 @@
     "Three additional lock-only UPDATE columns require paired ALWAYS runtime-DML-denial guards",
     "Existing seven relation/seventeen function technical owners retained",
     "Owner fixture requires legal affiliate assignment in later loadFixture slice",
-    "Full 44 function bodies replayed from sealed predecessor sources, not a live PostgreSQL parser/result"
+    "Full 44 function bodies replayed from sealed predecessor sources, not a live PostgreSQL parser/result",
+    "Only final runtime AuthRateLimit table DELETE allowed; service expiry predicate is not enforced by table ACL; observer and other table DELETE remain denied"
   ],
   "observerDelta": {
     "role": "jg_task01_observer",

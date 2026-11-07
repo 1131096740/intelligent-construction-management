@@ -23,6 +23,8 @@ DO $column_grants$ DECLARE role_plan JSONB; table_plan JSONB; op TEXT; cols TEXT
  END LOOP;
  END LOOP;
 END $column_grants$;
+-- Sole table-level exception for the existing technical login limiter.
+GRANT DELETE ON TABLE public."AuthRateLimit" TO jg_task01_runtime;
 CREATE FUNCTION public.jg_task16_runtime_reference_read_only() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog AS $reference_guard$__REFERENCE_GUARD_BODY__$reference_guard$;
 REVOKE ALL ON FUNCTION public.jg_task16_runtime_reference_read_only() FROM PUBLIC,jg_task01_runtime,jg_task01_observer;
