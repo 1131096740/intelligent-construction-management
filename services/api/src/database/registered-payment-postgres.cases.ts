@@ -26,21 +26,21 @@ function check(condition: unknown, code: string): asserts condition {
 
 async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture) {
   const { ids } = fixture.plan;
-  const request = await tx.paymentRequest.findUniqueOrThrow({ where: { id: ids.payment } });
-  const settlement = await tx.settlement.findUniqueOrThrow({ where: { id: ids.settlement } });
-  const executions = await tx.paymentExecution.findMany({ where: { paymentRequestId: ids.payment } });
+  const request = await tx.paymentRequest.findUniqueOrThrow({ where: { id: ids.payment }, select: { approvedAmountCents: true, paidAmountCents: true, status: true } });
+  const settlement = await tx.settlement.findUniqueOrThrow({ where: { id: ids.settlement }, select: { payableAmountCents: true, paidAmountCents: true } });
+  const executions = await tx.paymentExecution.findMany({ where: { paymentRequestId: ids.payment }, select: { id: true, idempotencyKey: true, amountCents: true, paymentRequestId: true, voucherFileId: true } });
   const executionIds = executions.map(row => row.id);
-  const funding = await tx.registeredPaymentFunding.findMany({ where: { executionId: { in: executionIds } } });
-  const allocations = await tx.registeredFundPaymentAllocation.findMany({ where: { executionId: { in: executionIds } } });
-  const events = await tx.registeredPaymentEvent.findMany({ where: { executionId: { in: executionIds } } });
-  const roots = await tx.interEntityRelationshipEntry.findMany({ where: { paymentExecutionId: { in: executionIds } } });
-  const facts = await tx.operatingFact.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: { in: executionIds } } });
-  const impacts = await tx.operatingImpactEntry.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: { in: executionIds } } });
-  const audits = await tx.auditLog.findMany({ where: { businessType: "payment_request", businessId: ids.payment, action: "payment.execution.record" } });
+  const funding = await tx.registeredPaymentFunding.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, operatingLedgerEffectiveDateAtRegistration: true, actualPayerId: true, actualPayerKind: true } });
+  const allocations = await tx.registeredFundPaymentAllocation.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } });
+  const events = await tx.registeredPaymentEvent.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true } });
+  const roots = await tx.interEntityRelationshipEntry.findMany({ where: { paymentExecutionId: { in: executionIds } }, select: { id: true, paymentExecutionId: true, sourceType: true, entryKind: true, direction: true, status: true, originalDebtorCompanyId: true, creditorCompanyId: true, amountCents: true, projectId: true } });
+  const facts = await tx.operatingFact.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: { in: executionIds } }, select: { id: true } });
+  const impacts = await tx.operatingImpactEntry.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: { in: executionIds } }, select: { id: true } });
+  const audits = await tx.auditLog.findMany({ where: { businessType: "payment_request", businessId: ids.payment, action: "payment.execution.record" }, select: { actorUserId: true, metadata: true } });
   // Independent amounts come from the real immutable opening + canonical
   // postings, never the response or the application balance helper.
-  const [openingA, openingB] = await Promise.all([fixture.companyARegistrationId, fixture.companyBRegistrationId].map(id => tx.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id } })));
-  const allPostings = await tx.registeredFundPaymentAllocation.findMany({ where: { accountId: { in: [openingA.accountId, openingB.accountId] } } });
+  const [openingA, openingB] = await Promise.all([fixture.companyARegistrationId, fixture.companyBRegistrationId].map(id => tx.fundAccountBalanceRegistration.findUniqueOrThrow({ where: { id }, select: { accountId: true, balanceYuan: true, coveredExecutionIds: true } })));
+  const allPostings = await tx.registeredFundPaymentAllocation.findMany({ where: { accountId: { in: [openingA.accountId, openingB.accountId] } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } });
   const accountAmount = (opening: typeof openingA) => {
     check(opening.balanceYuan !== null, "PG_CASE_INITIAL_BALANCE_MUST_BE_KNOWN");
     const covered = new Set(opening.coveredExecutionIds);

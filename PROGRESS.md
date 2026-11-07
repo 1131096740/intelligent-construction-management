@@ -1,3 +1,7 @@
+## 任务16 A片连接身份源码（2026-11-07，未提交）
+
+- [~] 用户确认A+B“仅源码与模拟测试”，本片只交fixture/原case：严格TLS声明与实际会话ssl/角色/DB-cluster/PID、独立只读observer及11表明确select。新19模拟/原CLI25、API类型/全src lint通过；独立复核待主控。无真实SQL/PG/资源操作，#398和16/42/44门保持。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-fixture-identity-local.md)。
+
 ## 当前接续（2026-11-07，任务16安装阶段源码已整合）
 
 - [~] 单事务七片SQL安装阶段作者415e7f3e已独立合中央`eaea1ef983b8aeb6dc7d4ac0c28156f32f845782`，Standards/Spec各0建立发现；中央Node20四语法、原18模拟和原25CLI均新跑全过，无SQL/PG/资源执行。后继准确源码封包及Draft PR回读分开记录，空checks不算CI通过。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-installer-source-integrated.md)。
