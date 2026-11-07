@@ -8,7 +8,7 @@ CLI固定形状：`node services/api/prisma/run-task16-registered-pg-local.cjs -
 
 已有实际连接代码指针：默认source片段调用唯一离线CLI并核输入repo就是当前driver根、driver/resourcehelper/installer源码确实属于候选；默认resource阶段调用原 `startTask01Postgres`；默认安装阶段调用已整合 `installTask16RegisteredSql`。这些是实接源码，B1没有调用它们或证明实际运行。
 
-**B2后仍未完成的8个原生阶段在任何source读取/资源创建前阻断：** owner实际TLS正负控；准确迁移执行；baseline及registered逐列/函数权限与有效矩阵；三角色客户端/传输；App/fixture/正常case原生连接。缺失阶段没有noop成功函数。runtime准入现已真实实现，详见RUNTIME-ADMISSION-SOURCE.md；不是只删missingCapabilities即可得到可运行driver。
+**B3后仍未完成的7个原生阶段在任何source读取/资源创建前阻断：** owner实际TLS正负控；baseline及registered逐列/函数权限与有效矩阵；三角色客户端/传输；App/fixture/正常case原生连接。缺失阶段没有noop成功函数。runtime准入和准确202迁移adapter现已源码实接，分别见RUNTIME-ADMISSION-SOURCE.md和BASELINE-MIGRATION-SOURCE.md；不是只删missingCapabilities即可得到可运行driver。
 
 未来权限实现必须在marker安装前建立基础角色/权限、安装后只按固定manifest补精确新对象权限并核实际有效矩阵；禁止GRANT ALL恢复marker DML，禁止把旧task01 ACL冒registered权限。当前B1没有写ACL/迁移源码或调用任何SQL。
 

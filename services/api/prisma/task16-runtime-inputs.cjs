@@ -93,7 +93,7 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(sha(packetBytes) === options.expectedPacketSha256, "TASK16_RUNTIME_PACKET_CHANGED");
   const packet = JSON.parse(packetBytes.toString("utf8"));
   need(packet.source?.repo === ROOT && packet.candidateSha === inputs.sourceSha && packet.candidateSha === verified.candidateSha && packet.sealSha256 === verified.sealSha256, "TASK16_RUNTIME_SOURCE_ROOT_MISMATCH");
-  for (const relative of ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"]) {
+  for (const relative of ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/task16-baseline-migrations.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"]) {
     const member = packet.source.files.find(row => row.path === relative);
     need(member && member.sha256 === sourceHash(path.join(ROOT, relative)), "TASK16_RUNTIME_ADAPTER_NOT_IN_CANDIDATE");
   }
@@ -180,8 +180,9 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   for (const name of TOOL_NAMES) need(toolFile(tools[name], toolIdentities[name]).sha256 === inputs.tools[name].sha256, "TASK16_RUNTIME_TOOL_CHANGED");
   const docker = inputs.docker;
   need(docker?.endpoint === "unix:///Users/leoyang/.docker/run/docker.sock" && docker.imageId === "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d" && typeof docker.daemonId === "string" && /^[A-Za-z0-9:-]{16,128}$/u.test(docker.daemonId), "TASK16_RUNTIME_RESOURCE_DESCRIPTOR");
-  return { candidateSha: packet.candidateSha, sealSha256: packet.sealSha256,
+  return { candidateSha: packet.candidateSha, candidateRoot: ROOT, sealSha256: packet.sealSha256, schema: packet.schema, migrations: packet.migrations,
     runtimeAdmission: { status: "INPUTS_AND_CODE_TREES_MATCHED", treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
     inputs: { ...inputs, resourceOptions: { ...docker, tools: { docker: tools.docker, openssl: tools.openssl }, deadlineMs: 900000 } } };
 }
-module.exports = { verifyTask16RuntimeInputs };
+// Internal production reuse; tests stay at runTask16RegisteredPg, not this reader.
+module.exports = { verifyTask16RuntimeInputs, readQualifiedTask16File: qualifiedFile };

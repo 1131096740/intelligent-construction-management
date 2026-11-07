@@ -2,7 +2,7 @@
 
 本轮用户对A+B授权仍为“确认全部，仅源码与模拟测试”。B2把B1的runtime准入占位替换为真实只读实现；不新增plan-only CLI，也不开放实际资源。
 
-`runTask16RegisteredPg` 的默认verifySource现调用 `task16-runtime-inputs.cjs`。完整native入口仍缺owner TLS、迁移、baseline权限、registered精确权限/有效矩阵、clients、App、fixture、case共8阶段，在资源前拒绝。注入map仅可省略verifySource而使用真实只读实现；任何startResource/SQL/App阶段缺失都拒绝，绝不从native补齐。任何注入仍强制SIMULATED/nativeExecution=false。readonlyCommand只能由公开函数的模拟注入提供，CLI没有对应旗标。
+`runTask16RegisteredPg` 的默认verifySource现调用 `task16-runtime-inputs.cjs`。B3后完整native入口仍缺owner TLS、baseline权限、registered精确权限/有效矩阵、clients、App、fixture、case共7阶段，在资源前拒绝。注入map仅可省略verifySource而使用真实只读实现；任何startResource/SQL/App阶段缺失都拒绝，绝不从native补齐。任何注入仍强制SIMULATED/nativeExecution=false。readonlyCommand只能由公开函数的模拟注入提供，CLI没有对应旗标。
 
 ## 输入合同
 

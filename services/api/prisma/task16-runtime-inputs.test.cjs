@@ -38,7 +38,7 @@ function preparedRuntime(t) {
   t.after(() => fs.rmSync(temporary, { recursive: true }));
   const root = path.join(temporary, "candidate"); fs.mkdirSync(root);
   function put(relative, data, mode = 0o600) { const file = path.join(root, relative); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, data, { mode }); return file; }
-  const files = ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"];
+  const files = ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/task16-baseline-migrations.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"];
   for (const file of files) put(file, fs.readFileSync(path.join(project, file)));
   const gitDir = path.join(temporary, "owner-git/worktrees/candidate"); fs.mkdirSync(gitDir, { recursive: true });
   const gitFile = put(".git", `gitdir: ${gitDir}\n`);
