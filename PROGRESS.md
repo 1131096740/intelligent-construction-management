@@ -1,3 +1,8 @@
+## 当前接续（2026-11-07，任务16 B1生命周期源码已整合）
+
+- [~] B1作者`72735e04`已独立合中央`2a5e1290d2f6f01cdec45d835b0a23382ce9c810`，原最终取消P2实际红绿修复并双轴增量0未关闭；中央原21生命周期模拟/CLI25新跑全过，两CJS语法/定向lint通过。准确干净2a5 prepare/verify为3267源码/202迁移/七SQL/一case；最终文档头及远端另记。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-driver-lifecycle-integrated.md)。
+- [ ] B1不是完整driver，默认原生缺9能力、资源/SQL前拒绝完整保留；未跑实际资源/SQL/PG。B2实接/有效ACL/TLS/COMMIT/竞争/清理未验，#398与17/24/16/42/44门保持、13/45不变，10独立验收且12等待。未合main、部署或生产，下方未提交仅原历史。
+
 ## 任务16 B1生命周期源码（2026-11-07，未提交）
 
 - [~] 用户确认A+B“仅源码与模拟测试”，B1新增专用11阶段正常case编排/唯一未来CLI，21模拟（终stage取消P2已公开RED→GREEN）/语法/CJS lint/API类型与src lint通过。原生runtime准入/迁移/ACL/TLS/clients/App等能力未完，真实默认入口在source/资源前拒绝，不称完整driver；独立复核待主控。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-driver-lifecycle-local.md)。无真实资源/SQL或生产操作，#398和16/42/44门保持。
