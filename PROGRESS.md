@@ -1,3 +1,7 @@
+## 任务16 B2运行时准入源码（2026-11-07，未提交）
+
+- [~] 新只读runtime准入已替换B1占位，绑定外部输入SHA、工具/当前执行根及候选成员、worktree/构建见证、5树与链接闭包、前后manifest及版本metadata。新22＋原21=43模拟、原CLI25、四语法/CJS lint/API类型与src lint通过；两项Standards P2已逐片公开红绿补修（全部内容读统一qualified FD/工具流式后验、同父二次run新鲜resolve），原轴增量复审待主控。默认仍缺8原生stage，在资源前拒绝，非完整driver。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-runtime-admission-local.md)。无真实资源/SQL/生产操作，#398和16/42/44门保持。
+
 ## 当前接续（2026-11-07，任务16 B1生命周期源码已整合）
 
 - [~] B1作者`72735e04`已独立合中央`2a5e1290d2f6f01cdec45d835b0a23382ce9c810`，原最终取消P2实际红绿修复并双轴增量0未关闭；中央原21生命周期模拟/CLI25新跑全过，两CJS语法/定向lint通过。准确干净2a5 prepare/verify为3267源码/202迁移/七SQL/一case；最终文档头及远端另记。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-driver-lifecycle-integrated.md)。

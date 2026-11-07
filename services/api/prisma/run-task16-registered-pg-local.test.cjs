@@ -101,7 +101,7 @@ test("a fulfilled close without absence proof is not accepted", async () => {
   assert.deepEqual(receipt.cleanupFailures, ["resource-proof"]);
 });
 
-test("native CLI B1 is explicitly incomplete and creates no artifacts or resources", t => {
+test("native CLI remains incomplete after runtime admission is implemented and creates no artifacts or resources", t => {
   const root = fs.mkdtempSync("/private/tmp/jg-task16-driver-cli-simulation-");
   t.after(() => fs.rmSync(root, { recursive: true }));
   const artifacts = path.join(root, "not-created");
@@ -113,7 +113,8 @@ test("native CLI B1 is explicitly incomplete and creates no artifacts or resourc
   assert.equal(receipt.resource.status, "not-created");
   assert.deepEqual(receipt.stages, []);
   assert.equal(fs.existsSync(artifacts), false);
-  assert.ok(receipt.missingCapabilities.includes("verifiedRuntimeInputAndDependencyAdmission"));
+  assert.ok(!receipt.missingCapabilities.includes("verifiedRuntimeInputAndDependencyAdmission"));
+  assert.ok(receipt.missingCapabilities.includes("migrateBaseline"));
 });
 
 test("the native CLI has no simulation or skip-guard flag", () => {
