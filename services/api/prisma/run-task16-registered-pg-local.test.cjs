@@ -149,3 +149,24 @@ test("cancellation during the final case cannot report completion even if that a
   assert.deepEqual(f.calls.slice(-3), ["close-app", "close-clients", "close-resource"]);
   assert.deepEqual(receipt.cleanupFailures, []);
 });
+
+test('fixture outcome accepts only the two finite failure states and never arbitrary payload',async()=>{
+ for(const outcome of ['NOT_ATTEMPTED','UNKNOWN_DO_NOT_RETRY','synthetic-private-token',null,{secret:'synthetic-private-token'}]){
+  const f=simulation();f.adapters.seedFixture=async()=>{throw Object.assign(new Error('synthetic private error'),{code:'TASK16_FIXTURE_FAILED_CLOSED',fixtureOutcome:outcome});};
+  const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.fixtureOutcome,['NOT_ATTEMPTED','UNKNOWN_DO_NOT_RETRY'].includes(outcome)?outcome:undefined);assert.equal(JSON.stringify(receipt).includes('synthetic-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);
+ }
+});
+
+test('fixture outcome is read once so a changing getter cannot relay private content',async()=>{
+ const f=simulation();let reads=0;
+ f.adapters.seedFixture=async()=>{throw {code:'TASK16_FIXTURE_FAILED_CLOSED',get fixtureOutcome(){return ++reads===1?'UNKNOWN_DO_NOT_RETRY':'synthetic-private-token';}};};
+ const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.fixtureOutcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(reads,1);assert.equal(JSON.stringify(receipt).includes('synthetic-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);
+});
+
+test('a throwing fixture outcome getter is discarded without exposing its exception or skipping cleanup',async()=>{
+ const f=simulation();let reads=0;
+ f.adapters.seedFixture=async()=>{throw {code:'TASK16_FIXTURE_FAILED_CLOSED',get fixtureOutcome(){reads++;throw new Error('synthetic-private-token');}};};
+ const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.failureCode,'TASK16_FIXTURE_FAILED_CLOSED');assert.equal(receipt.fixtureOutcome,undefined);assert.equal(reads,1);assert.equal(JSON.stringify(receipt).includes('synthetic-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);
+});

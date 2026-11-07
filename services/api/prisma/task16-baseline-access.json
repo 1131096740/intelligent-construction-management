@@ -1065,7 +1065,7 @@
     },
     {
       "path": "services/api/src/database/registered-payment-postgres.fixture.ts",
-      "sha256": "c3254c1bbbe2c6a689ea35ad003f70b02efa8a16ce3023b223e1e844b67ebb77"
+      "sha256": "2060274a781b01fc5782064e37d22758666424972a9b9204c509c13b98f88ea8"
     },
     {
       "path": "services/api/src/fund-account/fund-account.service.ts",

@@ -166,3 +166,13 @@ describe("registered PG original case: explicit observer projection protocol (no
     } finally { fetch.mockRestore(); }
   });
 });
+
+
+describe("registered fixture synthetic construction enterprise plan", () => {
+  it("allocates sixteen independent identities including a separate party, version and assignment", () => {
+    const plan = buildRegisteredPgFixturePlan("da49e313e3da", "2026-11-07", "2026-11-01");
+    expect(Object.values(plan.ids)).toHaveLength(16);
+    expect(new Set(Object.values(plan.ids)).size).toBe(16);
+    for (const value of Object.values(plan.ids)) expect(value).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+  });
+});

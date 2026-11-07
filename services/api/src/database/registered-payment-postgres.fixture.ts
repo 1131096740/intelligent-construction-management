@@ -48,6 +48,7 @@ export interface RegisteredPgFixturePlan {
   ids: {
     actor: string; companyA: string; companyB: string;
     companyVersionA: string; companyVersionB: string;
+    constructionEnterpriseParty: string; constructionEnterpriseVersion: string; constructionEnterpriseAssignment: string;
     project: string; contract: string; version: string; terms: string;
     settlement: string; payment: string; approvedRound: string; requestKey: string;
   };
@@ -72,7 +73,7 @@ export function describeRegisteredPgPreparation() {
     executed: false, sqlExecuted: false, resourceExecutorImplemented: false,
     fixtureVariant: "approved-settlement-project-unenabled-company-b-pays-a",
     approvalCoverage: "approved-state fixture only; no approval or notification acceptance",
-    order: ["user/position", "companies/versions", "project", "contract/automatic marker", "effective version", "effective terms", "settlement", "payment", "approved round", "real HTTP login", "real HTTP balance openings"],
+    order: ["user/position", "companies/versions", "construction enterprise/own version", "project/current construction assignment", "contract/automatic marker", "effective version", "effective terms", "settlement", "payment", "approved round", "real HTTP login", "real HTTP balance openings"],
     unresolvedNativePreconditions: [
       "All governed migrations plus the exact seven prepared fragments must be installed by an authorized executor.",
       "The installed owner/runtime grants and prepared SQL have not been executed or validated.",
@@ -82,9 +83,7 @@ export function describeRegisteredPgPreparation() {
   };
 }
 
-/** A pure description builder: dates are supplied explicitly, never inferred
- * from createdAt or the host clock. Generating fixture identities is not a DB write. */
-export function buildRegisteredPgFixturePlan(runId: string, paidAt: string, openingDate: string): RegisteredPgFixturePlan {
+function assertFixtureDates(runId: string, paidAt: string, openingDate: string) {
   requireCondition(/^[a-f0-9]{12}$/.test(runId), "PG_PREPARATION_RUN_ID");
   for (const date of [paidAt, openingDate]) {
     requireCondition(/^\d{4}-\d{2}-\d{2}$/.test(date) && date.slice(0, 4) !== "0000", "PG_PREPARATION_DATE");
@@ -92,12 +91,19 @@ export function buildRegisteredPgFixturePlan(runId: string, paidAt: string, open
     requireCondition(Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date, "PG_PREPARATION_DATE");
   }
   requireCondition(paidAt >= openingDate, "PG_PREPARATION_DATE_ORDER");
+}
+
+/** A pure description builder: dates are supplied explicitly, never inferred
+ * from createdAt or the host clock. Generating fixture identities is not a DB write. */
+export function buildRegisteredPgFixturePlan(runId: string, paidAt: string, openingDate: string): RegisteredPgFixturePlan {
+  assertFixtureDates(runId, paidAt, openingDate);
   return {
     runId, paidAt, openingDate,
     phone: `199${(BigInt(`0x${runId}`) % 100000000n).toString().padStart(8, "0")}`,
     ids: {
       actor: randomUUID(), companyA: randomUUID(), companyB: randomUUID(),
       companyVersionA: randomUUID(), companyVersionB: randomUUID(),
+      constructionEnterpriseParty: randomUUID(), constructionEnterpriseVersion: randomUUID(), constructionEnterpriseAssignment: randomUUID(),
       project: randomUUID(), contract: randomUUID(), version: randomUUID(), terms: randomUUID(),
       settlement: randomUUID(), payment: randomUUID(), approvedRound: randomUUID(), requestKey: randomUUID()
     }
@@ -188,52 +194,105 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
 /** Executes nothing unless explicitly called with already connected resources.
  * No SQL installation, client construction, resource creation or cleanup here. */
 export async function seedRegisteredPgFixture(context: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan): Promise<PreparedRegisteredPgFixture> {
-  await assertRegisteredPgConnectedRoles(context);
-  requireCondition(plan.runId === context.proof.runId && context.password.length >= 12, "PG_FIXTURE_INPUT");
-  const bcrypt = await import("bcryptjs");
-  const { assertValidUnifiedSocialCreditCode } = await import("../company-entity/unified-social-credit-code");
-  const passwordHash = await bcrypt.hash(context.password, 12);
-  const ids = plan.ids;
-  await context.owner.$transaction(async tx => {
-    await tx.user.create({ data: { id: ids.actor, phone: plan.phone, name: `PG合成财务${plan.runId}`, passwordHash, isActive: true, mustChangePassword: false } });
-    const position = await tx.position.findUnique({ where: { key: "finance_staff" } }) ?? await tx.position.create({ data: { key: "finance_staff", name: "财务人员" } });
-    await tx.userPosition.create({ data: { userId: ids.actor, positionId: position.id, projectId: null } });
-    for (const [id, versionId, suffix, creditCode] of [[ids.companyA, ids.companyVersionA, "AA", "91350211M000100Y46"], [ids.companyB, ids.companyVersionB, "BB", "91440300708461136T"]] as const) {
-      const name = `PG合成公司${suffix}${plan.runId}`;
-      // Reuse the repository's two checksum-valid unit-test vectors. They
-      // identify no real business here; this is one dedicated fixture DB.
-      const code = assertValidUnifiedSocialCreditCode(creditCode);
-      await tx.companyEntity.create({ data: { id, name, unifiedSocialCreditCode: code, dataStatus: "complete", currentVersionNo: 1, isActive: true } });
-      await tx.companyEntityVersion.create({ data: { id: versionId, companyEntityId: id, versionNo: 1, name, unifiedSocialCreditCode: code, isActive: true, action: "create", actorUserId: ids.actor } });
+  let ownerAttempted = false;
+  try {
+    // Snapshot caller input before any await. This fixture never refreshes an
+    // altered plan into a new baseline after session/owner work has started.
+    plan = structuredClone(plan);
+    assertFixtureDates(plan.runId, plan.paidAt, plan.openingDate);
+    const identityKeys: Array<keyof RegisteredPgFixturePlan["ids"]> = [
+      "actor", "companyA", "companyB", "companyVersionA", "companyVersionB", "constructionEnterpriseParty",
+      "constructionEnterpriseVersion", "constructionEnterpriseAssignment", "project", "contract", "version", "terms",
+      "settlement", "payment", "approvedRound", "requestKey"
+    ];
+    requireCondition(Object.keys(plan.ids).length === 16 && identityKeys.every(key => typeof plan.ids[key] === "string"
+      && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(plan.ids[key]))
+      && new Set(identityKeys.map(key => plan.ids[key])).size === 16, "PG_FIXTURE_IDENTITIES");
+    await assertRegisteredPgConnectedRoles(context);
+    requireCondition(plan.runId === context.proof.runId && context.password.length >= 12, "PG_FIXTURE_INPUT");
+    const bcrypt = await import("bcryptjs");
+    const { assertValidUnifiedSocialCreditCode } = await import("../company-entity/unified-social-credit-code");
+    const passwordHash = await bcrypt.hash(context.password, 12);
+    const ids = plan.ids;
+    ownerAttempted = true;
+    await context.owner.$transaction(async tx => {
+      await tx.user.create({ data: { id: ids.actor, phone: plan.phone, name: `PG合成财务${plan.runId}`, passwordHash, isActive: true, mustChangePassword: false } });
+      const position = await tx.position.findUnique({ where: { key: "finance_staff" } }) ?? await tx.position.create({ data: { key: "finance_staff", name: "财务人员" } });
+      await tx.userPosition.create({ data: { userId: ids.actor, positionId: position.id, projectId: null } });
+      for (const [id, versionId, suffix, creditCode] of [[ids.companyA, ids.companyVersionA, "AA", "91350211M000100Y46"], [ids.companyB, ids.companyVersionB, "BB", "91440300708461136T"]] as const) {
+        const name = `PG合成公司${suffix}${plan.runId}`;
+        // Reuse the repository's two checksum-valid unit-test vectors. They
+        // identify no real business here; this is one dedicated fixture DB.
+        const code = assertValidUnifiedSocialCreditCode(creditCode);
+        await tx.companyEntity.create({ data: { id, name, unifiedSocialCreditCode: code, dataStatus: "complete", currentVersionNo: 1, isActive: true } });
+        await tx.companyEntityVersion.create({ data: { id: versionId, companyEntityId: id, versionNo: 1, name, unifiedSocialCreditCode: code, isActive: true, action: "create", actorUserId: ids.actor } });
+      }
+      const constructionName = `T16施工企业${plan.runId}`;
+      const formalSeedInstant = new Date(`${plan.openingDate}T00:00:00.000Z`);
+      const constructionParty = await tx.businessParty.create({ data: {
+        id: ids.constructionEnterpriseParty, type: "organization", name: constructionName,
+        normalizedName: constructionName, unifiedSocialCreditCode: null, status: "active", createdByUserId: ids.actor
+      } });
+      const constructionVersion = await tx.businessPartyVersion.create({ data: {
+        id: ids.constructionEnterpriseVersion, businessPartyId: ids.constructionEnterpriseParty, versionNo: 1,
+        snapshot: { type: "organization", name: constructionName, attachments: [] }, createdByUserId: ids.actor
+      } });
+      requireCondition(constructionParty.id === ids.constructionEnterpriseParty && constructionParty.type === "organization"
+        && constructionParty.status === "active" && constructionParty.name === constructionName
+        && constructionParty.normalizedName === constructionName && constructionParty.unifiedSocialCreditCode === null
+        && constructionVersion.id === ids.constructionEnterpriseVersion && constructionVersion.businessPartyId === constructionParty.id
+        && constructionVersion.versionNo === 1 && constructionVersion.snapshot !== null && typeof constructionVersion.snapshot === "object"
+        && !Array.isArray(constructionVersion.snapshot) && constructionVersion.snapshot.name === constructionName, "PG_FIXTURE_CONSTRUCTION_PARTY");
+      await tx.project.create({ data: { id: ids.project, code: `T16-${plan.runId}-P`, name: `PG合成项目${plan.runId}`, isActive: true, operatingLedgerEffectiveDate: null } });
+      await tx.projectAffiliateAssignment.create({ data: {
+        id: ids.constructionEnterpriseAssignment, projectId: ids.project,
+        businessPartyId: constructionParty.id, businessPartyVersionId: constructionVersion.id,
+        affiliateNameSnapshot: constructionName, affiliateCreditCodeSnapshot: null,
+        effectiveFrom: formalSeedInstant, endedAt: null, changeReason: "Task16隔离合成前置", assignedByUserId: ids.actor
+      } });
+      const assignments = await tx.projectAffiliateAssignment.findMany({ where: { projectId: ids.project, endedAt: null } });
+      const assignment = assignments[0];
+      requireCondition(assignments.length === 1 && assignment?.id === ids.constructionEnterpriseAssignment
+        && assignment.projectId === ids.project && assignment.businessPartyId === constructionParty.id
+        && assignment.businessPartyVersionId === constructionVersion.id && assignment.affiliateNameSnapshot === constructionName
+        && assignment.affiliateCreditCodeSnapshot === null && assignment.endedAt === null
+        && assignment.effectiveFrom.getTime() === formalSeedInstant.getTime() && assignment.assignedByUserId === ids.actor,
+      "PG_FIXTURE_CONSTRUCTION_ASSIGNMENT");
+      const company = await tx.companyEntity.findUniqueOrThrow({ where: { id: ids.companyA } });
+      await tx.contract.create({ data: { id: ids.contract, projectId: ids.project, code: `T16-${plan.runId}-HT`, name: "PG合成材料合同", counterparty: "PG合成供应商", contractTypeKey: "material_purchase", companyEntityId: ids.companyA, companyEntityName: company.name, ownerUserId: ids.actor } });
+      const marker = await tx.registeredContractHistoryRevision.findUnique({ where: { contractId: ids.contract } });
+      requireCondition(marker?.revision === 0n, "PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED");
+      await tx.contractVersion.create({ data: { id: ids.version, contractId: ids.contract, versionNo: 1, changeType: "original", status: "effective", effectiveAt: formalSeedInstant, amountCents: 10000n, signingSubjectType: "our_company", companyEntityIdSnapshot: company.id, companyEntityVersionId: ids.companyVersionA, companyEntityNameSnapshot: company.name, companyEntityCreditCodeSnapshot: company.unifiedSocialCreditCode, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} } });
+      await tx.paymentTermsVersion.create({ data: { id: ids.terms, contractId: ids.contract, contractVersionId: ids.version, versionNo: 1, status: "effective", originalText: "按已确认结算分次付款" } });
+      await tx.settlement.create({ data: { id: ids.settlement, projectId: ids.project, contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-JS`, periodLabel: "合成第一期", status: "effective", createdAt: formalSeedInstant, amountCents: 10000n, payableAmountCents: 10000n, paidAmountCents: 0n } });
+      await tx.paymentRequest.create({ data: { id: ids.payment, projectId: ids.project, settlementId: ids.settlement, sourceType: "settlement", contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-FK`, status: "approved_pending_payment", requestedAmountCents: 10000n, approvedAmountCents: 10000n, paidAmountCents: 0n, paymentSubjectType: "our_company" } });
+      // This is an explicitly pre-approved state fixture, not a simulated review
+      // action or a claim that approval/signature/notification paths were tested.
+      await tx.approvalInstance.create({ data: { id: ids.approvedRound, flowType: "payment.approve", businessType: "payment_request", businessId: ids.payment, status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: ids.actor } });
+    }, { isolationLevel: "Serializable" });
+    const login = await registeredPgHttp(context, "/auth/login", "POST", { phone: plan.phone, password: context.password });
+    const auth = login.body as { tokens?: { accessToken?: unknown } };
+    requireCondition(login.status === 201 && typeof auth.tokens?.accessToken === "string", "PG_FIXTURE_REAL_HTTP_LOGIN");
+    const accessToken = auth.tokens.accessToken;
+    const registrations: Array<{ id: string; sources: Array<{ id: string }> }> = [];
+    for (const companyId of [ids.companyA, ids.companyB]) {
+      const response = await registeredPgHttp(context, "/fund-accounts/openings", "POST", {
+        scopeKey: `company:${companyId}`, balanceYuan: "100", asOfDate: plan.openingDate,
+        evidenceReference: "隔离PG合成期初核对", reconciliationNote: "项目来源明确，不新增收入", reason: "合成期初",
+        idempotencyKey: `opening-${plan.runId}-${companyId}`,
+        sources: [{ amountYuan: "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: ids.project }]
+      }, accessToken);
+      const registration = response.body as { id?: unknown; sources?: Array<{ id: string }> };
+      requireCondition(response.status === 201 && typeof registration.id === "string" && registration.sources?.length === 1 && typeof registration.sources[0]?.id === "string", "PG_FIXTURE_REAL_HTTP_OPENING");
+      registrations.push({ id: registration.id, sources: registration.sources });
     }
-    await tx.project.create({ data: { id: ids.project, code: `T16-${plan.runId}-P`, name: `PG合成项目${plan.runId}`, isActive: true, operatingLedgerEffectiveDate: null } });
-    const company = await tx.companyEntity.findUniqueOrThrow({ where: { id: ids.companyA } });
-    await tx.contract.create({ data: { id: ids.contract, projectId: ids.project, code: `T16-${plan.runId}-HT`, name: "PG合成材料合同", counterparty: "PG合成供应商", contractTypeKey: "material_purchase", companyEntityId: ids.companyA, companyEntityName: company.name, ownerUserId: ids.actor } });
-    const marker = await tx.registeredContractHistoryRevision.findUnique({ where: { contractId: ids.contract } });
-    requireCondition(marker?.revision === 0n, "PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED");
-    await tx.contractVersion.create({ data: { id: ids.version, contractId: ids.contract, versionNo: 1, changeType: "original", status: "effective", effectiveAt: new Date(`${plan.openingDate}T00:00:00.000Z`), amountCents: 10000n, signingSubjectType: "our_company", companyEntityIdSnapshot: company.id, companyEntityVersionId: ids.companyVersionA, companyEntityNameSnapshot: company.name, companyEntityCreditCodeSnapshot: company.unifiedSocialCreditCode, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} } });
-    await tx.paymentTermsVersion.create({ data: { id: ids.terms, contractId: ids.contract, contractVersionId: ids.version, versionNo: 1, status: "effective", originalText: "按已确认结算分次付款" } });
-    await tx.settlement.create({ data: { id: ids.settlement, projectId: ids.project, contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-JS`, periodLabel: "合成第一期", status: "effective", amountCents: 10000n, payableAmountCents: 10000n, paidAmountCents: 0n } });
-    await tx.paymentRequest.create({ data: { id: ids.payment, projectId: ids.project, settlementId: ids.settlement, sourceType: "settlement", contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-FK`, status: "approved_pending_payment", requestedAmountCents: 10000n, approvedAmountCents: 10000n, paidAmountCents: 0n, paymentSubjectType: "our_company" } });
-    // This is an explicitly pre-approved state fixture, not a simulated review
-    // action or a claim that approval/signature/notification paths were tested.
-    await tx.approvalInstance.create({ data: { id: ids.approvedRound, flowType: "payment.approve", businessType: "payment_request", businessId: ids.payment, status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: ids.actor } });
-  }, { isolationLevel: "Serializable" });
-  const login = await registeredPgHttp(context, "/auth/login", "POST", { phone: plan.phone, password: context.password });
-  const auth = login.body as { tokens?: { accessToken?: unknown } };
-  requireCondition(login.status === 201 && typeof auth.tokens?.accessToken === "string", "PG_FIXTURE_REAL_HTTP_LOGIN");
-  const accessToken = auth.tokens.accessToken;
-  const registrations: Array<{ id: string; sources: Array<{ id: string }> }> = [];
-  for (const companyId of [ids.companyA, ids.companyB]) {
-    const response = await registeredPgHttp(context, "/fund-accounts/openings", "POST", {
-      scopeKey: `company:${companyId}`, balanceYuan: "100", asOfDate: plan.openingDate,
-      evidenceReference: "隔离PG合成期初核对", reconciliationNote: "项目来源明确，不新增收入", reason: "合成期初",
-      idempotencyKey: `opening-${plan.runId}-${companyId}`,
-      sources: [{ amountYuan: "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: ids.project }]
-    }, accessToken);
-    const registration = response.body as { id?: unknown; sources?: Array<{ id: string }> };
-    requireCondition(response.status === 201 && typeof registration.id === "string" && registration.sources?.length === 1 && typeof registration.sources[0]?.id === "string", "PG_FIXTURE_REAL_HTTP_OPENING");
-    registrations.push({ id: registration.id, sources: registration.sources });
+    return { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
+  } catch {
+    // A rejected/unknown owner transaction or later HTTP write is never proof
+    // of rollback. Do not retain raw SDK/HTTP errors, credentials or causes.
+    throw Object.assign(new Error("TASK16_FIXTURE_FAILED_CLOSED"), {
+      code: "TASK16_FIXTURE_FAILED_CLOSED",
+      fixtureOutcome: ownerAttempted ? "UNKNOWN_DO_NOT_RETRY" : "NOT_ATTEMPTED"
+    });
   }
-  return { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
 }
