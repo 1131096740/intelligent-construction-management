@@ -134,3 +134,19 @@ test("B6 publishes the observed unrelated-grantee ACL witness for later clients"
  f.adapters.connectRestrictedClients=async context=>{assert.deepEqual(context.registeredAccess.otherGranteeAclWitness,witness);return{close:async()=>{}};};
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,"SIMULATED_CASE_PROTOCOL_COMPLETED",receipt.failureCode);assert.equal(receipt.nativeExecution,false);
 });
+
+test("registered SQL carries only the fixed runtime AuthRateLimit technical grant",async t=>{
+ const f=fixture(t);f.hooks["task16-registered-access-transaction"]=sql=>{
+  // Observe the actual owner wire; no SQL parsing/execution or real ACL claim.
+  assert.equal(sql.includes('"table":"AuthRateLimit","select":["expiresAt","hits","key"],"insert":["expiresAt","hits","key"],"update":["hits"]'),true,'missing exact limiter scalar projection and write columns');
+  assert.equal(sql.includes('"technicalAuthRateLimitDelete":true'),true,'missing explicit fixed technical DELETE in the matrix proof');
+  assert.equal(sql.includes('GRANT DELETE ON TABLE public."AuthRateLimit" TO jg_task01_runtime;'),true,'missing the unique literal technical DELETE grant');
+  assert.equal(sql.includes("role_name='jg_task01_runtime' AND rel.oid=pg_catalog.to_regclass('public.\"AuthRateLimit\"')"),true,'DELETE expectation is not fixed to this role and relation');
+  assert.equal(sql.includes("expected:=final_stage AND role_name='jg_task01_runtime'"),true,'before must not receive the final technical DELETE');
+  assert.equal(sql.includes("has_table_privilege(role_oid,rel.oid,'SELECT,INSERT,UPDATE,TRUNCATE,REFERENCES,TRIGGER')"),true,'Auth exception must not bypass other broad privileges');
+  assert.equal(sql.includes("has_table_privilege(role_oid,rel.oid,'DELETE') IS DISTINCT FROM expected"),true,'every relation must compare DELETE in both directions');
+  assert.equal(sql.includes("coalesce(role_plan->'technicalAuthRateLimitDelete'='true'::jsonb,false)"),true,'only the sealed boolean technical exception is accepted');
+  assert.equal(sql.includes('a.grantee=0 OR (a.is_grantable'),true,'PUBLIC/grant option rejection remains');
+ };
+ const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',receipt.failureCode);assert.equal(receipt.nativeExecution,false);
+});
