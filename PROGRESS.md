@@ -1,3 +1,8 @@
+## 当前接续（2026-11-07，任务16 A片身份源码已整合）
+
+- [~] A片作者`f4aa8c8f`已独立合中央`2815a78a6a6bbba5850af5d88fb2cef50a0fb729`，Standards/Spec各0建立发现；中央原19模拟＋原CLI25新跑全过，API类型及三TS定向lint通过。准确干净2815 prepare/verify为3262源码/202迁移/七SQL/一个静态case，本次case源码新49a80afb已绑定；最终文档头封包/远端另记，不继承旧包。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-fixture-identity-integrated.md)。
+- [ ] 仅A源码/模拟协议，B总driver及实际资源/SQL/PG/ACL/TLS/COMMIT/竞争/清理未验；#398、17/24与16/42/44门保持，13/45不变，10仍私有实施且12等待。未合main、部署或写生产，下方未提交记录仅为原阶段历史。
+
 ## 任务16 A片连接身份源码（2026-11-07，未提交）
 
 - [~] 用户确认A+B“仅源码与模拟测试”，本片只交fixture/原case：严格TLS声明与实际会话ssl/角色/DB-cluster/PID、独立只读observer及11表明确select。新19模拟/原CLI25、API类型/全src lint通过；独立复核待主控。无真实SQL/PG/资源操作，#398和16/42/44门保持。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-fixture-identity-local.md)。
