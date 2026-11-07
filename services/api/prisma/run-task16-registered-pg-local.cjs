@@ -1,0 +1,160 @@
+"use strict";
+
+// B1: dedicated normal-case lifecycle source. No command runs on import.
+// Native execution remains disabled until every required adapter is implemented
+// and independently reviewed. Source packets and approval-reference strings are
+// not authority to create resources or execute SQL.
+const fs = require("node:fs");
+const path = require("node:path");
+const { createHash, randomBytes, randomUUID } = require("node:crypto");
+const { execFileSync } = require("node:child_process");
+
+const ROOT = path.resolve(__dirname, "../../..");
+const CASE_ID = "registered.null-cross-company.commit";
+const REQUIRED = ["verifySource", "startResource", "verifyOwnerTransport", "migrateBaseline", "installBaselineAccess", "installPreparedSql", "installRegisteredAccess", "connectRestrictedClients", "startApplication", "seedFixture", "runNormalCase"];
+const sha = bytes => createHash("sha256").update(bytes).digest("hex");
+const fault = code => Object.assign(new Error(code), { code });
+const need = (condition, code) => { if (!condition) throw fault(code); };
+
+function nativeAdapters() {
+  return {
+    async verifySource(context) {
+      const { options } = context;
+      const verified = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, "scripts/prepare-task16-registered-pg.cjs"), "--verify", "--packet", options.packetFile, "--expected-sha256", options.expectedPacketSha256], {
+        env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", TZ: "UTC" }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000, maxBuffer: 1024 * 1024
+      }));
+      need(verified.status === "SOURCE_ONLY_VERIFIED_NOT_EXECUTED", "TASK16_DRIVER_SOURCE_NOT_VERIFIED");
+      const packetBytes = fs.readFileSync(options.packetFile);
+      need(sha(packetBytes) === options.expectedPacketSha256, "TASK16_DRIVER_PACKET_CHANGED");
+      const packet = JSON.parse(packetBytes.toString("utf8"));
+      // An arbitrary other repository's valid source packet cannot authorize
+      // the currently running driver, its real adapters or its dependency tree.
+      need(packet.source.repo === ROOT && fs.realpathSync(ROOT) === ROOT, "TASK16_DRIVER_SOURCE_ROOT_MISMATCH");
+      for (const relative of ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs"]) {
+        const member = packet.source.files.find(row => row.path === relative);
+        need(member && member.sha256 === sha(fs.readFileSync(path.join(ROOT, relative))), "TASK16_DRIVER_ADAPTER_NOT_IN_CANDIDATE");
+      }
+      // B1 deliberately has no trusted runtime-input/dependency admission yet.
+      // Merely checking a packet or inventing a tools/ACL receipt is insufficient.
+      throw fault("TASK16_DRIVER_RUNTIME_INPUT_ADMISSION_UNIMPLEMENTED");
+    },
+    async startResource(context) {
+      const { startTask01Postgres } = require("./enterprise-task01-resources.cjs");
+      const { resourceOptions } = context.source.inputs;
+      return startTask01Postgres({ ...resourceOptions, runId: context.runId, sourceSha: context.source.candidateSha,
+        artifactsDir: path.join(context.options.artifactsDir, "resource-private"), ownerPassword: context.credentials.owner, signal: context.signal });
+    },
+    async installPreparedSql(context) {
+      const { installTask16RegisteredSql } = require("./task16-registered-sql-installer.cjs");
+      return installTask16RegisteredSql({ resource: context.resource, packetFile: context.options.packetFile,
+        expectedPacketSha256: context.options.expectedPacketSha256,
+        expectedResource: context.resource.getReceipt(), ownerRole: "jg_task01_owner", runtimeRole: "jg_task01_runtime",
+        authorizationReference: context.source.inputs.authorizationReference });
+    }
+    // Unimplemented stages are absent, never no-op functions returning success.
+  };
+}
+
+function validateOptions(options) {
+  need(options && typeof options === "object", "TASK16_DRIVER_ARGUMENTS");
+  for (const key of ["packetFile", "inputsFile", "artifactsDir"]) need(typeof options[key] === "string" && options[key].startsWith("/private/tmp/") && path.normalize(options[key]) === options[key], "TASK16_DRIVER_PATH");
+  for (const key of ["expectedPacketSha256", "expectedInputsSha256"]) need(typeof options[key] === "string" && /^[a-f0-9]{64}$/u.test(options[key]), "TASK16_DRIVER_DIGEST");
+}
+
+function resourceReceipt(resource, failure) {
+  let receipt;
+  try { receipt = resource?.getReceipt?.() ?? failure?.resourceReceipt; } catch { return { status: "receipt-unavailable", cleanup: { status: "unknown" } }; }
+  if (!receipt) return { status: "not-created", cleanup: { status: "not-needed" } };
+  return { status: receipt.status, runId: receipt.runId, containerId: receipt.containerId, networkId: receipt.networkId,
+    cleanup: { status: receipt.cleanup?.status, containerAbsent: receipt.cleanup?.containerAbsent === true,
+      volumesAbsent: receipt.cleanup?.volumesAbsent === true, networkAbsent: receipt.cleanup?.networkAbsent === true } };
+}
+
+/** Public seam for approved protocol simulations. Injected adapters can never
+ * produce native acceptance. A live call still requires separate authorization,
+ * sealed source/dependencies and complete real adapters; B1 rejects it up front. */
+async function runTask16RegisteredPg(options, injectedAdapters) {
+  const simulation = injectedAdapters !== undefined;
+  const adapters = injectedAdapters ?? nativeAdapters();
+  const stages = [];
+  const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
+    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, installationOutcome: "NOT_ATTEMPTED" };
+  const controller = new AbortController();
+  const onCallerAbort = () => controller.abort();
+  const context = { options, runId: randomUUID(), signal: controller.signal,
+    credentials: { owner: randomBytes(48).toString("hex"), runtime: randomBytes(48).toString("hex"), observer: randomBytes(48).toString("hex") } };
+  let failed;
+  let normalCaseCompleted = false;
+  async function stage(name) {
+    need(!controller.signal.aborted, "TASK16_DRIVER_ABORTED");
+    const record = { name, status: "running" }; stages.push(record);
+    try { const result = await adapters[name](context); record.status = "completed"; return result; }
+    catch (error) { record.status = "failed"; throw error; }
+  }
+  try {
+    validateOptions(options);
+    if (options.signal !== undefined) {
+      need(options.signal instanceof AbortSignal, "TASK16_DRIVER_SIGNAL");
+      options.signal.addEventListener("abort", onCallerAbort, { once: true });
+      if (options.signal.aborted) onCallerAbort();
+    }
+    receipt.missingCapabilities = REQUIRED.filter(name => typeof adapters[name] !== "function");
+    if (!simulation) receipt.missingCapabilities.unshift("verifiedRuntimeInputAndDependencyAdmission");
+    need(receipt.missingCapabilities.length === 0, "TASK16_DRIVER_CAPABILITIES_INCOMPLETE");
+    context.source = await stage("verifySource");
+    need(context.source && /^[a-f0-9]{40}$/u.test(context.source.candidateSha), "TASK16_DRIVER_SOURCE_IDENTITY");
+    receipt.sourceSha = context.source.candidateSha;
+    context.resource = await stage("startResource");
+    need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
+    await stage("verifyOwnerTransport");
+    await stage("migrateBaseline");
+    await stage("installBaselineAccess");
+    receipt.installationOutcome = "UNKNOWN_DO_NOT_RETRY";
+    context.installation = await stage("installPreparedSql");
+    receipt.installationOutcome = "INSTALLATION_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
+    await stage("installRegisteredAccess");
+    context.clients = await stage("connectRestrictedClients");
+    need(typeof context.clients?.close === "function", "TASK16_DRIVER_CLIENT_HANDLES");
+    context.application = await stage("startApplication");
+    need(typeof context.application?.close === "function", "TASK16_DRIVER_APPLICATION_HANDLE");
+    context.fixture = await stage("seedFixture");
+    const result = await stage("runNormalCase");
+    need(!controller.signal.aborted, "TASK16_DRIVER_ABORTED");
+    need(result?.caseId === CASE_ID && result.passed === true, "TASK16_DRIVER_NORMAL_CASE_FAILED");
+    normalCaseCompleted = true;
+  } catch (error) {
+    failed = error;
+    receipt.failureCode = typeof error?.code === "string" && /^(?:TASK16|TASK01)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_DRIVER_STAGE_FAILED";
+  } finally {
+    options?.signal?.removeEventListener?.("abort", onCallerAbort);
+    controller.abort();
+    for (const [name, handle] of [["application", context.application], ["clients", context.clients], ["resource", context.resource]]) {
+      if (!handle) continue;
+      try { need(typeof handle.close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await handle.close(); }
+      catch { receipt.cleanupFailures.push(name); }
+    }
+    receipt.resource = resourceReceipt(context.resource, failed);
+    if (context.resource || failed?.resourceReceipt) {
+      const final = receipt.resource;
+      if (final.status !== "closed" || final.cleanup.status !== "completed" || !["containerAbsent", "volumesAbsent", "networkAbsent"].every(key => final.cleanup[key] === true)) receipt.cleanupFailures.push("resource-proof");
+    }
+    for (const key of Object.keys(context.credentials)) context.credentials[key] = undefined;
+  }
+  if (receipt.cleanupFailures.length) receipt.failureCode ||= "TASK16_DRIVER_CLEANUP_FAILED";
+  if (normalCaseCompleted && !receipt.failureCode) receipt.status = simulation ? "SIMULATED_CASE_PROTOCOL_COMPLETED" : "NORMAL_CASE_COMPLETED_NOT_FULL_ACCEPTANCE";
+  receipt.nativeExecution = !simulation && normalCaseCompleted && !receipt.failureCode;
+  return receipt;
+}
+
+function parse(args) {
+  need(args.length === 10 && args[0] === "--packet" && args[2] === "--packet-sha256" && args[4] === "--inputs" && args[6] === "--inputs-sha256" && args[8] === "--artifacts", "TASK16_DRIVER_ARGUMENTS");
+  return { packetFile: args[1], expectedPacketSha256: args[3], inputsFile: args[5], expectedInputsSha256: args[7], artifactsDir: args[9] };
+}
+
+if (require.main === module) {
+  Promise.resolve().then(() => runTask16RegisteredPg(parse(process.argv.slice(2)))).then(receipt => {
+    process.stdout.write(`${JSON.stringify(receipt)}\n`);
+    if (receipt.status !== "NORMAL_CASE_COMPLETED_NOT_FULL_ACCEPTANCE") process.exitCode = 1;
+  }).catch(() => { process.stdout.write(`${JSON.stringify({ status: "FAILED_CLOSED", failureCode: "TASK16_DRIVER_ARGUMENTS", nativeExecution: false, financialAcceptance: false })}\n`); process.exitCode = 1; });
+}
+module.exports = { runTask16RegisteredPg };
