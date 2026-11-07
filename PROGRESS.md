@@ -1,3 +1,8 @@
+## 当前接续（2026-11-07，任务16安装阶段源码已整合）
+
+- [~] 单事务七片SQL安装阶段作者415e7f3e已独立合中央`eaea1ef983b8aeb6dc7d4ac0c28156f32f845782`，Standards/Spec各0建立发现；中央Node20四语法、原18模拟和原25CLI均新跑全过，无SQL/PG/资源执行。后继准确源码封包及Draft PR回读分开记录，空checks不算CI通过。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-installer-source-integrated.md)。
+- [ ] 本片不是完整真实执行器或安装/资金验收；#398 OPEN、17/24阻塞、13/45不变，16/42/44硬门保留。任务10仍私有实施、12等待10；不合main、不部署或写生产。下方未提交及旧中央状态保留为各自历史。
+
 ## 任务16安装阶段源码增量（2026-11-07，未提交）
 
 - [~] 新私有树从95a fast-forward至fc2dcada，新增仅导入惰性的单事务七片SQL安装函数；用户确认“仅源码与模拟测试”。真实离线CLI封包核验＋owner适配器模拟18/18、两CJS语法/定向lint、API类型/src lint通过，独立复核及整合待主控。无真实SQL/PG/资源或生产操作，#398及16/42/44门保持；[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-installer-source-local.md)。
