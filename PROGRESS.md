@@ -1,3 +1,8 @@
+## 任务16 B9a 合法owner fixture源码准备（2026-11-08，未提交）
+
+- [~] 从准确de7b9225独立补合成BusinessParty/Version/唯一current assignment三身份，16独立UUID、await前计划资格与快照，正式版本/Settlement前映射及opening UTC固定日期；原public run调用实际fixture源码、有限fixtureOutcome首败清理与safe error。原253被Standards唯一getter双读P2拒绝，已原public run红绿补单次capture及异常丢弃，现原253＋新增2＝255模拟、原fixture19＋builder1＝20、CLI25/类型/定向lint与sourcepin级联见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-seed-source-local.md)，v2冻结待双轴增量。
+- [ ] source/mock only；未接native seed cap，默认App/seed/case三缺项及#398/依赖/13of45保持。无真实SDK/HTTP/SQL解析执行/PG/资源/资金或物理清理验证，不扩大权限/改guard/Schema/迁移；未commit/push/部署生产，future所有提交与最终pushHEAD均[skip ci]。
+
 ## Current continuation (2026-11-08): B8a limiter ACL source integrated
 
 - [~] Author `975b8702` merged `8ce1251fd8cd67bf8ac1c17e77086056b425c238`;77adfreeze dualreview0. Fresh central232=222+10 mocks/originalCLI25,3CJS syntaxlint/2JSON/diff passed;allsource/42pins match. Clean merge seal3309/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-rate-limit-acl-integrated.md); finaldocs exactseal/remote separate.

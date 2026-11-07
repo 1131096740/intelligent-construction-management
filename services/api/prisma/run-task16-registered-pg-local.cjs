@@ -176,6 +176,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
+    let fixtureOutcome;
+    try { fixtureOutcome = error?.fixtureOutcome; } catch { /* Discard untrusted getter exceptions. */ }
+    if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(fixtureOutcome)) receipt.fixtureOutcome = fixtureOutcome;
     if(["NOT_ATTEMPTED","UNKNOWN_DO_NOT_RETRY"].includes(error?.clientConnectionOutcome))receipt.clientConnectionOutcome=error.clientConnectionOutcome;
     if(["NOT_NEEDED","DISCONNECTED","UNKNOWN_DO_NOT_CONTINUE"].includes(error?.clientCleanupOutcome))receipt.clientCleanupOutcome=error.clientCleanupOutcome;
     if(error?.clientCleanupOutcome==="UNKNOWN_DO_NOT_CONTINUE")receipt.cleanupFailures.push("clients");
