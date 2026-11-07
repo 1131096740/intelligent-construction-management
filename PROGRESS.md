@@ -1,3 +1,7 @@
+## 任务16 B3 baseline迁移adapter源码（2026-11-08，未提交）
+
+- [~] 新原生stage源码绑定准确202/schema、owner/DB/TLS/source资源身份、固定Prisma argv/env/输出与超时预算及完整ledger后验；初版72模拟后，双轴三项P2已补实际目录/await后封存重核、进程组settle与缺stdio错误监听，原72＋新增10=82模拟、原CLI25、六语法/CJS lint/API类型与src lint通过，增量独立复核待主控。default仍缺7原生stage、资源前拒绝，实际迁移/PG/进程杀止均未运行。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-migrations-local.md)。无真实资源/SQL/生产操作，#398与16/42/44门保持。
+
 ## 当前接续（2026-11-08，任务16 B2运行时准入源码已整合）
 
 - [~] B2作者`260dfeff`已独立合中央`3efe47653006e71edae8b6caac070ab437466e25`，原两个P2及后验残留实际红绿并双轴0未关闭；中央43模拟＋原CLI25新跑全过、四CJS语法/定向lint过。准确干净3efe source prepare/verify为3272源码/202迁移/七SQL/一case；最终文档头封包与远端另记。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-runtime-admission-integrated.md)。

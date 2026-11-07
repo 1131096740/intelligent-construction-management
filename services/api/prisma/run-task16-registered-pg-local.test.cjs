@@ -114,7 +114,8 @@ test("native CLI remains incomplete after runtime admission is implemented and c
   assert.deepEqual(receipt.stages, []);
   assert.equal(fs.existsSync(artifacts), false);
   assert.ok(!receipt.missingCapabilities.includes("verifiedRuntimeInputAndDependencyAdmission"));
-  assert.ok(receipt.missingCapabilities.includes("migrateBaseline"));
+  assert.ok(!receipt.missingCapabilities.includes("migrateBaseline"));
+  assert.ok(receipt.missingCapabilities.includes("verifyOwnerTransport"));
 });
 
 test("the native CLI has no simulation or skip-guard flag", () => {

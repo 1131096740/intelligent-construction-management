@@ -24,6 +24,10 @@ function nativeAdapters() {
       return startTask01Postgres({ ...resourceOptions, runId: context.runId, sourceSha: context.source.candidateSha,
         artifactsDir: path.join(context.options.artifactsDir, "resource-private"), ownerPassword: context.credentials.owner, signal: context.signal });
     },
+    async migrateBaseline(context, command, processBoundary) {
+      const { migrateTask16Baseline } = require("./task16-baseline-migrations.cjs");
+      return migrateTask16Baseline(context, command, processBoundary);
+    },
     async installPreparedSql(context) {
       const { installTask16RegisteredSql } = require("./task16-registered-sql-installer.cjs");
       return installTask16RegisteredSql({ resource: context.resource, packetFile: context.options.packetFile,
@@ -57,9 +61,22 @@ function resourceReceipt(resource, failure) {
 async function runTask16RegisteredPg(options, injectedAdapters) {
   const simulation = injectedAdapters !== undefined;
   const adapters = injectedAdapters === undefined ? nativeAdapters() : { ...injectedAdapters, verifySource: injectedAdapters.verifySource ?? nativeAdapters().verifySource };
+  if (injectedAdapters?.migrateBaseline && typeof injectedAdapters.migrateBaseline === "object" && Object.keys(injectedAdapters.migrateBaseline).join(",") === "command" && typeof injectedAdapters.migrateBaseline.command === "function") {
+    const command = injectedAdapters.migrateBaseline.command;
+    adapters.migrateBaseline = context => nativeAdapters().migrateBaseline(context, command);
+  }
+  if (injectedAdapters?.migrateBaseline && typeof injectedAdapters.migrateBaseline === "object" && Object.keys(injectedAdapters.migrateBaseline).join(",") === "process") {
+    const boundary = injectedAdapters.migrateBaseline.process;
+    const keys = ["spawn", "groupSignal", "groupExists", "setTimer", "clearTimer"];
+    if (boundary && Object.keys(boundary).length === keys.length && keys.every(key => typeof boundary[key] === "function")) {
+      const fixed = Object.fromEntries(keys.map(key => [key, boundary[key]]));
+      adapters.migrateBaseline = context => nativeAdapters().migrateBaseline(context, undefined, fixed);
+    }
+  }
+
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
-    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, installationOutcome: "NOT_ATTEMPTED" };
+    sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED" };
   const controller = new AbortController();
   const onCallerAbort = () => controller.abort();
   const context = { options, runId: randomUUID(), signal: controller.signal, readOnlyCommand: simulation ? injectedAdapters.readOnlyCommand : undefined,
@@ -86,8 +103,10 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     receipt.sourceSha = context.source.candidateSha;
     context.resource = await stage("startResource");
     need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
-    await stage("verifyOwnerTransport");
-    await stage("migrateBaseline");
+    context.ownerTransport = await stage("verifyOwnerTransport");
+    receipt.migrationOutcome = "UNKNOWN_DO_NOT_RETRY";
+    context.migrations = await stage("migrateBaseline");
+    receipt.migrationOutcome = "MIGRATION_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
     await stage("installBaselineAccess");
     receipt.installationOutcome = "UNKNOWN_DO_NOT_RETRY";
     context.installation = await stage("installPreparedSql");
@@ -104,6 +123,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
+    if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.migrationOutcome)) receipt.migrationOutcome = error.migrationOutcome;
     receipt.failureCode = typeof error?.code === "string" && /^(?:TASK16|TASK01)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_DRIVER_STAGE_FAILED";
   } finally {
     options?.signal?.removeEventListener?.("abort", onCallerAbort);
