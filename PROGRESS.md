@@ -1,3 +1,7 @@
+## 任务16 B1生命周期源码（2026-11-07，未提交）
+
+- [~] 用户确认A+B“仅源码与模拟测试”，B1新增专用11阶段正常case编排/唯一未来CLI，21模拟（终stage取消P2已公开RED→GREEN）/语法/CJS lint/API类型与src lint通过。原生runtime准入/迁移/ACL/TLS/clients/App等能力未完，真实默认入口在source/资源前拒绝，不称完整driver；独立复核待主控。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-driver-lifecycle-local.md)。无真实资源/SQL或生产操作，#398和16/42/44门保持。
+
 ## 当前接续（2026-11-07，任务16 A片身份源码已整合）
 
 - [~] A片作者`f4aa8c8f`已独立合中央`2815a78a6a6bbba5850af5d88fb2cef50a0fb729`，Standards/Spec各0建立发现；中央原19模拟＋原CLI25新跑全过，API类型及三TS定向lint通过。准确干净2815 prepare/verify为3262源码/202迁移/七SQL/一个静态case，本次case源码新49a80afb已绑定；最终文档头封包/远端另记，不继承旧包。[独立整合](docs/progress/2026-11-07-enterprise-simplification-task16-fixture-identity-integrated.md)。
