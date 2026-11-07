@@ -176,3 +176,13 @@ test("preflight preserves the sealed POL275 legacy owner exceptions without gran
     assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED");
     // This checks the explicit SQL adapter protocol, not live catalog ownership.
 });
+
+test("baseline version lock guard catalog proof excludes conditional and column filters",async t=>{
+ const f=fixture(t);resourceChange(f,r=>{const exec=r.execOwnerSql;r.execOwnerSql=async(sql,label)=>{
+  if(label==="task16-baseline-access-transaction"){
+   const guards=[...sql.matchAll(/t\.tgtype=19([^)]{0,100})/gu)];assert.ok(guards.length>0);
+   for(const guard of guards)assert.equal(guard[1].startsWith(" AND t.tgqual IS NULL AND t.tgattr=''::int2vector"),true,"baseline version guard request must reject WHEN or UPDATE OF");
+  }return exec(sql,label);
+ };});
+ const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,"SIMULATED_CASE_PROTOCOL_COMPLETED",receipt.failureCode);assert.equal(receipt.nativeExecution,false);
+});

@@ -1,3 +1,8 @@
+## 任务16 B6 registered权限源码准备（2026-11-08，未提交）
+
+- [~] 从准确90bc独立准备七片native交接和installRegisteredAccess：首份资源见证/B5角色OID/source连续、qualified FD、44完整终态函数source、14表catalog见证、精确combined逐列/函数矩阵及三组锁专用ALWAYS保护。初版181被双轴四P2拒绝，已逐公开seam红绿补proof形状/observer最小投影/44函数接口/无条件全UPDATE保护；当前128＋installer34＋registered27共189模拟与原CLI25、API类型/src lint/十二CJS静态结果见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-registered-access-local.md)，最终冻结/独立双轴待主控。
+- [ ] SQL_NOT_EXECUTED_NOT_PARSED；默认四项原生能力仍资源前拒绝，非完整driver/ACL或资金验收。真实PG/TLS/锁/DML/COMMIT/竞争/清理及后续fixture合法assignment未验，#398与依赖硬门、13/45保持；未commit/push/main/部署/生产，未来提交及最终pushHEAD均[skip ci]。
+
 ## Current continuation (2026-11-08): B5 baseline access source integrated
 
 - [~] Author `d3ae561d` merged `ad1f4d61045b919223b59cfbbaab5111afa88ed8`; reviewed freeze d2fa2 with Standards/Spec0. Central independent127 mock tests plus original CLI25,6CJS syntax/lint, JSON decode and diff check passed;8 source pins unchanged. Clean merge source-only seal 3292/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-baseline-access-integrated.md); final docs head seal/readback separately recorded.
