@@ -7,14 +7,21 @@ import { randomUUID } from "node:crypto";
 export interface RegisteredPgResourceProof {
   authorizationReference: string;
   runId: string;
+  /** Full UUID of the owned resource; runId remains the 12-digit fixture key. */
+  resourceRunId: string;
   databaseName: string;
+  databaseOid: string;
+  systemIdentifier: string;
   host: "127.0.0.1";
   port: number;
   ownerRole: string;
   runtimeRole: string;
+  observerRole: string;
   sourceSealSha256: string;
   preparedSqlSha256: Record<string, string>;
-  transport: "isolated-loopback-no-tls";
+  /** Driver verifies actual client TLS configuration/CA/SAN separately. This
+   * declaration alone cannot prove certificate verification or its negatives. */
+  transport: "isolated-loopback-tls-verify-full";
   application: {
     origin: string;
     databaseRole: string;
@@ -101,13 +108,17 @@ export function buildRegisteredPgFixturePlan(runId: string, paidAt: string, open
  * possess and verify the actual resource/SQL approval identified by this proof. */
 export function assertRegisteredPgResourceProof(proof: RegisteredPgResourceProof) {
   requireCondition(proof.authorizationReference.trim().length > 0, "PG_RESOURCE_AUTHORIZATION_REQUIRED");
-  requireCondition(/^[a-f0-9]{12}$/.test(proof.runId) && proof.databaseName === `jiangkong_registered_payment_task16_${proof.runId}`, "PG_RESOURCE_DATABASE");
+  requireCondition(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(proof.resourceRunId), "PG_RESOURCE_RUN_ID");
+  const resourceKey = proof.resourceRunId.replaceAll("-", "");
+  requireCondition(proof.runId === resourceKey.slice(0, 12) && proof.databaseName === `jg_task01_${resourceKey}`, "PG_RESOURCE_DATABASE");
+  requireCondition(/^[1-9][0-9]*$/.test(proof.databaseOid) && /^[1-9][0-9]*$/.test(proof.systemIdentifier), "PG_RESOURCE_EXPECTED_IDENTITY");
   requireCondition(proof.host === "127.0.0.1" && Number.isInteger(proof.port) && proof.port > 1024 && proof.port <= 65535 && proof.port !== 5432, "PG_RESOURCE_ENDPOINT");
-  requireCondition(proof.ownerRole !== proof.runtimeRole && proof.ownerRole.length > 0 && proof.runtimeRole.length > 0, "PG_RESOURCE_ROLE_SEPARATION");
+  const roles = [proof.ownerRole, proof.runtimeRole, proof.observerRole];
+  requireCondition(roles.every(role => typeof role === "string" && /^[a-z][a-z0-9_]{0,62}$/.test(role)) && new Set(roles).size === 3, "PG_RESOURCE_ROLE_SEPARATION");
   requireCondition(/^[a-f0-9]{64}$/.test(proof.sourceSealSha256), "PG_RESOURCE_SOURCE_SEAL");
   const fragments = ["registered-funding.sql", "registered-history-revision.sql", "registered-write-authority.sql", "registered-canonical-proof.sql", "registered-intercompany.sql", "registered-canonical-adapter.sql", "registered-voucher.sql"];
   requireCondition(Object.keys(proof.preparedSqlSha256).sort().join("|") === [...fragments].sort().join("|") && fragments.every(file => /^[a-f0-9]{64}$/.test(proof.preparedSqlSha256[file] ?? "")), "PG_RESOURCE_INSTALLED_SQL_PROOF");
-  requireCondition(proof.transport === "isolated-loopback-no-tls", "PG_RESOURCE_TRANSPORT");
+  requireCondition(proof.transport === "isolated-loopback-tls-verify-full", "PG_RESOURCE_TRANSPORT");
   const origin = new URL(proof.application.origin);
   requireCondition(origin.protocol === "http:" && origin.hostname === "127.0.0.1" && origin.port !== "" && origin.pathname === "/" && !origin.search && !origin.hash && !origin.username && !origin.password, "PG_RESOURCE_HTTP_ORIGIN");
   requireCondition(proof.application.databaseRole === proof.runtimeRole && proof.application.sourceSealSha256 === proof.sourceSealSha256 && proof.application.notificationAdapter === "disabled" && proof.application.fileStorage === "dedicated-private-local", "PG_RESOURCE_APPLICATION_PROOF");
@@ -116,20 +127,35 @@ export function assertRegisteredPgResourceProof(proof: RegisteredPgResourceProof
 export async function assertRegisteredPgConnectedRoles(context: RegisteredPgExecutionContext) {
   assertRegisteredPgResourceProof(context.proof);
   requireCondition(context.owner !== context.runtime && context.runtime !== context.observer && context.owner !== context.observer, "PG_RESOURCE_INDEPENDENT_CLIENTS");
-  const identities = await Promise.all([context.owner, context.runtime, context.observer].map(client =>
-    client.$queryRawUnsafe<Array<{ database: string; role: string; pid: number; version: string; replication: string }>>(
-      "SELECT pg_catalog.current_database() AS database,current_user AS role,pg_catalog.pg_backend_pid() AS pid,pg_catalog.current_setting('server_version_num') AS version,pg_catalog.current_setting('session_replication_role') AS replication"
+  type Session = { database: string; effectiveRole: string; loginRole: string; databaseOid: string; systemIdentifier: string; pid: number; version: string; replication: string; tls: boolean; readOnly: string };
+  const identities = await Promise.all([context.owner, context.runtime, context.observer].map((client, index) =>
+    client.$queryRawUnsafe<Session[]>(index === 0
+      ? "SELECT pg_catalog.current_database() AS database,current_user::text AS \"effectiveRole\",session_user::text AS \"loginRole\",(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=pg_catalog.current_database()) AS \"databaseOid\",(SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS \"systemIdentifier\",pg_catalog.pg_backend_pid() AS pid,pg_catalog.current_setting('server_version_num') AS version,pg_catalog.current_setting('session_replication_role') AS replication,coalesce((SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()),false) AS tls,pg_catalog.current_setting('transaction_read_only') AS \"readOnly\""
+      : "SELECT pg_catalog.current_database() AS database,current_user::text AS \"effectiveRole\",session_user::text AS \"loginRole\",(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=pg_catalog.current_database()) AS \"databaseOid\",i.\"systemIdentifier\",pg_catalog.pg_backend_pid() AS pid,pg_catalog.current_setting('server_version_num') AS version,pg_catalog.current_setting('session_replication_role') AS replication,coalesce((SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()),false) AS tls,pg_catalog.current_setting('transaction_read_only') AS \"readOnly\" FROM public.jg_task01_connection_identity() i WHERE i.\"loginRole\"=session_user AND i.\"databaseOid\"=(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=pg_catalog.current_database()) AND i.\"backendPid\"=pg_catalog.pg_backend_pid() AND i.tls=coalesce((SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()),false)"
     )
   ));
   const [owner, runtime, observer] = identities.map(rows => rows[0]);
   requireCondition(owner && runtime && observer && identities.every(rows => rows.length === 1), "PG_RESOURCE_IDENTITY");
-  requireCondition([owner, runtime, observer].every(row => row.database === context.proof.databaseName && Number(row.version) >= 160000 && Number(row.version) < 170000 && row.replication === "origin"), "PG_RESOURCE_DATABASE_VERSION");
-  requireCondition(owner.role === context.proof.ownerRole && runtime.role === context.proof.runtimeRole && observer.role === context.proof.runtimeRole && new Set([owner.pid, runtime.pid, observer.pid]).size === 3, "PG_RESOURCE_ROLE_PID_BINDING");
-  const role = await context.owner.$queryRawUnsafe<Array<{ unsafe: boolean }>>(
-    "SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR pg_catalog.pg_has_role(r.oid,o.oid,'MEMBER') OR pg_catalog.has_schema_privilege(r.oid,'public','CREATE')) AS unsafe FROM pg_catalog.pg_roles r JOIN pg_catalog.pg_roles o ON o.rolname=$2 WHERE r.rolname=$1",
-    context.proof.runtimeRole, context.proof.ownerRole
+  requireCondition([owner, runtime, observer].every(row => row.database === context.proof.databaseName && row.databaseOid === context.proof.databaseOid && row.systemIdentifier === context.proof.systemIdentifier && Number(row.version) >= 160000 && Number(row.version) < 170000 && row.replication === "origin" && row.tls === true), "PG_RESOURCE_DATABASE_VERSION");
+  const expectedRoles = [context.proof.ownerRole, context.proof.runtimeRole, context.proof.observerRole];
+  requireCondition([owner, runtime, observer].every((row, index) => row.effectiveRole === expectedRoles[index] && row.loginRole === expectedRoles[index] && Number.isInteger(row.pid) && row.pid > 0) && new Set([owner.pid, runtime.pid, observer.pid]).size === 3, "PG_RESOURCE_ROLE_PID_BINDING");
+  requireCondition(observer.readOnly === "on", "PG_RESOURCE_OBSERVER_READ_ONLY");
+  const roles = await context.owner.$queryRawUnsafe<Array<{ role: string; unsafe: boolean; canWrite: boolean }>>(
+    `SELECT r.rolname AS role,(r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolinherit OR r.rolreplication OR r.rolbypassrls OR NOT r.rolcanlogin OR r.rolconnlimit<>1
+      OR EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members WHERE member=r.oid)
+      OR pg_catalog.pg_has_role(r.oid,o.oid,'MEMBER') OR pg_catalog.has_schema_privilege(r.oid,'public','CREATE')
+      OR EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relowner=r.oid)
+      OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE proowner=r.oid)
+      OR EXISTS(SELECT 1 FROM pg_catalog.pg_namespace WHERE nspowner=r.oid)) AS unsafe,
+      (EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
+        AND (pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES')
+          OR EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,'INSERT,UPDATE,REFERENCES'))))
+        OR EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.oid<>pg_catalog.to_regprocedure('public.jg_task01_connection_identity()') AND pg_catalog.has_function_privilege(r.oid,p.oid,'EXECUTE'))) AS "canWrite"
+      FROM pg_catalog.pg_roles r JOIN pg_catalog.pg_roles o ON o.rolname=$3 WHERE r.rolname IN ($1,$2) ORDER BY r.rolname`,
+    context.proof.runtimeRole, context.proof.observerRole, context.proof.ownerRole
   );
-  requireCondition(role.length === 1 && role[0]?.unsafe === false, "PG_RESOURCE_RUNTIME_PRIVILEGES");
+  requireCondition(roles.length === 2 && new Set(roles.map(role => role.role)).size === 2 && roles.every(role => [context.proof.runtimeRole, context.proof.observerRole].includes(role.role) && role.unsafe === false), "PG_RESOURCE_RUNTIME_PRIVILEGES");
+  requireCondition(roles.find(role => role.role === context.proof.observerRole)?.canWrite === false, "PG_RESOURCE_OBSERVER_PRIVILEGES");
   const functions = await context.owner.$queryRawUnsafe<Array<{ name: string; owner: string; definer: boolean; config: string[] | null }>>(
     "SELECT p.proname AS name,pg_catalog.pg_get_userbyid(p.proowner) AS owner,p.prosecdef AS definer,p.proconfig AS config FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('jg_registered_history_read_revision','jg_registered_history_lock_revision','jg_registered_operating_scope_lock','jg_registered_payment_projection_deferred')"
   );
