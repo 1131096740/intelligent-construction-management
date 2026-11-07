@@ -1,42 +1,22 @@
 "use strict";
 
-// B1: dedicated normal-case lifecycle source. No command runs on import.
+// B2: dedicated normal-case lifecycle plus runtime-input admission source. No command runs on import.
 // Native execution remains disabled until every required adapter is implemented
 // and independently reviewed. Source packets and approval-reference strings are
 // not authority to create resources or execute SQL.
-const fs = require("node:fs");
 const path = require("node:path");
-const { createHash, randomBytes, randomUUID } = require("node:crypto");
-const { execFileSync } = require("node:child_process");
+const { randomBytes, randomUUID } = require("node:crypto");
 
-const ROOT = path.resolve(__dirname, "../../..");
 const CASE_ID = "registered.null-cross-company.commit";
 const REQUIRED = ["verifySource", "startResource", "verifyOwnerTransport", "migrateBaseline", "installBaselineAccess", "installPreparedSql", "installRegisteredAccess", "connectRestrictedClients", "startApplication", "seedFixture", "runNormalCase"];
-const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const fault = code => Object.assign(new Error(code), { code });
 const need = (condition, code) => { if (!condition) throw fault(code); };
 
 function nativeAdapters() {
   return {
     async verifySource(context) {
-      const { options } = context;
-      const verified = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, "scripts/prepare-task16-registered-pg.cjs"), "--verify", "--packet", options.packetFile, "--expected-sha256", options.expectedPacketSha256], {
-        env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", TZ: "UTC" }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000, maxBuffer: 1024 * 1024
-      }));
-      need(verified.status === "SOURCE_ONLY_VERIFIED_NOT_EXECUTED", "TASK16_DRIVER_SOURCE_NOT_VERIFIED");
-      const packetBytes = fs.readFileSync(options.packetFile);
-      need(sha(packetBytes) === options.expectedPacketSha256, "TASK16_DRIVER_PACKET_CHANGED");
-      const packet = JSON.parse(packetBytes.toString("utf8"));
-      // An arbitrary other repository's valid source packet cannot authorize
-      // the currently running driver, its real adapters or its dependency tree.
-      need(packet.source.repo === ROOT && fs.realpathSync(ROOT) === ROOT, "TASK16_DRIVER_SOURCE_ROOT_MISMATCH");
-      for (const relative of ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs"]) {
-        const member = packet.source.files.find(row => row.path === relative);
-        need(member && member.sha256 === sha(fs.readFileSync(path.join(ROOT, relative))), "TASK16_DRIVER_ADAPTER_NOT_IN_CANDIDATE");
-      }
-      // B1 deliberately has no trusted runtime-input/dependency admission yet.
-      // Merely checking a packet or inventing a tools/ACL receipt is insufficient.
-      throw fault("TASK16_DRIVER_RUNTIME_INPUT_ADMISSION_UNIMPLEMENTED");
+      const { verifyTask16RuntimeInputs } = require("./task16-runtime-inputs.cjs");
+      return verifyTask16RuntimeInputs(context.options, context.readOnlyCommand);
     },
     async startResource(context) {
       const { startTask01Postgres } = require("./enterprise-task01-resources.cjs");
@@ -72,16 +52,17 @@ function resourceReceipt(resource, failure) {
 
 /** Public seam for approved protocol simulations. Injected adapters can never
  * produce native acceptance. A live call still requires separate authorization,
- * sealed source/dependencies and complete real adapters; B1 rejects it up front. */
+ * sealed source/dependencies and complete real adapters; missing native stages
+ * still reject before source reads or resource acquisition. */
 async function runTask16RegisteredPg(options, injectedAdapters) {
   const simulation = injectedAdapters !== undefined;
-  const adapters = injectedAdapters ?? nativeAdapters();
+  const adapters = injectedAdapters === undefined ? nativeAdapters() : { ...injectedAdapters, verifySource: injectedAdapters.verifySource ?? nativeAdapters().verifySource };
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
     sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, installationOutcome: "NOT_ATTEMPTED" };
   const controller = new AbortController();
   const onCallerAbort = () => controller.abort();
-  const context = { options, runId: randomUUID(), signal: controller.signal,
+  const context = { options, runId: randomUUID(), signal: controller.signal, readOnlyCommand: simulation ? injectedAdapters.readOnlyCommand : undefined,
     credentials: { owner: randomBytes(48).toString("hex"), runtime: randomBytes(48).toString("hex"), observer: randomBytes(48).toString("hex") } };
   let failed;
   let normalCaseCompleted = false;
@@ -99,7 +80,6 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       if (options.signal.aborted) onCallerAbort();
     }
     receipt.missingCapabilities = REQUIRED.filter(name => typeof adapters[name] !== "function");
-    if (!simulation) receipt.missingCapabilities.unshift("verifiedRuntimeInputAndDependencyAdmission");
     need(receipt.missingCapabilities.length === 0, "TASK16_DRIVER_CAPABILITIES_INCOMPLETE");
     context.source = await stage("verifySource");
     need(context.source && /^[a-f0-9]{40}$/u.test(context.source.candidateSha), "TASK16_DRIVER_SOURCE_IDENTITY");
