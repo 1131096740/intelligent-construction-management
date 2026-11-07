@@ -119,7 +119,8 @@ test("native CLI remains incomplete after runtime admission is implemented and c
   assert.ok(!receipt.missingCapabilities.includes("installBaselineAccess"));
   assert.ok(!receipt.missingCapabilities.includes("installPreparedSql"));
   assert.ok(!receipt.missingCapabilities.includes("installRegisteredAccess"));
-  assert.deepEqual(receipt.missingCapabilities,["connectRestrictedClients","startApplication","seedFixture","runNormalCase"]);
+  assert.ok(!receipt.missingCapabilities.includes("connectRestrictedClients"));
+  assert.deepEqual(receipt.missingCapabilities,["startApplication","seedFixture","runNormalCase"]);
 });
 
 test("the native CLI has no simulation or skip-guard flag", () => {

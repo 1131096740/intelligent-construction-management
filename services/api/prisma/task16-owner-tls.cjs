@@ -161,7 +161,7 @@ async function verifyTask16OwnerTls(input, injectedCommand) {
       } catch { ownerPrivateErasureOutcome = "UNKNOWN_DO_NOT_CONTINUE"; if (!failure) failure = fault("TASK16_OWNER_PRIVATE_ERASURE_FAILED"); }
     }
     if (failure) throw failure;
-    return { status: "OWNER_TLS_CONTROLS_VERIFIED", ownerRole: OWNER, ...expectedIdentity, caSha256: tls.caSha256, ownerControls: { healthyBeforeAndAfter: true, wrongCaRejected: true, wrongSanRejected: true, plaintextHbaRejected: true, correctPresentationRestored: true }, financialAcceptance: false, tlsAcceptance: false, ownerPrivateErasureOutcome, ownerRestorationOutcome: restorationOutcome };
+    return { tlsWitness:structuredClone(tls),status: "OWNER_TLS_CONTROLS_VERIFIED", ownerRole: OWNER, ...expectedIdentity, caSha256: tls.caSha256, ownerControls: { healthyBeforeAndAfter: true, wrongCaRejected: true, wrongSanRejected: true, plaintextHbaRejected: true, correctPresentationRestored: true }, financialAcceptance: false, tlsAcceptance: false, ownerPrivateErasureOutcome, ownerRestorationOutcome: restorationOutcome };
   } catch (error) {
     const code = typeof error?.code === "string" && /^TASK16_OWNER_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_OWNER_FAILED_CLOSED";
     throw Object.assign(new Error(code), { code, ownerRestorationOutcome: restorationOutcome, ownerPrivateErasureOutcome });

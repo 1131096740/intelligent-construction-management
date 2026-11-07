@@ -93,7 +93,7 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(sha(packetBytes) === options.expectedPacketSha256, "TASK16_RUNTIME_PACKET_CHANGED");
   const packet = JSON.parse(packetBytes.toString("utf8"));
   need(packet.source?.repo === ROOT && packet.candidateSha === inputs.sourceSha && packet.candidateSha === verified.candidateSha && packet.sealSha256 === verified.sealSha256, "TASK16_RUNTIME_SOURCE_ROOT_MISMATCH");
-  for (const relative of ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/task16-baseline-migrations.cjs", "services/api/prisma/task16-baseline-access.cjs", "services/api/prisma/task16-baseline-access.json", "services/api/prisma/task16-baseline-access.sql", "services/api/prisma/task16-bounded-command.cjs", "services/api/prisma/task16-owner-tls.cjs", "services/api/prisma/task16-owner-probe.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "services/api/prisma/task16-prepared-install-stage.cjs", "services/api/prisma/task16-registered-object-witness.cjs", "services/api/prisma/task16-registered-access.cjs", "services/api/prisma/task16-registered-access.json", "services/api/prisma/task16-registered-access.sql", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"]) {
+  for (const relative of ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/task16-baseline-migrations.cjs", "services/api/prisma/task16-baseline-access.cjs", "services/api/prisma/task16-baseline-access.json", "services/api/prisma/task16-baseline-access.sql", "services/api/prisma/task16-bounded-command.cjs", "services/api/prisma/task16-owner-tls.cjs", "services/api/prisma/task16-owner-probe.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "services/api/prisma/task16-prepared-install-stage.cjs", "services/api/prisma/task16-registered-object-witness.cjs", "services/api/prisma/task16-registered-access.cjs", "services/api/prisma/task16-registered-access.json", "services/api/prisma/task16-registered-access.sql", "services/api/prisma/task16-registered-access-check.cjs", "services/api/prisma/task16-registered-access-check.sql", "services/api/prisma/task16-client-loader.cjs", "services/api/prisma/task16-restricted-clients.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"]) {
     const member = packet.source.files.find(row => row.path === relative);
     need(member && member.sha256 === sourceHash(path.join(ROOT, relative)), "TASK16_RUNTIME_ADAPTER_NOT_IN_CANDIDATE");
   }
@@ -169,6 +169,7 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   const clientPath = fs.realpathSync(resolved.entry);
   need(inside(ROOT, clientPath), "TASK16_RUNTIME_CLIENT_ESCAPES_CANDIDATE");
   requireSealedTarget(clientPath);
+  const clientEntryCapture=qualifiedFile(clientPath,{maxBytes:64*1024*1024,code:"TASK16_RUNTIME_PRISMA_IDENTITY"});
   // A fresh metadata process avoids reusing an earlier invocation's require
   // cache. The fixed script never constructs PrismaClient or opens a database.
   const version = JSON.parse(execute(tools.node, ["--eval", "const p=require(process.argv[1]).Prisma?.prismaVersion;process.stdout.write(JSON.stringify({client:p?.client,engine:p?.engine}));", clientPath]));
@@ -178,11 +179,12 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(JSON.stringify(finalSource) === JSON.stringify(verified), "TASK16_RUNTIME_SOURCE_CHANGED");
   need(privateHash(options.inputsFile) === options.expectedInputsSha256 && privateHash(options.packetFile) === options.expectedPacketSha256 && privateHash(inputs.preparationReceipt.path) === inputs.preparationReceipt.sha256, "TASK16_RUNTIME_INPUT_CHANGED");
   for (const name of TOOL_NAMES) need(toolFile(tools[name], toolIdentities[name]).sha256 === inputs.tools[name].sha256, "TASK16_RUNTIME_TOOL_CHANGED");
+  need(qualifiedFile(clientPath,{maxBytes:64*1024*1024,expectedIdentity:clientEntryCapture.identity,code:"TASK16_RUNTIME_PRISMA_IDENTITY"}).sha256===clientEntryCapture.sha256,"TASK16_RUNTIME_PRISMA_IDENTITY");
   const docker = inputs.docker;
   need(docker?.endpoint === "unix:///Users/leoyang/.docker/run/docker.sock" && docker.imageId === "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d" && typeof docker.daemonId === "string" && /^[A-Za-z0-9:-]{16,128}$/u.test(docker.daemonId), "TASK16_RUNTIME_RESOURCE_DESCRIPTOR");
   return { candidateSha: packet.candidateSha, candidateRoot: ROOT, sealSha256: packet.sealSha256, schema: packet.schema, migrations: packet.migrations,
     executionFiles: packet.source.files,
-    runtimeAdmission: { status: "INPUTS_AND_CODE_TREES_MATCHED", treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
+    runtimeAdmission: { status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
     inputs: { ...inputs, resourceOptions: { ...docker, tools: { docker: tools.docker, openssl: tools.openssl }, deadlineMs: 900000 } } };
 }
 // Internal production reuse; tests stay at runTask16RegisteredPg, not this reader.

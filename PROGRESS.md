@@ -1,3 +1,8 @@
+## 任务16 B7三角色客户端源码准备（2026-11-08，未提交）
+
+- [~] 从准确62a7独立准备connectRestrictedClients：父实际Class/模块闭包与fresh一次CLI准入、qualified client/build/source/工具及CA见证、三OID/PID/readonly会话、先登记再connect/逆序清理；B6唯一TEMP checker复用及旧其它ACL witness连续，初版216被双轴两distinct P2拒绝，v2 then项已闭、环境仍有dotenv同类残留；已原public RED/GREEN把三dotenv路径缺失纳统一跨await复核，原220＋新增2＝222模拟与CLI25/API类型/lint/十一CJS静态，新v3冻结与双轴增量待主控。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-restricted-clients-local.md)。
+- [ ] 所有新loader/constructor测试仅自有无副作用fake CJS包。默认三原生stage仍资源前拒绝，未伪App/seed；真实SDK/PG/TLS/SQL解析执行、实际断连与资金验收未验，fixture合法assignment/#398及依赖硬门、13/45保持。未commit/push/main/部署生产，future全提交/最终pushHEAD均[skip ci]。
+
 ## Current continuation (2026-11-08): B6 registered access source integrated
 
 - [~] Author `8d9a7171` merged `de5445938f57f3f5d756024196b9fcb3f202ac4c`; final859c freeze Standards1/Spec3 P2 closed/current0. Central fresh189=128+34+27, originalCLI25,12CJS syntax/lint,2JSON/diff passed;allsource pins unchanged. Clean merge source packet3300/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-registered-access-integrated.md); finaldocs seal/remote separately recorded.
