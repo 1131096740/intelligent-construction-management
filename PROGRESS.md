@@ -1,3 +1,9 @@
+## 当前接续（2026-11-07，任务16离线准备工具，本地）
+
+- [~] 用户已确认的专用prepare/verify CLI已实现：准确Git源码/202迁移/七片SQL/唯一静态case-handler绑定、外部包SHA及篡改拒绝。Node20语法与25项公开CLI测试通过，准确95a源码实际prepare/verify通过；属主执行位两向RED→GREEN、旧23/旧包均保留。[本地收据](docs/progress/2026-11-07-enterprise-simplification-task16-offline-packet-local.md)。
+- [ ] 只为source-only准备；工具源码是本树未提交新增文件，不在95a Git提交中，不计真实PG、SQL安装、ACL/TLS/COMMIT/并发或清理验收。#398保持OPEN、17/24阻塞、16/42/44门保留；无项目提交/推送、CI修改、数据库/资源/真实业务、部署或生产操作。
+- [~] 任务10材料正文25pt样本与手机A4遮挡局部修复已在其原隔离树完成并封存，整票仍OPEN、12等待。中央仍干净95a、PR428草稿、13/45按各自边界关闭；原工作区及旧证据保留。下方旧“PG driver/库存缺失”仍是实际未完成门，本条仅补离线输入准备工具。
+
 ## 当前执行（2026-11-06，业务简化整套实施，父工单 #382）
 
 - [~] 16本地实现里程碑准确候选 `214e71880f045f9b02310046958cc3d79d55bbd7` 已独立同树合入中央 `f913a3136c299c2feaf3f1083348752bf00df338`，不是整票关闭。中央fresh Shared/API/Web构建、check:ui、原七组check-only治理及原369/369（0失败/0跳过）一次通过；728路由/679 wrappers/719绑定/416动作/407写消费者/0阻塞。候选79输入逐项无变，68公开HTTP、Web71及桌面8（1+7跨次）/手机3按原准确源证据桥接，不冒新中央全API/UI全跑。生成首败、R2文件名后验失败与R3字节守卫失败均保留；R3仅经主控独立token核实格式化及同模型索引位置归整后认可，未改Schema或放宽业务门。当前仍13/45按阶段关闭，#398 OPEN，17/24阻塞；完整PG driver/可运行库存与真实提交/故障/丢响应/竞争/ACL未证明，七份prepared SQL不可迁移。中央最终文档提交、准确source prepare/verify及推送仍待主控后续阶段，不把候选clean seal当中央新封包。[本地整合收据](docs/progress/2026-11-07-enterprise-simplification-task16-integrated-local.md)。下方16旧局部与“尚未集成”记录仅保原SHA历史，不覆盖本条；10仍独立本地实施、12等待10，本轮A4未集成。
