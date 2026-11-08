@@ -174,17 +174,30 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   // cache. The fixed script never constructs PrismaClient or opens a database.
   const version = JSON.parse(execute(tools.node, ["--eval", "const p=require(process.argv[1]).Prisma?.prismaVersion;process.stdout.write(JSON.stringify({client:p?.client,engine:p?.engine}));", clientPath]));
   need(version.client === inputs.prismaClientVersion && version.engine === ENGINE, "TASK16_RUNTIME_PRISMA_IDENTITY");
+  let applicationEntries;
+  const appRelative=["database/task16-registered-application.module.js","database/prisma.service.js","api-security.js","operating-projection/projection-export-json.js","api-json-replacer.js","validation/api-validation.js","api-listen.js"];
+  // Legacy source-only fixtures can omit App output while native capability is
+  // absent. A bridge invocation requires the immutable eight-entry witness.
+  if(fs.existsSync(path.join(ROOT,"services/api/dist",appRelative[0]))) {
+    for(const relative of ["services/api/prisma/task16-application-stage.cjs","services/api/prisma/task16-application-factory.cjs","services/api/src/database/task16-registered-application.module.ts"]) {
+      need(sourceMembers.get(relative)?.sha256===sourceHash(path.join(ROOT,relative)),"TASK16_RUNTIME_APP_SOURCE");
+    }
+    const resolved=JSON.parse(execute(tools.node,["--eval","process.stdout.write(JSON.stringify({entry:require.resolve('@nestjs/testing/test',{paths:[process.argv[1]]})}));",path.join(ROOT,"services/api")]));
+    const sdk=fs.realpathSync(resolved.entry);need(inside(ROOT,sdk)&&/\/node_modules\/@nestjs\/testing\/test\.js$/u.test(sdk),"TASK16_RUNTIME_APP_ENTRY");requireSealedTarget(sdk);
+    applicationEntries=[...appRelative.map(relative=>path.join(ROOT,"services/api/dist",relative)),sdk].map(file=>{const row=qualifiedFile(file,{maxBytes:64*1024*1024,code:"TASK16_RUNTIME_APP_ENTRY"});return{path:file,sha256:row.sha256,identity:row.identity};});
+  }
   compareTrees("after-load");
   const finalSource = JSON.parse(execute(tools.node, [path.join(ROOT, "scripts/prepare-task16-registered-pg.cjs"), "--verify", "--packet", options.packetFile, "--expected-sha256", options.expectedPacketSha256]));
   need(JSON.stringify(finalSource) === JSON.stringify(verified), "TASK16_RUNTIME_SOURCE_CHANGED");
   need(privateHash(options.inputsFile) === options.expectedInputsSha256 && privateHash(options.packetFile) === options.expectedPacketSha256 && privateHash(inputs.preparationReceipt.path) === inputs.preparationReceipt.sha256, "TASK16_RUNTIME_INPUT_CHANGED");
   for (const name of TOOL_NAMES) need(toolFile(tools[name], toolIdentities[name]).sha256 === inputs.tools[name].sha256, "TASK16_RUNTIME_TOOL_CHANGED");
   need(qualifiedFile(clientPath,{maxBytes:64*1024*1024,expectedIdentity:clientEntryCapture.identity,code:"TASK16_RUNTIME_PRISMA_IDENTITY"}).sha256===clientEntryCapture.sha256,"TASK16_RUNTIME_PRISMA_IDENTITY");
+  for(const row of applicationEntries??[])need(qualifiedFile(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_RUNTIME_APP_ENTRY_CHANGED"}).sha256===row.sha256,"TASK16_RUNTIME_APP_ENTRY_CHANGED");
   const docker = inputs.docker;
   need(docker?.endpoint === "unix:///Users/leoyang/.docker/run/docker.sock" && docker.imageId === "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d" && typeof docker.daemonId === "string" && /^[A-Za-z0-9:-]{16,128}$/u.test(docker.daemonId), "TASK16_RUNTIME_RESOURCE_DESCRIPTOR");
   return { candidateSha: packet.candidateSha, candidateRoot: ROOT, sealSha256: packet.sealSha256, schema: packet.schema, migrations: packet.migrations,
     executionFiles: packet.source.files,
-    runtimeAdmission: { status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
+    runtimeAdmission: { applicationBuild:applicationEntries?{candidateRoot:ROOT,sourceSha:packet.candidateSha,sourceSealSha256:packet.sealSha256,preparationReceiptSha256:inputs.preparationReceipt.sha256,apiDistManifestSha256:inputs.trees.find(row=>row.root==="services/api/dist").sha256}:undefined, applicationEntries, status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
     inputs: { ...inputs, resourceOptions: { ...docker, tools: { docker: tools.docker, openssl: tools.openssl }, deadlineMs: 900000 } } };
 }
 // Internal production reuse; tests stay at runTask16RegisteredPg, not this reader.

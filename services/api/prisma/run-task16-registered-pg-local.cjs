@@ -10,6 +10,9 @@ const EARLY_LOADER = Object.freeze({
  hooks:Object.freeze({load:Module._load,resolve:Module._resolveFilename,find:Module._findPath,require:Module.prototype.require,extensions:Object.freeze(Object.fromEntries([".js",".json",".node"].map(ext=>[ext,Module._extensions[ext]])))})
 });
 const EARLY_DRIVER_SHA=require("./task16-runtime-inputs.cjs").readQualifiedTask16File(__filename,{maxBytes:64*1024*1024,code:"TASK16_DRIVER_SOURCE_FILE"}).sha256;
+// Pure controller modules only; legacy source-only fixtures may not contain the
+// bridge. Failed import never becomes an available native adapter.
+const NATIVE_APPLICATION_STAGE=(()=>{try{return require("./task16-application-stage.cjs").startTask16Application;}catch{return undefined;}})();
 let nativeAttempted=false;
 const path = require("node:path");
 const { randomBytes, randomUUID } = require("node:crypto");
@@ -54,7 +57,8 @@ function nativeAdapters() {
     async connectRestrictedClients(context,boundary) {
       const {connectTask16RestrictedClients}=require("./task16-restricted-clients.cjs");
       return connectTask16RestrictedClients(context,boundary);
-    }
+    },
+    startApplication: NATIVE_APPLICATION_STAGE
     // Unimplemented stages are absent, never no-op functions returning success.
   };
 }
@@ -118,6 +122,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       }
     } catch { /* Invalid factory metadata stays non-callable: safe missing capability, no fallback. */ }
   }
+  const nativeApplicationSelected=typeof NATIVE_APPLICATION_STAGE==="function"&&adapters.startApplication===NATIVE_APPLICATION_STAGE;
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
     appStartupOutcome:"NOT_ATTEMPTED",appCleanupOutcome:"NOT_NEEDED",
@@ -153,6 +158,23 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     if(clientEntryWitness?.identity)Object.freeze(clientEntryWitness.identity);
     if(clientEntryWitness)Object.freeze(clientEntryWitness);
     Object.defineProperty(context,"clientEntryWitness",{value:clientEntryWitness,writable:false,enumerable:false});
+    const applicationEntries=structuredClone(context.source?.runtimeAdmission?.applicationEntries);
+    if(applicationEntries){for(const row of applicationEntries){if(row.identity)Object.freeze(row.identity);Object.freeze(row);}Object.freeze(applicationEntries);}
+    Object.defineProperty(context,"applicationEntriesWitness",{value:applicationEntries,writable:false,configurable:false});
+    const applicationBuild=structuredClone(context.source?.runtimeAdmission?.applicationBuild);
+    if(applicationBuild)Object.freeze(applicationBuild);
+    Object.defineProperty(context,"applicationBuildWitness",{value:applicationBuild,writable:false,configurable:false});
+    if(nativeApplicationSelected) {
+      need(applicationEntries?.length===8&&applicationBuild&&context.source.candidateRoot===path.resolve(__dirname,"../../..")
+        &&applicationBuild.candidateRoot===context.source.candidateRoot&&applicationBuild.sourceSha===context.source.candidateSha&&applicationBuild.sourceSealSha256===context.source.sealSha256
+        &&applicationBuild.preparationReceiptSha256===context.source.inputs?.preparationReceipt?.sha256
+        &&applicationBuild.apiDistManifestSha256===context.source.inputs?.trees?.find(row=>row.root==="services/api/dist")?.sha256,"TASK16_DRIVER_APP_ADMISSION");
+      const read=require("./task16-runtime-inputs.cjs").readQualifiedTask16File;
+      const relative=["database/task16-registered-application.module.js","database/prisma.service.js","api-security.js","operating-projection/projection-export-json.js","api-json-replacer.js","validation/api-validation.js","api-listen.js"];
+      for(let i=0;i<8;i++){const row=applicationEntries[i];need(row&&typeof row.path==="string"&&row.identity&&/^[a-f0-9]{64}$/u.test(row.sha256)&&(i===7?row.path.startsWith(context.source.candidateRoot+path.sep)&&/\/node_modules\/@nestjs\/testing\/test\.js$/u.test(row.path):row.path===path.join(context.source.candidateRoot,'services/api/dist',relative[i])),"TASK16_DRIVER_APP_ADMISSION");need(read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_DRIVER_APP_ADMISSION"}).sha256===row.sha256,"TASK16_DRIVER_APP_ADMISSION");}
+      need(read(context.source.inputs.preparationReceipt.path,{maxBytes:16*1024*1024,privateFile:true,code:"TASK16_DRIVER_APP_ADMISSION"}).sha256===applicationBuild.preparationReceiptSha256,"TASK16_DRIVER_APP_ADMISSION");
+    }
+
     if(!simulation)need(context.source.executionFiles?.some(row=>row.path==="services/api/prisma/run-task16-registered-pg-local.cjs"&&row.sha256===EARLY_DRIVER_SHA),"TASK16_DRIVER_RUNNING_SOURCE_CHANGED");
     need(context.source && /^[a-f0-9]{40}$/u.test(context.source.candidateSha), "TASK16_DRIVER_SOURCE_IDENTITY");
     receipt.sourceSha = context.source.candidateSha;
@@ -180,6 +202,17 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     context.clients = await stage("connectRestrictedClients");
     receipt.clientConnectionOutcome="CLIENT_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
     need(typeof context.clients?.close === "function", "TASK16_DRIVER_CLIENT_HANDLES");
+    const lifecycleDescriptors=Object.getOwnPropertyDescriptors(context.clients),lifecycleMethods=["checkLight","verifyFull","loadApplicationModules"];
+    if(lifecycleMethods.every(key=>Object.hasOwn(lifecycleDescriptors[key]??{},"value")&&typeof lifecycleDescriptors[key].value==="function")) {
+      need(["owner","runtime","observer"].every(key=>Object.hasOwn(lifecycleDescriptors[key]??{},"value")),"TASK16_DRIVER_CLIENT_WITNESS");
+      const binding=lifecycleDescriptors.sourceBinding;need(binding&&Object.hasOwn(binding,"value"),"TASK16_DRIVER_CLIENT_WITNESS");
+      const bindingDescriptors=Object.getOwnPropertyDescriptors(binding.value),bindingKeys=["sourceSha","sourceSealSha256","registeredManifestSha256"];
+      need(bindingKeys.every(key=>Object.hasOwn(bindingDescriptors[key]??{},"value")&&typeof bindingDescriptors[key].value==="string"),"TASK16_DRIVER_CLIENT_WITNESS");
+      const sourceBinding=Object.freeze(Object.fromEntries(bindingKeys.map(key=>[key,bindingDescriptors[key].value])));
+      Object.defineProperty(context,"clientLifecycleWitness",{value:Object.freeze({handle:context.clients,bindingObject:binding.value,sourceBinding,
+
+        ...Object.fromEntries([...lifecycleMethods,"owner","runtime","observer"].map(key=>[key,lifecycleDescriptors[key].value]))}),writable:false,configurable:false});
+    }
     receipt.appStartupOutcome="UNKNOWN_DO_NOT_RETRY";
     context.application = await stage("startApplication");
     receipt.appStartupOutcome="APP_STAGE_RETURNED_NOT_FULL_PROOF";
