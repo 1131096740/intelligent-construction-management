@@ -48,6 +48,12 @@
 - [ ] 单次私有204 CLI返回0并生成engine=none产物，但guard阻断可选fsevents.node native尝试后CLI捕获继续；按停止条件暂停资格链，未AST提取/tsc、不重试，不能冒204 type或原生资格绿；当前归档业务未实现GREEN/不开放cap，不关闭394。DDL仅文字源，未SQL parser/execute/PG/ACL/角色或COMMIT验证；新helper/Evidence缺资格即拒，registry仅原权限精确保留SOURCE，不执行真实GRANT。
 - [ ] 后继必要owner桥：new persistent archiveProtocol2稳定公司ID与选定/加入版本分开、旧activation未知税不能假confirmed/付款原文不强迫结构化；旧UTC DATE期间owner与北京日的差异经root明确授权，仅新持久A加日期桥SOURCE，旧Review全核/真实瞬间/非A回退保，旧203/通用政策不改。无Web/upward/inline新kind/专属桥或生产/部署/Git写；私有codegen具体方案外部待批准。
 
+## Task12 Web CON10→V2正式提交 consumer（2026-11-09，本地HOLD待独立审查）
+
+- [~] 独立前端树基于e08eac40，当前正文空位确认含真实V/revision/F/layout/source/plan/remaining；保留空位可继续，当前Word/PDF以同一真实生成记录ID明确选择。正式提交沿原capability/lease/POST，真实四字段成功响应，不暴露审批实例ID。[局部收据](docs/progress/2026-11-09-task12-frontend-v2-submission-consumer.md)。
+- [~] 完整原intent/key/命令SHA按actor+Version保留；UNKNOWN不重POST、不续租/释放或执行其它草稿写动作，只按原key读真实已批准GET合同；错intent/摘要/原已知编号、403/查询失败均保留，旧轮回执不按当前F重算。初始无正式code允许真实回执给新编号，不拿NULL/临时编号阻断。A2集中修原双轴同一P2：owner恢复/放弃/自动apply与页面动作共守UNKNOWN和并发锁，保原request与旧副本。实际旧R2恢复改正文RED→GREEN；新增reload匹配R3副本不autoapply控制。最终consumer浏览器24/24（desktop18＋Chromium手机触控390×844关键链6，非Safari/实体机）、既有窄Vitest156/156，Web/e2e类型及UI检查exit0；lint 0errors/981warnings，owned页面与e08均26warnings。原A1全20/冻结与报告保；A2产品仅恢复入口最小锁，新增控制两端核副本/request/输入保持与零额外POST/lease写，待原两轴复审。
+- [ ] 仅前端consumer层，无backend/shared/Schema/迁移/Task16改动；未改变后端cap=false或旧409/410，未实现新归档UI/盖章或FaceB。未实际后端/PG/SDK构造/生成/网关/生产/远端/CI/commit；不宣CON10全生命周期或#394完成。完整源码freeze/HANDOFF在外部evidence，原RED/夹具与启动失败保留，待作者之外两轴审查。
+
 ## Task12 identity A1 审查修复（2026-11-08，HOLD待增量双轴）
 
 - [~] 原A0两轴各1P2已按原公开HTTP接缝实际RED→GREEN：参与关系按稳定公司ID/北京业务日半开期间核唯一，当前签约公司v2与加入时v1分开留存，不改参与历史；复用shared chinaDateOnly，仅Date列用业务日参数，snapshot occurredAt仍真实时刻。[本地收据](docs/progress/2026-11-08-task12-post-precision-identity-local.md)。
