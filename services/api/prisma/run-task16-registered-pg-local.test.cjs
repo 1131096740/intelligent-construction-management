@@ -120,7 +120,7 @@ test("native CLI remains incomplete after runtime admission is implemented and c
   assert.ok(!receipt.missingCapabilities.includes("installPreparedSql"));
   assert.ok(!receipt.missingCapabilities.includes("installRegisteredAccess"));
   assert.ok(!receipt.missingCapabilities.includes("connectRestrictedClients"));
-  assert.deepEqual(receipt.missingCapabilities,["startApplication","seedFixture","runNormalCase"]);
+  assert.deepEqual(receipt.missingCapabilities,["seedFixture","runNormalCase"]);
 });
 
 test("the native CLI has no simulation or skip-guard flag", () => {
@@ -169,4 +169,8 @@ test('a throwing fixture outcome getter is discarded without exposing its except
  f.adapters.seedFixture=async()=>{throw {code:'TASK16_FIXTURE_FAILED_CLOSED',get fixtureOutcome(){reads++;throw new Error('synthetic-private-token');}};};
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);
  assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.failureCode,'TASK16_FIXTURE_FAILED_CLOSED');assert.equal(receipt.fixtureOutcome,undefined);assert.equal(reads,1);assert.equal(JSON.stringify(receipt).includes('synthetic-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);
+});
+
+test("default public driver registers App source but stops before reading missing source or acquiring resources",async t=>{
+ const root=fs.mkdtempSync('/private/tmp/jg-task16-default-capabilities-');t.after(()=>fs.rmSync(root,{recursive:true}));const artifacts=path.join(root,'not-created');const receipt=await runTask16RegisteredPg({packetFile:path.join(root,'not-read-packet.json'),expectedPacketSha256:'a'.repeat(64),inputsFile:path.join(root,'not-read-inputs.json'),expectedInputsSha256:'b'.repeat(64),artifactsDir:artifacts});assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.failureCode,'TASK16_DRIVER_CAPABILITIES_INCOMPLETE');assert.deepEqual(receipt.missingCapabilities,['seedFixture','runNormalCase']);assert.deepEqual(receipt.stages,[]);assert.equal(receipt.resource.status,'not-created');assert.equal(fs.existsSync(artifacts),false);assert.equal(receipt.nativeExecution,false);assert.equal(receipt.financialAcceptance,false);
 });

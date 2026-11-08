@@ -1,3 +1,8 @@
+## 任务16 B8 qualified bridge源码（2026-11-08，native App注册待增量双轴）
+
+- [~] 从eb39准备后，按主控授权无冲突FF到准确d1bbfd10bec9e0dff5988e2d2dcf43bbfbdab8bf，原八源码守恒，保留中央Task10/12账本后缀。bridge/private生命周期/八FD与build准入、实际module registry、owned配置/factory协议均仅source/fake；原290/d44保持历史，新增三client四方法连续性P2 actual RED→GREEN后294通过；最小native App直接注册actual RED→GREEN后295/CLI25/fixture20/类型/9CJS静态/pins通过，精确十一路径freeze见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-application-bridge-local.md)。
+- [ ] native map直接绑定同一个私有App函数，仍缺seedFixture/runNormalCase两项，资源前拒绝；本片不升级真实Nest/SDK/guard/HTTP/listener/SQL/PG/资金/物理清理门，#398与依赖保持OPEN。当前阶段沿中央14/45，未commit/push/部署生产；future所有commit/finalHEAD含[skip ci]。
+
 ## 当前接续（2026-11-08，用户接受Task10限定阶段收口，转Task12）
 
 - [x] 用户明确选择“阶段收口，继续任务12”；准确8b08a1ff的正文编辑/同步/双格式及材料批本地证据按local-stage-closed接受，阶段计数14/45。CON-10正式提交提醒consumer未完成，需求完整交#394，不计整条通过；旧410/409保持至完整新提交可用。

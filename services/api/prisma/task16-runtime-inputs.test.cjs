@@ -82,20 +82,20 @@ function preparedRuntime(t) {
     const specification=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
     let options=specification.options;
     const packet=JSON.parse(fs.readFileSync(options.packetFile,'utf8'));
-    const calls=[],commands=[];
+    const calls=[],commands=[];let observedApplicationEntries;
     const adapters={
       readOnlyCommand(exe,args,control){
         commands.push({exe,args,env:control.env});
         if(args[0].endsWith('/prepare-task16-registered-pg.cjs'))return JSON.stringify({status:'SOURCE_ONLY_VERIFIED_NOT_EXECUTED',candidateSha:packet.candidateSha,sealSha256:packet.sealSha256,packetSha256:options.expectedPacketSha256,executionAllowed:false});
         return execFileSync(exe,args,control);
       },
-      startResource:async c=>{calls.push('resource');if(c.source.runtimeAdmission.status!=='INPUTS_AND_CODE_TREES_MATCHED')throw Error('admission missing');return {close:async()=>calls.push('close-resource'),getReceipt:()=>({status:'closed',cleanup:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}})};},
+      startResource:async c=>{observedApplicationEntries=c.applicationEntriesWitness;calls.push('resource');if(c.source.runtimeAdmission.status!=='INPUTS_AND_CODE_TREES_MATCHED')throw Error('admission missing');return {close:async()=>calls.push('close-resource'),getReceipt:()=>({status:'closed',cleanup:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}})};},
       verifyOwnerTransport:async()=>{},migrateBaseline:async()=>{},installBaselineAccess:async()=>{},installPreparedSql:async()=>{},installRegisteredAccess:async()=>{},
       connectRestrictedClients:async()=>({close:async()=>{}}),startApplication:async()=>({close:async()=>{}}),seedFixture:async()=>({}),runNormalCase:async()=>({caseId:'registered.null-cross-company.commit',passed:true})
     };
     async function exercise(){
       const firstReceipt=await runTask16RegisteredPg(options,adapters);
-      if(!specification.reenter)return {receipt:firstReceipt,calls,commands};
+      if(!specification.reenter)return {receipt:firstReceipt,calls,commands,applicationEntries:observedApplicationEntries};
       const inputs=JSON.parse(fs.readFileSync(options.inputsFile,'utf8'));
       const root=inputs.candidateRoot,client=path.join(root,'services/api/node_modules/@prisma/client');
       fs.writeFileSync(path.join(client,'package.json'),JSON.stringify({main:'bad.js'}));
@@ -286,3 +286,11 @@ for (const kind of ["preparation witness", "fake docker tool"]) {
     assert.deepEqual(result.calls, []);
   });
 }
+
+
+test('B2 captures fixed App entry identities before resource acquisition without importing Nest',t=>{
+ const f=preparedRuntime(t);const relative=['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'];for(const name of relative)f.put('services/api/dist/'+name,'module.exports={};\n');
+ const sdk=f.put('services/api/node_modules/@nestjs/testing/test.js',"throw new Error('UNEXPECTED_NEST_IMPORT');\n");
+ for(const file of ['services/api/prisma/task16-application-stage.cjs','services/api/prisma/task16-application-factory.cjs','services/api/src/database/task16-registered-application.module.ts']){const bytes=fs.readFileSync(path.join(project,file));f.put(file,bytes);f.packet.source.files.push({path:file,sha256:hash(bytes)});}f.sealPacket();
+ f.recapture('services/api/dist');f.recapture('services/api/node_modules');for(const out of f.preparation.outputs)out.preparedManifestSha256=f.inputs.trees.find(row=>row.root===out.root).sha256;f.sealPreparation();const result=f.run();assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.receipt.failureCode);assert.equal(result.applicationEntries?.length,8);assert.equal(result.applicationEntries[7].path,sdk);for(const row of result.applicationEntries){assert.equal(row.sha256,hash(fs.readFileSync(row.path)));assert.equal(row.identity.ino,fs.statSync(row.path).ino);}assert.ok(result.commands.some(row=>row.args[0]==='--eval'&&row.args[1].includes("require.resolve('@nestjs/testing/test'")));assert.equal(result.receipt.nativeExecution,false);
+});
