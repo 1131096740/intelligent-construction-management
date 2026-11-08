@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，Task10已审实现合入原integration）
+
+- [~] Task10完整181路径候选22dd324b以no-ff合入0db47613，完整tree相等；最终702冻结承接644d，两轴整票P2及EOF窄桥均0。本地364/369/14治理、双端删除同R/F实际Word/PDF、9–15七组actual与旧1–8/336不变闭包分别登记，未冒全库存重跑。[独立整合收据](docs/progress/2026-11-08-enterprise-simplification-task10-integrated.md)。
+- [~] 准确clean merge新跑Task16纯模拟255、source CLI25、fixture20、API typecheck及source-only prepare/verify通过；无真实SDK/HTTP/PG/SQL或资源，后继仅两文档另封准确最终HEAD。每个新commit及最终push HEAD含[skip ci]，远端回读另存，空checks不计CI通过，旧fe70事故保留。
+- [ ] #392仍OPEN：compact三片段/材料运输口径待决定、Task12 consumer partial及12等待10；#398/17-24/16-42-44门与13/45不变。保持Draft，不ready/close/mainmerge/部署/生产；原作者及混合根保留。下方旧状态为各自历史，不覆盖本次整合事实。
+
 ## 当前接续（2026-11-08，Task10最新中央隔离候选与整票复审）
 
 - [~] 候选 `/private/tmp/jg-382-task10-final-integration-20261108` 基于准确中央 `0d563bb565b7229d3488c2ffcc5e379dae953a8e`，完整181路径承接作者8f7+WIP；原作者树181逐SHA和中央52非ledger路径再核未变，Schema/迁移不变。私有生成client/Shared与fresh API/Web构建、共享58,799项守卫见本地收据，不借旧dist。
