@@ -13,6 +13,14 @@ const EARLY_DRIVER_SHA=require("./task16-runtime-inputs.cjs").readQualifiedTask1
 // Pure controller modules only; legacy source-only fixtures may not contain the
 // bridge. Failed import never becomes an available native adapter.
 const NATIVE_APPLICATION_STAGE=(()=>{try{return require("./task16-application-stage.cjs").startTask16Application;}catch{return undefined;}})();
+const EARLY_FETCH=Object.getOwnPropertyDescriptor(globalThis,"fetch");
+const EARLY_FETCH_SOURCE=process.binding('natives')['internal/bootstrap/web/exposed-window-or-worker'];
+const FETCH_BEGIN=typeof EARLY_FETCH_SOURCE==='string'?EARLY_FETCH_SOURCE.indexOf('value: function fetch('):-1;
+const FETCH_END=FETCH_BEGIN<0?-1:EARLY_FETCH_SOURCE.indexOf('\n});',FETCH_BEGIN);
+const EARLY_FETCH_QUALIFIED=Boolean(EARLY_FETCH&&Object.hasOwn(EARLY_FETCH,'value')&&typeof EARLY_FETCH.value==='function'&&EARLY_FETCH.writable&&EARLY_FETCH.enumerable&&EARLY_FETCH.configurable&&FETCH_BEGIN>=0&&FETCH_END>FETCH_BEGIN&&Function.prototype.toString.call(EARLY_FETCH.value)===EARLY_FETCH_SOURCE.slice(FETCH_BEGIN+7,FETCH_END-1));
+const NATIVE_SEED_MODULE=(()=>{try{return require('./task16-seed-fixture.cjs');}catch{return undefined;}})();
+const NATIVE_SEED_STAGE=NATIVE_SEED_MODULE?.seedTask16Fixture;
+const NATIVE_SEED_ADMISSION=NATIVE_SEED_MODULE?.validateTask16SeedAdmission;
 let nativeAttempted=false;
 const path = require("node:path");
 const { randomBytes, randomUUID } = require("node:crypto");
@@ -58,7 +66,8 @@ function nativeAdapters() {
       const {connectTask16RestrictedClients}=require("./task16-restricted-clients.cjs");
       return connectTask16RestrictedClients(context,boundary);
     },
-    startApplication: NATIVE_APPLICATION_STAGE
+    startApplication: NATIVE_APPLICATION_STAGE,
+    seedFixture: NATIVE_SEED_STAGE
     // Unimplemented stages are absent, never no-op functions returning success.
   };
 }
@@ -84,6 +93,9 @@ function resourceReceipt(resource, failure) {
  * still reject before source reads or resource acquisition. */
 async function runTask16RegisteredPg(options, injectedAdapters) {
   const simulation = injectedAdapters !== undefined;
+  const fetchDescriptor=simulation?Object.getOwnPropertyDescriptor(globalThis,"fetch"):EARLY_FETCH;
+  const seedTransport=fetchDescriptor&&Object.hasOwn(fetchDescriptor,"value")?fetchDescriptor.value:undefined;
+  const seedTransportIsBuiltin=typeof seedTransport==='function'&&((EARLY_FETCH_QUALIFIED&&seedTransport===EARLY_FETCH.value)||(typeof EARLY_FETCH_SOURCE==='string'&&EARLY_FETCH_SOURCE.includes(Function.prototype.toString.call(seedTransport))));
   const adapters = injectedAdapters === undefined ? nativeAdapters() : { ...injectedAdapters, verifySource: injectedAdapters.verifySource ?? nativeAdapters().verifySource };
   if (injectedAdapters?.migrateBaseline && typeof injectedAdapters.migrateBaseline === "object" && Object.keys(injectedAdapters.migrateBaseline).join(",") === "command" && typeof injectedAdapters.migrateBaseline.command === "function") {
     const command = injectedAdapters.migrateBaseline.command;
@@ -122,6 +134,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       }
     } catch { /* Invalid factory metadata stays non-callable: safe missing capability, no fallback. */ }
   }
+  const nativeSeedSelected=typeof NATIVE_SEED_STAGE==='function'&&adapters.seedFixture===NATIVE_SEED_STAGE;
   const nativeApplicationSelected=typeof NATIVE_APPLICATION_STAGE==="function"&&adapters.startApplication===NATIVE_APPLICATION_STAGE;
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
@@ -178,6 +191,11 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     if(!simulation)need(context.source.executionFiles?.some(row=>row.path==="services/api/prisma/run-task16-registered-pg-local.cjs"&&row.sha256===EARLY_DRIVER_SHA),"TASK16_DRIVER_RUNNING_SOURCE_CHANGED");
     need(context.source && /^[a-f0-9]{40}$/u.test(context.source.candidateSha), "TASK16_DRIVER_SOURCE_IDENTITY");
     receipt.sourceSha = context.source.candidateSha;
+    const fixtureAdmission=structuredClone(context.source?.runtimeAdmission?.fixture);
+    const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+    Object.defineProperty(context,'seedAdmissionWitness',{value:freeze(fixtureAdmission),writable:false,configurable:false});
+    Object.defineProperty(context,'seedTransportWitness',{value:Object.freeze({fetch:seedTransport,simulation,qualified:simulation?typeof seedTransport==='function'&&!seedTransportIsBuiltin:EARLY_FETCH_QUALIFIED}),writable:false,configurable:false});
+    if(nativeSeedSelected)NATIVE_SEED_ADMISSION(context);
     context.resource = await stage("startResource");
     need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
     const initialReceipt=structuredClone(context.resource.getReceipt());
@@ -211,12 +229,18 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       const sourceBinding=Object.freeze(Object.fromEntries(bindingKeys.map(key=>[key,bindingDescriptors[key].value])));
       Object.defineProperty(context,"clientLifecycleWitness",{value:Object.freeze({handle:context.clients,bindingObject:binding.value,sourceBinding,
 
-        ...Object.fromEntries([...lifecycleMethods,"owner","runtime","observer"].map(key=>[key,lifecycleDescriptors[key].value]))}),writable:false,configurable:false});
+        ...Object.fromEntries([...lifecycleMethods,"owner","runtime","observer"].map(key=>[key,lifecycleDescriptors[key].value])),
+        loadFixtureModules:lifecycleDescriptors.loadFixtureModules?.value}),writable:false,configurable:false});
     }
     receipt.appStartupOutcome="UNKNOWN_DO_NOT_RETRY";
     context.application = await stage("startApplication");
     receipt.appStartupOutcome="APP_STAGE_RETURNED_NOT_FULL_PROOF";
     need(typeof context.application?.close === "function", "TASK16_DRIVER_APPLICATION_HANDLE");
+    if(nativeApplicationSelected){
+      const descriptors=Object.getOwnPropertyDescriptors(context.application),keys=['inspect','close','origin','runtime','sourceBinding'];
+      need(keys.every(key=>Object.hasOwn(descriptors[key]??{},'value'))&&typeof descriptors.inspect.value==='function','TASK16_DRIVER_APP_WITNESS');
+      Object.defineProperty(context,'applicationLifecycleWitness',{value:Object.freeze({handle:context.application,...Object.fromEntries(keys.map(key=>[key,descriptors[key].value])),sourceHeader:Object.freeze({...descriptors.sourceBinding.value})}),writable:false,configurable:false});
+    }
     context.fixture = await stage("seedFixture");
     const result = await stage("runNormalCase");
     need(!controller.signal.aborted, "TASK16_DRIVER_ABORTED");

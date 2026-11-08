@@ -31,12 +31,19 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
  need(!Object.values(Module._pathCache).some(file=>typeof file==="string"&&TREES.some(tree=>inside(path.join(root,tree),file))),"TASK16_CLIENT_PRELOADED_PATH");
  const loaded=require(entry.path),actual=require.cache[entry.path];
  need(actual?.loaded===true&&actual.exports===loaded&&typeof loaded.PrismaClient==="function"&&loaded.Prisma?.prismaVersion?.client==="5.22.0"&&loaded.Prisma?.prismaVersion?.engine==="605197351a3c8bdd595af2d2a9bc3025bca48ea2","TASK16_CLIENT_CLASS");
- const Class=loaded.PrismaClient,files=new Map(),applicationRoots=[];let applicationExports,reflection;
+ const Class=loaded.PrismaClient,files=new Map(),applicationRoots=[];let applicationExports,reflection,fixtureExports;const fixtureDependencyMethods=new Map();
  const check=()=>{
   need(coreHooksUnmodified()&&Module._load===facts.hooks.load&&Module._resolveFilename===facts.hooks.resolve&&Module._findPath===facts.hooks.find&&Module.prototype.require===facts.hooks.require&&[".js",".json",".node"].every(ext=>Module._extensions[ext]===facts.hooks.extensions[ext]),"TASK16_CLIENT_LOADER_HOOK_CHANGED");
   need(require.cache[entry.path]===actual&&actual.exports===loaded&&loaded.PrismaClient===Class,"TASK16_CLIENT_CLASS_CHANGED");
   const visited=new Set();const visit=mod=>{if(visited.has(mod))return;visited.add(mod);need(mod?.loaded===true&&typeof mod.filename==="string","TASK16_CLIENT_MODULE_CHANGED");const previous=files.get(mod.filename);if(previous){need(previous.module===mod&&previous.exports===mod.exports,"TASK16_CLIENT_MODULE_CHANGED");const current=read(previous.path,{maxBytes:64*1024*1024,expectedIdentity:previous.identity,code:"TASK16_CLIENT_MODULE_CHANGED"});need(current.sha256===previous.sha256&&require.cache[mod.filename]===mod,"TASK16_CLIENT_MODULE_CHANGED");}else{need(require.cache[mod.filename]===mod,"TASK16_CLIENT_MODULE_CHANGED");files.set(mod.filename,{...capture(mod.filename),module:mod,exports:mod.exports});}for(const child of mod.children)visit(child);};visit(actual);for(const mod of applicationRoots)visit(mod);
   for(const row of files.values()){need(require.cache[row.path]===row.module&&row.module.exports===row.exports,"TASK16_CLIENT_MODULE_CHANGED");need(read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_CLIENT_MODULE_CHANGED"}).sha256===row.sha256,"TASK16_CLIENT_MODULE_CHANGED");}
+  if(fixtureExports){
+   for(const row of files.values()){
+    const key=row.path===path.join(root,'services/api/dist/company-entity/unified-social-credit-code.js')?'assertValidUnifiedSocialCreditCode':/\/node_modules\/bcryptjs\/(?:index\.js|dist\/bcrypt\.js)$/u.test(row.path)?'hash':undefined;
+    if(key){const descriptor=Object.getOwnPropertyDescriptor(row.exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function','TASK16_FIXTURE_DEPENDENCY_CHANGED');const prior=fixtureDependencyMethods.get(row.path);if(prior)need(prior===descriptor.value,'TASK16_FIXTURE_DEPENDENCY_CHANGED');else fixtureDependencyMethods.set(row.path,descriptor.value);}
+   }
+  }
+  if(fixtureExports)for(const row of fixtureExports)need(Object.getOwnPropertyDescriptor(row.module.exports,row.key)?.value===row.value,"TASK16_FIXTURE_EXPORT_CHANGED");
   if(applicationExports){need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,"TASK16_APP_REFLECTION_CHANGED");for(const row of applicationExports.records)need(Object.getOwnPropertyDescriptor(row.module.exports,row.key)?.value===row.value,"TASK16_APP_EXPORT_CHANGED");applicationExports.checkMetadata();}
   for(const file of Object.keys(require.cache))if(TREES.some(tree=>inside(path.join(root,tree),file)))need(files.has(file),"TASK16_APP_FOREIGN_CACHE");
   const current=read(entry.path,{maxBytes:64*1024*1024,expectedIdentity:initial.identity,code:"TASK16_CLIENT_ENTRY"});need(current.sha256===entry.sha256,"TASK16_CLIENT_ENTRY");
@@ -67,6 +74,14 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
   const checkMetadata=()=>{const actualImports=metadata('imports',values.Task16RegisteredApplicationModule);need(Array.isArray(actualImports)&&actualImports.length===imports.length&&imports.every((v,i)=>actualImports[i]===v),"TASK16_APP_METADATA_CHANGED");const controllers=metadata('controllers',values.Task16RegisteredApplicationModule);need(controllers?.length===1&&controllers[0]===controller,"TASK16_APP_METADATA_CHANGED");const providers=metadata('providers',values.Task16RegisteredApplicationModule);need(providers?.length===6&&serviceProviders.every((Class,i)=>providers[i]===Class)&&providers[5]?.provide==='APP_FILTER'&&providers[5].useClass===filter,"TASK16_APP_METADATA_CHANGED");const actual=metadata('providers',imports[1])?.filter(row=>row?.provide==='APP_GUARD');need(actual?.length===6&&guards.every((Class,i)=>actual[i].useClass===Class),"TASK16_APP_METADATA_CHANGED");};
   applicationExports={records,checkMetadata};check();return Object.freeze(values);
  };
- check();return{Class,check,loadApplicationModules,witness:()=>({entry:entry.path,entrySha256:entry.sha256,modules:[...files.values()].map(row=>({path:row.path,sha256:row.sha256})).sort((a,b)=>a.path.localeCompare(b.path))})};
+ const loadFixtureModules=()=>{
+  check();need(!fixtureExports,"TASK16_FIXTURE_MODULE_REENTRY");const row=source.runtimeAdmission.fixture?.entry;
+  need(row?.path===path.join(root,'services/api/dist/database/registered-payment-postgres.fixture.js')&&row.identity,"TASK16_FIXTURE_ENTRY");
+  const existing=require.cache[row.path];need(!existing||files.get(row.path)?.module===existing&&files.get(row.path)?.exports===existing.exports,"TASK16_FIXTURE_PRELOADED_ENTRY");
+  need(read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:'TASK16_FIXTURE_ENTRY'}).sha256===row.sha256,"TASK16_FIXTURE_ENTRY");
+  const exports=require(row.path),mod=require.cache[row.path];need(mod?.loaded===true&&mod.exports===exports,"TASK16_FIXTURE_ENTRY");applicationRoots.push(mod);
+  const keys=['buildRegisteredPgFixturePlan','seedRegisteredPgFixture'];fixtureExports=keys.map(key=>{const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',"TASK16_FIXTURE_EXPORT_CHANGED");return{module:mod,key,value:descriptor.value};});check();return Object.freeze(Object.fromEntries(fixtureExports.map(row=>[row.key,row.value])));
+ };
+ check();return{Class,check,loadApplicationModules,loadFixtureModules,witness:()=>({entry:entry.path,entrySha256:entry.sha256,modules:[...files.values()].map(row=>({path:row.path,sha256:row.sha256})).sort((a,b)=>a.path.localeCompare(b.path))})};
 }
 module.exports={loadTask16Client};

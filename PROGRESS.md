@@ -1,3 +1,8 @@
+## 任务16 B9 native seed wrapper源码（2026-11-08，待双轴）
+
+- [~] 准确563ffd54独立source/mock准备实际compiled fixture wrapper、初inputsFD/dates/entry/build/七片与source见证、同B7 registry、App私有inspect/provider连续、内部每await轻核与固定HTTP transport。合法16ID/assignment/UTC事实保，原schema/迁移/SQL/权限值不变。准确注释前319/25/fixture20/types/TS lint通过；后续comment token桥及首次validator const实际RED→GREEN，最终seed20/B2witness1/七CJS静态/pins0，非最终全320重跑。首审遗漏fake fetch的P2已安全sentinel实际RED→最小资源前闭门，原控制显式fake/checkpoint桥及v2实际seed21/B2witness1/default负控3/静态0证据另封，不冒全321重跑。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-native-seed-local.md)及准确freeze逐版区分实际测试/注释AST桥/历史失败。
+- [ ] v2两轴0后，seed源直接注册同私有函数；默认仅缺runNormalCase一项、仍在source输入读取/资源阶段前拒，默认入口actualRED两列表失败→GREEN3/3，注册后seed21/B2witness1/八CJS静态/pins0；准确13路径注册delta待增量双轴。实际SDK/Nest/HTTP/PG/TLS/ACL/COMMIT/资金/物理清理未验；#398/依赖OPEN、14/45不变。无commit/push/ready/mainmerge/部署生产，futurecommit/finalHEAD[skip ci]；旧B8/中央/Task12不动。
+
 ## 当前接续（2026-11-08，Task16 B8原生App源码桥已整合）
 
 - [~] 作者dac3248d以no-ff合入3f09ad7c，final9a45dd完整11路径/源2451666a两轴方法P2、注册delta及执行/doc均0，整树相等。原native map直接注册同私有App stage；默认seedFixture/runNormalCase两缺、资源前拒，native/financial验收false。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-application-bridge-integrated.md)。
