@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 407,
-    "technicalActionCount": 9,
-    "activeBindingCount": 470,
+    "activeBusinessActionCount": 408,
+    "technicalActionCount": 10,
+    "activeBindingCount": 472,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -958,6 +958,24 @@
       "bindingKeys": [
         "GET /contract-drafts/:param/workbench",
         "POST /contracts/:param/abandonment"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-draft.body-paper-preview",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "GET /files/:param/download-ticket-capability",
+        "POST /files/:param/download-ticket"
       ],
       "bindingCount": 2,
       "productionConsumerCount": 1,
@@ -6662,6 +6680,23 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "PUT /contract-drafts/:param"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-draft.body-paper-generate",
+      "status": "technical_only",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /contract-drafts/:param/preview-generation"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

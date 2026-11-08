@@ -14851,6 +14851,1370 @@ function guardedUploadPipelineProof({ action, wrapper, handler, context }) {
 // are wider than the ordinary single-wrapper causal proof.  It never relies on
 // a file name or action id: the witness is the fresh read, fail-closed guards,
 // value flow and the concrete transport wrapper call in the trigger handler.
+/* A bounded proof for an immutable, owner-bound server action projection.
+ * It supplements one pipeline proof; the general causal/try rules stay strict.
+ */
+function frozenServerGrantPipelineProof({ action, wrapper, handler, context }) {
+  if (action.capability.kind !== "available_action_string" ||
+      !/^[A-Za-z_$][\w$]*\.value\.(?:actions|serverAvailableActions)$/u.test(action.capability.source) ||
+      handler.definitions.length !== 1) return null;
+  const { symbols } = context;
+  const definition = handler.definition;
+  const fileGrant = action.capability.source.endsWith(".serverAvailableActions");
+  const actionField = fileGrant ? "serverAvailableActions" : "actions";
+  const approvedFileLoops = new Set();
+  const roots = topLevelScopeVariables(symbols.scopeManager, capabilitySourceRoot(action.capability.source));
+  if (roots.length !== 1) return null;
+  const rootBinding = roots[0];
+  const rootDeclaration = uniqueIndexedNode(symbols.declarationsByBinding, rootBinding);
+  if (!expressionIsEmptyVueRef(rootDeclaration, symbols)) return null;
+  const ids = new Map();
+  const identity = (binding) => {
+    if (!ids.has(binding)) ids.set(binding, `b${ids.size}`);
+    return ids.get(binding);
+  };
+  const bindingOf = (node) => symbols.scopeBindings?.get(unwrapValueExpression(node));
+  const member = (node) => {
+    const value = unwrapValueExpression(node);
+    return value?.type === "MemberExpression" && !value.optional
+      ? staticMemberProperty(value) : null;
+  };
+  const path = (node, environment = new Map(), seen = []) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "MemberExpression" && !value.optional) {
+      const name = member(value), base = path(value.object, environment, seen);
+      return name && base ? `${base}.${name}` : null;
+    }
+    if (value?.type !== "Identifier") return null;
+    const binding = bindingOf(value);
+    if (!binding || seen.length > 48 || seen.some(frame => frame.binding === binding && frame.environment === environment)) return null;
+    const next = [...seen, { binding, environment }];
+    if (environment.has(binding)) {
+      const bound = environment.get(binding);
+      return path(bound.node, bound.environment, next);
+    }
+    const declaration = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+    const initializer = unwrapValueExpression(declaration);
+    const vueRef = initializer?.type === "CallExpression" &&
+      symbols.vueRefImportBindings.has(bindingOf(initializer.callee));
+    if (!vueRef && (symbols.writesByBinding.get(binding) ?? []).length > 0) return null;
+    if (declaration && !expressionIsEmptyVueRef(declaration, symbols)) {
+      const candidate = path(declaration, environment, next);
+      if (candidate) return candidate;
+    }
+    return identity(binding);
+  };
+  const cap = `${identity(rootBinding)}.value`;
+  const globalCall = (node, globalName, methodName = null) => {
+    const value = unwrapValueExpression(node);
+    const callee = unwrapValueExpression(value?.callee);
+    const root = methodName ? unwrapValueExpression(callee?.object) : callee;
+    return value?.type === "CallExpression" && (!methodName || member(callee) === methodName) &&
+      root?.type === "Identifier" && root.name === globalName &&
+      unshadowedRuntimeGlobal(root, new Set([globalName]), symbols.scopeBindings);
+  };
+  const frozen = (node) => globalCall(node, "Object", "freeze") && node.arguments?.length === 1
+    ? unwrapValueExpression(node.arguments[0]) : null;
+  const assignments = symbols.writesByBinding.get(rootBinding) ?? [];
+  const populated = assignments.filter(write => !expressionIsEmptyCapabilityState(write.value));
+  if (populated.length !== 1 || assignments.some(write => write.operator !== "=" || write.path !== `${capabilitySourceRoot(action.capability.source)}.value`)) return null;
+  const record = frozen(populated[0].value);
+  const requiredFields = fileGrant ? ["ownerKey", "readGeneration", "fileId", "documentId", "serverAction", "serverAvailableActions"] : ["ownerKey", "readGeneration", "sourceRevision", "fingerprint", "actions"];
+  if (record?.type !== "ObjectExpression" || record.properties.length !== requiredFields.length ||
+      record.properties.some(property => property.type !== "Property" || property.kind !== "init" || property.method || property.computed)) return null;
+  const properties = new Map(record.properties.map(property => [property.key.name ?? property.key.value, property.value]));
+  if (!requiredFields.every(key => properties.has(key))) return null;
+  const functions = [...symbols.definitionsByBinding.entries()].flatMap(([binding]) => {
+    const value = uniqueIndexedNode(symbols.definitionsByBinding, binding);
+    return value?.range && value.range[0] < record.range[0] && value.range[1] > record.range[1]
+      ? [{ binding, definition: value }] : [];
+  });
+  if (functions.length !== 1) return null;
+  const writer = functions[0];
+  if (![1, 2].includes(writer.definition.params?.length) || writer.definition.params.some(parameter => parameter.type !== "Identifier")) return null;
+  const targetCalls = importedWrapperCalls([definition], wrapper, context);
+  if (targetCalls.length !== 1) return null;
+  const target = targetCalls[0];
+  const attempts = [];
+  directCallableNodes(definition, node => { if (node.type === "TryStatement" && node.block.range[0] < target.range[0] && node.block.range[1] > target.range[1]) attempts.push(node); });
+  if (attempts.length !== 1) return null;
+  const attempt = attempts[0];
+  const writerCalls = [];
+  directCallableNodes(attempt.block, node => {
+    if (node.type === "CallExpression" && bindingOf(node.callee) === writer.binding && node.range[0] < target.range[0]) writerCalls.push(node);
+  });
+  if (writerCalls.length !== 1 || writerCalls[0].arguments.length !== writer.definition.params.length) return null;
+  const callSites = binding => {
+    const sites = [];
+    walkEstree(symbols.ast, node => { if (node.type === "CallExpression" && bindingOf(node.callee) === binding) sites.push(node); });
+    return sites;
+  };
+  const callableEscapes = binding => {
+    let escaped = false;
+    walkEstree(symbols.ast, node => {
+      if (node.type !== "Identifier" || bindingOf(node) !== binding || !symbols.scopeReferenceIdentifiers.has(node)) return;
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      if (parent?.type !== "CallExpression" || parent.callee !== node) escaped = true;
+    });
+    return escaped;
+  };
+  const enclosingCallable = node => [...symbols.definitionsByBinding.keys()].map(binding => ({ binding,
+    definition: uniqueIndexedNode(symbols.definitionsByBinding, binding) })).filter(value => value.definition?.range &&
+      value.definition.range[0] < node.range[0] && value.definition.range[1] > node.range[1])
+    .sort((left, right) => (left.definition.range[1] - left.definition.range[0]) - (right.definition.range[1] - right.definition.range[0]))[0] ?? null;
+  const awaitedBefore = (call, before, requireRejectedResult = false) => {
+    const ancestors = astAncestorChain(symbols.ast, call) ?? [];
+    const awaited = ancestors.at(-2);
+    if (awaited?.type !== "AwaitExpression" || awaited.argument !== call) return false;
+    const block = ancestors.filter(node => node.type === "BlockStatement").at(-1);
+    if (!block || before <= block.range[0] || before >= block.range[1]) return false;
+    const statement = block.body.find(node => node.range[0] <= call.range[0] && node.range[1] >= call.range[1]);
+    if (!statement || statement.range[1] >= before) return false;
+    if (!requireRejectedResult && statement.type === "ExpressionStatement" && statement.expression === awaited) return true;
+    if (!requireRejectedResult && statement.type === "VariableDeclaration" && statement.kind === "const" && statement.declarations.length === 1 && statement.declarations[0].init === awaited) return true;
+    const test = unwrapValueExpression(statement.test), stop = statement.consequent?.type === "BlockStatement" ? statement.consequent.body.at(-1) : statement.consequent;
+    return statement.type === "IfStatement" && !statement.alternate && test?.type === "UnaryExpression" && test.operator === "!" &&
+      test.argument === awaited && ["ReturnStatement", "ThrowStatement"].includes(stop?.type);
+  };
+  const bindCall = (callable, call, outer = new Map()) => {
+    if (callable.params.length !== call.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier") || call.arguments.some(argument => argument.type === "SpreadElement")) return null;
+    const environment = new Map(outer);
+    callable.params.forEach((parameter, index) => environment.set(bindingOf(parameter), { node: call.arguments[index], environment: outer }));
+    return environment;
+  };
+  if (callableEscapes(writer.binding) || !awaitedBefore(writerCalls[0], target.range[0])) return null;
+  const writerBody = writer.definition.body?.body ?? [];
+  const replacement = writerBody.findIndex(statement => statement.type === "ExpressionStatement" &&
+    statement.expression.type === "AssignmentExpression" && statement.expression.right === populated[0].value);
+  if (replacement < 0) return null;
+  const rejectsFailure = awaitedBefore(writerCalls[0], target.range[0], true);
+  for (const statement of writerBody.slice(0, replacement)) {
+    if (["ExpressionStatement", "VariableDeclaration"].includes(statement.type)) continue;
+    const stop = statement.consequent?.type === "BlockStatement" ?
+      (statement.consequent.body.length === 1 ? statement.consequent.body[0] : null) : statement.consequent;
+    if (statement.type !== "IfStatement" || statement.alternate || !(stop?.type === "ThrowStatement" ||
+        rejectsFailure && stop?.type === "ReturnStatement" && unwrapValueExpression(stop.argument)?.type === "Literal" && stop.argument.value === false)) return null;
+  }
+  const suffix = writerBody.slice(replacement + 1);
+  if (suffix.length > 1 || suffix.length === 1 && suffix[0].type !== "ReturnStatement") return null;
+  const writerEnvironment = bindCall(writer.definition, writerCalls[0]);
+  if (!writerEnvironment) return null;
+  const actualOwner = path(writerCalls[0].arguments[0]);
+  const owner = path(writer.definition.params[0], writerEnvironment);
+  if (path(properties.get("ownerKey"), writerEnvironment) !== `${owner}.ownerKey` ||
+      path(properties.get("readGeneration"), writerEnvironment) !== `${owner}.generation`) return null;
+  const projectedReads = new Map();
+  const projectedIdentityRead = binding => {
+    if (projectedReads.has(binding)) return projectedReads.get(binding);
+    projectedReads.set(binding, null);
+    const imported = symbols.importsByBinding.get(binding);
+    if (imported?.kind !== "named") return null;
+    const metadata = context.wrapperIndex?.get(wrapperIdentity(imported.sourceFile, imported.importedName));
+    const requests = metadata ? normalizedMainRequests(metadata) : [];
+    if (metadata?.kind !== "transport" || metadata.returnProvenance !== "unverified" || !metadata.productionConsumers?.includes(context.sourceFile) || requests.length !== 1 || requests[0].method?.toUpperCase() !== "GET") return null;
+    const ast = context.asts.get(imported.sourceFile);
+    if (!ast) return null;
+    const local = buildSymbolContext(ast, imported.sourceFile, context.sourceFileSet), localBinding = node => local.scopeBindings.get(unwrapValueExpression(node));
+    const bindings = topLevelScopeVariables(local.scopeManager, imported.importedName), facadeBinding = bindings.length === 1 ? bindings[0] : null;
+    const facade = facadeBinding ? uniqueIndexedNode(local.definitionsByBinding, facadeBinding) : null;
+    if (!facade || (local.writesByBinding.get(facadeBinding) ?? []).length || facade.params.length !== 1 || facade.params[0].type !== "Identifier" || facade.body?.type !== "BlockStatement" || facade.body.body.length !== 2) return null;
+    const [declaration, returned] = facade.body.body;
+    const raw = declaration.type === "VariableDeclaration" && declaration.kind === "const" && declaration.declarations.length === 1 ? declaration.declarations[0] : null;
+    const read = raw?.init?.type === "AwaitExpression" ? unwrapValueExpression(raw.init.argument) : null;
+    const output = returned.type === "ReturnStatement" ? unwrapValueExpression(returned.argument) : null;
+    const body = raw?.id.type === "Identifier" ? localBinding(raw.id) : null, transport = read?.callee?.type === "Identifier" ? localBinding(read.callee) : null;
+    if (!body || !transport || (local.writesByBinding.get(body) ?? []).length || (local.writesByBinding.get(transport) ?? []).length || output?.type !== "ObjectExpression" || output.properties.length !== 2 ||
+        output.properties[0].type !== "SpreadElement" || localBinding(output.properties[0].argument) !== body || output.properties[1].type !== "Property" || output.properties[1].computed || output.properties[1].method || output.properties[1].kind !== "init") return null;
+    const coordinates = new Set(["contractVersionId", "draftRevision", "documentContentRevision", "layoutTemplateVersionId", "sourceSha256"]);
+    const override = output.properties[1], field = override.key.name ?? override.key.value, normalize = unwrapValueExpression(override.value);
+    if (coordinates.has(field) || normalize?.type !== "CallExpression" || normalize.callee.type !== "Identifier" || normalize.arguments.length !== 1 ||
+        normalize.arguments[0].type !== "MemberExpression" || normalize.arguments[0].computed || member(normalize.arguments[0]) !== field || localBinding(normalize.arguments[0].object) !== body) return null;
+    // Reuse the existing producer's transparent GET transport witness, not a
+    // helper name. This wrapper remains unverified as a whole response.
+    const trustedTransport = [...(context.wrapperIndex?.values() ?? [])].some(wrapper => {
+      if (wrapper.apiFile !== imported.sourceFile || wrapper.returnProvenance !== "transparent_main_response" || normalizedMainRequests(wrapper).length !== 1 || normalizedMainRequests(wrapper)[0].method?.toUpperCase() !== "GET") return false;
+      const siblings = topLevelScopeVariables(local.scopeManager, wrapper.name), sibling = siblings.length === 1 ? uniqueIndexedNode(local.definitionsByBinding, siblings[0]) : null;
+      const expression = sibling?.body?.type === "BlockStatement" && sibling.body.body.length === 1 && sibling.body.body[0].type === "ReturnStatement" ? unwrapValueExpression(sibling.body.body[0].argument) : null;
+      return expression?.type === "CallExpression" && localBinding(expression.callee) === transport;
+    });
+    if (!trustedTransport) return null;
+    let confined = true;
+    walkEstree(ast, reference => {
+      if (reference.type !== "Identifier" || localBinding(reference) !== body || !local.scopeReferenceIdentifiers.has(reference)) return;
+      const parent = astAncestorChain(ast, reference)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === reference && parent.init === raw.init || parent === output.properties[0] || parent === normalize.arguments[0]) return;
+      confined = false;
+    });
+    if (!confined) return null;
+    const normalizerBinding = localBinding(normalize.callee), normalizer = normalizerBinding ? uniqueIndexedNode(local.definitionsByBinding, normalizerBinding) : null;
+    if (!normalizer || (local.writesByBinding.get(normalizerBinding) ?? []).length || normalizer.async || normalizer.params.length !== 1 || normalizer.params[0].type !== "Identifier" || normalizer.body?.type !== "BlockStatement" || normalizer.body.body.length !== 3 ||
+        normalizer.body.body[0].type !== "IfStatement" || normalizer.body.body[1].type !== "IfStatement" || normalizer.body.body[2].type !== "ReturnStatement") return null;
+    const global = (node, name) => node?.type === "Identifier" && node.name === name && unshadowedRuntimeGlobal(node, new Set([name]), local.scopeBindings);
+    const literalConstant = variable => {
+      const value = variable ? unwrapValueExpression(uniqueIndexedNode(local.declarationsByBinding, variable)) : null;
+      return value?.type === "Literal" && ["string", "number", "boolean"].includes(typeof value.value) && !(local.writesByBinding.get(variable) ?? []).length;
+    };
+    const constantSets = new Map();
+    const constantSet = variable => {
+      if (constantSets.has(variable)) return constantSets.get(variable);
+      constantSets.set(variable, false);
+      const value = variable ? unwrapValueExpression(uniqueIndexedNode(local.declarationsByBinding, variable)) : null;
+      if (value?.type !== "NewExpression" || !global(value.callee, "Set") || value.arguments.length !== 1 || value.arguments[0].type !== "ArrayExpression" || value.arguments[0].elements.some(item => item?.type !== "Literal" || typeof item.value !== "string") || (local.writesByBinding.get(variable) ?? []).length) return false;
+      let valid = true;
+      walkEstree(ast, reference => {
+        if (reference.type !== "Identifier" || localBinding(reference) !== variable || !local.scopeReferenceIdentifiers.has(reference)) return;
+        const ancestors = astAncestorChain(ast, reference), parent = ancestors?.at(-2), call = ancestors?.at(-3);
+        if (parent?.type === "VariableDeclarator" && parent.id === reference && parent.init === value) return;
+        if (parent?.type !== "MemberExpression" || parent.computed || parent.object !== reference || member(parent) !== "has" || call?.type !== "CallExpression" || call.callee !== parent) valid = false;
+      });
+      constantSets.set(variable, valid); return valid;
+    };
+    const normalSyntax = new Set(["FunctionDeclaration", "ArrowFunctionExpression", "Identifier", "BlockStatement", "IfStatement", "ReturnStatement", "CallExpression", "MemberExpression", "LogicalExpression", "BinaryExpression", "UnaryExpression", "Literal", "ArrayExpression", "SpreadElement", "NewExpression", "TSAsExpression", "TSTypeAnnotation", "TSUnknownKeyword", "TSTypeReference", "TSUnionType", "TSArrayType", "TSStringKeyword", "TSTypeParameterInstantiation"]);
+    const pureJsonArray = (node, parameters, arrayReturns = true) => {
+      let valid = true;
+      directCallableNodes(node, current => {
+        if (!valid) return;
+        if (!normalSyntax.has(current.type) || current.type === "UnaryExpression" && !["!", "typeof"].includes(current.operator)) { valid = false; return; }
+        if (current.type === "Identifier" && local.scopeReferenceIdentifiers.has(current)) {
+          const variable = localBinding(current), parent = astAncestorChain(ast, current)?.at(-2);
+          if (parameters.has(variable) || literalConstant(variable) || global(current, "undefined")) return;
+          if (parent?.type === "MemberExpression" && parent.object === current && member(parent) === "has" && constantSet(variable)) return;
+          if (parent?.type === "MemberExpression" && parent.object === current && global(current, "Array") && member(parent) === "isArray" || parent?.type === "NewExpression" && parent.callee === current && global(current, "Set")) return;
+          valid = false; return;
+        }
+        if (current.type === "ReturnStatement" && arrayReturns && unwrapValueExpression(current.argument)?.type !== "ArrayExpression") { valid = false; return; }
+        if (current.type === "NewExpression" && !(global(current.callee, "Set") && current.arguments.length === 1 && parameters.has(localBinding(unwrapValueExpression(current.arguments[0]))))) { valid = false; return; }
+        if (current.type !== "CallExpression") return;
+        if (member(current.callee) === "isArray" && global(current.callee.object, "Array") && current.arguments.length === 1 && parameters.has(localBinding(current.arguments[0]))) return;
+        if (member(current.callee) === "has" && constantSet(localBinding(current.callee.object)) && current.arguments.length === 1 && parameters.has(localBinding(current.arguments[0]))) return;
+        const callback = current.arguments[0];
+        if (member(current.callee) === "some" && parameters.has(localBinding(current.callee.object)) && current.arguments.length === 1 && callback?.type === "ArrowFunctionExpression" && !callback.async && callback.params.length === 1 && callback.params[0].type === "Identifier" && pureJsonArray(callback, new Set([...parameters, localBinding(callback.params[0])]), false)) return;
+        valid = false;
+      });
+      return valid;
+    };
+    if (!pureJsonArray(normalizer, new Set([localBinding(normalizer.params[0])]))) return null;
+    const proof = { sourceIdentity: wrapperIdentity(imported.sourceFile, imported.importedName), fields: coordinates };
+    projectedReads.set(binding, proof); return proof;
+  };
+  // Trace one immutable field through const aliases, bound parameters and a
+  // single frozen record return. Unselected fields never become authority.
+  const fieldOrigin = (node, environment, frame, trail = [], seen = new Set(), missing = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 32) return null;
+    const freeze = frozen(value);
+    if (freeze?.type === "ConditionalExpression") {
+      const check = unwrapValueExpression(freeze.test), yes = unwrapValueExpression(freeze.consequent), no = unwrapValueExpression(freeze.alternate);
+      const arrayCheck = unwrapValueExpression(check?.left), every = unwrapValueExpression(check?.right);
+      const callback = unwrapValueExpression(every?.arguments?.[0]);
+      const predicate = unwrapValueExpression(callback?.body), typed = unwrapValueExpression(predicate?.left);
+      const cloned = yes?.type === "ArrayExpression" && yes.elements.length === 1 && yes.elements[0]?.type === "SpreadElement" ? yes.elements[0].argument : null;
+      const sourcePath = cloned ? path(cloned, environment) : null;
+      if (check?.type !== "LogicalExpression" || check.operator !== "&&" || !globalCall(arrayCheck, "Array", "isArray") || arrayCheck.arguments.length !== 1 ||
+          every?.type !== "CallExpression" || member(every.callee) !== "every" || every.arguments.length !== 1 ||
+          callback?.type !== "ArrowFunctionExpression" || callback.async || callback.params.length !== 1 || callback.params[0].type !== "Identifier" ||
+          predicate?.type !== "BinaryExpression" || predicate.operator !== "===" || literalString(predicate.right) !== "string" ||
+          typed?.type !== "UnaryExpression" || typed.operator !== "typeof" || typed.argument.type !== "Identifier" || bindingOf(typed.argument) !== bindingOf(callback.params[0]) ||
+          !sourcePath || path(arrayCheck.arguments[0], environment) !== sourcePath || path(every.callee.object, environment) !== sourcePath ||
+          no?.type !== "ArrayExpression" || no.elements.length !== 0) return null;
+      const source = fieldOrigin(cloned, environment, frame, trail, seen, missing);
+      if (source?.kind !== "read") return null;
+      return { ...source, immutableArray: true };
+    }
+    if (freeze?.type === "ArrayExpression") {
+      if (freeze.elements.length !== 1 || freeze.elements[0]?.type !== "SpreadElement") return null;
+      const source = fieldOrigin(freeze.elements[0].argument, environment, frame, trail, seen, missing);
+      return source?.kind === "read" ? { ...source, immutableArray: true } : null;
+    }
+    if (freeze?.type === "ObjectExpression" && freeze.properties.length === 1 && freeze.properties[0].type === "SpreadElement") {
+      const source = fieldOrigin(freeze.properties[0].argument, environment, frame, trail, seen, missing);
+      return source?.kind === "read" ? { ...source, immutableRecord: true } : null;
+    }
+    if (freeze?.type === "ObjectExpression") {
+      if (freeze.properties.length > 8 || freeze.properties.some(property => property.type !== "Property" || property.kind !== "init" || property.method || property.computed)) return null;
+      const fields = new Map(freeze.properties.map(property => [property.key.name ?? property.key.value, property.value]));
+      return fields.size === freeze.properties.length ? { kind: "record", fields, environment, frame, trail } : null;
+    }
+    if (value.type === "MemberExpression" && !value.optional) {
+      const field = member(value), object = fieldOrigin(value.object, environment, frame, trail, seen, missing);
+      if (!field || !object) return null;
+      if (object.kind === "record") {
+        const selected = object.fields.get(field);
+        return selected ? fieldOrigin(selected, object.environment, object.frame, object.trail, seen, missing) : null;
+      }
+      if (object.allowedFields && object.fields.length === 0 && !object.allowedFields.has(field)) return null;
+      return { ...object, fields: [...object.fields, field] };
+    }
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length > 0) return null;
+      const next = new Set(seen).add(binding);
+      const bound = environment.get(binding);
+      const initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      if (!initializer) { missing.add(binding); return null; }
+      const source = fieldOrigin(initializer, bound?.environment ?? environment, frame, trail, next, missing);
+      return source?.kind === "read" && !source.holder && source.fields.length === 0 ? { ...source, holder: binding } : source;
+    }
+    if (value.type !== "CallExpression" || value.callee.type !== "Identifier" || value.arguments.some(argument => argument.type === "SpreadElement")) return null;
+    const binding = bindingOf(value.callee), sourceIdentity = context.serverReadImports.get(binding);
+    if ((symbols.writesByBinding.get(binding) ?? []).length > 0) return null;
+    if (sourceIdentity) {
+      return value.arguments.length === 1 ? { kind: "read", sourceIdentity, read: value, coordinate: path(value.arguments[0], environment),
+        environment, frame, trail, fields: [], holder: null } : null;
+    }
+    const projected = projectedIdentityRead(binding);
+    if (projected && value.arguments.length === 1) {
+      return { kind: "read", sourceIdentity: projected.sourceIdentity, allowedFields: projected.fields, read: value, coordinate: path(value.arguments[0], environment), environment, frame, trail, fields: [], holder: null };
+    }
+    const callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+    if (!callable || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.params.length !== value.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier")) return null;
+    const returns = [];
+    directCallableNodes(callable, current => {
+      if (current.type === "ReturnStatement" && !expressionIsEmptyCapabilityState(current.argument)) returns.push(current);
+    });
+    if (returns.length !== 1 || !frozen(returns[0].argument)) return null;
+    const local = new Map(environment);
+    callable.params.forEach((parameter, index) => local.set(bindingOf(parameter), { node: value.arguments[index], environment }));
+    return fieldOrigin(returns[0].argument, local, { definition: callable, limit: returns[0].range[0] }, [...trail, value], new Set(seen).add(binding), missing);
+  };
+  const readHasIdentity = (origin, idField, revisionField, actualOwner, extraFields = []) => {
+    const equal = (left, right) => [left, right].sort().join("=");
+    if (!origin.holder) return false;
+    const equalities = new Set();
+    const collect = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") { collect(value.left); collect(value.right); }
+      else if (value?.type === "BinaryExpression" && value.operator === "!==") {
+        const left = path(value.left, origin.environment), right = path(value.right, origin.environment);
+        if (left && right) equalities.add(equal(left, right));
+      }
+    };
+    for (const statement of origin.frame.definition.body.body ?? []) {
+      if (statement.range[0] >= origin.frame.limit) break;
+      if (statement.range[0] <= origin.read.range[1]) continue;
+      const stopped = statement.consequent?.type === "BlockStatement" && statement.consequent.body.length === 1 ? statement.consequent.body[0] : statement.consequent;
+      if (statement.type === "IfStatement" && !statement.alternate && stopped?.type === "ThrowStatement") collect(statement.test);
+    }
+    return equalities.has(equal(`${identity(origin.holder)}.${idField}`, `${actualOwner}.context.contractVersionId`)) &&
+      equalities.has(equal(`${identity(origin.holder)}.${revisionField}`, `${actualOwner}.context.draftRevision`)) &&
+      extraFields.every(([field, ownerField]) => equalities.has(equal(`${identity(origin.holder)}.${field}`, `${actualOwner}.${ownerField}`)));
+  };
+  const evaluateProjection = (environment, caller, before) => {
+    const missing = new Set();
+    const actualOwner = path(writer.definition.params[0], environment);
+    if (!actualOwner || path(properties.get("ownerKey"), environment) !== `${actualOwner}.ownerKey` ||
+        path(properties.get("readGeneration"), environment) !== `${actualOwner}.generation`) return { missing };
+    const sourceFrame = { definition: writer.definition, limit: record.range[0] };
+  const actionOrigin = fieldOrigin(properties.get(actionField), environment, sourceFrame, [], new Set(), missing);
+  const fingerprintOrigin = fieldOrigin(properties.get("fingerprint"), environment, sourceFrame, [], new Set(), missing);
+  const revisionOrigin = fieldOrigin(properties.get("sourceRevision"), environment, sourceFrame, [], new Set(), missing);
+  const sameRead = (left, right) => left?.kind === "read" && right?.kind === "read" && left.read === right.read &&
+    left.coordinate === right.coordinate && left.trail.length === right.trail.length && left.trail.every((call, index) => call === right.trail[index]);
+  if (fileGrant) {
+    const pdf = writer.definition.params.length === 2 ? path(writer.definition.params[1], environment) : null;
+    const serverAction = fieldOrigin(properties.get("serverAction"), environment, sourceFrame, [], new Set(), missing);
+    if (!pdf || path(properties.get("fileId"), environment) !== `${pdf}.fileId` || path(properties.get("documentId"), environment) !== `${pdf}.documentId` ||
+        actionOrigin?.kind !== "read" || !actionOrigin.immutableArray || actionOrigin.fields.join(".") !== "availableActions" ||
+        !sameRead(actionOrigin, serverAction) || !serverAction.immutableRecord || serverAction.fields.join(".") !== "action" ||
+        actionOrigin.coordinate !== `${pdf}.fileId` || actionOrigin.frame.definition !== writer.definition || actionOrigin.trail.length !== 0 ||
+        !awaitedBefore(actionOrigin.read, record.range[0])) return { missing };
+    return { missing, sourceIdentity: actionOrigin.sourceIdentity };
+  }
+  if (actionOrigin?.kind !== "read" || !actionOrigin.immutableArray || actionOrigin.fields.join(".") !== "draftOperationAvailableActions" ||
+      !sameRead(actionOrigin, fingerprintOrigin) || fingerprintOrigin.fields.join(".") !== "version.documentContentFingerprint" ||
+      revisionOrigin?.kind !== "read" || actionOrigin.coordinate !== `${actualOwner}.context.contractVersionId` || revisionOrigin.coordinate !== actionOrigin.coordinate) return { missing };
+  const sourceIdentity = actionOrigin.sourceIdentity;
+  const currentRead = origin => {
+    const range = origin.frame.definition.range;
+    if (!range || origin.read.range[0] <= range[0] || origin.read.range[1] >= range[1] || origin.trail.length > 1 ||
+        !awaitedBefore(origin.read, origin.frame.limit)) return false;
+    if (origin.frame.definition === writer.definition) return true;
+    const invocation = origin.trail[0];
+    return Boolean(invocation && invocation.range[0] > caller.range[0] && invocation.range[1] < caller.range[1] &&
+      invocation.range[1] < before && awaitedBefore(invocation, before));
+  };
+  if (!currentRead(actionOrigin) || !currentRead(revisionOrigin)) return { missing };
+
+  if (!readHasIdentity(actionOrigin, "version.id", "version.draftRevision", actualOwner)) return { missing };
+  if (sameRead(actionOrigin, revisionOrigin)) {
+    if (revisionOrigin.fields.join(".") !== "version.draftRevision") return { missing };
+  } else if (revisionOrigin.fields.join(".") !== "draftRevision" || !readHasIdentity(revisionOrigin, "contractVersionId", "draftRevision", actualOwner)) return { missing };
+    return { missing, sourceIdentity };
+  };
+  const mainProjection = evaluateProjection(writerEnvironment, definition, writerCalls[0].range[0]);
+  if (!mainProjection.sourceIdentity) return null;
+  const sourceIdentity = mainProjection.sourceIdentity;
+  // Every other writer call must have the same trusted read. One lexical
+  // parameter-forwarding frame covers the current read-only recovery chain;
+  // an unknown caller or deeper/dynamic argument flow stays unproven.
+  for (const call of callSites(writer.binding)) {
+    if (call === writerCalls[0]) continue;
+    const caller = enclosingCallable(call), initial = bindCall(writer.definition, call);
+    const callBlock = (astAncestorChain(symbols.ast, call) ?? []).filter(node => node.type === "BlockStatement").at(-1);
+    if (!caller || !initial || !callBlock || !awaitedBefore(call, callBlock.range[1] - 1)) return null;
+    const projected = evaluateProjection(initial, caller.definition, call.range[0]);
+    if (projected.sourceIdentity === sourceIdentity) continue;
+    if (projected.missing.size !== 1) return null;
+    const [parameter] = projected.missing;
+    const parents = [...symbols.definitionsByBinding.keys()].map(binding => ({ binding,
+      definition: uniqueIndexedNode(symbols.definitionsByBinding, binding) })).filter(value =>
+        value.definition?.params?.some(node => bindingOf(node) === parameter));
+    if (parents.length !== 1 || parents[0].definition !== caller.definition || callableEscapes(parents[0].binding)) return null;
+    const parent = parents[0], callers = callSites(parent.binding);
+    if (callers.length === 0 || callers.length > 16) return null;
+    for (const incoming of callers) {
+      const outerCaller = enclosingCallable(incoming), outer = bindCall(parent.definition, incoming);
+      const environment = outer ? bindCall(writer.definition, call, outer) : null;
+      if (!outerCaller || !environment || evaluateProjection(environment, outerCaller.definition, incoming.range[0]).sourceIdentity !== sourceIdentity) return null;
+    }
+  }
+  const equal = (left, right) => [left, right].sort().join("=");
+  const terminates = statement => statement?.type === "ReturnStatement" || statement?.type === "ThrowStatement" ||
+    (statement?.type === "BlockStatement" && statement.body.length === 1 && terminates(statement.body[0]));
+  const capturedAfterRead = node => {
+    let fresh = true;
+    walkEstree(node, candidate => {
+      if (candidate.type !== "Identifier") return;
+      const value = path(candidate), binding = bindingOf(candidate);
+      if (!value || !(value === cap || value.startsWith(`${cap}.`)) || binding === rootBinding) return;
+      const capture = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      if (!capture?.range || capture.range[0] <= writerCalls[0].range[1]) fresh = false;
+    });
+    return fresh;
+  };
+  if (!target.arguments.every(capturedAfterRead)) return null;
+  const actualPdf = fileGrant && writerCalls[0].arguments.length === 2 ? path(writerCalls[0].arguments[1]) : null;
+  if (!actualOwner) return null;
+  if (fileGrant) {
+    const options = unwrapValueExpression(target.arguments[1]);
+    const fields = options?.type === "ObjectExpression" && options.properties.every(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init") ?
+      new Map(options.properties.map(property => [property.key.name ?? property.key.value, property.value])) : null;
+    if (!actualPdf || target.arguments.length !== 3 || path(target.arguments[0]) !== `${cap}.fileId` || literalString(target.arguments[2]) !== "pdf-blob" ||
+        !fields || fields.size !== 3 || options.properties.length !== 3 || !["confirmationPassword", "downloadReason", "accessMode"].every(key => fields.has(key)) || literalString(fields.get("accessMode")) !== "preview") return null;
+  } else if (target.arguments.length !== 2 || path(target.arguments[0]) !== `${actualOwner}.context.contractVersionId` || path(target.arguments[1]) !== `${cap}.sourceRevision`) return null;
+  const purePredicates = new Set();
+  const trustedIncludes = new Set();
+  const frameworkImport = (binding, moduleName, importedName, localSymbols = symbols) => (localSymbols.ast?.body ?? []).some(statement =>
+    statement.type === "ImportDeclaration" && literalString(statement.source) === moduleName && statement.specifiers.some(specifier =>
+      specifier.type === "ImportSpecifier" && (specifier.imported.name ?? specifier.imported.value) === importedName && topLevelScopeVariables(localSymbols.scopeManager, specifier.local.name).includes(binding)));
+  const plainData = node => {
+    const value = unwrapValueExpression(node);
+    return value?.type === "Literal" && (value.value === null || ["string", "number", "boolean"].includes(typeof value.value)) ||
+      value?.type === "ObjectExpression" && value.properties.every(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init" && unwrapValueExpression(property.value)?.type === "Literal" && plainData(property.value));
+  };
+  const confinedDataBindings = new Map();
+  const confinedDataBinding = (binding, seen = new Set()) => {
+    if (!seen.size && confinedDataBindings.has(binding)) return confinedDataBindings.get(binding);
+    if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+    let valid = true;
+    walkEstree(symbols.ast, reference => {
+      if (!valid || reference.type !== "Identifier" || bindingOf(reference) !== binding || !symbols.scopeReferenceIdentifiers.has(reference)) return;
+      const parent = astAncestorChain(symbols.ast, reference)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === reference) return;
+      if (parent?.type === "VariableDeclarator" && parent.init === reference && parent.id.type === "Identifier" && confinedDataBinding(bindingOf(parent.id), new Set(seen).add(binding))) return;
+      if (parent?.type === "MemberExpression" && parent.object === reference && !parent.computed) return;
+      valid = false;
+    });
+    if (!seen.size) confinedDataBindings.set(binding, valid);
+    return valid;
+  };
+  let scalarRefProducer = () => false;
+  const scalarRefValue = (node, environment = new Map(), seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (value.type === "Literal") return value.value === null || ["string", "number", "boolean"].includes(typeof value.value);
+    if (value.type === "Identifier") {
+      if (value.name === "undefined" && unshadowedRuntimeGlobal(value, new Set(["undefined"]), symbols.scopeBindings)) return true;
+      const variable = bindingOf(value), bound = environment.get(variable);
+      if (!variable || seen.has(variable) || (symbols.writesByBinding.get(variable) ?? []).length) return false;
+      const initial = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, variable);
+      return Boolean(initial) && scalarRefValue(initial, bound?.environment ?? environment, new Set(seen).add(variable));
+    }
+    if (value.type === "ConditionalExpression") return scalarRefValue(value.consequent, environment, seen) && scalarRefValue(value.alternate, environment, seen);
+    return scalarRefProducer(value, environment);
+  };
+  const basicRefValue = (node, environment = new Map()) => scalarRefValue(node, environment) ||
+    fieldOrigin(node, environment, { definition, limit: target.range[0] })?.kind === "record";
+  let qualifiedRefValue = basicRefValue;
+  const rawDataRefs = new Map();
+  const rawDataRefConfined = binding => {
+    if (rawDataRefs.has(binding)) return rawDataRefs.get(binding);
+    const initial = unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding));
+    if (initial?.type === "CallExpression" && symbols.vueRefImportBindings.has(bindingOf(initial.callee)) &&
+        (!qualifiedRefValue(initial.arguments[0]) || (symbols.writesByBinding.get(binding) ?? []).some(write => !qualifiedRefValue(write.value)))) {
+      rawDataRefs.set(binding, false); return false;
+    }
+    let valid = true;
+    walkEstree(symbols.ast, reference => {
+      if (reference.type !== "Identifier" || bindingOf(reference) !== binding || !symbols.scopeReferenceIdentifiers.has(reference)) return;
+      const parent = astAncestorChain(symbols.ast, reference)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === reference) return;
+      if (parent?.type !== "MemberExpression" || parent.object !== reference || parent.computed || parent.optional || member(parent) !== "value") valid = false;
+    });
+    rawDataRefs.set(binding, valid);
+    return valid;
+  };
+  let derivedCollectionsReady = false;
+  const jsonIterationParameter = (binding, environment) => {
+    let valid = false;
+    walkEstree(symbols.ast, node => {
+      if (approvedFileLoops.has(node) && node.left.declarations.some(declaration => bindingOf(declaration.id) === binding)) valid = true;
+      if (node.type !== "ArrowFunctionExpression" || bindingOf(node.params[0]) !== binding) return;
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      if (parent?.type === "CallExpression" && parent.arguments[0] === node && ["filter", "find", "some", "every"].includes(member(parent.callee)) &&
+          (fieldOrigin(parent.callee.object, environment, { definition, limit: target.range[0] })?.kind === "read" || derivedCollectionsReady && readDerivedCollection(parent.callee.object, environment))) valid = true;
+    });
+    return valid;
+  };
+  const computeImportedDataFactory = binding => {
+    const imported = symbols.importsByBinding.get(binding), ast = imported && context.asts.get(imported.sourceFile);
+    if (!ast) return false;
+    const local = buildSymbolContext(ast, imported.sourceFile, context.sourceFileSet), roots = topLevelScopeVariables(local.scopeManager, imported.importedName);
+    if (roots.length !== 1 || (local.writesByBinding.get(roots[0]) ?? []).length) return false;
+    const localBinding = node => local.scopeBindings.get(unwrapValueExpression(node));
+    const trustedResponseRequest = requestBinding => requestBinding && local.importsByBinding.has(requestBinding) && [...(context.wrapperIndex?.values() ?? [])].some(sibling => {
+          if (sibling.apiFile !== imported.sourceFile || sibling.returnProvenance !== "transparent_main_response" || normalizedMainRequests(sibling).length !== 1 || normalizedMainRequests(sibling)[0].method?.toUpperCase() !== "GET") return false;
+          const variables = topLevelScopeVariables(local.scopeManager, sibling.name), definition = variables.length === 1 ? uniqueIndexedNode(local.definitionsByBinding, variables[0]) : null;
+          const call = definition?.body?.body?.length === 1 && definition.body.body[0].type === "ReturnStatement" ? unwrapValueExpression(definition.body.body[0].argument) : null;
+          const reader = call?.type === "CallExpression" ? uniqueIndexedNode(local.definitionsByBinding, localBinding(call.callee)) : null;
+          const readDeclaration = reader?.body?.body?.[0]?.declarations?.[0]?.init;
+          return readDeclaration?.type === "AwaitExpression" && localBinding(readDeclaration.argument.callee) === requestBinding;
+        });
+    const callable = uniqueIndexedNode(local.definitionsByBinding, roots[0]);
+    if (callable && !callable.generator && callable.body?.type === "BlockStatement" && callable.body.body.length === 1 && callable.body.body[0].type === "ReturnStatement" && plainData(callable.body.body[0].argument)) return true;
+    if (fileGrant && binding === bindingOf(target.callee) && callable?.async && !callable.generator && callable.params.length === 3 && callable.params.every(parameter => parameter.type === "Identifier") && callable.body?.type === "BlockStatement") {
+      const statements = callable.body.body, declaration = statement => statement?.type === "VariableDeclaration" && statement.kind === "const" && statement.declarations.length === 1 ? statement.declarations[0] : null;
+      const ticket = declaration(statements[3]), response = declaration(statements[5]), blob = declaration(statements[8]), returned = statements[9];
+      const ticketBinding = localBinding(ticket?.id), responseBinding = localBinding(response?.id), blobBinding = localBinding(blob?.id), delivery = localBinding(callable.params[2]);
+      const localMember = (node, binding, fields) => {
+        let current = unwrapValueExpression(node); const names = [];
+        while (current?.type === "MemberExpression" && !current.computed && !current.optional) { names.unshift(member(current)); current = unwrapValueExpression(current.object); }
+        return localBinding(current) === binding && names.join(".") === fields;
+      };
+      const delivered = node => node?.type === "BinaryExpression" && node.operator === "===" && localBinding(node.left) === delivery && literalString(node.right) === "pdf-blob";
+      const throws = node => node?.type === "BlockStatement" && node.body.length === 1 && node.body[0].type === "ThrowStatement";
+      const regexTest = (node, pattern, flags, argument) => node?.type === "CallExpression" && member(node.callee) === "test" && node.callee.object?.regex?.pattern === pattern && node.callee.object.regex.flags === flags && node.arguments.length === 1 && argument(node.arguments[0]);
+      const request = response?.init?.type === "AwaitExpression" ? unwrapValueExpression(response.init.argument) : null;
+      const blobCall = blob?.init?.type === "AwaitExpression" ? unwrapValueExpression(blob.init.argument) : null;
+      const result = returned?.consequent?.type === "ReturnStatement" ? unwrapValueExpression(returned.consequent.argument) : null;
+      const urlGuard = statements[4], urlTest = urlGuard?.test?.right, slash = urlTest?.right;
+      const mimeGuard = statements[7], mimeTest = mimeGuard?.test?.right;
+      const contentType = node => node?.type === "LogicalExpression" && node.operator === "??" && literalString(node.right) === "" && node.left.type === "CallExpression" &&
+        member(node.left.callee) === "get" && localMember(node.left.callee.object, responseBinding, "headers") && node.left.arguments.length === 1 && literalString(node.left.arguments[0]) === "content-type";
+      const validation = statements[6]?.expression?.type === "AwaitExpression" ? unwrapValueExpression(statements[6].expression.argument) : null;
+      const validatorBinding = validation?.type === "CallExpression" ? localBinding(validation.callee) : null, validator = validatorBinding ? uniqueIndexedNode(local.definitionsByBinding, validatorBinding) : null;
+      const first = validator?.body?.body?.[0], last = validator?.body?.body?.at(-1), parameter = validator?.params?.[0], success = first?.consequent?.type === "BlockStatement" && first.consequent.body.length === 1 ? first.consequent.body[0] : null;
+      const returns = [];
+      if (validator) directCallableNodes(validator, node => { if (node.type === "ReturnStatement") returns.push(node); });
+      let confined = Boolean(responseBinding);
+      walkEstree(ast, reference => {
+        if (reference.type !== "Identifier" || localBinding(reference) !== responseBinding || !local.scopeReferenceIdentifiers.has(reference)) return;
+        const parent = astAncestorChain(ast, reference)?.at(-2);
+        if (parent === response || parent?.type === "MemberExpression" && parent.object === reference && !parent.computed || parent === validation && validation.arguments[0] === reference) return;
+        confined = false;
+      });
+      if (ticketBinding && responseBinding && blobBinding && [ticketBinding, responseBinding, blobBinding].every(variable => !(local.writesByBinding.get(variable) ?? []).length) && confined &&
+          ticket.init?.type === "AwaitExpression" && request?.type === "CallExpression" && request.arguments.length === 1 && trustedResponseRequest(localBinding(request.callee)) && localMember(request.arguments[0], ticketBinding, "downloadUrl") &&
+          urlGuard?.type === "IfStatement" && !urlGuard.alternate && urlGuard.test?.type === "LogicalExpression" && urlGuard.test.operator === "&&" && delivered(urlGuard.test.left) && throws(urlGuard.consequent) &&
+          urlTest?.type === "LogicalExpression" && urlTest.operator === "||" && urlTest.left?.type === "UnaryExpression" && urlTest.left.operator === "!" && regexTest(urlTest.left.argument, "^\\/files\\/[^/?#]+\\/download\\?", "", node => localMember(node, ticketBinding, "downloadUrl")) &&
+          slash?.type === "CallExpression" && member(slash.callee) === "includes" && localMember(slash.callee.object, ticketBinding, "downloadUrl") && slash.arguments.length === 1 && literalString(slash.arguments[0]) === "\\" &&
+          mimeGuard?.type === "IfStatement" && !mimeGuard.alternate && mimeGuard.test?.type === "LogicalExpression" && mimeGuard.test.operator === "&&" && delivered(mimeGuard.test.left) && throws(mimeGuard.consequent) &&
+          mimeTest?.type === "UnaryExpression" && mimeTest.operator === "!" && regexTest(mimeTest.argument, "^application\\/pdf(?:;|$)", "i", contentType) &&
+          blobCall?.type === "CallExpression" && !blobCall.arguments.length && member(blobCall.callee) === "blob" && localBinding(blobCall.callee.object) === responseBinding &&
+          returned?.type === "IfStatement" && !returned.alternate && delivered(returned.test) && result?.type === "ObjectExpression" && result.properties.length === 2 && result.properties.every(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init") &&
+          (result.properties[0].key.name ?? result.properties[0].key.value) === "blob" && localBinding(result.properties[0].value) === blobBinding && (result.properties[1].key.name ?? result.properties[1].key.value) === "fileName" && localMember(result.properties[1].value, ticketBinding, "fileName") &&
+          validation?.arguments.length >= 1 && localBinding(validation.arguments[0]) === responseBinding && validator?.async && !validator.generator && !(local.writesByBinding.get(validatorBinding) ?? []).length && parameter?.type === "Identifier" && !(local.writesByBinding.get(localBinding(parameter)) ?? []).length &&
+          first?.type === "IfStatement" && !first.alternate && localMember(first.test, localBinding(parameter), "ok") && success?.type === "ReturnStatement" && !success.argument && returns.length === 1 && returns[0] === success && last?.type === "ThrowStatement") return { nativeBlob: true };
+    }
+    // Data-only qualification for the selected HTTP write's awaited result.
+    // This never contributes a server-read or capability witness.
+    if (binding === bindingOf(target.callee) && callable?.body?.type === "BlockStatement" && callable.body.body.length === 1 && callable.body.body[0].type === "ReturnStatement") {
+      const forwarded = unwrapValueExpression(callable.body.body[0].argument), localBinding = node => local.scopeBindings.get(unwrapValueExpression(node));
+      const transportBinding = forwarded?.type === "CallExpression" ? localBinding(forwarded.callee) : null;
+      const transport = transportBinding ? uniqueIndexedNode(local.definitionsByBinding, transportBinding) : null;
+      if (transport?.async && !transport.generator && !(local.writesByBinding.get(transportBinding) ?? []).length && transport.body?.type === "BlockStatement" && transport.body.body.length === 3) {
+        const [declaration, validation, returned] = transport.body.body;
+        const response = declaration.type === "VariableDeclaration" && declaration.kind === "const" && declaration.declarations.length === 1 ? declaration.declarations[0] : null;
+        const request = response?.init?.type === "AwaitExpression" ? unwrapValueExpression(response.init.argument) : null;
+        const parsed = returned.type === "ReturnStatement" ? unwrapValueExpression(returned.argument) : null;
+        const responseBinding = response?.id.type === "Identifier" ? localBinding(response.id) : null;
+        const requestBinding = request?.type === "CallExpression" ? localBinding(request.callee) : null;
+        const validated = validation.type === "ExpressionStatement" && validation.expression.type === "AwaitExpression" ? unwrapValueExpression(validation.expression.argument) : null;
+        const validatorBinding = validated?.type === "CallExpression" ? localBinding(validated.callee) : null;
+        const validator = validatorBinding ? uniqueIndexedNode(local.definitionsByBinding, validatorBinding) : null;
+        const first = validator?.body?.body?.[0], last = validator?.body?.body?.at(-1), parameter = validator?.params?.[0];
+        const stops = [];
+        if (validator) directCallableNodes(validator, node => { if (node.type === "ReturnStatement") stops.push(node); });
+        const success = first?.consequent?.type === "BlockStatement" && first.consequent.body.length === 1 ? first.consequent.body[0] : first?.consequent;
+        const trustedRequest = trustedResponseRequest(requestBinding);
+        if (responseBinding && !(local.writesByBinding.get(responseBinding) ?? []).length && trustedRequest &&
+            parsed?.type === "CallExpression" && !parsed.arguments.length && member(parsed.callee) === "json" && localBinding(parsed.callee.object) === responseBinding &&
+            validated?.arguments.length >= 1 && localBinding(validated.arguments[0]) === responseBinding && validator?.async && !validator.generator &&
+            !(local.writesByBinding.get(validatorBinding) ?? []).length && parameter?.type === "Identifier" && !(local.writesByBinding.get(localBinding(parameter)) ?? []).length &&
+            first?.type === "IfStatement" && !first.alternate && member(first.test) === "ok" && localBinding(first.test.object) === localBinding(parameter) &&
+            success?.type === "ReturnStatement" && !success.argument && stops.length === 1 && stops[0] === success && last?.type === "ThrowStatement") return true;
+      }
+    }
+    const store = unwrapValueExpression(uniqueIndexedNode(local.declarationsByBinding, roots[0]));
+    if (store?.type !== "CallExpression" || !frameworkImport(local.scopeBindings.get(store.callee), "pinia", "defineStore", local) || store.arguments.length !== 2) return false;
+    const options = unwrapValueExpression(store.arguments[1]);
+    if (options?.type !== "ObjectExpression" || options.properties.some(property => property.type !== "Property" || property.computed || property.method || property.kind !== "init")) return false;
+    const state = options.properties.find(property => (property.key.name ?? property.key.value) === "state")?.value;
+    const getters = options.properties.find(property => (property.key.name ?? property.key.value) === "getters")?.value;
+    const output = state?.type === "ArrowFunctionExpression" && !state.async && !state.params.length ? unwrapValueExpression(state.body) : null;
+    // A store may expose only its plain state fields as data, never its getters.
+    if (!plainData(output) || output?.type !== "ObjectExpression" || getters?.type !== "ObjectExpression") return false;
+    return { stateFields: new Set(output.properties.map(property => property.key.name ?? property.key.value)), getterFields: new Set(getters.properties.map(property => property.key.name ?? property.key.value)) };
+  };
+  // This cache contains completed module-source summaries only. Every caller's
+  // storage confinement and awaited target-result binding is checked afresh.
+  const importedDataFactories = new Map();
+  const importedDataFactory = binding => {
+    if (!importedDataFactories.has(binding)) importedDataFactories.set(binding, computeImportedDataFactory(binding));
+    return importedDataFactories.get(binding);
+  };
+  // Resolve own data properties through immutable records and Vue ref storage.
+  // Accessors, unknown factories, computed keys and reassigned aliases fail closed.
+  const ownDataMember = (node, fields = [], environment = new Map(), seen = []) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.length > 24) return false;
+    if (value.type === "MemberExpression") {
+      if (value.optional && value.computed) return false;
+      const field = staticMemberProperty(value);
+      return field ? ownDataMember(value.object, [field, ...fields], environment, seen) : false;
+    }
+    const record = frozen(value) ?? value;
+    if (record.type === "ObjectExpression") {
+      // An ordinary nested object can escape through a projected alias. A
+      // frozen outer record does not make that child immutable.
+      if (record === value && !plainData(record)) return false;
+      if (!fields.length || record.properties.some(property => property.type !== "Property" || property.computed || property.method || property.kind !== "init" ||
+          ["ObjectExpression", "ArrayExpression"].includes(unwrapValueExpression(property.value)?.type))) return false;
+      const matches = record.properties.filter(property => (property.key.name ?? property.key.value) === fields[0]);
+      return matches.length === 1 && (fields.length === 1 || ownDataMember(matches[0].value, fields.slice(1), environment, seen));
+    }
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.some(frame => frame.binding === binding && frame.environment === environment)) return false;
+      const next = [...seen, { binding, environment }], bound = environment.get(binding);
+      if (bound) return ownDataMember(bound.node, fields, bound.environment, next);
+      const initial = unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding));
+      const writes = symbols.writesByBinding.get(binding) ?? [];
+      if (initial?.type === "CallExpression" && symbols.vueRefImportBindings.has(bindingOf(initial.callee)) && fields[0] === "value") {
+        if (!rawDataRefConfined(binding)) return false;
+        if (fields.length === 1) return true;
+        if (!writes.every(write => write.kind === "assignment" && write.operator === "=" && write.path === `${binding.name}.value`)) return false;
+        const values = [initial.arguments[0], ...writes.map(write => write.value)].filter(item => item && !expressionIsEmptyCapabilityState(item));
+        return values.length > 0 && values.every(item => ownDataMember(item, fields.slice(1), environment, next));
+      }
+      return !writes.length && Boolean(initial) && (initial.type !== "ObjectExpression" || confinedDataBinding(binding)) && ownDataMember(initial, fields, environment, next);
+    }
+    if (value.type !== "CallExpression" || value.callee.type !== "Identifier") return false;
+    const binding = bindingOf(value.callee), callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+    if (!callable || callable.async || callable.generator || seen.some(frame => frame.binding === binding && frame.environment === environment) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+    const local = bindCall(callable, value, environment);
+    if (!local) return false;
+    const returns = [];
+    directCallableNodes(callable, current => { if (current.type === "ReturnStatement" && !expressionIsEmptyCapabilityState(current.argument)) returns.push(current.argument); });
+    return returns.length === 1 && Boolean(frozen(returns[0])) && ownDataMember(returns[0], fields, local, [...seen, { binding, environment }]);
+  };
+  const projectMember = (base, fields) => fields.reduce((object, name) => ({ type: "MemberExpression", object, property: { type: "Identifier", name }, computed: false, optional: false }), base);
+  const primitiveGetterValue = (node, seen = new Set(), environment = new Map()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (value.type === "MemberExpression" && value.optional && !value.computed && staticMemberProperty(value)) return primitiveGetterValue({ ...value, optional: false }, seen, environment);
+    if (globalCall(value, "Boolean") && value.arguments.length === 1) return true;
+    if (value.type === "Literal") return value.value === null || ["string", "number", "boolean"].includes(typeof value.value);
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length > 0) return false;
+      const bound = environment.get(binding), initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      return initializer ? primitiveGetterValue(initializer, new Set(seen).add(binding), bound?.environment ?? environment) : jsonIterationParameter(binding, environment);
+    }
+    if (value.type === "MemberExpression" && !value.computed && value.property.type === "Identifier") {
+      if (fieldOrigin(value, environment, { definition, limit: target.range[0] })?.kind === "read") return true;
+      const record = fieldOrigin(value.object, environment, { definition, limit: target.range[0] });
+      if (record?.kind === "record" && record.fields.has(member(value))) {
+        const selected = record.fields.get(member(value));
+        return !seen.has(selected) && primitiveGetterValue(selected, new Set(seen).add(selected), record.environment);
+      }
+      const spread = frozen(value.object);
+      if (spread?.type === "ObjectExpression" && spread.properties.length === 1 && spread.properties[0].type === "SpreadElement") {
+        return primitiveGetterValue(projectMember(spread.properties[0].argument, [member(value)]), seen, environment);
+      }
+      const fields = [];
+      let root = value;
+      while (root?.type === "MemberExpression" && !root.computed) { fields.unshift(member(root)); root = unwrapValueExpression(root.object); }
+      if (root?.type !== "Identifier") return false;
+      const binding = bindingOf(root), bound = environment.get(binding);
+      if (!binding || seen.has(binding)) return false;
+      if (bound) return primitiveGetterValue(projectMember(bound.node, fields), new Set(seen).add(binding), bound.environment);
+      const initializer = unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding));
+      if (!initializer) return jsonIterationParameter(binding, environment);
+      if (initializer.type === "ObjectExpression") {
+        if (!plainData(initializer) || !confinedDataBinding(binding)) return false;
+        const matches = initializer.properties.filter(property => (property.key.name ?? property.key.value) === fields[0]);
+        return matches.length === 1 && primitiveGetterValue(projectMember(matches[0].value, fields.slice(1)), new Set(seen).add(binding), environment);
+      }
+      const sourceRecord = fieldOrigin(initializer, environment, { definition, limit: target.range[0] });
+      if (sourceRecord?.kind === "record" && sourceRecord.fields.has(fields[0])) return primitiveGetterValue(projectMember(sourceRecord.fields.get(fields[0]), fields.slice(1)), new Set(seen).add(binding), sourceRecord.environment);
+      if (initializer.type === "CallExpression") {
+        const called = bindingOf(initializer.callee);
+        if (symbols.vueRefImportBindings.has(called)) {
+          if (!rawDataRefConfined(binding) || fields[0] !== "value") return false;
+          const values = [initializer.arguments[0], ...(symbols.writesByBinding.get(binding) ?? []).map(write => write.value)].filter(value => value && (fields.length === 1 || !expressionIsEmptyCapabilityState(value)));
+          if (fields.length === 1) return values.length > 0 && values.every(value => scalarRefValue(value, environment));
+          return values.length > 0 && values.every(value => {
+            const local = value === populated[0].value && !writer.definition.params.every(parameter => environment.has(bindingOf(parameter))) ? bindCall(writer.definition, writerCalls[0], environment) : environment;
+            return Boolean(local) && primitiveGetterValue(projectMember(value, fields.slice(1)), new Set(seen).add(binding), local);
+          });
+        }
+        const dataFactory = importedDataFactory(called);
+        return Boolean(dataFactory?.nativeBlob && binding === awaitedCallResultBinding(target, [definition], symbols) && ["blob", "blob.size", "fileName"].includes(fields.join(".")) ||
+          dataFactory === true && (binding === awaitedCallResultBinding(target, [definition], symbols) || confinedDataBinding(binding)) ||
+          dataFactory?.stateFields && confinedDataBinding(binding) && dataFactory.stateFields.has(fields[0]) && !dataFactory.getterFields.has(fields[0]) ||
+          frameworkImport(called, "vue-router", "useRoute") && confinedDataBinding(binding) ||
+          symbols.vueComputedImportBindings.has(called) && rawDataRefConfined(binding) && initializer.arguments.length === 1 && initializer.arguments[0]?.type === "ArrowFunctionExpression" && !initializer.arguments[0].async &&
+          primitiveGetterValue(initializer.arguments[0].body, new Set(seen).add(binding), environment) && purePredicate(initializer.arguments[0], environment) ||
+          initializer.callee.type === "Identifier" && initializer.callee.name === "defineProps" && confinedDataBinding(binding) && unshadowedRuntimeGlobal(initializer.callee, new Set(["defineProps"]), symbols.scopeBindings));
+      }
+      return ["Identifier", "MemberExpression"].includes(initializer.type) && primitiveGetterValue(projectMember(initializer, fields), new Set(seen).add(binding), environment);
+    }
+    if (value.type === "LogicalExpression" || value.type === "BinaryExpression") return primitiveGetterValue(value.left, seen, environment) && primitiveGetterValue(value.right, seen, environment);
+    if (value.type === "UnaryExpression") return ["!", "typeof"].includes(value.operator) || ["+", "-"].includes(value.operator) && primitiveGetterValue(value.argument, seen, environment);
+    return false;
+  };
+  const readonlyGetterBody = callable => {
+    if (callable.async || callable.generator) return false;
+    if (callable.body?.type !== "BlockStatement") return Boolean(callable.body && !["FunctionExpression", "ArrowFunctionExpression"].includes(callable.body.type));
+    const statements = callable.body.body;
+    if (!statements.length || statements.at(-1).type !== "ReturnStatement") return false;
+    return statements.every(statement => {
+      if (statement.type === "ReturnStatement") return true;
+      if (statement.type === "VariableDeclaration") return statement.kind === "const" && statement.declarations.every(declaration =>
+        declaration.id.type === "Identifier" && primitiveGetterValue(declaration.init) && (symbols.writesByBinding.get(bindingOf(declaration.id)) ?? []).length === 0);
+      if (statement.type !== "IfStatement" || statement.alternate) return false;
+      const stop = statement.consequent?.type === "BlockStatement" && statement.consequent.body.length === 1 ? statement.consequent.body[0] : statement.consequent;
+      return stop?.type === "ReturnStatement" && unwrapValueExpression(stop.argument)?.type === "Literal";
+    });
+  };
+  const readonlyRegexpCall = (current, environment = new Map()) => {
+    if (member(current.callee) !== "test" || current.arguments.length !== 1 || current.callee.object.type !== "Identifier" || !primitiveGetterValue(current.arguments[0], new Set(), environment)) return false;
+    const binding = bindingOf(current.callee.object), declaration = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (!declaration?.regex || /[gy]/u.test(declaration.regex.flags) || (symbols.writesByBinding.get(binding) ?? []).length > 0) return false;
+    const declarationAncestors = astAncestorChain(symbols.ast, declaration);
+    if (declarationAncestors?.at(-2)?.type !== "VariableDeclarator" || declarationAncestors?.at(-3)?.kind !== "const") return false;
+    let safe = true;
+    walkEstree(symbols.ast, node => {
+      if (node.type !== "Identifier" || bindingOf(node) !== binding || !symbols.scopeReferenceIdentifiers.has(node)) return;
+      const ancestors = astAncestorChain(symbols.ast, node), parent = ancestors?.at(-2), call = ancestors?.at(-3);
+      if (parent?.type === "VariableDeclarator" && parent.id === node && parent.init === declaration) return;
+      if (parent?.type !== "MemberExpression" || parent.object !== node || member(parent) !== "test" || call?.type !== "CallExpression" || call.callee !== parent) safe = false;
+    });
+    return safe;
+  };
+  const readonlyIntrinsicCall = (current, environment) => {
+    const pureRecord = frozen(current);
+    if (pureRecord?.type === "ObjectExpression" && pureRecord.properties.every(property => property.type === "Property" && property.kind === "init" && !property.method && !property.computed && primitiveGetterValue(property.value, new Set(), environment))) return true;
+    return readonlyRegexpCall(current, environment) || globalCall(current, "JSON", "stringify") && current.arguments.length === 1 &&
+      unwrapValueExpression(current.arguments[0])?.type === "ArrayExpression" && current.arguments[0].elements.every(element =>
+        element && element.type !== "SpreadElement" && primitiveGetterValue(element, new Set(), environment));
+  };
+  // This proof supports the present read/display call graph, not arbitrary JS.
+  // Any new executable syntax must first obtain its own bounded proof.
+  const limitedNodes = new Set([
+    "FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "Identifier", "Literal", "BlockStatement",
+    "VariableDeclaration", "VariableDeclarator", "ExpressionStatement", "IfStatement", "ReturnStatement", "ThrowStatement",
+    "TryStatement", "CatchClause", "AwaitExpression", "CallExpression", "MemberExpression", "ChainExpression",
+    "LogicalExpression", "BinaryExpression", "UnaryExpression", "AssignmentExpression", "UpdateExpression", "ConditionalExpression",
+    "ObjectExpression", "Property", "ArrayExpression", "SpreadElement", "NewExpression", "TemplateLiteral", "TemplateElement",
+    "TSTypeAnnotation", "TSTypeReference", "TSStringKeyword", "TSNumberKeyword", "TSBooleanKeyword", "TSUnknownKeyword", "TSVoidKeyword",
+    "TSNullKeyword", "TSUnionType", "TSLiteralType", "TSTypeQuery", "TSIndexedAccessType", "TSTypeOperator", "TSArrayType",
+    "TSQualifiedName", "TSTypeParameterInstantiation", "TSAsExpression", "TSNonNullExpression", "TSTypePredicate"
+  ]);
+  const limitedSyntax = node => (limitedNodes.has(node.type) || approvedFileLoops.has(node)) &&
+    (node.type !== "UnaryExpression" || ["!", "typeof", "void"].includes(node.operator)) &&
+    (node.type !== "BinaryExpression" || ["===", "!==", ">", ">=", "<", "<=", "instanceof"].includes(node.operator) ||
+      ["==", "!="].includes(node.operator) && [node.left, node.right].some(value => value.type === "Literal" && value.value === null)) &&
+    (node.type !== "LogicalExpression" || ["&&", "||", "??"].includes(node.operator)) &&
+    (node.type !== "Property" || node.kind === "init" && !node.method && !node.computed && !["FunctionExpression", "ArrowFunctionExpression"].includes(node.value?.type));
+  const primitiveOperation = (node, environment, additionalPrimitive = () => false) => {
+    const primitive = value => primitiveGetterValue(value, new Set(), environment) || additionalPrimitive(value);
+    if (node.type === "TemplateLiteral") return node.expressions.every(primitive);
+    if (node.type !== "BinaryExpression") return true;
+    if (["<", "<=", ">", ">="].includes(node.operator)) return primitive(node.left) && primitive(node.right);
+    if (node.operator === "instanceof") return node.right.type === "Identifier" && node.right.name === "Error" &&
+      unshadowedRuntimeGlobal(node.right, new Set(["Error"]), symbols.scopeBindings);
+    return true;
+  };
+  const purePredicate = (node, environment = new Map(), seen = new Set()) => {
+    if (["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"].includes(node?.type) && (node.async || node.generator)) return false;
+    let pure = true;
+    directCallableNodes(node, current => {
+      if (!pure) return;
+      if (!limitedSyntax(current) || !primitiveOperation(current, environment)) { pure = false; return; }
+      if (current.type === "SpreadElement" && fieldOrigin(current.argument, environment, { definition, limit: target.range[0] })?.kind !== "read") { pure = false; return; }
+      if (["AwaitExpression", "AssignmentExpression", "UpdateExpression", "YieldExpression", "NewExpression", "TaggedTemplateExpression"].includes(current.type)) { pure = false; return; }
+      if (current.type !== "CallExpression") return;
+      if (globalCall(current, "Boolean") || (globalCall(current, "Array", "isArray") && current.arguments.length === 1)) return;
+      if (readonlyIntrinsicCall(current, environment)) return;
+      if (member(current.callee) === "includes" && path(current.callee.object, environment) === `${cap}.${actionField}`) {
+        trustedIncludes.add(path(current.callee.object, environment));
+        return;
+      }
+      const binding = bindingOf(current.callee);
+      const callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+      if (!callable || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.params.length !== current.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier") ||
+          !readonlyGetterBody(callable)) { pure = false; return; }
+      const local = new Map(environment);
+      callable.params.forEach((parameter, index) => local.set(bindingOf(parameter), { node: current.arguments[index], environment }));
+      if (!purePredicate(callable.body, local, new Set(seen).add(binding))) pure = false;
+    });
+    return pure;
+  };
+  const predicateAtoms = (node, environment, seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (value?.type === "LogicalExpression" && value.operator === "&&") {
+      return [...predicateAtoms(value.left, environment, seen), ...predicateAtoms(value.right, environment, seen)];
+    }
+    if (globalCall(value, "Boolean") && value.arguments.length === 1) return predicateAtoms(value.arguments[0], environment, seen);
+    if (value?.type === "CallExpression" && value.callee.type === "Identifier") {
+      const binding = bindingOf(value.callee), callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+      if (!callable || callable.async || callable.generator || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.params.length !== value.arguments.length || callable.params.some(parameter => parameter.type !== "Identifier") ||
+          callable.body?.type !== "BlockStatement" || callable.body.body.length !== 1 || callable.body.body[0].type !== "ReturnStatement") return [];
+      purePredicates.add(binding);
+      const local = new Map(environment);
+      callable.params.forEach((parameter, index) => local.set(bindingOf(parameter), { node: value.arguments[index], environment }));
+      return predicateAtoms(callable.body.body[0].argument, local, new Set(seen).add(binding));
+    }
+    if (value?.type === "BinaryExpression" && value.operator === "===") {
+      const left = path(value.left, environment), right = path(value.right, environment);
+      if (left && right) return [equal(left, right)];
+      if (value.left.type === "UnaryExpression" && value.left.operator === "typeof" && literalString(value.right) === "string") {
+        const field = path(value.left.argument, environment);
+        return field ? [`typeof:${field}:string`] : [];
+      }
+      const literal = unwrapValueExpression(value.right);
+      return left && literal?.type === "Literal" && ["string", "boolean"].includes(typeof literal.value) ? [`literal:${left}:${JSON.stringify(literal.value)}`] : [];
+    }
+    if (value?.type === "CallExpression" && member(value.callee) === "includes" && value.arguments.length === 1 && literalString(value.arguments[0]) === action.capability.key) {
+      return [`includes:${path(value.callee.object, environment)}:${action.capability.key}`];
+    }
+    const truthy = ["Identifier", "MemberExpression"].includes(value?.type) ? path(value, environment) : null;
+    return truthy ? [`truthy:${truthy}`] : [];
+  };
+  const currentFileSearch = () => {
+    const nullReturn = statement => statement?.type === "ReturnStatement" && unwrapValueExpression(statement.argument)?.type === "Literal" && unwrapValueExpression(statement.argument).value === null;
+    const single = statement => statement?.type === "BlockStatement" && statement.body.length === 1 ? statement.body[0] : statement;
+    const memberOf = (object, name) => ({ type: "MemberExpression", object, property: { type: "Identifier", name }, computed: false, optional: false });
+    const candidates = [];
+    for (const statement of attempt.block.body ?? []) {
+      if (statement.range[0] >= writerCalls[0].range[0]) break;
+      const test = unwrapValueExpression(statement.test), waited = test?.argument, call = waited?.argument;
+      const stop = statement.consequent?.type === "BlockStatement" ? statement.consequent.body.at(-1) : statement.consequent;
+      if (statement.type !== "IfStatement" || statement.alternate || test?.type !== "UnaryExpression" || test.operator !== "!" ||
+          waited?.type !== "AwaitExpression" || call?.type !== "CallExpression" || call.callee.type !== "Identifier" ||
+          !["ReturnStatement", "ThrowStatement"].includes(stop?.type) || bindingOf(call.callee) === writer.binding ||
+          call.arguments.length !== 2 || path(call.arguments[0]) !== actualOwner || path(call.arguments[1]) !== actualPdf || !awaitedBefore(call, writerCalls[0].range[0])) continue;
+      candidates.push(call);
+    }
+    if (candidates.length !== 1) return false;
+    const call = candidates[0], searchBinding = bindingOf(call.callee), search = uniqueIndexedNode(symbols.definitionsByBinding, searchBinding);
+    if (!search || (symbols.writesByBinding.get(searchBinding) ?? []).length || search.params.length !== 2 || search.body?.type !== "BlockStatement" || search.body.body.length !== 4) return false;
+    const environment = bindCall(search, call);
+    if (!environment) return false;
+    const [readStatement, absent, loop, final] = search.body.body;
+    const state = readStatement?.type === "VariableDeclaration" && readStatement.kind === "const" && readStatement.declarations.length === 1 ? readStatement.declarations[0] : null;
+    const read = state?.init?.type === "AwaitExpression" ? state.init.argument : null;
+    if (state?.id.type !== "Identifier" || read?.type !== "CallExpression" || read.callee.type !== "Identifier" || read.arguments.length !== 1 ||
+        path(read.arguments[0], environment) !== actualOwner || !nullReturn(final) || loop?.type !== "ForOfStatement" || loop.await) return false;
+    const statePath = path(state.id, environment), absentTest = unwrapValueExpression(absent.test);
+    if (absent.type !== "IfStatement" || absent.alternate || absentTest?.type !== "UnaryExpression" || absentTest.operator !== "!" ||
+        path(absentTest.argument, environment) !== statePath || !nullReturn(single(absent.consequent))) return false;
+    const sourceFrame = { definition: search, limit: loop.range[0] };
+    const fingerprint = fieldOrigin(memberOf(state.id, "fingerprint"), environment, sourceFrame);
+    const documents = fieldOrigin(memberOf(state.id, "documents"), environment, sourceFrame);
+    const fresh = origin => origin?.kind === "read" && origin.coordinate === `${actualOwner}.context.contractVersionId` && origin.trail.length === 1 && origin.trail[0] === read &&
+      origin.read.range[0] > origin.frame.definition.range[0] && origin.read.range[1] < origin.frame.definition.range[1] && awaitedBefore(origin.read, origin.frame.limit);
+    if (!fresh(fingerprint) || fingerprint.fields.join(".") !== "version.documentContentFingerprint" || !fresh(documents) || documents.fields.length ||
+        !readHasIdentity(fingerprint, "version.id", "version.draftRevision", actualOwner, [["contract.id", "routeContractId"], ["version.layoutTemplateVersionId", "context.layoutTemplateVersionId"], ["version.documentContentRevision", "context.documentContentRevision"]])) return false;
+    const iteration = loop.left?.type === "VariableDeclaration" && loop.left.kind === "const" && loop.left.declarations.length === 1 ? loop.left.declarations[0] : null;
+    const matchingCall = unwrapValueExpression(loop.right), matchingBinding = matchingCall?.type === "CallExpression" ? bindingOf(matchingCall.callee) : null;
+    const matching = matchingBinding ? uniqueIndexedNode(symbols.definitionsByBinding, matchingBinding) : null;
+    if (iteration?.id.type !== "Identifier" || iteration.init || !matching || (symbols.writesByBinding.get(matchingBinding) ?? []).length || matching.params.length !== 2 ||
+        matching.body?.type !== "BlockStatement" || matching.body.body.length !== 1 || matching.body.body[0].type !== "ReturnStatement" || matchingCall.arguments.length !== 2 ||
+        path(matchingCall.arguments[0], environment) !== actualOwner || path(matchingCall.arguments[1], environment) !== statePath) return false;
+    const matchingEnvironment = bindCall(matching, matchingCall, environment), filter = unwrapValueExpression(matching.body.body[0].argument);
+    const predicate = filter?.arguments?.[0];
+    if (!matchingEnvironment || filter?.type !== "CallExpression" || member(filter.callee) !== "filter" || filter.arguments.length !== 1 ||
+        path(filter.callee.object, matchingEnvironment) !== `${statePath}.documents` || predicate?.type !== "ArrowFunctionExpression" || predicate.async || predicate.params.length !== 1 || predicate.params[0].type !== "Identifier" || !purePredicate(predicate, matchingEnvironment)) return false;
+    const item = path(predicate.params[0], matchingEnvironment), filterFacts = new Set(predicateAtoms(predicate.body, matchingEnvironment));
+    const filterRequired = [`typeof:${item}.id:string`, `truthy:${item}.id`, `literal:${item}.purpose:"draft"`,
+      equal(`${item}.layoutTemplateVersionId`, `${actualOwner}.context.layoutTemplateVersionId`),
+      equal(`${item}.documentContentRevision`, `${actualOwner}.context.documentContentRevision`),
+      equal(`${item}.documentContentFingerprint`, `${statePath}.fingerprint`),
+      equal(`${item}.inputSnapshot.bodyDocument.sourceSha256`, `${actualOwner}.context.sourceSha256`)];
+    if (!filterRequired.every(fact => filterFacts.has(fact)) || loop.body?.type !== "BlockStatement" || loop.body.body.length !== 2) return false;
+    const [projectStatement, matchStatement] = loop.body.body;
+    const projection = projectStatement.type === "VariableDeclaration" && projectStatement.kind === "const" && projectStatement.declarations.length === 1 ? projectStatement.declarations[0] : null;
+    const projectCall = unwrapValueExpression(projection?.init), projectBinding = projectCall?.type === "CallExpression" ? bindingOf(projectCall.callee) : null;
+    const project = projectBinding ? uniqueIndexedNode(symbols.definitionsByBinding, projectBinding) : null;
+    const iterationPath = path(iteration.id, environment);
+    if (projection?.id.type !== "Identifier" || !project || (symbols.writesByBinding.get(projectBinding) ?? []).length || project.params.length !== 3 || project.body?.type !== "BlockStatement" || project.body.body.length !== 2 || projectCall.arguments.length !== 3 ||
+        path(projectCall.arguments[0], environment) !== actualOwner || path(projectCall.arguments[1], environment) !== statePath || path(projectCall.arguments[2], environment) !== iterationPath) return false;
+    const projectEnvironment = bindCall(project, projectCall, environment), [reject, returned] = project.body.body;
+    const output = returned.type === "ReturnStatement" ? frozen(returned.argument) : null;
+    if (!projectEnvironment || reject.type !== "IfStatement" || reject.alternate || !nullReturn(single(reject.consequent)) || output?.type !== "ObjectExpression" || output.properties.length !== 6 ||
+        output.properties.some(property => property.type !== "Property" || property.computed || property.method || property.kind !== "init")) return false;
+    const outputFields = new Map(output.properties.map(property => [property.key.name ?? property.key.value, property.value]));
+    const expectedFields = { documentId: `${iterationPath}.id`, fileId: `${iterationPath}.pdfFileId`, contentRevision: `${actualOwner}.context.documentContentRevision`,
+      fingerprint: `${statePath}.fingerprint`, layoutId: `${actualOwner}.context.layoutTemplateVersionId`, sourceSha256: `${actualOwner}.context.sourceSha256` };
+    if (!Object.entries(expectedFields).every(([field, expected]) => path(outputFields.get(field), projectEnvironment) === expected)) return false;
+    const failures = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") return [...failures(value.left), ...failures(value.right)];
+      if (value?.type === "UnaryExpression" && value.operator === "!") return [`truthy:${path(value.argument, projectEnvironment)}`];
+      if (value?.type !== "BinaryExpression" || value.operator !== "!==") return [];
+      if (value.left.type === "UnaryExpression" && value.left.operator === "typeof" && literalString(value.right) === "string") return [`typeof:${path(value.left.argument, projectEnvironment)}:string`];
+      return value.right.type === "Literal" ? [`literal:${path(value.left, projectEnvironment)}:${JSON.stringify(value.right.value)}`] : [];
+    };
+    const rejected = new Set(failures(reject.test));
+    if (![ `literal:${iterationPath}.status:"success"`, `typeof:${iterationPath}.id:string`, `typeof:${iterationPath}.pdfFileId:string`, `truthy:${iterationPath}.pdfFileId` ].every(fact => rejected.has(fact))) return false;
+    const projected = path(projection.id, environment), expected = path(search.params[1], environment), match = unwrapValueExpression(matchStatement.test);
+    const either = unwrapValueExpression(match?.right), noExpected = unwrapValueExpression(either?.left);
+    if (matchStatement.type !== "IfStatement" || matchStatement.alternate || matchStatement.consequent.type !== "ReturnStatement" || path(matchStatement.consequent.argument, environment) !== projected ||
+        match?.type !== "LogicalExpression" || match.operator !== "&&" || path(match.left, environment) !== projected || either?.type !== "LogicalExpression" || either.operator !== "||" ||
+        noExpected?.type !== "UnaryExpression" || noExpected.operator !== "!" || path(noExpected.argument, environment) !== expected) return false;
+    const matched = new Set(predicateAtoms(either.right, environment));
+    if (!["documentId", "fileId", "fingerprint"].every(field => matched.has(equal(`${projected}.${field}`, `${expected}.${field}`)))) return false;
+    const rejectsMissingPdf = node => {
+      const value = unwrapValueExpression(node);
+      return value?.type === "LogicalExpression" && value.operator === "||" ? rejectsMissingPdf(value.left) || rejectsMissingPdf(value.right) :
+        value?.type === "UnaryExpression" && value.operator === "!" && path(value.argument) === actualPdf;
+    };
+    if (!(definition.body.body ?? []).some(statement => statement.range[0] < attempt.range[0] && statement.type === "IfStatement" && !statement.alternate &&
+      ["ReturnStatement", "ThrowStatement"].includes(single(statement.consequent)?.type) && rejectsMissingPdf(statement.test))) return false;
+    approvedFileLoops.add(loop);
+    return true;
+  };
+  let dominating = false;
+  for (const statement of attempt.block.body ?? []) {
+    if (statement.range[0] >= target.range[0]) break;
+    if (statement.range[0] <= writerCalls[0].range[1] || !capturedAfterRead(statement.test)) continue;
+    const test = unwrapValueExpression(statement.test);
+    if (statement.type !== "IfStatement" || statement.alternate || !terminates(statement.consequent)) continue;
+    // Reaching the transport after an OR-of-failures requires each failure
+    // to be false. A negated predicate therefore contributes its positive
+    // facts; AND-of-failures and positive predicates contribute no authority.
+    const successAtoms = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") return [...successAtoms(value.left), ...successAtoms(value.right)];
+      return value?.type === "UnaryExpression" && value.operator === "!" ? predicateAtoms(value.argument, new Map()) : [];
+    };
+    if (!purePredicate(test)) continue;
+    const atoms = new Set(successAtoms(test));
+    const required = [equal(`${cap}.ownerKey`, `${actualOwner}.ownerKey`), equal(`${cap}.readGeneration`, `${actualOwner}.generation`), `includes:${cap}.${actionField}:${action.capability.key}`,
+      ...(fileGrant ? [equal(`${cap}.fileId`, `${actualPdf}.fileId`), equal(`${cap}.documentId`, `${actualPdf}.documentId`), `literal:${cap}.serverAction.key:${JSON.stringify(action.capability.key)}`, `literal:${cap}.serverAction.enabled:true`] : [equal(`${cap}.sourceRevision`, `${actualOwner}.context.draftRevision`)])];
+    if (required.every(atom => atoms.has(atom))) dominating = true;
+  }
+  if (!dominating) return null;
+  if (fileGrant && !currentFileSearch()) return null;
+  const readDerivedCollection = (node, environment, seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (value.type === "ArrayExpression" && value.elements.every(element => element?.type === "Literal" && typeof element.value === "string")) return true;
+    const refArray = (node, local, fields = [], visited = new Set()) => {
+      const selected = unwrapValueExpression(node);
+      if (!selected || visited.size > 16) return false;
+      if (selected.type === "MemberExpression" && member(selected)) return refArray(selected.object, local, [member(selected), ...fields], visited);
+      if (selected.type !== "Identifier") return false;
+      const binding = bindingOf(selected);
+      if (!binding || visited.has(binding)) return false;
+      const next = new Set(visited).add(binding), bound = local.get(binding);
+      if (bound) return refArray(bound.node, bound.environment, fields, next);
+      const initial = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      if (!expressionIsEmptyVueRef(initial, symbols)) return initial && !(symbols.writesByBinding.get(binding) ?? []).length ? refArray(initial, local, fields, next) : false;
+      const writes = symbols.writesByBinding.get(binding) ?? [], populated = writes.filter(write => !expressionIsEmptyCapabilityState(write.value));
+      if (fields.length !== 2 || fields[0] !== "value" || populated.length !== 1 || !writes.every(write => write.kind === "assignment" && write.operator === "=" && write.path === `${binding.name}.value`)) return false;
+      const record = frozen(populated[0].value);
+      const properties = record?.type === "ObjectExpression" ? record.properties.filter(property => property.type === "Property" && !property.computed && !property.method && property.kind === "init" && (property.key.name ?? property.key.value) === fields[1]) : [];
+      const origin = properties.length === 1 ? fieldOrigin(properties[0].value, local, { definition, limit: target.range[0] }) : null;
+      return origin?.kind === "read" && origin.immutableArray;
+    };
+    if (refArray(value, environment)) return true;
+    if (fieldOrigin(value, environment, { definition, limit: target.range[0] })?.kind === "read") return true;
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+      const bound = environment.get(binding), initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      return initializer ? readDerivedCollection(initializer, bound?.environment ?? environment, new Set(seen).add(binding)) : false;
+    }
+    if (value.type !== "CallExpression") return false;
+    if (member(value.callee) === "filter" && value.arguments.length === 1 && value.arguments[0].type === "ArrowFunctionExpression" && purePredicate(value.arguments[0], environment)) return readDerivedCollection(value.callee.object, environment, seen);
+    const binding = bindingOf(value.callee), callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+    if (!callable || (symbols.writesByBinding.get(binding) ?? []).length > 0 || seen.has(binding) || callable.body?.type !== "BlockStatement" || callable.body.body.length !== 1 || callable.body.body[0].type !== "ReturnStatement") return false;
+    const local = bindCall(callable, value, environment);
+    return local ? readDerivedCollection(callable.body.body[0].argument, local, new Set(seen).add(binding)) : false;
+  };
+  const readDerivedValue = (node, environment, seen = new Set()) => {
+    const value = unwrapValueExpression(node);
+    if (!value || seen.size > 16) return false;
+    if (fieldOrigin(value, environment, { definition, limit: target.range[0] })?.kind === "read") return true;
+    if (value.type === "MemberExpression" && member(value)) return readDerivedValue(value.object, environment, seen);
+    if (value.type === "ConditionalExpression") return readDerivedValue(value.consequent, environment, seen) && readDerivedValue(value.alternate, environment, seen);
+    if (value.type === "LogicalExpression" && value.operator === "??") return readDerivedValue(value.left, environment, seen) && readDerivedValue(value.right, environment, seen);
+    if (value.type === "Identifier") {
+      const binding = bindingOf(value), bound = environment.get(binding);
+      if (!binding || seen.has(binding) || (symbols.writesByBinding.get(binding) ?? []).length) return false;
+      const initializer = bound?.node ?? uniqueIndexedNode(symbols.declarationsByBinding, binding);
+      return initializer ? readDerivedValue(initializer, bound?.environment ?? environment, new Set(seen).add(binding)) : false;
+    }
+    return value.type === "CallExpression" && member(value.callee) === "find" && value.arguments.length === 1 &&
+      value.arguments[0].type === "ArrowFunctionExpression" && purePredicate(value.arguments[0], environment) && readDerivedCollection(value.callee.object, environment);
+  };
+  derivedCollectionsReady = true;
+  const pureImportedStrings = new Map();
+  const importedStringCall = (call, environment = new Map()) => {
+    const imported = importedCallMetadata(call, symbols);
+    if (!imported?.importedName || imported.kind !== "named") return false;
+    const ast = context.asts.get(imported.sourceFile);
+    if (!ast || !ast.body.every(statement => statement.type === "FunctionDeclaration" ||
+        statement.type === "ExportNamedDeclaration" && statement.declaration?.type === "FunctionDeclaration") ||
+        !ast.body.some(statement => statement.type === "ExportNamedDeclaration" && statement.declaration?.id?.name === imported.importedName)) return false;
+    const local = buildSymbolContext(ast, imported.sourceFile, context.sourceFileSet);
+    const roots = topLevelScopeVariables(local.scopeManager, imported.importedName);
+    if (roots.length !== 1) return false;
+    const root = roots[0], rootDefinition = uniqueIndexedNode(local.definitionsByBinding, root);
+    if (!rootDefinition || rootDefinition.async || rootDefinition.generator || rootDefinition.params.length !== call.arguments.length || call.arguments.some(argument => argument.type === "SpreadElement") || rootDefinition.params.some((parameter, index) =>
+      ["TSStringKeyword", "TSNumberKeyword", "TSBooleanKeyword"].includes(parameter.typeAnnotation?.typeAnnotation?.type) && !primitiveGetterValue(call.arguments[index], new Set(), environment))) return false;
+    const binding = node => local.scopeBindings.get(unwrapValueExpression(node));
+    const cache = new Map(), active = new Set();
+    const annotated = (variable, type) => variable?.identifiers?.some(identifier => identifier.typeAnnotation?.typeAnnotation?.type === type);
+    const numberValue = (node, seen = new Set()) => {
+      const value = unwrapValueExpression(node);
+      if (!value || seen.size > 16) return false;
+      if (value.type === "Literal") return typeof value.value === "number";
+      if (value.type !== "Identifier") return false;
+      const variable = binding(value);
+      if (!variable || seen.has(variable) || (local.writesByBinding.get(variable) ?? []).length) return false;
+      const initializer = uniqueIndexedNode(local.declarationsByBinding, variable);
+      return initializer ? numberValue(initializer, new Set(seen).add(variable)) : annotated(variable, "TSNumberKeyword");
+    };
+    const stringValue = (node, seen = new Set()) => {
+      const value = unwrapValueExpression(node);
+      if (!value || seen.size > 16) return false;
+      if (value.type === "Literal") return typeof value.value === "string";
+      if (value.type === "Identifier") {
+        const variable = binding(value);
+        if (!variable || seen.has(variable) || (local.writesByBinding.get(variable) ?? []).length) return false;
+        const initializer = uniqueIndexedNode(local.declarationsByBinding, variable);
+        // Local annotations cannot replace initializer provenance. Parameter
+        // annotations are usable only after every incoming call checks its actuals.
+        return initializer ? stringValue(initializer, new Set(seen).add(variable)) : annotated(variable, "TSStringKeyword");
+      }
+      if (value.type === "TemplateLiteral") return value.expressions.every(expression => stringValue(expression, seen) || numberValue(expression, seen));
+      if (value.type !== "CallExpression") return false;
+      if (member(value.callee) === "trim" && value.arguments.length === 0) return stringValue(value.callee.object, seen);
+      const definition = value.callee.type === "Identifier" ? uniqueIndexedNode(local.definitionsByBinding, binding(value.callee)) : null;
+      return definition && qualifiedLocalArguments(definition, value.arguments) && summary(binding(value.callee));
+    };
+    const qualifiedLocalArguments = (definition, args) => definition.params.length === args.length && args.every(argument => argument.type !== "SpreadElement") &&
+      definition.params.every((parameter, index) => {
+        const type = parameter.typeAnnotation?.typeAnnotation?.type;
+        if (type === "TSStringKeyword") return stringValue(args[index]);
+        if (type === "TSNumberKeyword") return numberValue(args[index]);
+        if (type === "TSBooleanKeyword") { const value = unwrapValueExpression(args[index]); return value?.type === "Literal" && typeof value.value === "boolean"; }
+        return true;
+      });
+    const summary = variable => {
+      if (!variable || active.has(variable)) return false;
+      if (cache.has(variable)) return cache.get(variable);
+      const callable = uniqueIndexedNode(local.definitionsByBinding, variable);
+      if (!callable || callable.async || callable.generator || callable.params.some(parameter => parameter.type !== "Identifier")) return false;
+      active.add(variable);
+      let valid = true, returns = 0;
+      directCallableNodes(callable, (current, parent) => {
+        if (!valid) return;
+        if (!limitedSyntax(current)) { valid = false; return; }
+        // This imported string-only subset has no opaque property reads or
+        // implicit numeric/string coercion of unknown objects, even if unused.
+        if (current.type === "UnaryExpression" && !["!", "typeof", "void"].includes(current.operator) ||
+            current.type === "BinaryExpression" && !["===", "!==", "<", "<=", ">", ">="].includes(current.operator)) { valid = false; return; }
+        if (current.type === "MemberExpression") {
+          const receiver = unwrapValueExpression(current.object);
+          const nativeCall = !current.computed && !current.optional && parent?.type === "CallExpression" && parent.callee === current &&
+            (member(current) === "trim" && parent.arguments.length === 0 && stringValue(receiver) ||
+              member(current) === "test" && receiver?.regex && !/[gy]/u.test(receiver.regex.flags) && parent.arguments.length === 1 && stringValue(parent.arguments[0]));
+          if (!nativeCall) { valid = false; return; }
+        }
+        if (["AssignmentExpression", "UpdateExpression", "AwaitExpression", "YieldExpression", "NewExpression", "TaggedTemplateExpression", "TryStatement", "ObjectExpression", "ArrayExpression", "SpreadElement", "ThrowStatement"].includes(current.type)) { valid = false; return; }
+        if (current.type === "TemplateLiteral" && !stringValue(current)) { valid = false; return; }
+        if (current.type === "BinaryExpression" && ["<", "<=", ">", ">="].includes(current.operator) && ![current.left, current.right].every(value =>
+            value.type === "Literal" && ["number", "string", "boolean"].includes(typeof value.value) ||
+            numberValue(value) || stringValue(value))) { valid = false; return; }
+        if (current.type === "VariableDeclaration" && current.kind !== "const") { valid = false; return; }
+        if (current.type === "ReturnStatement") { returns += 1; if (!stringValue(current.argument)) valid = false; }
+        if (current.type !== "CallExpression") return;
+        const regex = unwrapValueExpression(current.callee?.object);
+        if (member(current.callee) === "test" && regex?.regex && !/[gy]/u.test(regex.regex.flags) && current.arguments.length === 1 && stringValue(current.arguments[0])) return;
+        if (member(current.callee) === "trim" && current.arguments.length === 0 && stringValue(current.callee.object)) return;
+        if (current.callee.type === "Identifier") {
+          const target = binding(current.callee), definition = target ? uniqueIndexedNode(local.definitionsByBinding, target) : null;
+          if (definition && qualifiedLocalArguments(definition, current.arguments) && summary(target)) return;
+        }
+        valid = false;
+      });
+      active.delete(variable); cache.set(variable, valid && returns > 0);
+      return valid && returns > 0;
+    };
+    const key = `${imported.sourceFile}:${imported.importedName}`;
+    if (!pureImportedStrings.has(key)) pureImportedStrings.set(key, summary(root));
+    return pureImportedStrings.get(key);
+  };
+  const privateStringRef = node => {
+    const value = unwrapValueExpression(node);
+    if (value?.type !== "MemberExpression" || value.computed || value.optional || member(value) !== "value" || value.object.type !== "Identifier") return false;
+    const binding = bindingOf(value.object), initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (initial?.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(initial.callee)) || initial.arguments.length !== 1 ||
+        unwrapValueExpression(initial.arguments[0])?.type !== "Literal" || typeof unwrapValueExpression(initial.arguments[0]).value !== "string") return false;
+    if ((symbols.writesByBinding.get(binding) ?? []).some(write => write.kind !== "assignment" || write.operator !== "=" || write.path !== `${binding.name}.value` ||
+        unwrapValueExpression(write.value)?.type !== "Literal" || typeof unwrapValueExpression(write.value).value !== "string")) return false;
+    let confined = true;
+    walkEstree(symbols.ast, candidate => {
+      if (candidate.type !== "Identifier" || bindingOf(candidate) !== binding || !symbols.scopeReferenceIdentifiers.has(candidate)) return;
+      const parent = astAncestorChain(symbols.ast, candidate)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === candidate && parent.init === initial) return;
+      if (parent?.type !== "MemberExpression" || parent.object !== candidate || parent.computed || parent.optional || member(parent) !== "value") confined = false;
+    });
+    return confined;
+  };
+  const previewObjectUrls = new Set();
+  if (fileGrant) {
+    const result = awaitedCallResultBinding(target, [definition], symbols);
+    const awaited = astAncestorChain(symbols.ast, target)?.at(-2);
+    const creations = [];
+    if (result && !(symbols.writesByBinding.get(result) ?? []).length && awaited?.type === "AwaitExpression") walkEstree(definition, node => {
+      if (node.type !== "AssignmentExpression" || node.operator !== "=" || node.left.type !== "MemberExpression" || member(node.left) !== "value" || node.left.object.type !== "Identifier") return;
+      const create = unwrapValueExpression(node.right), binding = bindingOf(node.left.object), initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+      if (!globalCall(create, "URL", "createObjectURL") || create.arguments.length !== 1 || path(create.arguments[0]) !== `${identity(result)}.blob` ||
+          create.range[0] <= target.range[1] || initial?.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(initial.callee)) ||
+          unwrapValueExpression(initial.arguments[0])?.type !== "Literal" || typeof unwrapValueExpression(initial.arguments[0]).value !== "string") return;
+      if ((symbols.writesByBinding.get(binding) ?? []).some(write => write.kind !== "assignment" || write.operator !== "=" || write.path !== `${binding.name}.value` ||
+          write.value !== create && !(unwrapValueExpression(write.value)?.type === "Literal" && typeof unwrapValueExpression(write.value).value === "string"))) return;
+      let confined = true;
+      walkEstree(symbols.ast, reference => {
+        if (reference.type !== "Identifier" || bindingOf(reference) !== binding || !symbols.scopeReferenceIdentifiers.has(reference)) return;
+        const parent = astAncestorChain(symbols.ast, reference)?.at(-2);
+        if (parent?.type === "VariableDeclarator" && parent.id === reference && parent.init === initial) return;
+        if (parent?.type !== "MemberExpression" || parent.object !== reference || parent.computed || parent.optional || member(parent) !== "value") confined = false;
+      });
+      if (confined) creations.push({ create, binding });
+    });
+    if (creations.length === 1) {
+      const { create, binding } = creations[0]; previewObjectUrls.add(create);
+      walkEstree(symbols.ast, node => {
+        if (globalCall(node, "URL", "revokeObjectURL") && node.arguments.length === 1 && path(node.arguments[0]) === `${identity(binding)}.value`) previewObjectUrls.add(node);
+      });
+    }
+  }
+  const guardedStringTrim = (call, environment) => {
+    if (member(call.callee) !== "trim" || call.arguments.length !== 0) return false;
+    if (privateStringRef(call.callee.object)) return true;
+    const receiver = path(call.callee.object, environment);
+    if (!receiver) return false;
+    const rejectsNonString = node => {
+      const value = unwrapValueExpression(node);
+      if (value?.type === "LogicalExpression" && value.operator === "||") return rejectsNonString(value.left) || rejectsNonString(value.right);
+      return value?.type === "BinaryExpression" && value.operator === "!==" && literalString(value.right) === "string" &&
+        value.left.type === "UnaryExpression" && value.left.operator === "typeof" && path(value.left.argument, environment) === receiver;
+    };
+    const ancestors = astAncestorChain(symbols.ast, call) ?? [];
+    return ancestors.some((ancestor, index) => ancestor.type === "LogicalExpression" && ancestor.operator === "||" &&
+      ancestor.right === ancestors[index + 1] && rejectsNonString(ancestor.left));
+  };
+  const privateScalar = binding => {
+    const initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (initial?.type !== "Literal" || !["number", "boolean", "string"].includes(typeof initial.value)) return false;
+    return (symbols.writesByBinding.get(binding) ?? []).every(write => {
+      if (write.path !== binding.name) return false;
+      if (write.kind === "update") return typeof initial.value === "number" && ["++", "--"].includes(write.operator);
+      const value = unwrapValueExpression(write.value);
+      return write.kind === "assignment" && ["=", "+=", "-="].includes(write.operator) &&
+        (write.operator === "=" || typeof initial.value === "number") && value?.type === "Literal" && typeof value.value === typeof initial.value;
+    });
+  };
+  const privateTimers = new Map();
+  const privateTimer = binding => {
+    if (privateTimers.has(binding)) return privateTimers.get(binding);
+    privateTimers.set(binding, false);
+    const initial = binding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, binding)) : null;
+    if (initial?.type !== "Literal" || initial.value !== null) return false;
+    const writes = symbols.writesByBinding.get(binding) ?? [], callbacks = [];
+    if (!writes.length || writes.some(write => {
+      const value = unwrapValueExpression(write.value);
+      if (write.kind !== "assignment" || write.operator !== "=" || write.path !== binding.name) return true;
+      if (value?.type === "Literal" && value.value === null) return false;
+      const callback = unwrapValueExpression(value?.arguments?.[0]), delay = unwrapValueExpression(value?.arguments?.[1]);
+      if (!globalCall(value, "setTimeout") || value.arguments.length !== 2 || callback?.type !== "ArrowFunctionExpression" ||
+          callback.async || callback.params.length || delay?.type !== "Literal" || typeof delay.value !== "number" || delay.value <= 0 || delay.value > 60_000) return true;
+      callbacks.push(callback); return false;
+    })) return false;
+    let privateHandle = true;
+    walkEstree(symbols.ast, node => {
+      if (node.type !== "Identifier" || bindingOf(node) !== binding || !symbols.scopeReferenceIdentifiers.has(node)) return;
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      if (parent?.type === "VariableDeclarator" && parent.id === node && parent.init === initial) return;
+      if (parent?.type === "AssignmentExpression" && parent.left === node && parent.operator === "=") return;
+      if (parent?.type === "CallExpression" && globalCall(parent, "clearTimeout") && parent.arguments.length === 1 && parent.arguments[0] === node) return;
+      if (parent?.type === "BinaryExpression" && ["===", "!=="].includes(parent.operator)) {
+        const other = unwrapValueExpression(parent.left === node ? parent.right : parent.left);
+        if (other?.type === "Literal" && other.value === null) return;
+      }
+      privateHandle = false;
+    });
+    if (!privateHandle) return false;
+    privateTimers.set(binding, true);
+    // The cache qualifies only the private timer handle's source structure.
+    // Callback effects are checked at each setTimeout with its bound frame.
+    return true;
+  };
+  const readonlyFrameCoordinate = (node, environment, depth = 0) => {
+    if (depth > 8) return null;
+    const origin = fieldOrigin(node, environment, { definition, limit: target.range[0] });
+    if (origin?.kind === "read" && origin.coordinate) return JSON.stringify(["json", origin.sourceIdentity, origin.coordinate, origin.fields, Boolean(origin.immutableArray), Boolean(origin.immutableRecord)]);
+    if (origin?.kind !== "record") return null;
+    const fields = [...origin.fields].map(([key, value]) => [key, readonlyFrameCoordinate(value, origin.environment, depth + 1)]);
+    return fields.length && fields.every(([, value]) => value) ? JSON.stringify(["record", fields]) : null;
+  };
+  // These additional data producers are available only after their original
+  // source/target proofs finish. Unknown writes still have no witness.
+  scalarRefProducer = (node, environment) => importedStringCall(unwrapValueExpression(node), environment) || previewObjectUrls.has(unwrapValueExpression(node));
+  qualifiedRefValue = node => basicRefValue(node);
+  rawDataRefs.clear();
+  const safeCalls = (node, allowTarget = false, finalizer = false, checked = new Map(), environment = new Map()) => {
+    let valid = true;
+    directCallableNodes(node, current => {
+      if (!valid) return;
+      if (!limitedSyntax(current) || !primitiveOperation(current, environment, value => value?.type === "Identifier" && privateScalar(bindingOf(value)))) { valid = false; return; }
+      if (current.type === "Identifier" && symbols.scopeReferenceIdentifiers.has(current) && symbols.definitionsByBinding.has(bindingOf(current))) {
+        const parent = astAncestorChain(symbols.ast, current)?.at(-2);
+        if (!(parent?.type === "CallExpression" && parent.callee === current) && !(parent?.type === "VariableDeclarator" && parent.id === current)) { valid = false; return; }
+      }
+      if (current.type === "MemberExpression") {
+        const parent = astAncestorChain(symbols.ast, current)?.at(-2);
+        // Method execution is qualified by the call checker below. A bare
+        // property read must itself have a data origin: it may invoke a getter.
+        const callee = parent?.type === "CallExpression" && parent.callee === current;
+        const receiver = fieldOrigin(current.object, environment, { definition, limit: target.range[0] });
+        const recordField = receiver?.kind === "record" && member(current) && receiver.fields.has(member(current));
+        if (!callee && !recordField && !ownDataMember(current, [], environment) && !primitiveGetterValue(current, new Set(), environment) && !readDerivedValue(current, environment)) { valid = false; return; }
+      }
+      if (current.type === "SpreadElement" && !readDerivedCollection(current.argument, environment) &&
+          fieldOrigin(current.argument, environment, { definition, limit: target.range[0] })?.kind !== "read") { valid = false; return; }
+      if (current.type === "CallExpression") {
+        if (current === target && allowTarget) return;
+        if (readonlyIntrinsicCall(current, environment) || (current.callee.type === "Identifier" && projectedIdentityRead(bindingOf(current.callee)) && current.arguments.length === 1 && primitiveGetterValue(current.arguments[0], new Set(), environment)) || importedStringCall(current, environment) || guardedStringTrim(current, environment) || !finalizer && previewObjectUrls.has(current)) return;
+        if (globalCall(current, "Array", "isArray") && current.arguments.length === 1) return;
+        if (globalCall(current, "String") && current.arguments.length === 1 && readDerivedValue(current.arguments[0], environment)) return;
+        if (member(current.callee) === "includes" && current.arguments.length === 1 && readDerivedCollection(current.callee.object, environment)) return;
+        if (["filter", "some", "find", "every"].includes(member(current.callee)) && current.arguments.length === 1 &&
+            current.arguments[0].type === "ArrowFunctionExpression" && !current.arguments[0].async &&
+            purePredicate(current.arguments[0], environment) && readDerivedCollection(current.callee.object, environment)) return;
+        if (globalCall(current, "clearTimeout") && !finalizer && current.arguments.length === 1 && current.arguments[0].type === "Identifier" && privateTimer(bindingOf(current.arguments[0]))) return;
+        if (globalCall(current, "setTimeout") && !finalizer) {
+          const parent = astAncestorChain(symbols.ast, current)?.at(-2);
+          if (parent?.type === "AssignmentExpression" && parent.right === current && parent.left.type === "Identifier" && privateTimer(bindingOf(parent.left)) &&
+              safeCalls(current.arguments[0], false, false, checked, environment)) return;
+        }
+        if (globalCall(current, "Object", "freeze") || globalCall(current, "Boolean")) return;
+        const binding = bindingOf(current.callee);
+        if (binding && context.serverReadImports.has(binding)) return;
+        const callable = binding ? uniqueIndexedNode(symbols.definitionsByBinding, binding) : null;
+        if (callable) {
+          if ((symbols.writesByBinding.get(binding) ?? []).length > 0) { valid = false; return; }
+          if (callable === definition) { valid = false; return; }
+          const local = bindCall(callable, current, environment);
+          if (!local) { valid = false; return; }
+          const frame = callable.params.map(parameter => readonlyFrameCoordinate(parameter, local) ?? path(parameter, local));
+          if (checked.has(binding)) {
+            const prior = checked.get(binding);
+            // Only an identical lexical argument frame may close a recursive
+            // read-only cycle. An unfinished frame proves no sibling call.
+            if (frame.some((value, index) => !value || value !== prior[index])) valid = false;
+          } else {
+            const stack = new Map(checked); stack.set(binding, frame);
+            if (!safeCalls(callable, false, finalizer, stack, local)) valid = false;
+          }
+          return;
+        }
+        if (member(current.callee) === "includes" && current.arguments.length === 1 && trustedIncludes.has(path(current.callee.object, environment))) return;
+        valid = false;
+      }
+      if (current.type === "AssignmentExpression") {
+        if (!finalizer && current.left.type === "Identifier" && (privateTimer(bindingOf(current.left)) || privateScalar(bindingOf(current.left)))) return;
+        const destination = path(current.left);
+        if (finalizer) {
+          const left = unwrapValueExpression(current.left);
+          const scalarBinding = left?.type === "MemberExpression" && member(left) === "value" && left.object.type === "Identifier" ? bindingOf(left.object) : null;
+          const scalar = scalarBinding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, scalarBinding)) : null;
+          const initial = unwrapValueExpression(scalar?.arguments?.[0]), assigned = unwrapValueExpression(current.right);
+          if (!scalar || scalar.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(scalar.callee)) ||
+              initial?.type !== "Literal" || !["boolean", "string"].includes(typeof initial.value) ||
+              assigned?.type !== "Literal" || typeof assigned.value !== typeof initial.value) { valid = false; return; }
+        }
+        if (!destination || current.operator !== "=" || !destination.endsWith(".value")) { valid = false; return; }
+        if (destination === cap) {
+          if (!expressionIsEmptyCapabilityState(current.right) && current.right !== populated[0].value) valid = false;
+        } else if (unwrapValueExpression(current.right)?.type !== "Literal") {
+          const left = unwrapValueExpression(current.left), uiBinding = left?.type === "MemberExpression" && member(left) === "value" && left.object.type === "Identifier" ? bindingOf(left.object) : null;
+          const ui = uiBinding ? unwrapValueExpression(uniqueIndexedNode(symbols.declarationsByBinding, uiBinding)) : null;
+          const initial = unwrapValueExpression(ui?.arguments?.[0]);
+          // A component-owned nullable Vue ref only receives display/read data;
+          // every nested call is still checked independently for writes.
+          const literalNotice = (node, depth = 0) => {
+            const value = unwrapValueExpression(node);
+            return depth < 8 && (value?.type === "Literal" && typeof value.value === "string" || value?.type === "ConditionalExpression" && literalNotice(value.consequent, depth + 1) && literalNotice(value.alternate, depth + 1));
+          };
+          if (finalizer || ui?.type !== "CallExpression" || !symbols.vueRefImportBindings.has(bindingOf(ui.callee)) || initial?.type !== "Literal" ||
+              !(initial.value === null || typeof initial.value === "string" && (literalNotice(current.right) || importedStringCall(unwrapValueExpression(current.right), environment) || previewObjectUrls.has(unwrapValueExpression(current.right))))) valid = false;
+        }
+      }
+      if (["UpdateExpression", "YieldExpression", "TaggedTemplateExpression", "NewExpression"].includes(current.type)) {
+        if (!finalizer && current.type === "UpdateExpression" && current.argument.type === "Identifier" && privateScalar(bindingOf(current.argument))) return;
+        if (current.type !== "NewExpression" || current.callee.type !== "Identifier" || current.callee.name !== "Error" || !unshadowedRuntimeGlobal(current.callee, new Set(["Error"]), symbols.scopeBindings) ||
+            current.arguments.length > 1 || current.arguments.some(argument => unwrapValueExpression(argument)?.type !== "Literal" || typeof unwrapValueExpression(argument).value !== "string")) valid = false;
+      }
+    });
+    return valid;
+  };
+  if (!safeCalls(definition, true)) return null;
+  if (attempt.handler && !safeCalls(attempt.handler.body)) return null;
+  if (attempt.finalizer && !safeCalls(attempt.finalizer, false, true)) return null;
+  // Cap state/aliases cannot be passed to an unknown callable or mutated deeply.
+  let escaped = false;
+  walkEstree(symbols.ast, node => {
+    if (node.type === "Identifier" && bindingOf(node) === rootBinding && symbols.scopeReferenceIdentifiers.has(node)) {
+      const parent = astAncestorChain(symbols.ast, node)?.at(-2);
+      const declaration = parent?.type === "VariableDeclarator" && parent.id === node && parent.init === rootDeclaration;
+      const valueAccess = parent?.type === "MemberExpression" && !parent.optional && !parent.computed && parent.object === node && member(parent) === "value";
+      // The mutable ref itself never enters a container, argument or return.
+      // Only its frozen value may participate in the proven capability chain.
+      if (!declaration && !valueAccess) escaped = true;
+    }
+    if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") {
+      const destination = path(node.left ?? node.argument);
+      if (destination?.startsWith(`${cap}.`)) escaped = true;
+    }
+    if (node.type !== "CallExpression" || node === target) return;
+    for (const argument of node.arguments ?? []) {
+      const value = path(argument);
+      if (value === identity(rootBinding) || (value && (value === cap || value.startsWith(`${cap}.`)) && !purePredicates.has(bindingOf(node.callee)) && !readonlyIntrinsicCall(node, new Map()))) escaped = true;
+    }
+  });
+  if (escaped) return null;
+  return { verified: true, kind: "frozen_server_grant", capabilityWitness: true, capabilitySources: new Set([sourceIdentity]) };
+}
+
 function proveBusinessActionPipeline({ action, wrapper, context }) {
   const handler = pipelineHandlerSource(action.trigger.handler, wrapper, context);
   if (!handler) return null;
@@ -14860,6 +16224,9 @@ function proveBusinessActionPipeline({ action, wrapper, context }) {
     context
   );
   if (targetCalls !== 1) return null;
+
+  const frozenGrantProof = frozenServerGrantPipelineProof({ action, wrapper, handler, context });
+  if (frozenGrantProof) return frozenGrantProof;
 
   const projectDefinitionProof = projectDefinitionPipelineProof({
     action,
@@ -18019,6 +19386,7 @@ export async function inspectWholeSitePageActionManifest({
       sources,
       asts,
       sourceFileSet,
+      wrapperIndex,
       serverReadImports: serverReadImportNames(
         symbols,
         wrapperIndex,

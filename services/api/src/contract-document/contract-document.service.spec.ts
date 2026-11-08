@@ -619,14 +619,14 @@ describe("ContractDocumentService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("refuses a tax-exclusive v2 draft preview before document, version or audit writes while its renderer has inclusive labels", async () => {
+  it("keeps an incomplete tax-exclusive v2 draft subject to the existing required basic facts before any document, version or audit writes", async () => {
     const tx = makeTx();
     const version = await tx.contractVersion.findUnique({ where: { id: "version-1" } });
     Object.assign(version, { numericProtocolVersion: 2, draftData: { ...version.draftData, contractBasics: { amountBasis: "tax_exclusive" } } });
     tx.contractVersion.findUnique.mockResolvedValue(version);
     const { service } = makeService(tx);
     await expect(service.queueDraftPreview("version-1", "owner-1", { sourceRevision: 7 }))
-      .rejects.toThrow("不含税草稿文书尚待模板口径核对");
+      .rejects.toThrow("生成前请补充：");
     expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();

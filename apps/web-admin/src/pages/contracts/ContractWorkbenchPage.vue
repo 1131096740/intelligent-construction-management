@@ -346,7 +346,23 @@
             当前状态（{{ contractVersionStatusLabel(workbench.version.status) }}）不可编辑，仅供查看。
           </p>
 
+          <ContractBodyEditor
+            v-if="workbench?.version.status === 'draft' && workbench.version.numericProtocolVersion === 2"
+            :contract-version-id="workbench.version.id"
+            :draft-revision="savedRevision"
+            :layout-template-version-id="workbench.version.layoutTemplateVersionId ?? null"
+            :edit-plan="model.extraDraftData.documentBody"
+            :disabled="editorDisabled"
+            :saving="saveState === 'saving'"
+            :review-disabled="isDirty || pendingSaveResult || checkingSaveResult || !online || bodyBlankReviewChecking"
+            :paper-disabled="isDirty || pendingSaveResult || checkingSaveResult || !online || saveState === 'saving' || bodyBlankReviewChecking"
+            :blank-review-receipt="bodyBlankReviewReceipt"
+            @review-blanks="requestBodyBlankReview"
+            @update="updateBodyPlan"
+            @save="saveNow"
+          />
           <ContractDocumentCanvas
+            v-else
             :contract-name="workbench?.contract.name ?? ''"
             :document-content-revision="workbench?.version.documentContentRevision ?? 0"
             :document-content-fingerprint="workbench?.version.documentContentFingerprint ?? null"
@@ -711,6 +727,76 @@
       </div>
     </t-dialog>
 
+    <t-dialog
+      v-model:visible="bodyBlankReviewVisible"
+      header="检查正文空位"
+      role="dialog"
+      aria-label="检查正文空位"
+      aria-modal="true"
+      :footer="false"
+      :close-on-overlay-click="false"
+    >
+      <p>
+        请核对以下附加空位；仍未填写的内容可按约定继续补充，确认后可继续办理。
+      </p>
+      <ul v-if="bodyBlankReviewRequest?.remaining.length">
+        <li
+          v-for="entry in bodyBlankReviewRequest.remaining"
+          :key="entry.positionId"
+        >
+          段落{{ entry.number }}：{{ entry.labels.join("、") }}
+        </li>
+      </ul>
+      <p v-else>
+        当前保存版本没有附加正文空位。
+      </p>
+      <t-alert
+        v-if="bodyBlankReviewError"
+        theme="error"
+        :message="bodyBlankReviewError"
+      />
+      <t-button
+        variant="outline"
+        :disabled="bodyBlankReviewChecking"
+        @click="cancelBodyBlankReview"
+      >
+        返回检查
+      </t-button>
+      <t-button
+        :loading="bodyBlankReviewChecking"
+        :disabled="!canConfirmBodyBlankReview"
+        @click="confirmBodyBlankReview"
+      >
+        已检查，继续
+      </t-button>
+    </t-dialog>
+
+    <t-dialog
+      v-model:visible="templateSwitchVisible"
+      header="更换模板"
+      role="dialog"
+      aria-label="更换模板"
+      aria-modal="true"
+      :footer="false"
+      :close-on-overlay-click="false"
+      @close="cancelTemplateSwitch"
+    >
+      <p>更换模板会重新生成正文，当前手工修改和新增条款将被覆盖。原正文会保留检查点。</p>
+      <p>取消会保留当前模板和正文；确认后请核对保存回执。</p>
+      <t-button
+        variant="outline"
+        @click="cancelTemplateSwitch"
+      >
+        取消
+      </t-button>
+      <t-button
+        :disabled="!canConfirmTemplateSwitch"
+        @click="confirmTemplateSwitch"
+      >
+        确认更换
+      </t-button>
+    </t-dialog>
+
     <SensitiveActionDialog
       v-model="submissionConfirmVisible"
       title="确认提交合同审批？"
@@ -874,11 +960,15 @@ import {
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
   executeContractBillRemainderCancellation,
+  fetchContractDraftBody,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftTransferCapabilities,
   listPublishedContractTemplates,
   previewContractTypeChange,
   transferContractDraft,
+  type ContractBodyAction,
+  type ContractBodyEditPlan,
+  type ContractBodyUpdateContext,
   type ContractDraftChangedSection,
   type ContractDraftLifecycleAction,
   type ContractDraftPartyModel,
@@ -1029,6 +1119,7 @@ import ContractBillTransitionsSection from "./workbench/ContractBillTransitionsS
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
+import ContractBodyEditor from "./workbench/ContractBodyEditor.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import {
   contractWorkbenchNavigationPrompt,
@@ -1086,6 +1177,34 @@ const submissionMessage = ref("");
 const submissionMessageTone = ref<"success" | "error">("success");
 const settlementModeConfirming = ref(false);
 const governanceMutationLocked = ref(false);
+type BodyBlankReviewContext = {
+  contractVersionId: string;
+  draftRevision: number;
+  documentContentRevision: number;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  planJson: string;
+  remaining: Array<{ positionId: string; number: number; labels: string[] }>;
+};
+
+const bodyBlankReviewRequest = ref<BodyBlankReviewContext | null>(null);
+const bodyBlankReviewReceipt = ref<BodyBlankReviewContext | null>(null);
+const bodyBlankReviewChecking = ref(false);
+const bodyBlankReviewError = ref("");
+const bodyBlankReviewVisible = computed({
+  get: () => bodyBlankReviewRequest.value !== null,
+  set: (visible: boolean) => { if (!visible && !bodyBlankReviewChecking.value) cancelBodyBlankReview(); }
+});
+const templateSwitchVisible = ref(false);
+const templateSwitchRequest = ref<{
+  contractVersionId: string;
+  draftRevision: number;
+  oldLayoutTemplateVersionId: string;
+  savedLayoutTemplateVersionId: string | null | undefined;
+  sourceSha256: unknown;
+  bodyJson: string | undefined;
+  requestedLayoutTemplateVersionId: string;
+} | null>(null);
 const focusedBillKey = ref("");
 const mobileWorkbenchPane = ref<"document" | "data">("data");
 const billFocusEditorRef = ref<InstanceType<typeof ContractBillFocusEditor> | null>(null);
@@ -1328,8 +1447,123 @@ function applyPatch(
   markDirty(section);
 }
 
+function bodyBlankReviewContextCurrent(context: BodyBlankReviewContext) {
+  return !editorDisabled.value && !isDirty.value && online.value && saveState.value !== "saving" &&
+    !pendingSaveResult.value && !checkingSaveResult.value &&
+    workbench.value?.contract.id === contractId.value && context.contractVersionId === workbench.value?.version.id &&
+    context.draftRevision === savedRevision.value && context.layoutTemplateVersionId === workbench.value?.version.layoutTemplateVersionId &&
+    context.layoutTemplateVersionId === model.layoutTemplateVersionId && context.planJson === JSON.stringify(model.extraDraftData.documentBody ?? null);
+}
+function requestBodyBlankReview(context: BodyBlankReviewContext) {
+  if (bodyBlankReviewChecking.value || !bodyBlankReviewContextCurrent(context)) return;
+  bodyBlankReviewError.value = "";
+  bodyBlankReviewRequest.value = { ...context, remaining: context.remaining.map(entry => ({ ...entry, labels: [...entry.labels] })) };
+}
+function cancelBodyBlankReview() {
+  if (bodyBlankReviewChecking.value) return;
+  bodyBlankReviewRequest.value = null;
+  bodyBlankReviewError.value = "";
+}
+const canConfirmBodyBlankReview = computed(() => Boolean(bodyBlankReviewRequest.value && !bodyBlankReviewChecking.value &&
+  bodyBlankReviewContextCurrent(bodyBlankReviewRequest.value)));
+async function confirmBodyBlankReview() {
+  const request = bodyBlankReviewRequest.value;
+  if (!request || !canConfirmBodyBlankReview.value) return;
+  bodyBlankReviewChecking.value = true;
+  bodyBlankReviewError.value = "";
+  try {
+    const current = await fetchContractDraftBody(request.contractVersionId);
+    if (request !== bodyBlankReviewRequest.value || !bodyBlankReviewContextCurrent(request)) return;
+    const remaining = current.blocks.flatMap((block, index) => block.editable && block.blankFields.length
+      ? [{ positionId: block.id, number: index + 1, labels: block.blankFields }] : []);
+    if (current.contractVersionId !== request.contractVersionId || current.draftRevision !== request.draftRevision ||
+      current.documentContentRevision !== request.documentContentRevision || current.layoutTemplateVersionId !== request.layoutTemplateVersionId ||
+      current.sourceSha256 !== request.sourceSha256 || JSON.stringify(remaining) !== JSON.stringify(request.remaining)) {
+      throw new Error("正文保存版本已变化，请保留当前内容，重新读取后检查。");
+    }
+    // Temporary current-revision review only. Task12 consumes it before its new submission flow.
+    bodyBlankReviewReceipt.value = { ...request, remaining: request.remaining.map(entry => ({ ...entry, labels: [...entry.labels] })) };
+    bodyBlankReviewRequest.value = null;
+  } catch (cause) {
+    if (request === bodyBlankReviewRequest.value) bodyBlankReviewError.value = formatUnknownApiError(cause, "正文空位检查失败，请保留当前内容后重试。");
+  } finally { bodyBlankReviewChecking.value = false; }
+}
+
 function updateLayoutTemplateVersion(value: string | null) {
+  if (editorDisabled.value || saveState.value === "saving" || pendingSaveResult.value || checkingSaveResult.value ||
+    value === model.layoutTemplateVersionId) return;
+  if (value && model.layoutTemplateVersionId && workbench.value) {
+    const body = model.extraDraftData.documentBody;
+    templateSwitchRequest.value = {
+      contractVersionId: workbench.value.version.id, draftRevision: savedRevision.value,
+      oldLayoutTemplateVersionId: model.layoutTemplateVersionId,
+      savedLayoutTemplateVersionId: workbench.value.version.layoutTemplateVersionId,
+      sourceSha256: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).sourceSha256 : undefined,
+      bodyJson: JSON.stringify(body), requestedLayoutTemplateVersionId: value
+    };
+    templateSwitchVisible.value = true;
+    return;
+  }
+  const action = model.extraDraftData.documentBodyAction as Partial<ContractBodyAction> | undefined;
+  if (value !== model.layoutTemplateVersionId && (action?.kind === "delete_saved_addition" || action?.kind === "regenerate")) {
+    const extraDraftData = { ...model.extraDraftData };
+    delete extraDraftData.documentBodyAction;
+    applyPatch({ layoutTemplateVersionId: value, extraDraftData });
+    return;
+  }
   applyPatch({ layoutTemplateVersionId: value });
+}
+
+const canConfirmTemplateSwitch = computed(() => {
+  const request = templateSwitchRequest.value, body = model.extraDraftData.documentBody;
+  const sourceSha256 = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).sourceSha256 : undefined;
+  return Boolean(request && !editorDisabled.value && saveState.value !== "saving" && !pendingSaveResult.value && !checkingSaveResult.value &&
+    request.contractVersionId === workbench.value?.version.id && request.draftRevision === savedRevision.value &&
+    request.draftRevision === workbench.value?.version.draftRevision &&
+    request.oldLayoutTemplateVersionId === model.layoutTemplateVersionId &&
+    request.savedLayoutTemplateVersionId === workbench.value?.version.layoutTemplateVersionId &&
+    request.sourceSha256 === sourceSha256 && request.bodyJson === JSON.stringify(body));
+});
+
+function cancelTemplateSwitch() {
+  templateSwitchVisible.value = false;
+  templateSwitchRequest.value = null;
+}
+
+function confirmTemplateSwitch() {
+  const request = templateSwitchRequest.value;
+  if (!request || !canConfirmTemplateSwitch.value) return;
+  const extraDraftData = { ...model.extraDraftData };
+  delete extraDraftData.documentBody;
+  extraDraftData.documentBodyAction = { kind: "regenerate", confirmOverwrite: true };
+  applyPatch({ layoutTemplateVersionId: request.requestedLayoutTemplateVersionId, extraDraftData });
+  cancelTemplateSwitch();
+  void saveNow();
+}
+
+function updateBodyPlan(documentBody: ContractBodyEditPlan, command?: ContractBodyUpdateContext) {
+  if (editorDisabled.value) return;
+  const previousBody = model.extraDraftData.documentBody;
+  const previous = previousBody && typeof previousBody === "object" && !Array.isArray(previousBody) ? previousBody as Record<string, unknown> : null;
+  if (command && (
+    command.contractVersionId !== workbench.value?.version.id || command.draftRevision !== savedRevision.value ||
+    command.layoutTemplateVersionId !== workbench.value?.version.layoutTemplateVersionId || command.layoutTemplateVersionId !== model.layoutTemplateVersionId ||
+    command.layoutTemplateVersionId !== documentBody.layoutTemplateVersionId || command.sourceSha256 !== documentBody.sourceSha256 ||
+    ((command.action.kind === "delete_saved_addition" || previousBody !== undefined) &&
+      (previous?.layoutTemplateVersionId !== command.layoutTemplateVersionId || previous?.sourceSha256 !== command.sourceSha256))
+  )) return;
+  const extraDraftData: Record<string, unknown> = { ...model.extraDraftData, documentBody };
+  const action = extraDraftData.documentBodyAction as Partial<ContractBodyAction> | undefined;
+  if (action?.kind === "delete_saved_addition" && (
+    [documentBody.edits, documentBody.additions, documentBody.deletedPositionIds, documentBody.paragraphOrder].some(items => Array.isArray(items) && items.length > 0) ||
+    documentBody.layoutTemplateVersionId !== model.layoutTemplateVersionId || previous?.layoutTemplateVersionId !== documentBody.layoutTemplateVersionId ||
+    previous?.sourceSha256 !== documentBody.sourceSha256
+  )) delete extraDraftData.documentBodyAction;
+  if (action?.kind === "regenerate" && (JSON.stringify(previousBody) !== JSON.stringify(documentBody) ||
+    documentBody.layoutTemplateVersionId !== model.layoutTemplateVersionId)) delete extraDraftData.documentBodyAction;
+  if (command) extraDraftData.documentBodyAction = { ...command.action };
+  applyPatch({ extraDraftData });
+  if (command?.action.kind === "regenerate") void saveNow();
 }
 
 const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
@@ -1426,6 +1660,13 @@ const writeLocked = computed(() =>
   (editable.value && !canEdit.value)
 );
 const editorDisabled = computed(() => !editable.value || !canEdit.value || governanceMutationLocked.value || submissionBusy.value);
+
+watch(() => [contractId.value, workbench.value?.version.id, workbench.value?.version.layoutTemplateVersionId,
+  savedRevision.value, model.layoutTemplateVersionId, isDirty.value, JSON.stringify(model.extraDraftData.documentBody ?? null)] as const, () => {
+  bodyBlankReviewReceipt.value = null;
+  if (bodyBlankReviewRequest.value && !bodyBlankReviewContextCurrent(bodyBlankReviewRequest.value)) bodyBlankReviewRequest.value = null;
+});
+
 const leaseCanTakeOver = computed(() =>
   "canTakeOver" in lease.value && lease.value.canTakeOver
 );
@@ -3211,6 +3452,7 @@ function stringMessages(value: unknown) {
 
 @container jg-page (max-width: 620px) {
   .status-bar {
+    position: static;
     align-items: flex-start;
     flex-direction: column;
     justify-content: flex-start;

@@ -9601,3 +9601,1208 @@ test("rendering and write/check are deterministic while require-ready rejects bl
     (error) => error?.code === "PAGE_ACTION_MANIFEST_BLOCKED"
   );
 });
+
+
+async function frozenServerGrantFixture(change = source => source, options = {}) {
+  return fixture({
+    extraFiles: options.extraFiles ?? {},
+    webManifestOverrides: options.webManifestOverrides ?? {},
+    actions: [registryAction({ capability: { kind: "available_action_string", source: "generationGrant.value.actions", key: "submit_approval" } })],
+    page: change(`<script setup lang="ts">
+import { ref } from "vue";
+import { getExample, submitExample } from "../api/example.api";
+const generationGrant = ref(null);
+const reader = ref(Object.freeze({ ownerKey: 'owner', generation: 1, context: Object.freeze({ contractVersionId: 'version', draftRevision: 1 }) }));
+const busy = ref(false);
+function permits(owner, grant) {
+  return Boolean(grant && grant.ownerKey === owner.ownerKey && grant.readGeneration === owner.generation &&
+    grant.sourceRevision === owner.context.draftRevision && grant.actions.includes("submit_approval"));
+}
+async function refresh(owner) {
+  const current = await getExample(owner.context.contractVersionId);
+  if (current.version.id !== owner.context.contractVersionId || current.version.draftRevision !== owner.context.draftRevision) throw new Error("changed");
+  generationGrant.value = Object.freeze({ ownerKey: owner.ownerKey, readGeneration: owner.generation,
+    sourceRevision: current.version.draftRevision, fingerprint: current.version.documentContentFingerprint,
+    actions: Object.freeze([...current.draftOperationAvailableActions]) });
+}
+async function submit() {
+  const owner = reader.value;
+  if (!owner) return;
+  busy.value = true;
+  try {
+    await refresh(owner);
+    const granted = generationGrant.value;
+    if (!permits(owner, granted)) return;
+    await submitExample(owner.context.contractVersionId, granted.sourceRevision);
+  } catch (error) {
+    await getExample(owner.context.contractVersionId);
+  } finally {
+    busy.value = false;
+  }
+}
+</script>
+<template><t-button @click="submit">提交审批</t-button></template>`)
+  });
+}
+
+test("accepts a frozen server grant with a bound pure predicate and read-only recovery", async () => {
+  const root = await frozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+test("frozen server grant rejects a reassigned local alias even when cleared", async () => {
+  const root = await frozenServerGrantFixture(source => source
+    .replace("const granted = generationGrant.value;", "let granted = generationGrant.value;")
+    .replace("await submitExample(owner.context.contractVersionId, granted.sourceRevision);", "granted = null; await submitExample(owner.context.contractVersionId, granted.sourceRevision);"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("frozen server grant accepts renamed helpers through lexical bindings", async () => {
+  const root = await frozenServerGrantFixture(source => source.replaceAll("permits", "checkedProjection").replaceAll("refresh", "readProjection"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+for (const [label, change] of [
+  ["forged action collection", source => source.replace("Object.freeze([...current.draftOperationAvailableActions])", 'Object.freeze(["submit_approval"])')],
+  ["mutable inner action collection", source => source.replace("Object.freeze([...current.draftOperationAvailableActions])", "[...current.draftOperationAvailableActions]")],
+  ["forged owner", source => source.replace("ownerKey: owner.ownerKey", 'ownerKey: "forged-owner"')],
+  ["foreign read coordinate", source => source.replace("getExample(owner.context.contractVersionId)", 'getExample("foreign-version")')],
+  ["missing read identity guard", source => source.replace("current.version.id !== owner.context.contractVersionId", "false")],
+  ["missing action includes", source => source.replace('grant.actions.includes("submit_approval")', "true")],
+  ["reversed action includes", source => source.replace('grant.actions.includes("submit_approval")', '!grant.actions.includes("submit_approval")')],
+  ["action includes bypass", source => source.replace('grant.actions.includes("submit_approval")', '(grant.actions.includes("submit_approval") || true)')],
+  ["same-name Boolean shadow", source => source.replace("const generationGrant", "const Boolean = value => value;\nconst generationGrant")],
+  ["same-name Object shadow", source => source.replace("const generationGrant", "const Object = { freeze: value => value };\nconst generationGrant")],
+  ["same-name predicate shadow", source => source.replace("async function submit() {", "async function submit() { const permits = () => true;")],
+  ["local fake GET-like helper", source => source.replace("import { getExample, submitExample }", "import { submitExample }").replace("const generationGrant", 'async function getExample() { return { version: {}, draftOperationAvailableActions: ["submit_approval"] }; }\nconst generationGrant')],
+  ["action alias escape", source => source.replace("async function submit() {", "function leak(value) { return value; }\nasync function submit() {").replace("await submitExample(owner.context.contractVersionId, granted.sourceRevision);", "leak(granted.actions); await submitExample(owner.context.contractVersionId, granted.sourceRevision);")],
+  ["deep action mutation", source => source.replace("await submitExample(owner.context.contractVersionId, granted.sourceRevision);", 'granted.actions.push("forged"); await submitExample(owner.context.contractVersionId, granted.sourceRevision);')],
+  ["catch direct resend", source => source.replace("} catch (error) {\n    await getExample(owner.context.contractVersionId);", "} catch (error) {\n    await submitExample(owner.context.contractVersionId, 1);")],
+  ["catch hidden helper resend", source => source.replace("async function submit() {", "async function recover(owner) { await submitExample(owner.context.contractVersionId, 1); }\nasync function submit() {").replace("} catch (error) {\n    await getExample(owner.context.contractVersionId);", "} catch (error) {\n    await recover(owner);")],
+  ["finally hidden helper resend", source => source.replace("async function submit() {", "async function cleanup() { await submitExample('foreign', 1); }\nasync function submit() {").replace("busy.value = false;", "void cleanup(); busy.value = false;")],
+  ["finally forged owner write", source => source.replace("busy.value = false;", 'reader.value = { ownerKey: "forged" }; busy.value = false;')],
+  ["unbound revision", source => source.replace("sourceRevision: current.version.draftRevision", "sourceRevision: 999")]
+]) {
+  test(`frozen server grant rejects ${label}`, async () => {
+    const root = await frozenServerGrantFixture(source => {
+      const changed = change(source);
+      assert.notEqual(changed, source, "the negative fixture must actually alter the public input");
+      return changed;
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+    assert.equal(manifest.actions[0].bindings[0].causalVerified, false, label);
+  });
+}
+
+test("frozen server grant rejects a snapshot guarded before its fresh read", async () => {
+  const root = await frozenServerGrantFixture(source => source
+    .replace("await refresh(owner);\n    const granted = generationGrant.value;", "const granted = generationGrant.value;")
+    .replace("if (!permits(owner, granted)) return;", "if (!permits(owner, granted)) return; await refresh(owner);"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, change] of [
+  ["raw capability ref escape through a GET argument", source => source.replace("const reader = ref(Object.freeze({ ownerKey: 'owner', generation: 1, context: Object.freeze({ contractVersionId: 'version', draftRevision: 1 }) }));", "void getExample(generationGrant);\nconst reader = ref(Object.freeze({ ownerKey: 'owner', generation: 1, context: Object.freeze({ contractVersionId: 'version', draftRevision: 1 }) }));")],
+  ["finally clearing the bound owner", source => source.replace("busy.value = false;", "reader.value = null; busy.value = false;")]
+]) {
+  test(`frozen server grant rejects ${label}`, async () => {
+    const root = await frozenServerGrantFixture(source => {
+      const changed = change(source); assert.notEqual(changed, source, label); return changed;
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+    assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+  });
+}
+
+test("frozen server grant rejects a GET hidden inside a purported pure predicate", async () => {
+  const root = await frozenServerGrantFixture(source => source
+    .replace("function permits(owner, grant) {", "function leak(value) { return getExample(value); }\nfunction permits(owner, grant) {")
+    .replace('grant.actions.includes("submit_approval"));', 'grant.actions.includes("submit_approval") && Boolean(leak(grant)));'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+async function projectedFrozenServerGrantFixture(change = source => source) {
+  const root = await frozenServerGrantFixture();
+  const pagePath = "apps/web-admin/src/pages/ExamplePage.vue";
+  let source = await readFile(join(root, pagePath), "utf8");
+  const start = source.indexOf("async function refresh(owner) {");
+  const end = source.indexOf("\nasync function submit() {", start);
+  assert.ok(start > 0 && end > start);
+  source = source.slice(0, start) + `async function readState(owner) {
+  const current = await getExample(owner.context.contractVersionId);
+  if (current.version.id !== owner.context.contractVersionId || current.version.draftRevision !== owner.context.draftRevision) throw new Error("changed");
+  return Object.freeze({ fingerprint: current.version.documentContentFingerprint,
+    actions: Object.freeze([...current.draftOperationAvailableActions]) });
+}
+async function refresh(owner, state) {
+  const body = await getBody(owner.context.contractVersionId);
+  if (body.contractVersionId !== owner.context.contractVersionId || body.draftRevision !== owner.context.draftRevision) throw new Error("changed source");
+  generationGrant.value = Object.freeze({ ownerKey: owner.ownerKey, readGeneration: owner.generation,
+    sourceRevision: body.draftRevision, fingerprint: state.fingerprint, actions: Object.freeze([...state.actions]) });
+}` + source.slice(end);
+  source = source.replace("import { getExample, submitExample }", "import { getExample, getBody, submitExample }")
+    .replace("await refresh(owner);", "const state = await readState(owner); await refresh(owner, state);");
+  await write(root, pagePath, change(source));
+  const webPath = "docs/product/manifests/web-api-wrappers.json";
+  const web = JSON.parse(await readFile(join(root, webPath), "utf8"));
+  web.wrappers.push(wrapper({ name: "getBody", normalizedKey: "GET /examples/:param/body", returnProvenance: "transparent_main_response" }));
+  await write(root, webPath, JSON.stringify(web, null, 2));
+  const nestPath = "docs/product/manifests/nest-business-routes.json";
+  const nest = JSON.parse(await readFile(join(root, nestPath), "utf8"));
+  nest.routes.push(route("GET /examples/:param/body"));
+  await write(root, nestPath, JSON.stringify(nest, null, 2));
+  const apiPath = "apps/web-admin/src/api/example.api.ts";
+  await write(root, apiPath, (await readFile(join(root, apiPath), "utf8")) + "\nexport async function getBody() { return {}; }\n");
+  return root;
+}
+
+test("accepts a projected frozen server grant from bound state and body GETs", async () => {
+  const root = await projectedFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+test("frozen server grant rejects a refresh mismatch that merely returns with old state", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace('throw new Error("changed");', "return;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, change] of [
+  ["literal state actions", source => source.replace("Object.freeze([...current.draftOperationAvailableActions])", 'Object.freeze(["submit_approval"])')],
+  ["state with a mutable inner array", source => source.replace("Object.freeze([...current.draftOperationAvailableActions])", "[...current.draftOperationAvailableActions]")],
+  ["a foreign body read", source => source.replace("getBody(owner.context.contractVersionId)", 'getBody("foreign-version")')],
+  ["a body mismatch that only returns", source => source.replace('throw new Error("changed source");', "return;")],
+  ["a forged fingerprint", source => source.replace("fingerprint: state.fingerprint", 'fingerprint: "forged"')],
+  ["a forged projected argument", source => source.replace("refresh(owner, state);", 'refresh(owner, Object.freeze({ fingerprint: "forged", actions: Object.freeze(["submit_approval"]) }));')],
+  ["cached state captured outside the handler", source => source
+    .replace("async function submit() {", "const state = await readState(reader.value);\nasync function submit() {")
+    .replace("const state = await readState(owner); await refresh(owner, state);", "await refresh(owner, state);")],
+  ["a cached raw GET used by the projection", source => source
+    .replace("async function readState(owner) {\n  const current = await getExample(owner.context.contractVersionId);", "const current = await getExample(reader.value.context.contractVersionId);\nasync function readState(owner) {")],
+  ["an escaped writer alias called with a fake state", source => source.replace("async function submit() {", 'const borrowed = refresh; void borrowed(reader.value, Object.freeze({ fingerprint: "forged", actions: Object.freeze(["submit_approval"]) }));\nasync function submit() {')]
+]) {
+  test(`projected frozen server grant rejects ${label}`, async () => {
+    const root = await projectedFrozenServerGrantFixture(source => {
+      const changed = change(source);
+      assert.notEqual(changed, source);
+      return changed;
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+    assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+  });
+}
+
+async function actualPaperActionFixture(operation, change = source => source, bodyApiSource = null) {
+  const pagePath = "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue";
+  const source = await readFile(new URL("../" + pagePath, import.meta.url), "utf8");
+  const apiFile = "apps/web-admin/src/api/contract-workbench.api.ts";
+  const filesApi = "apps/web-admin/src/api/core-flow-read.api.ts";
+  const reads = [
+    [apiFile, "fetchContractDraftWorkbench", "GET /contract-drafts/:param/workbench"],
+    [apiFile, "fetchContractDraftBody", "GET /contract-drafts/:param/document-body"],
+    [apiFile, "listContractDocuments", "GET /contract-workbench/:param/documents"],
+    [filesApi, "getPrivateFileDownloadTicketCapability", "GET /files/:param/download-ticket-capability"]
+  ];
+  const target = operation === "generation"
+    ? [apiFile, "queueContractDraftPreview", "POST /contract-drafts/:param/preview-generation", "generateCurrentDraft", "generationGrant.value.actions", "queue_contract_draft_preview"]
+    : [filesApi, "downloadPrivateFileByTicket", "POST /files/:param/download-ticket", "confirmPreview", "previewGrant.value.serverAvailableActions", "create_private_file_download_ticket"];
+  const [targetApi, name, normalizedKey, handler, capabilitySource, key] = target;
+  return fixture({
+    pagePath, page: change(source),
+    // The default five fixture modules plus two API files, formatter, auth and
+    // lazy PDF view total ten; the default example API and retained formatter
+    // fixture are unreachable after the real paper catch uses fixed fallbacks.
+    webManifestOverrides: { evidence: { productionModuleCount: 10, reachableProductionModuleCount: 8 } },
+    routeRecords: 'export const webAdminRoutes = [{ path: "/example", component: () => import("../pages/contracts/workbench/ContractBodyPaperPreview.vue") }];\n',
+    actions: [registryAction({ id: "example.paper-" + operation, sourceFile: pagePath,
+      trigger: { element: "t-button", event: "click", handler },
+      capability: { kind: "available_action_string", source: capabilitySource, key },
+      wrappers: [{ apiFile: targetApi, name }] })],
+    wrappers: [
+      ...reads.map(([apiFile, name, normalizedKey]) => wrapper({ apiFile, name, normalizedKey, productionConsumers: [pagePath], returnProvenance: name === "fetchContractDraftBody" && bodyApiSource ? "unverified" : "transparent_main_response" })),
+      wrapper({ apiFile: targetApi, name, normalizedKey, productionConsumers: [pagePath] })
+    ],
+    routes: [...reads.map(([, , normalizedKey]) => route(normalizedKey)), route(normalizedKey)],
+    extraFiles: {
+      [apiFile]: bodyApiSource ?? "export async function fetchContractDraftWorkbench() { return {}; }\nexport async function fetchContractDraftBody() { return {}; }\nexport async function listContractDocuments() { return []; }\nexport async function queueContractDraftPreview() { return {}; }\n",
+      [filesApi]: "export async function getPrivateFileDownloadTicketCapability() { return {}; }\nexport async function downloadPrivateFileByTicket() { return {}; }\n",
+      "apps/web-admin/src/api/error-message.ts": await readFile(new URL("../apps/web-admin/src/api/error-message.ts", import.meta.url), "utf8"),
+      "apps/web-admin/src/auth/auth.store.ts": "export function useAuthStore() { return { user: null }; }\n",
+      "apps/web-admin/src/components/files/LayoutPdfPreview.vue": "<template><div /></template>"
+    }
+  });
+}
+
+test("recognizes the actual paper generation handler through the public generator", async () => {
+  const root = await actualPaperActionFixture("generation");
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+async function typedFrozenServerGrantFixture(change = source => source) {
+  return projectedFrozenServerGrantFixture(source => change(source
+    .replace("return Object.freeze({ fingerprint: current.version.documentContentFingerprint,", "const actions = current.draftOperationAvailableActions;\n  return Object.freeze({ fingerprint: current.version.documentContentFingerprint,")
+    .replace("actions: Object.freeze([...current.draftOperationAvailableActions])", 'actions: Object.freeze(Array.isArray(actions) && actions.every(action => typeof action === "string") ? [...actions] : [])')));
+}
+
+test("accepts a typed frozen server grant array copied with an empty fail-closed fallback", async () => {
+  const root = await typedFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, change] of [
+  ["a positive fallback", source => source.replace("? [...actions] : []", '? [...actions] : ["submit_approval"]')],
+  ["an async type predicate", source => source.replace("actions.every(action =>", "actions.every(async action =>")],
+  ["a predicate over a different lexical binding", source => source.replace('action => typeof action === "string"', 'other => typeof actions === "string"')],
+  ["a different copied array", source => source.replace("? [...actions] : []", "? [...current.otherActions] : []")],
+  ["a shadowed Array intrinsic", source => source.replace("const generationGrant", "const Array = { isArray: () => true };\nconst generationGrant")],
+  ["a type predicate hiding a POST", source => source.replace('action => typeof action === "string"', 'action => (submitExample(owner.context.contractVersionId, 1), typeof action === "string")')],
+  ["a permissive some check", source => source.replace("actions.every(", "actions.some(")]
+]) {
+  test(`typed frozen server grant rejects ${label}`, async () => {
+    const root = await typedFrozenServerGrantFixture(source => {
+      const changed = change(source); assert.notEqual(changed, source); return changed;
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+    assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+  });
+}
+
+async function separatelyBoundRecoveryFixture(change = source => source) {
+  return typedFrozenServerGrantFixture(source => change(source
+    .replace("async function submit() {", "async function restore(owner, state) { await refresh(owner, state); }\nasync function submit() {")
+    .replace("} catch (error) {\n    await getExample(owner.context.contractVersionId);", "} catch (error) {\n    const recovered = await readState(owner); await restore(owner, recovered);")));
+}
+
+test("accepts a projected frozen server grant with a separately bound read-only recovery caller", async () => {
+  const root = await separatelyBoundRecoveryFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, change] of [
+  ["an unknown module-level writer call", source => source.replace("async function submit() {", 'void refresh(reader.value, Object.freeze({ fingerprint: "forged", actions: Object.freeze(["submit_approval"]) }));\nasync function submit() {')],
+  ["a forged recovery state", source => source.replace("const recovered = await readState(owner);", 'const recovered = Object.freeze({ fingerprint: "forged", actions: Object.freeze(["submit_approval"]) });')],
+  ["a recovery state read for a different owner", source => source.replace("const recovered = await readState(owner);", "const recovered = await readState(reader.value.otherOwner);")],
+  ["an escaping forwarding helper", source => source.replace("async function submit() {", "const borrowed = restore; void borrowed;\nasync function submit() {")],
+  ["mutation in the forwarding helper", source => source.replace("async function restore(owner, state) {", 'async function restore(owner, state) { state.actions.push("forged");')]
+]) {
+  test(`projected frozen server grant rejects ${label}`, async () => {
+    const root = await separatelyBoundRecoveryFixture(source => {
+      const changed = change(source); assert.notEqual(changed, source); return changed;
+    });
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+    assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+  });
+}
+
+
+test("frozen server grant accepts the paper handler's disjunctive fail-closed guard", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("if (!permits(owner, granted)) return;", "if (!permits(owner, granted) || !granted || !owner) return;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, guard] of [
+  ["AND failures", "!permits(owner, granted) && !granted"],
+  ["reversed predicate", "permits(owner, granted) || !granted"],
+  ["bypassed predicate", "(!permits(owner, granted) && false) || !granted"],
+  ["hidden read", "!permits(owner, granted) || getExample(granted)"],
+  ["hidden resend", "!permits(owner, granted) || submitExample(owner.context.contractVersionId, granted.sourceRevision)"]
+]) test(`frozen server grant rejects disjunctive guard ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("if (!permits(owner, granted)) return;", `if (${guard}) return;`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+async function getterFrozenServerGrantFixture(change = source => source) {
+  return frozenServerGrantFixture(source => change(source.replace("function permits(owner, grant) {", `const HASH = /^[a-f0-9]{64}$/u;
+const props = Object.freeze({ blocked: false, context: Object.freeze({ contractVersionId: "version" }) });
+function ownerKey() {
+  const actor = "actor", contract = "contract", version = props.context.contractVersionId;
+  if (!actor || typeof contract !== "string" || !contract) return "";
+  return JSON.stringify([actor, contract, version]);
+}
+function isCurrent(value) {
+  return !props.blocked && value.ownerKey === ownerKey();
+}
+function permits(owner, grant) {`).replace("return Boolean(grant &&", "return Boolean(isCurrent(owner) && grant &&").replace('grant.actions.includes("submit_approval")', 'HASH.test(grant.fingerprint) && grant.actions.includes("submit_approval")')));
+}
+
+test("frozen server grant accepts the paper predicate's lexical read-only getter and const regexp", async () => {
+  const root = await getterFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, change] of [
+  ["global regexp flag", source => source.replace("{64}$/u", "{64}$/gu")],
+  ["sticky regexp flag", source => source.replace("{64}$/u", "{64}$/yu")],
+  ["forged test method", source => source.replace("/^[a-f0-9]{64}$/u", "{ test() { submitExample(); return true; } }")],
+  ["dynamic regexp", source => source.replace("/^[a-f0-9]{64}$/u", 'new RegExp("hash")')],
+  ["mutable regexp binding", source => source.replace("const HASH =", "let HASH =")],
+  ["regexp reassignment", source => source.replace("function ownerKey() {", "HASH = /^[a-z]+$/u; function ownerKey() {")],
+  ["regexp method replacement", source => source.replace("function ownerKey() {", "HASH.test = () => true; function ownerKey() {")],
+  ["regexp escape", source => source.replace("function ownerKey() {", "getExample(HASH); function ownerKey() {")],
+  ["JSON shadow", source => source.replace("function ownerKey() {", "const JSON = { stringify() { submitExample(); return ''; } }; function ownerKey() {")],
+  ["getter hidden resend", source => source.replace('return JSON.stringify(', 'submitExample(); return JSON.stringify(')],
+  ["getter mutation", source => source.replace('return JSON.stringify(', 'reader.value = null; return JSON.stringify(')],
+  ["mutable getter local", source => source.replace('const actor =', 'let actor =')],
+  ["implicit toJSON resend", source => source.replace('const actor = "actor"', 'const actor = { toJSON() { submitExample(); return "actor"; } }')]
+]) test(`frozen server grant rejects paper pure getter ${label}`, async () => {
+  const root = await getterFrozenServerGrantFixture(source => {
+    const changed = change(source); assert.notEqual(changed, source, label); return changed;
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+async function pollingFrozenServerGrantFixture(change = source => source) {
+  return frozenServerGrantFixture(source => change(source.replace("function permits(owner, grant) {", `let pollTimer = null;
+function stopPolling() {
+  if (pollTimer !== null) clearTimeout(pollTimer);
+  pollTimer = null;
+}
+function scheduleQuery(owner) {
+  stopPolling();
+  pollTimer = setTimeout(() => {
+    pollTimer = null;
+    void getExample(owner.context.contractVersionId);
+  }, 1000);
+}
+function permits(owner, grant) {`).replace("busy.value = true;", "stopPolling(); busy.value = true;").replace("} catch (error) {", "} catch (error) { scheduleQuery(owner);")));
+}
+
+test("frozen server grant accepts private polling cleanup and a read-only timer callback", async () => {
+  const root = await pollingFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, change] of [
+  ["callback resend", source => source.replace("void getExample(owner.context.contractVersionId);", "void submitExample(owner.context.contractVersionId, 1);")],
+  ["callback hidden helper resend", source => source.replace("function stopPolling() {", "function hidden() { submitExample(); } function stopPolling() {").replace("void getExample(owner.context.contractVersionId);", "hidden();")],
+  ["async callback", source => source.replace("setTimeout(() =>", "setTimeout(async () =>")],
+  ["handle escape", source => source.replace("function permits(owner, grant) {", "getExample(pollTimer); function permits(owner, grant) {")],
+  ["handle alias", source => source.replace("function permits(owner, grant) {", "const leaked = pollTimer; function permits(owner, grant) {")],
+  ["setTimeout shadow", source => source.replace("let pollTimer = null;", "const setTimeout = () => { submitExample(); return null; }; let pollTimer = null;")],
+  ["clearTimeout shadow", source => source.replace("let pollTimer = null;", "const clearTimeout = () => submitExample(); let pollTimer = null;")],
+  ["dynamic callback", source => source.replace("setTimeout(() => {", "setTimeout(makeCallback(), () => {")],
+  ["finally timer scheduling", source => source.replace("} finally {", "} finally { scheduleQuery(owner);")]
+]) test(`frozen server grant rejects private polling ${label}`, async () => {
+  const root = await pollingFrozenServerGrantFixture(change);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+async function uiStateFrozenServerGrantFixture(change = source => source) {
+  return frozenServerGrantFixture(source => change(source.replace("function permits(owner, grant) {", `let automaticQueries = 0;
+const pending = ref(null);
+function permits(owner, grant) {`).replace("busy.value = true;", "automaticQueries = 0; busy.value = true;").replace("} catch (error) {", `} catch (error) {
+    automaticQueries += 1;
+    const current = await getExample(owner.context.contractVersionId);
+    pending.value = Object.freeze({ count: automaticQueries, data: current });`)));
+}
+
+test("frozen server grant accepts component-private scalar bookkeeping and frozen UI data", async () => {
+  const root = await uiStateFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, change] of [
+  ["state hidden resend", source => source.replace("data: current", "data: submitExample()")],
+  ["scalar hidden coercion", source => source.replace("automaticQueries += 1;", "automaticQueries += { valueOf() { submitExample(); return 1; } };")],
+  ["deep state mutation", source => source.replace("pending.value = Object.freeze", "reader.value.generation = 2; pending.value = Object.freeze")],
+  ["fake UI ref", source => source.replace("const pending = ref(null);", "const pending = { set value(v) { submitExample(); } };")],
+  ["finally data replacement", source => source.replace("} finally {", "} finally { pending.value = Object.freeze({});")],
+  ["finally scalar mutation", source => source.replace("} finally {", "} finally { automaticQueries += 1;")]
+]) test(`frozen server grant rejects UI state ${label}`, async () => {
+  const root = await uiStateFrozenServerGrantFixture(change);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant accepts static regexp and array probes in its read-only recovery", async () => {
+  const root = await getterFrozenServerGrantFixture(source => source.replace("} catch (error) {", "} catch (error) { if (HASH.test('abc') && Array.isArray([])) busy.value = false;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant rejects a shadowed array type probe in recovery", async () => {
+  const root = await getterFrozenServerGrantFixture(source => source.replace("} catch (error) {", "} catch (error) { const Array = { isArray() { submitExample(); return true; } }; if (Array.isArray([])) busy.value = false;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+async function collectionFrozenServerGrantFixture(change = source => source) {
+  return frozenServerGrantFixture(source => change(source.replace("function permits(owner, grant) {", `const isRecord = value => Boolean(value && typeof value === "object" && !Array.isArray(value));
+function matching(state) { return state.documents.filter(item => isRecord(item) && item.status === "success"); }
+function permits(owner, grant) {`).replace("} catch (error) {", `} catch (error) {
+    const current = await getExample(owner.context.contractVersionId);
+    const state = Object.freeze({ documents: current.documents });
+    const records = matching(state);
+    if (records.some(item => item.id === "x") || records.find(item => item.status === "success")) busy.value = false;`)));
+}
+
+test("frozen server grant accepts read-derived matching collections with pure inline callbacks", async () => {
+  const root = await collectionFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, change] of [
+  ["callback resend", source => source.replace('item.id === "x"', 'submitExample()')],
+  ["callback hidden read", source => source.replace('item.id === "x"', 'getExample(item)')],
+  ["callback hidden helper resend", source => source.replace("function matching(state)", "function hidden() { submitExample(); return true; } function matching(state)").replace('item.id === "x"', 'hidden()')],
+  ["callback parameter mutation", source => source.replace('item.id === "x"', '(item.id = "x")')],
+  ["async callback", source => source.replace("records.some(item =>", "records.some(async item =>")],
+  ["aliased callback", source => source.replace('const records = matching(state);', 'const predicate = item => true; const records = matching(state);').replace('records.some(item => item.id === "x")', 'records.some(predicate)')],
+  ["forged receiver", source => source.replace('const records = matching(state);', 'const records = { some() { submitExample(); return true; }, find() { return null; } };')],
+  ["mutated read receiver", source => source.replace('const state = Object.freeze', 'current.documents.filter = () => submitExample(); const state = Object.freeze')]
+]) test(`frozen server grant rejects read collection ${label}`, async () => {
+  const root = await collectionFrozenServerGrantFixture(change);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant accepts includes on a read-derived collection or literal strings", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', 'if (current.actions.includes("view") && ["queued", "success"].includes(current.status)) busy.value = false; const records = matching(state);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant rejects a forged read-like includes receiver", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', 'const forged = { includes() { submitExample(); return true; } }; if (forged.includes("view")) busy.value = false; const records = matching(state);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant accepts a private ref's unique frozen read-array projection for display recovery", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("const busy = ref(false);", "const busy = ref(false); const display = ref(null);").replace("} catch (error) {", `} catch (error) {
+    const result = await getExample(owner.context.contractVersionId);
+    display.value = Object.freeze({ actions: Object.freeze([...result.availableActions]) });
+    if (display.value.actions.includes("view")) busy.value = false;`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, change] of [
+  ["forged frozen display array", source => source.replace("[...result.availableActions]", '["view"]')],
+  ["mutable display array", source => source.replace("Object.freeze([...result.availableActions])", "[...result.availableActions]")],
+  ["display array mutation", source => source.replace('if (display.value.actions.includes', 'display.value.actions.push("view"); if (display.value.actions.includes')],
+  ["display getter", source => source.replace("actions: Object.freeze", "get actions() { submitExample(); return []; }, unrelated: Object.freeze")]
+]) test(`frozen server grant rejects display recovery ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => change(source.replace("const busy = ref(false);", "const busy = ref(false); const display = ref(null);").replace("} catch (error) {", `} catch (error) {
+    const result = await getExample(owner.context.contractVersionId);
+    display.value = Object.freeze({ actions: Object.freeze([...result.availableActions]) });
+    if (display.value.actions.includes("view")) busy.value = false;`)));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant accepts literal-only conditional UI notices", async () => {
+  const root = await uiStateFrozenServerGrantFixture(source => source.replace("const pending = ref(null);", 'const pending = ref(null); const notice = ref("");').replace("automaticQueries += 1;", 'automaticQueries += 1; notice.value = automaticQueries > 1 ? "处理中" : "待确认";'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, expression] of [["effectful condition", 'submitExample() ? "处理中" : "待确认"'], ["effectful branch", 'automaticQueries > 1 ? submitExample() : "待确认"']]) test(`frozen server grant rejects conditional notice ${label}`, async () => {
+  const root = await uiStateFrozenServerGrantFixture(source => source.replace("const pending = ref(null);", 'const pending = ref(null); const notice = ref("");').replace("automaticQueries += 1;", `automaticQueries += 1; notice.value = ${expression};`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant accepts String conversion only for read-derived matching data", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', 'const records = matching(state); const target = records.find(item => item.status === "success"); const text = String(target.id);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, statement] of [
+  ["forged coercion", 'const target = { id: { toString() { submitExample(); return "x"; } } }; String(target.id);'],
+  ["shadowed String", 'const String = value => { submitExample(); return value; }; String(current.id);'],
+  ["effectful lookup", 'const target = records.find(item => submitExample()); String(target.id);']
+]) test(`frozen server grant rejects read String ${label}`, async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', `const records = matching(state); ${statement}`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+async function formattedFrozenServerGrantFixture(change = source => source, changeModule = source => source) {
+  const formatter = changeModule(await readFile(new URL("../apps/web-admin/src/api/error-message.ts", import.meta.url), "utf8"));
+  return frozenServerGrantFixture(source => change(source.replace('import { ref } from "vue";', 'import { ref } from "vue"; import { formatUnknownApiError } from "../api/error-message";').replace('const busy = ref(false);', 'const busy = ref(false); const notice = ref("");').replace('} catch (error) {', '} catch (error) { notice.value = formatUnknownApiError(error, "查询失败");')), {
+    extraFiles: { "apps/web-admin/src/api/error-message.ts": formatter },
+    webManifestOverrides: { evidence: { productionModuleCount: 6, reachableProductionModuleCount: 6 } }
+  });
+}
+
+test("frozen server grant rejects the actual imported formatter when an unknown error message is not proven data", async () => {
+  const root = await formattedFrozenServerGrantFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("frozen server grant accepts the actual imported formatter with proven scalar arguments", async () => {
+  const root = await formattedFrozenServerGrantFixture(source => {
+    const changed = source.replace('import { formatUnknownApiError }', 'import { formatApiErrorMessage }').replace('formatUnknownApiError(error, "查询失败")', 'formatApiErrorMessage("读取失败", 0, "查询失败")');
+    assert.notEqual(changed, source);
+    assert.equal(changed.includes('formatUnknownApiError(error, "查询失败")'), false);
+    return changed;
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, changeModule] of [
+  ["hidden local request", source => source.replace("const text = message.trim();", "const text = message.trim(); hidden();") + '\nfunction hidden() { fetch("/write", { method: "POST" }); return ""; }\n'],
+  ["module top-level request", source => source + '\nfetch("/write", { method: "POST" });\n'],
+  ["imported helper", source => 'import { hidden } from "./example.api";\n' + source.replace("const text = message.trim();", "const text = message.trim(); hidden();")],
+  ["mutable local", source => source.replace("const text =", "let text =")],
+  ["global regexp", source => source.replace("ECONNREFUSED/i", "ECONNREFUSED/gi")],
+  ["sticky regexp", source => source.replace("ECONNREFUSED/i", "ECONNREFUSED/yi")],
+  ["dynamic regexp", source => source.replace("/Invalid phone or password/i", 'new RegExp("Invalid phone")')],
+  ["helper write", source => source.replace("function statusText(status: number, fallback: string): string {", "function statusText(status: number, fallback: string): string { globalThis.lastError = fallback;")],
+  ["hidden finally request", source => source.replace("const text = message.trim();", 'const text = message.trim(); try {} finally { fetch("/write"); }')]
+]) test(`frozen server grant rejects imported formatter ${label}`, async () => {
+  const root = await formattedFrozenServerGrantFixture(source => source, changeModule);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("frozen server grant rejects a lexically shadowed imported formatter", async () => {
+  const root = await formattedFrozenServerGrantFixture(source => source.replace('} catch (error) {', '} catch (error) { const formatUnknownApiError = () => { submitExample(); return ""; };'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant accepts a trim dominated by the same field's short-circuit string check", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("} catch (error) {", '} catch (error) { const current = await getExample(owner.context.contractVersionId); if (typeof current.id !== "string" || !current.id.trim()) return;'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, guard] of [
+  ["wrong field", 'typeof current.other !== "string" || !current.id.trim()'],
+  ["wrong polarity", 'typeof current.id === "string" || !current.id.trim()'],
+  ["AND non-string", 'typeof current.id !== "string" && !current.id.trim()'],
+  ["bypassed type failure", '(typeof current.id !== "string" && false) || !current.id.trim()']
+]) test(`frozen server grant rejects guarded trim ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("} catch (error) {", `} catch (error) { const current = await getExample(owner.context.contractVersionId); if (${guard}) return;`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant rejects a second helper invocation with a forged collection argument", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', 'const records = matching(state); const forged = { documents: { filter() { submitExample(); return []; } } }; matching(forged);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rejects a second helper frame hiding a detached resend method", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('function matching(state)', 'function forgedFilter() { submitExample(); return []; } function makeForged() { return { documents: { filter: forgedFilter } }; } function matching(state)').replace('const records = matching(state);', 'const records = matching(state); const forged = makeForged(); matching(forged);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rechecks a second legitimate read-derived helper frame", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', 'const records = matching(state); const next = await getExample(owner.context.contractVersionId); const second = Object.freeze({ documents: next.documents }); matching(second);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+for (const [label, invoke] of [
+  ["detached first", 'const forged = makeForged(); matching(forged); const records = matching(state);'],
+  ["forwarded sibling", 'const records = matching(state); revisit(state); const forged = makeForged(); revisit(forged);']
+]) test(`frozen server grant rejects differing effect frames ${label}`, async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('function matching(state)', 'function forgedFilter() { submitExample(); return []; } function makeForged() { return { documents: { filter: forgedFilter } }; } function revisit(state) { matching(state); } function matching(state)').replace('const records = matching(state);', invoke));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rejects regexp argument coercion hiding a detached resend", async () => {
+  const root = await getterFrozenServerGrantFixture(source => source.replace('function ownerKey() {', 'function hidden() { submitExample(); return "x"; } function ownerKey() {').replace('} catch (error) {', '} catch (error) { const forged = { toString: hidden }; HASH.test(forged);'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, extra, statement] of [
+  ["nested object field", '', 'const forged = { value: { toString: hidden } }; HASH.test(forged.value);'],
+  ["bound helper parameter", 'function testValue(value) { return HASH.test(value); }', 'const forged = { toString: hidden }; testValue(forged);']
+]) test(`frozen server grant rejects detached regexp coercion ${label}`, async () => {
+  const root = await getterFrozenServerGrantFixture(source => source.replace('function ownerKey() {', `function hidden() { submitExample(); return "x"; } ${extra} function ownerKey() {`).replace('} catch (error) {', `} catch (error) { ${statement}`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, setup, statement] of [
+  ["delete mutation", '', 'delete globalThis.lastError;'],
+  ["dynamic import", '', 'void import("../api/example.api");'],
+  ["spread getter resend", 'function hidden() { submitExample(); return "x"; } function opaque() { return { get id() { return hidden(); } }; }', 'const foreign = opaque(); const view = Object.freeze({ ...foreign });']
+]) test(`frozen server grant rejects opaque recovery effect ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace('function permits(owner, grant) {', `${setup} function permits(owner, grant) {`).replace('} catch (error) {', `} catch (error) { ${statement}`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rejects an auxiliary predicate call bound to forged external actions", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace('function permits(owner, grant) {', `function hidden() { submitExample(); return true; }
+const foreignActions = { includes: hidden };
+function forged(owner) { return Object.freeze({ ownerKey: owner.ownerKey, readGeneration: owner.generation, sourceRevision: owner.context.draftRevision, actions: foreignActions }); }
+function permits(owner, grant) {`).replace('} catch (error) {', '} catch (error) { permits(owner, forged(owner));'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("recognizes the actual paper private-file handler through the public generator", async () => {
+  const root = await actualPaperActionFixture("preview");
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
+
+for (const [label, replacement] of [["unawaited writer", "refresh(owner);"], ["unreachable writer", "if (false) await refresh(owner);"], ["conditionally skipped writer", "if (busy.value) await refresh(owner);"]]) test(`frozen server grant rejects a non-fresh primary ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("await refresh(owner);", replacement));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rejects a boxed raw ref whose value accessor forges server actions", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace('function permits(owner, grant) {', `const box = { grant: generationGrant };
+Object.defineProperty(box.grant, "value", { get() {
+  const owner = reader.value;
+  return { ownerKey: owner.ownerKey, readGeneration: owner.generation, sourceRevision: owner.context.draftRevision, fingerprint: "x", actions: ["submit_approval"] };
+}, set(value) {} });
+function permits(owner, grant) {`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+for (const [label, change] of [
+  ["conditional replacement", source => source.replace("generationGrant.value = Object.freeze", "if (!generationGrant.value) generationGrant.value = Object.freeze")],
+  ["old-state early return", source => source.replace("async function refresh(owner) {", "async function refresh(owner) { if (generationGrant.value) return;")]
+]) test(`frozen server grant rejects a stale producer ${label}`, async () => {
+  const root = await frozenServerGrantFixture(change);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+for (const [label, change] of [
+  ["unawaited projected state", source => source.replace("const state = await readState(owner);", "const state = readState(owner);")],
+  ["unawaited workbench read", source => source.replace("const current = await getExample(owner.context.contractVersionId);", "const current = getExample(owner.context.contractVersionId);")],
+  ["unawaited body read", source => source.replace("const body = await getBody(owner.context.contractVersionId);", "const body = getBody(owner.context.contractVersionId);")]
+]) test(`frozen server grant rejects freshness dependency ${label}`, async () => {
+  const root = await projectedFrozenServerGrantFixture(change);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+test("frozen server grant rejects an unawaited secondary constructor invocation", async () => {
+  const root = await separatelyBoundRecoveryFixture(source => source.replace("async function restore(owner, state) { await refresh(owner, state); }", "async function restore(owner, state) { refresh(owner, state); }"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+for (const [label, statement] of [["array", "const escaped = [generationGrant];"], ["frozen container", "const escaped = Object.freeze({ grant: generationGrant });"], ["returned ref", "function escaped() { return generationGrant; }"]]) test(`frozen server grant rejects raw ref escape through ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", `${statement} function permits(owner, grant) {`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+test("frozen server grant rejects a producer reporting success before replacement", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("async function refresh(owner) {", "async function refresh(owner) { if (generationGrant.value) return true;").replace("await refresh(owner);", "if (!await refresh(owner)) return;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, branch] of [["success before false", "return true; return false;"], ["nested success before false", "if (reader.value) return true; return false;"]]) test(`frozen server grant rejects disguised producer failure ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("async function refresh(owner) {", `async function refresh(owner) { if (generationGrant.value) { ${branch} }`).replace("await refresh(owner);", "if (!await refresh(owner)) return;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant rejects a module-reassigned predicate binding", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("async function refresh(owner) {", "permits = () => true; async function refresh(owner) {"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rejects a module-reassigned projected state reader", async () => {
+  const root = await projectedFrozenServerGrantFixture(source => source.replace("async function submit() {", 'readState = async () => Object.freeze({ fingerprint: "forged", actions: Object.freeze(["submit_approval"]) }); async function submit() {'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+test("frozen server grant rejects a module-reassigned nested current-owner predicate", async () => {
+  const root = await actualPaperActionFixture("generation", source => source.replace("async function generateCurrentDraft() {", "isCurrent = () => true; async function generateCurrentDraft() {"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant accepts trim on a private string Vue ref", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("const busy = ref(false);", 'const busy = ref(false); const password = ref("");').replace("if (!owner) return;", "if (!owner || !password.value.trim()) return;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, change] of [
+  ["fake ref", source => source.replace('const password = ref("");', 'const password = { value: "" };')],
+  ["non-string value", source => source.replace('const password = ref("");', 'const password = ref(""); password.value = { trim: () => true };')],
+  ["boxed ref escape", source => source.replace('const password = ref("");', 'const password = ref(""); const box = { password }; Object.defineProperty(box.password, "value", { get() { return { trim() { return true; } }; } });')]
+]) test(`frozen server grant rejects private string trim ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => change(source.replace("const busy = ref(false);", 'const busy = ref(false); const password = ref("");').replace("if (!owner) return;", "if (!owner || !password.value.trim()) return;")));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+test("frozen server grant accepts every on read-derived display data with a pure callback", async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', 'const records = matching(state); if (current.actions.every(item => typeof item === "string")) busy.value = false;'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+
+for (const [label, expression] of [["callback resend", 'current.actions.every(item => submitExample())'], ["async callback", 'current.actions.every(async item => true)'], ["forged receiver", '({ every() { submitExample(); return true; } }).every(item => true)']]) test(`frozen server grant rejects readonly every ${label}`, async () => {
+  const root = await collectionFrozenServerGrantFixture(source => source.replace('const records = matching(state);', `const records = matching(state); if (${expression}) busy.value = false;`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+const paperFileMutations = [
+  ["foreign file partner", source => source.replace("Object.freeze({ fileId: pdf.fileId, documentId: pdf.documentId, ownerKey:", 'Object.freeze({ fileId: "foreign", documentId: pdf.documentId, ownerKey:')],
+  ["foreign document partner", source => source.replace("Object.freeze({ fileId: pdf.fileId, documentId: pdf.documentId, ownerKey:", 'Object.freeze({ fileId: pdf.fileId, documentId: "foreign", ownerKey:')],
+  ["foreign grant owner", source => source.replace("ownerKey: owner.ownerKey, readGeneration: owner.generation,\n    serverAction:", 'ownerKey: "foreign", readGeneration: owner.generation,\n    serverAction:')],
+  ["forged generation", source => source.replace("ownerKey: owner.ownerKey, readGeneration: owner.generation,\n    serverAction:", 'ownerKey: owner.ownerKey, readGeneration: 999,\n    serverAction:')],
+  ["foreign capability coordinate", source => source.replace("getPrivateFileDownloadTicketCapability(pdf.fileId)", "getPrivateFileDownloadTicketCapability(owner.context.contractVersionId)")],
+  ["forged enabled projection", source => source.replace("Object.freeze({ ...result.action })", "Object.freeze({ ...result.action, enabled: true })")],
+  ["literal capability actions", source => source.replace("Object.freeze([...result.availableActions])", 'Object.freeze(["create_private_file_download_ticket"])')],
+  ["mutable capability actions", source => source.replace("Object.freeze([...result.availableActions])", "[...result.availableActions]")],
+  ["mutable server action", source => source.replace("Object.freeze({ ...result.action })", "{ ...result.action }")],
+  ["unawaited producer", source => source.replaceAll("if (!await refreshCapability(owner, pdf))", "if (!refreshCapability(owner, pdf))")],
+  ["conditional producer replacement", source => source.replace("previewGrant.value = Object.freeze", "if (!previewGrant.value) previewGrant.value = Object.freeze")],
+  ["foreign owner argument", source => source.replaceAll("refreshCapability(owner, pdf)", "refreshCapability(reader.value.otherOwner, pdf)")],
+  ["foreign PDF argument", source => source.replaceAll("refreshCapability(owner, pdf)", "refreshCapability(owner, readyPdf.value.otherPdf)")],
+  ["missing action key", source => source.replace('grant.serverAction.key === "create_private_file_download_ticket"', "true")],
+  ["missing enabled guard", source => source.replace("grant.serverAction.enabled === true", "true")],
+  ["bypassed includes", source => source.replace('grant.serverAvailableActions.includes("create_private_file_download_ticket")', "true")],
+  ["reversed includes", source => source.replace('grant.serverAvailableActions.includes("create_private_file_download_ticket")', '!grant.serverAvailableActions.includes("create_private_file_download_ticket")')],
+  ["foreign workbench read", source => source.replace("fetchContractDraftWorkbench(owner.context.contractVersionId)", 'fetchContractDraftWorkbench("foreign-version")')],
+  ["foreign document-list read", source => source.replace("listContractDocuments(owner.context.contractVersionId)", 'listContractDocuments("foreign-version")')],
+  ["wrong document purpose", source => source.replace('item.purpose === "draft"', 'item.purpose === "final"')],
+  ["missing layout filter", source => source.replace("item.layoutTemplateVersionId === owner.context.layoutTemplateVersionId", "true")],
+  ["missing revision filter", source => source.replace("item.documentContentRevision === owner.context.documentContentRevision", "true")],
+  ["missing fingerprint filter", source => source.replace("item.documentContentFingerprint === state.fingerprint", "true")],
+  ["missing source filter", source => source.replace("item.inputSnapshot.bodyDocument.sourceSha256 === owner.context.sourceSha256", "true")],
+  ["wrong ready file projection", source => source.replace("fileId: item.pdfFileId", "fileId: item.id")],
+  ["missing success status", source => source.replace('item.status !== "success" || ', "")],
+  ["missing expected document", source => source.replace("pdf.documentId === expected.documentId", "true")],
+  ["missing expected file", source => source.replace("pdf.fileId === expected.fileId", "true")],
+  ["missing expected fingerprint", source => source.replace("pdf.fingerprint === expected.fingerprint", "true")],
+  ["bypassed current-document check", source => source.replaceAll("if (!await findCurrentPdf(owner, pdf))", "if (false)")],
+  ["search returns stale expected on empty read", source => source.replace("if (!state) return null;", "if (!state) return expected;")],
+  ["search returns expected object", source => source.replace("pdf.fingerprint === expected.fingerprint))) return pdf;", "pdf.fingerprint === expected.fingerprint))) return expected;")],
+  ["non-const document iteration", source => source.replace("for (const item of matchingDocuments", "for (let item of matchingDocuments")],
+  ["wrong blob object URL", source => source.replace("URL.createObjectURL(result.blob)", "URL.createObjectURL(readyPdf.value)")],
+  ["shadowed browser URL", source => source.replace("async function confirmPreview() {", 'const URL = { revokeObjectURL() {}, createObjectURL() { return "blob:forged"; } }; async function confirmPreview() {')],
+  ["reassigned search helper", source => source.replace("async function confirmPreview() {", "findCurrentPdf = async (owner, expected) => expected; async function confirmPreview() {")],
+  ["cached capability response", source => source.replace("async function refreshCapability(owner: Reader, pdf: ReadyPdf) {", 'const cachedCapability = await getPrivateFileDownloadTicketCapability("cached-file");\nasync function refreshCapability(owner: Reader, pdf: ReadyPdf) {').replace("const result = await getPrivateFileDownloadTicketCapability(pdf.fileId);", "const result = cachedCapability;")],
+  ["captured old grant", source => source.replace("const granted = previewGrant.value;", "").replace("try {\n    if (!await findCurrentPdf(owner, pdf))", "try {\n    const granted = previewGrant.value;\n    if (!await findCurrentPdf(owner, pdf))")],
+  ["catch hidden resend", source => source.replace("async function confirmPreview() {", 'function retry() { return downloadPrivateFileByTicket("other", {}, "pdf-blob"); }\nasync function confirmPreview() {').replace('if (isCurrent(owner)) error.value = "读取合同草稿 PDF 失败，请保留编辑内容后重试";', 'retry(); if (isCurrent(owner)) error.value = "读取合同草稿 PDF 失败，请保留编辑内容后重试";')],
+  ["finally hidden resend", source => source.replace("async function confirmPreview() {", 'function retry() { return downloadPrivateFileByTicket("other", {}, "pdf-blob"); }\nasync function confirmPreview() {').replace('} finally { if (isCurrent(owner)) busy.value = false; }\n}\nwatch(', '} finally { retry(); if (isCurrent(owner)) busy.value = false; }\n}\nwatch(')]
+];
+for (const [label, change] of paperFileMutations) test(`paper private-file proof rejects ${label}`, async () => {
+  const root = await actualPaperActionFixture("preview", source => { const changed = change(source); assert.notEqual(changed, source, label); return changed; });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+for (const [label, statement] of [["relational coercion", 'if (opaque < 1) busy.value = false;'], ["template coercion", 'const text = `${opaque}`;'], ["Error argument coercion", 'throw new Error(opaque);']]) test(`frozen server grant rejects implicit opaque effect ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'function hidden() { submitExample(); return "1"; } const opaque = { valueOf: hidden, toString: hidden }; function permits(owner, grant) {').replace("} catch (error) {", `} catch (error) { ${statement}`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+test("frozen server grant rejects an imported formatter coercing its unknown error parameter", async () => {
+  const root = await formattedFrozenServerGrantFixture(source => source, source => source.replace("export function formatUnknownApiError(error: unknown, fallback: string): string {", 'export function formatUnknownApiError(error: unknown, fallback: string): string { const opaque = `${error}`;'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+});
+
+
+async function actualBodyWarningProjectionApi(change = source => source) {
+  const source = await readFile(new URL("../apps/web-admin/src/api/contract-workbench.api.ts", import.meta.url), "utf8");
+  const part = (start, end) => {
+    const first = source.indexOf(start), last = source.indexOf(end, first + start.length);
+    assert.ok(first >= 0 && last > first, start);
+    return source.slice(first, last);
+  };
+  return change(part("async function readJson<T>(", "\nasync function postJson<") + "\n" +
+    part("export function fetchContractDraftWorkbench(", "\nexport interface ContractBodyEditPlan") + "\n" +
+    part("const approvedBodyWarnings =", "\nexport function fetchContractDraftOperationCapabilities(") +
+    "\nexport async function listContractDocuments() { return []; }\nexport async function queueContractDraftPreview() { return {}; }\n");
+}
+
+test("recognizes the actual body warning projection without claiming its wrapper transparent", async () => {
+  const root = await actualPaperActionFixture("generation", source => source, await actualBodyWarningProjectionApi());
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+  const web = JSON.parse(await readFile(join(root, "docs/product/manifests/web-api-wrappers.json"), "utf8"));
+  assert.equal(web.wrappers.find(value => value.name === "fetchContractDraftBody").returnProvenance, "unverified");
+});
+
+
+test("recognizes the actual body warning projection after lexical helper renaming", async () => {
+  const api = await actualBodyWarningProjectionApi(source => source.replaceAll("normalizeBodyWarnings", "cleanMessages").replaceAll("readJson", "readResource").replace("const body = await", "const responseBody = await").replace("...body, warnings: cleanMessages(body.warnings)", "...responseBody, warnings: cleanMessages(responseBody.warnings)"));
+  const root = await actualPaperActionFixture("generation", source => source, api);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+});
+
+for (const field of ["contractVersionId", "draftRevision", "documentContentRevision", "layoutTemplateVersionId", "sourceSha256"]) test(`body coordinate projection rejects protected ${field} override`, async () => {
+  const api = await actualBodyWarningProjectionApi(source => source.replace("warnings: normalizeBodyWarnings(body.warnings)", `${field}: normalizeBodyWarnings(body.warnings)`));
+  const root = await actualPaperActionFixture("generation", source => source, api);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, change] of [
+  ["extra spread", source => source.replace("{ ...body, warnings:", "{ ...body, ...{}, warnings:")],
+  ["computed override", source => source.replace("warnings: normalizeBodyWarnings(body.warnings)", '["warnings"]: normalizeBodyWarnings(body.warnings)')],
+  ["raw body helper argument", source => source.replace("normalizeBodyWarnings(body.warnings)", "normalizeBodyWarnings(body)")],
+  ["raw body alias escape", source => source.replace("  return { ...body, warnings:", "  const escaped = body; void escaped; return { ...body, warnings:")],
+  ["multiple returns", source => source.replace("  return { ...body, warnings:", "  if (body.draftRevision < 0) return body; return { ...body, warnings:")],
+  ["protected mutation", source => source.replace("  return { ...body, warnings:", "  body.draftRevision = 999; return { ...body, warnings:")],
+  ["unknown normalization call", source => source.replace("return [incompleteBodyWarning];", "return [unknownWrite()];")],
+  ["normalizer mutation", source => source.replace("if (value === undefined) return [];", 'if (value === undefined) { approvedBodyWarnings.add("forged"); return []; }')],
+  ["escaped validation set", source => source.replace("const incompleteBodyWarning =", "const escapedSet = approvedBodyWarnings; const incompleteBodyWarning =")],
+  ["shadowed Array", source => 'const Array = { isArray() { return true; } };\n' + source],
+  ["shadowed Set", source => 'const Set = class {};\n' + source],
+  ["reassigned transport", source => source.replace("const approvedBodyWarnings =", "readJson = async () => ({}); const approvedBodyWarnings =")],
+  ["reassigned normalizer", source => source.replace("export async function fetchContractDraftBody", "normalizeBodyWarnings = () => []; export async function fetchContractDraftBody")]
+]) test(`body coordinate projection rejects ${label}`, async () => {
+  const api = await actualBodyWarningProjectionApi(source => { const changed = change(source); assert.notEqual(changed, source, label); return changed; });
+  const root = await actualPaperActionFixture("generation", source => source, api);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const field of ["warnings", "draftOperationAvailableActions"]) test(`body coordinate projection does not grant authority to ${field}`, async () => {
+  const root = await actualPaperActionFixture("generation", source => source.replace("const actions = current.draftOperationAvailableActions;", `const actions = (await fetchContractDraftBody(owner.context.contractVersionId)).${field};`), await actualBodyWarningProjectionApi());
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].capability.serverDerived, false);
+});
+
+
+for (const [label, declaration] of [["async", "async function permits(owner, grant)"], ["generator", "function* permits(owner, grant)"]]) test(`review regression rejects ${label} capability predicates`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant)", declaration));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, expression] of [["direct", "opaque.id"], ["aliased", "alias.id"]]) test(`review regression rejects ${label} bare getter recovery reads`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'const opaque = { get id() { submitExample("foreign", 1); return "x"; } }; const alias = opaque; function permits(owner, grant) {').replace("} catch (error) {", `} catch (error) { const observed = ${expression};`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects a pure regexp call reused with an imported resend coercion frame", async () => {
+  const root = await actualPaperActionFixture("generation", source => source.replace("function generationPermits(owner: Reader, grant: GenerationGrant | null) {", "function hashOK(value) { return HASH.test(value); } function generationPermits(owner: Reader, grant: GenerationGrant | null) {").replace("HASH.test(grant.fingerprint)", "hashOK(grant.fingerprint)").replace('error.value = "生成请求的结果尚未确认，请先查询生成结果";', 'hashOK({ toString: queueContractDraftPreview }); error.value = "生成请求的结果尚未确认，请先查询生成结果";'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects a bare member from an opaque imported factory", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("import { getExample, submitExample }", "import { getExample, submitExample, opaqueFactory }").replace("function permits(owner, grant) {", "const opaque = opaqueFactory(); function permits(owner, grant) {").replace("} catch (error) {", "} catch (error) { const observed = opaque.id;"));
+  const api = "apps/web-admin/src/api/example.api.ts";
+  await write(root, api, (await readFile(join(root, api), "utf8")) + '\nexport function opaqueFactory() { return { get id() { submitExample("foreign", 1); return "x"; } }; }\n');
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects a data alias redefined as an accessor", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'const opaque = { id: "x" }; const box = opaque; Object.defineProperty(box, "id", { get() { submitExample("foreign", 1); return "x"; } }); function permits(owner, grant) {').replace("} catch (error) {", "} catch (error) { const observed = opaque.id;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, change] of [
+  ["unknown caught value", source => source.replace("} catch (error) {", "} catch (error) { const observed = error.id;")],
+  ["getter held in another ref", source => source.replace("function permits(owner, grant) {", 'const opaque = ref({ get id() { submitExample("foreign", 1); return "x"; } }); function permits(owner, grant) {').replace("} catch (error) {", "} catch (error) { const observed = opaque.value.id;")]
+]) test(`review regression rejects a bare member from ${label}`, async () => {
+  const root = await frozenServerGrantFixture(change);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+async function actualTargetJsonFixture(change = source => source) {
+  const source = await readFile(new URL("../apps/web-admin/src/api/contract-workbench.api.ts", import.meta.url), "utf8");
+  const part = (start, end) => {
+    const first = source.indexOf(start), last = source.indexOf(end, first + start.length);
+    assert.ok(first >= 0 && last > first, start);
+    return source.slice(first, last);
+  };
+  const api = (await actualBodyWarningProjectionApi()).replace("export async function queueContractDraftPreview() { return {}; }", part("export function queueContractDraftPreview(", "\nexport interface ContractDraftSubmissionResult")) +
+    '\nimport { apiFetch } from "./transport";\nimport { formatApiErrorMessage } from "./error-message";\n' +
+    part("async function ensureOk(", "\nasync function readJson<") + part("async function postJson<", "\nasync function postForm<");
+  const changed = change(api);
+  const root = await actualPaperActionFixture("generation", value => value, changed);
+  await write(root, "apps/web-admin/src/api/transport.ts", "export async function apiFetch() { return new Response(); }\n");
+  const path = "docs/product/manifests/web-api-wrappers.json", manifest = JSON.parse(await readFile(join(root, path), "utf8"));
+  manifest.evidence.productionModuleCount += 1;
+  // The real API snippet reaches both transport and the otherwise-unused error-message module.
+  manifest.evidence.reachableProductionModuleCount += 2;
+  await write(root, path, JSON.stringify(manifest));
+  return root;
+}
+
+test("review regression recognizes selected awaited target JSON as data without authority", async () => {
+  const root = await actualTargetJsonFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+});
+
+for (const [label, change] of [
+  ["custom response", source => source.replace('const response = await apiFetch(path, {\n    method: "POST",\n    headers: { "Content-Type": "application/json" },\n    body: JSON.stringify(body ?? {})\n  });', 'const response = await fakeResponse();')],
+  ["overwritten json method", source => source.replace('await ensureOk(response, "提交失败");', 'await ensureOk(response, "提交失败"); response.json = () => ({ get generationId() { unknownWrite(); return "x"; } });')],
+  ["multiple returns", source => source.replace('await ensureOk(response, "提交失败");', 'await ensureOk(response, "提交失败"); if (body) return body;')],
+  ["response reassignment", source => source.replace('await ensureOk(response, "提交失败");', 'await ensureOk(response, "提交失败"); response = body;')],
+  ["validator early success", source => source.replace('if (response.ok) {', 'if (response.ok) { return; } if (response) {')]
+]) test(`review regression rejects selected target JSON ${label}`, async () => {
+  const root = await actualTargetJsonFixture(source => { const changed = change(source); assert.notEqual(changed, source, label); return changed; });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects an accessor added through a plain factory result alias", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("import { getExample, submitExample }", "import { getExample, submitExample, plainFactory }").replace("function permits(owner, grant) {", 'const opaque = plainFactory(); const alias = opaque; Object.defineProperty(alias, "id", { get() { submitExample("foreign", 1); return "x"; } }); function permits(owner, grant) {').replace("} catch (error) {", "} catch (error) { const observed = opaque.id;"));
+  const api = "apps/web-admin/src/api/example.api.ts";
+  await write(root, api, (await readFile(join(root, api), "utf8")) + '\nexport function plainFactory() { return { id: "x" }; }\n');
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+async function actualNativeBlobFixture(change = source => source) {
+  const root = await actualPaperActionFixture("file");
+  const source = await readFile(new URL("../apps/web-admin/src/api/core-flow-read.api.ts", import.meta.url), "utf8");
+  const part = (start, end) => {
+    const first = source.indexOf(start), last = source.indexOf(end, first + start.length);
+    assert.ok(first >= 0 && last > first, start);
+    return source.slice(first, last);
+  };
+  const api = 'import { apiFetch } from "./transport";\nimport { formatApiErrorMessage } from "./error-message";\n' +
+    part("export class CoreFlowApiError", "\nasync function patchJson<") +
+    part("export function getPrivateFileDownloadTicketCapability(", "\nexport function listContractTakeovers(");
+  await write(root, "apps/web-admin/src/api/core-flow-read.api.ts", change(api));
+  await write(root, "apps/web-admin/src/api/transport.ts", "export async function apiFetch() { return new Response(); }\n");
+  const path = "docs/product/manifests/web-api-wrappers.json", manifest = JSON.parse(await readFile(join(root, path), "utf8"));
+  manifest.evidence.productionModuleCount += 1; // The real API snippet reaches both transport and the otherwise-unused error-message module.
+  manifest.evidence.reachableProductionModuleCount += 2;
+  const target = manifest.wrappers.find(item => item.name === "downloadPrivateFileByTicket");
+  target.returnProvenance = "unverified";
+  target.requests.unshift({ kind: "main", sourceLine: 79, method: "GET", path: "/files/:param/download-ticket-capability", normalizedPath: "/files/:param/download-ticket-capability", normalizedKey: "GET /files/:param/download-ticket-capability", bodyKind: "none" });
+  target.requests.push({ kind: "ticket_followup", sourceLine: 5465, method: "GET", ticketField: "downloadUrl", bodyKind: "none" });
+  await write(root, path, JSON.stringify(manifest));
+  return root;
+}
+
+test("review regression recognizes the actual awaited private PDF native Blob fields", async () => {
+  const root = await actualNativeBlobFixture();
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings.length, 2);
+  assert.equal(manifest.actions[0].bindings.every(binding => binding.causalVerified), true);
+  const web = JSON.parse(await readFile(join(root, "docs/product/manifests/web-api-wrappers.json"), "utf8"));
+  assert.equal(web.wrappers.find(value => value.name === "downloadPrivateFileByTicket").returnProvenance, "unverified");
+});
+
+for (const [label, change] of [
+  ["custom response", source => source.replace("await apiFetch(ticket.downloadUrl)", "await fakeResponse(ticket.downloadUrl)")],
+  ["wrong Blob partner", source => source.replace("await response.blob()", "await other.blob()")],
+  ["opaque Blob factory", source => source.replace("await response.blob()", "await makeBlob()")],
+  ["wrong MIME header", source => source.replace('response.headers.get("content-type")', 'response.headers.get("x-opaque")')],
+  ["weakened token URL check", source => source.replace("ticket.downloadUrl.includes", "ticket.downloadUrl.startsWith")],
+  ["accessor return field", source => source.replace("return { blob, fileName: ticket.fileName };", "return { get blob() { return blob; }, fileName: ticket.fileName };")]
+]) test(`review regression rejects actual native Blob ${label}`, async () => {
+  const root = await actualNativeBlobFixture(source => { const changed = change(source); assert.notEqual(changed, source, label); return changed; });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", `${label}: ${JSON.stringify(manifest.blockers)}`);
+  assert.equal(manifest.actions[0].bindings.every(binding => binding.causalVerified === false), true);
+});
+
+test("review regression rejects regexp coercion of an unknown caught value", async () => {
+  const root = await actualPaperActionFixture("generation", source => source.replace("function generationPermits(owner: Reader, grant: GenerationGrant | null) {", "function hashOK(value) { return HASH.test(value); } function generationPermits(owner: Reader, grant: GenerationGrant | null) {").replace("HASH.test(grant.fingerprint)", "hashOK(grant.fingerprint)").replace('error.value = "生成请求的结果尚未确认，请先查询生成结果";', 'hashOK(cause); error.value = "生成请求的结果尚未确认，请先查询生成结果";'));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, expression] of [["nested path", "opaque.child.id"], ["projected alias", "alias.id"]]) test(`review regression rejects accessor mutation through ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'const opaque = { child: { id: "x" } }; const alias = opaque.child; Object.defineProperty(alias, "id", { get() { submitExample("foreign", 1); return "x"; } }); function permits(owner, grant) {').replace("} catch (error) {", `} catch (error) { const observed = ${expression};`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, expression] of [["ref value path", "opaque.value.id"], ["ref projected alias", "alias.id"]]) test(`review regression rejects accessor mutation through ${label}`, async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'const opaque = ref({ id: "x" }); const alias = opaque.value; Object.defineProperty(alias, "id", { get() { submitExample("foreign", 1); return "x"; } }); function permits(owner, grant) {').replace("} catch (error) {", `} catch (error) { const observed = ${expression};`));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects unknown factory replacement of a scalar-initialized ref", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'const opaque = ref(null); function makeOpaque() { return { valueOf() { submitExample("foreign", 1); return 1; } }; } opaque.value = makeOpaque(); function permits(owner, grant) {').replace("} catch (error) {", "} catch (error) { const observed = opaque.value > 0;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects an unknown caught replacement through a ref value alias", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", "const opaque = ref(null); function permits(owner, grant) {").replace("} catch (error) {", "} catch (error) { opaque.value = error; const alias = opaque.value; const observed = alias.id;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects coercion hooks reached through a frozen ref container", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'function hiddenCoercion() { submitExample("foreign", 1); return 1; } const opaque = ref(Object.freeze({ valueOf: hiddenCoercion })); function permits(owner, grant) {').replace("} catch (error) {", "} catch (error) { const observed = opaque.value > 0;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+test("review regression rejects an escaped child identifier through a frozen ref alias", async () => {
+  const root = await frozenServerGrantFixture(source => source.replace("function permits(owner, grant) {", 'const child = { id: "x" }; const opaque = ref(Object.freeze({ child })); const alias = opaque.value; Object.defineProperty(child, "id", { get() { submitExample("foreign", 1); return "x"; } }); function permits(owner, grant) {').replace("} catch (error) {", "} catch (error) { const observed = alias.child.id;"));
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+
+test("frozen server grant rejects imported formatter typed local passthrough of an unknown coercible error", async () => {
+  const root = await formattedFrozenServerGrantFixture(source => source, () => 'function passthrough(text: string): string { return `${text}`; }\nexport function formatUnknownApiError(error: unknown, fallback: string): string { return passthrough(error as string); }\n');
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});
+
+for (const [label, expression] of [["bare member", "error.message"], ["unary coercion", "+error"], ["binary coercion", 'error + ""']]) test(`imported formatter rejects an unused unknown ${label} effect`, async () => {
+  const root = await formattedFrozenServerGrantFixture(source => source, () => `export function formatUnknownApiError(error: unknown, fallback: string): string { const ignored = ${expression}; return fallback; }\n`);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  assert.equal(manifest.status, "blocked", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, false);
+});

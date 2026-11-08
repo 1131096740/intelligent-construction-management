@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /** Test-only actual PDF gate; no Python/font paths or bytes are product dependencies. */
-export function inspectActualTemplatePdf(sourceDocx: Buffer, pdf: Buffer, label: string): string {
+export function inspectActualTemplatePdf(sourceDocx: Buffer, pdf: Buffer, label: string, runtimeWitness?: unknown): string {
   const python = process.env.TEMPLATE_PDF_INSPECTOR_PYTHON;
   const manifestPath = process.env.TEMPLATE_PDF_RUNTIME_MANIFEST;
   if (!python || !manifestPath) throw new Error("Actual PDF checks require explicit TEMPLATE_PDF_INSPECTOR_PYTHON and TEMPLATE_PDF_RUNTIME_MANIFEST; no fallback/skip");
@@ -18,7 +18,10 @@ export function inspectActualTemplatePdf(sourceDocx: Buffer, pdf: Buffer, label:
   const sourcePath = join(directory, "source.docx"), pdfPath = join(directory, "actual.pdf");
   writeFileSync(sourcePath, sourceDocx); writeFileSync(pdfPath, pdf);
   writeFileSync(join(directory, "label.txt"), label);
-  const result = spawnSync(python, [resolve(__dirname, "../../test-support/inspect-contract-pdf-physical.py"), sourcePath, pdfPath, join(directory, "receipt.json"), manifestPath], { encoding: "utf8", timeout: 20_000, maxBuffer: 2 * 1024 * 1024 });
+  const witnessPath = join(directory, "runtime-witness.json");
+  if (runtimeWitness !== undefined) writeFileSync(witnessPath, JSON.stringify(runtimeWitness));
+  const result = spawnSync(python, [resolve(__dirname, "../../test-support/inspect-contract-pdf-physical.py"), sourcePath, pdfPath, join(directory, "receipt.json"), manifestPath,
+    ...(runtimeWitness === undefined ? [] : [witnessPath])], { encoding: "utf8", timeout: 20_000, maxBuffer: 2 * 1024 * 1024 });
   writeFileSync(join(directory, "inspection.log"), `${result.stdout ?? ""}\n${result.stderr ?? ""}`);
   if (result.status !== 0) throw new Error(`Actual PDF physical glyph check failed (${label}); receipt ${directory}; ${result.stdout ?? ""}${result.stderr ?? ""}`);
   const text = result.stdout.split("---SEMANTIC-TEXT---\n")[1];

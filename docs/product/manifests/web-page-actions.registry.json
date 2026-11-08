@@ -10505,6 +10505,58 @@
           "name": "supplementRegisteredPaymentVoucher"
         }
       ]
+    },
+    {
+      "id": "contract-draft.body-paper-generate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "generateCurrentDraft"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "generationGrant.value.actions",
+        "key": "queue_contract_draft_preview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "queueContractDraftPreview"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.body-paper-preview",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirmPreview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "previewGrant.value.serverAvailableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
+        }
+      ]
     }
   ]
 }

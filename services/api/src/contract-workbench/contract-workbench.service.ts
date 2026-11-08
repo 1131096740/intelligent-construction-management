@@ -1,4 +1,5 @@
 import { resolveContractDraftBusinessType } from "./contract-draft-basics";
+import { CONTRACT_BODY_RENDER_PROFILE_KEY, readContractBodyRenderProfile } from "../contract-document/contract-body-document";
 import { assertContractDraftNumericProtocol, assertLegacyContractDraftWriter, CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON, contractVersionMoneyReadProjection, contractBillMoneyReadProjection } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
@@ -563,6 +564,11 @@ export class ContractWorkbenchService {
         actorUserId
       );
       assertLegacyContractDraftWriter(version);
+      readContractBodyRenderProfile(version.draftData); // Unknown persisted data never downgrades through this legacy writer.
+      if (version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) &&
+        Object.hasOwn(version.draftData, CONTRACT_BODY_RENDER_PROFILE_KEY)) {
+        throw new ConflictException("合同文书呈现资料已升级，请使用新版合同草稿工作台保存，原内容已保留");
+      }
       this.assertRevision(version.draftRevision, input.expectedRevision);
 
       const template = this.parseTemplateSnapshot(version.templateSnapshot);
@@ -584,6 +590,7 @@ export class ContractWorkbenchService {
         throw new BadRequestException("合同变更不得修改我方签约主体，如需换主体请新签合同");
       }
       const clientDraftData = { ...input.draftData };
+      if (Object.hasOwn(clientDraftData, "documentRenderProfile")) throw new BadRequestException("合同文书呈现资料由系统维护，请刷新后重新保存");
       delete clientDraftData.companyEntitySelection;
       delete clientDraftData.myCompanyEntity;
       delete clientDraftData.workbenchReferences;
@@ -837,10 +844,10 @@ export class ContractWorkbenchService {
       }
       assertContractChangeContentAllowed({
         baseDraftData: this.withoutWorkbenchReferences(
-          this.withoutTaxFactMirror(changeBase.draftData)
+          this.changeBusinessContentWithoutRenderProfile(this.withoutTaxFactMirror(changeBase.draftData))
         ) as Prisma.JsonValue,
         candidateDraftData: this.withoutWorkbenchReferences(
-          this.withoutTaxFactMirror(storedDraftData)
+          this.changeBusinessContentWithoutRenderProfile(this.withoutTaxFactMirror(storedDraftData))
         ) as Prisma.JsonValue,
         baseClauses: changeBase.clauseSnapshot,
         candidateClauses: input.clauses,
@@ -2669,6 +2676,8 @@ export class ContractWorkbenchService {
     const structuralKeys = new Set([
       "contractName",
       "contractBasics",
+      "documentBody",
+      "documentRenderProfile",
       "myCompanyEntity",
       "companyEntitySelection",
       "fieldValues",
@@ -3337,6 +3346,17 @@ export class ContractWorkbenchService {
       unifiedSocialCreditCode: version.unifiedSocialCreditCode,
       registeredAddress: version.registeredAddress
     };
+  }
+
+  /** The precise writer already owns this metadata. Business-change policy
+   * compares clones without it; persisted data, change detection and R/F keep it.
+   * Unknown versions are rejected, never stripped into an apparent legacy value.
+   */
+  private changeBusinessContentWithoutRenderProfile(value: unknown) {
+    readContractBodyRenderProfile(value);
+    const businessContent = { ...this.objectValue(value) };
+    delete businessContent[CONTRACT_BODY_RENDER_PROFILE_KEY];
+    return businessContent;
   }
 
   private withoutTaxFactMirror(value: unknown) {
