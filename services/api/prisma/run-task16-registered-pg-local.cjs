@@ -106,8 +106,21 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       adapters.connectRestrictedClients=context=>nativeAdapters().connectRestrictedClients(context,fixed);
     }
   }
+  // The original spread above already captured the outer adapter value. This
+  // new boundary must not read that caller property a second time.
+  const applicationBoundary=adapters.startApplication;
+  if(applicationBoundary && typeof applicationBoundary==="object") {
+    try {
+      const descriptors=Object.getOwnPropertyDescriptors(applicationBoundary),keys=Reflect.ownKeys(descriptors);
+      if(keys.length===2&&keys.every(key=>typeof key==="string")&&keys.sort().join(",")==="createTestingModule,loadModules"&&keys.every(key=>Object.hasOwn(descriptors[key],"value")&&typeof descriptors[key].value==="function")) {
+        const fixed=Object.freeze(Object.fromEntries(keys.map(key=>[key,descriptors[key].value])));
+        adapters.startApplication=context=>require("./task16-application-factory.cjs").createTask16Application(context,fixed);
+      }
+    } catch { /* Invalid factory metadata stays non-callable: safe missing capability, no fallback. */ }
+  }
   const stages = [];
   const receipt = { status: "FAILED_CLOSED", nativeExecution: false, financialAcceptance: false, caseId: CASE_ID,
+    appStartupOutcome:"NOT_ATTEMPTED",appCleanupOutcome:"NOT_NEEDED",
     sourceSha: null, stages, cleanupFailures: [], missingCapabilities: [], failureCode: null, migrationOutcome: "NOT_ATTEMPTED", installationOutcome: "NOT_ATTEMPTED", ownerRestorationOutcome: "NOT_NEEDED", ownerPrivateErasureOutcome: "NOT_NEEDED", baselineAccessOutcome: "NOT_ATTEMPTED", registeredAccessOutcome: "NOT_ATTEMPTED", clientConnectionOutcome:"NOT_ATTEMPTED", clientCleanupOutcome:"NOT_NEEDED" };
   const controller = new AbortController();
   const onCallerAbort = () => controller.abort();
@@ -167,7 +180,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     context.clients = await stage("connectRestrictedClients");
     receipt.clientConnectionOutcome="CLIENT_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
     need(typeof context.clients?.close === "function", "TASK16_DRIVER_CLIENT_HANDLES");
+    receipt.appStartupOutcome="UNKNOWN_DO_NOT_RETRY";
     context.application = await stage("startApplication");
+    receipt.appStartupOutcome="APP_STAGE_RETURNED_NOT_FULL_PROOF";
     need(typeof context.application?.close === "function", "TASK16_DRIVER_APPLICATION_HANDLE");
     context.fixture = await stage("seedFixture");
     const result = await stage("runNormalCase");
@@ -176,6 +191,11 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
+    for(const [field,allowed]of [["appStartupOutcome",["NOT_ATTEMPTED","UNKNOWN_DO_NOT_RETRY"]],["appCleanupOutcome",["NOT_NEEDED","APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF","UNKNOWN_DO_NOT_CONTINUE"]]]) {
+      let value;try { value=error?.[field]; } catch { /* Never relay getter exceptions. */ }
+      if(allowed.includes(value))receipt[field]=value;
+    }
+    if(receipt.appCleanupOutcome==="UNKNOWN_DO_NOT_CONTINUE")receipt.cleanupFailures.push("application");
     let fixtureOutcome;
     try { fixtureOutcome = error?.fixtureOutcome; } catch { /* Discard untrusted getter exceptions. */ }
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(fixtureOutcome)) receipt.fixtureOutcome = fixtureOutcome;
@@ -194,8 +214,8 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     controller.abort();
     for (const [name, handle] of [["application", context.application], ["clients", context.clients], ["resource", context.resource]]) {
       if (!handle) continue;
-      try { need(typeof handle.close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await handle.close(); if(name==="clients")receipt.clientCleanupOutcome="CLIENT_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; }
-      catch { receipt.cleanupFailures.push(name); if(name==="clients")receipt.clientCleanupOutcome="UNKNOWN_DO_NOT_CONTINUE"; }
+      try { need(typeof handle.close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await handle.close(); if(name==="application"&&receipt.appCleanupOutcome!=="UNKNOWN_DO_NOT_CONTINUE")receipt.appCleanupOutcome="APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; if(name==="clients")receipt.clientCleanupOutcome="CLIENT_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; }
+      catch { receipt.cleanupFailures.push(name); if(name==="application")receipt.appCleanupOutcome="UNKNOWN_DO_NOT_CONTINUE"; if(name==="clients")receipt.clientCleanupOutcome="UNKNOWN_DO_NOT_CONTINUE"; }
     }
     receipt.resource = resourceReceipt(context.resource, failed);
     if (context.resource || failed?.resourceReceipt) {
