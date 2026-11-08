@@ -1061,11 +1061,11 @@
     },
     {
       "path": "services/api/src/database/registered-payment-postgres.cases.ts",
-      "sha256": "49a80afb9b8739c8648096ee221ddcfc5031e8addc32c924993085bd47d37ad2"
+      "sha256": "b0a3a237d2b4bdd29e16982279e3ec248c2e344029a6446076f224ff60216a46"
     },
     {
       "path": "services/api/src/database/registered-payment-postgres.fixture.ts",
-      "sha256": "ca72e890f156cde4f2256a4af1af0123150f6cd0d093aac52e9d43931341d65a"
+      "sha256": "8e22311d5b8f7722e45395a8fdd9dd54866f4e933be7d83a2a1c54c2588441ed"
     },
     {
       "path": "services/api/src/fund-account/fund-account.service.ts",

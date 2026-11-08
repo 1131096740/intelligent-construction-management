@@ -1,3 +1,10 @@
+## 任务16 B10 normal-case源码（2026-11-08，待双轴）
+
+- [~] 准确5da31981独立source/mock新增实际compiled normalcase wrapper、B9 private one-shot handoff/原password-proof、首case FD/source/build与同registry归属、每await light/full事务外及固定7HTTP/3readonly快照；原4000分=40元/B100→60/经营未启用不改。prepared指针换基线actual RED→GREEN与2分/确认丢失/重放/取消等窄反例留存。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-normal-case-local.md)，首完整340实际306/34fail（CLI旧limits同根因），仅同步一条精确常量后CLI25/installer34/准入7/B2witness1及类型/fixture20/10CJS/2TS静态/pins0；按闭包承接未受影响306，非最终全340重跑，准确16路径/证据另封。
+- [ ] v2双轴0后独立登记case同私有actual函数，default现missing[]但固定private SOURCE_ONLY在verifySource/包读取/artifacts/资源前拒；任何reference/options都不能开启。登记actual RED2→driver27 GREEN，完整source/fake正常case仍仅SIMULATED/financialfalse，准确新结果另封。全部源码存在不等真实执行许可；#398与依赖OPEN、14阶段不变。未commit/push/ready/mainmerge/部署生产，futurecommit全部[skip ci]；中央/旧B9/A2/02不动。
+
+- [~] B10首审唯一P2已修：最终重放快照补资金归属及零经营fact/impact独立检查。旧源码两持久层反例实际误通过，新4负控及1正控通过；CLI25/fixture20/B2witness1/类型和静态/pins0。原14b8和340历史失败保留，新16路径v2待增量双轴；未重跑全340、未注册case，权限值/金额/真实门不变。
+
 ## 当前接续（2026-11-08，Task16 B9 source-bound seed源码已整合）
 
 - [~] 作者9663fa62以no-ff合入b80f7830，final5444b4十三路径/v3双轴注册0、v2缺fake P2已公开RED/GREEN关闭，整树相等。native seed直接注册同private函数，默认仅runNormalCase缺项，在source读取/资源前拒；native/financial false。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-native-seed-integrated.md)。

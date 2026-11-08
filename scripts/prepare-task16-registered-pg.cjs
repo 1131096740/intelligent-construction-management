@@ -139,7 +139,7 @@ function caseInventory(bytes) {
   need(row && Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key)) && row.id === CASE_ID && row.handlerExport === HANDLER && row.executed === false && row.sqlExecuted === false, "CASE_INVENTORY_MISMATCH");
   need(row.fixture === "approved-settlement-project-unenabled-company-b-pays-a" && row.publicEntry === "POST /payment-executions/:paymentId/registrations" && row.amountCents === "4000", "CASE_INVENTORY_MISMATCH");
   const expected = { execution: 1, funding: 1, allocation: 1, event: 1, audit: 1, debtor: "A", creditor: "B", rootAmountCents: "4000", roots: 1, operatingFacts: 0, operatingImpacts: 0, balanceA: "100.0000", balanceB: "60.0000", paidCents: "4000", remainingCents: "6000" };
-  const limits = ["Pre-approved state fixture; no approval-path acceptance", "Requires future explicitly authorized connected executor", "No failure/concurrency cases or resource driver implemented"];
+  const limits = ["Pre-approved state fixture; no approval-path acceptance", "Requires future explicitly authorized connected executor", "No failure/concurrency cases or live resource acceptance"];
   need(JSON.stringify(row.independentExpectation) === JSON.stringify(expected) && JSON.stringify(row.limits) === JSON.stringify(limits), "CASE_EXPECTATION_MISMATCH");
   return [{ ...row, handlerBinding: { sourcePath: CASE_SOURCE, sourceSha256: hash(bytes), declarationSha256: hash(handler.getText(file)) } }];
 }

@@ -82,20 +82,20 @@ function preparedRuntime(t) {
     const specification=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
     let options=specification.options;
     const packet=JSON.parse(fs.readFileSync(options.packetFile,'utf8'));
-    const calls=[],commands=[];let observedApplicationEntries,observedFixtureAdmission;
+    const calls=[],commands=[];let observedApplicationEntries,observedFixtureAdmission,observedCaseAdmission;
     const adapters={
       readOnlyCommand(exe,args,control){
         commands.push({exe,args,env:control.env});
         if(args[0].endsWith('/prepare-task16-registered-pg.cjs'))return JSON.stringify({status:'SOURCE_ONLY_VERIFIED_NOT_EXECUTED',candidateSha:packet.candidateSha,sealSha256:packet.sealSha256,packetSha256:options.expectedPacketSha256,executionAllowed:false});
         return execFileSync(exe,args,control);
       },
-      startResource:async c=>{observedApplicationEntries=c.applicationEntriesWitness;observedFixtureAdmission=c.seedAdmissionWitness;calls.push('resource');if(c.source.runtimeAdmission.status!=='INPUTS_AND_CODE_TREES_MATCHED')throw Error('admission missing');return {close:async()=>calls.push('close-resource'),getReceipt:()=>({status:'closed',cleanup:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}})};},
+      startResource:async c=>{observedApplicationEntries=c.applicationEntriesWitness;observedFixtureAdmission=c.seedAdmissionWitness;observedCaseAdmission=c.normalCaseAdmissionWitness;calls.push('resource');if(c.source.runtimeAdmission.status!=='INPUTS_AND_CODE_TREES_MATCHED')throw Error('admission missing');return {close:async()=>calls.push('close-resource'),getReceipt:()=>({status:'closed',cleanup:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}})};},
       verifyOwnerTransport:async()=>{},migrateBaseline:async()=>{},installBaselineAccess:async()=>{},installPreparedSql:async()=>{},installRegisteredAccess:async()=>{},
       connectRestrictedClients:async()=>({close:async()=>{}}),startApplication:async()=>({close:async()=>{}}),seedFixture:async()=>({}),runNormalCase:async()=>({caseId:'registered.null-cross-company.commit',passed:true})
     };
     async function exercise(){
       const firstReceipt=await runTask16RegisteredPg(options,adapters);
-      if(!specification.reenter)return {receipt:firstReceipt,calls,commands,applicationEntries:observedApplicationEntries,fixtureAdmission:observedFixtureAdmission};
+      if(!specification.reenter)return {receipt:firstReceipt,calls,commands,applicationEntries:observedApplicationEntries,fixtureAdmission:observedFixtureAdmission,caseAdmission:observedCaseAdmission};
       const inputs=JSON.parse(fs.readFileSync(options.inputsFile,'utf8'));
       const root=inputs.candidateRoot,client=path.join(root,'services/api/node_modules/@prisma/client');
       fs.writeFileSync(path.join(client,'package.json'),JSON.stringify({main:'bad.js'}));
@@ -305,4 +305,8 @@ test('readonly admission captures dates, input identity, seven fragments and fix
  for(const file of [...extra,...fragments]){const bytes=fs.readFileSync(path.join(project,file));f.put(file,bytes);f.packet.source.files.push({path:file,sha256:hash(bytes)});}
  f.packet.installation={fragments:fragments.map(file=>({path:file,sha256:hash(fs.readFileSync(path.join(f.root,file)))}))};const entry=f.put('services/api/dist/database/registered-payment-postgres.fixture.js',"throw new Error('UNEXPECTED_FIXTURE_IMPORT');\n");
  f.sealPacket();f.recapture('services/api/dist');for(const output of f.preparation.outputs)output.preparedManifestSha256=f.inputs.trees.find(row=>row.root===output.root).sha256;f.sealPreparation();f.sealInputs();const result=f.run();assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.receipt.failureCode);const witness=result.fixtureAdmission;assert.deepEqual(witness.dates,f.inputs.fixtureDates);assert.equal(witness.input.path,f.inputsFile);assert.equal(witness.input.sha256,f.options.expectedInputsSha256);assert.equal(witness.input.identity.ino,fs.statSync(f.inputsFile).ino);assert.equal(witness.entry.path,entry);assert.equal(witness.entry.identity.ino,fs.statSync(entry).ino);assert.equal(witness.fragments.length,7);assert.deepEqual(witness.fragments.map(row=>row.path),fragments);assert.equal(witness.sources.length,7);
+});
+
+test('readonly admission captures the fixed normal-case FD and source closure without importing its body',t=>{
+ const f=preparedRuntime(t),extra=['services/api/prisma/task16-normal-case.cjs','services/api/prisma/task16-seed-fixture.cjs','services/api/src/database/registered-payment-postgres.cases.ts','services/api/src/database/registered-payment-postgres.fixture.ts'];for(const file of extra){const bytes=fs.readFileSync(path.join(project,file));f.put(file,bytes);f.packet.source.files.push({path:file,sha256:hash(bytes)});}const entry=f.put('services/api/dist/database/registered-payment-postgres.cases.js',"throw new Error('UNEXPECTED_NORMAL_CASE_IMPORT');\n");f.sealPacket();f.recapture('services/api/dist');for(const output of f.preparation.outputs)output.preparedManifestSha256=f.inputs.trees.find(row=>row.root===output.root).sha256;f.sealPreparation();const result=f.run();assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.receipt.failureCode);const witness=result.caseAdmission;assert.equal(witness.entry.path,entry);assert.equal(witness.entry.sha256,hash(fs.readFileSync(entry)));assert.equal(witness.entry.identity.ino,fs.statSync(entry).ino);assert.equal(witness.sources.length,8);assert.equal(witness.build.sourceSha,f.packet.candidateSha);assert.equal(witness.build.preparationReceiptSha256,f.inputs.preparationReceipt.sha256);
 });

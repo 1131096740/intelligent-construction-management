@@ -31,7 +31,7 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
  need(!Object.values(Module._pathCache).some(file=>typeof file==="string"&&TREES.some(tree=>inside(path.join(root,tree),file))),"TASK16_CLIENT_PRELOADED_PATH");
  const loaded=require(entry.path),actual=require.cache[entry.path];
  need(actual?.loaded===true&&actual.exports===loaded&&typeof loaded.PrismaClient==="function"&&loaded.Prisma?.prismaVersion?.client==="5.22.0"&&loaded.Prisma?.prismaVersion?.engine==="605197351a3c8bdd595af2d2a9bc3025bca48ea2","TASK16_CLIENT_CLASS");
- const Class=loaded.PrismaClient,files=new Map(),applicationRoots=[];let applicationExports,reflection,fixtureExports;const fixtureDependencyMethods=new Map();
+ const Class=loaded.PrismaClient,files=new Map(),applicationRoots=[];let applicationExports,reflection,fixtureExports,normalCaseExports;const fixtureDependencyMethods=new Map();
  const check=()=>{
   need(coreHooksUnmodified()&&Module._load===facts.hooks.load&&Module._resolveFilename===facts.hooks.resolve&&Module._findPath===facts.hooks.find&&Module.prototype.require===facts.hooks.require&&[".js",".json",".node"].every(ext=>Module._extensions[ext]===facts.hooks.extensions[ext]),"TASK16_CLIENT_LOADER_HOOK_CHANGED");
   need(require.cache[entry.path]===actual&&actual.exports===loaded&&loaded.PrismaClient===Class,"TASK16_CLIENT_CLASS_CHANGED");
@@ -43,6 +43,7 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
     if(key){const descriptor=Object.getOwnPropertyDescriptor(row.exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function','TASK16_FIXTURE_DEPENDENCY_CHANGED');const prior=fixtureDependencyMethods.get(row.path);if(prior)need(prior===descriptor.value,'TASK16_FIXTURE_DEPENDENCY_CHANGED');else fixtureDependencyMethods.set(row.path,descriptor.value);}
    }
   }
+  if(normalCaseExports)for(const row of normalCaseExports)need(Object.getOwnPropertyDescriptor(row.module.exports,row.key)?.value===row.value,"TASK16_CASE_EXPORT_CHANGED");
   if(fixtureExports)for(const row of fixtureExports)need(Object.getOwnPropertyDescriptor(row.module.exports,row.key)?.value===row.value,"TASK16_FIXTURE_EXPORT_CHANGED");
   if(applicationExports){need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,"TASK16_APP_REFLECTION_CHANGED");for(const row of applicationExports.records)need(Object.getOwnPropertyDescriptor(row.module.exports,row.key)?.value===row.value,"TASK16_APP_EXPORT_CHANGED");applicationExports.checkMetadata();}
   for(const file of Object.keys(require.cache))if(TREES.some(tree=>inside(path.join(root,tree),file)))need(files.has(file),"TASK16_APP_FOREIGN_CACHE");
@@ -80,8 +81,13 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
   const existing=require.cache[row.path];need(!existing||files.get(row.path)?.module===existing&&files.get(row.path)?.exports===existing.exports,"TASK16_FIXTURE_PRELOADED_ENTRY");
   need(read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:'TASK16_FIXTURE_ENTRY'}).sha256===row.sha256,"TASK16_FIXTURE_ENTRY");
   const exports=require(row.path),mod=require.cache[row.path];need(mod?.loaded===true&&mod.exports===exports,"TASK16_FIXTURE_ENTRY");applicationRoots.push(mod);
-  const keys=['buildRegisteredPgFixturePlan','seedRegisteredPgFixture'];fixtureExports=keys.map(key=>{const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',"TASK16_FIXTURE_EXPORT_CHANGED");return{module:mod,key,value:descriptor.value};});check();return Object.freeze(Object.fromEntries(fixtureExports.map(row=>[row.key,row.value])));
+  const keys=['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','assertRegisteredPgConnectedRoles','registeredPgHttp'];fixtureExports=keys.map(key=>{const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',"TASK16_FIXTURE_EXPORT_CHANGED");return{module:mod,key,value:descriptor.value};});check();return Object.freeze(Object.fromEntries(fixtureExports.map(row=>[row.key,row.value])));
  };
- check();return{Class,check,loadApplicationModules,loadFixtureModules,witness:()=>({entry:entry.path,entrySha256:entry.sha256,modules:[...files.values()].map(row=>({path:row.path,sha256:row.sha256})).sort((a,b)=>a.path.localeCompare(b.path))})};
+ const loadNormalCaseModules=()=>{
+  check();need(fixtureExports&&!normalCaseExports,'TASK16_CASE_MODULE_ORDER');const row=source.runtimeAdmission.normalCase?.entry;
+  need(row?.path===path.join(root,'services/api/dist/database/registered-payment-postgres.cases.js')&&row.identity,'TASK16_CASE_ENTRY');const previous=require.cache[row.path];need(!previous||files.get(row.path)?.module===previous&&files.get(row.path)?.exports===previous.exports,'TASK16_CASE_PRELOADED');need(read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:'TASK16_CASE_ENTRY'}).sha256===row.sha256,'TASK16_CASE_ENTRY');
+  const exports=require(row.path),mod=require.cache[row.path];need(mod?.loaded===true&&mod.exports===exports,'TASK16_CASE_ENTRY');applicationRoots.push(mod);normalCaseExports=['registeredPaymentPostgresCases','runRegisteredNullCrossCompanyCommit'].map(key=>{const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function','TASK16_CASE_EXPORT_CHANGED');return{module:mod,key,value:descriptor.value};});check();return Object.freeze(Object.fromEntries(normalCaseExports.map(row=>[row.key,row.value])));
+ };
+ check();return{Class,check,loadApplicationModules,loadFixtureModules,loadNormalCaseModules,witness:()=>({entry:entry.path,entrySha256:entry.sha256,modules:[...files.values()].map(row=>({path:row.path,sha256:row.sha256})).sort((a,b)=>a.path.localeCompare(b.path))})};
 }
 module.exports={loadTask16Client};
