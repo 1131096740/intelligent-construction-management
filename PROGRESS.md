@@ -1,3 +1,10 @@
+## Task12 FaceA 盖章与签章归档 Web consumer（2026-11-09，A3本地 HOLD）
+
+- [~] 隔离树以已审 84cb33ea 为基线，消费后端 A1 immutable DTO；仅 generated_approval / inside_original，主管人工确认我方盖章，原合同员有序上传1至20份签章PDF并人工核对后归档。能力只来自后端，真实 runtime cap 仍关闭。
+- [~] 原意图按 actor＋V 固定存储，原key/SHA/全body/顺序严格核对；UNKNOWN只读恢复，用户明确继续前先查原key和fresh同轮能力，仅复用原请求。分件上传失败只重试未完成件；403/5xx/错回执保留，晚回包与账号/版本切换用单调scopeEpoch隔离（实际A→B→A公开刷新RED→GREEN），旧finally不清新scope忙状态。原 CON10 源码未改；V2 不回退旧用印或主管终审。[本地收据](docs/progress/2026-11-09-task12-facea-signing-archive-web-consumer.md)。
+- [~] A2两轴2P2集中修复：审批进度分页/审批单available/资料库summary按真实类型模拟，正常页面审批空态、实际摘要和V1可用按钮有公开断言；首Page前记录pageerror/console.error，负控只按显式mock URL/status精确核对。资料库改通用办理说明，V1权限与确认行为保原。原A2错误截图/66历史证据保，新增公开断言实际RED→GREEN。
+- [ ] 当前为本地模拟浏览器与类型检查范围，最终同源结果及完整失败原件见外部 evidence/HANDOFF；待独立双轴审查。没有真实后端联合运行、PG、SDK构造/生成、资源、远端、CI、提交、部署；不关闭 #394，不宣 FaceB 或5×3矩阵完成。
+
 ## 当前落地：Task12 面A与consumer合同、Task16 Schema204组合源码（2026-11-09）
 
 - [~] 原integration已仅快进并推送准确代码候选 `934f0b4ea0fe2924bb00f6456a0fe616f04460ed`，tree `86e18b2f1053b500e0d0b49b1dee33857153bc5e`；包含已审表内generated/original归档后端、只读详情生命周期consumer合同及204源码资格桥。A1十源与Task16二十六源唯一PROGRESS重叠按共同9a4基底保双前缀和整个base。[本轮准确收据](docs/progress/2026-11-09-task16-schema204-source-qualification.md)。

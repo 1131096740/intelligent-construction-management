@@ -133,6 +133,40 @@ export function fetchContractDetail(contractId: string, options?: { versionId?: 
   );
 }
 
+export interface ContractSealConfirmationV2Payload {
+  expectedApprovalInstanceId: string;
+  expectedSealTaskId: string;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  confirmed: true;
+}
+
+export function confirmContractSealV2(versionId: string, body: ContractSealConfirmationV2Payload) {
+  return postJson<{ contractVersionId: string; approvalInstanceId: string; sealTaskId: string; status: "seal_approved_pending_archive" }>(
+    `/contracts/${encodeURIComponent(versionId)}/seal-confirmation`, body
+  );
+}
+
+export interface ContractSignedArchiveV2Payload extends Omit<ContractSealConfirmationV2Payload, "confirmed"> {
+  archiveProtocolVersion: 2;
+  archiveSource: "generated_approval";
+  idempotencyKey: string;
+  fileIds: string[];
+  confirmedMatchingSignedDocument: true;
+}
+export interface ContractSignedArchiveV2Result {
+  archiveId: string; contractVersionId: string; status: "effective"; fileIds: string[];
+}
+export type ContractSignedArchiveV2Lookup = { status: "unknown" } | {
+  status: "archived"; requestSha256: string; intent: ContractSignedArchiveV2Payload; result: ContractSignedArchiveV2Result;
+};
+export function archiveSignedContractV2(versionId: string, body: ContractSignedArchiveV2Payload) {
+  return postJson<ContractSignedArchiveV2Result>(`/contracts/${encodeURIComponent(versionId)}/signed-archive`, body);
+}
+export function fetchSignedContractArchiveV2Result(versionId: string, key: string) {
+  return readJson<ContractSignedArchiveV2Lookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`);
+}
+
 export interface ContractSigningMaterialChangeActionContext {
   routeContractId: string;
   contractId: string;

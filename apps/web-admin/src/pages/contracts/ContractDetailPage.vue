@@ -15,7 +15,7 @@
       @primary-action="openPrimaryAction"
     >
       <template #actions>
-<ApprovalDocumentDownload v-if="contractDetail?.sealTask" business-type="contract_seal" :business-id="contractDetail.sealTask.id" :refresh-key="contractDetail.sealTask" />
+<ApprovalDocumentDownload v-if="contractDetail?.sealTask && !contractDetail.v2Lifecycle" business-type="contract_seal" :business-id="contractDetail.sealTask.id" :refresh-key="contractDetail.sealTask" />
         <t-button
           v-if="changeEligibility && contractChangeActionEnabled()"
           variant="outline"
@@ -77,6 +77,13 @@
     </section>
 
     <BusinessFeedback
+      v-if="v2ConfirmedRefreshWarning"
+      state="success"
+      title="本次办理结果已核对"
+      :description="v2ConfirmedRefreshWarning"
+    />
+
+    <BusinessFeedback
       v-if="contractDetailError"
       :state="loadErrorState"
       :title="loadErrorState === 'permission' ? '当前账号无权查看此合同' : '合同详情读取失败'"
@@ -93,6 +100,15 @@
     />
 
     <template v-if="contractDetail">
+      <ContractSignedArchiveSection
+        v-if="contractDetail.v2Lifecycle"
+        :detail="contractDetail"
+        :actor-user-id="auth.user?.id"
+        :route-contract-id="routeContractId()"
+        :external-busy="Boolean(archiveActionBusy)"
+        @completed="onV2SigningCompleted"
+        @lock="v2LifecycleLocked = $event"
+      />
       <t-alert
         v-if="contractDetail.historyReadOnly"
         theme="info"
@@ -181,7 +197,7 @@
             <header class="section-heading">
               <div>
                 <h2>生效进度</h2>
-                <p>审批、用章、归档上传、主管确认和版本生效分开记录。</p>
+                <p>{{ contractDetail?.v2Lifecycle ? "审批、确认我方盖章、双方签章原件归档和版本生效分开记录。" : "审批、用章、归档上传、主管确认和版本生效分开记录。" }}</p>
               </div>
             </header>
             <div class="flow-list">
@@ -227,7 +243,7 @@
             </div>
           </header>
 
-          <JgTaskCard :actions="contractDetail.availableActions" />
+          <JgTaskCard :actions="contractTaskCardActions" />
 
           <t-alert
             v-if="contractDetail.disabledReasons.length"
@@ -528,7 +544,7 @@
         class="tab-content"
         aria-label="合同凭证资料"
       >
-        <section class="content-panel content-panel--plain">
+        <section v-if="!contractDetail.v2Lifecycle" class="content-panel content-panel--plain">
           <header class="section-heading">
             <div>
               <h2>签署与归档证据</h2>
@@ -1230,6 +1246,8 @@
 </template>
 
 <script setup lang="ts">
+import type { ContractSigningCompletion } from "./use-contract-signed-archive";
+import ContractSignedArchiveSection from "./ContractSignedArchiveSection.vue";
 import ApprovalDocumentDownload from "../../components/approval/ApprovalDocumentDownload.vue";
 import type { BusinessEntryDraftPayload, BusinessEntryFrozenSnapshot, CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";
@@ -1750,6 +1768,29 @@ const sealCompletionKeys = sealCompletionOptions.map((item) => item.value);
 const finalConfirmationKeys = finalConfirmationOptions.map((item) => item.value);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
+const v2LifecycleLocked = ref(false);
+const v2ConfirmedReceipt = ref<(ContractSigningCompletion & { routeContractId: string }) | null>(null);
+const v2ConfirmedRefreshWarning = computed(() => {
+  const receipt = v2ConfirmedReceipt.value;
+  if (!receipt || !contractDetailError.value || receipt.actor !== auth.user?.id || receipt.routeContractId !== routeContractId()) return "";
+  return receipt.kind === "archive" ? "归档结果已核对成功，合同详情暂未刷新，请重试读取。"
+    : receipt.kind === "seal" ? "盖章完成结果已核对，合同详情暂未刷新，请重试读取。"
+      : "已核对原盖章任务由其他人员完成，合同详情暂未刷新，请重试读取。";
+});
+function onV2SigningCompleted(completion: ContractSigningCompletion) {
+  if (completion.actor !== auth.user?.id || completion.versionId !== contractDetail.value?.contractVersionId) return;
+  v2ConfirmedReceipt.value = { ...completion, routeContractId: routeContractId() };
+  void reloadContractDetail();
+}
+watch(() => [auth.user?.id, route.params.contractId, route.query.versionId], () => { v2ConfirmedReceipt.value = null; });
+watch(() => contractDetail.value?.contractVersionId, versionId => {
+  if (versionId && v2ConfirmedReceipt.value && versionId !== v2ConfirmedReceipt.value.versionId) v2ConfirmedReceipt.value = null;
+});
+const legacySigningActions = new Set(["approve_seal", "complete_seal", "upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
+const v2SigningActions = new Set(["confirm_seal_v2", "archive_signed_v2"]);
+const contractTaskCardActions = computed(() => (contractDetail.value?.availableActions ?? []).filter(action =>
+  !contractDetail.value?.v2Lifecycle || !legacySigningActions.has(action.key) && !v2SigningActions.has(action.key)
+).map(action => v2LifecycleLocked.value && !action.key.startsWith("download_") ? { ...action, enabled: false, disabledReason: "本次办理结果待核对，请先查询原结果" } : action));
 const signingMaterialChangeDialogVisible = ref(false);
 const signingMaterialChangeDialogError = ref("");
 const signingMaterialChangeDialogContext = ref<
@@ -1932,14 +1973,13 @@ const contractArchiveFileOptions = computed(() =>
     }))
 );
 const contractArchiveRecordOptions = computed(() =>
-  (contractDetail.value?.archiveFiles ?? []).map((file) => ({
-    label: `${file.fileName}（${file.statusLabel}）`,
-    value: file.archiveRecordId
+  [...new Map((contractDetail.value?.archiveFiles ?? []).filter(file => file.archiveProtocolVersion !== 2).map(file => [file.archiveRecordId, file])).values()].map((file) => ({
+    label: `${file.fileName}（${file.statusLabel}）`, value: file.archiveRecordId
   }))
 );
 const contractEvidenceFilesView = computed(() =>
   (contractDetail.value?.archiveFiles ?? []).map((file) => ({
-    recordId: file.archiveRecordId,
+    recordId: file.archiveProtocolVersion === 2 ? file.evidenceId ?? file.fileId : file.archiveRecordId,
     fileName: file.fileName,
     businessRef: contractDetail.value?.id ?? "当前合同",
     purpose: "合同归档件",
@@ -1970,7 +2010,7 @@ const contractActionByKey = computed(() =>
 );
 const contractHeaderPrimaryAction = computed(() => {
   const primaryAction = contractDetail.value?.primaryAction;
-  if (!primaryAction) return null;
+  if (!primaryAction || contractDetail.value?.v2Lifecycle && (legacySigningActions.has(primaryAction) || v2SigningActions.has(primaryAction))) return null;
   const action = contractActionByKey.value.get(primaryAction);
   return action?.enabled ? action : null;
 });
@@ -2131,6 +2171,8 @@ const actionFeedbackState = computed<"success" | "error">(() =>
 );
 
 function isContractActionEnabled(key: string) {
+  if (v2LifecycleLocked.value && !key.startsWith("download_")) return false;
+  if (contractDetail.value?.v2Lifecycle && legacySigningActions.has(key)) return false;
   return Boolean(
     contractLifecycleAvailableActions.value?.some(
       (action) => action.key === key && action.enabled
@@ -2139,11 +2181,13 @@ function isContractActionEnabled(key: string) {
 }
 
 function contractChangeActionEnabled() {
+  if (v2LifecycleLocked.value) return false;
   return contractChangeAvailableActions.value !== null &&
     contractChangeAvailableActions.value.includes("create_contract_change_draft");
 }
 
 function contractReviewActionEnabled() {
+  if (v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes("review_approval")) &&
     Boolean(
       contractReviewCapability.value?.availableActions.some(
@@ -2158,6 +2202,7 @@ function contractReviewActionEnabled() {
 }
 
 function contractWithdrawalActionEnabled() {
+  if (v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes("withdraw_approval")) &&
     Boolean(
       contractReviewCapability.value?.availableActions.some(
@@ -2172,6 +2217,7 @@ function contractWithdrawalActionEnabled() {
 }
 
 function signingMaterialChangeActionEnabled() {
+  if (contractDetail.value?.v2Lifecycle || v2LifecycleLocked.value) return false;
   return Boolean(contractLifecycleAvailableActionKeys.value?.includes(
     "report_signing_material_change"
   )) && Boolean(
