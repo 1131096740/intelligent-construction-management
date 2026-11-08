@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，Task10统一材料运输与compact/fonts已整合）
+
+- [~] 作者ffce7c20以no-ff合入原integration f6538c3e，final446b完整17路径/15源码同已审eb1b，两轴最终执行/doc桥0、整树相等。三compact按确认负准入；新3fcd独立材料+非零运输模板，46行公有SAVE/同步/同R_F实际Word/PDF与合计单行，343后端及LO分批/14治理证据分层保留。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task10-material-unified-integrated.md)。
+- [~] 中央旧274模拟/CLI25/fixture20/API类型0；旧dist首freshness失败和wrapper bootstrap失败保留，经明确授权完整备份原owned产物后fresh Shared/API构建及七check-only0，tracked3474/依赖65431不变，不重跑native或手改ready。准确merge source-only3474/202/7/1通过；后继两文档/finalHEAD另封并回读，全部新commit含[skip ci]，空checks非CI，旧fe70事故保留。
+- [ ] 上述业务确认已实施，本片不代表#392整票关闭：CON10正式提交consumer仍Task12，限定stage-close未获接受；#398/default3/17-24/16-42-44及13/45不变。Draft保持，不close/ready/mainmerge/部署/生产；原件、作者树及其它WIP保留。
+
 ## 当前接续（2026-11-08，Task10 已确认材料运输统一清单，本地待最终桥）
 
 - [~] 三 compact 原件保持，真实公有准入反例3/3；原8d材料匹配新版本统一46行（45材料+非零运输），权威金额117181/net103700/tax13481，正文手改/关键字段同步/同R_F真实Word/PDF、字体与合计单行通过。已审15源码两轴增量0，本地343后端、API类型/lint/fresh build、LO三坏两好及7write+7check实际通过；无生成物变化。[本片收据](docs/progress/2026-11-08-enterprise-simplification-task10-material-unified.md)。
