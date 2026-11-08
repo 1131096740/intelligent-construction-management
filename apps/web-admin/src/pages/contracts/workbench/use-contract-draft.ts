@@ -28,6 +28,7 @@ import {
   fetchContractCreateCapabilities,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
+  fetchContractDraftSubmissionResult,
   fetchContractDraftSaveResult,
   heartbeatContractDraftEditLease,
   queueContractDraftPreview,
@@ -43,6 +44,8 @@ import {
   type ContractDraftPartyModel,
   type ContractDraftPaymentTermsModel,
   type ContractDraftSubmissionResult,
+  type ContractDraftSubmissionPayload,
+  type ContractDraftV2SubmissionIntent,
   type ContractDraftWorkbenchReadModel,
   type CreateWorkbenchDraftPayload,
   type SaveContractDraftAggregatePayload
@@ -135,6 +138,7 @@ async function assertCurrentContractDraftOperationCapability(
       "合同草稿能力响应修订不一致，请刷新后重试"
     );
   }
+  return operationCapabilities;
 }
 
 async function acquireContractDraftEditLeaseWithCapability(
@@ -240,14 +244,21 @@ async function queueContractDraftPreviewWithCapability(
 async function submitContractDraftWithCapability(
   contractVersionId: string,
   leaseToken: string,
-  payload: { expectedRevision: number; idempotencyKey: string }
+  payload: ContractDraftSubmissionPayload,
+  beforeDispatch: () => void
 ) {
-  await assertCurrentContractDraftOperationCapability(
+  const current = await assertCurrentContractDraftOperationCapability(
     contractVersionId,
     payload.expectedRevision,
     "submit_contract_draft",
     "当前用户不能提交合同草稿"
   );
+  if ("submissionProtocolVersion" in payload && (current.version.numericProtocolVersion !== 2 ||
+    current.version.documentContentRevision !== payload.documentContentRevision ||
+    current.version.documentContentFingerprint !== payload.documentContentFingerprint)) {
+    throw new ContractDraftAuthorityRefreshRequiredError("合同正文已变化，请重新检查当前版本后提交");
+  }
+  beforeDispatch();
   return submitContractDraft(contractVersionId, leaseToken, payload);
 }
 
@@ -576,7 +587,10 @@ export interface UseContractDraft {
   /** Queues document generation for the latest successfully saved revision. */
   queuePreviewForCurrentRevision: () => Promise<boolean>;
   /** Flushes the aggregate and submits the exact saved revision once. */
-  submitNow: () => Promise<ContractDraftSubmissionResult | null>;
+  submitNow: (intent?: ContractDraftV2SubmissionIntent) => Promise<ContractDraftSubmissionResult | null>;
+  pendingSubmissionResult: Readonly<Ref<boolean>>;
+  checkingSubmissionResult: Readonly<Ref<boolean>>;
+  checkSubmissionResult: () => Promise<ContractDraftSubmissionResult | null>;
   takeOverLease: (currentPassword: string) => Promise<boolean>;
   restoreLocalRecovery: () => boolean;
   discardLocalRecovery: () => void;
@@ -1369,7 +1383,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     contractVersionId: string;
     expectedRevision: number;
     idempotencyKey: string;
+    intent?: ContractDraftV2SubmissionIntent;
+    actorUserId?: string;
+    requestSha256?: string;
+    phase?: "pending" | "unknown" | "rejected";
+    expectedFormalCode?: string | null;
   } | null = null;
+  const pendingSubmissionResult = ref(false);
+  const checkingSubmissionResult = ref(false);
   const submissionCompleted = ref(false);
   let leaseToken: string | null = null;
   let leaseHeartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1383,7 +1404,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   );
 
   const canEdit = computed(
-    () => !submissionCompleted.value && contractDraftLeaseCanEdit(lease.value)
+    () => !submissionCompleted.value && !pendingSubmissionResult.value && contractDraftLeaseCanEdit(lease.value)
   );
   const authoritySnapshot = computed<ContractDraftAuthoritySnapshot | null>(() => {
     const currentWorkbench = workbenchReceipt.value;
@@ -1502,6 +1523,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     localRecoveryError.value = "";
   }
 
+  function localRecoveryMutationLocked(): boolean {
+    return pendingSubmissionResult.value || activeSubmission !== null ||
+      lifecycleState.value.busy || activeSave !== null || saveState.value === "saving";
+  }
+
   function inspectLocalRecovery(): void {
     const storage = getStorage();
     const identity = recoveryIdentity();
@@ -1513,6 +1539,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       identity
     );
     if (!found) return;
+    if (localRecoveryMutationLocked()) {
+      pendingLocalRecovery.value = found;
+      return;
+    }
     if (!isAggregateRecoverySnapshot(found.recovery.snapshot)) {
       clearContractDraftLocalRecoveryScope(storage, identity);
       return;
@@ -1545,6 +1575,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function restoreLocalRecovery(): boolean {
+    if (localRecoveryMutationLocked()) return false;
     const found = pendingLocalRecovery.value;
     if (!found || !isAggregateRecoverySnapshot(found.recovery.snapshot)) {
       clearBackup();
@@ -1564,6 +1595,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function discardLocalRecovery(): void {
+    if (localRecoveryMutationLocked()) return;
     clearBackup();
   }
 
@@ -1636,7 +1668,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const versionId = contractVersionId.value;
     const token = leaseToken;
     if (
-      disposed || !online.value ||
+      disposed || pendingSubmissionResult.value || !online.value ||
       !versionId ||
       !token ||
       !hasAuthorityOperation("heartbeat_contract_draft_edit_lease") ||
@@ -1655,7 +1687,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         token
       );
       if (
-        disposed ||
+        disposed || pendingSubmissionResult.value ||
         contractVersionId.value !== versionId ||
         leaseToken !== token
       ) {
@@ -1819,7 +1851,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function discardLocalState(): boolean {
-    if (activeSave || saveState.value === "saving" || pendingSaveResult.value) {
+    if (activeSave || saveState.value === "saving" || pendingSaveResult.value || pendingSubmissionResult.value) {
       return false;
     }
     cancelScheduledSave();
@@ -1836,6 +1868,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     submissionCompleted.value = false;
     activeSubmission = null;
     pendingSubmissionRequest = null;
+    pendingSubmissionResult.value = false;
     lastSavedAt.value = null;
     pendingSaveResult.value = false;
     pendingSaveIntent.value = null;
@@ -1845,7 +1878,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function suspendAutosaveForLifecycleAction(): boolean {
-    if (activeSave || saveState.value === "saving" || pendingSaveResult.value) return false;
+    if (activeSave || saveState.value === "saving" || pendingSaveResult.value || pendingSubmissionResult.value) return false;
     cancelScheduledSave();
     pausedRef.value = true;
     return true;
@@ -1862,6 +1895,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }
 
   function resumeAutosaveAfterLifecycleAction(): void {
+    if (pendingSubmissionResult.value) return;
     pausedRef.value = false;
     scheduleSave();
   }
@@ -1870,7 +1904,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     context: ContractDraftLifecycleOperationContext
   ): boolean {
     const snapshot = authoritySnapshot.value;
-    return !disposed &&
+    return !disposed && !pendingSubmissionResult.value &&
       context.generation === loadRequestId &&
       snapshot?.contractId === context.contractId &&
       snapshot.contractVersionId === context.versionId &&
@@ -2109,7 +2143,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       result.version.status
     );
     activeSubmission = null;
-    pendingSubmissionRequest = null;
+    if (pendingSubmissionRequest?.contractVersionId !== result.version.id ||
+      (pendingSubmissionRequest.actorUserId && pendingSubmissionRequest.actorUserId !== options.userId?.())) pendingSubmissionRequest = null;
+    pendingSubmissionResult.value = false;
+    restoreSubmissionIntent(result.version.id);
+    if (pendingSubmissionResult.value) { pausedRef.value = true; cancelLeaseTimers(); leaseToken = null; }
     lastSavedAt.value = matchingAck?.savedAt ?? null;
     saveError.value = "";
     resetLifecycleState();
@@ -2125,7 +2163,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     );
     if (
       !leaseToken &&
-      canAutoAcquireLease &&
+      canAutoAcquireLease && !pendingSubmissionResult.value &&
       hasAuthorityOperation("acquire_contract_draft_edit_lease") &&
       (result.lease.state === "available" || result.lease.state === "expired")
     ) {
@@ -2693,7 +2731,84 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     return true;
   }
 
-  async function performSubmission(): Promise<ContractDraftSubmissionResult | null> {
+  function submissionStorageKey(versionId: string, actorUserId: string) {
+    return `jg:contract-submission:${actorUserId}:${versionId}`;
+  }
+
+  function persistSubmissionIntent() {
+    const request = pendingSubmissionRequest;
+    if (!request?.intent || !request.actorUserId) return;
+    const storage = getStorage();
+    if (!storage) throw new Error("无法保留本次提交标识，请保持当前页面并检查浏览器存储后重试");
+    storage.setItem(submissionStorageKey(request.contractVersionId, request.actorUserId), JSON.stringify(request));
+  }
+
+  function restoreSubmissionIntent(versionId: string) {
+    const actor = options.userId?.();
+    if (!actor) return;
+    const raw = getStorage()?.getItem(submissionStorageKey(versionId, actor));
+    if (!raw) return;
+    try {
+      const candidate = JSON.parse(raw) as NonNullable<typeof pendingSubmissionRequest>;
+      if (candidate.contractVersionId !== versionId || candidate.actorUserId !== actor || !candidate.intent ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(candidate.idempotencyKey) ||
+        !/^[a-f0-9]{64}$/u.test(candidate.requestSha256 ?? "")) throw new Error();
+      pendingSubmissionRequest = candidate;
+      pendingSubmissionResult.value = candidate.phase !== "rejected";
+    } catch {
+      pendingSubmissionResult.value = true;
+    }
+  }
+
+  async function submissionRequestSha(versionId: string, actorUserId: string, intent: ContractDraftV2SubmissionIntent) {
+    const bytes = new TextEncoder().encode(JSON.stringify({ contractVersionId: versionId, actorUserId,
+      expectedRevision: intent.expectedRevision, submissionProtocolVersion: intent.submissionProtocolVersion,
+      documentContentRevision: intent.documentContentRevision, documentContentFingerprint: intent.documentContentFingerprint,
+      generatedDocumentId: intent.generatedDocumentId, sourceSha256: intent.sourceSha256, blanksReviewed: intent.blanksReviewed }));
+    return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  function finishSubmission(result: ContractDraftSubmissionResult) {
+    const request = pendingSubmissionRequest;
+    if (request?.actorUserId) getStorage()?.removeItem(submissionStorageKey(request.contractVersionId, request.actorUserId));
+    pendingSubmissionResult.value = false;
+    submissionCompleted.value = true;
+    pausedRef.value = true;
+    cancelScheduledSave();
+    clearBackup();
+    pendingSubmissionRequest = null;
+    releaseCurrentLease();
+    return result;
+  }
+
+  async function checkSubmissionResult(): Promise<ContractDraftSubmissionResult | null> {
+    const request = pendingSubmissionRequest;
+    const actor = options.userId?.();
+    if (checkingSubmissionResult.value || !pendingSubmissionResult.value || !request?.intent ||
+      !actor || request.actorUserId !== actor || request.contractVersionId !== contractVersionId.value) return null;
+    checkingSubmissionResult.value = true;
+    try {
+      const lookup = await fetchContractDraftSubmissionResult(request.contractVersionId, request.idempotencyKey);
+      if (pendingSubmissionRequest !== request || request.actorUserId !== options.userId?.() || lookup.status !== "submitted") return null;
+      const expected = request.intent;
+      if (!lookup.intent || Object.keys(lookup.intent).length !== 7 ||
+        (Object.keys(expected) as Array<keyof ContractDraftV2SubmissionIntent>).some(key => lookup.intent[key] !== expected[key]) ||
+        lookup.requestSha256 !== request.requestSha256 ||
+        lookup.requestSha256 !== await submissionRequestSha(request.contractVersionId, actor, expected) ||
+        lookup.result?.contractVersionId !== request.contractVersionId || lookup.result.status !== "in_approval" ||
+        typeof lookup.result.approvalInstanceId !== "string" || !lookup.result.approvalInstanceId ||
+        typeof lookup.result.formalCode !== "string" || !lookup.result.formalCode.trim() ||
+        (request.expectedFormalCode && lookup.result.formalCode !== request.expectedFormalCode)) return null;
+      if (disposed || pendingSubmissionRequest !== request || request.actorUserId !== options.userId?.() || request.contractVersionId !== contractVersionId.value) return null;
+      return finishSubmission(lookup.result);
+    } catch {
+      // Absence, loss of permission and query failure do not prove rollback.
+      return null;
+    } finally { checkingSubmissionResult.value = false; }
+  }
+
+  async function performSubmission(intent?: ContractDraftV2SubmissionIntent): Promise<ContractDraftSubmissionResult | null> {
+    if (pendingSubmissionResult.value) throw new Error("提交结果待核对，请保留当前内容，暂不重复提交。");
     const saved = await saveNow();
     if (!saved || disposed || submissionCompleted.value) return null;
 
@@ -2708,50 +2823,76 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
 
     const expectedRevision = currentRevision.value;
+    if (workbench.value?.version.numericProtocolVersion === 2 && (!intent || intent.expectedRevision !== expectedRevision ||
+      intent.documentContentRevision !== workbench.value.version.documentContentRevision ||
+      intent.documentContentFingerprint !== workbench.value.version.documentContentFingerprint)) {
+      throw new Error("请先检查当前保存版本的正文和生成文件，再提交审批");
+    }
     if (
       !pendingSubmissionRequest ||
       pendingSubmissionRequest.contractVersionId !== versionId ||
-      pendingSubmissionRequest.expectedRevision !== expectedRevision
+      pendingSubmissionRequest.expectedRevision !== expectedRevision ||
+      JSON.stringify(pendingSubmissionRequest.intent) !== JSON.stringify(intent)
     ) {
       pendingSubmissionRequest = {
         contractVersionId: versionId,
         expectedRevision,
-        idempotencyKey: crypto.randomUUID()
+        idempotencyKey: crypto.randomUUID(),
+        expectedFormalCode: workbench.value?.contract.code ?? null,
+        ...(intent ? { intent: structuredClone(intent) } : {})
       };
     }
 
     const request = pendingSubmissionRequest;
+    if (request.intent) {
+      const actor = options.userId?.();
+      if (!actor) throw new Error("当前登录身份无法确认，请保留草稿并重新登录");
+      request.actorUserId = actor;
+      request.requestSha256 = await submissionRequestSha(versionId, actor, request.intent);
+    }
+    let dispatched = false;
     let result: ContractDraftSubmissionResult;
     try {
       result = await submitContractDraftWithCapability(versionId, token, {
+        ...request.intent,
         expectedRevision: request.expectedRevision,
         idempotencyKey: request.idempotencyKey
+      }, () => {
+        if (request.actorUserId && request.actorUserId !== options.userId?.()) throw new Error("登录身份已变化，请重新读取合同");
+        request.phase = "pending";
+        persistSubmissionIntent();
+        dispatched = true;
       });
     } catch (error) {
+      if (dispatched && request.intent) {
+        const status = error && typeof error === "object" && "status" in error ? error.status : null;
+        request.phase = typeof status === "number" && status >= 400 && status < 500 ? "rejected" : "unknown";
+        pendingSubmissionResult.value = request.phase === "unknown";
+        if (pendingSubmissionResult.value) { pausedRef.value = true; cancelScheduledSave(); cancelLeaseTimers(); leaseToken = null; }
+        persistSubmissionIntent();
+        if (pendingSubmissionResult.value) throw new Error("提交结果待核对，请保留当前内容，暂不重复提交。");
+      }
       if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
         requireAuthorityRefresh();
       }
       throw error;
     }
-    if (contractVersionId.value !== versionId) return null;
-    if (result.contractVersionId !== versionId) {
+    if (disposed || contractVersionId.value !== versionId || (request.actorUserId && request.actorUserId !== options.userId?.())) return null;
+    if (!result || typeof result !== "object" || result.contractVersionId !== versionId || result.status !== "in_approval" ||
+      typeof result.approvalInstanceId !== "string" || !result.approvalInstanceId || typeof result.formalCode !== "string" || !result.formalCode.trim() ||
+      (request.expectedFormalCode && result.formalCode !== request.expectedFormalCode)) {
+      if (request.intent) { request.phase = "unknown"; pendingSubmissionResult.value = true; pausedRef.value = true; cancelLeaseTimers(); leaseToken = null; persistSubmissionIntent(); }
       throw new Error(
         "合同草稿协议错误：提交响应版本与请求版本不一致，未更新当前页面状态"
       );
     }
 
-    submissionCompleted.value = true;
-    pausedRef.value = true;
-    cancelScheduledSave();
-    clearBackup();
-    pendingSubmissionRequest = null;
-    releaseCurrentLease();
-    return result;
+    return finishSubmission(result);
   }
 
-  function submitNow(): Promise<ContractDraftSubmissionResult | null> {
+  function submitNow(intent?: ContractDraftV2SubmissionIntent): Promise<ContractDraftSubmissionResult | null> {
     if (activeSubmission) return activeSubmission;
-    const tracked = performSubmission().finally(() => {
+    const tracked = performSubmission(intent).finally(() => {
       if (activeSubmission === tracked) activeSubmission = null;
     });
     activeSubmission = tracked;
@@ -3044,6 +3185,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     saveNow,
     queuePreviewForCurrentRevision,
     submitNow,
+    pendingSubmissionResult: readonly(pendingSubmissionResult),
+    checkingSubmissionResult: readonly(checkingSubmissionResult),
+    checkSubmissionResult,
     takeOverLease,
     restoreLocalRecovery,
     discardLocalRecovery,

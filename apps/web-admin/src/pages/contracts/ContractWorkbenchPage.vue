@@ -149,6 +149,28 @@
       </header>
 
       <t-alert
+        v-if="submissionMessage"
+        :theme="submissionMessageTone"
+        :message="submissionMessage"
+      />
+
+      <t-alert
+        v-if="pendingSubmissionResult"
+        theme="warning"
+        message="提交结果待核对，请保留当前内容，暂不重复提交。"
+      >
+        <template #operation>
+          <t-button
+            :loading="checkingSubmissionResult"
+            :disabled="!online"
+            @click="checkSubmissionOutcome"
+          >
+            核对提交结果
+          </t-button>
+        </template>
+      </t-alert>
+
+      <t-alert
         v-if="workbench?.draftSubmissionUnavailableReason"
         theme="warning"
         title="草稿已保留，暂不能提交审批"
@@ -156,7 +178,7 @@
       />
 
       <t-alert
-        v-if="workbench && editable && !canEdit"
+        v-if="workbench && editable && !canEdit && !pendingSubmissionResult"
         theme="warning"
         title="当前页面只读"
         :message="leaseReadonlyMessage"
@@ -192,7 +214,7 @@
           <t-space>
             <t-button
               size="small"
-              :disabled="Boolean(localRecoveryError)"
+              :disabled="Boolean(localRecoveryError) || pendingSubmissionResult || submissionBusy || governanceMutationLocked"
               @click="restorePendingLocalRecovery"
             >
               恢复本机副本
@@ -200,6 +222,7 @@
             <t-button
               size="small"
               variant="outline"
+              :disabled="pendingSubmissionResult || submissionBusy || governanceMutationLocked"
               @click="discardLocalRecovery"
             >
               放弃本机副本
@@ -609,11 +632,6 @@
                     <span>提交前会先保存未保存修改，再重新检查当前修订。</span>
                   </div>
                   <span>保存仅保留草稿，不发起审批或形成正式业务；正式编号在首次提交审批时生成。</span>
-                  <t-alert
-                    v-if="submissionMessage"
-                    :theme="submissionMessageTone"
-                    :message="submissionMessage"
-                  />
                 </section>
               </section>
 
@@ -800,12 +818,25 @@
     <SensitiveActionDialog
       v-model="submissionConfirmVisible"
       title="确认提交合同审批？"
-      description="系统将先保存草稿，检查双方授权、乙方签章文件确认和审批人员，全部通过后才会冻结并提交。"
+      :description="workbench?.version.numericProtocolVersion === 2 ? '系统将保存当前资料，核对已检查的正文及同版Word和PDF，提交内部并联审批；双方签章在线下审批后办理。' : '系统将先保存草稿，检查双方授权、乙方签章文件确认和审批人员，全部通过后才会冻结并提交。'"
       confirm-text="确认提交审批"
       :loading="submissionBusy"
       :error="submissionError"
       @confirm="confirmSubmission"
-    />
+    >
+      <label
+        v-if="workbench?.version.numericProtocolVersion === 2"
+        class="field"
+      >
+        <span>本次提交的生成文件</span>
+        <t-select
+          v-model="selectedSubmissionDocumentId"
+          :options="submissionDocumentOptions"
+          :disabled="submissionBusy"
+          placeholder="选择已核对的Word和PDF"
+        />
+      </label>
+    </SensitiveActionDialog>
 
     <SensitiveActionDialog
       v-model="leaseTakeoverVisible"
@@ -964,6 +995,7 @@ import {
   fetchContractDraftOperationCapabilities,
   fetchContractDraftTransferCapabilities,
   listPublishedContractTemplates,
+  listContractDocuments,
   previewContractTypeChange,
   transferContractDraft,
   type ContractBodyAction,
@@ -972,6 +1004,8 @@ import {
   type ContractDraftChangedSection,
   type ContractDraftLifecycleAction,
   type ContractDraftPartyModel,
+  type ContractDraftV2SubmissionIntent,
+  type ContractGeneratedSubmissionDocument,
   type ContractBillRemainderCancellationOperationContext,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
@@ -1175,6 +1209,8 @@ const submissionConfirmVisible = ref(false);
 const submissionError = ref("");
 const submissionMessage = ref("");
 const submissionMessageTone = ref<"success" | "error">("success");
+const selectedSubmissionDocumentId = ref("");
+const submissionDocumentOptions = ref<Array<{ value: string; label: string }>>([]);
 const settlementModeConfirming = ref(false);
 const governanceMutationLocked = ref(false);
 type BodyBlankReviewContext = {
@@ -1188,7 +1224,7 @@ type BodyBlankReviewContext = {
 };
 
 const bodyBlankReviewRequest = ref<BodyBlankReviewContext | null>(null);
-const bodyBlankReviewReceipt = ref<BodyBlankReviewContext | null>(null);
+const bodyBlankReviewReceipt = ref<(BodyBlankReviewContext & { documentContentFingerprint: string }) | null>(null);
 const bodyBlankReviewChecking = ref(false);
 const bodyBlankReviewError = ref("");
 const bodyBlankReviewVisible = computed({
@@ -1244,6 +1280,9 @@ const {
   saveNow,
   queuePreviewForCurrentRevision,
   submitNow,
+  pendingSubmissionResult,
+  checkingSubmissionResult,
+  checkSubmissionResult,
   takeOverLease,
   restoreLocalRecovery,
   discardLocalRecovery,
@@ -1361,7 +1400,7 @@ const contractDraftActionSubject = computed(() => ({
 }));
 
 function contractDraftActionEnabled(key: string) {
-  return Boolean(
+  return !pendingSubmissionResult.value && Boolean(
     contractDraftAvailableActions.value?.some(
       (action) => action.key === key && action.enabled
     )
@@ -1482,7 +1521,10 @@ async function confirmBodyBlankReview() {
       throw new Error("正文保存版本已变化，请保留当前内容，重新读取后检查。");
     }
     // Temporary current-revision review only. Task12 consumes it before its new submission flow.
-    bodyBlankReviewReceipt.value = { ...request, remaining: request.remaining.map(entry => ({ ...entry, labels: [...entry.labels] })) };
+    const fingerprint = workbench.value?.version.documentContentFingerprint;
+    if (!fingerprint) throw new Error("当前正文校验信息缺失，请重新读取后检查。");
+    bodyBlankReviewReceipt.value = { ...request, documentContentFingerprint: fingerprint,
+      remaining: request.remaining.map(entry => ({ ...entry, labels: [...entry.labels] })) };
     bodyBlankReviewRequest.value = null;
   } catch (cause) {
     if (request === bodyBlankReviewRequest.value) bodyBlankReviewError.value = formatUnknownApiError(cause, "正文空位检查失败，请保留当前内容后重试。");
@@ -1654,16 +1696,30 @@ const editable = computed(() => {
   return status ? EDITABLE_STATUSES.has(status) : false;
 });
 const writeLocked = computed(() =>
-  pendingSaveResult.value || !online.value ||
+  pendingSaveResult.value || pendingSubmissionResult.value || !online.value ||
   governanceMutationLocked.value ||
   submissionBusy.value ||
   (editable.value && !canEdit.value)
 );
-const editorDisabled = computed(() => !editable.value || !canEdit.value || governanceMutationLocked.value || submissionBusy.value);
+const editorDisabled = computed(() => !editable.value || !canEdit.value || pendingSubmissionResult.value || governanceMutationLocked.value || submissionBusy.value);
 
 watch(() => [contractId.value, workbench.value?.version.id, workbench.value?.version.layoutTemplateVersionId,
+  workbench.value?.version.documentContentRevision, workbench.value?.version.documentContentFingerprint,
   savedRevision.value, model.layoutTemplateVersionId, isDirty.value, JSON.stringify(model.extraDraftData.documentBody ?? null)] as const, () => {
-  bodyBlankReviewReceipt.value = null;
+  const current = workbench.value;
+  // Authority is temporarily absent during a fresh read; only actual changed
+  // coordinates invalidate a review, not a no-op preflight reload.
+  if (!current) return;
+  const receipt = bodyBlankReviewReceipt.value;
+  if (receipt && (contractId.value !== current.contract.id || receipt.contractVersionId !== current.version.id ||
+    receipt.draftRevision !== current.version.draftRevision || receipt.documentContentRevision !== current.version.documentContentRevision ||
+    receipt.documentContentFingerprint !== current.version.documentContentFingerprint || receipt.layoutTemplateVersionId !== current.version.layoutTemplateVersionId ||
+    receipt.layoutTemplateVersionId !== model.layoutTemplateVersionId || isDirty.value ||
+    receipt.planJson !== JSON.stringify(model.extraDraftData.documentBody ?? null))) {
+    bodyBlankReviewReceipt.value = null;
+    selectedSubmissionDocumentId.value = "";
+    submissionDocumentOptions.value = [];
+  }
   if (bodyBlankReviewRequest.value && !bodyBlankReviewContextCurrent(bodyBlankReviewRequest.value)) bodyBlankReviewRequest.value = null;
 });
 
@@ -2537,7 +2593,15 @@ async function completeGovernanceMutation(reload: boolean) {
   }
 }
 
-function requestSubmission() {
+function matchingSubmissionDocuments(current: ContractWorkbenchReadModel, sourceSha256: string, documents: ContractGeneratedSubmissionDocument[]) {
+  return documents.filter(document => document.contractVersionId === current.version.id && document.status === "success" &&
+    document.sourceRevision === current.version.draftRevision && document.layoutTemplateVersionId === current.version.layoutTemplateVersionId &&
+    document.documentContentRevision === current.version.documentContentRevision && document.documentContentFingerprint === current.version.documentContentFingerprint &&
+    document.inputSnapshot?.layoutSourceMapping?.sourceSha256 === sourceSha256 && document.docxFileId && document.pdfFileId && document.docxFileId !== document.pdfFileId);
+}
+
+async function requestSubmission() {
+  if (pendingSubmissionResult.value) return;
   if (
     !contractDraftOperationAvailableActions.value.includes(
       "submit_contract_draft"
@@ -2545,8 +2609,33 @@ function requestSubmission() {
   ) return;
   submissionError.value = "";
   submissionMessage.value = "";
+  selectedSubmissionDocumentId.value = "";
+  submissionDocumentOptions.value = [];
+  const current = workbench.value;
+  if (current?.version.numericProtocolVersion === 2) {
+    const receipt = bodyBlankReviewReceipt.value;
+    if (!receipt || isDirty.value) {
+      submissionMessageTone.value = "error";
+      submissionMessage.value = "请先检查当前保存版本的正文空位；确认后可继续，未填写空位不必强行补齐。";
+      return;
+    }
+    try {
+      const matching = matchingSubmissionDocuments(current, receipt.sourceSha256, await listContractDocuments(current.version.id));
+      if (receipt !== bodyBlankReviewReceipt.value || current.version.id !== workbench.value?.version.id) return;
+      submissionDocumentOptions.value = matching.map((document, index) => ({ value: document.id, label: `第${index + 1}份当前Word/PDF` }));
+      if (matching.length === 1) selectedSubmissionDocumentId.value = matching[0].id;
+    } catch (cause) {
+      submissionMessageTone.value = "error";
+      submissionMessage.value = formatUnknownApiError(cause, "当前生成文件读取失败，请保留草稿后重试。");
+      return;
+    }
+  }
   submissionConfirmVisible.value = true;
 }
+
+watch(submissionConfirmVisible, visible => {
+  if (!visible) { selectedSubmissionDocumentId.value = ""; submissionDocumentOptions.value = []; }
+});
 
 function requestLeaseTakeover() {
   if (
@@ -2584,6 +2673,7 @@ async function confirmLeaseTakeover(values: { password: string }) {
 }
 
 function restorePendingLocalRecovery() {
+  if (pendingSubmissionResult.value || submissionBusy.value || governanceMutationLocked.value) return;
   if (restoreLocalRecovery()) {
     manualSaveMessage.value = "已恢复本机副本；请核对服务端新修订后手动保存。";
   }
@@ -2594,6 +2684,8 @@ async function confirmSubmission() {
   submissionBusy.value = true;
   submissionError.value = "";
   submissionMessage.value = "";
+  const reviewedBody = bodyBlankReviewReceipt.value;
+  const selectedDocumentId = selectedSubmissionDocumentId.value;
   try {
     const current = await prepareGovernanceMutation();
     if (!current) throw new Error("草稿保存失败，本次未提交审批。");
@@ -2613,17 +2705,43 @@ async function confirmSubmission() {
     }
     const latest = workbench.value;
     if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
-    const submitted = await submitNow();
+    let intent: ContractDraftV2SubmissionIntent | undefined;
+    if (latest.version.numericProtocolVersion === 2) {
+      const body = await fetchContractDraftBody(latest.version.id);
+      const remaining = body.blocks.flatMap((block, index) => block.editable && block.blankFields.length
+        ? [{ positionId: block.id, number: index + 1, labels: block.blankFields }] : []);
+      if (!reviewedBody || reviewedBody.contractVersionId !== latest.version.id || reviewedBody.draftRevision !== latest.version.draftRevision ||
+        reviewedBody.documentContentFingerprint !== latest.version.documentContentFingerprint ||
+        reviewedBody.documentContentRevision !== latest.version.documentContentRevision || body.documentContentRevision !== reviewedBody.documentContentRevision ||
+        body.contractVersionId !== reviewedBody.contractVersionId || body.draftRevision !== reviewedBody.draftRevision ||
+        body.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId || latest.version.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId ||
+        body.sourceSha256 !== reviewedBody.sourceSha256 || JSON.stringify(remaining) !== JSON.stringify(reviewedBody.remaining) ||
+        JSON.stringify(model.extraDraftData.documentBody ?? null) !== reviewedBody.planJson || !latest.version.documentContentFingerprint) {
+        throw new Error("请在合同正文检查当前保存版本的空位；确认后可继续，未填写空位不必强行补齐。");
+      }
+      const documents = await listContractDocuments(latest.version.id);
+      const selected = matchingSubmissionDocuments(latest, body.sourceSha256, documents).find(document => document.id === selectedDocumentId);
+      if (!selected) throw new Error("请先核对并选择当前正文的Word和PDF生成记录，再提交审批。");
+      intent = { expectedRevision: latest.version.draftRevision, submissionProtocolVersion: 2,
+        documentContentRevision: body.documentContentRevision, documentContentFingerprint: latest.version.documentContentFingerprint,
+        generatedDocumentId: selected.id, sourceSha256: body.sourceSha256, blanksReviewed: true };
+    }
+    const submitted = await submitNow(intent);
     if (!submitted) {
       throw new Error("合同草稿未能以当前修订提交，请核对保存状态和编辑租约。");
     }
     submissionConfirmVisible.value = false;
     submissionMessageTone.value = "success";
     submissionMessage.value =
-      `合同 ${submitted.formalCode} 已提交审批，审批实例 ${submitted.approvalInstanceId}。`;
+      `合同 ${submitted.formalCode} 已提交审批。`;
     navigationBypass.value = true;
     await router.push(`/contracts/${latest.contract.id}`);
   } catch (error) {
+    if (pendingSubmissionResult.value) {
+      submissionConfirmVisible.value = false;
+      submissionError.value = "";
+      return;
+    }
     failClosedForAuthorityRefresh(error);
     submissionError.value = formatUnknownApiError(
       error,
@@ -2633,6 +2751,14 @@ async function confirmSubmission() {
     submissionBusy.value = false;
     governanceMutationLocked.value = false;
   }
+}
+
+async function checkSubmissionOutcome() {
+  const routeId = contractId.value;
+  const result = await checkSubmissionResult();
+  if (!result || routeId !== contractId.value) return;
+  navigationBypass.value = true;
+  await router.push(`/contracts/${routeId}`);
 }
 
 async function reloadCurrent() {

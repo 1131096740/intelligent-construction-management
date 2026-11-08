@@ -599,14 +599,41 @@ export interface ContractDraftSubmissionResult {
   approvalInstanceId: string;
   status: "in_approval";
   formalCode: string;
-  draftRevision: number;
-  firstSubmittedAt: string;
+  draftRevision?: number;
+  firstSubmittedAt?: string;
+}
+
+export interface ContractDraftV2SubmissionIntent {
+  expectedRevision: number;
+  submissionProtocolVersion: 2;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  generatedDocumentId: string;
+  sourceSha256: string;
+  blanksReviewed: true;
+}
+
+export type ContractDraftSubmissionPayload =
+  | { expectedRevision: number; idempotencyKey: string }
+  | (ContractDraftV2SubmissionIntent & { idempotencyKey: string });
+
+export type ContractDraftSubmissionLookup = { status: "unknown" } | {
+  status: "submitted";
+  result: ContractDraftSubmissionResult;
+  requestSha256: string;
+  intent: ContractDraftV2SubmissionIntent;
+};
+
+export function fetchContractDraftSubmissionResult(contractVersionId: string, idempotencyKey: string) {
+  return readJson<ContractDraftSubmissionLookup>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/submission-requests/${encodeURIComponent(idempotencyKey)}`
+  );
 }
 
 export function submitContractDraft(
   contractVersionId: string,
   leaseToken: string,
-  payload: { expectedRevision: number; idempotencyKey: string }
+  payload: ContractDraftSubmissionPayload
 ) {
   return postJsonWithHeaders<ContractDraftSubmissionResult>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/submission`,
@@ -2398,8 +2425,22 @@ export function queueContractDocument(
   return postJson<unknown>(`/contract-workbench/${contractVersionId}/documents`, body);
 }
 
+export interface ContractGeneratedSubmissionDocument {
+  [key: string]: unknown;
+  id: string;
+  contractVersionId: string;
+  status: string;
+  sourceRevision: number;
+  layoutTemplateVersionId: string;
+  documentContentRevision: number | null;
+  documentContentFingerprint: string | null;
+  docxFileId: string | null;
+  pdfFileId: string | null;
+  inputSnapshot: { layoutSourceMapping?: { sourceSha256?: string } };
+}
+
 export function listContractDocuments(contractVersionId: string) {
-  return readJson<unknown[]>(`/contract-workbench/${contractVersionId}/documents`);
+  return readJson<ContractGeneratedSubmissionDocument[]>(`/contract-workbench/${contractVersionId}/documents`);
 }
 
 export function retryContractDocument(documentId: string) {
