@@ -1,3 +1,10 @@
+## 当前落地：Task12 面A与consumer合同、Task16 Schema204组合源码（2026-11-09）
+
+- [~] 原integration已仅快进并推送准确代码候选 `934f0b4ea0fe2924bb00f6456a0fe616f04460ed`，tree `86e18b2f1053b500e0d0b49b1dee33857153bc5e`；包含已审表内generated/original归档后端、只读详情生命周期consumer合同及204源码资格桥。A1十源与Task16二十六源唯一PROGRESS重叠按共同9a4基底保双前缀和整个base。[本轮准确收据](docs/progress/2026-11-09-task16-schema204-source-qualification.md)。
+- [~] 独立准确S2：API受影响50 suites /2120 passed＋1既有PG skip（2121总数）；完整Task16公共mock＋CLI 386/386、0fail/skip/cancel、474061ms；API types/lint、改动CJS语法、58＋78 sourcepins/diff全过。实际clean S2 SOURCE_ONLY prepare/verify为3511源/204迁移/7片/1案，packet `c848711f4e136da27e462c20acc211ff3d171982ea8e3bced9a3759a5922db98`；executionAllowed/resourceExecutorImplemented=false。此包不冒后继两MD新SHA包，最终文档head另由外部准确收据绑定。
+- [~] 中央忽略SDK202及依赖/dist保持原样，未在中央运行类型或构建；类型来自独立组合树私有204声明/静态资格。API测试仅消费已核纯Prisma.sql/Decimal namespace，metadata只AST/JSON，无真实Client/引擎/连接。原完整11SDK/305模型/四exact relocation/共享JS与批准DTS、源SQL及driver384cc守恒，无安装/生成。
+- [ ] 实际baseline在首owner SQL/child前仍NOT_IMPLEMENTED/NOT_ATTEMPTED，真实R_app/R_file与引擎传递供给未实现；driver固定SOURCE_ONLY先于IO/SDK/HTTP/资源，cap=false。#394/#398及真实16/42/44、PG/ACL/RLS/锁/COMMIT/资金门仍开，14/45仅限定阶段数。原CON10前端84cb仍独立本地；新归档Web活跃WIP未整合/验收，FaceB/direct/表外/对上/inline/完整5×3未完成。Draft428不ready，不合main/关票/部署或生产写；空checks/零Actions仅NON-CI，旧fe70事故与所有原失败保留。
+
 ## Task16 Schema204 源码资格桥（2026-11-09，HOLD待双轴）
 
 - [~] 独立9a4基底的精确204源码/mock桥已完成作者验证：有界重演实际80 routine/22 registry链；20表/54列/16约束结构/3partial unique及精确B6技术trigger delta连续见证，完整305模型/四exact relocation接线。最终同386项全通过（0fail/skip，480613ms），类型/lint/CJS语法及196449依赖保全通过；driver384cc/原SQL七片/SDK11/资金ACL与4000分案不变，dirty仍拒封包。[范围收据](docs/progress/2026-11-09-task16-schema204-source-qualification.md)。

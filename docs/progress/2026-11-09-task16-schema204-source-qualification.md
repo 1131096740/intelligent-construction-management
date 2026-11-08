@@ -1,3 +1,19 @@
+# 当前组合源码落地收据（2026-11-09，仅SOURCE/mock）
+
+原integration已仅FF并正常推送代码S2 `934f0b4ea0fe2924bb00f6456a0fe616f04460ed` / tree `86e18b2f1053b500e0d0b49b1dee33857153bc5e`，PR428回读OPEN/Draft且head同S2。S1 consumer合同提交为 `9e793919416ee7b191df83282937ce92dcbcd757`，共同base `9a4ce65eb4db23c5ed8d72c6e90477c4e008875c`。两片均双轴SOURCE零新增；28源归档A3及后继consumer A1修复证据保留，不借旧有缺陷输入冒当前通过。准确组合35路径，除PROGRESS保两已审前缀及整个base外，A1另9与Task16另25均同冻结字节/mode。每个新增提交含[skip ci]和Refs，不自动关闭工单。
+
+独立组合树在准确clean S2上新执行50个公开HTTP/fake持久/私有文件边界suite：2120通过、1既有PG门skip、2121总数、47.705秒；Task16原14文件公共mock＋CLI完整386/386，0fail/skip/cancel，474061.359ms。API类型（noEmit/incrementalfalse）、lint、改动CJS语法、58＋78 sourcepins与diff全部exit0。不是中央旧SDK重新跑类型，也不借作者480612ms或旧367/1148成绩。长normal-case单次自然完成，未减守卫/终止/无故重跑；全部命令、最小HOME/PATH/TZ环境和原始日志在独立组合外部收据保留。
+
+准确S2实际SOURCE_ONLY prepare/verify通过：3511源码、204迁移、7prepared片、1静态案；packet `c848711f4e136da27e462c20acc211ff3d171982ea8e3bced9a3759a5922db98`，seal `19f093b02323b14de2e26dd1a59aa52976e5b146b352d2b8efdf780265e3bb42`，executionAllowed/resourceExecutorImplemented=false。该包不封忽略构建/安装依赖、不授资源执行。当前后继仅PROGRESS与本收据两Markdown，所有非MD源码与S2逐字相同，不为文档重跑八分钟；最终准确文档SHA及其重新prepare/verify结果另以外部stage2 receipt/PR标记绑定，不能把S2的c848包归给新SHA。
+
+中央原SDK202、node_modules与dist完整守恒，未install/generate/build或API类型；组合验证树完整COPY零共享inode、workspace指自树，私有204 source3f/generatedb168、11成员/305模型/四exactmodel relocation及批准sharedDTS0e5d匹配。静态metadata审计只AST/JSON；API测试允许实际SDK导出的纯Prisma.sql/Decimal namespace及声明，不构造真实PrismaClient、不启动引擎或连接。旧fsevents可选native尝试被guard拒的原stop不改写成零尝试，旧203原件与首350/386、36fixture失败和全部业务RED/中间方案保留。
+
+本轮实际baseline adapter仍在首owner SQL/child前固定TASK16_MIGRATE_SCHEMA204_CALLABILITY_NOT_IMPLEMENTED、NOT_ATTEMPTED，R_app/R_file OID/列/EXEC/RLS/锁及可信engine startup供给没有实现；default driver整SHA384cc5b8e8a5eb8bce4d95f729a8dfc97c7815ed7ce17ba0fed382000faf33ce和SOURCE_ONLY前置闭门不变。80routine/22registry/20表见证和58＋78pins只是source/mock资格；B5 PUBLIC reset与普通registry原契约分层、finance4000案/runtime13EXEC/observeridentity保持，不补GRANT或猜角色/GUC。
+
+cap=false；#394/#398保持未完成、14/45仍限定阶段；真实16/42/44、PG/SQL/ACL/RLS/锁调度/COMMIT/故障/资金/恢复/清理与原生SDK门均未验。现已推范围仅backend generated/inside/original及详情合同；CON10前端84cb仍独立本地，新归档Web WIP未整合/验收，FaceB/direct/表外/对上/inline/完整5×3未完成。PR保持Draft，不ready、mainmerge、关闭Issue、部署/迁移或生产写。准确新SHA的零Actions/空checks只记NON-CI，不称远端CI通过；旧fe70误触与取消历史完整保留。
+
+## 以下保留原作者阶段记录（按原候选与当时边界）
+
 # Task16 Schema204 源码与模拟资格桥（SOURCE/mock）
 
 准确基底 `9a4ce65eb4db23c5ed8d72c6e90477c4e008875c`，独立工作树 `/private/tmp/jg-task16-schema204-bridge-20261109`。本片只处理Task12 A3已经冻结的204来源；未承接后继consumer WIP，不修改合同业务、Schema、迁移、七片资金SQL、SDK或中央分支。
