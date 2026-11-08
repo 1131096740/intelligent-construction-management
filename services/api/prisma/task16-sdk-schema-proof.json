@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "purpose": "task16-reviewed-schema-content-binding-types-and-source-only-not-native-approval",
+  "preflightSha256": "8aced2bd99107f11d01af8d86f9a758e65f948805e2d87bbc66adce666492ef8",
+  "sourceSetSha256": "4f037bda858fc9291b1e3a1eae43f15e88a3111ae9d0376bbe782b79990bf5da",
+  "sourceSchemaSha256": "630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf",
+  "generatedSchemaSha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
+  "rawSchemaEqual": false,
+  "acceptedFormattingBridge": {
+    "kind": "exact-single-ExpenseClaim-index-relocation",
+    "sourceSchemaSha256": "630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf",
+    "generatedSchemaSha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
+    "sourceTokens": 35390,
+    "generatedTokens": 35390,
+    "sourceTokensSha256": "7145da6b6d5104db39cea81c0f99755bd37f11afe0d8c2d56af7d3385919894d",
+    "generatedTokensSha256": "9f2f44ae307704f36450ab9f50590d80a6eb1a2823b0aa583d4fe1708460a6b3",
+    "remainingTokensSha256": "ab3ad3300215f6b8b11fcefce7bc869c861c165e30a1718f44fcd46f90c5f4b6",
+    "directive": "@@index([generalProcurementId])",
+    "scope": "TYPE/source only; no arbitrary normalization"
+  },
+  "packageEntrySha256": "0cfff057c91fcb7559bd1a3bb4891404e455829ced5b18a87c9393ee1721ace4",
+  "generatedMembers": [
+    {
+      "file": "default.d.ts",
+      "sha256": "d5eb5865d4cbaa9985cc3cfb920b230cdcf3363f1e70903a08dc4baab80b0ce1",
+      "mode": "0o644"
+    },
+    {
+      "file": "default.js",
+      "sha256": "61419abcd0ff0f9127dd52fee7bd236d49917050317e1cc87067c1f18f86e412",
+      "mode": "0o644"
+    },
+    {
+      "file": "edge.d.ts",
+      "sha256": "7378dd41401ba1acff435b9c317a5b919a3d38479ed3dbd4a25c8b4fd623a224",
+      "mode": "0o644"
+    },
+    {
+      "file": "edge.js",
+      "sha256": "1201b4966091f048e19bab06f934e6bf56537011faab73034996e8fbab330c5d",
+      "mode": "0o644"
+    },
+    {
+      "file": "index-browser.js",
+      "sha256": "4f7948ce55bb78d88d08d9cb2ca502f9ddfa5e5036c9ac165ec415b304504f30",
+      "mode": "0o644"
+    },
+    {
+      "file": "index.d.ts",
+      "sha256": "67c60a3e91980d9351a3b91e74925b80b49e3b18a70019a1c28e8640a7210e5d",
+      "mode": "0o644"
+    },
+    {
+      "file": "index.js",
+      "sha256": "9d50747e15dc3d019117f039590af161681e8f01bf09fd10fba43c3eb021b694",
+      "mode": "0o644"
+    },
+    {
+      "file": "package.json",
+      "sha256": "b86d67c8aae480469564bf0aca8508dda3ac01db652ace6507a856b8e79ee3ac",
+      "mode": "0o644"
+    },
+    {
+      "file": "schema.prisma",
+      "sha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
+      "mode": "0o644"
+    },
+    {
+      "file": "wasm.d.ts",
+      "sha256": "d5eb5865d4cbaa9985cc3cfb920b230cdcf3363f1e70903a08dc4baab80b0ce1",
+      "mode": "0o644"
+    },
+    {
+      "file": "wasm.js",
+      "sha256": "4f7948ce55bb78d88d08d9cb2ca502f9ddfa5e5036c9ac165ec415b304504f30",
+      "mode": "0o644"
+    }
+  ],
+  "inlineSchemaSha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
+  "runtimeDataModelTextSha256": "3688965d8c9ace9e00d14505562fd5067d0aecc3b581abc5daf9bff3fa624ac0",
+  "clientVersion": "5.22.0",
+  "engineVersion": "605197351a3c8bdd595af2d2a9bc3025bca48ea2",
+  "copyEngine": false,
+  "nativeRuntimeQualification": false
+}

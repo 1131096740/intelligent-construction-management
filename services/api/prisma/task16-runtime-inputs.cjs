@@ -115,6 +115,12 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(sha(preparationBytes) === inputs.preparationReceipt.sha256 && preparation.schemaVersion === 1 && preparation.purpose === "witnessed-fresh-task16-build-ownership-not-approval" && preparation.sourceSha === packet.candidateSha && preparation.candidateRoot === ROOT && preparation.worktreeGitDir === gitDir && preparation.worktreeGitFileSha256 === sha(gitFileBytes) && JSON.stringify(preparation.buildSteps) === JSON.stringify(["shared-domain:build", "api:build"]), "TASK16_RUNTIME_OUTPUT_OWNERSHIP");
   need(Array.isArray(inputs.trees) && inputs.trees.length === TREE_ROOTS.length && new Set(inputs.trees.map(tree => tree.root)).size === TREE_ROOTS.length && inputs.trees.every(tree => TREE_ROOTS.includes(tree.root)), "TASK16_RUNTIME_TREES");
   const sourceMembers = new Map(packet.source.files.map(row => [row.path, row]));
+  need(packet.schema?.path === "services/api/prisma/schema.prisma" && /^[a-f0-9]{64}$/u.test(packet.schema.sha256) && sourceMembers.get(packet.schema.path)?.sha256 === packet.schema.sha256, "TASK16_RUNTIME_SDK_SCHEMA_MISSING");
+  const sdkSourceCaptures=[packet.schema.path,"services/api/prisma/task16-sdk-schema.cjs","services/api/prisma/task16-sdk-schema-proof.json"].map(relative=>{
+    const listed=sourceMembers.get(relative);need(listed,"TASK16_RUNTIME_SDK_SCHEMA_MISSING");
+    const file=path.join(ROOT,relative),row=qualifiedFile(file,{maxBytes:64*1024*1024,collect:true,code:"TASK16_RUNTIME_SDK_SCHEMA"});need(row.sha256===listed.sha256,"TASK16_RUNTIME_SDK_SCHEMA");return{path:file,...row};
+  });
+  const sdkExpected=JSON.parse(sdkSourceCaptures[2].bytes.toString('utf8'));
   const sealedDirectories = new Set();
   let visitedTargets = 0;
   function requireSealedTarget(target) {
@@ -177,10 +183,18 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(inside(ROOT, clientPath), "TASK16_RUNTIME_CLIENT_ESCAPES_CANDIDATE");
   requireSealedTarget(clientPath);
   const clientEntryCapture=qualifiedFile(clientPath,{maxBytes:64*1024*1024,code:"TASK16_RUNTIME_PRISMA_IDENTITY"});
-  // A fresh metadata process avoids reusing an earlier invocation's require
-  // cache. The fixed script never constructs PrismaClient or opens a database.
-  const version = JSON.parse(execute(tools.node, ["--eval", "const p=require(process.argv[1]).Prisma?.prismaVersion;process.stdout.write(JSON.stringify({client:p?.client,engine:p?.engine}));", clientPath]));
-  need(version.client === inputs.prismaClientVersion && version.engine === ENGINE, "TASK16_RUNTIME_PRISMA_IDENTITY");
+  // Parse only qualified SDK source data in a fresh process. The inspector
+  // loads the pinned AST compiler, never the SDK module or its exported class.
+  need(/\/node_modules\/@prisma\/client\/(?:index|default)\.js$/u.test(clientPath),"TASK16_RUNTIME_PRISMA_IDENTITY");
+  const generatedRoot=path.resolve(path.dirname(clientPath),'../../.prisma/client');
+  const sdkDataCaptures=[clientPath,...sdkExpected.generatedMembers.map(row=>path.join(generatedRoot,row.file))].filter(file=>fs.existsSync(file)).map(file=>{
+    requireSealedTarget(file);const row=qualifiedFile(file,{maxBytes:64*1024*1024,code:"TASK16_RUNTIME_SDK_SCHEMA"});return{path:file,...row};
+  });
+  let sdkSchema;try{sdkSchema=JSON.parse(execute(tools.node,["--eval","process.stdout.write(JSON.stringify(require(process.argv[1]).inspectTask16SdkSource(process.argv[2],process.argv[3])));",path.join(ROOT,"services/api/prisma/task16-sdk-schema.cjs"),ROOT,clientPath]));}catch{need(false,"TASK16_RUNTIME_SDK_SCHEMA");}
+  const version=sdkSchema.version;
+  need(version?.client===inputs.prismaClientVersion&&version.engine===ENGINE,"TASK16_RUNTIME_PRISMA_IDENTITY");
+  need(sdkSchema.contentBound===true&&sdkSchema.sourceSchemaSha256===packet.schema.sha256&&sdkSchema.copyEngine===false&&sdkSchema.nativeRuntimeQualification===false,"TASK16_RUNTIME_SDK_SCHEMA");
+  const sdkSchemaWitness=JSON.stringify({schema:sdkSchema,captures:[...sdkSourceCaptures,...sdkDataCaptures].map(row=>({path:row.path,sha256:row.sha256,identity:row.identity}))});
   let applicationEntries;
   const appRelative=["database/task16-registered-application.module.js","database/prisma.service.js","api-security.js","operating-projection/projection-export-json.js","api-json-replacer.js","validation/api-validation.js","api-listen.js"];
   // Legacy source-only fixtures can omit App output while native capability is
@@ -217,12 +231,13 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(qualifiedFile(options.inputsFile,{maxBytes:16*1024*1024,privateFile:true,expectedIdentity:inputCapture.identity,code:'TASK16_RUNTIME_INPUT_FILE'}).sha256 === options.expectedInputsSha256 && privateHash(options.packetFile) === options.expectedPacketSha256 && privateHash(inputs.preparationReceipt.path) === inputs.preparationReceipt.sha256, "TASK16_RUNTIME_INPUT_CHANGED");
   for (const name of TOOL_NAMES) need(toolFile(tools[name], toolIdentities[name]).sha256 === inputs.tools[name].sha256, "TASK16_RUNTIME_TOOL_CHANGED");
   need(qualifiedFile(clientPath,{maxBytes:64*1024*1024,expectedIdentity:clientEntryCapture.identity,code:"TASK16_RUNTIME_PRISMA_IDENTITY"}).sha256===clientEntryCapture.sha256,"TASK16_RUNTIME_PRISMA_IDENTITY");
+  for(const row of [...sdkSourceCaptures,...sdkDataCaptures])need(qualifiedFile(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_RUNTIME_SDK_SCHEMA"}).sha256===row.sha256,"TASK16_RUNTIME_SDK_SCHEMA");
   for(const row of applicationEntries??[])need(qualifiedFile(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_RUNTIME_APP_ENTRY_CHANGED"}).sha256===row.sha256,"TASK16_RUNTIME_APP_ENTRY_CHANGED");
   const docker = inputs.docker;
   need(docker?.endpoint === "unix:///Users/leoyang/.docker/run/docker.sock" && docker.imageId === "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d" && typeof docker.daemonId === "string" && /^[A-Za-z0-9:-]{16,128}$/u.test(docker.daemonId), "TASK16_RUNTIME_RESOURCE_DESCRIPTOR");
   return { candidateSha: packet.candidateSha, candidateRoot: ROOT, sealSha256: packet.sealSha256, schema: packet.schema, migrations: packet.migrations,
     executionFiles: packet.source.files,
-    runtimeAdmission: { normalCase, fixture, applicationBuild:applicationEntries?{candidateRoot:ROOT,sourceSha:packet.candidateSha,sourceSealSha256:packet.sealSha256,preparationReceiptSha256:inputs.preparationReceipt.sha256,apiDistManifestSha256:inputs.trees.find(row=>row.root==="services/api/dist").sha256}:undefined, applicationEntries, status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
+    runtimeAdmission: { sdkSchema, normalCase, fixture, applicationBuild:applicationEntries?{candidateRoot:ROOT,sourceSha:packet.candidateSha,sourceSealSha256:packet.sealSha256,preparationReceiptSha256:inputs.preparationReceipt.sha256,apiDistManifestSha256:inputs.trees.find(row=>row.root==="services/api/dist").sha256}:undefined, applicationEntries, status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{sdkSchemaWitness,path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
     inputs: { ...inputs, resourceOptions: { ...docker, tools: { docker: tools.docker, openssl: tools.openssl }, deadlineMs: 900000 } } };
 }
 // Internal production reuse; tests stay at runTask16RegisteredPg, not this reader.

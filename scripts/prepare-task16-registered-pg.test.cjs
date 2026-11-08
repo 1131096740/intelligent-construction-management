@@ -23,7 +23,7 @@ function fixture(t) {
   }
   put("services/api/prisma/schema.prisma", "// synthetic source, never applied\n");
   put("services/api/prisma/migrations/migration_lock.toml", 'provider = "postgresql"\n');
-  for (let i = 0; i < 202; i++) put(`services/api/prisma/migrations/${String(i).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${i}, never executed\n`);
+  for (let i = 0; i < 203; i++) put(`services/api/prisma/migrations/${String(i).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${i}, never executed\n`);
   for (const file of fragments) put(`services/api/prisma/prepared/task16/${file}`, `-- synthetic ${file}, never executed\n`);
   put("services/api/src/database/registered-payment-postgres.fixture.ts", "// Synthetic fixture source, never imported.\n");
   put("services/api/src/database/registered-payment-postgres.cases.ts", readFileSync(path.join(source, "services/api/src/database/registered-payment-postgres.cases.ts")));
@@ -45,12 +45,12 @@ function fixture(t) {
 test("prepares the exact source-only installation and single-case packet and verifies it offline", (t) => {
   const f = fixture(t);
   const prepared = f.prepare();
-  assert.equal(prepared.status, 0, prepared.stderr);
+  assert.equal(prepared.status, 0, prepared.stderr || JSON.stringify(prepared.body));
   assert.equal(prepared.body.status, "SOURCE_ONLY_NOT_EXECUTED");
   const packet = JSON.parse(readFileSync(f.packet, "utf8"));
   assert.equal(packet.candidateSha, f.sha);
   assert.equal(packet.executionAllowed, false); assert.equal(packet.resourceExecutorImplemented, false);
-  assert.equal(packet.migrations.length, 202);
+  assert.equal(packet.migrations.length, 203);
   assert.deepEqual(packet.installation.fragments.map(row => path.basename(row.path)), fragments);
   assert.deepEqual(packet.cases.map(row => [row.id, row.handlerExport]), [["registered.null-cross-company.commit", "runRegisteredNullCrossCompanyCommit"]]);
   assert.equal(packet.cases[0].executed, false); assert.equal(packet.cases[0].sqlExecuted, false);
@@ -67,6 +67,19 @@ test("same committed input produces identical packet bytes without overwriting e
   assert.deepEqual(readFileSync(path.join(second, "packet.json")), first);
   assert.equal(f.prepare().body.code, "OUTPUT_EXISTS"); assert.deepEqual(readFileSync(f.packet), first);
 });
+
+for (const count of [202, 204]) {
+  test(`rejects a committed ${count}-migration source instead of the exact 203 inventory`, t => {
+    const f = fixture(t);
+    if (count === 202) unlinkSync(path.join(f.root, "services/api/prisma/migrations/202_synthetic/migration.sql"));
+    else f.put("services/api/prisma/migrations/203_synthetic/migration.sql", "-- extra synthetic source, never executed\n");
+    const candidate = f.commit();
+    const prepared = f.prepare([], f.output, candidate);
+    assert.equal(prepared.status, 1);
+    assert.equal(prepared.body.code, "MIGRATION_COUNT_MISMATCH");
+    assert.equal(existsSync(f.output), false);
+  });
+}
 
 for (const kind of ["fragment order", "duplicate fragment", "SQL hash", "schema hash", "migration membership", "case binding"]) {
   test(`rejects ${kind} tampering even after the public checksum is recomputed`, (t) => {
@@ -186,7 +199,7 @@ test("Git replacement objects cannot substitute the captured committed bytes", (
   f.git("update-index", "--cacheinfo", "100644", replacementOid, file); const tree = f.git("write-tree");
   const fakeCommit = f.git("commit-tree", tree, "-p", f.sha, "-m", "synthetic replacement");
   f.git("update-index", "--cacheinfo", "100644", originalOid, file); f.git("replace", f.sha, fakeCommit);
-  const prepared = f.prepare(); assert.equal(prepared.status, 0, prepared.stderr);
+  const prepared = f.prepare(); assert.equal(prepared.status, 0, prepared.stderr || JSON.stringify(prepared.body));
   const packet = JSON.parse(readFileSync(f.packet, "utf8"));
   assert.equal(packet.schema.sha256, createHash("sha256").update(readFileSync(path.join(f.root, file))).digest("hex"));
   assert.equal(f.run("--verify", "--packet", f.packet, "--expected-sha256", prepared.body.packetSha256).status, 0);

@@ -1230,7 +1230,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "4aa4e99c7090cb1eac1f44e911ed6048599ad74467b9b74f3e943cb651ab7631",
+  "baselineManifestSha256": "f645283d2090f0817f93c0210c542dfbb3a4fe0df4b4fa4d5cd7563e3d4242a1",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -3718,8 +3718,8 @@
     {
       "signature": "public.\"validateOperatingFactReferences\"()",
       "owner": "jg_task01_owner",
-      "body": "\nDECLARE\n  project_effective_date DATE;\n  project_is_active BOOLEAN;\n  assignment_version_id TEXT;\n  assignment_name TEXT;\n  assignment_credit_code TEXT;\n  candidate_company_id TEXT;\n  candidate_subject JSONB;\n  candidate_subject_role TEXT;\nBEGIN\n  SELECT \"operatingLedgerEffectiveDate\", \"isActive\"\n    INTO project_effective_date, project_is_active\n    FROM \"Project\"\n    WHERE \"id\" = NEW.\"projectId\"\n    FOR UPDATE;\n  IF project_is_active IS DISTINCT FROM TRUE THEN\n    RAISE EXCEPTION '项目不存在或已停用，不能登记正式经营事实' USING ERRCODE = '23514';\n  END IF;\n  IF project_effective_date IS NULL THEN\n    RAISE EXCEPTION '项目尚未启用经营账，不能登记正式经营事实' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"operatingLedgerEffectiveDateSnapshot\" IS DISTINCT FROM project_effective_date\n     OR NEW.\"isBeforeOperatingLedgerEffectiveDate\" IS DISTINCT FROM (NEW.\"occurredAt\"::DATE < project_effective_date) THEN\n    RAISE EXCEPTION '经营事实的经营账生效日快照不一致' USING ERRCODE = '23514';\n  END IF;\n  FOREACH candidate_subject IN ARRAY ARRAY[\n    CASE WHEN NEW.\"debtorSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'debtor', 'kind', NEW.\"debtorSubjectKind\", 'id', NEW.\"debtorSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"creditorSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'creditor', 'kind', NEW.\"creditorSubjectKind\", 'id', NEW.\"creditorSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"approvedPayerSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'approvedPayer', 'kind', NEW.\"approvedPayerSubjectKind\", 'id', NEW.\"approvedPayerSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"actualPayerSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'actualPayer', 'kind', NEW.\"actualPayerSubjectKind\", 'id', NEW.\"actualPayerSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"payeeSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'payee', 'kind', NEW.\"payeeSubjectKind\", 'id', NEW.\"payeeSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"costBearingCompanySubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'costBearingCompany', 'kind', NEW.\"costBearingCompanySubjectKind\", 'id', NEW.\"costBearingCompanySubjectId\") ELSE NULL END\n  ]::JSONB[] LOOP\n    IF candidate_subject IS NULL THEN CONTINUE; END IF;\n    IF candidate_subject->>'kind' NOT IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty', 'employee', 'public_cash') THEN\n      RAISE EXCEPTION '当前经营账尚未接入该主体种类，不能登记正式事实' USING ERRCODE = '23514';\n    END IF;\n    candidate_subject_role := candidate_subject->>'role';\n    IF NEW.\"subjectSnapshot\"->candidate_subject_role IS NULL\n       OR NEW.\"subjectSnapshot\"->candidate_subject_role->>'kind' IS DISTINCT FROM candidate_subject->>'kind'\n       OR NEW.\"subjectSnapshot\"->candidate_subject_role->>'id' IS DISTINCT FROM candidate_subject->>'id' THEN\n      RAISE EXCEPTION '经营事实主体快照必须与主体字段一致' USING ERRCODE = '23514';\n    END IF;\n  END LOOP;\n\n  SELECT \"businessPartyVersionId\", \"affiliateNameSnapshot\", \"affiliateCreditCodeSnapshot\"\n    INTO assignment_version_id, assignment_name, assignment_credit_code\n    FROM \"ProjectAffiliateAssignment\"\n    WHERE \"id\" = NEW.\"affiliateAssignmentId\"\n      AND \"projectId\" = NEW.\"projectId\"\n      AND \"effectiveFrom\" <= COALESCE(public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE\n      AND (\"endedAt\" IS NULL OR \"endedAt\" > COALESCE(public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE)\n    FOR KEY SHARE;\n  IF assignment_version_id IS NULL\n     OR assignment_version_id <> NEW.\"affiliateBusinessPartyVersionId\"\n     OR assignment_name IS DISTINCT FROM NEW.\"affiliateNameSnapshot\"\n     OR assignment_credit_code IS DISTINCT FROM NEW.\"affiliateCreditCodeSnapshot\" THEN\n    RAISE EXCEPTION '正式经营事实引用的施工企业已失效' USING ERRCODE = '23514';\n  END IF;\n\n  PERFORM participant.\"id\"\n    FROM \"ProjectParticipatingCompany\" participant\n    WHERE participant.\"projectId\" = NEW.\"projectId\"\n      AND (\n        participant.\"companyEntityId\" = ANY (ARRAY[\n          CASE WHEN NEW.\"debtorSubjectKind\" = 'participating_company' THEN NEW.\"debtorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"creditorSubjectKind\" = 'participating_company' THEN NEW.\"creditorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"approvedPayerSubjectKind\" = 'participating_company' THEN NEW.\"approvedPayerSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"actualPayerSubjectKind\" = 'participating_company' THEN CASE WHEN NEW.\"sourceType\" = 'payment_execution' AND public.\"jg_registered_payment_source_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"actualPayerSubjectKind\",NEW.\"actualPayerSubjectId\") THEN NULL ELSE NEW.\"actualPayerSubjectId\" END ELSE NULL END,\n          CASE WHEN NEW.\"payeeSubjectKind\" = 'participating_company' THEN NEW.\"payeeSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"costBearingCompanySubjectKind\" = 'participating_company' THEN NEW.\"costBearingCompanySubjectId\" ELSE NULL END\n        ]::TEXT[])\n        OR participant.\"companyEntityVersionId\" = ANY (ARRAY[\n          CASE WHEN NEW.\"debtorSubjectKind\" = 'participating_company' THEN NEW.\"debtorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"creditorSubjectKind\" = 'participating_company' THEN NEW.\"creditorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"approvedPayerSubjectKind\" = 'participating_company' THEN NEW.\"approvedPayerSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"actualPayerSubjectKind\" = 'participating_company' THEN CASE WHEN NEW.\"sourceType\" = 'payment_execution' AND public.\"jg_registered_payment_source_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"actualPayerSubjectKind\",NEW.\"actualPayerSubjectId\") THEN NULL ELSE NEW.\"actualPayerSubjectId\" END ELSE NULL END,\n          CASE WHEN NEW.\"payeeSubjectKind\" = 'participating_company' THEN NEW.\"payeeSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"costBearingCompanySubjectKind\" = 'participating_company' THEN NEW.\"costBearingCompanySubjectId\" ELSE NULL END\n        ]::TEXT[])\n      )\n      AND participant.\"effectiveFrom\" <= COALESCE(public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE\n      AND (participant.\"endedAt\" IS NULL OR participant.\"endedAt\" > COALESCE(public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE)\n    ORDER BY participant.\"id\" FOR SHARE;\n\n  FOREACH candidate_company_id IN ARRAY ARRAY[\n    CASE WHEN NEW.\"debtorSubjectKind\" = 'participating_company' THEN NEW.\"debtorSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"creditorSubjectKind\" = 'participating_company' THEN NEW.\"creditorSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"approvedPayerSubjectKind\" = 'participating_company' THEN NEW.\"approvedPayerSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"actualPayerSubjectKind\" = 'participating_company' THEN CASE WHEN NEW.\"sourceType\" = 'payment_execution' AND public.\"jg_registered_payment_source_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"actualPayerSubjectKind\",NEW.\"actualPayerSubjectId\") THEN NULL ELSE NEW.\"actualPayerSubjectId\" END ELSE NULL END,\n    CASE WHEN NEW.\"payeeSubjectKind\" = 'participating_company' THEN NEW.\"payeeSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"costBearingCompanySubjectKind\" = 'participating_company' THEN NEW.\"costBearingCompanySubjectId\" ELSE NULL END\n  ]::TEXT[] LOOP\n    IF candidate_company_id IS NULL THEN CONTINUE; END IF;\n    IF NOT EXISTS (\n      SELECT 1\n      FROM \"ProjectParticipatingCompany\" participant\n      WHERE participant.\"projectId\" = NEW.\"projectId\"\n        AND (\n          participant.\"companyEntityId\" = candidate_company_id\n          OR participant.\"companyEntityVersionId\" = candidate_company_id\n        )\n        AND participant.\"effectiveFrom\" <= COALESCE(public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE\n        AND (participant.\"endedAt\" IS NULL OR participant.\"endedAt\" > COALESCE(public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE)\n    ) THEN\n      RAISE EXCEPTION '经营事实引用的我方公司未在本项目事实日参与'\n        USING ERRCODE = '23514';\n    END IF;\n  END LOOP;\n\n  IF NEW.\"adjustsFactId\" IS NOT NULL AND NOT EXISTS (\n    SELECT 1 FROM \"OperatingFact\" original\n    WHERE original.\"id\" = NEW.\"adjustsFactId\"\n      AND original.\"projectId\" = NEW.\"projectId\"\n  ) THEN\n    RAISE EXCEPTION '更正或冲销只能引用同一项目的经营事实' USING ERRCODE = '23514';\n  END IF;\n  IF current_setting('app.operating_ledger_actor', true) IS DISTINCT FROM NEW.\"recordedByUserId\" THEN\n    RAISE EXCEPTION '正式经营事实必须通过已授权的经营账服务登记' USING ERRCODE = '42501';\n  END IF;\n  IF NEW.\"factKind\" IN ('owner_settlement', 'downstream_settlement')\n     AND (NEW.\"debtorSubjectKind\" IS NULL OR NEW.\"creditorSubjectKind\" IS NULL) THEN\n    RAISE EXCEPTION '结算事实必须填写债务主体和债权主体' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" IN ('owner_payment', 'downstream_payment', 'fund_movement')\n     AND (NEW.\"actualPayerSubjectKind\" IS NULL OR NEW.\"payeeSubjectKind\" IS NULL) THEN\n    RAISE EXCEPTION '付款或资金事实必须填写实际付款主体和收款主体' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'expense' AND NEW.\"costBearingCompanySubjectKind\" IS NULL THEN\n    RAISE EXCEPTION '费用事实必须填写成本承担公司' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'employee_loan'\n     AND (NEW.\"debtorSubjectKind\" IS NULL OR NEW.\"creditorSubjectKind\" IS NULL) THEN\n    RAISE EXCEPTION '员工借款事实必须填写债务主体和债权主体' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'project_wage' THEN\n    IF NEW.\"sourceType\" = 'wage_statement_version' THEN\n      PERFORM jg_validate_canonical_wage_operating_fact(NEW);\n    ELSIF NEW.\"costBearingCompanySubjectKind\" IS NULL OR NEW.\"payeeSubjectKind\" IS NULL THEN\n      RAISE EXCEPTION '工资事实必须填写成本承担公司和收款主体' USING ERRCODE = '23514';\n    END IF;\n  END IF;\n  IF NEW.\"factKind\" = 'construction_enterprise_deduction'\n     AND NEW.\"costBearingCompanySubjectKind\" IS NULL THEN\n    RAISE EXCEPTION '施工企业扣费事实必须填写成本承担公司' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'invoice' AND NEW.\"payeeSubjectKind\" IS NULL THEN\n    RAISE EXCEPTION '发票事实必须填写收款主体' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
-      "bodySha256": "3308f2baeb483a59627476174184dbaea582ef1e383fbed729ce30792341ec03",
+      "body": "\nDECLARE\n  project_effective_date DATE;\n  project_is_active BOOLEAN;\n  assignment_version_id TEXT;\n  assignment_name TEXT;\n  assignment_credit_code TEXT;\n  candidate_company_id TEXT;\n  candidate_subject JSONB;\n  candidate_subject_role TEXT;\nBEGIN\n  SELECT \"operatingLedgerEffectiveDate\", \"isActive\"\n    INTO project_effective_date, project_is_active\n    FROM \"Project\"\n    WHERE \"id\" = NEW.\"projectId\"\n    FOR UPDATE;\n  IF project_is_active IS DISTINCT FROM TRUE THEN\n    RAISE EXCEPTION '项目不存在或已停用，不能登记正式经营事实' USING ERRCODE = '23514';\n  END IF;\n  IF project_effective_date IS NULL THEN\n    RAISE EXCEPTION '项目尚未启用经营账，不能登记正式经营事实' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"operatingLedgerEffectiveDateSnapshot\" IS DISTINCT FROM project_effective_date\n     OR NEW.\"isBeforeOperatingLedgerEffectiveDate\" IS DISTINCT FROM (NEW.\"occurredAt\"::DATE < project_effective_date) THEN\n    RAISE EXCEPTION '经营事实的经营账生效日快照不一致' USING ERRCODE = '23514';\n  END IF;\n  FOREACH candidate_subject IN ARRAY ARRAY[\n    CASE WHEN NEW.\"debtorSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'debtor', 'kind', NEW.\"debtorSubjectKind\", 'id', NEW.\"debtorSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"creditorSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'creditor', 'kind', NEW.\"creditorSubjectKind\", 'id', NEW.\"creditorSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"approvedPayerSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'approvedPayer', 'kind', NEW.\"approvedPayerSubjectKind\", 'id', NEW.\"approvedPayerSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"actualPayerSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'actualPayer', 'kind', NEW.\"actualPayerSubjectKind\", 'id', NEW.\"actualPayerSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"payeeSubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'payee', 'kind', NEW.\"payeeSubjectKind\", 'id', NEW.\"payeeSubjectId\") ELSE NULL END,\n    CASE WHEN NEW.\"costBearingCompanySubjectKind\" IS NOT NULL THEN jsonb_build_object('role', 'costBearingCompany', 'kind', NEW.\"costBearingCompanySubjectKind\", 'id', NEW.\"costBearingCompanySubjectId\") ELSE NULL END\n  ]::JSONB[] LOOP\n    IF candidate_subject IS NULL THEN CONTINUE; END IF;\n    IF candidate_subject->>'kind' NOT IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty', 'employee', 'public_cash') THEN\n      RAISE EXCEPTION '当前经营账尚未接入该主体种类，不能登记正式事实' USING ERRCODE = '23514';\n    END IF;\n    candidate_subject_role := candidate_subject->>'role';\n    IF NEW.\"subjectSnapshot\"->candidate_subject_role IS NULL\n       OR NEW.\"subjectSnapshot\"->candidate_subject_role->>'kind' IS DISTINCT FROM candidate_subject->>'kind'\n       OR NEW.\"subjectSnapshot\"->candidate_subject_role->>'id' IS DISTINCT FROM candidate_subject->>'id' THEN\n      RAISE EXCEPTION '经营事实主体快照必须与主体字段一致' USING ERRCODE = '23514';\n    END IF;\n  END LOOP;\n\n  SELECT \"businessPartyVersionId\", \"affiliateNameSnapshot\", \"affiliateCreditCodeSnapshot\"\n    INTO assignment_version_id, assignment_name, assignment_credit_code\n    FROM \"ProjectAffiliateAssignment\"\n    WHERE \"id\" = NEW.\"affiliateAssignmentId\"\n      AND \"projectId\" = NEW.\"projectId\"\n      AND \"effectiveFrom\" <= COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public.\"OperatingFact\"), public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE\n      AND (\"endedAt\" IS NULL OR \"endedAt\" > COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public.\"OperatingFact\"), public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE)\n    FOR KEY SHARE;\n  IF assignment_version_id IS NULL\n     OR assignment_version_id <> NEW.\"affiliateBusinessPartyVersionId\"\n     OR assignment_name IS DISTINCT FROM NEW.\"affiliateNameSnapshot\"\n     OR assignment_credit_code IS DISTINCT FROM NEW.\"affiliateCreditCodeSnapshot\" THEN\n    RAISE EXCEPTION '正式经营事实引用的施工企业已失效' USING ERRCODE = '23514';\n  END IF;\n\n  PERFORM participant.\"id\"\n    FROM \"ProjectParticipatingCompany\" participant\n    WHERE participant.\"projectId\" = NEW.\"projectId\"\n      AND (\n        participant.\"companyEntityId\" = ANY (ARRAY[\n          CASE WHEN NEW.\"debtorSubjectKind\" = 'participating_company' THEN NEW.\"debtorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"creditorSubjectKind\" = 'participating_company' THEN NEW.\"creditorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"approvedPayerSubjectKind\" = 'participating_company' THEN NEW.\"approvedPayerSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"actualPayerSubjectKind\" = 'participating_company' THEN CASE WHEN NEW.\"sourceType\" = 'payment_execution' AND public.\"jg_registered_payment_source_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"actualPayerSubjectKind\",NEW.\"actualPayerSubjectId\") THEN NULL ELSE NEW.\"actualPayerSubjectId\" END ELSE NULL END,\n          CASE WHEN NEW.\"payeeSubjectKind\" = 'participating_company' THEN NEW.\"payeeSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"costBearingCompanySubjectKind\" = 'participating_company' THEN NEW.\"costBearingCompanySubjectId\" ELSE NULL END\n        ]::TEXT[])\n        OR participant.\"companyEntityVersionId\" = ANY (ARRAY[\n          CASE WHEN NEW.\"debtorSubjectKind\" = 'participating_company' THEN NEW.\"debtorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"creditorSubjectKind\" = 'participating_company' THEN NEW.\"creditorSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"approvedPayerSubjectKind\" = 'participating_company' THEN NEW.\"approvedPayerSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"actualPayerSubjectKind\" = 'participating_company' THEN CASE WHEN NEW.\"sourceType\" = 'payment_execution' AND public.\"jg_registered_payment_source_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"actualPayerSubjectKind\",NEW.\"actualPayerSubjectId\") THEN NULL ELSE NEW.\"actualPayerSubjectId\" END ELSE NULL END,\n          CASE WHEN NEW.\"payeeSubjectKind\" = 'participating_company' THEN NEW.\"payeeSubjectId\" ELSE NULL END,\n          CASE WHEN NEW.\"costBearingCompanySubjectKind\" = 'participating_company' THEN NEW.\"costBearingCompanySubjectId\" ELSE NULL END\n        ]::TEXT[])\n      )\n      AND participant.\"effectiveFrom\" <= COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public.\"OperatingFact\"), public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE\n      AND (participant.\"endedAt\" IS NULL OR participant.\"endedAt\" > COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public.\"OperatingFact\"), public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE)\n    ORDER BY participant.\"id\" FOR SHARE;\n\n  FOREACH candidate_company_id IN ARRAY ARRAY[\n    CASE WHEN NEW.\"debtorSubjectKind\" = 'participating_company' THEN NEW.\"debtorSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"creditorSubjectKind\" = 'participating_company' THEN NEW.\"creditorSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"approvedPayerSubjectKind\" = 'participating_company' THEN NEW.\"approvedPayerSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"actualPayerSubjectKind\" = 'participating_company' THEN CASE WHEN NEW.\"sourceType\" = 'payment_execution' AND public.\"jg_registered_payment_source_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"actualPayerSubjectKind\",NEW.\"actualPayerSubjectId\") THEN NULL ELSE NEW.\"actualPayerSubjectId\" END ELSE NULL END,\n    CASE WHEN NEW.\"payeeSubjectKind\" = 'participating_company' THEN NEW.\"payeeSubjectId\" ELSE NULL END,\n    CASE WHEN NEW.\"costBearingCompanySubjectKind\" = 'participating_company' THEN NEW.\"costBearingCompanySubjectId\" ELSE NULL END\n  ]::TEXT[] LOOP\n    IF candidate_company_id IS NULL THEN CONTINUE; END IF;\n    IF NOT EXISTS (\n      SELECT 1\n      FROM \"ProjectParticipatingCompany\" participant\n      WHERE participant.\"projectId\" = NEW.\"projectId\"\n        AND (\n          participant.\"companyEntityId\" = candidate_company_id\n          OR participant.\"companyEntityVersionId\" = candidate_company_id\n        )\n        AND participant.\"effectiveFrom\" <= COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public.\"OperatingFact\"), public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE\n        AND (participant.\"endedAt\" IS NULL OR participant.\"endedAt\" > COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public.\"OperatingFact\"), public.jg_company_repayment_ownership_date(NEW.\"sourceType\", NEW.\"sourceBusinessId\", NEW.\"projectId\"), NEW.\"occurredAt\")::DATE)\n    ) THEN\n      RAISE EXCEPTION '经营事实引用的我方公司未在本项目事实日参与'\n        USING ERRCODE = '23514';\n    END IF;\n  END LOOP;\n\n  IF NEW.\"adjustsFactId\" IS NOT NULL AND NOT EXISTS (\n    SELECT 1 FROM \"OperatingFact\" original\n    WHERE original.\"id\" = NEW.\"adjustsFactId\"\n      AND original.\"projectId\" = NEW.\"projectId\"\n  ) THEN\n    RAISE EXCEPTION '更正或冲销只能引用同一项目的经营事实' USING ERRCODE = '23514';\n  END IF;\n  IF current_setting('app.operating_ledger_actor', true) IS DISTINCT FROM NEW.\"recordedByUserId\" THEN\n    RAISE EXCEPTION '正式经营事实必须通过已授权的经营账服务登记' USING ERRCODE = '42501';\n  END IF;\n  IF NEW.\"factKind\" IN ('owner_settlement', 'downstream_settlement')\n     AND (NEW.\"debtorSubjectKind\" IS NULL OR NEW.\"creditorSubjectKind\" IS NULL) THEN\n    RAISE EXCEPTION '结算事实必须填写债务主体和债权主体' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" IN ('owner_payment', 'downstream_payment', 'fund_movement')\n     AND (NEW.\"actualPayerSubjectKind\" IS NULL OR NEW.\"payeeSubjectKind\" IS NULL) THEN\n    RAISE EXCEPTION '付款或资金事实必须填写实际付款主体和收款主体' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'expense' AND NEW.\"costBearingCompanySubjectKind\" IS NULL THEN\n    RAISE EXCEPTION '费用事实必须填写成本承担公司' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'employee_loan'\n     AND (NEW.\"debtorSubjectKind\" IS NULL OR NEW.\"creditorSubjectKind\" IS NULL) THEN\n    RAISE EXCEPTION '员工借款事实必须填写债务主体和债权主体' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'project_wage' THEN\n    IF NEW.\"sourceType\" = 'wage_statement_version' THEN\n      PERFORM jg_validate_canonical_wage_operating_fact(NEW);\n    ELSIF NEW.\"costBearingCompanySubjectKind\" IS NULL OR NEW.\"payeeSubjectKind\" IS NULL THEN\n      RAISE EXCEPTION '工资事实必须填写成本承担公司和收款主体' USING ERRCODE = '23514';\n    END IF;\n  END IF;\n  IF NEW.\"factKind\" = 'construction_enterprise_deduction'\n     AND NEW.\"costBearingCompanySubjectKind\" IS NULL THEN\n    RAISE EXCEPTION '施工企业扣费事实必须填写成本承担公司' USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"factKind\" = 'invoice' AND NEW.\"payeeSubjectKind\" IS NULL THEN\n    RAISE EXCEPTION '发票事实必须填写收款主体' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
+      "bodySha256": "4de2efb8b172fac1ae554b70f2dc906b2bb62800f36034614fa833a5de1c336f",
       "language": "plpgsql",
       "securityDefiner": false,
       "strict": false,
@@ -3790,7 +3790,9 @@
             "new": "candidate_subject->>'kind' NOT IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty', 'employee', 'public_cash')"
           }
         ],
-        "expectedProsrcSha256": "3308f2baeb483a59627476174184dbaea582ef1e383fbed729ce30792341ec03"
+        "expectedProsrcSha256": "4de2efb8b172fac1ae554b70f2dc906b2bb62800f36034614fa833a5de1c336f",
+        "schema203ExactOwnershipReplacements": 6,
+        "pre203RegisteredFinalProsrcSha256": "3308f2baeb483a59627476174184dbaea582ef1e383fbed729ce30792341ec03"
       },
       "interface": {
         "argumentNames": null,
@@ -3807,8 +3809,8 @@
     {
       "signature": "public.\"validateOperatingImpactEntryReferences\"()",
       "owner": "jg_task01_owner",
-      "body": "\nDECLARE\n  fact_occurred_at TIMESTAMP(3);\n  fact_affiliate_assignment_id TEXT;\n  fact_affiliate_version_id TEXT;\n  fact_evidence_level TEXT;\n  fact_entry_kind TEXT;\n  fact_adjusts_fact_id TEXT;\n  fact_recorded_by_user_id TEXT;\n  fact_source_type TEXT;\n  fact_fund_execution_id TEXT;\n  original_impact_id TEXT;\n  original_impact_kind TEXT;\n  original_impact_amount BIGINT;\n  original_impact_direction TEXT;\n  original_subject_role TEXT;\n  original_subject_kind TEXT;\n  original_subject_id TEXT;\n  original_cost_category_code TEXT;\n  original_fund_purpose TEXT;\n  original_impact_snapshot JSONB;\n  is_fund_execution_reversal BOOLEAN := FALSE;\n  reversed_impact_amount BIGINT;\nBEGIN\n  SELECT COALESCE(public.jg_company_repayment_ownership_date(fact.\"sourceType\", fact.\"sourceBusinessId\", fact.\"projectId\"), fact.\"occurredAt\"), fact.\"affiliateAssignmentId\",\n         fact.\"affiliateBusinessPartyVersionId\", fact.\"evidenceLevel\",\n         fact.\"entryKind\", fact.\"adjustsFactId\", fact.\"recordedByUserId\",\n         fact.\"sourceType\", fact.\"fundExecutionId\"\n    INTO fact_occurred_at, fact_affiliate_assignment_id,\n         fact_affiliate_version_id, fact_evidence_level, fact_entry_kind,\n         fact_adjusts_fact_id, fact_recorded_by_user_id, fact_source_type,\n         fact_fund_execution_id\n    FROM \"OperatingFact\" fact\n   WHERE fact.\"id\" = NEW.\"factId\"\n     AND fact.\"projectId\" = NEW.\"projectId\"\n     AND fact.\"sourceType\" = NEW.\"sourceType\"\n     AND fact.\"sourceBusinessId\" = NEW.\"sourceBusinessId\";\n  IF fact_occurred_at IS NULL THEN\n    RAISE EXCEPTION '影响分录必须引用同一项目、同一来源的经营事实'\n      USING ERRCODE = '23514';\n  END IF;\n  IF fact_evidence_level = 'C' AND NEW.\"impactKind\" <> 'evidence_gap_notice' THEN\n    RAISE EXCEPTION 'C级证据只能登记缺口提示，不能产生正式经营影响'\n      USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"subjectKind\" IS NOT NULL\n     AND NEW.\"subjectKind\" NOT IN (\n       'owner', 'construction_enterprise', 'participating_company',\n       'downstream_counterparty', 'employee', 'public_cash'\n     ) THEN\n    RAISE EXCEPTION '当前经营账尚未接入该影响主体种类，不能登记正式分录'\n      USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"subjectKind\" = 'construction_enterprise' AND NOT EXISTS (\n    SELECT 1 FROM \"ProjectAffiliateAssignment\" assignment\n     WHERE assignment.\"id\" = fact_affiliate_assignment_id\n       AND assignment.\"projectId\" = NEW.\"projectId\"\n       AND assignment.\"businessPartyVersionId\" = fact_affiliate_version_id\n       AND (NEW.\"subjectId\" = assignment.\"businessPartyId\"\n         OR NEW.\"subjectId\" = assignment.\"businessPartyVersionId\")\n       AND assignment.\"effectiveFrom\" <= fact_occurred_at::DATE\n       AND (assignment.\"endedAt\" IS NULL\n         OR assignment.\"endedAt\" > fact_occurred_at::DATE)\n  ) THEN\n    RAISE EXCEPTION '影响分录引用的施工企业在事实日无效'\n      USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"subjectKind\" = 'participating_company' THEN\n    PERFORM 1 FROM \"Project\"\n      WHERE \"id\" = NEW.\"projectId\"\n      FOR UPDATE;\n    PERFORM participant.\"id\"\n      FROM \"ProjectParticipatingCompany\" participant\n      WHERE participant.\"projectId\" = NEW.\"projectId\"\n        AND (\n          NEW.\"subjectId\" = participant.\"companyEntityId\"\n          OR NEW.\"subjectId\" = participant.\"companyEntityVersionId\"\n        )\n        AND participant.\"effectiveFrom\" <= fact_occurred_at::DATE\n        AND (participant.\"endedAt\" IS NULL\n          OR participant.\"endedAt\" > fact_occurred_at::DATE)\n      ORDER BY participant.\"id\" FOR SHARE;\n    IF NOT FOUND AND NOT coalesce(NEW.\"sourceType\" = 'payment_execution' AND NEW.\"subjectRole\" = 'actual_payer' AND public.\"jg_registered_payment_impact_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"subjectKind\",NEW.\"subjectId\",NEW.\"impactKind\",NEW.\"sourceImpactKey\",NEW.\"direction\",NEW.\"idempotencyKey\"),FALSE) THEN\n      RAISE EXCEPTION '影响分录引用的我方公司未在本项目事实日参与'\n        USING ERRCODE = '23514';\n    END IF;\n  END IF;\n  IF fact_entry_kind = 'reversal' THEN\n    is_fund_execution_reversal := fact_source_type = 'fund_execution'\n      AND EXISTS (\n        SELECT 1 FROM \"FundExecution\" execution\n         WHERE execution.\"id\" = fact_fund_execution_id\n           AND execution.\"executionKind\" = 'reversal'\n      );\n    SELECT original_impact.\"id\", original_impact.\"impactKind\",\n           original_impact.\"amountCents\", original_impact.\"direction\",\n           original_impact.\"subjectRole\", original_impact.\"subjectKind\",\n           original_impact.\"subjectId\", original_impact.\"costCategoryCode\",\n           original_impact.\"fundPurpose\", original_impact.\"impactSnapshot\"\n      INTO original_impact_id, original_impact_kind, original_impact_amount,\n           original_impact_direction, original_subject_role,\n           original_subject_kind, original_subject_id,\n           original_cost_category_code, original_fund_purpose,\n           original_impact_snapshot\n      FROM \"OperatingImpactEntry\" original_impact\n     WHERE original_impact.\"factId\" = fact_adjusts_fact_id\n       AND original_impact.\"sourceImpactKey\" = NEW.\"sourceImpactKey\";\n    IF NOT FOUND THEN\n      RAISE EXCEPTION '冲销必须逐笔引用原经营影响分录'\n        USING ERRCODE = '23514';\n    END IF;\n    IF original_impact_kind <> NEW.\"impactKind\"\n       OR (is_fund_execution_reversal\n         AND (NEW.\"amountCents\" <= 0 OR NEW.\"amountCents\" > original_impact_amount))\n       OR (NOT is_fund_execution_reversal\n         AND original_impact_amount <> NEW.\"amountCents\")\n       OR ((original_impact_direction = 'increase' AND NEW.\"direction\" <> 'decrease')\n         OR (original_impact_direction = 'decrease' AND NEW.\"direction\" <> 'increase')\n         OR (original_impact_direction = 'notice' AND NEW.\"direction\" <> 'notice'))\n       OR original_subject_role IS DISTINCT FROM NEW.\"subjectRole\"\n       OR original_subject_kind IS DISTINCT FROM NEW.\"subjectKind\"\n       OR original_subject_id IS DISTINCT FROM NEW.\"subjectId\"\n       OR original_cost_category_code IS DISTINCT FROM NEW.\"costCategoryCode\"\n       OR original_fund_purpose IS DISTINCT FROM NEW.\"fundPurpose\"\n       OR (is_fund_execution_reversal AND (\n         NEW.\"impactSnapshot\" ->> 'originalOperatingImpactEntryId'\n           IS DISTINCT FROM original_impact_id))\n       OR (NOT is_fund_execution_reversal\n         AND original_impact_snapshot IS DISTINCT FROM NEW.\"impactSnapshot\") THEN\n      RAISE EXCEPTION '冲销分录必须使用原分录身份、容量并登记反向影响'\n        USING ERRCODE = '23514';\n    END IF;\n    IF is_fund_execution_reversal THEN\n      SELECT COALESCE(SUM(reverse_impact.\"amountCents\"), 0)\n        INTO reversed_impact_amount\n        FROM \"OperatingFact\" reverse_fact\n        INNER JOIN \"OperatingImpactEntry\" reverse_impact\n          ON reverse_impact.\"factId\" = reverse_fact.\"id\"\n       WHERE reverse_fact.\"adjustsFactId\" = fact_adjusts_fact_id\n         AND reverse_fact.\"entryKind\" = 'reversal'\n         AND reverse_impact.\"sourceImpactKey\" = NEW.\"sourceImpactKey\";\n      IF reversed_impact_amount + NEW.\"amountCents\" > original_impact_amount THEN\n        RAISE EXCEPTION '经营影响累计冲销金额超过原分录'\n          USING ERRCODE = '23514';\n      END IF;\n    END IF;\n  END IF;\n  IF current_setting('app.operating_ledger_actor', true)\n       IS DISTINCT FROM fact_recorded_by_user_id THEN\n    RAISE EXCEPTION '正式经营影响必须通过已授权的经营账服务登记'\n      USING ERRCODE = '42501';\n  END IF;\n  RETURN NEW;\nEND;\n",
-      "bodySha256": "0af43001c7165d5c76d464669f87e3facd293a55841f377df716f18d94bba3c0",
+      "body": "\nDECLARE\n  fact_occurred_at TIMESTAMP(3);\n  fact_affiliate_assignment_id TEXT;\n  fact_affiliate_version_id TEXT;\n  fact_evidence_level TEXT;\n  fact_entry_kind TEXT;\n  fact_adjusts_fact_id TEXT;\n  fact_recorded_by_user_id TEXT;\n  fact_source_type TEXT;\n  fact_fund_execution_id TEXT;\n  original_impact_id TEXT;\n  original_impact_kind TEXT;\n  original_impact_amount BIGINT;\n  original_impact_direction TEXT;\n  original_subject_role TEXT;\n  original_subject_kind TEXT;\n  original_subject_id TEXT;\n  original_cost_category_code TEXT;\n  original_fund_purpose TEXT;\n  original_impact_snapshot JSONB;\n  is_fund_execution_reversal BOOLEAN := FALSE;\n  reversed_impact_amount BIGINT;\nBEGIN\n  SELECT COALESCE(public.jg_contract_economic_review_ownership_date(fact), public.jg_company_repayment_ownership_date(fact.\"sourceType\", fact.\"sourceBusinessId\", fact.\"projectId\"), fact.\"occurredAt\"), fact.\"affiliateAssignmentId\",\n         fact.\"affiliateBusinessPartyVersionId\", fact.\"evidenceLevel\",\n         fact.\"entryKind\", fact.\"adjustsFactId\", fact.\"recordedByUserId\",\n         fact.\"sourceType\", fact.\"fundExecutionId\"\n    INTO fact_occurred_at, fact_affiliate_assignment_id,\n         fact_affiliate_version_id, fact_evidence_level, fact_entry_kind,\n         fact_adjusts_fact_id, fact_recorded_by_user_id, fact_source_type,\n         fact_fund_execution_id\n    FROM \"OperatingFact\" fact\n   WHERE fact.\"id\" = NEW.\"factId\"\n     AND fact.\"projectId\" = NEW.\"projectId\"\n     AND fact.\"sourceType\" = NEW.\"sourceType\"\n     AND fact.\"sourceBusinessId\" = NEW.\"sourceBusinessId\";\n  IF fact_occurred_at IS NULL THEN\n    RAISE EXCEPTION '影响分录必须引用同一项目、同一来源的经营事实'\n      USING ERRCODE = '23514';\n  END IF;\n  IF fact_evidence_level = 'C' AND NEW.\"impactKind\" <> 'evidence_gap_notice' THEN\n    RAISE EXCEPTION 'C级证据只能登记缺口提示，不能产生正式经营影响'\n      USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"subjectKind\" IS NOT NULL\n     AND NEW.\"subjectKind\" NOT IN (\n       'owner', 'construction_enterprise', 'participating_company',\n       'downstream_counterparty', 'employee', 'public_cash'\n     ) THEN\n    RAISE EXCEPTION '当前经营账尚未接入该影响主体种类，不能登记正式分录'\n      USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"subjectKind\" = 'construction_enterprise' AND NOT EXISTS (\n    SELECT 1 FROM \"ProjectAffiliateAssignment\" assignment\n     WHERE assignment.\"id\" = fact_affiliate_assignment_id\n       AND assignment.\"projectId\" = NEW.\"projectId\"\n       AND assignment.\"businessPartyVersionId\" = fact_affiliate_version_id\n       AND (NEW.\"subjectId\" = assignment.\"businessPartyId\"\n         OR NEW.\"subjectId\" = assignment.\"businessPartyVersionId\")\n       AND assignment.\"effectiveFrom\" <= fact_occurred_at::DATE\n       AND (assignment.\"endedAt\" IS NULL\n         OR assignment.\"endedAt\" > fact_occurred_at::DATE)\n  ) THEN\n    RAISE EXCEPTION '影响分录引用的施工企业在事实日无效'\n      USING ERRCODE = '23514';\n  END IF;\n  IF NEW.\"subjectKind\" = 'participating_company' THEN\n    PERFORM 1 FROM \"Project\"\n      WHERE \"id\" = NEW.\"projectId\"\n      FOR UPDATE;\n    PERFORM participant.\"id\"\n      FROM \"ProjectParticipatingCompany\" participant\n      WHERE participant.\"projectId\" = NEW.\"projectId\"\n        AND (\n          NEW.\"subjectId\" = participant.\"companyEntityId\"\n          OR NEW.\"subjectId\" = participant.\"companyEntityVersionId\"\n        )\n        AND participant.\"effectiveFrom\" <= fact_occurred_at::DATE\n        AND (participant.\"endedAt\" IS NULL\n          OR participant.\"endedAt\" > fact_occurred_at::DATE)\n      ORDER BY participant.\"id\" FOR SHARE;\n    IF NOT FOUND AND NOT coalesce(NEW.\"sourceType\" = 'payment_execution' AND NEW.\"subjectRole\" = 'actual_payer' AND public.\"jg_registered_payment_impact_matches\"(NEW.\"sourceBusinessId\",NEW.\"projectId\",NEW.\"amountCents\",NEW.\"subjectKind\",NEW.\"subjectId\",NEW.\"impactKind\",NEW.\"sourceImpactKey\",NEW.\"direction\",NEW.\"idempotencyKey\"),FALSE) THEN\n      RAISE EXCEPTION '影响分录引用的我方公司未在本项目事实日参与'\n        USING ERRCODE = '23514';\n    END IF;\n  END IF;\n  IF fact_entry_kind = 'reversal' THEN\n    is_fund_execution_reversal := fact_source_type = 'fund_execution'\n      AND EXISTS (\n        SELECT 1 FROM \"FundExecution\" execution\n         WHERE execution.\"id\" = fact_fund_execution_id\n           AND execution.\"executionKind\" = 'reversal'\n      );\n    SELECT original_impact.\"id\", original_impact.\"impactKind\",\n           original_impact.\"amountCents\", original_impact.\"direction\",\n           original_impact.\"subjectRole\", original_impact.\"subjectKind\",\n           original_impact.\"subjectId\", original_impact.\"costCategoryCode\",\n           original_impact.\"fundPurpose\", original_impact.\"impactSnapshot\"\n      INTO original_impact_id, original_impact_kind, original_impact_amount,\n           original_impact_direction, original_subject_role,\n           original_subject_kind, original_subject_id,\n           original_cost_category_code, original_fund_purpose,\n           original_impact_snapshot\n      FROM \"OperatingImpactEntry\" original_impact\n     WHERE original_impact.\"factId\" = fact_adjusts_fact_id\n       AND original_impact.\"sourceImpactKey\" = NEW.\"sourceImpactKey\";\n    IF NOT FOUND THEN\n      RAISE EXCEPTION '冲销必须逐笔引用原经营影响分录'\n        USING ERRCODE = '23514';\n    END IF;\n    IF original_impact_kind <> NEW.\"impactKind\"\n       OR (is_fund_execution_reversal\n         AND (NEW.\"amountCents\" <= 0 OR NEW.\"amountCents\" > original_impact_amount))\n       OR (NOT is_fund_execution_reversal\n         AND original_impact_amount <> NEW.\"amountCents\")\n       OR ((original_impact_direction = 'increase' AND NEW.\"direction\" <> 'decrease')\n         OR (original_impact_direction = 'decrease' AND NEW.\"direction\" <> 'increase')\n         OR (original_impact_direction = 'notice' AND NEW.\"direction\" <> 'notice'))\n       OR original_subject_role IS DISTINCT FROM NEW.\"subjectRole\"\n       OR original_subject_kind IS DISTINCT FROM NEW.\"subjectKind\"\n       OR original_subject_id IS DISTINCT FROM NEW.\"subjectId\"\n       OR original_cost_category_code IS DISTINCT FROM NEW.\"costCategoryCode\"\n       OR original_fund_purpose IS DISTINCT FROM NEW.\"fundPurpose\"\n       OR (is_fund_execution_reversal AND (\n         NEW.\"impactSnapshot\" ->> 'originalOperatingImpactEntryId'\n           IS DISTINCT FROM original_impact_id))\n       OR (NOT is_fund_execution_reversal\n         AND original_impact_snapshot IS DISTINCT FROM NEW.\"impactSnapshot\") THEN\n      RAISE EXCEPTION '冲销分录必须使用原分录身份、容量并登记反向影响'\n        USING ERRCODE = '23514';\n    END IF;\n    IF is_fund_execution_reversal THEN\n      SELECT COALESCE(SUM(reverse_impact.\"amountCents\"), 0)\n        INTO reversed_impact_amount\n        FROM \"OperatingFact\" reverse_fact\n        INNER JOIN \"OperatingImpactEntry\" reverse_impact\n          ON reverse_impact.\"factId\" = reverse_fact.\"id\"\n       WHERE reverse_fact.\"adjustsFactId\" = fact_adjusts_fact_id\n         AND reverse_fact.\"entryKind\" = 'reversal'\n         AND reverse_impact.\"sourceImpactKey\" = NEW.\"sourceImpactKey\";\n      IF reversed_impact_amount + NEW.\"amountCents\" > original_impact_amount THEN\n        RAISE EXCEPTION '经营影响累计冲销金额超过原分录'\n          USING ERRCODE = '23514';\n      END IF;\n    END IF;\n  END IF;\n  IF current_setting('app.operating_ledger_actor', true)\n       IS DISTINCT FROM fact_recorded_by_user_id THEN\n    RAISE EXCEPTION '正式经营影响必须通过已授权的经营账服务登记'\n      USING ERRCODE = '42501';\n  END IF;\n  RETURN NEW;\nEND;\n",
+      "bodySha256": "645212b0f57fb5a2a4020bde67da1709f799d9a564bb5e13da1f97a8e2b759e9",
       "language": "plpgsql",
       "securityDefiner": false,
       "strict": false,
@@ -3851,7 +3853,9 @@
             "new": "'downstream_counterparty', 'employee', 'public_cash'\n     ) THEN"
           }
         ],
-        "expectedProsrcSha256": "0af43001c7165d5c76d464669f87e3facd293a55841f377df716f18d94bba3c0"
+        "expectedProsrcSha256": "645212b0f57fb5a2a4020bde67da1709f799d9a564bb5e13da1f97a8e2b759e9",
+        "schema203ExactOwnershipReplacements": 1,
+        "pre203RegisteredFinalProsrcSha256": "0af43001c7165d5c76d464669f87e3facd293a55841f377df716f18d94bba3c0"
       },
       "interface": {
         "argumentNames": null,
@@ -4116,6 +4120,177 @@
         "leakproof": false,
         "support": null
       }
+    },
+    {
+      "signature": "public.\"appendOperatingFactThroughService\"(public.\"OperatingLedgerFactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "owner": "jg_task01_owner",
+      "body": "\nDECLARE\n  v_review public.\"ContractEconomicReview\"%ROWTYPE;\n  v_original public.\"OperatingFact\"%ROWTYPE;\n  v_document JSONB;\n  v_document_count BIGINT;\n  v_baseline JSONB;\n  v_delta NUMERIC;\nBEGIN\n  PERFORM public.\"authorizeOperatingLedgerWrite\"(p_actor_user_id, p_secret);\n  PERFORM set_config('app.operating_ledger_actor', p_actor_user_id, true);\n  -- Validate the unbounded NUMERIC payload before the NUMERIC(24,4) column can round it.\n  IF p_payload.\"numericProtocolVersion\" IS DISTINCT FROM 2 OR p_payload.\"amountCents\" IS NOT NULL\n    OR (p_payload.\"amountYuan\" IS NOT NULL AND p_payload.\"amountYuan\"::text !~ '^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$') THEN\n    RAISE EXCEPTION '新版经营金额协议不正确或超过四位精度' USING ERRCODE = '23514';\n  END IF;\n\n\n  IF p_payload.\"sourceType\" = 'contract_economic_review' THEN\n    -- Approved frozen source, not the caller's declaration of an approval.\n    IF p_payload.\"amountYuan\" IS NULL OR p_payload.\"amountYuan\" <= 0\n      OR jsonb_typeof(p_payload.\"sourceSnapshot\" -> 'baseline') IS DISTINCT FROM 'object'\n      OR (p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan') IS NULL\n      OR (p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan') !~ '^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$' THEN\n      RAISE EXCEPTION '履约复核四位调整缺少有效冻结金额' USING ERRCODE = '23514';\n    END IF;\n    v_delta := (p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric;\n    IF v_delta = 0 OR abs(v_delta) IS DISTINCT FROM p_payload.\"amountYuan\" THEN\n      RAISE EXCEPTION '履约复核四位调整与冻结差额不一致' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_review FROM public.\"ContractEconomicReview\"\n      WHERE \"id\" = p_payload.\"sourceSnapshot\" ->> 'reviewId' FOR SHARE;\n    IF NOT FOUND OR v_review.\"status\" IS DISTINCT FROM 'confirmed'\n      OR v_review.\"confirmedAt\" IS NULL\n      OR v_review.\"projectId\" IS DISTINCT FROM p_payload.\"projectId\"\n      OR v_review.\"revision\" IS DISTINCT FROM p_payload.\"sourceVersion\"\n      OR v_review.\"leftSourceRef\" = v_review.\"rightSourceRef\"\n      OR NOT COALESCE((p_payload.\"sourceSnapshot\" ->> 'sourceRef') IN (v_review.\"leftSourceRef\", v_review.\"rightSourceRef\"), FALSE)\n      OR p_payload.\"sourceBusinessId\" IS DISTINCT FROM (v_review.\"id\" || ':' || (p_payload.\"sourceSnapshot\" ->> 'sourceRef'))\n      OR p_payload.\"confirmedByUserId\" IS DISTINCT FROM COALESCE(v_review.\"financeReviewedById\", v_review.\"contractReviewedById\")\n      OR p_payload.\"confirmedByUserId\" IS NULL\n      OR p_payload.\"occurredAt\" IS DISTINCT FROM (v_review.\"confirmedAt\" AT TIME ZONE 'UTC')\n      OR p_payload.\"confirmedAt\" IS DISTINCT FROM (v_review.\"confirmedAt\" AT TIME ZONE 'UTC')\n      OR jsonb_typeof(v_review.\"frozenSources\") IS DISTINCT FROM 'array' THEN\n      RAISE EXCEPTION '履约复核确认状态或版本已变化' USING ERRCODE = '23514';\n    END IF;\n    IF jsonb_array_length(v_review.\"frozenSources\") NOT BETWEEN 1 AND 2 THEN\n      RAISE EXCEPTION '履约复核冻结文书范围不正确' USING ERRCODE = '23514';\n    END IF;\n    SELECT count(*), jsonb_agg(value) -> 0 INTO v_document_count, v_document\n      FROM jsonb_array_elements(v_review.\"frozenSources\") AS documents(value)\n      WHERE value ->> 'ref' = p_payload.\"sourceSnapshot\" ->> 'sourceRef';\n    v_baseline := p_payload.\"sourceSnapshot\" -> 'baseline';\n    IF v_document_count <> 1 OR v_document -> 'formal' IS DISTINCT FROM 'true'::jsonb\n      OR NOT COALESCE((v_document ->> 'coverageNumericProtocolVersion' = '2' OR v_document ->> 'numericProtocolVersion' = '2'), FALSE)\n      OR v_document -> 'operatingBaseline' IS DISTINCT FROM v_baseline\n      OR v_document ->> 'excludedDeltaYuan' IS DISTINCT FROM p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan' THEN\n      RAISE EXCEPTION '履约复核冻结分项或差额已变化' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_original FROM public.\"OperatingFact\"\n      WHERE \"id\" = v_baseline ->> 'originalOperatingFactId' FOR KEY SHARE;\n    IF NOT FOUND OR v_original.\"projectId\" IS DISTINCT FROM p_payload.\"projectId\"\n      OR v_original.\"status\" IS DISTINCT FROM 'confirmed' OR v_original.\"entryKind\" IS DISTINCT FROM 'original'\n      OR v_original.\"factKind\" IS DISTINCT FROM 'downstream_contract'\n      OR NOT COALESCE((v_original.\"sourceType\" = 'contract_version' AND (p_payload.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'contract:%')\n        OR (v_original.\"sourceType\" = 'project_affiliate_contract_fact' AND (p_payload.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'affiliate:%'), FALSE)\n      OR v_original.\"sourceType\" IS DISTINCT FROM v_baseline ->> 'originalSourceType'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM v_baseline ->> 'originalSourceBusinessId'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM split_part(v_document ->> 'version', ':', 1)\n      OR v_original.\"sourceVersion\"::text IS DISTINCT FROM v_baseline ->> 'originalSourceVersion'\n      OR v_original.\"numericProtocolVersion\"::text IS DISTINCT FROM v_baseline ->> 'numericProtocolVersion'\n      OR v_original.\"sourceSnapshot\" IS DISTINCT FROM v_baseline -> 'sourceSnapshot'\n      OR v_original.\"currencyCode\" IS DISTINCT FROM COALESCE(NULLIF(p_payload.\"currencyCode\", ''), 'CNY')\n      OR (v_original.\"numericProtocolVersion\" = 1 AND (\n        (v_original.\"sourceSnapshot\" ->> 'amountNature') IS NOT DISTINCT FROM 'uncapped'\n        OR (v_original.\"sourceSnapshot\" -> 'amountCents') IS NOT DISTINCT FROM 'null'::jsonb))\n      OR NOT COALESCE((v_original.\"numericProtocolVersion\" = 1 AND v_original.\"amountCents\" IS NOT NULL\n          AND v_original.\"amountCents\"::text = v_baseline ->> 'amountCents' AND v_baseline -> 'amountYuan' = 'null'::jsonb)\n        OR (v_original.\"numericProtocolVersion\" = 2 AND v_baseline -> 'amountCents' = 'null'::jsonb\n          AND v_baseline ? 'amountYuan'\n          AND v_original.\"sourceSnapshot\" #>> '{numericFacts,protocolVersion}' = '2'\n          AND (v_original.\"sourceSnapshot\" -> 'numericFacts') ? 'amountYuan'\n          AND ((v_original.\"amountYuan\" IS NULL AND v_baseline -> 'amountYuan' = 'null'::jsonb\n            AND v_baseline ->> 'amountState' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #> '{numericFacts,amountYuan}' = 'null'::jsonb)\n          OR (v_original.\"amountYuan\" IS NOT NULL AND v_original.\"amountYuan\"::text = v_baseline ->> 'amountYuan'\n            AND v_baseline ->> 'amountState' = 'known'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'known'\n            AND v_original.\"amountYuan\"::text = v_original.\"sourceSnapshot\" #>> '{numericFacts,amountYuan}'))), FALSE)\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM p_payload.\"affiliateAssignmentId\"\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM p_payload.\"affiliateBusinessPartyVersionId\"\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM p_payload.\"affiliateNameSnapshot\"\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM p_payload.\"affiliateCreditCodeSnapshot\"\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM v_baseline ->> 'affiliateAssignmentId'\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM v_baseline ->> 'affiliateBusinessPartyVersionId'\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateNameSnapshot'\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateCreditCodeSnapshot'\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM p_payload.\"debtorSubjectKind\"\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM p_payload.\"debtorSubjectId\"\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM p_payload.\"creditorSubjectKind\"\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM p_payload.\"creditorSubjectId\"\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,kind}'\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,id}'\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,kind}'\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,id}' THEN\n      RAISE EXCEPTION '履约复核原承诺身份、金额或主体已变化' USING ERRCODE = '23514';\n    END IF;\n  END IF;\n\n  RETURN QUERY\n  INSERT INTO public.\"OperatingFact\"(\n    \"id\", \"projectId\", \"sourceType\", \"sourceBusinessId\", \"sourceVersion\",\n    \"sourceBusinessCode\", \"occurredAt\", \"confirmedAt\", \"affiliateAssignmentId\",\n    \"affiliateBusinessPartyVersionId\", \"affiliateNameSnapshot\",\n    \"affiliateCreditCodeSnapshot\", \"operatingLedgerEffectiveDateSnapshot\",\n    \"isBeforeOperatingLedgerEffectiveDate\", \"historicalTakeoverBatchId\",\n    \"factKind\", \"operatingLevel\", \"evidenceLevel\", \"amountCents\",\n    \"currencyCode\", \"direction\", \"debtorSubjectKind\", \"debtorSubjectId\",\n    \"creditorSubjectKind\", \"creditorSubjectId\", \"approvedPayerSubjectKind\",\n    \"approvedPayerSubjectId\", \"actualPayerSubjectKind\", \"actualPayerSubjectId\",\n    \"payeeSubjectKind\", \"payeeSubjectId\", \"costBearingCompanySubjectKind\",\n    \"costBearingCompanySubjectId\", \"subjectSnapshot\", \"sourceSnapshot\",\n    \"basisSnapshot\", \"entryKind\", \"adjustsFactId\", \"idempotencyKey\",\n    \"recordedByUserId\", \"confirmedByUserId\", \"status\", \"paymentExecutionId\",\n    \"fundExecutionId\", \"fundExecutionCaseId\", \"numericProtocolVersion\", \"amountYuan\"\n  )\n  VALUES(\n    COALESCE(NULLIF(p_payload.\"id\", ''), public.gen_random_uuid()::TEXT),\n    p_payload.\"projectId\", p_payload.\"sourceType\", p_payload.\"sourceBusinessId\",\n    p_payload.\"sourceVersion\", p_payload.\"sourceBusinessCode\",\n    p_payload.\"occurredAt\" AT TIME ZONE 'UTC',\n    p_payload.\"confirmedAt\" AT TIME ZONE 'UTC',\n    p_payload.\"affiliateAssignmentId\", p_payload.\"affiliateBusinessPartyVersionId\",\n    p_payload.\"affiliateNameSnapshot\", p_payload.\"affiliateCreditCodeSnapshot\",\n    p_payload.\"operatingLedgerEffectiveDateSnapshot\",\n    p_payload.\"isBeforeOperatingLedgerEffectiveDate\",\n    p_payload.\"historicalTakeoverBatchId\", p_payload.\"factKind\",\n    p_payload.\"operatingLevel\", p_payload.\"evidenceLevel\", p_payload.\"amountCents\",\n    COALESCE(NULLIF(p_payload.\"currencyCode\", ''), 'CNY'), p_payload.\"direction\",\n    p_payload.\"debtorSubjectKind\", p_payload.\"debtorSubjectId\",\n    p_payload.\"creditorSubjectKind\", p_payload.\"creditorSubjectId\",\n    p_payload.\"approvedPayerSubjectKind\", p_payload.\"approvedPayerSubjectId\",\n    p_payload.\"actualPayerSubjectKind\", p_payload.\"actualPayerSubjectId\",\n    p_payload.\"payeeSubjectKind\", p_payload.\"payeeSubjectId\",\n    p_payload.\"costBearingCompanySubjectKind\", p_payload.\"costBearingCompanySubjectId\",\n    p_payload.\"subjectSnapshot\", p_payload.\"sourceSnapshot\", p_payload.\"basisSnapshot\",\n    COALESCE(NULLIF(p_payload.\"entryKind\", ''), 'original'), p_payload.\"adjustsFactId\",\n    p_payload.\"idempotencyKey\", p_actor_user_id, p_payload.\"confirmedByUserId\",\n    COALESCE(NULLIF(p_payload.\"status\", ''), 'confirmed'),\n    p_payload.\"paymentExecutionId\", p_payload.\"fundExecutionId\",\n    p_payload.\"fundExecutionCaseId\", p_payload.\"numericProtocolVersion\", p_payload.\"amountYuan\"\n  )\n  RETURNING \"OperatingFact\".\"id\", \"OperatingFact\".\"projectId\",\n            \"OperatingFact\".\"sourceType\", \"OperatingFact\".\"sourceBusinessId\";\nEND;\n",
+      "bodySha256": "418f670df6f68f04247d3217472f94476c60233d21d1ef8bfbef51c0d9e240c4",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "strict": false,
+      "volatility": "v",
+      "parallel": "u",
+      "returnType": "record",
+      "returnsSet": true,
+      "searchPath": "pg_catalog,public",
+      "provenance": {
+        "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+        "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+        "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+      },
+      "interface": {
+        "argumentNames": [
+          "p_payload",
+          "p_actor_user_id",
+          "p_secret",
+          "id",
+          "projectId",
+          "sourceType",
+          "sourceBusinessId"
+        ],
+        "inputArgumentTypes": [
+          "public.\"OperatingLedgerFactWritePayloadV2\"",
+          "pg_catalog.text",
+          "pg_catalog.text"
+        ],
+        "allArgumentTypes": [
+          "public.\"OperatingLedgerFactWritePayloadV2\"",
+          "pg_catalog.text",
+          "pg_catalog.text",
+          "pg_catalog.text",
+          "pg_catalog.text",
+          "pg_catalog.text",
+          "pg_catalog.text"
+        ],
+        "argumentModes": [
+          "i",
+          "i",
+          "i",
+          "t",
+          "t",
+          "t",
+          "t"
+        ],
+        "defaultArgumentCount": 0,
+        "variadicType": null,
+        "kind": "f",
+        "leakproof": false,
+        "support": null
+      }
+    },
+    {
+      "signature": "public.\"appendOperatingImpactThroughService\"(public.\"OperatingLedgerImpactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "owner": "jg_task01_owner",
+      "body": "\nBEGIN\n  PERFORM public.\"authorizeOperatingLedgerWrite\"(p_actor_user_id, p_secret);\n  PERFORM set_config('app.operating_ledger_actor', p_actor_user_id, true);\n  -- Validate the unbounded NUMERIC payload before the NUMERIC(24,4) column can round it.\n  IF p_payload.\"numericProtocolVersion\" IS DISTINCT FROM 2 OR p_payload.\"amountCents\" IS NOT NULL\n    OR (p_payload.\"amountYuan\" IS NOT NULL AND p_payload.\"amountYuan\"::text !~ '^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$') THEN\n    RAISE EXCEPTION '新版经营金额协议不正确或超过四位精度' USING ERRCODE = '23514';\n  END IF;\n\n\n  RETURN QUERY\n  INSERT INTO public.\"OperatingImpactEntry\"(\n    \"id\", \"factId\", \"projectId\", \"sourceType\", \"sourceBusinessId\",\n    \"sourceImpactKey\", \"idempotencyKey\", \"impactKind\", \"amountCents\",\n    \"direction\", \"subjectRole\", \"subjectKind\", \"subjectId\", \"costCategoryCode\",\n    \"fundPurpose\", \"description\", \"impactSnapshot\", \"paymentExecutionId\",\n    \"fundExecutionId\", \"fundExecutionCaseId\", \"executionAllocationLineId\", \"numericProtocolVersion\", \"amountYuan\"\n  )\n  VALUES(\n    COALESCE(NULLIF(p_payload.\"id\", ''), public.gen_random_uuid()::TEXT),\n    p_payload.\"factId\", p_payload.\"projectId\", p_payload.\"sourceType\",\n    p_payload.\"sourceBusinessId\", p_payload.\"sourceImpactKey\",\n    p_payload.\"idempotencyKey\", p_payload.\"impactKind\", p_payload.\"amountCents\",\n    p_payload.\"direction\", p_payload.\"subjectRole\", p_payload.\"subjectKind\",\n    p_payload.\"subjectId\", p_payload.\"costCategoryCode\", p_payload.\"fundPurpose\",\n    p_payload.\"description\", p_payload.\"impactSnapshot\", p_payload.\"paymentExecutionId\",\n    p_payload.\"fundExecutionId\", p_payload.\"fundExecutionCaseId\",\n    p_payload.\"executionAllocationLineId\", p_payload.\"numericProtocolVersion\", p_payload.\"amountYuan\"\n  )\n  RETURNING \"OperatingImpactEntry\".\"id\";\nEND;\n",
+      "bodySha256": "c96af192e9f1711305791ebb8430f5ec888953ba40f675d9bf3c7fc3b1985d33",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "strict": false,
+      "volatility": "v",
+      "parallel": "u",
+      "returnType": "text",
+      "returnsSet": true,
+      "searchPath": "pg_catalog,public",
+      "provenance": {
+        "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+        "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+        "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+      },
+      "interface": {
+        "argumentNames": [
+          "p_payload",
+          "p_actor_user_id",
+          "p_secret",
+          "id"
+        ],
+        "inputArgumentTypes": [
+          "public.\"OperatingLedgerImpactWritePayloadV2\"",
+          "pg_catalog.text",
+          "pg_catalog.text"
+        ],
+        "allArgumentTypes": [
+          "public.\"OperatingLedgerImpactWritePayloadV2\"",
+          "pg_catalog.text",
+          "pg_catalog.text",
+          "pg_catalog.text"
+        ],
+        "argumentModes": [
+          "i",
+          "i",
+          "i",
+          "t"
+        ],
+        "defaultArgumentCount": 0,
+        "variadicType": null,
+        "kind": "f",
+        "leakproof": false,
+        "support": null
+      }
+    },
+    {
+      "signature": "public.\"requireOperatingImpactMoneyProtocol\"()",
+      "owner": "jg_task01_owner",
+      "body": "\nBEGIN\n  PERFORM 1 FROM public.\"OperatingFact\" f\n    WHERE f.\"id\" = NEW.\"factId\" AND f.\"projectId\" = NEW.\"projectId\"\n      AND f.\"sourceType\" = NEW.\"sourceType\" AND f.\"sourceBusinessId\" = NEW.\"sourceBusinessId\"\n      AND f.\"numericProtocolVersion\" = NEW.\"numericProtocolVersion\"\n      AND (NEW.\"numericProtocolVersion\" = 1 OR (\n        NEW.\"sourceImpactKey\" = 'contract_commitment_reference'\n        AND NEW.\"impactKind\" = 'contract_commitment_reference'\n        AND ((NEW.\"amountYuan\" IS NULL AND NEW.\"direction\" = 'notice') OR (NEW.\"amountYuan\" IS NOT NULL AND NEW.\"direction\" IN ('increase', 'decrease'))) AND NEW.\"subjectRole\" = 'debtor'\n        AND NEW.\"subjectKind\" = f.\"debtorSubjectKind\" AND NEW.\"subjectId\" = f.\"debtorSubjectId\"\n        AND NEW.\"amountYuan\" IS NOT DISTINCT FROM f.\"amountYuan\"\n        AND (f.\"sourceType\" <> 'contract_economic_review' OR CASE\n          WHEN (f.\"sourceSnapshot\" ->> 'excludedDeltaYuan') ~ '^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$'\n          THEN (((f.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric > 0 AND NEW.\"direction\" = 'decrease')\n            OR ((f.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric < 0 AND NEW.\"direction\" = 'increase'))\n          ELSE FALSE END))) FOR KEY SHARE;\n  IF NOT FOUND THEN\n    RAISE EXCEPTION '经营影响必须与原事实使用同一来源及金额协议' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
+      "bodySha256": "00b71ce1033ab432fafaf49ee55f7c6a534eb63984eb8e341df03b12f24a278e",
+      "language": "plpgsql",
+      "securityDefiner": false,
+      "strict": false,
+      "volatility": "v",
+      "parallel": "u",
+      "returnType": "trigger",
+      "returnsSet": false,
+      "searchPath": "pg_catalog,public",
+      "provenance": {
+        "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+        "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+        "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+      },
+      "interface": {
+        "argumentNames": null,
+        "inputArgumentTypes": [],
+        "allArgumentTypes": null,
+        "argumentModes": null,
+        "defaultArgumentCount": 0,
+        "variadicType": null,
+        "kind": "f",
+        "leakproof": false,
+        "support": null
+      }
+    },
+    {
+      "signature": "public.jg_contract_economic_review_ownership_date(public.\"OperatingFact\")",
+      "owner": "jg_task01_owner",
+      "body": "\nDECLARE\n  v_review public.\"ContractEconomicReview\"%ROWTYPE;\n  v_original public.\"OperatingFact\"%ROWTYPE;\n  v_document JSONB;\n  v_document_count BIGINT;\n  v_baseline JSONB;\n  v_delta NUMERIC;\nBEGIN\n  IF p_fact.\"numericProtocolVersion\" IS DISTINCT FROM 2\n    OR p_fact.\"sourceType\" IS DISTINCT FROM 'contract_economic_review' THEN\n    RETURN NULL;\n  END IF;\n  IF p_fact.\"factKind\" IS DISTINCT FROM 'downstream_contract'\n    OR p_fact.\"entryKind\" IS DISTINCT FROM 'original'\n    OR p_fact.\"direction\" IS DISTINCT FROM 'neutral'\n    OR p_fact.\"status\" IS DISTINCT FROM 'confirmed'\n    OR p_fact.\"amountCents\" IS NOT NULL OR p_fact.\"adjustsFactId\" IS NOT NULL\n    OR p_fact.\"paymentExecutionId\" IS NOT NULL OR p_fact.\"fundExecutionId\" IS NOT NULL\n    OR p_fact.\"fundExecutionCaseId\" IS NOT NULL THEN\n    RAISE EXCEPTION '履约复核归属仅适用于原承诺调整' USING ERRCODE = '23514';\n  END IF;\n    -- Approved frozen source, not the caller's declaration of an approval.\n    IF p_fact.\"amountYuan\" IS NULL OR p_fact.\"amountYuan\" <= 0\n      OR jsonb_typeof(p_fact.\"sourceSnapshot\" -> 'baseline') IS DISTINCT FROM 'object'\n      OR (p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan') IS NULL\n      OR (p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan') !~ '^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$' THEN\n      RAISE EXCEPTION '履约复核四位调整缺少有效冻结金额' USING ERRCODE = '23514';\n    END IF;\n    v_delta := (p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric;\n    IF v_delta = 0 OR abs(v_delta) IS DISTINCT FROM p_fact.\"amountYuan\" THEN\n      RAISE EXCEPTION '履约复核四位调整与冻结差额不一致' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_review FROM public.\"ContractEconomicReview\"\n      WHERE \"id\" = p_fact.\"sourceSnapshot\" ->> 'reviewId' FOR SHARE;\n    IF NOT FOUND OR v_review.\"status\" IS DISTINCT FROM 'confirmed'\n      OR v_review.\"confirmedAt\" IS NULL\n      OR v_review.\"projectId\" IS DISTINCT FROM p_fact.\"projectId\"\n      OR v_review.\"revision\" IS DISTINCT FROM p_fact.\"sourceVersion\"\n      OR v_review.\"leftSourceRef\" = v_review.\"rightSourceRef\"\n      OR NOT COALESCE((p_fact.\"sourceSnapshot\" ->> 'sourceRef') IN (v_review.\"leftSourceRef\", v_review.\"rightSourceRef\"), FALSE)\n      OR p_fact.\"sourceBusinessId\" IS DISTINCT FROM (v_review.\"id\" || ':' || (p_fact.\"sourceSnapshot\" ->> 'sourceRef'))\n      OR p_fact.\"confirmedByUserId\" IS DISTINCT FROM COALESCE(v_review.\"financeReviewedById\", v_review.\"contractReviewedById\")\n      OR p_fact.\"confirmedByUserId\" IS NULL\n      OR p_fact.\"occurredAt\" IS DISTINCT FROM v_review.\"confirmedAt\"\n      OR p_fact.\"confirmedAt\" IS DISTINCT FROM v_review.\"confirmedAt\"\n      OR jsonb_typeof(v_review.\"frozenSources\") IS DISTINCT FROM 'array' THEN\n      RAISE EXCEPTION '履约复核确认状态或版本已变化' USING ERRCODE = '23514';\n    END IF;\n    IF jsonb_array_length(v_review.\"frozenSources\") NOT BETWEEN 1 AND 2 THEN\n      RAISE EXCEPTION '履约复核冻结文书范围不正确' USING ERRCODE = '23514';\n    END IF;\n    SELECT count(*), jsonb_agg(value) -> 0 INTO v_document_count, v_document\n      FROM jsonb_array_elements(v_review.\"frozenSources\") AS documents(value)\n      WHERE value ->> 'ref' = p_fact.\"sourceSnapshot\" ->> 'sourceRef';\n    v_baseline := p_fact.\"sourceSnapshot\" -> 'baseline';\n    IF v_document_count <> 1 OR v_document -> 'formal' IS DISTINCT FROM 'true'::jsonb\n      OR NOT COALESCE((v_document ->> 'coverageNumericProtocolVersion' = '2' OR v_document ->> 'numericProtocolVersion' = '2'), FALSE)\n      OR v_document -> 'operatingBaseline' IS DISTINCT FROM v_baseline\n      OR v_document ->> 'excludedDeltaYuan' IS DISTINCT FROM p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan' THEN\n      RAISE EXCEPTION '履约复核冻结分项或差额已变化' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_original FROM public.\"OperatingFact\"\n      WHERE \"id\" = v_baseline ->> 'originalOperatingFactId' FOR KEY SHARE;\n    IF NOT FOUND OR v_original.\"projectId\" IS DISTINCT FROM p_fact.\"projectId\"\n      OR v_original.\"status\" IS DISTINCT FROM 'confirmed' OR v_original.\"entryKind\" IS DISTINCT FROM 'original'\n      OR v_original.\"factKind\" IS DISTINCT FROM 'downstream_contract'\n      OR NOT COALESCE((v_original.\"sourceType\" = 'contract_version' AND (p_fact.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'contract:%')\n        OR (v_original.\"sourceType\" = 'project_affiliate_contract_fact' AND (p_fact.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'affiliate:%'), FALSE)\n      OR v_original.\"sourceType\" IS DISTINCT FROM v_baseline ->> 'originalSourceType'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM v_baseline ->> 'originalSourceBusinessId'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM split_part(v_document ->> 'version', ':', 1)\n      OR v_original.\"sourceVersion\"::text IS DISTINCT FROM v_baseline ->> 'originalSourceVersion'\n      OR v_original.\"numericProtocolVersion\"::text IS DISTINCT FROM v_baseline ->> 'numericProtocolVersion'\n      OR v_original.\"sourceSnapshot\" IS DISTINCT FROM v_baseline -> 'sourceSnapshot'\n      OR v_original.\"currencyCode\" IS DISTINCT FROM COALESCE(NULLIF(p_fact.\"currencyCode\", ''), 'CNY')\n      OR (v_original.\"numericProtocolVersion\" = 1 AND (\n        (v_original.\"sourceSnapshot\" ->> 'amountNature') IS NOT DISTINCT FROM 'uncapped'\n        OR (v_original.\"sourceSnapshot\" -> 'amountCents') IS NOT DISTINCT FROM 'null'::jsonb))\n      OR NOT COALESCE((v_original.\"numericProtocolVersion\" = 1 AND v_original.\"amountCents\" IS NOT NULL\n          AND v_original.\"amountCents\"::text = v_baseline ->> 'amountCents' AND v_baseline -> 'amountYuan' = 'null'::jsonb)\n        OR (v_original.\"numericProtocolVersion\" = 2 AND v_baseline -> 'amountCents' = 'null'::jsonb\n          AND v_baseline ? 'amountYuan'\n          AND v_original.\"sourceSnapshot\" #>> '{numericFacts,protocolVersion}' = '2'\n          AND (v_original.\"sourceSnapshot\" -> 'numericFacts') ? 'amountYuan'\n          AND ((v_original.\"amountYuan\" IS NULL AND v_baseline -> 'amountYuan' = 'null'::jsonb\n            AND v_baseline ->> 'amountState' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #> '{numericFacts,amountYuan}' = 'null'::jsonb)\n          OR (v_original.\"amountYuan\" IS NOT NULL AND v_original.\"amountYuan\"::text = v_baseline ->> 'amountYuan'\n            AND v_baseline ->> 'amountState' = 'known'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'known'\n            AND v_original.\"amountYuan\"::text = v_original.\"sourceSnapshot\" #>> '{numericFacts,amountYuan}'))), FALSE)\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM p_fact.\"affiliateAssignmentId\"\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM p_fact.\"affiliateBusinessPartyVersionId\"\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM p_fact.\"affiliateNameSnapshot\"\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM p_fact.\"affiliateCreditCodeSnapshot\"\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM v_baseline ->> 'affiliateAssignmentId'\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM v_baseline ->> 'affiliateBusinessPartyVersionId'\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateNameSnapshot'\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateCreditCodeSnapshot'\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM p_fact.\"debtorSubjectKind\"\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM p_fact.\"debtorSubjectId\"\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM p_fact.\"creditorSubjectKind\"\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM p_fact.\"creditorSubjectId\"\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,kind}'\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,id}'\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,kind}'\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,id}' THEN\n      RAISE EXCEPTION '履约复核原承诺身份、金额或主体已变化' USING ERRCODE = '23514';\n    END IF;\n  IF v_original.\"occurredAt\" IS NULL THEN\n    RAISE EXCEPTION '履约复核缺少原事实归属日期' USING ERRCODE = '23514';\n  END IF;\n  RETURN v_original.\"occurredAt\";\nEND;\n",
+      "bodySha256": "e4d9f16a28fc14aa193e8c5234a9581891357e6c801111d8815a4fc62bb7453f",
+      "language": "plpgsql",
+      "securityDefiner": false,
+      "strict": false,
+      "volatility": "v",
+      "parallel": "u",
+      "returnType": "timestamp",
+      "returnsSet": false,
+      "searchPath": "pg_catalog,public",
+      "provenance": {
+        "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+        "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+        "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+      },
+      "interface": {
+        "argumentNames": [
+          "p_fact"
+        ],
+        "inputArgumentTypes": [
+          "public.\"OperatingFact\""
+        ],
+        "allArgumentTypes": null,
+        "argumentModes": null,
+        "defaultArgumentCount": 0,
+        "variadicType": null,
+        "kind": "f",
+        "leakproof": false,
+        "support": null
+      }
     }
   ],
   "baselineFunctionProofs": [
@@ -4214,19 +4389,19 @@
     },
     {
       "path": "services/api/prisma/schema.prisma",
-      "sha256": "73cbea3e3cb34cdb083b1456d2fc0e3dc9e0e9af8ae97b1869ab8a8434cea64a"
+      "sha256": "630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.cjs",
-      "sha256": "5ac693ddc11fa8f97c6695452f3362e02c49272e978163c69bcc3f6672f7f30a"
+      "sha256": "4bc4f45c55001aa5100265d756a0a71bca95ff20d7d6871ffb4c81e099618fc3"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "4aa4e99c7090cb1eac1f44e911ed6048599ad74467b9b74f3e943cb651ab7631"
+      "sha256": "f645283d2090f0817f93c0210c542dfbb3a4fe0df4b4fa4d5cd7563e3d4242a1"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
-      "sha256": "ee5729f29ad57cbcb2669fba551e2ef6ee2f94d1e48c2461d758b9b6261e9dbb"
+      "sha256": "212d0ecad8c6543b71a4d1e203732e7e63a012a580a25fbf0b4f05e68646fb8d"
     },
     {
       "path": "services/api/src/audit/audit.service.ts",
@@ -4290,11 +4465,23 @@
     },
     {
       "path": "services/api/src/payment/registered-payment-execution.service.ts",
-      "sha256": "b6793f4208bcf4e34c50ee6863a0d980c1dea24fa8e7da8b68b3956760290ee2"
+      "sha256": "321eadbc8c8f2231ccffd4b01141187dbb574d5a0cbd7395fe3e86db63c96d31"
     },
     {
       "path": "services/api/src/payment/registered-payment-funding.ts",
       "sha256": "a12bebc3b95ad6a3a21ca8caaba83b37a3f377167994559f6f72d0ad045651f5"
+    },
+    {
+      "path": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+      "sha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f"
+    },
+    {
+      "path": "services/api/prisma/task16-sdk-schema.cjs",
+      "sha256": "305398709e41b572e5da643d4df3fb6a3801d17a261b39ced6a06644508f755c"
+    },
+    {
+      "path": "services/api/prisma/task16-sdk-schema-proof.json",
+      "sha256": "63d2070845f8d631bb26970e3882154d6886e6d1f2478224a0000b0c7a332809"
     }
   ],
   "limits": [
@@ -4349,5 +4536,564 @@
       }
     ],
     "functions": []
+  },
+  "schema203": {
+    "migrationPath": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+    "migrationSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+    "routines": [
+      {
+        "signature": "public.\"appendOperatingFactThroughService\"(public.\"OperatingLedgerFactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+        "owner": "jg_task01_owner",
+        "body": "\nDECLARE\n  v_review public.\"ContractEconomicReview\"%ROWTYPE;\n  v_original public.\"OperatingFact\"%ROWTYPE;\n  v_document JSONB;\n  v_document_count BIGINT;\n  v_baseline JSONB;\n  v_delta NUMERIC;\nBEGIN\n  PERFORM public.\"authorizeOperatingLedgerWrite\"(p_actor_user_id, p_secret);\n  PERFORM set_config('app.operating_ledger_actor', p_actor_user_id, true);\n  -- Validate the unbounded NUMERIC payload before the NUMERIC(24,4) column can round it.\n  IF p_payload.\"numericProtocolVersion\" IS DISTINCT FROM 2 OR p_payload.\"amountCents\" IS NOT NULL\n    OR (p_payload.\"amountYuan\" IS NOT NULL AND p_payload.\"amountYuan\"::text !~ '^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$') THEN\n    RAISE EXCEPTION '新版经营金额协议不正确或超过四位精度' USING ERRCODE = '23514';\n  END IF;\n\n\n  IF p_payload.\"sourceType\" = 'contract_economic_review' THEN\n    -- Approved frozen source, not the caller's declaration of an approval.\n    IF p_payload.\"amountYuan\" IS NULL OR p_payload.\"amountYuan\" <= 0\n      OR jsonb_typeof(p_payload.\"sourceSnapshot\" -> 'baseline') IS DISTINCT FROM 'object'\n      OR (p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan') IS NULL\n      OR (p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan') !~ '^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$' THEN\n      RAISE EXCEPTION '履约复核四位调整缺少有效冻结金额' USING ERRCODE = '23514';\n    END IF;\n    v_delta := (p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric;\n    IF v_delta = 0 OR abs(v_delta) IS DISTINCT FROM p_payload.\"amountYuan\" THEN\n      RAISE EXCEPTION '履约复核四位调整与冻结差额不一致' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_review FROM public.\"ContractEconomicReview\"\n      WHERE \"id\" = p_payload.\"sourceSnapshot\" ->> 'reviewId' FOR SHARE;\n    IF NOT FOUND OR v_review.\"status\" IS DISTINCT FROM 'confirmed'\n      OR v_review.\"confirmedAt\" IS NULL\n      OR v_review.\"projectId\" IS DISTINCT FROM p_payload.\"projectId\"\n      OR v_review.\"revision\" IS DISTINCT FROM p_payload.\"sourceVersion\"\n      OR v_review.\"leftSourceRef\" = v_review.\"rightSourceRef\"\n      OR NOT COALESCE((p_payload.\"sourceSnapshot\" ->> 'sourceRef') IN (v_review.\"leftSourceRef\", v_review.\"rightSourceRef\"), FALSE)\n      OR p_payload.\"sourceBusinessId\" IS DISTINCT FROM (v_review.\"id\" || ':' || (p_payload.\"sourceSnapshot\" ->> 'sourceRef'))\n      OR p_payload.\"confirmedByUserId\" IS DISTINCT FROM COALESCE(v_review.\"financeReviewedById\", v_review.\"contractReviewedById\")\n      OR p_payload.\"confirmedByUserId\" IS NULL\n      OR p_payload.\"occurredAt\" IS DISTINCT FROM (v_review.\"confirmedAt\" AT TIME ZONE 'UTC')\n      OR p_payload.\"confirmedAt\" IS DISTINCT FROM (v_review.\"confirmedAt\" AT TIME ZONE 'UTC')\n      OR jsonb_typeof(v_review.\"frozenSources\") IS DISTINCT FROM 'array' THEN\n      RAISE EXCEPTION '履约复核确认状态或版本已变化' USING ERRCODE = '23514';\n    END IF;\n    IF jsonb_array_length(v_review.\"frozenSources\") NOT BETWEEN 1 AND 2 THEN\n      RAISE EXCEPTION '履约复核冻结文书范围不正确' USING ERRCODE = '23514';\n    END IF;\n    SELECT count(*), jsonb_agg(value) -> 0 INTO v_document_count, v_document\n      FROM jsonb_array_elements(v_review.\"frozenSources\") AS documents(value)\n      WHERE value ->> 'ref' = p_payload.\"sourceSnapshot\" ->> 'sourceRef';\n    v_baseline := p_payload.\"sourceSnapshot\" -> 'baseline';\n    IF v_document_count <> 1 OR v_document -> 'formal' IS DISTINCT FROM 'true'::jsonb\n      OR NOT COALESCE((v_document ->> 'coverageNumericProtocolVersion' = '2' OR v_document ->> 'numericProtocolVersion' = '2'), FALSE)\n      OR v_document -> 'operatingBaseline' IS DISTINCT FROM v_baseline\n      OR v_document ->> 'excludedDeltaYuan' IS DISTINCT FROM p_payload.\"sourceSnapshot\" ->> 'excludedDeltaYuan' THEN\n      RAISE EXCEPTION '履约复核冻结分项或差额已变化' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_original FROM public.\"OperatingFact\"\n      WHERE \"id\" = v_baseline ->> 'originalOperatingFactId' FOR KEY SHARE;\n    IF NOT FOUND OR v_original.\"projectId\" IS DISTINCT FROM p_payload.\"projectId\"\n      OR v_original.\"status\" IS DISTINCT FROM 'confirmed' OR v_original.\"entryKind\" IS DISTINCT FROM 'original'\n      OR v_original.\"factKind\" IS DISTINCT FROM 'downstream_contract'\n      OR NOT COALESCE((v_original.\"sourceType\" = 'contract_version' AND (p_payload.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'contract:%')\n        OR (v_original.\"sourceType\" = 'project_affiliate_contract_fact' AND (p_payload.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'affiliate:%'), FALSE)\n      OR v_original.\"sourceType\" IS DISTINCT FROM v_baseline ->> 'originalSourceType'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM v_baseline ->> 'originalSourceBusinessId'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM split_part(v_document ->> 'version', ':', 1)\n      OR v_original.\"sourceVersion\"::text IS DISTINCT FROM v_baseline ->> 'originalSourceVersion'\n      OR v_original.\"numericProtocolVersion\"::text IS DISTINCT FROM v_baseline ->> 'numericProtocolVersion'\n      OR v_original.\"sourceSnapshot\" IS DISTINCT FROM v_baseline -> 'sourceSnapshot'\n      OR v_original.\"currencyCode\" IS DISTINCT FROM COALESCE(NULLIF(p_payload.\"currencyCode\", ''), 'CNY')\n      OR (v_original.\"numericProtocolVersion\" = 1 AND (\n        (v_original.\"sourceSnapshot\" ->> 'amountNature') IS NOT DISTINCT FROM 'uncapped'\n        OR (v_original.\"sourceSnapshot\" -> 'amountCents') IS NOT DISTINCT FROM 'null'::jsonb))\n      OR NOT COALESCE((v_original.\"numericProtocolVersion\" = 1 AND v_original.\"amountCents\" IS NOT NULL\n          AND v_original.\"amountCents\"::text = v_baseline ->> 'amountCents' AND v_baseline -> 'amountYuan' = 'null'::jsonb)\n        OR (v_original.\"numericProtocolVersion\" = 2 AND v_baseline -> 'amountCents' = 'null'::jsonb\n          AND v_baseline ? 'amountYuan'\n          AND v_original.\"sourceSnapshot\" #>> '{numericFacts,protocolVersion}' = '2'\n          AND (v_original.\"sourceSnapshot\" -> 'numericFacts') ? 'amountYuan'\n          AND ((v_original.\"amountYuan\" IS NULL AND v_baseline -> 'amountYuan' = 'null'::jsonb\n            AND v_baseline ->> 'amountState' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #> '{numericFacts,amountYuan}' = 'null'::jsonb)\n          OR (v_original.\"amountYuan\" IS NOT NULL AND v_original.\"amountYuan\"::text = v_baseline ->> 'amountYuan'\n            AND v_baseline ->> 'amountState' = 'known'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'known'\n            AND v_original.\"amountYuan\"::text = v_original.\"sourceSnapshot\" #>> '{numericFacts,amountYuan}'))), FALSE)\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM p_payload.\"affiliateAssignmentId\"\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM p_payload.\"affiliateBusinessPartyVersionId\"\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM p_payload.\"affiliateNameSnapshot\"\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM p_payload.\"affiliateCreditCodeSnapshot\"\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM v_baseline ->> 'affiliateAssignmentId'\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM v_baseline ->> 'affiliateBusinessPartyVersionId'\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateNameSnapshot'\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateCreditCodeSnapshot'\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM p_payload.\"debtorSubjectKind\"\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM p_payload.\"debtorSubjectId\"\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM p_payload.\"creditorSubjectKind\"\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM p_payload.\"creditorSubjectId\"\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,kind}'\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,id}'\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,kind}'\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,id}' THEN\n      RAISE EXCEPTION '履约复核原承诺身份、金额或主体已变化' USING ERRCODE = '23514';\n    END IF;\n  END IF;\n\n  RETURN QUERY\n  INSERT INTO public.\"OperatingFact\"(\n    \"id\", \"projectId\", \"sourceType\", \"sourceBusinessId\", \"sourceVersion\",\n    \"sourceBusinessCode\", \"occurredAt\", \"confirmedAt\", \"affiliateAssignmentId\",\n    \"affiliateBusinessPartyVersionId\", \"affiliateNameSnapshot\",\n    \"affiliateCreditCodeSnapshot\", \"operatingLedgerEffectiveDateSnapshot\",\n    \"isBeforeOperatingLedgerEffectiveDate\", \"historicalTakeoverBatchId\",\n    \"factKind\", \"operatingLevel\", \"evidenceLevel\", \"amountCents\",\n    \"currencyCode\", \"direction\", \"debtorSubjectKind\", \"debtorSubjectId\",\n    \"creditorSubjectKind\", \"creditorSubjectId\", \"approvedPayerSubjectKind\",\n    \"approvedPayerSubjectId\", \"actualPayerSubjectKind\", \"actualPayerSubjectId\",\n    \"payeeSubjectKind\", \"payeeSubjectId\", \"costBearingCompanySubjectKind\",\n    \"costBearingCompanySubjectId\", \"subjectSnapshot\", \"sourceSnapshot\",\n    \"basisSnapshot\", \"entryKind\", \"adjustsFactId\", \"idempotencyKey\",\n    \"recordedByUserId\", \"confirmedByUserId\", \"status\", \"paymentExecutionId\",\n    \"fundExecutionId\", \"fundExecutionCaseId\", \"numericProtocolVersion\", \"amountYuan\"\n  )\n  VALUES(\n    COALESCE(NULLIF(p_payload.\"id\", ''), public.gen_random_uuid()::TEXT),\n    p_payload.\"projectId\", p_payload.\"sourceType\", p_payload.\"sourceBusinessId\",\n    p_payload.\"sourceVersion\", p_payload.\"sourceBusinessCode\",\n    p_payload.\"occurredAt\" AT TIME ZONE 'UTC',\n    p_payload.\"confirmedAt\" AT TIME ZONE 'UTC',\n    p_payload.\"affiliateAssignmentId\", p_payload.\"affiliateBusinessPartyVersionId\",\n    p_payload.\"affiliateNameSnapshot\", p_payload.\"affiliateCreditCodeSnapshot\",\n    p_payload.\"operatingLedgerEffectiveDateSnapshot\",\n    p_payload.\"isBeforeOperatingLedgerEffectiveDate\",\n    p_payload.\"historicalTakeoverBatchId\", p_payload.\"factKind\",\n    p_payload.\"operatingLevel\", p_payload.\"evidenceLevel\", p_payload.\"amountCents\",\n    COALESCE(NULLIF(p_payload.\"currencyCode\", ''), 'CNY'), p_payload.\"direction\",\n    p_payload.\"debtorSubjectKind\", p_payload.\"debtorSubjectId\",\n    p_payload.\"creditorSubjectKind\", p_payload.\"creditorSubjectId\",\n    p_payload.\"approvedPayerSubjectKind\", p_payload.\"approvedPayerSubjectId\",\n    p_payload.\"actualPayerSubjectKind\", p_payload.\"actualPayerSubjectId\",\n    p_payload.\"payeeSubjectKind\", p_payload.\"payeeSubjectId\",\n    p_payload.\"costBearingCompanySubjectKind\", p_payload.\"costBearingCompanySubjectId\",\n    p_payload.\"subjectSnapshot\", p_payload.\"sourceSnapshot\", p_payload.\"basisSnapshot\",\n    COALESCE(NULLIF(p_payload.\"entryKind\", ''), 'original'), p_payload.\"adjustsFactId\",\n    p_payload.\"idempotencyKey\", p_actor_user_id, p_payload.\"confirmedByUserId\",\n    COALESCE(NULLIF(p_payload.\"status\", ''), 'confirmed'),\n    p_payload.\"paymentExecutionId\", p_payload.\"fundExecutionId\",\n    p_payload.\"fundExecutionCaseId\", p_payload.\"numericProtocolVersion\", p_payload.\"amountYuan\"\n  )\n  RETURNING \"OperatingFact\".\"id\", \"OperatingFact\".\"projectId\",\n            \"OperatingFact\".\"sourceType\", \"OperatingFact\".\"sourceBusinessId\";\nEND;\n",
+        "bodySha256": "418f670df6f68f04247d3217472f94476c60233d21d1ef8bfbef51c0d9e240c4",
+        "language": "plpgsql",
+        "securityDefiner": true,
+        "strict": false,
+        "volatility": "v",
+        "parallel": "u",
+        "returnType": "record",
+        "returnsSet": true,
+        "searchPath": "pg_catalog,public",
+        "provenance": {
+          "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+          "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+          "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+        },
+        "interface": {
+          "argumentNames": [
+            "p_payload",
+            "p_actor_user_id",
+            "p_secret",
+            "id",
+            "projectId",
+            "sourceType",
+            "sourceBusinessId"
+          ],
+          "inputArgumentTypes": [
+            "public.\"OperatingLedgerFactWritePayloadV2\"",
+            "pg_catalog.text",
+            "pg_catalog.text"
+          ],
+          "allArgumentTypes": [
+            "public.\"OperatingLedgerFactWritePayloadV2\"",
+            "pg_catalog.text",
+            "pg_catalog.text",
+            "pg_catalog.text",
+            "pg_catalog.text",
+            "pg_catalog.text",
+            "pg_catalog.text"
+          ],
+          "argumentModes": [
+            "i",
+            "i",
+            "i",
+            "t",
+            "t",
+            "t",
+            "t"
+          ],
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.\"appendOperatingImpactThroughService\"(public.\"OperatingLedgerImpactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+        "owner": "jg_task01_owner",
+        "body": "\nBEGIN\n  PERFORM public.\"authorizeOperatingLedgerWrite\"(p_actor_user_id, p_secret);\n  PERFORM set_config('app.operating_ledger_actor', p_actor_user_id, true);\n  -- Validate the unbounded NUMERIC payload before the NUMERIC(24,4) column can round it.\n  IF p_payload.\"numericProtocolVersion\" IS DISTINCT FROM 2 OR p_payload.\"amountCents\" IS NOT NULL\n    OR (p_payload.\"amountYuan\" IS NOT NULL AND p_payload.\"amountYuan\"::text !~ '^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$') THEN\n    RAISE EXCEPTION '新版经营金额协议不正确或超过四位精度' USING ERRCODE = '23514';\n  END IF;\n\n\n  RETURN QUERY\n  INSERT INTO public.\"OperatingImpactEntry\"(\n    \"id\", \"factId\", \"projectId\", \"sourceType\", \"sourceBusinessId\",\n    \"sourceImpactKey\", \"idempotencyKey\", \"impactKind\", \"amountCents\",\n    \"direction\", \"subjectRole\", \"subjectKind\", \"subjectId\", \"costCategoryCode\",\n    \"fundPurpose\", \"description\", \"impactSnapshot\", \"paymentExecutionId\",\n    \"fundExecutionId\", \"fundExecutionCaseId\", \"executionAllocationLineId\", \"numericProtocolVersion\", \"amountYuan\"\n  )\n  VALUES(\n    COALESCE(NULLIF(p_payload.\"id\", ''), public.gen_random_uuid()::TEXT),\n    p_payload.\"factId\", p_payload.\"projectId\", p_payload.\"sourceType\",\n    p_payload.\"sourceBusinessId\", p_payload.\"sourceImpactKey\",\n    p_payload.\"idempotencyKey\", p_payload.\"impactKind\", p_payload.\"amountCents\",\n    p_payload.\"direction\", p_payload.\"subjectRole\", p_payload.\"subjectKind\",\n    p_payload.\"subjectId\", p_payload.\"costCategoryCode\", p_payload.\"fundPurpose\",\n    p_payload.\"description\", p_payload.\"impactSnapshot\", p_payload.\"paymentExecutionId\",\n    p_payload.\"fundExecutionId\", p_payload.\"fundExecutionCaseId\",\n    p_payload.\"executionAllocationLineId\", p_payload.\"numericProtocolVersion\", p_payload.\"amountYuan\"\n  )\n  RETURNING \"OperatingImpactEntry\".\"id\";\nEND;\n",
+        "bodySha256": "c96af192e9f1711305791ebb8430f5ec888953ba40f675d9bf3c7fc3b1985d33",
+        "language": "plpgsql",
+        "securityDefiner": true,
+        "strict": false,
+        "volatility": "v",
+        "parallel": "u",
+        "returnType": "text",
+        "returnsSet": true,
+        "searchPath": "pg_catalog,public",
+        "provenance": {
+          "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+          "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+          "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+        },
+        "interface": {
+          "argumentNames": [
+            "p_payload",
+            "p_actor_user_id",
+            "p_secret",
+            "id"
+          ],
+          "inputArgumentTypes": [
+            "public.\"OperatingLedgerImpactWritePayloadV2\"",
+            "pg_catalog.text",
+            "pg_catalog.text"
+          ],
+          "allArgumentTypes": [
+            "public.\"OperatingLedgerImpactWritePayloadV2\"",
+            "pg_catalog.text",
+            "pg_catalog.text",
+            "pg_catalog.text"
+          ],
+          "argumentModes": [
+            "i",
+            "i",
+            "i",
+            "t"
+          ],
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.\"requireOperatingImpactMoneyProtocol\"()",
+        "owner": "jg_task01_owner",
+        "body": "\nBEGIN\n  PERFORM 1 FROM public.\"OperatingFact\" f\n    WHERE f.\"id\" = NEW.\"factId\" AND f.\"projectId\" = NEW.\"projectId\"\n      AND f.\"sourceType\" = NEW.\"sourceType\" AND f.\"sourceBusinessId\" = NEW.\"sourceBusinessId\"\n      AND f.\"numericProtocolVersion\" = NEW.\"numericProtocolVersion\"\n      AND (NEW.\"numericProtocolVersion\" = 1 OR (\n        NEW.\"sourceImpactKey\" = 'contract_commitment_reference'\n        AND NEW.\"impactKind\" = 'contract_commitment_reference'\n        AND ((NEW.\"amountYuan\" IS NULL AND NEW.\"direction\" = 'notice') OR (NEW.\"amountYuan\" IS NOT NULL AND NEW.\"direction\" IN ('increase', 'decrease'))) AND NEW.\"subjectRole\" = 'debtor'\n        AND NEW.\"subjectKind\" = f.\"debtorSubjectKind\" AND NEW.\"subjectId\" = f.\"debtorSubjectId\"\n        AND NEW.\"amountYuan\" IS NOT DISTINCT FROM f.\"amountYuan\"\n        AND (f.\"sourceType\" <> 'contract_economic_review' OR CASE\n          WHEN (f.\"sourceSnapshot\" ->> 'excludedDeltaYuan') ~ '^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$'\n          THEN (((f.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric > 0 AND NEW.\"direction\" = 'decrease')\n            OR ((f.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric < 0 AND NEW.\"direction\" = 'increase'))\n          ELSE FALSE END))) FOR KEY SHARE;\n  IF NOT FOUND THEN\n    RAISE EXCEPTION '经营影响必须与原事实使用同一来源及金额协议' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
+        "bodySha256": "00b71ce1033ab432fafaf49ee55f7c6a534eb63984eb8e341df03b12f24a278e",
+        "language": "plpgsql",
+        "securityDefiner": false,
+        "strict": false,
+        "volatility": "v",
+        "parallel": "u",
+        "returnType": "trigger",
+        "returnsSet": false,
+        "searchPath": "pg_catalog,public",
+        "provenance": {
+          "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+          "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+          "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+        },
+        "interface": {
+          "argumentNames": null,
+          "inputArgumentTypes": [],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.jg_contract_economic_review_ownership_date(public.\"OperatingFact\")",
+        "owner": "jg_task01_owner",
+        "body": "\nDECLARE\n  v_review public.\"ContractEconomicReview\"%ROWTYPE;\n  v_original public.\"OperatingFact\"%ROWTYPE;\n  v_document JSONB;\n  v_document_count BIGINT;\n  v_baseline JSONB;\n  v_delta NUMERIC;\nBEGIN\n  IF p_fact.\"numericProtocolVersion\" IS DISTINCT FROM 2\n    OR p_fact.\"sourceType\" IS DISTINCT FROM 'contract_economic_review' THEN\n    RETURN NULL;\n  END IF;\n  IF p_fact.\"factKind\" IS DISTINCT FROM 'downstream_contract'\n    OR p_fact.\"entryKind\" IS DISTINCT FROM 'original'\n    OR p_fact.\"direction\" IS DISTINCT FROM 'neutral'\n    OR p_fact.\"status\" IS DISTINCT FROM 'confirmed'\n    OR p_fact.\"amountCents\" IS NOT NULL OR p_fact.\"adjustsFactId\" IS NOT NULL\n    OR p_fact.\"paymentExecutionId\" IS NOT NULL OR p_fact.\"fundExecutionId\" IS NOT NULL\n    OR p_fact.\"fundExecutionCaseId\" IS NOT NULL THEN\n    RAISE EXCEPTION '履约复核归属仅适用于原承诺调整' USING ERRCODE = '23514';\n  END IF;\n    -- Approved frozen source, not the caller's declaration of an approval.\n    IF p_fact.\"amountYuan\" IS NULL OR p_fact.\"amountYuan\" <= 0\n      OR jsonb_typeof(p_fact.\"sourceSnapshot\" -> 'baseline') IS DISTINCT FROM 'object'\n      OR (p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan') IS NULL\n      OR (p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan') !~ '^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,4})?$' THEN\n      RAISE EXCEPTION '履约复核四位调整缺少有效冻结金额' USING ERRCODE = '23514';\n    END IF;\n    v_delta := (p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan')::numeric;\n    IF v_delta = 0 OR abs(v_delta) IS DISTINCT FROM p_fact.\"amountYuan\" THEN\n      RAISE EXCEPTION '履约复核四位调整与冻结差额不一致' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_review FROM public.\"ContractEconomicReview\"\n      WHERE \"id\" = p_fact.\"sourceSnapshot\" ->> 'reviewId' FOR SHARE;\n    IF NOT FOUND OR v_review.\"status\" IS DISTINCT FROM 'confirmed'\n      OR v_review.\"confirmedAt\" IS NULL\n      OR v_review.\"projectId\" IS DISTINCT FROM p_fact.\"projectId\"\n      OR v_review.\"revision\" IS DISTINCT FROM p_fact.\"sourceVersion\"\n      OR v_review.\"leftSourceRef\" = v_review.\"rightSourceRef\"\n      OR NOT COALESCE((p_fact.\"sourceSnapshot\" ->> 'sourceRef') IN (v_review.\"leftSourceRef\", v_review.\"rightSourceRef\"), FALSE)\n      OR p_fact.\"sourceBusinessId\" IS DISTINCT FROM (v_review.\"id\" || ':' || (p_fact.\"sourceSnapshot\" ->> 'sourceRef'))\n      OR p_fact.\"confirmedByUserId\" IS DISTINCT FROM COALESCE(v_review.\"financeReviewedById\", v_review.\"contractReviewedById\")\n      OR p_fact.\"confirmedByUserId\" IS NULL\n      OR p_fact.\"occurredAt\" IS DISTINCT FROM v_review.\"confirmedAt\"\n      OR p_fact.\"confirmedAt\" IS DISTINCT FROM v_review.\"confirmedAt\"\n      OR jsonb_typeof(v_review.\"frozenSources\") IS DISTINCT FROM 'array' THEN\n      RAISE EXCEPTION '履约复核确认状态或版本已变化' USING ERRCODE = '23514';\n    END IF;\n    IF jsonb_array_length(v_review.\"frozenSources\") NOT BETWEEN 1 AND 2 THEN\n      RAISE EXCEPTION '履约复核冻结文书范围不正确' USING ERRCODE = '23514';\n    END IF;\n    SELECT count(*), jsonb_agg(value) -> 0 INTO v_document_count, v_document\n      FROM jsonb_array_elements(v_review.\"frozenSources\") AS documents(value)\n      WHERE value ->> 'ref' = p_fact.\"sourceSnapshot\" ->> 'sourceRef';\n    v_baseline := p_fact.\"sourceSnapshot\" -> 'baseline';\n    IF v_document_count <> 1 OR v_document -> 'formal' IS DISTINCT FROM 'true'::jsonb\n      OR NOT COALESCE((v_document ->> 'coverageNumericProtocolVersion' = '2' OR v_document ->> 'numericProtocolVersion' = '2'), FALSE)\n      OR v_document -> 'operatingBaseline' IS DISTINCT FROM v_baseline\n      OR v_document ->> 'excludedDeltaYuan' IS DISTINCT FROM p_fact.\"sourceSnapshot\" ->> 'excludedDeltaYuan' THEN\n      RAISE EXCEPTION '履约复核冻结分项或差额已变化' USING ERRCODE = '23514';\n    END IF;\n    SELECT * INTO v_original FROM public.\"OperatingFact\"\n      WHERE \"id\" = v_baseline ->> 'originalOperatingFactId' FOR KEY SHARE;\n    IF NOT FOUND OR v_original.\"projectId\" IS DISTINCT FROM p_fact.\"projectId\"\n      OR v_original.\"status\" IS DISTINCT FROM 'confirmed' OR v_original.\"entryKind\" IS DISTINCT FROM 'original'\n      OR v_original.\"factKind\" IS DISTINCT FROM 'downstream_contract'\n      OR NOT COALESCE((v_original.\"sourceType\" = 'contract_version' AND (p_fact.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'contract:%')\n        OR (v_original.\"sourceType\" = 'project_affiliate_contract_fact' AND (p_fact.\"sourceSnapshot\" ->> 'sourceRef') LIKE 'affiliate:%'), FALSE)\n      OR v_original.\"sourceType\" IS DISTINCT FROM v_baseline ->> 'originalSourceType'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM v_baseline ->> 'originalSourceBusinessId'\n      OR v_original.\"sourceBusinessId\" IS DISTINCT FROM split_part(v_document ->> 'version', ':', 1)\n      OR v_original.\"sourceVersion\"::text IS DISTINCT FROM v_baseline ->> 'originalSourceVersion'\n      OR v_original.\"numericProtocolVersion\"::text IS DISTINCT FROM v_baseline ->> 'numericProtocolVersion'\n      OR v_original.\"sourceSnapshot\" IS DISTINCT FROM v_baseline -> 'sourceSnapshot'\n      OR v_original.\"currencyCode\" IS DISTINCT FROM COALESCE(NULLIF(p_fact.\"currencyCode\", ''), 'CNY')\n      OR (v_original.\"numericProtocolVersion\" = 1 AND (\n        (v_original.\"sourceSnapshot\" ->> 'amountNature') IS NOT DISTINCT FROM 'uncapped'\n        OR (v_original.\"sourceSnapshot\" -> 'amountCents') IS NOT DISTINCT FROM 'null'::jsonb))\n      OR NOT COALESCE((v_original.\"numericProtocolVersion\" = 1 AND v_original.\"amountCents\" IS NOT NULL\n          AND v_original.\"amountCents\"::text = v_baseline ->> 'amountCents' AND v_baseline -> 'amountYuan' = 'null'::jsonb)\n        OR (v_original.\"numericProtocolVersion\" = 2 AND v_baseline -> 'amountCents' = 'null'::jsonb\n          AND v_baseline ? 'amountYuan'\n          AND v_original.\"sourceSnapshot\" #>> '{numericFacts,protocolVersion}' = '2'\n          AND (v_original.\"sourceSnapshot\" -> 'numericFacts') ? 'amountYuan'\n          AND ((v_original.\"amountYuan\" IS NULL AND v_baseline -> 'amountYuan' = 'null'::jsonb\n            AND v_baseline ->> 'amountState' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'unknown'\n            AND v_original.\"sourceSnapshot\" #> '{numericFacts,amountYuan}' = 'null'::jsonb)\n          OR (v_original.\"amountYuan\" IS NOT NULL AND v_original.\"amountYuan\"::text = v_baseline ->> 'amountYuan'\n            AND v_baseline ->> 'amountState' = 'known'\n            AND v_original.\"sourceSnapshot\" #>> '{numericFacts,amountState}' = 'known'\n            AND v_original.\"amountYuan\"::text = v_original.\"sourceSnapshot\" #>> '{numericFacts,amountYuan}'))), FALSE)\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM p_fact.\"affiliateAssignmentId\"\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM p_fact.\"affiliateBusinessPartyVersionId\"\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM p_fact.\"affiliateNameSnapshot\"\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM p_fact.\"affiliateCreditCodeSnapshot\"\n      OR v_original.\"affiliateAssignmentId\" IS DISTINCT FROM v_baseline ->> 'affiliateAssignmentId'\n      OR v_original.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM v_baseline ->> 'affiliateBusinessPartyVersionId'\n      OR v_original.\"affiliateNameSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateNameSnapshot'\n      OR v_original.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM v_baseline ->> 'affiliateCreditCodeSnapshot'\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM p_fact.\"debtorSubjectKind\"\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM p_fact.\"debtorSubjectId\"\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM p_fact.\"creditorSubjectKind\"\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM p_fact.\"creditorSubjectId\"\n      OR v_original.\"debtorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,kind}'\n      OR v_original.\"debtorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,debtor,id}'\n      OR v_original.\"creditorSubjectKind\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,kind}'\n      OR v_original.\"creditorSubjectId\" IS DISTINCT FROM v_baseline #>> '{subjects,creditor,id}' THEN\n      RAISE EXCEPTION '履约复核原承诺身份、金额或主体已变化' USING ERRCODE = '23514';\n    END IF;\n  IF v_original.\"occurredAt\" IS NULL THEN\n    RAISE EXCEPTION '履约复核缺少原事实归属日期' USING ERRCODE = '23514';\n  END IF;\n  RETURN v_original.\"occurredAt\";\nEND;\n",
+        "bodySha256": "e4d9f16a28fc14aa193e8c5234a9581891357e6c801111d8815a4fc62bb7453f",
+        "language": "plpgsql",
+        "securityDefiner": false,
+        "strict": false,
+        "volatility": "v",
+        "parallel": "u",
+        "returnType": "timestamp",
+        "returnsSet": false,
+        "searchPath": "pg_catalog,public",
+        "provenance": {
+          "source": "services/api/prisma/migrations/20261108160000_operating_amount_protocol_v2/migration.sql",
+          "sourceSha256": "fe704caae720736c7627975fe5754e3a5e279069e0fd9a7e1d60c2c98389a32f",
+          "method": "fixed declaration dollar-delimiter text capture, no SQL parser/execution"
+        },
+        "interface": {
+          "argumentNames": [
+            "p_fact"
+          ],
+          "inputArgumentTypes": [
+            "public.\"OperatingFact\""
+          ],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      }
+    ],
+    "types": [
+      {
+        "signature": "public.\"OperatingLedgerFactWritePayloadV2\"",
+        "owner": "jg_task01_owner",
+        "fields": [
+          {
+            "name": "id",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "projectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "sourceType",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "sourceBusinessId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "sourceVersion",
+            "type": "pg_catalog.int4",
+            "typmod": -1
+          },
+          {
+            "name": "sourceBusinessCode",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "occurredAt",
+            "type": "pg_catalog.timestamptz",
+            "typmod": -1
+          },
+          {
+            "name": "confirmedAt",
+            "type": "pg_catalog.timestamptz",
+            "typmod": -1
+          },
+          {
+            "name": "affiliateAssignmentId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "affiliateBusinessPartyVersionId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "affiliateNameSnapshot",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "affiliateCreditCodeSnapshot",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "operatingLedgerEffectiveDateSnapshot",
+            "type": "pg_catalog.date",
+            "typmod": -1
+          },
+          {
+            "name": "isBeforeOperatingLedgerEffectiveDate",
+            "type": "pg_catalog.bool",
+            "typmod": -1
+          },
+          {
+            "name": "historicalTakeoverBatchId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "factKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "operatingLevel",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "evidenceLevel",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "amountCents",
+            "type": "pg_catalog.int8",
+            "typmod": -1
+          },
+          {
+            "name": "currencyCode",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "direction",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "debtorSubjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "debtorSubjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "creditorSubjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "creditorSubjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "approvedPayerSubjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "approvedPayerSubjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "actualPayerSubjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "actualPayerSubjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "payeeSubjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "payeeSubjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "costBearingCompanySubjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "costBearingCompanySubjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "subjectSnapshot",
+            "type": "pg_catalog.jsonb",
+            "typmod": -1
+          },
+          {
+            "name": "sourceSnapshot",
+            "type": "pg_catalog.jsonb",
+            "typmod": -1
+          },
+          {
+            "name": "basisSnapshot",
+            "type": "pg_catalog.jsonb",
+            "typmod": -1
+          },
+          {
+            "name": "entryKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "adjustsFactId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "idempotencyKey",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "confirmedByUserId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "status",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "paymentExecutionId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "fundExecutionId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "fundExecutionCaseId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "numericProtocolVersion",
+            "type": "pg_catalog.int4",
+            "typmod": -1
+          },
+          {
+            "name": "amountYuan",
+            "type": "pg_catalog.numeric",
+            "typmod": -1
+          }
+        ]
+      },
+      {
+        "signature": "public.\"OperatingLedgerImpactWritePayloadV2\"",
+        "owner": "jg_task01_owner",
+        "fields": [
+          {
+            "name": "id",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "factId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "projectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "sourceType",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "sourceBusinessId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "sourceImpactKey",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "idempotencyKey",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "impactKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "amountCents",
+            "type": "pg_catalog.int8",
+            "typmod": -1
+          },
+          {
+            "name": "direction",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "subjectRole",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "subjectKind",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "subjectId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "costCategoryCode",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "fundPurpose",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "description",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "impactSnapshot",
+            "type": "pg_catalog.jsonb",
+            "typmod": -1
+          },
+          {
+            "name": "paymentExecutionId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "fundExecutionId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "fundExecutionCaseId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "executionAllocationLineId",
+            "type": "pg_catalog.text",
+            "typmod": -1
+          },
+          {
+            "name": "numericProtocolVersion",
+            "type": "pg_catalog.int4",
+            "typmod": -1
+          },
+          {
+            "name": "amountYuan",
+            "type": "pg_catalog.numeric",
+            "typmod": -1
+          }
+        ]
+      }
+    ],
+    "helperSignature": "public.jg_contract_economic_review_ownership_date(public.\"OperatingFact\")",
+    "callerSignatures": [
+      "public.\"appendOperatingFactThroughService\"(public.\"OperatingLedgerFactWritePayload\",text,text)",
+      "public.\"appendOperatingImpactThroughService\"(public.\"OperatingLedgerImpactWritePayload\",text,text)",
+      "public.\"appendOperatingFactThroughService\"(public.\"OperatingLedgerFactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "public.\"appendOperatingImpactThroughService\"(public.\"OperatingLedgerImpactWritePayloadV2\",pg_catalog.text,pg_catalog.text)"
+    ],
+    "callerReadRelations": [
+      "public.\"ContractEconomicReview\"",
+      "public.\"OperatingFact\""
+    ],
+    "publicExecuteDenied": [
+      "public.\"appendOperatingFactThroughService\"(public.\"OperatingLedgerFactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "public.\"appendOperatingImpactThroughService\"(public.\"OperatingLedgerImpactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "public.\"requireOperatingImpactMoneyProtocol\"()",
+      "public.jg_contract_economic_review_ownership_date(public.\"OperatingFact\")"
+    ],
+    "restrictedExecuteDenied": [
+      "public.\"appendOperatingFactThroughService\"(public.\"OperatingLedgerFactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "public.\"appendOperatingImpactThroughService\"(public.\"OperatingLedgerImpactWritePayloadV2\",pg_catalog.text,pg_catalog.text)",
+      "public.\"requireOperatingImpactMoneyProtocol\"()",
+      "public.jg_contract_economic_review_ownership_date(public.\"OperatingFact\")"
+    ]
   }
 }

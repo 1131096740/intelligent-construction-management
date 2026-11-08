@@ -1,3 +1,40 @@
+## Task16 Schema203首审修复（2026-11-08，HOLD待增量复核）
+
+- [~] 原bafc完整27路径双轴共2项P2已在原public run实际RED→最小GREEN：SDK未知嵌套写/别名逃逸改为完整已审index SHA或有限纯literal数据AST；V2 Impact单列TABLE三处returnType纠正text，Fact仍record/set/完整OUT。无SDK执行或SQL解析执行。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-local.md)。
+- [~] 受影响B2/B5/B6/B7四组142/142、CLI27、私有203全API纯类型及3个受影响CJS语法/lint0；原302+60及lint语义桥作为各自历史，未重跑9min三组，不宣最终完整候选通过。新7路径delta/完整27冻结待原两轴；原bafc/全部失败与首审前像保留。
+- [ ] 上游47、ledger原fe8正文、driver384cc/SOURCE_ONLY、Schema/203/原202/七片/四guard/两权限矩阵/SDK四binding287保持；no-engine只TYPE/source，native仍false。dirty实际prepare原SOURCE_NOT_CLEAN拒绝保，最终clean203封包及准确完整候选模拟/fixture20/组合1148由独立merger后做，不提前验收。未commit/push/合中央或真实SDK/Nest/HTTP/PG/SQL/资源，#398/14阶段不变。
+
+## Task16 Schema203源码适配（2026-11-08，独立候选待双轴）
+
+- [~] 新独立树基于已审money作者c4d后安全FF到A4 fe8ff2fd，准确203库存与48routine（44+4，两个validator只变正文）接入B5/B6/B7。新类型完整字段/owner/ACL与helper有效owner调用/全列SELECT和锁资格为源码及模拟协议证明，不授runtime/observer新增V2 EXECUTE/TYPE USAGE或业务表权。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-local.md)。
+- [~] 分组实际核心302/302、App/seed/case60/60（537.766s）、CLI27、私有203全API纯类型及19CJS lint通过；最后字串转义AST等价与来源pin窄桥另封，非同一最终SHA全组重跑。固定Schema内容特例绑定完整inline/model，raw630401ec与generated5dba68a9仍不等；no-engine只TYPE/source，不获native资格。
+- [ ] 未提交/合中央/推送，候选仍待独立双轴和准确组合门；driver384cc固定SOURCE_ONLY字节不变、默认包IO/资源前拒，14阶段/#398及真实PG/SQL/ACL/COMMIT/资金/物理清理门不解。47上游money路径原样，ledger仅本prefix+fe8全文；不改原202/203/Schema/七SQL/四guard/原V1SD/companyhelper、产品Auth或Task12。无真实SDK构造/网络/App/数据库/部署生产，未来提交须[skip ci]。
+
+## 经营精度桥A4归属锚点更正（2026-11-08，HOLD待增量双轴）
+
+- [~] 基点为已审作者提交c4d1a1fb，中央仍d78/202。本次只将203 Fact精确guard从4纠正为6及其一处当期注释，Impact仍精确1；独立按全部202迁移顺序重演，原Fact body与Task16独立32d200fc…原件逐字一致，六处归属期均前置原helper。原4 guard拒真实6的before静态失败保留；修6后source-contract通过。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
+- [ ] 原A3见证遗漏POL284参与公司整体/逐主体分段演变，仅原body+公司补丁的4锚点结论失效，原48/1148/失败原件保。TS/Schema与c4d byte/mode完全不变，1148/type/lint只按输入不变桥承接、未重跑；无SQL parser/execute/PG/SDK/新Schema/routine/权限/资源。完整48与三路径最小delta另封待复审，无commit/push/amend/主分支/部署；Task12只读计划已暂停。
+
+## 经营精度桥A3审查修复（2026-11-08，HOLD待增量双轴）
+
+- [~] A2完整48双轴unique3个P2已最小修复待复审：真实adapter→writer→inspect共用来源规范化且真漂移保；direct/bounded所选V2与旧uncapped追溯计数一致；203新增Review专用invoker helper只将已验证原Fact日期用于Fact四处/Impact一处归属期校验，保本次Review业务日和原V1/旧202。34套公开mock实际1148/1148零skip、全API私有203类型/lint/diff0。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
+- [ ] SQL只源码/静态字符串见证，未解析执行或真实PG/权限/锁并发/COMMIT；日期fake合同不是SQL运行证明。Task16 helper/两reference定义的inventory/ACL/owner-callability proof后续独立桥，原202 gate不弱化。原A2/1145及失败日志保，Task12后继未动；无commit/push/close/ready/mainmerge/部署生产。
+
+## 经营精度桥A2源码闭合（2026-11-08，HOLD待双轴）
+
+- [~] 独立02树准确d78b4990基点，双协议四位/未知事实与impact、专业覆盖Review及真实分header结算JSON、合同前版排除守恒、项目/公司/as-of/detail/CSV及旧uncapped V2语义最小闭合。34套公开模拟/真实类+fakeDB/Nest本地HTTP共1145/1145零skip；私有203 client全API类型及lint0。完整前像/逐路径冻结见[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
+- [ ] 203仅源码、原202逐SHA守恒，真实SQL/PG/角色ACL/COMMIT/资源/网关/生产未验；Task16库存/ACL/sourcepins后续独立桥接，中央202 gate不弱化。Task12原A2与UI/归档后继保持HOLD，本片非整票/生产完成；无commit/push/close/ready/mainmerge/部署。下方A0/A1类型66等是历史，非当前状态。
+
+## 经营精度桥A1局部未知提示（2026-11-08，待增量双轴）
+
+- [~] A0双轴同一P2已在原公开V2汇总实际RED→最小GREEN：完整性标签限定已确认收支及资金，合同参考金额未知项中性提示并展示已知小计；不推断未知原因、不要求补价，当前已确认盈亏70元仍70元。六suite新167/167零skip、全API lint及diff过；仅reducer/原公开tests与两MD增量。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
+- [ ] A0原17源/166证据保留；原私有全类型66诊断未消除，本次不扩传播/经济复核且未重跑全类型。新4路径delta冻结/HOLD待两轴；整桥/Task12及14/45边界不变，无SQL/PG/commit/push/生产操作。
+
+## 经营精度桥首批源码与本地链（2026-11-08，进行中）
+
+- [~] 独立02树从563ffd54安全FF到5da31981；Task12 A2原16源HOLD不混入。两表protocol2/NULL旧cents/四位元及203仅源码、私有SDK生成；原202字节保持。writer/readFacts、真实合同adapter、双协议direct/bounded reducer及真实Nest项目overview V2/权限类+fake持久及同store真实合同来源→writer→HTTP共166测试通过，全API lint过；新client全API类型66诊断未绿。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
+- [ ] 全API新client类型、经济覆盖/legacy消费、其它读取入口未闭合，尚未双轴/整合；未开Task12归档生效，14/45与后继门不变。仅源码/模拟持久/本地HTTP，真实PG/SQL/迁移/资源/网关/生产均未执行；无commit/push/close/ready/mainmerge/部署，futurecommit含[skip ci]。
+
 ## 当前接续（2026-11-08，Task16 B10 normal-case源码及固定闭门已整合）
 
 - [~] 作者8de6619d以no-ff合入5584d1ef，final85fd16路径/full与v2/v3两轴0（原final fact/impact P2已实际RED2/GREEN4关闭），完整tree同。原40元/B100→60、actualcompiled case+7fake HTTP/3readonly快照保持。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-normal-case-integrated.md)。

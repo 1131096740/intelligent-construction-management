@@ -1,3 +1,5 @@
+import { normalizeOperatingSourceSnapshot, requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
+import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
@@ -9,6 +11,22 @@ function canonical(value:unknown):string{
  if(Array.isArray(value))return `[${value.map(canonical).join(",")}]`;
  if(value&&typeof value==="object")return `{${Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>`${JSON.stringify(key)}:${canonical(v)}`).join(",")}}`;
  return JSON.stringify(value);
+}
+
+function preflightMoney(value: { numericProtocolVersion?: number; amountCents: bigint | null; amountYuan?: Prisma.Decimal | string | null }) {
+ if(value.numericProtocolVersion===2){
+  if(value.amountCents!==null||value.amountYuan===undefined)throw new BadRequestException("新版经营事实金额协议不完整，请核对原资料");
+  const amountYuan=normalizeBusinessAmount(value.amountYuan===null?null:value.amountYuan.toString());
+  return {numericProtocolVersion:2 as const,amountCents:null,amountYuan,amountState:amountYuan===null?"unknown" as const:"known" as const};
+ }
+ return {numericProtocolVersion:1 as const,amountCents:requireLegacyOperatingCents(value).toString()};
+}
+function preflightAmountFields(value: Parameters<typeof preflightMoney>[0],side:"before"|"after"){
+ const amount=preflightMoney(value);
+ return {[`${side}AmountCents`]:amount.amountCents,...(amount.numericProtocolVersion===2?{[`${side}NumericProtocolVersion`]:2,[`${side}AmountYuan`]:amount.amountYuan,[`${side}AmountState`]:amount.amountState}:{})};
+}
+function preflightFinancial(impacts:Array<Parameters<typeof preflightMoney>[0]&{impactKind:string;direction:string}>){
+ return impacts.map(i=>{const amount=preflightMoney(i);return {kind:i.impactKind,direction:i.direction,...(amount.numericProtocolVersion===2?amount:{amount:amount.amountCents})};}).sort((a,b)=>canonical(a).localeCompare(canonical(b)));
 }
 @Injectable()
 export class ContractClassificationPreflightService {
@@ -23,16 +41,17 @@ export class ContractClassificationPreflightService {
    const facts=await tx.operatingFact.findMany({where:{projectId,status:"confirmed",sourceType:{in:TYPES}},include:{impacts:true},take:10001});
    if(facts.length>10000)throw new BadRequestException("历史范围超过预检上限，请分批核对，不能按部分结果认定完整");
    const differences=[];
+   let hasV2=facts.some(f=>f.numericProtocolVersion===2);
    for(const fact of facts){
     const adapter=this.registry.require(fact.sourceType);
     try {
      const source=await adapter.readSourceSnapshot(tx,{projectId,sourceType:fact.sourceType,sourceBusinessId:fact.sourceBusinessId});
-     if(!source){differences.push({reference:fact.sourceBusinessCode,status:"原业务依据缺失",relationship:CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType,fact.sourceSnapshot)],beforeAmountCents:fact.amountCents.toString(),afterAmountCents:null,reason:"需要专业核对原单据与已冻结事实，不自动删除或覆盖"});continue;}
+     if(!source){differences.push({reference:fact.sourceBusinessCode,status:"原业务依据缺失",relationship:CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType,fact.sourceSnapshot)],...preflightAmountFields(fact,"before"),afterAmountCents:null,reason:"需要专业核对原单据与已冻结事实，不自动删除或覆盖"});continue;}
      const next=adapter.toOperatingFactInput(source).input;
-     const financial=(impacts:Array<{impactKind:string;direction:string;amountCents:bigint}>)=>impacts.map(i=>({kind:i.impactKind,direction:i.direction,amount:i.amountCents.toString()})).sort((a,b)=>canonical(a).localeCompare(canonical(b)));
-     if(canonical(financial([...next.impacts]))!==canonical(financial(fact.impacts))||canonical(source.sourceSnapshot)!==canonical(fact.sourceSnapshot))differences.push({reference:fact.sourceBusinessCode,status:"口径或冻结依据有差异",relationship:CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType,source.sourceSnapshot)],beforeAmountCents:fact.amountCents.toString(),afterAmountCents:next.amountCents.toString(),reason:"保留原经营事实；须另行确认映射、更正或接管，不直接重放新口径"});
+     if(next.numericProtocolVersion===2)hasV2=true;
+     if(canonical(preflightMoney(next))!==canonical(preflightMoney(fact))||canonical(preflightFinancial([...next.impacts]))!==canonical(preflightFinancial(fact.impacts))||canonical(normalizeOperatingSourceSnapshot(next))!==canonical(fact.sourceSnapshot))differences.push({reference:fact.sourceBusinessCode,status:"口径或冻结依据有差异",relationship:CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType,source.sourceSnapshot)],...preflightAmountFields(fact,"before"),...preflightAmountFields(next,"after"),reason:"保留原经营事实；须另行确认映射、更正或接管，不直接重放新口径"});
     }catch{
-     differences.push({reference:fact.sourceBusinessCode,status:"资料不足，暂不能推导",relationship:CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType,fact.sourceSnapshot)],beforeAmountCents:fact.amountCents.toString(),afterAmountCents:null,reason:"原金额保留；核对签约身份、原版本、归档与接管依据后再处理"});
+     differences.push({reference:fact.sourceBusinessCode,status:"资料不足，暂不能推导",relationship:CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType,fact.sourceSnapshot)],...preflightAmountFields(fact,"before"),afterAmountCents:null,reason:"原金额保留；核对签约身份、原版本、归档与接管依据后再处理"});
     }
    }
    const formalSources=[
@@ -56,7 +75,7 @@ export class ContractClassificationPreflightService {
    const unprojectedFormalSources=formalSources.filter(f=>!present.has(`${f.type}:${f.id}`)).length;
    const unclassified=await tx.projectAffiliateContractFact.count({where:{projectId,counterpartyVersionId:null}});
    const unsettledReviews=await tx.contractEconomicReview.count({where:{projectId,status:{in:["pending_review","pending_finance"]}}});
-   return {projectId,readAt:new Date().toISOString(),readOnly:true,unprojectedFormalSources,checkedFacts:facts.length,unclassifiedExternalDocuments:unclassified,pendingEconomicReviews:unsettledReviews,differences,notice:"只读预检，不改历史数据、不生成经营事实。相同来源重新投影也不等于完成历史更正；正式转换与部署须单独确认。"};
+   return {...(hasV2?{numericProtocolVersion:2 as const}:{}),projectId,readAt:new Date().toISOString(),readOnly:true,unprojectedFormalSources,checkedFacts:facts.length,unclassifiedExternalDocuments:unclassified,pendingEconomicReviews:unsettledReviews,differences,notice:"只读预检，不改历史数据、不生成经营事实。相同来源重新投影也不等于完成历史更正；正式转换与部署须单独确认。"};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,timeout:60000});
  }
 }

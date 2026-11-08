@@ -1,3 +1,4 @@
+import { normalizeOperatingMoney, normalizeOperatingSourceSnapshot, operatingNumericSnapshot, requireLegacyOperatingCents, sameOperatingMoney, type OperatingMoneyInput } from "./operating-money-protocol";
 import { repaymentOwnershipDate } from "../company-transfer/company-transfer-ownership";
 import { randomUUID } from "node:crypto";
 
@@ -10,6 +11,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   EVIDENCE_LEVELS,
+  normalizeBusinessAmount,
   OPERATING_FACT_KINDS,
   OPERATING_IMPACT_KINDS,
   OPERATING_SUBJECT_KINDS,
@@ -62,11 +64,10 @@ export interface OperatingFactSubjects {
   costBearingCompany?: OperatingSubjectReference;
 }
 
-export interface OperatingImpactInput {
+interface OperatingImpactCommon {
   idempotencyKey: string;
   sourceImpactKey: string;
   impactKind: OperatingImpactKind;
-  amountCents: bigint;
   direction: OperatingImpactDirection;
   subjectRole?: OperatingSubjectRole;
   subject?: OperatingSubjectReference;
@@ -80,7 +81,7 @@ export interface OperatingImpactInput {
   executionAllocationLineId?: string;
 }
 
-export interface AppendOperatingFactInput {
+interface AppendOperatingFactCommon {
   projectId: string;
   sourceType: string;
   sourceBusinessId: string;
@@ -93,7 +94,6 @@ export interface AppendOperatingFactInput {
   factKind: OperatingFactKind;
   operatingLevel: OperatingLedgerLevel;
   evidenceLevel: EvidenceLevel;
-  amountCents: bigint;
   currencyCode: string;
   direction: OperatingFactDirection;
   isBeforeOperatingLedgerEffectiveDate: boolean;
@@ -112,9 +112,12 @@ export interface AppendOperatingFactInput {
   fundExecutionCaseId?: string;
 }
 
-export interface AppendOperatingFactCorrectionInput extends AppendOperatingFactInput {
+export type AppendOperatingFactCorrectionInput = AppendOperatingFactInput & {
   adjustsFactId: string;
-}
+};
+
+export type OperatingImpactInput = OperatingImpactCommon & OperatingMoneyInput;
+export type AppendOperatingFactInput = AppendOperatingFactCommon & OperatingMoneyInput;
 
 export interface OperatingFactWriteResult {
   id: string;
@@ -434,8 +437,8 @@ export class OperatingLedgerService {
       original.factKind !== input.factKind ||
       original.operatingLevel !== input.operatingLevel ||
       original.evidenceLevel !== input.evidenceLevel ||
-      input.amountCents <= 0n ||
-      input.amountCents > original.amountCents ||
+      requireLegacyOperatingCents(input) <= 0n ||
+      requireLegacyOperatingCents(input) > requireLegacyOperatingCents(original) ||
       original.currencyCode !== input.currencyCode ||
       inverseFactDirection(original.direction) !== input.direction ||
       original.affiliateAssignmentId !== input.affiliateAssignmentId ||
@@ -522,6 +525,7 @@ export class OperatingLedgerService {
   ): Promise<OperatingSourceComparisonState> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
+    validateOperatingMoneyScope(input, entryKind);
     const project = await tx.project.findUnique({
       where: { id: input.projectId },
       select: { isActive: true, operatingLedgerEffectiveDate: true }
@@ -532,7 +536,9 @@ export class OperatingLedgerService {
     if (!project.operatingLedgerEffectiveDate) {
       throw new BadRequestException("项目尚未启用经营账，不能执行一致性校验");
     }
-    const ownershipDate = input.sourceType === "company_transfer_event" ? await repaymentOwnershipDate(tx, input) : undefined;
+    const ownershipDate = input.numericProtocolVersion === 2 && input.sourceType === "contract_economic_review"
+      ? await assertV2EconomicReviewSource(tx, input)
+      : input.sourceType === "company_transfer_event" ? await repaymentOwnershipDate(tx, input) : undefined;
     const subjectSnapshot = await this.factSubjectSnapshot(tx, input, ownershipDate);
     const impactSnapshots = new Map<string, Prisma.InputJsonObject>();
     for (const impact of input.impacts) {
@@ -561,7 +567,13 @@ export class OperatingLedgerService {
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
+    validateOperatingMoneyScope(input, entryKind);
     if (input.sourceType === "company_transfer_event") ownershipOccurredAt = await repaymentOwnershipDate(tx, input) ?? ownershipOccurredAt;
+    if (input.numericProtocolVersion === 2 && input.sourceType === "contract_economic_review") {
+      if (confirmationAuthority === "source_actor") await this.assertActiveActor(tx, actorUserId);
+      else await this.assertProjectFinanceManager(tx, actorUserId, input.projectId);
+      ownershipOccurredAt = await assertV2EconomicReviewSource(tx, input);
+    }
     const writeScope = await this.assertWriteScope(
       tx,
       input,
@@ -613,8 +625,8 @@ export class OperatingLedgerService {
             adjustment.entryKind === "reversal" &&
             adjustment.id !== existing?.id
         )
-        .reduce((total, adjustment) => total + adjustment.amountCents, 0n);
-      if (reversedAmountCents + input.amountCents > adjustmentTarget.amountCents) {
+        .reduce((total, adjustment) => total + requireLegacyOperatingCents(adjustment), 0n);
+      if (reversedAmountCents + requireLegacyOperatingCents(input) > requireLegacyOperatingCents(adjustmentTarget)) {
         throw new BadRequestException("累计冲销金额不得超过原经营事实金额");
       }
     }
@@ -677,6 +689,8 @@ export class OperatingLedgerService {
         operatingLevel: input.operatingLevel,
         evidenceLevel: input.evidenceLevel,
         amountCents: input.amountCents,
+        numericProtocolVersion: input.numericProtocolVersion ?? 1,
+        amountYuan: input.numericProtocolVersion === 2 ? input.amountYuan : null,
         currencyCode: input.currencyCode,
         direction: input.direction,
         ...subjectColumns(input.subjects),
@@ -754,6 +768,8 @@ export class OperatingLedgerService {
         idempotencyKey: impact.idempotencyKey,
         impactKind: impact.impactKind,
         amountCents: impact.amountCents,
+        numericProtocolVersion: impact.numericProtocolVersion ?? 1,
+        amountYuan: impact.numericProtocolVersion === 2 ? impact.amountYuan : null,
         direction: impact.direction,
         subjectRole: impact.subjectRole,
         subjectKind: impact.subject?.kind,
@@ -786,6 +802,8 @@ export class OperatingLedgerService {
       sourceImpactKey: impact.sourceImpactKey,
       impactKind: impact.impactKind,
       amountCents: impact.amountCents,
+      numericProtocolVersion: impact.numericProtocolVersion ?? 1,
+      amountYuan: impact.numericProtocolVersion === 2 ? impact.amountYuan : null,
       direction: impact.direction,
       subjectId: impact.subject?.id,
       observedAt: persisted.createdAt,
@@ -1088,9 +1106,57 @@ export class OperatingLedgerService {
 
 }
 
+function frozenEconomicRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new BadRequestException("履约复核冻结依据不完整，请核对原资料");
+  return value as Record<string, unknown>;
+}
+
+/** Recheck the approved source tuple, never a client assertion of approval. */
+async function assertV2EconomicReviewSource(tx: OperatingLedgerTransaction, input: Extract<AppendOperatingFactInput, { numericProtocolVersion: 2 }>): Promise<Date> {
+  const fail = () => { throw new BadRequestException("履约复核状态、原承诺或冻结金额已变化，请刷新后核对"); };
+  const source = frozenEconomicRecord(input.sourceSnapshot);
+  const baseline = frozenEconomicRecord(source.baseline);
+  if (typeof source.reviewId !== "string" || typeof source.sourceRef !== "string" || typeof source.excludedDeltaYuan !== "string" || input.amountYuan === null || input.amountYuan === "0.0000") return fail();
+  const delta = normalizeBusinessAmount(source.excludedDeltaYuan, { allowNegative: true });
+  if (delta === null || delta === "0.0000" || new Prisma.Decimal(delta).abs().toFixed(4) !== input.amountYuan || input.impacts[0]?.direction !== (delta.startsWith("-") ? "increase" : "decrease")) return fail();
+  const review = await tx.contractEconomicReview.findUnique({ where: { id: source.reviewId } });
+  if (!review || review.status !== "confirmed" || !review.confirmedAt || review.projectId !== input.projectId || review.revision !== input.sourceVersion || input.sourceBusinessId !== `${review.id}:${source.sourceRef}` || ![review.leftSourceRef, review.rightSourceRef].includes(source.sourceRef) || input.confirmedByUserId !== (review.financeReviewedById ?? review.contractReviewedById) || input.occurredAt.getTime() !== review.confirmedAt.getTime() || input.confirmedAt.getTime() !== review.confirmedAt.getTime() || !Array.isArray(review.frozenSources) || review.frozenSources.length < 1 || review.frozenSources.length > 2 || review.leftSourceRef === review.rightSourceRef) return fail();
+  const frozen = review.frozenSources.filter(value => value && typeof value === "object" && !Array.isArray(value) && value.ref === source.sourceRef);
+  if (frozen.length !== 1) return fail();
+  const document = frozenEconomicRecord(frozen[0]);
+  if (document.formal !== true || !(document.coverageNumericProtocolVersion === 2 || document.numericProtocolVersion === 2) || typeof document.excludedDeltaYuan !== "string" || normalizeBusinessAmount(document.excludedDeltaYuan, { allowNegative: true }) !== delta || !sameJson(document.operatingBaseline, baseline)) return fail();
+  if (typeof baseline.originalOperatingFactId !== "string" || typeof document.version !== "string") return fail();
+  const original = await tx.operatingFact.findUnique({ where: { id: baseline.originalOperatingFactId } });
+  const expectedType = source.sourceRef.startsWith("contract:") ? "contract_version" : source.sourceRef.startsWith("affiliate:") ? "project_affiliate_contract_fact" : null;
+  if (!original || !expectedType || original.projectId !== input.projectId || original.status !== "confirmed" || original.entryKind !== "original" || original.factKind !== "downstream_contract" || original.sourceType !== expectedType || original.sourceType !== baseline.originalSourceType || original.sourceBusinessId !== baseline.originalSourceBusinessId || original.sourceBusinessId !== document.version.split(":")[0] || original.sourceVersion !== baseline.originalSourceVersion || original.numericProtocolVersion !== baseline.numericProtocolVersion || original.currencyCode !== input.currencyCode || !sameJson(original.sourceSnapshot, baseline.sourceSnapshot)) return fail();
+  const originalSource = frozenEconomicRecord(original.sourceSnapshot);
+  if (original.numericProtocolVersion !== 2 && (originalSource.amountNature === "uncapped" || originalSource.amountCents === null)) throw new BadRequestException("当前经营调整尚不能表达该原金额状态，请核对原资料");
+  if (original.numericProtocolVersion === 2) {
+    const numericFacts=frozenEconomicRecord(originalSource.numericFacts);
+    const amountState=original.amountYuan===null?"unknown":"known";
+    if (baseline.amountCents !== null || !Object.hasOwn(baseline,"amountYuan") || baseline.amountState!==amountState || numericFacts.protocolVersion!==2 || numericFacts.amountState!==amountState || !Object.hasOwn(numericFacts,"amountYuan") || numericFacts.amountYuan!==(original.amountYuan===null?null:original.amountYuan.toFixed(4)) || (original.amountYuan===null?baseline.amountYuan!==null:typeof baseline.amountYuan!=="string"||original.amountYuan.toFixed(4)!==baseline.amountYuan)) return fail();
+  } else if (baseline.amountYuan !== null || typeof baseline.amountCents !== "string" || requireLegacyOperatingCents(original).toString() !== baseline.amountCents) return fail();
+  const frozenSubjects = frozenEconomicRecord(baseline.subjects);
+  const frozenDebtor = frozenEconomicRecord(frozenSubjects.debtor);
+  const frozenCreditor = frozenEconomicRecord(frozenSubjects.creditor);
+  if (baseline.affiliateAssignmentId !== original.affiliateAssignmentId || baseline.affiliateBusinessPartyVersionId !== original.affiliateBusinessPartyVersionId || baseline.affiliateNameSnapshot !== original.affiliateNameSnapshot || (baseline.affiliateCreditCodeSnapshot ?? null) !== original.affiliateCreditCodeSnapshot || frozenDebtor.kind !== original.debtorSubjectKind || frozenDebtor.id !== original.debtorSubjectId || frozenCreditor.kind !== original.creditorSubjectKind || frozenCreditor.id !== original.creditorSubjectId) return fail();
+  if (input.affiliateAssignmentId !== original.affiliateAssignmentId || input.affiliateBusinessPartyVersionId !== original.affiliateBusinessPartyVersionId || input.affiliateNameSnapshot !== original.affiliateNameSnapshot || (input.affiliateCreditCodeSnapshot ?? null) !== original.affiliateCreditCodeSnapshot || input.subjects.debtor?.kind !== original.debtorSubjectKind || input.subjects.debtor?.id !== original.debtorSubjectId || input.subjects.creditor?.kind !== original.creditorSubjectKind || input.subjects.creditor?.id !== original.creditorSubjectId) return fail();
+  return original.occurredAt;
+}
+
+function validateOperatingMoneyScope(input: AppendOperatingFactInput, entryKind: OperatingFactEntryKind) {
+  if (input.impacts.some(impact => (impact.numericProtocolVersion ?? 1) !== (input.numericProtocolVersion ?? 1))) throw new BadRequestException("经营事实与影响分录必须使用同一金额协议");
+  if (input.numericProtocolVersion !== 2) return;
+  if (input.sourceType === "contract_economic_review" && (input.amountYuan === null || input.amountYuan === "0.0000")) throw new BadRequestException("履约复核调整仅支持已确认的非零承诺金额");
+  if (entryKind !== "original" || !["contract_version", "contract_economic_review"].includes(input.sourceType) || input.factKind !== "downstream_contract" || input.direction !== "neutral" || input.paymentExecutionId || input.fundExecutionId || input.fundExecutionCaseId || input.impacts.length !== 1 || input.impacts.some(impact => impact.numericProtocolVersion !== 2 || impact.impactKind !== "contract_commitment_reference" || impact.sourceImpactKey !== "contract_commitment_reference" || impact.subjectRole !== "debtor" || (input.amountYuan === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction)) || impact.amountYuan !== input.amountYuan || impact.paymentExecutionId || impact.fundExecutionId || impact.fundExecutionCaseId || impact.executionAllocationLineId)) throw new BadRequestException("新版合同承诺影响必须与原事实的待确定状态及金额一致，不得改作成本、实付或冲销");
+}
+
 function normalizeFactInput(input: AppendOperatingFactInput): AppendOperatingFactInput {
+  const common: AppendOperatingFactCommon = input;
   return {
-    ...input,
+    ...common,
+    ...normalizeOperatingMoney(input),
+    ...(input.numericProtocolVersion === 2 ? { sourceSnapshot: normalizeOperatingSourceSnapshot(input) } : {}),
     projectId: requiredText(input.projectId, "项目不能为空"),
     sourceType: requiredText(input.sourceType, "来源类型不能为空"),
     sourceBusinessId: requiredText(input.sourceBusinessId, "来源业务主键不能为空"),
@@ -1124,8 +1190,11 @@ function normalizeFactSubjects(subjects: OperatingFactSubjects): OperatingFactSu
 }
 
 function normalizeImpactInput(impact: OperatingImpactInput): OperatingImpactInput {
+  const common: OperatingImpactCommon = impact;
   return {
-    ...impact,
+    ...common,
+    ...normalizeOperatingMoney(impact),
+    ...(impact.numericProtocolVersion === 2 ? { impactSnapshot: { ...impact.impactSnapshot, numericFacts: operatingNumericSnapshot(normalizeOperatingMoney(impact) as Extract<OperatingMoneyInput, { numericProtocolVersion: 2 }>) } } : {}),
     idempotencyKey: requiredText(impact.idempotencyKey, "影响分录幂等键不能为空"),
     sourceImpactKey: requiredText(impact.sourceImpactKey, "来源影响键不能为空"),
     subject: normalizeSubjectReference(impact.subject, "影响分录主体不能为空"),
@@ -1156,7 +1225,7 @@ function assertReversalImpacts(
   originalImpacts: Array<{
     sourceImpactKey: string;
     impactKind: string;
-    amountCents: bigint;
+    amountCents: bigint | null;
     direction: string;
     subjectRole: string | null;
     subjectKind: string | null;
@@ -1187,8 +1256,8 @@ function assertReversalImpacts(
     if (
       originalImpact.impactKind !== reversalImpact.impactKind ||
       (allowPartialReversal
-        ? reversalImpact.amountCents <= 0n ||
-          reversalImpact.amountCents > originalImpact.amountCents
+        ? requireLegacyOperatingCents(reversalImpact) <= 0n ||
+          requireLegacyOperatingCents(reversalImpact) > requireLegacyOperatingCents(originalImpact)
         : originalImpact.amountCents !== reversalImpact.amountCents) ||
       inverseImpactDirection(originalImpact.direction) !== reversalImpact.direction ||
       (originalImpact.subjectRole ?? null) !== (reversalImpact.subjectRole ?? null) ||
@@ -1240,9 +1309,8 @@ function validateFactInput(input: AppendOperatingFactInput) {
     throw new BadRequestException("经营事实方向不正确");
   }
   if (
-    input.amountCents < 0n ||
-    (!["historical_gap", "downstream_contract"].includes(input.factKind) &&
-      input.amountCents === 0n)
+    input.numericProtocolVersion !== 2 && (input.amountCents < 0n ||
+    (!["historical_gap", "downstream_contract"].includes(input.factKind) && input.amountCents === 0n))
   ) {
     throw new BadRequestException("经营事实金额必须使用不小于零的整数分");
   }
@@ -1302,10 +1370,8 @@ function validateImpactInput(impact: OperatingImpactInput) {
     throw new BadRequestException("影响分录方向不正确");
   }
   if (
-    impact.amountCents < 0n ||
-    (!["evidence_gap_notice", "contract_commitment_reference"].includes(
-      impact.impactKind
-    ) && impact.amountCents === 0n)
+    impact.numericProtocolVersion !== 2 && (impact.amountCents < 0n ||
+    (!["evidence_gap_notice", "contract_commitment_reference"].includes(impact.impactKind) && impact.amountCents === 0n))
   ) {
     throw new BadRequestException("影响分录金额必须使用不小于零的整数分");
   }
@@ -1397,7 +1463,9 @@ function assertCompatibleFact(
     factKind: string;
     operatingLevel: string;
     evidenceLevel: string;
-    amountCents: bigint;
+    amountCents: bigint | null;
+    numericProtocolVersion?: number;
+    amountYuan?: Prisma.Decimal | string | null;
     currencyCode: string;
     direction: string;
     debtorSubjectKind: string | null;
@@ -1444,7 +1512,7 @@ function assertCompatibleFact(
     existing.factKind === input.factKind,
     existing.operatingLevel === input.operatingLevel,
     existing.evidenceLevel === input.evidenceLevel,
-    existing.amountCents === input.amountCents,
+    sameOperatingMoney(existing, input),
     existing.currencyCode === input.currencyCode,
     existing.direction === input.direction,
     existing.entryKind === entryKind,
@@ -1480,7 +1548,9 @@ function assertCompatibleImpact(
     factId: string;
     projectId: string;
     impactKind: string;
-    amountCents: bigint;
+    amountCents: bigint | null;
+    numericProtocolVersion?: number;
+    amountYuan?: Prisma.Decimal | string | null;
     direction: string;
     subjectRole: string | null;
     subjectKind: string | null;
@@ -1503,7 +1573,7 @@ function assertCompatibleImpact(
     existing.factId !== factId ||
     existing.projectId !== projectId ||
     existing.impactKind !== impact.impactKind ||
-    existing.amountCents !== impact.amountCents ||
+    !sameOperatingMoney(existing, impact) ||
     existing.direction !== impact.direction ||
     (existing.subjectRole ?? null) !== (impact.subjectRole ?? null) ||
     (existing.subjectKind ?? null) !== (impact.subject?.kind ?? null) ||
@@ -1626,7 +1696,8 @@ function operatingFactWritePayload(data: Record<string, unknown>): Prisma.Sql {
       ${data.paymentExecutionId}::text,
       ${data.fundExecutionId}::text,
       ${data.fundExecutionCaseId}::text
-    )::public."OperatingLedgerFactWritePayload"
+      ${data.numericProtocolVersion === 2 ? Prisma.sql`, ${data.numericProtocolVersion}::integer, ${data.amountYuan}::numeric` : Prisma.empty}
+    )${data.numericProtocolVersion === 2 ? Prisma.sql`::public."OperatingLedgerFactWritePayloadV2"` : Prisma.sql`::public."OperatingLedgerFactWritePayload"`}
   `;
 }
 
@@ -1654,7 +1725,8 @@ function operatingImpactWritePayload(data: Record<string, unknown>): Prisma.Sql 
       ${data.fundExecutionId}::text,
       ${data.fundExecutionCaseId}::text,
       ${data.executionAllocationLineId}::text
-    )::public."OperatingLedgerImpactWritePayload"
+      ${data.numericProtocolVersion === 2 ? Prisma.sql`, ${data.numericProtocolVersion}::integer, ${data.amountYuan}::numeric` : Prisma.empty}
+    )${data.numericProtocolVersion === 2 ? Prisma.sql`::public."OperatingLedgerImpactWritePayloadV2"` : Prisma.sql`::public."OperatingLedgerImpactWritePayload"`}
   `;
 }
 

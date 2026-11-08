@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { BadRequestException } from "@nestjs/common";
 
 import { PaymentExecutionOperatingSourceAdapter } from "./payment-operating-source.adapter";
@@ -118,7 +119,7 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     expect(input.subjects.approvedPayer).toEqual({ kind: "participating_company", id: "company-entity-1" });
     expect(input.subjects.actualPayer).toEqual(input.subjects.approvedPayer);
     expect(input.impacts.filter((i) => i.impactKind === "inter_subject_balance_increase")).toHaveLength(1);
-    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + i.amountCents, 0n)).toBe(600_00n);
+    expect(input.impacts.filter((i) => i.impactKind === "payable_decrease").reduce((sum, i) => sum + requireLegacyOperatingCents(i), 0n)).toBe(600_00n);
     expect(input.impacts.some((i) => i.impactKind === "confirmed_cost")).toBe(false);
   });
 

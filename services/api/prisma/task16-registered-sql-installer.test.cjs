@@ -27,7 +27,7 @@ function fixture(t) {
   put("services/api/prisma/task16-baseline-access.json", fs.readFileSync(path.join(__dirname,"task16-baseline-access.json")));
   put("services/api/prisma/schema.prisma", "// synthetic only\n");
   put("services/api/prisma/migrations/migration_lock.toml", 'provider = "postgresql"\n');
-  for (let index = 0; index < 202; index++) put(`services/api/prisma/migrations/${String(index).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${index}\n`);
+  for (let index = 0; index < 203; index++) put(`services/api/prisma/migrations/${String(index).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${index}\n`);
   put("services/api/src/database/registered-payment-postgres.fixture.ts", "// synthetic, never imported\n");
   put("services/api/src/database/registered-payment-postgres.cases.ts", fs.readFileSync(path.join(__dirname, "../src/database/registered-payment-postgres.cases.ts")));
   const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));

@@ -75,7 +75,7 @@ test("the native migration adapter is never inherited by an incomplete injected 
   assert.deepEqual(f.calls, []); assert.equal(receipt.nativeExecution, false);
 });
 
-test("all 202 exact source entries are required before invoking Prisma", async t => {
+test("all 203 exact source entries are required before invoking Prisma", async t => {
   const f = fixture(t); f.source.migrations.pop();
   const receipt = await runTask16RegisteredPg(f.options, f.adapters);
   assert.equal(receipt.failureCode, "TASK16_MIGRATE_SOURCE_INVENTORY");

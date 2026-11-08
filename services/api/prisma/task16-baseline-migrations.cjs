@@ -38,7 +38,7 @@ function resourceProof(context, expected) {
 
 function sourceFiles(context) {
   const list = context.source.migrations;
-  need(Array.isArray(list) && list.length === 202 && new Set(list.map(row => row.path)).size === 202, "TASK16_MIGRATE_SOURCE_INVENTORY");
+  need(Array.isArray(list) && list.length === 203 && new Set(list.map(row => row.path)).size === 203, "TASK16_MIGRATE_SOURCE_INVENTORY");
   const ledger = list.map((row, index) => {
     const match = /^services\/api\/prisma\/migrations\/([0-9]{14}_[a-z0-9_]+)\/migration\.sql$/u.exec(row.path);
     need(match && /^[a-f0-9]{64}$/u.test(row.sha256) && (index === 0 || list[index - 1].path < row.path), "TASK16_MIGRATE_SOURCE_INVENTORY");
@@ -112,7 +112,7 @@ async function migrateTask16Baseline(context, injectedCommand, injectedProcess) 
     const after = await ownerRead(context, proof, "task16-migration-ledger", true);
     need(JSON.stringify(after.ledger) === JSON.stringify(ledger), "TASK16_MIGRATE_LEDGER_MISMATCH");
     resourceProof(context, proof);
-    return { status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", sourceSha: context.source.candidateSha, migrationCount: 202, ledgerSha256: hash(JSON.stringify(ledger)), command: { exitCode: 0, stdoutBytes: stdout.length, stderrBytes: stderr.length, stdoutSha256: hash(stdout), stderrSha256: hash(stderr) }, financialAcceptance: false, tlsAcceptance: false };
+    return { status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", sourceSha: context.source.candidateSha, migrationCount: 203, ledgerSha256: hash(JSON.stringify(ledger)), command: { exitCode: 0, stdoutBytes: stdout.length, stderrBytes: stderr.length, stdoutSha256: hash(stdout), stderrSha256: hash(stderr) }, financialAcceptance: false, tlsAcceptance: false };
   } catch (error) {
     const code = typeof error?.code === "string" && /^(?:TASK16_MIGRATE|TASK01_RESOURCE)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_MIGRATE_FAILED_CLOSED";
     throw Object.assign(new Error(code), { code, migrationOutcome: attempted ? "UNKNOWN_DO_NOT_RETRY" : "NOT_ATTEMPTED" });

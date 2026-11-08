@@ -1725,7 +1725,7 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
 
   async function append(
     sourceType: string,
-    overrides: Partial<AppendOperatingFactInput>
+    overrides: Partial<Extract<AppendOperatingFactInput, { amountCents: bigint }>>
   ) {
     const sourceBusinessId = `${sourceType}-${runId}`;
     return ledger.appendFromSource({
@@ -1866,7 +1866,7 @@ export function operatingProjectionPostgresCases(shard: "core" | "facts" | "impa
     impactKind: OperatingImpactInput["impactKind"],
     amountCents: bigint,
     direction: OperatingImpactInput["direction"],
-    overrides: Partial<OperatingImpactInput> = {}
+    overrides: Partial<Extract<OperatingImpactInput, { amountCents: bigint }>> = {}
   ): OperatingImpactInput {
     return {
       idempotencyKey: `pol108:${runId}:${key}`,

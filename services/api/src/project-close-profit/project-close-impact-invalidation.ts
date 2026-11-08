@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import type { ProjectStage } from "@jiangkong/shared-domain";
 
 import { resolveProjectCloseImpactPolicy } from "./project-close-impact-policy";
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 
 type NewOperatingImpact = Readonly<{
   id: string;
@@ -12,7 +13,9 @@ type NewOperatingImpact = Readonly<{
   sourceBusinessId: string;
   sourceImpactKey: string;
   impactKind: string;
-  amountCents: bigint;
+  amountCents: bigint | null;
+  numericProtocolVersion?: number;
+  amountYuan?: string | null;
   direction: string;
   subjectId?: string;
   observedAt: Date;
@@ -82,7 +85,9 @@ async function invalidateOperatingImpact(
     sourceId: `${impact.sourceBusinessId}:${impact.sourceImpactKey}`,
     sourceFingerprint: fingerprint({
       impactKind: impact.impactKind,
-      amountCents: impact.amountCents.toString(),
+      ...(impact.numericProtocolVersion === 2
+        ? { numericProtocolVersion: 2, amountYuan: impact.amountYuan }
+        : { amountCents: requireLegacyOperatingCents(impact).toString() }),
       direction: impact.direction,
       subjectId: impact.subjectId ?? null
     }),

@@ -23,6 +23,17 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
  need(simulation||facts.freshCli===true,"TASK16_CLIENT_FRESH_CLI_REQUIRED");
  const entry=source.runtimeAdmission.clientEntry;
  need(entry&&typeof entry.path==="string"&&inside(root,entry.path)&&/\.(?:c?js)$/u.test(entry.path)&&fs.realpathSync(entry.path)===entry.path,"TASK16_CLIENT_ENTRY");
+ // A qualified B2 entry carries the initial immutable serialized source/data
+ // witness. Standalone whole-stage fake fixtures stay simulation-only; they do
+ // not acquire B2 content qualification merely by exporting version labels.
+ let sdkWitness;
+ if(entry.sdkSchemaWitness!==undefined){
+  try{sdkWitness=JSON.parse(entry.sdkSchemaWitness);}catch{need(false,'TASK16_CLIENT_SDK_SCHEMA');}
+  need(sdkWitness?.schema?.contentBound===true&&Array.isArray(sdkWitness.schema.captures)&&sdkWitness.schema.captures.length>0&&Array.isArray(sdkWitness.captures)&&sdkWitness.captures.length>0&&JSON.stringify(sdkWitness.schema)===JSON.stringify(source.runtimeAdmission.sdkSchema),'TASK16_CLIENT_SDK_SCHEMA');
+  need(simulation||sdkWitness.schema.nativeRuntimeQualification===true&&sdkWitness.schema.copyEngine===true&&sdkWitness.schema.reviewedGeneratedBundleMatched===true,'TASK16_CLIENT_NATIVE_SDK_UNQUALIFIED');
+ }else need(simulation&&source.runtimeAdmission.sdkSchema===undefined,'TASK16_CLIENT_SDK_SCHEMA');
+ const checkSdk=()=>{if(!sdkWitness)return;need(entry.sdkSchemaWitness===JSON.stringify(sdkWitness)&&JSON.stringify(source.runtimeAdmission.sdkSchema)===JSON.stringify(sdkWitness.schema),'TASK16_CLIENT_SDK_SCHEMA');for(const row of [...sdkWitness.captures,...sdkWitness.schema.captures]){need(typeof row.path==='string'&&inside(root,row.path)&&row.identity,'TASK16_CLIENT_SDK_SCHEMA');need(read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:'TASK16_CLIENT_SDK_SCHEMA'}).sha256===row.sha256,'TASK16_CLIENT_SDK_SCHEMA');}};
+ checkSdk();
  const manifests=source.inputs.trees.map(tree=>{const captured=read(tree.manifest,{privateFile:true,maxBytes:64*1024*1024,collect:true,code:"TASK16_CLIENT_TREE"});need(captured.sha256===tree.sha256,"TASK16_CLIENT_TREE");const value=JSON.parse(captured.bytes.toString("utf8"));need(value.schemaVersion===1&&value.status==="captured"&&value.root===path.join(root,tree.root),"TASK16_CLIENT_TREE");return{root:path.join(root,tree.root),entries:value.entries};});
  const members=new Map(source.executionFiles.map(row=>[path.join(root,row.path),row]));
  const capture=file=>{need(fs.realpathSync(file)===file&&inside(root,file),"TASK16_CLIENT_MODULE_ESCAPES");const tree=manifests.find(item=>inside(item.root,file));const expected=tree?.entries[path.relative(tree.root,file)]??members.get(file);need(expected&&(expected.kind===undefined||expected.kind==="file")&&/^[a-f0-9]{64}$/u.test(expected.sha256),"TASK16_CLIENT_MODULE_UNSEALED");const actual=read(file,{maxBytes:64*1024*1024,code:"TASK16_CLIENT_MODULE_CHANGED"});need(actual.sha256===expected.sha256,"TASK16_CLIENT_MODULE_CHANGED");return{path:file,...actual};};
@@ -33,6 +44,7 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
  need(actual?.loaded===true&&actual.exports===loaded&&typeof loaded.PrismaClient==="function"&&loaded.Prisma?.prismaVersion?.client==="5.22.0"&&loaded.Prisma?.prismaVersion?.engine==="605197351a3c8bdd595af2d2a9bc3025bca48ea2","TASK16_CLIENT_CLASS");
  const Class=loaded.PrismaClient,files=new Map(),applicationRoots=[];let applicationExports,reflection,fixtureExports,normalCaseExports;const fixtureDependencyMethods=new Map();
  const check=()=>{
+  checkSdk();
   need(coreHooksUnmodified()&&Module._load===facts.hooks.load&&Module._resolveFilename===facts.hooks.resolve&&Module._findPath===facts.hooks.find&&Module.prototype.require===facts.hooks.require&&[".js",".json",".node"].every(ext=>Module._extensions[ext]===facts.hooks.extensions[ext]),"TASK16_CLIENT_LOADER_HOOK_CHANGED");
   need(require.cache[entry.path]===actual&&actual.exports===loaded&&loaded.PrismaClient===Class,"TASK16_CLIENT_CLASS_CHANGED");
   const visited=new Set();const visit=mod=>{if(visited.has(mod))return;visited.add(mod);need(mod?.loaded===true&&typeof mod.filename==="string","TASK16_CLIENT_MODULE_CHANGED");const previous=files.get(mod.filename);if(previous){need(previous.module===mod&&previous.exports===mod.exports,"TASK16_CLIENT_MODULE_CHANGED");const current=read(previous.path,{maxBytes:64*1024*1024,expectedIdentity:previous.identity,code:"TASK16_CLIENT_MODULE_CHANGED"});need(current.sha256===previous.sha256&&require.cache[mod.filename]===mod,"TASK16_CLIENT_MODULE_CHANGED");}else{need(require.cache[mod.filename]===mod,"TASK16_CLIENT_MODULE_CHANGED");files.set(mod.filename,{...capture(mod.filename),module:mod,exports:mod.exports});}for(const child of mod.children)visit(child);};visit(actual);for(const mod of applicationRoots)visit(mod);

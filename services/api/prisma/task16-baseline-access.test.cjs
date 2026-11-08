@@ -1,4 +1,8 @@
 "use strict";
+const TYPE_ACL = [
+ {type:'public."OperatingLedgerFactWritePayloadV2"',typeOid:'41001',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false},
+ {type:'public."OperatingLedgerImpactWritePayloadV2"',typeOid:'41002',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false}
+];
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -27,20 +31,45 @@ function fixture(t) {
                     calls.push(label);
                     const phase = label === "task16-baseline-access-preflight" ? "preflight" : "committed";
                     const nonce = /'([a-f0-9]{64})' AS nonce/u.exec(sql)?.[1];
-                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), restrictedAbsent: phase === "preflight", instrumentationAbsent: phase === "preflight", freshScope: phase === "preflight", matrixVerified: phase === "committed", guardVerified: phase === "committed", runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
+                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, schema203Verified: true, schema203TypeAclWitness: structuredClone(TYPE_ACL), migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), restrictedAbsent: phase === "preflight", instrumentationAbsent: phase === "preflight", freshScope: phase === "preflight", matrixVerified: phase === "committed", guardVerified: phase === "committed", runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
                 }, close: async () => { calls.push("close-resource"); receipt.status = "closed"; receipt.cleanup = { status: "completed", containerAbsent: true, volumesAbsent: true, networkAbsent: true }; } };
             return resource;
-        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 202 }), installBaselineAccess: async (context) => { const { installTask16BaselineAccess } = require("./task16-baseline-access.cjs"); return installTask16BaselineAccess(context); }, installPreparedSql: async (context) => { assert.equal(context.baselineAccess.status, "BASELINE_ROLE_ACL_COMMIT_OBSERVED"); assert.equal(context.baselineAccess.runtimeOid, "20001"); assert.equal(context.baselineAccess.observerOid, "20002"); calls.push("seven-fragments"); }, installRegisteredAccess: async () => { }, connectRestrictedClients: async () => ({ close: async () => { } }), startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
+        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 203 }), installBaselineAccess: async (context) => { const { installTask16BaselineAccess } = require("./task16-baseline-access.cjs"); return installTask16BaselineAccess(context); }, installPreparedSql: async (context) => { assert.equal(context.baselineAccess.status, "BASELINE_ROLE_ACL_COMMIT_OBSERVED"); assert.equal(context.baselineAccess.runtimeOid, "20001"); assert.equal(context.baselineAccess.observerOid, "20002"); calls.push("seven-fragments"); }, installRegisteredAccess: async () => { }, connectRestrictedClients: async () => ({ close: async () => { } }), startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
     return { options, adapters, calls, source, replies, resource: () => resource, receipt: () => receipt, passwords: () => passwords };
 }
 test("baseline role ACL preparation completes before the separate seven-fragment installer", async (t) => {
     const f = fixture(t);
     const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED");
+    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED", receipt.failureCode);
     assert.equal(receipt.nativeExecution, false);
     assert.deepEqual(f.calls, ["task16-baseline-access-preflight", "task16-baseline-access-transaction", "seven-fragments", "close-resource"]);
     assert.equal(JSON.stringify(receipt).includes(f.passwords().runtime), false);
     assert.equal(JSON.stringify(receipt).includes(f.passwords().observer), false);
+});
+test("baseline rejects an unproved schema203 caller and type boundary before any ACL DDL", async t => {
+    const f = fixture(t);
+    f.replies.preflight = { schema203Verified: false };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.failureCode, "TASK16_ACCESS_SCHEMA203_PROOF");
+    assert.equal(receipt.baselineAccessOutcome, "NOT_ATTEMPTED");
+    assert.deepEqual(f.calls, ["task16-baseline-access-preflight", "close-resource"]);
+});
+test("a schema203 caller proof lost at commit remains unknown and cannot install fragments", async t => {
+    const f = fixture(t);
+    f.replies.committed = { schema203Verified: false };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.failureCode, "TASK16_ACCESS_SCHEMA203_PROOF");
+    assert.equal(receipt.baselineAccessOutcome, "UNKNOWN_DO_NOT_RETRY");
+    assert.deepEqual(f.calls, ["task16-baseline-access-preflight", "task16-baseline-access-transaction", "close-resource"]);
+});
+test("baseline preserves the first observed schema203 type ACL instead of adopting postcommit drift", async t => {
+    const f = fixture(t);
+    f.replies.committed = { schema203TypeAclWitness: [{ type: "owned-synthetic-type", grantable: true }] };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.failureCode, "TASK16_ACCESS_SCHEMA203_TYPE_ACL_CHANGED");
+    assert.equal(receipt.baselineAccessOutcome, "UNKNOWN_DO_NOT_RETRY");
+    assert.equal(f.calls.includes("seven-fragments"), false);
+    assert.equal(f.calls.at(-1), "close-resource");
 });
 for (const field of ["restrictedAbsent", "instrumentationAbsent", "freshScope"]) {
     test(`${field} must be positively observed before baseline DDL`, async (t) => {
@@ -155,7 +184,7 @@ test("the baseline transaction adapter receives the paired lock grant and guard 
         };
     });
     const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED");
+    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED", receipt.failureCode);
     // This assertion only observes SQL handed to an explicit mock adapter. It does
     // not establish PostgreSQL parsing, physical row locking or UPDATE rejection.
 });
@@ -173,7 +202,7 @@ test("preflight preserves the sealed POL275 legacy owner exceptions without gran
         };
     });
     const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED");
+    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED", receipt.failureCode);
     // This checks the explicit SQL adapter protocol, not live catalog ownership.
 });
 
@@ -185,4 +214,20 @@ test("baseline version lock guard catalog proof excludes conditional and column 
   }return exec(sql,label);
  };});
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,"SIMULATED_CASE_PROTOCOL_COMPLETED",receipt.failureCode);assert.equal(receipt.nativeExecution,false);
+});
+
+for(const observedReturnType of ['text','record'])test(`single-column TABLE catalog protocol ${observedReturnType} is compared with the source interface`,async t=>{
+ const f=fixture(t),plan=JSON.parse(fs.readFileSync(path.join(ROOT,'services/api/prisma/task16-baseline-access.json'),'utf8'));
+ const impact=plan.schema203.routines.find(row=>row.signature.startsWith('public."appendOperatingImpactThroughService"('));
+ const fact=plan.schema203.routines.find(row=>row.signature.startsWith('public."appendOperatingFactThroughService"('));
+ assert.equal(fact.returnType,'record');assert.equal(fact.returnsSet,true);assert.equal(impact.returnsSet,true);assert.deepEqual(impact.interface.argumentNames,['p_payload','p_actor_user_id','p_secret','id']);assert.deepEqual(impact.interface.argumentModes,['i','i','i','t']);assert.equal(impact.interface.allArgumentTypes.at(-1),'pg_catalog.text');
+ let queries=0;resourceChange(f,r=>{const original=r.execOwnerSql;r.execOwnerSql=async(sql,label)=>{
+  // This models the catalog metadata reply, not PostgreSQL or its SQL parser.
+  assert.ok(sql.includes(JSON.stringify(plan.schema203.routines).replaceAll("'","''")),'the public owner protocol carries the exact source interface');queries++;
+  const result=await original(sql,label),row=JSON.parse(result.stdout);row.schema203Verified=impact.returnType===observedReturnType;return{stdout:JSON.stringify(row)};
+ };});
+ const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+ if(observedReturnType==='text'){assert.equal(receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',receipt.failureCode);assert.equal(queries,2);}
+ else{assert.equal(receipt.failureCode,'TASK16_ACCESS_SCHEMA203_PROOF');assert.equal(receipt.baselineAccessOutcome,'NOT_ATTEMPTED');assert.equal(queries,1);assert.equal(f.calls.includes('seven-fragments'),false);}
+ assert.equal(f.calls.at(-1),'close-resource');assert.equal(receipt.nativeExecution,false);
 });
