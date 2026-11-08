@@ -77,7 +77,10 @@ const BILL_ROW_PLACEHOLDERS = new Set([
   "taxExclusiveUnitPrice",
   "taxRate",
   "taxExclusiveAmount",
-  "taxAmount"
+  "taxAmount",
+  "rowNumber",
+  "taxUnitPrice",
+  "manufacturer"
 ]);
 
 export function isContractBillRowPlaceholder(value: string) {

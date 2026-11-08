@@ -1,3 +1,8 @@
+## 当前接续（2026-11-08，Task10 已确认材料运输统一清单，本地待最终桥）
+
+- [~] 三 compact 原件保持，真实公有准入反例3/3；原8d材料匹配新版本统一46行（45材料+非零运输），权威金额117181/net103700/tax13481，正文手改/关键字段同步/同R_F真实Word/PDF、字体与合计单行通过。已审15源码两轴增量0，本地343后端、API类型/lint/fresh build、LO三坏两好及7write+7check实际通过；无生成物变化。[本片收据](docs/progress/2026-11-08-enterprise-simplification-task10-material-unified.md)。
+- [ ] 最终执行/两MD桥待独立复核，#392与CON10→Task12提交consumer仍OPEN；不将技术副本/本地发布冒正式生产模板，不重计旧26/15为新实际。无提交/推送/关闭/main/DB/SQL/部署/生产，未来提交须[skip ci]。下方中央eb39 ledger原文保留。
+
 ## 当前接续（2026-11-08，Task16 B8 factory源码首片已整合）
 
 - [~] 作者f35c0463合入原integration 668c5050，完整tree一致；7b074六路径/efad四源码双轴P2及final执行桥0。中央独立274模拟（255+19）、CLI25、fixture20、API类型/定向TS与3CJS静态、19/42 pins及准确clean source-only prepare/verify通过，3466/202/7/1。[整合收据](docs/progress/2026-11-08-enterprise-simplification-task16-application-factory-integrated.md)。

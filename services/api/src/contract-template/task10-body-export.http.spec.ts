@@ -395,3 +395,123 @@ describe("task10 A07 exact labor source product tracer", () => {
     finally{await server.processor.onApplicationShutdown();await server.app.close();}
   },190000);
 });
+
+describe("Task10 confirmed material transport unified native version", () => {
+  it("publishes the inspected unified version and exports 45 materials plus nonzero transport at the saved revision", async () => {
+    const begin = performance.now(), directory = await mkdtemp(join(tmpdir(), "jg-task10-material-unified-native-"));
+    const phases: Array<Record<string, unknown>> = [];
+    const priorFontconfig = process.env.FONTCONFIG_FILE;
+    async function phase<T>(name: string, limit: number, work: () => Promise<T>) {
+      const start = performance.now(), remaining = Math.min(limit, 170000 - (start - begin));
+      if (remaining <= 0) throw new Error("统一清单阶段预算已用尽");
+      try { const result = await work(); if (performance.now() - start > remaining) throw new Error("统一清单阶段超时：" + name); phases.push({ name, passed: true, seconds: (performance.now() - start) / 1000, budgetMs: remaining }); return result; }
+      catch (cause) { phases.push({ name, passed: false, seconds: (performance.now() - start) / 1000, budgetMs: remaining }); throw cause; }
+      finally { await writeFile(join(directory, "phases.json"), JSON.stringify(phases, null, 2)); }
+    }
+    const server = await createTemplateTestServer({ draftWorkbench: true });
+    const hash = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
+    const sourceSha = "3fcd682276933ccf69014ac30ddcb32e7e15322a3c433e19db437478fac95722";
+    try {
+      const source = await readFile(resolve(__dirname, "../../assets/templates/material-purchase-unified-v2.docx")); expect(hash(source)).toBe(sourceSha);
+      const master = await readFile(resolve(__dirname, "../../../../scripts/probes/task08-documents/samples/material-purchase-real-v1.docx")); expect(hash(master)).toBe("8d707f8ecd65e2ca69c6920991dcb542cbc23ada42cf39a62299ab25e5820334");
+      const original = new PizZip(master), selected = new PizZip(source);
+      expect(Object.values(selected.files).filter(file => !file.dir && !file.asNodeBuffer().equals(original.file(file.name)!.asNodeBuffer())).map(file => file.name).sort()).toEqual(["word/document.xml", "word/footer1.xml", "word/footer2.xml"]);
+      const base = await server.app.getUrl(), token = await loginTemplateActor(server, "director"), headers = { authorization: "Bearer " + token, "content-type": "application/json" };
+      const request = (path: string, method = "GET", value?: unknown) => fetch(base + path, { method, headers, ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
+      const layout = await phase("public-new-template-map-and-inspect", 15000, async () => {
+        const form = new FormData(); form.append("file", new Blob([new Uint8Array(source)]), "材料与运输统一清单新版.docx");
+        const uploaded = await fetch(base + "/files", { method: "POST", headers: { authorization: headers.authorization }, body: form }); expect(uploaded.status).toBe(201); const file = await uploaded.json();
+        const created = await request("/contract-layout-templates", "POST", { name: "材料与运输统一清单技术验证新版", contractTypeKey: "material_purchase", docxFileId: file.id, placeholderSchema: { bills: [{ key: "materials" }] } }); expect(created.status).toBe(201); const result = await created.json(); const path = "/contract-layout-template-versions/" + result.version.id;
+        const read = await request(path + "/source-positions"); expect(read.status).toBe(200); const positions = await read.json(); expect(positions.sourceSha256).toBe(sourceSha);
+        const fields = [["contract.name", ["合同名称"]], ["party.owner.name", ["甲方名称"]], ["party.counterparty.name", ["乙方名称"]], ["contract.temporaryCode", ["合同编号"]], ["document.watermark", ["文档水印"]], ["contract.taxExclusiveAmount", ["材料不含税合计", "不含税总额"]], ["contract.taxExclusiveAmountUppercase", ["不含税总额大写"]], ["contract.taxAmount", ["材料税额合计", "税额总计"]], ["contract.taxAmountUppercase", ["税额总计大写"]], ["contract.amount", ["材料含税合计"]], ["field.invoiceType", ["发票类型"]]] as const;
+        const bindings = positions.positions.flatMap((position: { positionId: string; text: string }) => fields.flatMap(([fieldKey, names]) => names.flatMap(name => { const literal = `{${name}}`, start = position.text.indexOf(literal); return start < 0 ? [] : [{ positionId: position.positionId, start, end: start + literal.length, fieldKey }]; })));
+        const response = await request(path + "/source-mapping", "PATCH", { expectedRevision: 1, sourceFileId: file.id, sourceSha256: sourceSha, bindings }); expect(response.status).toBe(200); const mapping = await response.json();
+        const inspected = await request(path + "/inspection", "POST"); expect(inspected.status).toBe(201); const report = await inspected.json(); expect(report.blockingErrors).toEqual([]);
+        const queued = await request(path + "/preview-generation", "POST", { contract: { name: "统一清单纯样张", temporaryCode: "UNIFIED-SAMPLE", amount: "113.0000", taxExclusiveAmount: "100.0000", taxAmount: "13.0000", taxExclusiveAmountUppercase: "壹佰元整", taxAmountUppercase: "壹拾叁元整" }, party: { owner: { name: "样张甲方" }, counterparty: { name: "样张乙方" } }, document: { watermark: "样张" }, bill: { materials: [{ rowNumber: "1", itemName: "样张材料", specification: "样张规格", manufacturer: "样张厂家", unit: "件", quantity: "1", taxExclusiveUnitPrice: "100.0000", taxExclusiveAmount: "100.0000", taxRatePercent: "13%", taxUnitPrice: "13.0000", taxAmount: "13.0000", taxInclusiveUnitPrice: "113.0000", taxInclusiveAmount: "113.0000" }] } }); expect(queued.status).toBe(201); const preview = await queued.json();
+        await writeFile(join(directory, "public-template-before-preview.json"), JSON.stringify({ result, file, positions, bindings, mapping, report, preview, sourceSha, sampleIsNotBusinessFacts: true }, null, 2));
+        return { result, file, path, mapping, preview };
+      });
+      const published = await phase("actual-layout-preview-confirm-submit-publish", 130000, async () => {
+        expect(await server.processor.processNext()).toBe(true);
+        const read = await request(layout.path + "/preview-generation"); expect(read.status).toBe(200); const preview = await read.json();
+        await writeFile(join(directory, "public-template-preview-result.json"), JSON.stringify(preview, null, 2)); expect(preview).toMatchObject({ id: layout.preview.id, status: "succeeded", sourceRevision: layout.mapping.draftRevision, previewPdfFileId: expect.any(String) });
+        const confirm = await request(layout.path + "/source-mapping-confirmation", "POST", { expectedRevision: layout.mapping.draftRevision, sourceFileId: layout.file.id, sourceSha256: sourceSha, mappingFingerprint: layout.mapping.mappingFingerprint }); expect(confirm.status).toBe(201);
+        const submit = await request(layout.path + "/submission", "POST"); expect(submit.status).toBe(201);
+        const publish = await request(layout.path + "/publication", "POST", { changeSummary: "本地技术验证：统一材料和运输main清单新源，保留原8d7，不作为生产正式采用" }); expect(publish.status).toBe(201); const result = await publish.json(); expect(result).toMatchObject({ id: layout.result.version.id, status: "published", docxFileId: layout.file.id, draftRevision: layout.mapping.draftRevision });
+        await writeFile(join(directory, "public-template-publication.json"), JSON.stringify({ preview, confirmation: await confirm.json(), result, noProductionAdoption: true }, null, 2)); return result;
+      });
+      delete process.env.FONTCONFIG_FILE;
+      phases.push({ name: "switch-owned-LO-preview-to-locked-docx4j-contract", fontconfigRemoved: true, priorFontconfig, qualifiedContractRuntime: "95f5243446393e03e14472002835ac8607634982b1be420a012b2ea5a5adafab" });
+      const prepared = await phase("public-46-row-save-edit-and-authority-sync", 15000, async () => {
+        const draft = await createTask09Draft(server); const get = (suffix: string) => fetch(draft.base + suffix, { headers: draft.headers }).then(response => { expect(response.status).toBe(200); return response.json(); });
+        const materials = Array.from({ length: 45 }, (_, i) => ({ clientRowKey: "material-" + (i + 1), sortOrder: i, itemCode: "M" + String(i + 1).padStart(3, "0"), itemName: "统一材料" + String(i + 1).padStart(3, "0"), specification: "规格" + (i + 1), unit: "件", quantity: String(i + 1), unitPrice: "113", taxRatePercent: "13", customData: { manufacturer: "合成厂家" + (i + 1), rowNumber: "999", taxUnitPrice: "8888.0000" } }));
+        const transport = { clientRowKey: "transport-46", sortOrder: 45, itemCode: "T046", itemName: "统一运输046", specification: "合成路线A至项目，车型X", unit: "趟", quantity: "2", unitPrice: "56.5", taxRatePercent: "13", customData: { manufacturer: "不适用", ordinaryExtra: "运输独立列示，不重复收费", rowNumber: "998", taxUnitPrice: "8887.0000" } };
+        async function save(rows: Array<Record<string, unknown>>, party: string, plan?: unknown) {
+          const current = await get("/workbench");
+          const response = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({ idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "parties"], draft: { numericProtocolVersion: 2, draftData: { ...current.version.draftData, contractName: "材料与运输统一清单合同", ...(plan === undefined ? {} : { documentBody: plan }) }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: published.id, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: "13", source: "contract_document" } }, parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: party } }, { roleKey: "party_b", displayOrder: 0, snapshot: { name: "统一清单合成乙方" } }], bills: current.bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2, rows })), paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] } }) });
+          const data = await response.json(); await writeFile(join(directory, "last-public-save.json"), JSON.stringify({ status: response.status, data }, null, 2)); expect(response.status).toBe(200);
+        }
+        await save([...materials, transport], "统一清单甲方初始"); const initial = await get("/workbench"); expect(initial.version.amountYuan).toBe("117068.0000");
+        const initialBody = await get("/document-body"), ordinary = initialBody.blocks.find((block: { editable: boolean; text: string }) => block.editable && block.text.startsWith("1.交货方式：")); expect(ordinary).toBeDefined();
+        const manualText = "1.交货方式：材料运至统一仓库，分项运输费用以统一清单为准。";
+        const plan = { protocolVersion: 1, layoutTemplateVersionId: published.id, sourceSha256: sourceSha, edits: [{ positionId: ordinary.id, text: manualText }] };
+        await save([...materials, transport], "统一清单甲方初始", plan); const beforeSync = await get("/workbench");
+        await save([...materials, { ...transport, unitPrice: "113" }], "统一清单同步甲方", plan); const saved = await get("/workbench"), body = await get("/document-body");
+        expect(saved.version.amountYuan).toBe("117181.0000"); expect(saved.version.draftData.documentBody).toEqual(beforeSync.version.draftData.documentBody); expect(saved.bills).toHaveLength(1); expect(saved.bills[0]).toMatchObject({ billKey: "main" }); expect(saved.bills[0].rows).toHaveLength(46);
+        expect(saved.bills[0].rows[44]).toMatchObject({ quantity: "45", taxInclusiveAmountYuan: "5085.0000", taxExclusiveAmountYuan: "4500.0000", taxAmountYuan: "585.0000" });
+        expect(saved.bills[0].rows[45]).toMatchObject({ quantity: "2", taxInclusiveAmountYuan: "226.0000", taxExclusiveAmountYuan: "200.0000", taxAmountYuan: "26.0000" });
+        expect(body).toMatchObject({ sourceSha256: sourceSha, documentContentRevision: saved.version.documentContentRevision, draftRevision: saved.version.draftRevision }); expect(body.blocks.find((block: { id: string }) => block.id === ordinary.id)).toMatchObject({ text: manualText }); expect((await get("/workbench")).version).toEqual(saved.version);
+        await writeFile(join(directory, "public-saved-facts.json"), JSON.stringify({ draft, initial, beforeSync, saved, body, plan, manualText, sourceSha }, null, 2)); Object.defineProperty(server, "store", { get() { throw new Error("准备后不得私读fixture"); } });
+        return { draft, saved, body, plan, manualText };
+      });
+      const output = await phase("public-exact-revision-queue-and-actual-worker", 130000, async () => {
+        const response = await fetch(prepared.draft.base + "/preview-generation", { method: "POST", headers: prepared.draft.headers, body: JSON.stringify({ sourceRevision: prepared.saved.version.draftRevision }) }); expect(response.status).toBe(201); const queued = await response.json();
+        expect(queued).toMatchObject({ documentContentRevision: prepared.saved.version.documentContentRevision, documentContentFingerprint: prepared.saved.version.documentContentFingerprint }); expect(await server.processor.processNext()).toBe(true);
+        const listed = await fetch(base + "/contract-workbench/" + prepared.draft.version.id + "/documents", { headers: prepared.draft.headers }); expect(listed.status).toBe(200); const job = (await listed.json()).find((item: { id: string }) => item.id === queued.generationId);
+        await writeFile(join(directory, "public-generation.json"), JSON.stringify({ queued, job }, null, 2)); expect(job).toMatchObject({ status: "success", documentContentRevision: queued.documentContentRevision, documentContentFingerprint: queued.documentContentFingerprint }); expect(job.inputSnapshot.bodyDocument.sourceSha256).toBe(sourceSha); expect(job.inputSnapshot.bodyDocument.runtimeLockSha256).toBe("95f5243446393e03e14472002835ac8607634982b1be420a012b2ea5a5adafab");
+        expect(job.inputSnapshot.renderInput.values["contract.taxExclusiveAmount"]).toBe("103700.0000"); expect(job.inputSnapshot.renderInput.values["contract.taxAmount"]).toBe("13481.0000"); expect(job.inputSnapshot.renderInput.values["bill.materials"][45]).toMatchObject({ rowNumber: "46", taxUnitPrice: "13.0000", manufacturer: "不适用", ordinaryExtra: "运输独立列示，不重复收费" }); return job;
+      });
+      await phase("authorized-two-formats-and-physical-observation", 25000, async () => {
+        const pair: Partial<Record<"docx" | "pdf", Buffer>> = {};
+        for (const [format, id] of [["docx", output.docxFileId], ["pdf", output.pdfFileId]] as const) {
+          const ticket = await fetch(base + "/files/" + id + "/download-ticket", { method: "POST", headers: prepared.draft.headers, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对统一材料及运输46行同修订Word和PDF" }) }); expect(ticket.status).toBe(201); const value = await ticket.json(); const read = await fetch(base + value.downloadUrl); expect(read.status).toBe(200); pair[format] = Buffer.from(await read.arrayBuffer()); await writeFile(join(directory, "actual." + format), pair[format]!);
+        }
+        const exported = new PizZip(pair.docx!); for (const part of ["word/styles.xml", "word/fontTable.xml", "word/settings.xml", "word/footer1.xml", "word/footer2.xml"]) expect(exported.file(part)!.asNodeBuffer()).toEqual(selected.file(part)!.asNodeBuffer());
+        const ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main", word = new DOMParser().parseFromString(exported.file("word/document.xml")!.asText(), "application/xml");
+        const tables = Array.from(word.getElementsByTagNameNS(ns, "tbl")); expect(tables).toHaveLength(2); expect(tables[0].getElementsByTagNameNS(ns, "gridCol").length).toBe(13); const tableRows = Array.from(tables[0].getElementsByTagNameNS(ns, "tr")); expect(tableRows).toHaveLength(49);
+        const textOf = (node: typeof word | (typeof tables)[number]) => Array.from(node.getElementsByTagNameNS(ns, "t")).map(item => item.textContent ?? "").join(""); const wordText = textOf(word);
+        // Use the unchanged public inspector with an explicit child environment.
+        // Jest's process.env copy does not control spawnSync's inherited native env.
+        const { realpath } = await import("node:fs/promises");
+        const { relative, isAbsolute, dirname } = await import("node:path");
+        const python = process.env.TEMPLATE_PDF_INSPECTOR_PYTHON, manifestPath = process.env.TEMPLATE_PDF_RUNTIME_MANIFEST;
+        if (!python || !manifestPath) throw new Error("统一清单物理检查需要已锁定检查器及运行清单");
+        const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+        const workspace = await realpath(manifest.workspace), artifacts = await realpath(manifest.artifactDirectory);
+        const below = (parent: string, child: string) => { const path = relative(parent, child); return Boolean(path) && !path.startsWith("..") && !isAbsolute(path); };
+        const temporaryRoots = [await realpath(tmpdir()), await realpath("/tmp")];
+        if (!temporaryRoots.some(root => below(root, workspace)) || !below(workspace, artifacts) || dirname(await realpath(manifestPath)) !== workspace) throw new Error("物理检查目录不在自有隔离运行目录内");
+        const physicalDirectory = await mkdtemp(join(artifacts, "physical-unified-"));
+        await writeFile(join(physicalDirectory, "source.docx"), pair.docx!); await writeFile(join(physicalDirectory, "actual.pdf"), pair.pdf!);
+        await writeFile(join(physicalDirectory, "runtime-witness.json"), JSON.stringify(output.inputSnapshot.inspection.runtime));
+        const inspectionEnv = { PATH: "/usr/bin:/bin", HOME: "/Users/leoyang", LANG: "C", LC_ALL: "C", TZ: "Asia/Shanghai", TEMPLATE_PDF_RUNTIME_MODE: "font-profile", PYTHONDONTWRITEBYTECODE: "1" };
+        const arguments_ = [resolve(__dirname, "../../test-support/inspect-contract-pdf-physical.py"), join(physicalDirectory, "source.docx"), join(physicalDirectory, "actual.pdf"), join(physicalDirectory, "receipt.json"), manifestPath, join(physicalDirectory, "runtime-witness.json")];
+        const inspected = await promisify(execFile)(python, arguments_, { env: inspectionEnv, encoding: "utf8", timeout: 20000, maxBuffer: 2 * 1024 * 1024 });
+        await writeFile(join(physicalDirectory, "inspection.log"), inspected.stdout + inspected.stderr);
+        const semanticText = inspected.stdout.split("---SEMANTIC-TEXT---\n")[1]; if (semanticText === undefined) throw new Error("物理检查器未返回语义文本");
+        const pdfText = semanticText.replace(/\s/gu, "");
+        const totals = await promisify(execFile)(python, [resolve(__dirname, "../../test-support/inspect-unified-material-total-lines.py"), join(directory, "actual.pdf"), join(directory, "totals-line-receipt.json"), "103700.0000", "13481.0000", "117181.0000"], { env: inspectionEnv, encoding: "utf8", timeout: 20000, maxBuffer: 2 * 1024 * 1024 });
+        await writeFile(join(directory, "physical-cli.json"), JSON.stringify({ python, arguments: arguments_, environmentExactly: inspectionEnv, exitCode: 0, originalStrictReceipt: join(physicalDirectory, "receipt.json"), totals: JSON.parse(totals.stdout), scope: "Original strict inspector unchanged; extra total-row physical line assertion" }, null, 2));
+        for (const value of [prepared.manualText, "统一清单同步甲方", "统一清单合成乙方", "统一材料001", "统一材料045", "统一运输046", "117181.0000", "103700.0000", "13481.0000", "5085.0000", "226.0000", "同一运输费用不得重复计入材料行单价或另行收取", "买方（章）", "卖方（章）"]) { expect(wordText).toContain(value); expect(pdfText).toContain(value.replace(/\s/gu, "")); }
+        expect(wordText).not.toContain("统一清单甲方初始"); expect(wordText).not.toContain("8888.0000");
+        const totalCells = Array.from(tableRows[48].getElementsByTagNameNS(ns, "tc"));
+        expect(totalCells.map(cell => Number(cell.getElementsByTagNameNS(ns, "gridSpan")[0]?.getAttributeNS(ns, "val") ?? "1"))).toEqual([5, 1, 2, 1, 2, 2]);
+        expect(totalCells.map(cell => textOf(cell))).toEqual(["清单合计（含运输）", "", "103700.0000", "", "13481.0000", "117181.0000"]);
+        const materialTail = textOf(tableRows[46]), transportTail = textOf(tableRows[47]); expect(materialTail).toContain("统一材料045"); expect(materialTail).toContain("4500.0000"); expect(materialTail).toContain("585.0000"); expect(transportTail).toContain("统一运输046"); expect(transportTail).toContain("200.0000"); expect(transportTail).toContain("26.0000");
+        await writeFile(join(directory, "physical-observation.json"), JSON.stringify({ docxSha256: hash(pair.docx!), pdfSha256: hash(pair.pdf!), wordRows: tableRows.length, columns: 13, footerProgramsFromNewSource: true, originalFloatingBboxEquivalence: "UNPROVEN", pagePaintRequiresIndependentObservation: true, scope: "True public template publication and contract same-revision dual-format output in owned synthetic server; not production adoption" }, null, 2));
+      });
+      console.info("材料运输统一新版本首实物：" + directory);
+    } catch (cause) { await writeFile(join(directory, "failure.txt"), String(cause instanceof Error ? cause.stack : cause)); throw new Error("统一材料运输首纵向失败，证据 " + directory, { cause }); }
+    finally { if (priorFontconfig === undefined) delete process.env.FONTCONFIG_FILE; else process.env.FONTCONFIG_FILE = priorFontconfig; await server.processor.onApplicationShutdown(); await server.app.close(); }
+  }, 210000);
+});

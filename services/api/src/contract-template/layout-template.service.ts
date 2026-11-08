@@ -1,3 +1,5 @@
+import { DOMParser } from "@xmldom/xmldom";
+import { CONTRACT_DOCX_ALLOWED_FONTS } from "../contract-document/contract-document-font-policy";
 import { CompanyRoleResolverService, COMPANY_ROLE_RESOLUTION_ERROR } from "../auth/company-role-resolver.service";
 import { LAYOUT_TEMPLATE_READ_ROLES } from "./layout-template-file-access";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
@@ -785,18 +787,24 @@ export class LayoutTemplateService {
     }
 
     const allowedFonts = new Set(
-      (process.env.DOC_ALLOWED_FONTS ?? "Noto Sans CJK SC,宋体,仿宋,黑体")
+      (process.env.DOC_ALLOWED_FONTS ?? CONTRACT_DOCX_ALLOWED_FONTS)
         .split(",")
         .map((font) => font.trim())
         .filter(Boolean)
     );
-    const declaredFonts = [
-      ...new Set(
-        [...styles.matchAll(/w:(?:ascii|hAnsi|eastAsia|cs)="([^"]+)"/g)].map(
-          (match) => match[1]
-        )
-      )
-    ];
+    let declaredFonts: string[] = [];
+    if (styles) {
+      if (/<!DOCTYPE|<!ENTITY/iu.test(styles)) throw new BadRequestException("DOCX 版式文件无法读取，请重新上传");
+      try {
+        const parsed = new DOMParser({ onError: () => { throw new Error("invalid XML"); } }).parseFromString(styles, "application/xml");
+        const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        declaredFonts = [...new Set(Array.from(parsed.getElementsByTagNameNS(namespace, "rFonts")).flatMap(font =>
+          ["ascii", "hAnsi", "eastAsia", "cs"].map(name => font.getAttributeNS(namespace, name)).filter((value): value is string => Boolean(value))
+        ))];
+      } catch {
+        throw new BadRequestException("DOCX 版式文件无法读取，请重新上传");
+      }
+    }
     const disallowedFonts = declaredFonts.filter((font) => !allowedFonts.has(font));
     if (disallowedFonts.length) {
       blockingErrors.push(`Disallowed fonts: ${disallowedFonts.join(", ")}`);

@@ -14,6 +14,7 @@ import {
 } from "@nestjs/common";
 import {
   businessAmountFromLegacyCents,
+  calculateBusinessLineAmount,
   sumBusinessAmounts,
   CONTRACT_INVOICE_TYPES,
   contractInvoiceTypeLabel,
@@ -1320,7 +1321,7 @@ export class ContractDocumentService {
       }
     }
     for (const bill of bills) {
-      values[`bill.${bill.billKey}`] = bill.rows.map((row) => {
+      values[`bill.${bill.billKey}`] = bill.rows.map((row, rowIndex) => {
         const decimalRow = row.numericProtocolVersion === 2;
         const semanticRow = decimalRow && moneySemantics;
         const unknownAmount = semanticRow ? "待确定" : "—";
@@ -1339,6 +1340,30 @@ export class ContractDocumentService {
                   row.quantity.toString()
                 ) ?? "—"
             : "—";
+        // Optional unit-tax display is a decomposition of existing facts, not
+        // a second tax calculation. Rounded line facts can make a unit split
+        // inconsistent (especially tiny quantities); keep that cell unknown.
+        let taxUnitPrice = unknownAmount;
+        if (semanticRow && row.quantity != null && row.unitPrice != null && row.taxExclusiveUnitPrice != null &&
+          row.taxInclusiveAmountYuan != null && row.taxExclusiveAmountYuan != null && row.taxAmountYuan != null) {
+          const grossUnit = bill.pricingMode === "tax_exclusive" ? derivedGrossUnit : row.unitPrice.toString();
+          if (grossUnit !== null) {
+            const split = new ContractRenderDecimal(grossUnit).minus(row.taxExclusiveUnitPrice);
+            if (!split.isNegative()) {
+              try {
+                const quantity = row.quantity.toString();
+                if (calculateBusinessLineAmount(quantity, grossUnit) === row.taxInclusiveAmountYuan.toFixed(4) &&
+                  calculateBusinessLineAmount(quantity, row.taxExclusiveUnitPrice.toString()) === row.taxExclusiveAmountYuan.toFixed(4) &&
+                  calculateBusinessLineAmount(quantity, split.toFixed(4)) === row.taxAmountYuan.toFixed(4)) {
+                  taxUnitPrice = split.toFixed(4);
+                }
+              } catch {
+                // A value outside the existing four-decimal display protocol
+                // cannot qualify this optional cell; original facts stay intact.
+              }
+            }
+          }
+        }
         return {
           ...(this.isObject(row.customData) ? row.customData : {}),
           // Preserve unknown values. These original mechanical labels consume
@@ -1348,6 +1373,8 @@ export class ContractDocumentService {
             ? row.customData.fuelIncluded ? "是" : "否" : this.isObject(row.customData) ? row.customData.是否含燃油 ?? "" : "",
           是否带操作人员: this.isObject(row.customData) && typeof row.customData.operatorIncluded === "boolean"
             ? row.customData.operatorIncluded ? "是" : "否" : this.isObject(row.customData) ? row.customData.是否带操作人员 ?? "" : "",
+          rowNumber: String(rowIndex + 1),
+          taxUnitPrice,
           itemCode: row.itemCode ?? "",
           itemName: row.itemName,
           specification: row.specification ?? "",

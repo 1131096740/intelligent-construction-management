@@ -24,7 +24,7 @@ function fixtureSource(kind: "legacy" | "offline") {
 export async function runFrozenPendingLoCase(kind: "legacy" | "offline") {
   const started = performance.now(), phases: Array<Record<string, unknown>> = [];
   const repository = await realpath(resolve(__dirname, "../../../.."));
-  if (repository !== "/private/tmp/jg-382-task10-final-integration-20261108" || await realpath(process.cwd()) !== join(repository, "services/api")) throw new Error("只允许准确任务10隔离API目录");
+  if (repository !== "/private/tmp/jg-382-task10-material-unified-20261108" || await realpath(process.cwd()) !== join(repository, "services/api")) throw new Error("只允许准确任务10隔离API目录");
   const expectation = process.env.TASK10_LO_PENDING_EXPECT;
   if (!["observe", "failed", "trusted"].includes(expectation ?? "")) throw new Error("必须明确历史任务字体观测模式");
   const manifest = JSON.parse(await readFile(process.env.TEMPLATE_PDF_RUNTIME_MANIFEST!, "utf8")) as { fontconfig: {path: string; sha256: string}; converter: {native: {path: string; sha256: string}; wrapper: {path: string; sha256: string}}; fonts: Array<{path: string; sha256: string}> };

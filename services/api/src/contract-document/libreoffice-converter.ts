@@ -1,3 +1,4 @@
+import { CONTRACT_DOCX_ALLOWED_FONTS, LEGACY_OFFICE_ALLOWED_FONTS } from "./contract-document-font-policy";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +7,6 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_ALLOWED_FONTS = "Noto Sans CJK SC,宋体,仿宋,黑体";
 export const CONVERSION_TIMEOUT_MS = 120_000;
 
 export interface ExecFileResult {
@@ -56,12 +56,13 @@ function isTimeoutError(cause: unknown): boolean {
 async function assertFontsAvailable(
   declaredFonts: readonly string[],
   runner: ExecFileRunner,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  defaultAllowedFonts: string
 ): Promise<void> {
   const fonts = uniqueFonts(declaredFonts);
   const allowedFonts = new Set(
     uniqueFonts(
-      (process.env.DOC_ALLOWED_FONTS ?? DEFAULT_ALLOWED_FONTS).split(",")
+      (process.env.DOC_ALLOWED_FONTS ?? defaultAllowedFonts).split(",")
     ).map((font) => font.toLocaleLowerCase())
   );
   const disallowedFonts = fonts.filter(
@@ -119,7 +120,8 @@ async function convertOfficeToPdf(
   await assertFontsAvailable(
     declaredFonts,
     runner,
-    options.platform ?? process.platform
+    options.platform ?? process.platform,
+    extension === "docx" ? CONTRACT_DOCX_ALLOWED_FONTS : LEGACY_OFFICE_ALLOWED_FONTS
   );
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "contract-doc-"));
