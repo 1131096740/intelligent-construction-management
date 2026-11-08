@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，用户接受Task10限定阶段收口，转Task12）
+
+- [x] 用户明确选择“阶段收口，继续任务12”；准确8b08a1ff的正文编辑/同步/双格式及材料批本地证据按local-stage-closed接受，阶段计数14/45。CON-10正式提交提醒consumer未完成，需求完整交#394，不计整条通过；旧410/409保持至完整新提交可用。
+- [~] 本批仅Task10/12控制文档、任务图、本账本及已有整合收据五文档；代码/模板/测试/治理与8b08逐blob同，不重跑业务/模拟/七治理。准确干净新HEAD另封source-only、带[skip ci]推原Draft428；#392关闭与#394领取须先按真实GitHub状态回读，不提前报完成。
+- [ ] #398/真实PG、迁移恢复/全链/发布及16/42/44门保持，阶段关闭不等生产Go；不mainmerge/ready/部署或生产写，其它树/WIP保留。
+
 ## 当前接续（2026-11-08，Task10统一材料运输与compact/fonts已整合）
 
 - [~] 作者ffce7c20以no-ff合入原integration f6538c3e，final446b完整17路径/15源码同已审eb1b，两轴最终执行/doc桥0、整树相等。三compact按确认负准入；新3fcd独立材料+非零运输模板，46行公有SAVE/同步/同R_F实际Word/PDF与合计单行，343后端及LO分批/14治理证据分层保留。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task10-material-unified-integrated.md)。

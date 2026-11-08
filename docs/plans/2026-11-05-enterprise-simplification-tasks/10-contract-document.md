@@ -1,6 +1,6 @@
 # 10：完整合同独立标签编辑同步及双格式导出
 
-**状态：** `plan-confirmed` / `in-progress`；已实时核08/09前置关闭并[领取#392](https://github.com/1131096740/intelligent-construction-management/issues/392#issuecomment-6676495364)。用户已确认完整正文公开HTTP/服务/双端真实UI和实际DOCX/PDF物理测试边界；从最新干净中央隔离实施，真实PG仅准备，资源/迁移/真实业务/部署与生产写仍另需授权。
+**状态：** `plan-confirmed` / `local-stage-closed`。2026-11-08用户明确接受“阶段收口，继续任务12”，以准确实现与本地证据 `8b08a1ff244ed6cd84f4536041ef9270673f35b3` 按正文编辑、同步及双格式导出阶段收口；GitHub #392按此限定关闭，不代表CON-10正式提交流程或生产验收全部完成。CON-10提交提醒的receipt生产者已具备，正式提交consumer与后继联动由[任务12 #394](12-contract-lifecycle.md)承接，原需求保留，不降级为硬阻断或删去确认后继续。真实PG、迁移、恢复、全链及发布门仍待验。
 
 **类型：** 业务垂直片。目标为一个新会话可完成的边界；如果探索发现仍跨越多个独立用户路径，应先收窄票据再执行。
 
@@ -13,6 +13,8 @@
 **技术决定：** [技术方案](../2026-11-05-enterprise-simplification-technical-plan.md) D04。**公开验收：** [验收情景](../2026-11-05-enterprise-simplification-acceptance.md) A07、A09、A33。
 
 ## 验收条件
+
+以下保留完整原验收条文；本次是用户明确接受的本地阶段关闭，未完成的CON-10正式提交consumer不勾作全量通过。阶段范围与实际/闭包证据见[材料批整合收据](../../progress/2026-11-08-enterprise-simplification-task10-material-unified-integrated.md)。
 
 - [ ] CON-10：正文可调整/修改/新增普通条款，可选择插入位置；模板未带出的附加空白在正文标示并可填；提交时提醒检查，确认后可继续，不追加未确认的硬阻断。
 - [ ] CON-11：甲乙方、金额等关键资料以填写页为权威；正文中这些位置通过返回填写页修改并同步；普通条款可自由编辑。
