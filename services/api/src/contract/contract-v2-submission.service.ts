@@ -1,0 +1,180 @@
+import { freezeInsideContractSigningIdentity } from "./contract-v2-signing-identity";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
+import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
+import { AuditService } from "../audit/audit.service";
+import { BusinessNumberingService } from "../business-number/business-numbering.service";
+import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
+import { confirmedLayoutSourceMapping } from "../contract-template/layout-field-mapping";
+import { SubmitContractDraftDto } from "../contract-workbench/dto/contract-workbench.dto";
+import { assertFormalContractCodeNotTombstoned } from "../contract-workbench/contract-formal-code-tombstone";
+import { lockContractDraftMutationBoundary } from "./contract-draft-lifecycle";
+import { ContractApprovalRouteService } from "./contract-approval-route.service";
+import { resolveContractOriginators } from "./contract-originators";
+import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import { contractParallelDutyIdentity, contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "./contract-parallel-duty-access";
+import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
+import { confirmApprovalSelfReview } from "../approval/approval-self-review";
+import { snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { AuthService } from "../auth/auth.service";
+
+const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item));
+function conflict(message: string): never { throw new ConflictException(message); }
+
+/** Explicit v2 consumer of saved Task10 outputs. Legacy serial submissions stay separate. */
+@Injectable()
+export class ContractV2SubmissionService {
+  constructor(private readonly prisma: PrismaService, private readonly files: FileService,
+    private readonly routes: ContractApprovalRouteService, private readonly numbers: BusinessNumberingService,
+    private readonly audit: AuditService, private readonly auth: AuthService) {}
+
+  async reviewIfV2(contractVersionId: string, actorUserId: string, input: ReviewContractApprovalDto) {
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE`);
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      if (version?.numericProtocolVersion !== 2) return null;
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${input.expectedApprovalInstanceId} FOR UPDATE`);
+      const round = await tx.approvalInstance.findUnique({ where: { id: input.expectedApprovalInstanceId } });
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      const activeRounds = await tx.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: version.id, flowType: "contract.approve", status: "in_progress" } });
+      const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
+      if (!contract || contract.voidedAt || version.status !== "in_approval" || !round || activeRounds.length !== 1 || activeRounds[0].id !== round.id || round.businessId !== version.id || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || !isParallelApprovalRound(round.frozenNodes) || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint) conflict("当前合同审批轮次已变化，请刷新后重试");
+      if (version.updatedAt.getTime() !== Date.parse(input.expectedContractUpdatedAt) || round.updatedAt.getTime() !== Date.parse(input.expectedApprovalUpdatedAt)) conflict("当前合同或审批资料已变化，请刷新后重试");
+      if (input.decision === "reject_previous") throw new BadRequestException("并联审批没有上一节点，请填写意见并退回经办人");
+      const identity = await contractParallelDutyIdentity(tx, round, contract.projectId, actorUserId, input.expectedNodeIndex);
+      if (!identity) throw new ForbiddenException("当前账号无权处理这项合同审批职责");
+      if (input.decision !== "approve" && !input.comment?.trim()) throw new BadRequestException("退回合同时请填写审批意见");
+      const selfReview = await confirmApprovalSelfReview({ applicantUserId: round.applicantUserId,
+        originatorUserIds: await resolveContractOriginators(tx, version.id, round.frozenNodes), actorUserId,
+        actorRoleKeys: identity.representedUserId === actorUserId ? [identity.approvedRoleKey] : [], ...identity,
+        allowContractDirectorSelfReview: true, selfReviewReason: input.selfReviewReason, confirmationPassword: input.confirmationPassword,
+        confirmPassword: password => this.auth.confirmPassword(actorUserId, password, tx) });
+      const signature = input.decision === "approve" ? await snapshotApprovalSignature(tx, actorUserId, { required: true }) : null;
+      const approvalAction = await tx.approvalActionLog.create({ data: await withApprovalIdentity(tx, {
+        approvalInstanceId: round.id, action: input.decision, actorUserId, approvedRoleKey: identity.approvedRoleKey,
+        representedUserId: identity.representedUserId, comment: input.comment?.trim() ?? null,
+        signatureFileIdSnapshot: signature?.fileId, signatureSha256Snapshot: signature?.sha256, signatureVersionIdSnapshot: signature?.versionId,
+        metadata: json({ nodeIndex: input.expectedNodeIndex, delegationId: identity.delegationId, ...selfReview.metadata })
+      }, signature) });
+      const nodes = round.frozenNodes.map((node, index) => index === input.expectedNodeIndex && input.decision === "approve" ? { ...node, approvedRoleKeys: [...(node.approvedRoleKeys as string[]), identity.approvedRoleKey] } : node);
+      const pending = activeApprovalNodeIndexes(nodes, 0);
+      const status = input.decision !== "approve" ? "draft" : pending.length ? "in_approval" : "approved_pending_seal";
+      await tx.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: json(nodes), currentNodeIndex: pending[0] ?? nodes.length, status: input.decision !== "approve" ? "rejected" : pending.length ? "in_progress" : "approved" } });
+      await tx.contractVersion.update({ where: { id: version.id }, data: { status } });
+      if (status === "approved_pending_seal") {
+        // This is a confirmation handoff, never another seal-approval round.
+        const existing = await tx.contractSealTask.findUnique({ where: { approvalInstanceId: round.id } });
+        const active = await tx.contractSealTask.findFirst({ where: { contractVersionId: version.id, status: { not: "cancelled" } } });
+        if (existing || active) conflict("当前合同已有盖章办理任务，请刷新后核对");
+        const task = await tx.contractSealTask.create({ data: { contractVersionId: version.id, approvalInstanceId: round.id, handlerUserId: round.applicantUserId, status: "in_seal", approvedByUserId: approvalAction.actorUserId, approvedAt: approvalAction.createdAt } });
+        await this.audit.record(tx, { actorUserId, action: "contract.seal_task.create", businessType: "contract_version", businessId: version.id,
+          metadata: json({ submissionProtocolVersion: 2, sealTaskId: task.id, approvalInstanceId: round.id, handlerUserId: round.applicantUserId, pendingRoleKey: "comprehensive_director", handoffKind: "parallel_approval_released_for_offline_seal", internalApprovalActionId: approvalAction.id, internalApproverUserId: approvalAction.actorUserId }) });
+      }
+      await this.audit.record(tx, { actorUserId, action: `contract.approval.${input.decision}`, businessType: "contract_version", businessId: version.id, metadata: json({ approvalInstanceId: round.id, nodeIndex: input.expectedNodeIndex, approvedRoleKey: identity.approvedRoleKey, representedUserId: identity.representedUserId }) });
+      return { contractVersionId, approvalInstanceId: round.id, status };
+    });
+  }
+
+  async confirmSeal(contractVersionId: string, actorUserId: string, input: ConfirmContractSealV2Dto) {
+    if (!input.confirmed) throw new BadRequestException("请核对线下盖章已完成后再确认");
+    return this.prisma.$transaction(async tx => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE`);
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${input.expectedApprovalInstanceId} FOR UPDATE`);
+      const round = await tx.approvalInstance.findUnique({ where: { id: input.expectedApprovalInstanceId } });
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractSealTask" WHERE "id" = ${input.expectedSealTaskId} FOR UPDATE`);
+      const task = await tx.contractSealTask.findUnique({ where: { id: input.expectedSealTaskId } });
+      const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
+      if (!version || version.numericProtocolVersion !== 2 || !round || round.businessType !== "contract_version" || round.businessId !== version.id || round.flowType !== "contract.approve" || round.status !== "approved" || activeApprovalNodeIndexes(round.frozenNodes, 0).length || !task || task.contractVersionId !== version.id || task.approvalInstanceId !== round.id || task.handlerUserId !== round.applicantUserId || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== input.documentContentRevision || snapshot.documentContentFingerprint !== input.documentContentFingerprint || version.documentContentRevision !== input.documentContentRevision || version.documentContentFingerprint !== input.documentContentFingerprint) conflict("盖章任务或正文已变化，请刷新后核对当前合同");
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract || contract.voidedAt) conflict("当前合同不能确认盖章");
+      if (!(await hasActiveContractGlobalRole(tx, actorUserId, "comprehensive_director"))) throw new ForbiddenException("只有当前综合部主管可以确认线下盖章完成");
+      const result = { contractVersionId, approvalInstanceId: round.id, sealTaskId: task.id, status: "seal_approved_pending_archive" };
+      if (task.status === "completed" && task.completedByUserId === actorUserId && ["seal_approved_pending_archive", "effective"].includes(version.status)) return result;
+      if (version.status !== "approved_pending_seal" || task.status !== "in_seal" || !task.approvedByUserId || !task.approvedAt) conflict("当前盖章任务已处理，请刷新后重试");
+      const completedAt = new Date();
+      await tx.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: actorUserId, completedAt } });
+      await tx.contractVersion.update({ where: { id: version.id }, data: { status: "seal_approved_pending_archive" } });
+      await this.audit.record(tx, { actorUserId, action: "contract.seal.complete", businessType: "contract_version", businessId: version.id,
+        metadata: json({ ...result, documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint, confirmed: true, confirmationRoleKey: "comprehensive_director", handlerUserId: task.handlerUserId }) });
+      await this.audit.record(tx, { actorUserId, action: "contract.archive_task.create", businessType: "contract_version", businessId: version.id,
+        metadata: json({ approvalInstanceId: round.id, sealTaskId: task.id, handlerUserId: task.handlerUserId }) });
+      return result;
+    });
+  }
+
+  async submit(contractVersionId: string, actorUserId: string, input: SubmitContractDraftDto, leaseToken?: string) {
+    const requestSha256 = hash(JSON.stringify({ contractVersionId, actorUserId,
+      expectedRevision: input.expectedRevision, submissionProtocolVersion: input.submissionProtocolVersion,
+      documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint,
+      generatedDocumentId: input.generatedDocumentId, sourceSha256: input.sourceSha256, blanksReviewed: input.blanksReviewed }));
+    return this.prisma.$transaction(async tx => {
+      const boundary = await lockContractDraftMutationBoundary<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>(tx, contractVersionId);
+      if (!boundary) conflict("未找到当前合同，请刷新后重试");
+      const receipt = await tx.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+      if (receipt) {
+        if (receipt.contractVersionId !== contractVersionId || receipt.applicantUserId !== actorUserId || receipt.requestSha256 !== requestSha256) conflict("本次提交标识已用于其他内容，请刷新后重新提交");
+        return receipt.responseSnapshot;
+      }
+      const version = boundary.version;
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract || contract.voidedAt || version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.status !== "draft" || boundary.formalBlockers.length) conflict("当前合同不能从新版草稿入口提交");
+      if (contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以提交审批");
+      await tx.$queryRaw(Prisma.sql`SELECT "contractVersionId" FROM "ContractDraftEditLease" WHERE "contractVersionId" = ${contractVersionId} FOR UPDATE`);
+      const lease = await tx.contractDraftEditLease.findUnique({ where: { contractVersionId } });
+      if (!leaseToken || !lease || lease.holderUserId !== actorUserId || lease.expiresAt.getTime() <= Date.now() || lease.tokenHash !== hash(leaseToken)) conflict("编辑权已变化，请重新取得编辑权后提交");
+      if (version.draftRevision !== input.expectedRevision || version.documentContentRevision !== input.documentContentRevision || version.documentContentFingerprint !== input.documentContentFingerprint) conflict("合同正文或资料已变化，请保存并重新检查当前正文");
+      if (!input.blanksReviewed || !version.layoutTemplateVersionId) conflict("请先检查当前正文的空位，再确认继续提交");
+      const layout = await assertSelectableLayoutVersion(tx, this.files, version.layoutTemplateVersionId, contract.contractTypeKey);
+      const mapping = confirmedLayoutSourceMapping(layout);
+      if (!mapping || mapping.sourceSha256 !== input.sourceSha256) conflict("合同模板原文已变化，请重新检查当前正文");
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractGeneratedDocument" WHERE "id" = ${input.generatedDocumentId} FOR UPDATE`);
+      const document = await tx.contractGeneratedDocument.findUnique({ where: { id: input.generatedDocumentId } });
+      const trace = document?.inputSnapshot as Prisma.JsonObject | undefined;
+      const sourceMapping = trace?.layoutSourceMapping as Prisma.JsonObject | undefined;
+      if (!document || document.contractVersionId !== contractVersionId || document.status !== "success" || document.layoutTemplateVersionId !== layout.id || document.sourceRevision !== version.draftRevision || trace?.documentContentRevision !== version.documentContentRevision || trace?.documentContentFingerprint !== version.documentContentFingerprint || trace?.templateFileId !== layout.docxFileId || sourceMapping?.sourceSha256 !== mapping.sourceSha256 || !document.docxFileId || !document.pdfFileId || document.docxFileId === document.pdfFileId) conflict("当前正文的Word和PDF尚未就绪，请生成当前版本后再提交");
+      const frozenFiles = [];
+      for (const [id, mime] of [[document.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], [document.pdfFileId, "application/pdf"]]) {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "FileObject" WHERE "id" = ${id} FOR SHARE`);
+        const file = await tx.fileObject.findUnique({ where: { id } });
+        const stored = await this.files.getFileBuffer(id).catch(() => conflict("当前正文文件不可读取或校验失败，请重新生成后提交"));
+        if (!file || file.storageStatus !== "active" || file.mimeType !== mime || file.contentSha256 !== hash(stored.buffer) || file.sizeBytes !== stored.buffer.length) conflict("当前正文文件校验失败，请重新生成后提交");
+        frozenFiles.push({ fileId: id, contentSha256: file.contentSha256, sizeBytes: file.sizeBytes, mimeType: file.mimeType });
+      }
+      const [parties, bills, paymentTerms, attachments] = await Promise.all([
+        tx.contractPartySnapshot.findMany({ where: { contractVersionId } }), tx.contractBill.findMany({ where: { contractVersionId } }),
+        tx.paymentTermsVersion.findFirst({ where: { contractVersionId }, orderBy: { createdAt: "desc" } }), tx.contractDraftAttachment.findMany({ where: { contractVersionId } })
+      ]);
+      const submissionTime = new Date();
+      const { formalVersion, identity } = await freezeInsideContractSigningIdentity(tx, version, contract, submissionTime);
+      const rows = await tx.contractBillRow.findMany({ where: { contractBillId: { in: bills.map(bill => bill.id) } } });
+      const stages = paymentTerms ? await tx.paymentTermsStage.findMany({ where: { paymentTermsVersionId: paymentTerms.id } }) : [];
+      const originatorUserIds = [...new Set([...(await resolveContractOriginators(tx, version.id)), actorUserId])].sort();
+      const frozenNodes = (await this.routes.freezeNewContractRoute(tx, contract, actorUserId, true)).map(node => ({ ...node, originatorUserIds }));
+      const formalCode = contract.code ?? await this.numbers.allocateDaily(tx, "HT");
+      await assertFormalContractCodeNotTombstoned(tx, formalCode);
+      // A mutable current-version projection must never be the only copy of a
+      // submitted round. Omit its prior projection to avoid recursive snapshots.
+      const { readinessSnapshot: _previousSubmission, ...versionFacts } = formalVersion;
+      void _previousSubmission;
+      const snapshot = json({ submissionProtocolVersion: 2, contractVersionId, applicantUserId: actorUserId, draftRevision: version.draftRevision,
+        documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
+        layoutTemplateVersionId: layout.id, businessTemplateVersionId: version.businessTemplateVersionId, sourceSha256: mapping.sourceSha256,
+        formalCode, versionFacts, signingIdentity: identity, templateSnapshot: version.templateSnapshot, layoutSnapshot: layout, draftData: version.draftData, clauseSnapshot: version.clauseSnapshot,
+        amountYuan: version.amountYuan?.toFixed(4) ?? null,
+        taxFacts: { invoiceType: version.invoiceType, taxMode: version.taxMode, defaultTaxRatePercent: version.defaultTaxRatePercent }, parties, bills, rows, paymentTerms: paymentTerms ? { ...paymentTerms, stages } : null,
+        attachments, generatedDocumentId: document.id, files: frozenFiles, blanksReviewed: true });
+      const round = await tx.approvalInstance.create({ data: { businessType: "contract_version", businessId: contractVersionId, flowType: "contract.approve", applicantUserId: actorUserId, status: "in_progress", currentNodeIndex: 0, frozenNodes: json(frozenNodes.map((node, index) => index === 0 ? { ...node, submissionSnapshot: snapshot } : node)) } });
+      await tx.contractVersion.update({ where: { id: contractVersionId }, data: { status: "in_approval", firstSubmittedAt: version.firstSubmittedAt ?? submissionTime, readinessSnapshot: snapshot } });
+      await tx.contract.update({ where: { id: contract.id }, data: { code: formalCode } });
+      const response = { contractVersionId, approvalInstanceId: round.id, formalCode, status: "in_approval" };
+      await tx.contractDraftSubmissionRequest.create({ data: { idempotencyKey: input.idempotencyKey, contractVersionId, expectedRevision: input.expectedRevision, applicantUserId: actorUserId, requestSha256, approvalInstanceId: round.id, formalCode, responseSnapshot: response } });
+      await this.audit.record(tx, { actorUserId, action: "contract.approval.submit", businessType: "contract_version", businessId: contractVersionId, metadata: json(response) });
+      return response;
+    });
+  }
+}

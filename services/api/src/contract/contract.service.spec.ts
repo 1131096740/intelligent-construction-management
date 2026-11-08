@@ -1,4 +1,5 @@
 import { Test } from "@nestjs/testing";
+import { ContractV2SubmissionService } from "./contract-v2-submission.service";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
@@ -518,7 +519,7 @@ describe("ContractService", () => {
     const service = new ContractService({ $transaction: jest.fn(async (run: (client: typeof tx) => unknown) => run(tx)) } as never, audit as never);
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractService, useValue: service },
-      ...[ContractDraftAggregateService, ContractDraftEditLeaseService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+      ...[ContractDraftAggregateService, ContractDraftEditLeaseService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
     ] }).compile();
     const app = module.createNestApplication();
     app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });

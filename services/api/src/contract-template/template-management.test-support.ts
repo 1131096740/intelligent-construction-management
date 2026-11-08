@@ -1,4 +1,8 @@
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
+import { ContractApprovalRouteService } from "../contract/contract-approval-route.service";
+import { ContractSealService } from "../contract/contract-seal.service";
 import { ContractController } from "../contract/contract.controller";
+import { apiJsonReplacer } from "../api-json-replacer";
 import { ProjectController } from "../project/project.controller";
 import { ProjectService } from "../project/project.service";
 import { ContractCutoverGuard } from "../contract-cutover/contract-cutover.guard";
@@ -71,6 +75,7 @@ function matches(row: Row, where: Row = {}): boolean {
   return Object.entries(where).every(([key, expected]) => {
     if (key === "OR") return (expected as Row[]).some(item => matches(row, item));
     if (key === "AND") return (expected as Row[]).every(item => matches(row, item));
+    if (key === "companyEntityId_versionNo") return matches(row, expected as Row);
     const value = row[key];
     if (expected && typeof expected === "object" && !Array.isArray(expected)) {
       const rule = expected as Row;
@@ -151,6 +156,25 @@ export class TemplateSyntheticStore {
         : /Schema$|Report$|^sampleData$|^inputSnapshot$/u.test(key) ? jsonbValue(value)
         : value;
     }
+    if (tableName === "contractVersion" && row.signingSubjectType === "draft_unconfirmed") {
+      // Independent literal oracle: 20261106090000 ContractVersion_signing_subject_check.
+      if (row.numericProtocolVersion !== 2 || !["draft", "abandoned"].includes(String(row.status)) || row.firstSubmittedAt != null || row.effectiveAt != null || [row.affiliateAssignmentId, row.affiliateBusinessPartyVersionId, row.affiliateNameSnapshot, row.affiliateCreditCodeSnapshot].some(value => value != null)) {
+        throw new Error("合成持久层拒绝未确认签约主体进入正式状态");
+      }
+    }
+    if (tableName === "contractSealTask") {
+      // Literal oracle from 20260717130000 migration, not Prisma's String type.
+      const approved = row.approvedByUserId != null && row.approvedAt != null;
+      const unapproved = row.approvedByUserId == null && row.approvedAt == null;
+      const completed = row.completedByUserId != null && row.completedAt != null;
+      const uncompleted = row.completedByUserId == null && row.completedAt == null;
+      const uncancelled = row.cancelledByUserId == null && row.cancelledAt == null && row.cancellationReason == null;
+      const valid = row.status === "pending_approval" && unapproved && uncompleted && uncancelled ||
+        row.status === "in_seal" && approved && uncompleted && uncancelled ||
+        row.status === "completed" && approved && completed && uncancelled ||
+        row.status === "cancelled" && (approved || unapproved) && (completed || uncompleted) && row.cancelledByUserId != null && row.cancelledAt != null && typeof row.cancellationReason === "string" && row.cancellationReason.trim().length > 0;
+      if (!valid) throw new Error("合成持久层拒绝违反ContractSealTask现有CHECK的状态事实");
+    }
     row.updatedAt = new Date();
   }
 
@@ -158,6 +182,8 @@ export class TemplateSyntheticStore {
     authRateLimit: this.table("authRateLimit"),
     user: this.table("user"), userPosition: this.table("userPosition"), position: this.table("position"),
     project: this.table("project"), projectRosterMember: this.table("projectRosterMember"),
+    companyEntity: this.table("companyEntity"), companyEntityVersion: this.table("companyEntityVersion"),
+    projectParticipatingCompany: this.table("projectParticipatingCompany"),
     projectMember: this.table("projectMember"), refreshToken: this.table("refreshToken"), auditLog: this.table("auditLog"),
     fileObject: this.table("fileObject"), contractLayoutTemplate: this.table("contractLayoutTemplate"),
     contractLayoutTemplateVersion: this.table("contractLayoutTemplateVersion"), contractLayoutPreviewJob: this.table("contractLayoutPreviewJob"),
@@ -169,6 +195,8 @@ export class TemplateSyntheticStore {
     // Explicitly empty adjacent-domain bindings for the real private-file policy.
     approvalActionLog: this.table("approvalActionLog"),
     approvalInstance: this.table("approvalInstance"),
+    approvalDelegation: this.table("approvalDelegation"),
+    handwrittenSignatureVersion: this.table("handwrittenSignatureVersion"),
     contractArchiveFile: this.table("contractArchiveFile"),
     generalProcurement: this.table("generalProcurement"),
     invoiceExceptionConfirmation: this.table("invoiceExceptionConfirmation"),
@@ -192,6 +220,7 @@ export class TemplateSyntheticStore {
     spotProcurementPaymentExecution: this.table("spotProcurementPaymentExecution"),
     contractDraftEditLease: this.table("contractDraftEditLease"),
     contractDraftSaveRequest: this.table("contractDraftSaveRequest"),
+    contractDraftSubmissionRequest: this.table("contractDraftSubmissionRequest"),
     contractDraftAttachment: this.table("contractDraftAttachment"),
     contractDraftCheckpoint: this.table("contractDraftCheckpoint"),
     paymentTermsVersion: this.table("paymentTermsVersion"),
@@ -234,8 +263,68 @@ export class TemplateSyntheticStore {
         const row = await this.prisma.businessDailySequence.upsert({ where: { prefix, businessDate }, create: { prefix, businessDate, nextSequence: 2 }, update: { nextSequence: { increment: 1 } } });
         return [{ sequence: Number(row.nextSequence) - 1 }];
       }
+      // Evaluate only the exact approval-assignment SQL emitted by the real route.
+      const projectProjection = (count: number, actor: boolean) => `WITH members AS MATERIALIZED ( SELECT pm."projectId", pm."userId", pm."positionKey" AS "roleKey", u."isActive" AS "userIsActive" FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId" WHERE pm."projectId" = ? AND u."isActive" = TRUE AND pm."positionKey" IN (${Array(count).fill("?").join(",")}) ${actor ? 'AND pm."userId" = ? ' : ''}FOR SHARE OF pm, u ), positions AS MATERIALIZED ( SELECT up."projectId", up."userId", p."key" AS "roleKey", u."isActive" AS "userIsActive" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" = ? AND u."isActive" = TRUE AND p."key" IN (${Array(count).fill("?").join(",")}) ${actor ? 'AND up."userId" = ? ' : ''}FOR SHARE OF up, p, u ) SELECT * FROM members UNION SELECT * FROM positions`;
+      const projectShape = [[1, true], [2, false]].find(([count, actor]) => text === projectProjection(Number(count), Boolean(actor)));
+      if (projectShape) {
+        const count = Number(projectShape[0]), actor = Boolean(projectShape[1]);
+        const width = 1 + count + Number(actor);
+        if (query.values.length !== width * 2 || query.values.slice(0, width).some((v, i) => v !== query.values[width + i])) throw new Error("合成职责投影参数不符");
+        const projectId = query.values[0], roles = query.values.slice(1, count + 1), actorId = actor ? query.values[count + 1] : undefined;
+        const positions = await this.prisma.position.findMany();
+        const members = (await this.prisma.projectMember.findMany({ where: { projectId } })).map(row => ({ userId: row.userId, roleKey: row.positionKey }));
+        const assignments = (await this.prisma.userPosition.findMany({ where: { projectId } })).map(row => ({ userId: row.userId, roleKey: positions.find(p => p.id === row.positionId)?.key }));
+        const users = await this.prisma.user.findMany();
+        return [...members, ...assignments].filter(row => roles.includes(row.roleKey as string) && (!actor || row.userId === actorId) && users.some(u => u.id === row.userId && u.isActive === true)).map(row => ({ projectId, userId: row.userId, roleKey: row.roleKey, userIsActive: true }));
+      }
+      const applicantSql = 'SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" IS NULL AND up."userId" = ? AND p."key" IN (\'contract_director\', \'contract_staff\') AND u."isActive" = TRUE FOR SHARE OF up, p, u';
+      const liveGlobalShape = [1, 2, 3].find(count => text === `SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" IS NULL AND up."userId" = ? AND u."isActive" = TRUE AND p."key" IN (${Array(count).fill("?").join(",")}) FOR SHARE OF up, p, u`);
+      if (liveGlobalShape) {
+        if (query.values.length !== liveGlobalShape + 1) throw new Error("合成当前职责参数不符");
+        const users = await this.prisma.user.findMany(), positions = await this.prisma.position.findMany();
+        const actorId = query.values[0], roles = query.values.slice(1);
+        return (await this.prisma.userPosition.findMany({ where: { userId: actorId, projectId: null } })).flatMap(row => {
+          const position = positions.find(p => p.id === row.positionId);
+          return position && roles.includes(String(position.key)) && users.some(u => u.id === row.userId && u.isActive === true) ? [{ userId: row.userId, roleKey: position.key }] : [];
+        });
+      }
+      const candidateSql = 'SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" IS NULL AND u."isActive" = TRUE AND p."key" IN ( \'contract_director\', \'material_director\', \'comprehensive_director\', \'finance_director\', \'chairman\', \'general_manager\' ) FOR SHARE OF up, p, u';
+      if (text === applicantSql || text === candidateSql) {
+        if (query.values.length !== (text === applicantSql ? 1 : 0)) throw new Error("合成全局职责参数不符");
+        const positions = await this.prisma.position.findMany(), users = await this.prisma.user.findMany();
+        const roles = text === applicantSql ? ["contract_staff", "contract_director"] : ["contract_director", "material_director", "comprehensive_director", "finance_director", "chairman", "general_manager"];
+        return (await this.prisma.userPosition.findMany({ where: { projectId: null } })).flatMap(row => {
+          const position = positions.find(p => p.id === row.positionId);
+          return position && roles.includes(String(position.key)) && users.some(u => u.id === row.userId && u.isActive === true) && (text !== applicantSql || row.userId === query.values[0]) ? [{ userId: row.userId, roleKey: position.key }] : [];
+        });
+      }
       const id = query.values[0];
+      if (text === `SELECT "id" FROM "ApprovalInstance" WHERE "businessType" = 'contract_version' AND "businessId" = ? AND "flowType" = 'contract.approve' AND ( "id" = ? OR "status" = 'in_progress' ) ORDER BY "id" FOR UPDATE`) {
+        if (query.values.length !== 2) throw new Error("合成审批锁参数不符");
+        return this.prisma.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: id, flowType: "contract.approve", OR: [{ id: query.values[1] }, { status: "in_progress" }] } });
+      }
+      if (text === 'SELECT "id" FROM "ProjectParticipatingCompany" WHERE "projectId" = ? AND "companyEntityId" = ? ORDER BY "id" FOR SHARE') {
+        if (query.values.length !== 2 || query.values.some(value => typeof value !== "string")) throw new Error("合成公司参与关系锁参数不符");
+        return this.prisma.projectParticipatingCompany.findMany({ where: { projectId: id, companyEntityId: query.values[1] } });
+      }
       if (typeof id !== "string" || !query.values.every(value => value === id)) throw new Error("合成锁投影参数不符");
+      if (text === 'SELECT "id" FROM "ContractVersion" WHERE "id" = ? FOR UPDATE') return this.prisma.contractVersion.findMany({ where: { id } });
+      if (text === 'SELECT "id" FROM "Contract" WHERE "id" = ? FOR UPDATE') return this.prisma.contract.findMany({ where: { id } });
+      if (text === 'SELECT "id", "contractId", "status", "contractGovernanceVersion", "numericProtocolVersion" FROM "ContractVersion" WHERE "id" = ? FOR UPDATE') return this.prisma.contractVersion.findMany({ where: { id } });
+      if (text === `SELECT "id", "contractVersionId", "approvalInstanceId", "handlerUserId", "status" FROM "ContractSealTask" WHERE "contractVersionId" = ? AND "status" <> 'cancelled' ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`) return (await this.prisma.contractSealTask.findMany({ where: { contractVersionId: id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } })).slice(0, 1);
+      if (text === 'SELECT "id" FROM "CompanyEntity" WHERE "id" = ? FOR UPDATE') return this.prisma.companyEntity.findMany({ where: { id } });
+      if (text === 'SELECT "id" FROM "ApprovalInstance" WHERE "id" = ? FOR UPDATE') return this.prisma.approvalInstance.findMany({ where: { id } });
+      if (text === 'SELECT "id" FROM "ContractSealTask" WHERE "id" = ? FOR UPDATE') return this.prisma.contractSealTask.findMany({ where: { id } });
+      if (text === 'SELECT "id" FROM "ApprovalDelegation" WHERE "id" = ? FOR SHARE') return this.prisma.approvalDelegation.findMany({ where: { id } });
+      if (text === 'SELECT "id", "isActive" FROM "User" WHERE "id" = ? FOR SHARE') return this.prisma.user.findMany({ where: { id } });
+      if (text === 'SELECT "id", "isActive", "name" FROM "User" WHERE "id" = ? FOR UPDATE') return this.prisma.user.findMany({ where: { id } });
+      if (text === `SELECT "id", "fileId", "contentSha256" FROM "HandwrittenSignatureVersion" WHERE "userId" = ? AND "source" = 'canvas' ORDER BY "createdAt" DESC, "id" DESC LIMIT 1 FOR UPDATE`) return (await this.prisma.handwrittenSignatureVersion.findMany({ where: { userId: id, source: "canvas" }, orderBy: { createdAt: "desc" } })).slice(0, 1);
+      if (text === 'SELECT "id", "contentSha256", "storageStatus" FROM "FileObject" WHERE "id" = ? FOR UPDATE') return this.prisma.fileObject.findMany({ where: { id } });
+      if (text === `SELECT a."actorUserId" FROM "ContractVersion" v JOIN "AuditLog" a ON (v."baseVersionId" IS NOT NULL AND a."businessType" = 'contract_version' AND a."businessId" = v."id" AND a."action" = 'contract.change_draft.create') OR (v."baseVersionId" IS NULL AND a."businessType" = 'contract' AND a."businessId" = v."contractId" AND a."action" IN ('contract.draft.create', 'contract.draft.copy')) WHERE v."id" = ? ORDER BY a."id"`) {
+      const version = await this.prisma.contractVersion.findUnique({ where: { id } });
+        if (!version || version.baseVersionId !== null) throw new Error("本合成来源投影仅登记原合同");
+        return (await this.prisma.auditLog.findMany({ where: { businessType: "contract", businessId: version.contractId, action: { in: ["contract.draft.create", "contract.draft.copy"] } } })).map(row => ({ actorUserId: row.actorUserId }));
+      }
       if (text === 'SELECT "id", "isActive" FROM "Project" WHERE "id" = ? FOR UPDATE') { const project = await this.prisma.project.findUnique({ where: { id } }); return project ? [project] : []; }
       // Current FileService first checks the registered-payment voucher join.
       // These contract-only fixtures create no voucher relation; a future
@@ -257,6 +346,8 @@ export class TemplateSyntheticStore {
         if (!documents.some(document => document.docxFileId === id || document.pdfFileId === id)) throw new Error("合成文件引用投影仅支持已生成文书的正引用事实");
         return [{ referenced: true }];
       }
+      if (text === 'SELECT "id" FROM "ContractGeneratedDocument" WHERE "id" = ? FOR UPDATE') return this.prisma.contractGeneratedDocument.findMany({ where: { id } });
+      if (text === 'SELECT "id" FROM "FileObject" WHERE "id" = ? FOR SHARE') return this.prisma.fileObject.findMany({ where: { id } });
       const version = await this.prisma.contractVersion.findUnique({ where: { id } });
       if (text === 'SELECT c.* FROM "Contract" c INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id" WHERE cv."id" = ? FOR UPDATE OF c') {
         const contract = version ? await this.prisma.contract.findUnique({ where: { id: version.contractId } }) : null;
@@ -335,6 +426,8 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
       { provide: ContractDraftAggregateService, useFactory: (files: FileService) => new ContractDraftAggregateService(prisma, new ContractWorkbenchService(prisma, audit), new ContractBillService(prisma, audit), new BusinessPartyService(prisma, audit), files, audit), inject: [FileService] },
       { provide: ContractDraftEditLeaseService, useFactory: () => new ContractDraftEditLeaseService(prisma, auth, audit) },
       // Real creation and read-only project choices join the same guarded workbench seam.
+      ContractApprovalRouteService, BusinessNumberingService, ContractV2SubmissionService,
+      { provide: ContractSealService, useFactory: () => new ContractSealService(prisma, audit, undefined, auth) },
       { provide: ContractService, useFactory: () => new ContractService(prisma, audit) },
       { provide: ContractWorkbenchService, useFactory: () => new ContractWorkbenchService(prisma, audit) },
       { provide: ProjectService, useFactory: () => new ProjectService(prisma, audit, auth) }, { provide: PristineDraftDeletionService, useValue: {} }
@@ -351,6 +444,7 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
   const documents = module.get(ContractDocumentService);
   if (module.get(CONTRACT_VERSION_FILE_READ_AUTHORITY) !== module.get(ContractReadService)) throw new Error("合同文件读取权威必须复用同一只读服务");
   const app = module.createNestApplication({ logger: options.draftWorkbench ? ["error"] : false });
+  app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
   app.useGlobalPipes(createApiValidationPipe());
   app.useGlobalGuards(new JwtAuthGuard(new Reflector(), tokens, prisma), new RetiredWriteEntryGuard(), new OperationalWriteFreezeGuard(new OperationalWriteFreezeService()), new AccountRateLimitGuard(new AuthRateLimitService(prisma)), new PermissionGuard(new Reflector(), prisma), new ContractCutoverGuard(new Reflector()));
   await app.listen(0, "127.0.0.1");

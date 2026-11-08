@@ -3442,8 +3442,11 @@ export class ContractService {
   async approveSeal(contractVersionId: string, actorUserId: string) {
     const governed = await this.prisma.contractVersion?.findUnique({
       where: { id: contractVersionId },
-      select: { contractGovernanceVersion: true }
+      select: { contractGovernanceVersion: true, numericProtocolVersion: true }
     });
+    if (governed?.numericProtocolVersion === 2) {
+      throw new ConflictException("新版合同请使用当前轮次的盖章确认入口");
+    }
     if (governed?.contractGovernanceVersion === 1) {
       throw new Error("受治理合同请使用用章确认入口");
     }

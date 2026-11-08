@@ -1,4 +1,6 @@
 import { ApprovalProgressService } from "../approval/approval-progress.service";
+import { ContractV2SubmissionService } from "./contract-v2-submission.service";
+import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
 import {
   BadRequestException,
   Body,
@@ -81,7 +83,8 @@ export class ContractController {
     @Optional() private readonly authorizations?: ContractAuthorizationService,
     @Optional() private readonly seals?: ContractSealService,
     @Optional() private readonly pristineDeletion?: PristineDraftDeletionService,
-    @Optional() private readonly approvalProgress?: ApprovalProgressService
+    @Optional() private readonly approvalProgress?: ApprovalProgressService,
+    @Optional() private readonly preciseLifecycle?: ContractV2SubmissionService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -290,12 +293,13 @@ export class ContractController {
 
   @Post(":contractVersionId/approval")
   @RequireProjectRole("contract.approve")
-  reviewApproval(
+  async reviewApproval(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: ReviewContractApprovalDto
   ) {
-    return this.contracts.reviewApproval(contractVersionId, user.id, body);
+    const precise = await this.preciseLifecycle?.reviewIfV2(contractVersionId, user.id, body);
+    return precise ?? this.contracts.reviewApproval(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/approval-transfer")
@@ -365,6 +369,17 @@ export class ContractController {
   ) {
     if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
     return this.seals.complete(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/seal-confirmation")
+  @RequireProjectRole("contract.seal")
+  confirmParallelContractSeal(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmContractSealV2Dto
+  ) {
+    if (!this.preciseLifecycle) throw new InternalServerErrorException("合同盖章确认服务暂不可用，请稍后重试");
+    return this.preciseLifecycle.confirmSeal(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/formal-files/counterparty")

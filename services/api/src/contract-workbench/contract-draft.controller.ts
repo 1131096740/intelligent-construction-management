@@ -18,6 +18,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { createHash } from "node:crypto";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
@@ -46,7 +47,8 @@ export class ContractDraftController {
     @Inject(forwardRef(() => ContractService))
     private readonly contracts: ContractService,
     private readonly deletion: PristineDraftDeletionService,
-    private readonly documents: ContractDocumentService
+    private readonly documents: ContractDocumentService,
+    private readonly v2Submission: ContractV2SubmissionService
   ) {}
 
   @Get(":contractVersionId/save-requests/:idempotencyKey")
@@ -157,12 +159,9 @@ export class ContractDraftController {
     @Body() body: SubmitContractDraftDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.contracts.submitApproval(
-      contractVersionId,
-      user.id,
-      body,
-      leaseToken
-    );
+    return body.submissionProtocolVersion === 2
+      ? this.v2Submission.submit(contractVersionId, user.id, body, leaseToken)
+      : this.contracts.submitApproval(contractVersionId, user.id, body, leaseToken);
   }
 
   @Post(":contractVersionId/edit-lease")

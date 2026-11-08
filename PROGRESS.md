@@ -1,3 +1,15 @@
+## Task12 identity A1 审查修复（2026-11-08，HOLD待增量双轴）
+
+- [~] 原A0两轴各1P2已按原公开HTTP接缝实际RED→GREEN：参与关系按稳定公司ID/北京业务日半开期间核唯一，当前签约公司v2与加入时v1分开留存，不改参与历史；复用shared chinaDateOnly，仅Date列用业务日参数，snapshot occurredAt仍真实时刻。[本地收据](docs/progress/2026-11-08-task12-post-precision-identity-local.md)。
+- [~] 原8suite新519通过/520总数，1既有PG门skip；私有203全API type/lint/diff0。北京凌晨与普通时段开始当日可入、停止当日拒，真实current-v2/open-participant-v1正控及旧来源漂移拒保持。原A0 20源/516及各失败原件保，完整+delta另封。
+- [ ] 仍只表内身份首片，不含归档/direct/outside/upward/Web/todo/COMMIT后验，不关闭#394/不开放cap。203/SDK/依赖守恒门保，无204/真实PG/SQL/资源/Git写；204物理提案仅外部暂停草稿，不作为源码GO。
+
+## Task12 后精度表内主体冻结首片（2026-11-08，HOLD待双轴）
+
+- [~] 准确中央2b69621a新隔离树承接原A2已审16源，私有203依赖COPY/四binding/287成员新inode与来源及中央全manifest守恒。[本地收据](docs/progress/2026-11-08-task12-post-precision-identity-local.md)。表内首public HTTP从独立模拟现SQL CHECK真实RED到GREEN；复用真实正文生成器的company selection→甲方语义，无新增角色必填，正式冻结真实公司版本/参与期间及同R_F，同轮snapshot保正式事实。
+- [~] 8套公开真实类+fakeDB/文件回归516通过、1既有PG门skip；私有203全API type/lint及diff通过。公司版本/状态/期间变化拒绝，同名不同公司选择使正文修订/指纹变化、旧tuple拒。首夹具TS/未声明字段400/锁投影失败另存，不冒CHECK证据。
+- [ ] 此片仅表内身份前提及原并联/撤回/单盖章基础；表外/对上来源、inline/upward归档、CON10 Web、todo与完整矩阵未完成，cap不开放/#394不关闭。Schema/203/旧迁移未变，无204、真实PrismaClient/PG/SQL/网关/COMMIT验证、commit/push/部署；原HOLD16及money/Task16候选保持。
+
 ## 经营精度与 Task16 Schema203 已审整合（2026-11-08）
 
 - [~] 已审 money c4d+A4 fe8 与 Task16 07b0 一次合入原integration 5f646a4a，merge完整tree与准确验证作者相同；仅后继两MD登记。[整合收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-integrated.md)。

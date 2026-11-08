@@ -447,6 +447,31 @@ export class SubmitContractDraftDto {
 
   @IsUUID("4", { message: "提交幂等键必须是 UUID" })
   idempotencyKey!: string;
+
+  @IsOptional()
+  @IsIn([2])
+  submissionProtocolVersion?: 2;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @IsIntegerInRange({ min: 1, max: 2_147_483_647, typeMessage: "正文修订必须是整数", rangeMessage: "正文修订必须大于0" })
+  documentContentRevision?: number;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @Matches(/^[a-f0-9]{64}$/u)
+  documentContentFingerprint?: string;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @IsUUID("4")
+  generatedDocumentId?: string;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @Matches(/^[a-f0-9]{64}$/u)
+  sourceSha256?: string;
+
+  @ValidateIf(o => o.submissionProtocolVersion === 2)
+  @IsBoolean()
+  blanksReviewed?: boolean;
+
 }
 
 export class GenerateContractDraftPreviewDto {

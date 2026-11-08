@@ -15,6 +15,7 @@ import {
   ContractNumberRuleController
 } from "./contract.controller";
 import { ContractReadService } from "./contract-read.service";
+import { ContractV2SubmissionService } from "./contract-v2-submission.service";
 import { ContractService } from "./contract.service";
 import { ContractStatusService } from "./contract-status.service";
 import { ContractApprovalRouteService } from "./contract-approval-route.service";
@@ -39,6 +40,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   controllers: [ContractController, ContractNumberRuleController],
   providers: [
     ContractService,
+    ContractV2SubmissionService,
     ContractStatusService,
     ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
@@ -50,6 +52,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   ],
   exports: [
     ContractService,
+    ContractV2SubmissionService,
     ContractStatusService,
     ContractReadService,
     CONTRACT_VERSION_FILE_READ_AUTHORITY,
