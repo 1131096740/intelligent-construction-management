@@ -1,3 +1,10 @@
+## 经营精度与 Task16 Schema203 已审整合（2026-11-08）
+
+- [~] 已审 money c4d+A4 fe8 与 Task16 07b0 一次合入原integration 5f646a4a，merge完整tree与准确验证作者相同；仅后继两MD登记。[整合收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-integrated.md)。
+- [~] 准确07b完整单次367、CLI27、fixture20、经营34suite/1148、私有203API类型/lint、19CJS与24+45pins全过；首审两P2已原公开fake修复/v2双轴0，旧失败保留。中央旧202依赖未写，私有no-engine仅types/source，不具原生资格。
+- [~] 干净07b源码包实际3496/203/7/1 prepare+verify通过；最终两MD HEAD需另实际封包，结果按准确最终SHA保外部收据。SOURCE_ONLY闭门，未执行SQL、真实SDK/Nest/PG或资源。
+- [ ] #398及真实16/42/44门仍开，14/45仅阶段数；#392限定local-stage closed，#394进行/CON10 consumer待Task12，旧410/409保留。Draft428不ready/mainmerge/部署；空checks非CI，旧误触事故保留。
+
 ## Task16 Schema203首审修复（2026-11-08，HOLD待增量复核）
 
 - [~] 原bafc完整27路径双轴共2项P2已在原public run实际RED→最小GREEN：SDK未知嵌套写/别名逃逸改为完整已审index SHA或有限纯literal数据AST；V2 Impact单列TABLE三处returnType纠正text，Fact仍record/set/完整OUT。无SDK执行或SQL解析执行。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-local.md)。
