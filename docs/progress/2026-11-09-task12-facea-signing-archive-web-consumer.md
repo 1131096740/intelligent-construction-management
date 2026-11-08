@@ -1,3 +1,19 @@
+# 当前整合：CON10与FaceA归档Web源码（2026-11-09，SOURCE/mock）
+
+原integration从345e440e仅FF并正常推送W `09570c896be0a84547b940bdea9e873fa39cee9c` / tree `d9028df151f1e073e90b76f6826be3182a5256de`。父 `fc2f2d92f7a1778b13bc6022ba8474f653874076` 是345与原CON10 `84cb33ea755c2bf16a619d5d6670c66511d7873b` 的真实merge，未改写84cb。新A3双轴复审0，十四冻结输入/十三实际Web变更；shared DTO763496与中央相同，未制造重复shared改动。唯一预期PROGRESS冲突依准确e08共同base保中央前缀/84cb前缀/整个base，再加Web独有前缀；其它产品源同已审字节/模式。每个新增提交均[skip ci]/Refs #382 #394。
+
+准确clean W新独立验证：66归档浏览器（33桌面1366×900＋33手机Chromium390×844touch）、24原CON10、230 Vitest（API139＋draft82＋archiveconfig9）通过；4个原有最窄公开backend suite共370/370，覆盖真实类/Nest＋fake的正式提交/归档/原key后验/档案详情及私有ticket下载。Task16指定prepare/run/runtime-inputs三个公共source文件108/108，0fail/skip/cancel、64788.983ms；Web/e2e/所有fixture+两config及API类型、全lint、UI、wrapper语法、diff、58＋78pins均通过。lint0errors/1078warnings原件保。旧代码S2 934f0b4e的50suite2120＋1既有PGskip与完整386是历史，未在W重复386，不跨SHA宣新成绩。
+
+首66＋24浏览器在sandbox的Chromium MachPort权限失败发生于页面前，全部日志/trace保；同owned localhost fakeHTTP命令经自动审查批准在sandbox外通过。新66份JSON逐一独立解码消费：未知网络0/pageerror0/未知console.error0，30次浏览器HTTP错误与30个当前显式fullURL/status mock负控一一对应、剩余0。归档及CON10 wrapper日志均0未声明598/proxyerror/ECONNREFUSED；原CON10 fixture未安装新context诊断，不追溯冒该层证明。十张新desktop/mobile图全部实际查看：准确审批空态/无原技术红条、资料库2/2与通用规则、V1旧动作和PDF、UNKNOWN双PDF锁态/查询/原请求继续。Chromium触控不是Safari或实体机；A2坏图、错误mock/历史localhost3000拒绝自动尝试与所有首败不覆盖。
+
+W实际clean publicCLI SOURCE_ONLY prepare/verify：3522源码、204迁移、7prepared片、1静态案；packet `657de8bec5e93eb3ae0a505021a806860a20654ebf9f17fabb68b16f80b7e3bd`，seal `e6dc989537bf9c832c419109de061ed59a800c0fff179e4553c4fe2d3dd1e4cc`，executionAllowed/resourceExecutorImplemented=false。此后仅PROGRESS与本收据两MD追加当前前缀、原全文保为后缀；所有非MD与W逐blob/mode相同，不为文档重跑业务。最终准确docHEAD及其新prepare/verify另绑定外部stage2 receipt/PR前缀，不能拿W packet充新SHA。
+
+中央旧SDK202、node_modules/dist保持原样，不在中央运行类型/构建。own验证树用合格私有204完整COPY及缺失Web子树，零共享inode，workspace归自树；source3f/generatedb168、11成员/305模型/四exactrelocation和sharedDTS0e5d匹配，JS全保。own仅Vite cache变化；供体/作者/84cb/9a4及全部旧artifact保全。metadata只AST/JSON；backend测试允许已核纯Prisma.sql/Decimal namespace，不构造真实Client/引擎/连接；无install/generate。
+
+服务端webWriteReleased/cap仍false，browsertrue仅未来发布模拟，不新增本机flag。实际baseline依旧首ownerSQL/child前NOT_IMPLEMENTED/NOT_ATTEMPTED，driver384cc前置SOURCE_ONLY不变；不补GRANT/假R_app或R_file/引擎资格。未真实联合后端浏览器、SQL/parser/PG/ACL/RLS/锁调度/COMMIT/资金/资源/网关/SMS；FaceB/direct/表外/对上/inline/完整5×3与真实16/42/44门仍pending，#394/#398 OPEN，14/45只限定阶段。Draft428不ready/mainmerge/关票/部署或生产；准确新SHA零Actions/checks/status只NON-CI，旧fe70误触与取消历史保持。
+
+## 以下完整保留原作者阶段记录（按其原候选与当时边界）
+
 # Task12 FaceA 签章归档 Web consumer — 本地 HOLD
 
 基线 `84cb33ea755c2bf16a619d5d6670c66511d7873b`。隔离树 `/private/tmp/jg-task12-archive-web-consumer-20261109`，不提交、不推送、不合并、不部署、不关闭 #394。

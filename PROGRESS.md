@@ -1,3 +1,10 @@
+## 当前落地：CON10与FaceA签章归档Web源码整合（2026-11-09）
+
+- [~] 原integration已仅FF并正常推送准确W `09570c896be0a84547b940bdea9e873fa39cee9c` / tree `d9028df151f1e073e90b76f6826be3182a5256de`；原CON10 `84cb33ea`通过真实merge `fc2f2d92`进入祖先，再承接A3十四输入、十三实际Web变更。shared763496与中央同字节；PROGRESS保中央/CON10/Web前缀及完整base。[本轮收据](docs/progress/2026-11-09-task12-facea-signing-archive-web-consumer.md)。
+- [~] 准确W独立66归档browser＋24 CON10、230 Vitest、最窄4套公开backend370、Task16指定3源门108项全过；Web/e2e/allfixture/API类型、lint/UI/wrapper/diff及58＋78pins通过。十张新图实际查看；66份JSON未知网络/pageerror/console均0，30次HTTP错误精确消费30个显式URL/status负控。首90个MachPort页面前infra失败原日志/trace保；同命令获批重跑后通过，不冒业务RED。旧S2的50/2120＋1PGskip和完整386仅历史，不报W重跑386。
+- [~] W clean实际SOURCE_ONLY prepare/verify为3522源/204迁移/7片/1案，packet `657de8bec5e93eb3ae0a505021a806860a20654ebf9f17fabb68b16f80b7e3bd`，executionAllowed/resourceExecutorImplemented=false。后继仅两MD，新准确docHEAD包另封，不能挪W包。非Web非MD全部源码/mode/blob与345同；中央旧SDK202及依赖/dist守恒，验证来自own私有204 COPY，未安装/生成或构造真实Client。
+- [ ] 仍source/mock，服务端webWriteReleased/cap=false；模拟cap=true不开放生产。baseline NOT_IMPLEMENTED/NOT_ATTEMPTED与driver384cc前置SOURCE_ONLY不变；真实联合backend-browser/PG/ACL/RLS/锁/COMMIT/资金/资源及16/42/44、FaceB/direct/表外/对上/inline/完整5×3未验。#394/#398保持OPEN，14/45仅限定阶段；Draft428不ready/mainmerge/关票/部署或生产写，零Actions/checks只NON-CI。原localhost3000拒绝尝试、A2坏图/夹具、fe70事故和所有首败保留。
+
 ## Task12 FaceA 盖章与签章归档 Web consumer（2026-11-09，A3本地 HOLD）
 
 - [~] 隔离树以已审 84cb33ea 为基线，消费后端 A1 immutable DTO；仅 generated_approval / inside_original，主管人工确认我方盖章，原合同员有序上传1至20份签章PDF并人工核对后归档。能力只来自后端，真实 runtime cap 仍关闭。
