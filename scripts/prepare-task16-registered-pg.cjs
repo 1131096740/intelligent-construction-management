@@ -85,7 +85,7 @@ function sourceSnapshot(repo, candidateSha) {
   });
   for (const required of [...FRAGMENTS, CASE_SOURCE, FIXTURE, SCHEMA, `${MIGRATIONS}/migration_lock.toml`]) need(files.some(row => row.path === required), "REQUIRED_INPUT_MISSING");
   const migrations = files.filter(row => row.path.startsWith(`${MIGRATIONS}/`) && row.path.endsWith("/migration.sql"));
-  need(migrations.length === 202, "MIGRATION_COUNT_MISMATCH");
+  need(migrations.length === 203, "MIGRATION_COUNT_MISMATCH");
   need(JSON.stringify(members(root, MIGRATIONS, name => name.endsWith("/migration.sql"))) === JSON.stringify(migrations.map(row => row.path)), "MIGRATION_MEMBERSHIP_MISMATCH");
   need(JSON.stringify(members(root, SQL_ROOT, name => name.endsWith(".sql"))) === JSON.stringify([...FRAGMENTS].sort()), "FRAGMENT_MEMBERSHIP_MISMATCH");
   need(git(root, "rev-parse", "HEAD").trim() === candidateSha, "SOURCE_CHANGED_DURING_CAPTURE");

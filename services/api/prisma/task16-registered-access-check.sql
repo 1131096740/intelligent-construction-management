@@ -17,6 +17,11 @@ CREATE TEMP VIEW jg_task16_acl_now AS
     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
     CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE n.nspname='public'
   UNION ALL
+  SELECT 'type',t.oid,0::smallint,a.grantor,a.grantee,a.privilege_type,a.is_grantable
+    FROM pg_catalog.pg_type t
+    CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(t.typacl,pg_catalog.acldefault('T',t.typowner))) a
+   WHERE t.oid IN ('public."OperatingLedgerFactWritePayloadV2"'::regtype,'public."OperatingLedgerImpactWritePayloadV2"'::regtype)
+  UNION ALL
   SELECT 'schema',n.oid,0::smallint,a.grantor,a.grantee,a.privilege_type,a.is_grantable
     FROM pg_catalog.pg_namespace n CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(n.nspacl,pg_catalog.acldefault('n',n.nspowner))) a WHERE n.nspname='public'
   UNION ALL
@@ -28,6 +33,7 @@ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $matrix$
 DECLARE role_plan JSONB; table_plan JSONB; role_name TEXT; role_oid OID; rel RECORD; col RECORD; f RECORD; d RECORD; proof JSONB; op TEXT; expected BOOLEAN; owner_oid OID;
 BEGIN
  SELECT oid INTO STRICT owner_oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_owner';
+ IF NOT (__SCHEMA203_PROOF_SQL__) OR (__SCHEMA203_TYPE_ACL_SQL__) IS DISTINCT FROM __SCHEMA203_TYPE_ACL_JSON__::jsonb THEN RAISE EXCEPTION 'task16 schema203 caller/type continuity changed'; END IF;
  IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname='public' AND n.nspowner IN (owner_oid,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='pg_database_owner'))) THEN RAISE EXCEPTION 'task16 public schema owner changed'; END IF;
  FOR role_plan IN SELECT (CASE WHEN final_stage THEN plan ELSE plan->'before' END)->'runtime' UNION ALL SELECT (CASE WHEN final_stage THEN plan ELSE plan->'before' END)->'observer' LOOP
   role_name:=role_plan->>'role'; SELECT oid INTO STRICT role_oid FROM pg_catalog.pg_roles WHERE rolname=role_name;

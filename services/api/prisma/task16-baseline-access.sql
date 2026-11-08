@@ -22,6 +22,11 @@ CREATE TEMP VIEW jg_task16_acl_now AS
     FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
     CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a WHERE n.nspname='public'
   UNION ALL
+  SELECT 'type',t.oid,0::smallint,a.grantor,a.grantee,a.privilege_type,a.is_grantable
+    FROM pg_catalog.pg_type t
+    CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(t.typacl,pg_catalog.acldefault('T',t.typowner))) a
+   WHERE t.oid IN ('public."OperatingLedgerFactWritePayloadV2"'::regtype,'public."OperatingLedgerImpactWritePayloadV2"'::regtype)
+  UNION ALL
   SELECT 'schema',n.oid,0::smallint,a.grantor,a.grantee,a.privilege_type,a.is_grantable
     FROM pg_catalog.pg_namespace n CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(n.nspacl,pg_catalog.acldefault('n',n.nspowner))) a WHERE n.nspname='public'
   UNION ALL
@@ -139,5 +144,6 @@ BEGIN
  RETURN TRUE;
 END $matrix$;
 DO $check_before_commit$ BEGIN PERFORM pg_temp.jg_task16_baseline_check(__PLAN_JSON__::jsonb); END $check_before_commit$;
+DO $schema203_before_commit$ BEGIN IF NOT (__SCHEMA203_PROOF_SQL__) OR (__SCHEMA203_TYPE_ACL_SQL__) IS DISTINCT FROM __SCHEMA203_TYPE_ACL_JSON__::jsonb THEN RAISE EXCEPTION 'task16 schema203 caller/type changed before baseline commit'; END IF; END $schema203_before_commit$;
 COMMIT;
 __COMMITTED_IDENTITY__

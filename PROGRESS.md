@@ -1,3 +1,15 @@
+## Task16 Schema203首审修复（2026-11-08，HOLD待增量复核）
+
+- [~] 原bafc完整27路径双轴共2项P2已在原public run实际RED→最小GREEN：SDK未知嵌套写/别名逃逸改为完整已审index SHA或有限纯literal数据AST；V2 Impact单列TABLE三处returnType纠正text，Fact仍record/set/完整OUT。无SDK执行或SQL解析执行。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-local.md)。
+- [~] 受影响B2/B5/B6/B7四组142/142、CLI27、私有203全API纯类型及3个受影响CJS语法/lint0；原302+60及lint语义桥作为各自历史，未重跑9min三组，不宣最终完整候选通过。新7路径delta/完整27冻结待原两轴；原bafc/全部失败与首审前像保留。
+- [ ] 上游47、ledger原fe8正文、driver384cc/SOURCE_ONLY、Schema/203/原202/七片/四guard/两权限矩阵/SDK四binding287保持；no-engine只TYPE/source，native仍false。dirty实际prepare原SOURCE_NOT_CLEAN拒绝保，最终clean203封包及准确完整候选模拟/fixture20/组合1148由独立merger后做，不提前验收。未commit/push/合中央或真实SDK/Nest/HTTP/PG/SQL/资源，#398/14阶段不变。
+
+## Task16 Schema203源码适配（2026-11-08，独立候选待双轴）
+
+- [~] 新独立树基于已审money作者c4d后安全FF到A4 fe8ff2fd，准确203库存与48routine（44+4，两个validator只变正文）接入B5/B6/B7。新类型完整字段/owner/ACL与helper有效owner调用/全列SELECT和锁资格为源码及模拟协议证明，不授runtime/observer新增V2 EXECUTE/TYPE USAGE或业务表权。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-schema203-local.md)。
+- [~] 分组实际核心302/302、App/seed/case60/60（537.766s）、CLI27、私有203全API纯类型及19CJS lint通过；最后字串转义AST等价与来源pin窄桥另封，非同一最终SHA全组重跑。固定Schema内容特例绑定完整inline/model，raw630401ec与generated5dba68a9仍不等；no-engine只TYPE/source，不获native资格。
+- [ ] 未提交/合中央/推送，候选仍待独立双轴和准确组合门；driver384cc固定SOURCE_ONLY字节不变、默认包IO/资源前拒，14阶段/#398及真实PG/SQL/ACL/COMMIT/资金/物理清理门不解。47上游money路径原样，ledger仅本prefix+fe8全文；不改原202/203/Schema/七SQL/四guard/原V1SD/companyhelper、产品Auth或Task12。无真实SDK构造/网络/App/数据库/部署生产，未来提交须[skip ci]。
+
 ## 经营精度桥A4归属锚点更正（2026-11-08，HOLD待增量双轴）
 
 - [~] 基点为已审作者提交c4d1a1fb，中央仍d78/202。本次只将203 Fact精确guard从4纠正为6及其一处当期注释，Impact仍精确1；独立按全部202迁移顺序重演，原Fact body与Task16独立32d200fc…原件逐字一致，六处归属期均前置原helper。原4 guard拒真实6的before静态失败保留；修6后source-contract通过。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
