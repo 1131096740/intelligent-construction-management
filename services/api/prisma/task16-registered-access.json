@@ -1230,7 +1230,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "a9f99fb94f116888a166d3af826f69b3abfb2f4344a7a4e0b974c7221756b444",
+  "baselineManifestSha256": "827cd7291f7f17f58b4617677a2a0bf76ea1a2307a6e59ee29ca4c629e0bad79",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -4222,7 +4222,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "a9f99fb94f116888a166d3af826f69b3abfb2f4344a7a4e0b974c7221756b444"
+      "sha256": "827cd7291f7f17f58b4617677a2a0bf76ea1a2307a6e59ee29ca4c629e0bad79"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
@@ -4262,7 +4262,7 @@
     },
     {
       "path": "services/api/src/database/registered-payment-postgres.fixture.ts",
-      "sha256": "2060274a781b01fc5782064e37d22758666424972a9b9204c509c13b98f88ea8"
+      "sha256": "ca72e890f156cde4f2256a4af1af0123150f6cd0d093aac52e9d43931341d65a"
     },
     {
       "path": "services/api/src/fund-account/fund-account.service.ts",

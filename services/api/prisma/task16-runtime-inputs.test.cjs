@@ -82,20 +82,20 @@ function preparedRuntime(t) {
     const specification=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
     let options=specification.options;
     const packet=JSON.parse(fs.readFileSync(options.packetFile,'utf8'));
-    const calls=[],commands=[];let observedApplicationEntries;
+    const calls=[],commands=[];let observedApplicationEntries,observedFixtureAdmission;
     const adapters={
       readOnlyCommand(exe,args,control){
         commands.push({exe,args,env:control.env});
         if(args[0].endsWith('/prepare-task16-registered-pg.cjs'))return JSON.stringify({status:'SOURCE_ONLY_VERIFIED_NOT_EXECUTED',candidateSha:packet.candidateSha,sealSha256:packet.sealSha256,packetSha256:options.expectedPacketSha256,executionAllowed:false});
         return execFileSync(exe,args,control);
       },
-      startResource:async c=>{observedApplicationEntries=c.applicationEntriesWitness;calls.push('resource');if(c.source.runtimeAdmission.status!=='INPUTS_AND_CODE_TREES_MATCHED')throw Error('admission missing');return {close:async()=>calls.push('close-resource'),getReceipt:()=>({status:'closed',cleanup:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}})};},
+      startResource:async c=>{observedApplicationEntries=c.applicationEntriesWitness;observedFixtureAdmission=c.seedAdmissionWitness;calls.push('resource');if(c.source.runtimeAdmission.status!=='INPUTS_AND_CODE_TREES_MATCHED')throw Error('admission missing');return {close:async()=>calls.push('close-resource'),getReceipt:()=>({status:'closed',cleanup:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}})};},
       verifyOwnerTransport:async()=>{},migrateBaseline:async()=>{},installBaselineAccess:async()=>{},installPreparedSql:async()=>{},installRegisteredAccess:async()=>{},
       connectRestrictedClients:async()=>({close:async()=>{}}),startApplication:async()=>({close:async()=>{}}),seedFixture:async()=>({}),runNormalCase:async()=>({caseId:'registered.null-cross-company.commit',passed:true})
     };
     async function exercise(){
       const firstReceipt=await runTask16RegisteredPg(options,adapters);
-      if(!specification.reenter)return {receipt:firstReceipt,calls,commands,applicationEntries:observedApplicationEntries};
+      if(!specification.reenter)return {receipt:firstReceipt,calls,commands,applicationEntries:observedApplicationEntries,fixtureAdmission:observedFixtureAdmission};
       const inputs=JSON.parse(fs.readFileSync(options.inputsFile,'utf8'));
       const root=inputs.candidateRoot,client=path.join(root,'services/api/node_modules/@prisma/client');
       fs.writeFileSync(path.join(client,'package.json'),JSON.stringify({main:'bad.js'}));
@@ -293,4 +293,16 @@ test('B2 captures fixed App entry identities before resource acquisition without
  const sdk=f.put('services/api/node_modules/@nestjs/testing/test.js',"throw new Error('UNEXPECTED_NEST_IMPORT');\n");
  for(const file of ['services/api/prisma/task16-application-stage.cjs','services/api/prisma/task16-application-factory.cjs','services/api/src/database/task16-registered-application.module.ts']){const bytes=fs.readFileSync(path.join(project,file));f.put(file,bytes);f.packet.source.files.push({path:file,sha256:hash(bytes)});}f.sealPacket();
  f.recapture('services/api/dist');f.recapture('services/api/node_modules');for(const out of f.preparation.outputs)out.preparedManifestSha256=f.inputs.trees.find(row=>row.root===out.root).sha256;f.sealPreparation();const result=f.run();assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.receipt.failureCode);assert.equal(result.applicationEntries?.length,8);assert.equal(result.applicationEntries[7].path,sdk);for(const row of result.applicationEntries){assert.equal(row.sha256,hash(fs.readFileSync(row.path)));assert.equal(row.identity.ino,fs.statSync(row.path).ino);}assert.ok(result.commands.some(row=>row.args[0]==='--eval'&&row.args[1].includes("require.resolve('@nestjs/testing/test'")));assert.equal(result.receipt.nativeExecution,false);
+});
+
+for(const [label,value]of [['calendar',{paidAt:'2026-02-30',openingDate:'2026-01-01'}],['order',{paidAt:'2026-01-01',openingDate:'2026-01-02'}],['extra field',{paidAt:'2026-01-02',openingDate:'2026-01-01',origin:'forbidden'}]])test('readonly admission rejects explicit invalid fixture dates: '+label,t=>{const f=preparedRuntime(t);f.inputs.fixtureDates=value;f.sealInputs();const result=f.run();assert.equal(result.receipt.failureCode,'TASK16_RUNTIME_FIXTURE_DATES');assert.deepEqual(result.calls,[]);});
+test('readonly admission accepts explicit dates with either JSON key order without requiring seed output',t=>{const f=preparedRuntime(t);f.inputs.fixtureDates={openingDate:'2026-11-01',paidAt:'2026-11-07'};f.sealInputs();const result=f.run();assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.receipt.failureCode);assert.equal(result.receipt.nativeExecution,false);});
+
+test('readonly admission captures dates, input identity, seven fragments and fixed fixture FD without importing it',t=>{
+ const f=preparedRuntime(t);f.inputs.fixtureDates={paidAt:'2026-11-07',openingDate:'2026-11-01'};
+ const extra=['services/api/prisma/task16-seed-fixture.cjs','services/api/src/database/registered-payment-postgres.fixture.ts','services/api/src/company-entity/unified-social-credit-code.ts'];
+ const fragments=['funding','history-revision','write-authority','canonical-proof','intercompany','canonical-adapter','voucher'].map(n=>'services/api/prisma/prepared/task16/registered-'+n+'.sql');
+ for(const file of [...extra,...fragments]){const bytes=fs.readFileSync(path.join(project,file));f.put(file,bytes);f.packet.source.files.push({path:file,sha256:hash(bytes)});}
+ f.packet.installation={fragments:fragments.map(file=>({path:file,sha256:hash(fs.readFileSync(path.join(f.root,file)))}))};const entry=f.put('services/api/dist/database/registered-payment-postgres.fixture.js',"throw new Error('UNEXPECTED_FIXTURE_IMPORT');\n");
+ f.sealPacket();f.recapture('services/api/dist');for(const output of f.preparation.outputs)output.preparedManifestSha256=f.inputs.trees.find(row=>row.root===output.root).sha256;f.sealPreparation();f.sealInputs();const result=f.run();assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.receipt.failureCode);const witness=result.fixtureAdmission;assert.deepEqual(witness.dates,f.inputs.fixtureDates);assert.equal(witness.input.path,f.inputsFile);assert.equal(witness.input.sha256,f.options.expectedInputsSha256);assert.equal(witness.input.identity.ino,fs.statSync(f.inputsFile).ino);assert.equal(witness.entry.path,entry);assert.equal(witness.entry.identity.ino,fs.statSync(entry).ino);assert.equal(witness.fragments.length,7);assert.deepEqual(witness.fragments.map(row=>row.path),fragments);assert.equal(witness.sources.length,7);
 });

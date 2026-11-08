@@ -64,10 +64,17 @@ function toolFile(file, expectedIdentity) {
 }
 function inside(root, target) { const rel = path.relative(root, target); return rel === "" || !path.isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${path.sep}`); }
 
+function normalizeTask16FixtureDates(value) {
+  need(value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')==='openingDate,paidAt','TASK16_RUNTIME_FIXTURE_DATES');
+  for(const name of ['paidAt','openingDate']){const date=value[name];need(typeof date==='string'&&/^\d{4}-\d{2}-\d{2}$/u.test(date)&&date.slice(0,4)!=='0000','TASK16_RUNTIME_FIXTURE_DATES');const parsed=new Date(date+'T00:00:00.000Z');need(Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===date,'TASK16_RUNTIME_FIXTURE_DATES');}
+  need(value.paidAt>=value.openingDate,'TASK16_RUNTIME_FIXTURE_DATES');return {paidAt:value.paidAt,openingDate:value.openingDate};
+}
 function verifyTask16RuntimeInputs(options, injectedCommand) {
-  const bytes = privateBytes(options.inputsFile);
+  const inputCapture=qualifiedFile(options.inputsFile,{maxBytes:16*1024*1024,privateFile:true,collect:true,code:'TASK16_RUNTIME_INPUT_FILE'});
+  const bytes=inputCapture.bytes;
   need(sha(bytes) === options.expectedInputsSha256, "TASK16_RUNTIME_INPUT_DIGEST");
   const inputs = JSON.parse(bytes.toString("utf8"));
+  const fixtureDates=inputs.fixtureDates===undefined?undefined:normalizeTask16FixtureDates(inputs.fixtureDates);
   need(inputs.schemaVersion === 1 && inputs.purpose === "task16-runtime-inputs-not-approval" && inputs.candidateRoot === ROOT && fs.realpathSync(ROOT) === ROOT && inputs.nodeVersion === process.version && inputs.prismaClientVersion === "5.22.0" && inputs.prismaEngineVersion === ENGINE, "TASK16_RUNTIME_INPUT_BINDING");
   need(typeof inputs.authorizationReference === "string" && inputs.authorizationReference.trim().length > 0 && inputs.authorizationReference.length <= 1024, "TASK16_RUNTIME_REFERENCE_REQUIRED");
   need(inputs.tools && Object.keys(inputs.tools).sort().join(",") === TOOL_NAMES.join(","), "TASK16_RUNTIME_TOOLS");
@@ -186,10 +193,21 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
     const sdk=fs.realpathSync(resolved.entry);need(inside(ROOT,sdk)&&/\/node_modules\/@nestjs\/testing\/test\.js$/u.test(sdk),"TASK16_RUNTIME_APP_ENTRY");requireSealedTarget(sdk);
     applicationEntries=[...appRelative.map(relative=>path.join(ROOT,"services/api/dist",relative)),sdk].map(file=>{const row=qualifiedFile(file,{maxBytes:64*1024*1024,code:"TASK16_RUNTIME_APP_ENTRY"});return{path:file,sha256:row.sha256,identity:row.identity};});
   }
+  let fixture;
+  const fixturePath=path.join(ROOT,'services/api/dist/database/registered-payment-postgres.fixture.js');
+  if(fs.existsSync(fixturePath)){
+    for(const relative of ['services/api/prisma/task16-seed-fixture.cjs','services/api/src/database/registered-payment-postgres.fixture.ts'])need(sourceMembers.get(relative)?.sha256===sourceHash(path.join(ROOT,relative)),'TASK16_RUNTIME_FIXTURE_SOURCE');
+    const expected=['funding','history-revision','write-authority','canonical-proof','intercompany','canonical-adapter','voucher'].map(n=>'services/api/prisma/prepared/task16/registered-'+n+'.sql');
+    need(packet.installation?.fragments?.length===7&&packet.installation.fragments.every((row,i)=>row.path===expected[i]&&row.sha256===sourceMembers.get(row.path)?.sha256),'TASK16_RUNTIME_FIXTURE_FRAGMENTS');
+    const fragments=packet.installation.fragments.map(row=>{const file=path.join(ROOT,row.path),captured=qualifiedFile(file,{maxBytes:64*1024*1024,code:'TASK16_RUNTIME_FIXTURE_FRAGMENT'});need(captured.sha256===row.sha256,'TASK16_RUNTIME_FIXTURE_FRAGMENT');return{path:row.path,sha256:row.sha256,identity:captured.identity};});
+    const captured=qualifiedFile(fixturePath,{maxBytes:64*1024*1024,code:'TASK16_RUNTIME_FIXTURE_ENTRY'});
+    const sources=['services/api/prisma/task16-seed-fixture.cjs','services/api/prisma/run-task16-registered-pg-local.cjs','services/api/prisma/task16-runtime-inputs.cjs','services/api/prisma/task16-client-loader.cjs','services/api/prisma/task16-restricted-clients.cjs','services/api/src/database/registered-payment-postgres.fixture.ts','services/api/src/company-entity/unified-social-credit-code.ts'].map(relative=>{const captured=qualifiedFile(path.join(ROOT,relative),{maxBytes:64*1024*1024,code:'TASK16_RUNTIME_FIXTURE_SOURCE'});need(sourceMembers.get(relative)?.sha256===captured.sha256,'TASK16_RUNTIME_FIXTURE_SOURCE');return{path:relative,sha256:captured.sha256,identity:captured.identity};});
+    fixture={sources,dates:fixtureDates,input:{path:options.inputsFile,sha256:inputCapture.sha256,identity:inputCapture.identity},entry:{path:fixturePath,sha256:captured.sha256,identity:captured.identity},fragments,build:{candidateRoot:ROOT,sourceSha:packet.candidateSha,sourceSealSha256:packet.sealSha256,preparationReceiptSha256:inputs.preparationReceipt.sha256,apiDistManifestSha256:inputs.trees.find(row=>row.root==='services/api/dist').sha256}};
+  }
   compareTrees("after-load");
   const finalSource = JSON.parse(execute(tools.node, [path.join(ROOT, "scripts/prepare-task16-registered-pg.cjs"), "--verify", "--packet", options.packetFile, "--expected-sha256", options.expectedPacketSha256]));
   need(JSON.stringify(finalSource) === JSON.stringify(verified), "TASK16_RUNTIME_SOURCE_CHANGED");
-  need(privateHash(options.inputsFile) === options.expectedInputsSha256 && privateHash(options.packetFile) === options.expectedPacketSha256 && privateHash(inputs.preparationReceipt.path) === inputs.preparationReceipt.sha256, "TASK16_RUNTIME_INPUT_CHANGED");
+  need(qualifiedFile(options.inputsFile,{maxBytes:16*1024*1024,privateFile:true,expectedIdentity:inputCapture.identity,code:'TASK16_RUNTIME_INPUT_FILE'}).sha256 === options.expectedInputsSha256 && privateHash(options.packetFile) === options.expectedPacketSha256 && privateHash(inputs.preparationReceipt.path) === inputs.preparationReceipt.sha256, "TASK16_RUNTIME_INPUT_CHANGED");
   for (const name of TOOL_NAMES) need(toolFile(tools[name], toolIdentities[name]).sha256 === inputs.tools[name].sha256, "TASK16_RUNTIME_TOOL_CHANGED");
   need(qualifiedFile(clientPath,{maxBytes:64*1024*1024,expectedIdentity:clientEntryCapture.identity,code:"TASK16_RUNTIME_PRISMA_IDENTITY"}).sha256===clientEntryCapture.sha256,"TASK16_RUNTIME_PRISMA_IDENTITY");
   for(const row of applicationEntries??[])need(qualifiedFile(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_RUNTIME_APP_ENTRY_CHANGED"}).sha256===row.sha256,"TASK16_RUNTIME_APP_ENTRY_CHANGED");
@@ -197,8 +215,8 @@ function verifyTask16RuntimeInputs(options, injectedCommand) {
   need(docker?.endpoint === "unix:///Users/leoyang/.docker/run/docker.sock" && docker.imageId === "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d" && typeof docker.daemonId === "string" && /^[A-Za-z0-9:-]{16,128}$/u.test(docker.daemonId), "TASK16_RUNTIME_RESOURCE_DESCRIPTOR");
   return { candidateSha: packet.candidateSha, candidateRoot: ROOT, sealSha256: packet.sealSha256, schema: packet.schema, migrations: packet.migrations,
     executionFiles: packet.source.files,
-    runtimeAdmission: { applicationBuild:applicationEntries?{candidateRoot:ROOT,sourceSha:packet.candidateSha,sourceSealSha256:packet.sealSha256,preparationReceiptSha256:inputs.preparationReceipt.sha256,apiDistManifestSha256:inputs.trees.find(row=>row.root==="services/api/dist").sha256}:undefined, applicationEntries, status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
+    runtimeAdmission: { fixture, applicationBuild:applicationEntries?{candidateRoot:ROOT,sourceSha:packet.candidateSha,sourceSealSha256:packet.sealSha256,preparationReceiptSha256:inputs.preparationReceipt.sha256,apiDistManifestSha256:inputs.trees.find(row=>row.root==="services/api/dist").sha256}:undefined, applicationEntries, status: "INPUTS_AND_CODE_TREES_MATCHED", clientEntry:{path:clientPath,sha256:clientEntryCapture.sha256,identity:clientEntryCapture.identity}, treeCount: TREE_ROOTS.length, tools: TOOL_NAMES, resourceExecutionAllowed: false, preparationReceiptIsWitnessNotCryptographicAttestation: true },
     inputs: { ...inputs, resourceOptions: { ...docker, tools: { docker: tools.docker, openssl: tools.openssl }, deadlineMs: 900000 } } };
 }
 // Internal production reuse; tests stay at runTask16RegisteredPg, not this reader.
-module.exports = { verifyTask16RuntimeInputs, readQualifiedTask16File: qualifiedFile };
+module.exports = { verifyTask16RuntimeInputs, readQualifiedTask16File: qualifiedFile, normalizeTask16FixtureDates };
