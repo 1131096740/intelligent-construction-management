@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，Task16 B8原生App源码桥已整合）
+
+- [~] 作者dac3248d以no-ff合入3f09ad7c，final9a45dd完整11路径/源2451666a两轴方法P2、注册delta及执行/doc均0，整树相等。原native map直接注册同私有App stage；默认seedFixture/runNormalCase两缺、资源前拒，native/financial验收false。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-application-bridge-integrated.md)。
+- [~] 中央准确merge新跑295模拟、CLI25、fixture20、API类型/九CJS语法与直接lint/19+42pins/diff全0；源码封包3478/202/7/1 prepare/verify通过。仅fake执行实际桥/metadata，不真实SDK/Nest/监听/HTTP/SQL/PG/资源，模拟清理非物理清理；后继两文档及finalHEAD另封/远端另回读，全新commit[skip ci]、空checks非CI、旧fe70事故保留。
+- [ ] 14/45阶段不变，#392按用户接受阶段已关闭、#394已领取OPEN并承接CON10consumer；#398/B9 seed-case日期、真实PG资金/DI/ACL/清理与16/42/44门保留。本片无close/ready/mainmerge/部署或生产，原树/Task12 WIP不混入。
+
 ## 任务16 B8 qualified bridge源码（2026-11-08，native App注册待增量双轴）
 
 - [~] 从eb39准备后，按主控授权无冲突FF到准确d1bbfd10bec9e0dff5988e2d2dcf43bbfbdab8bf，原八源码守恒，保留中央Task10/12账本后缀。bridge/private生命周期/八FD与build准入、实际module registry、owned配置/factory协议均仅source/fake；原290/d44保持历史，新增三client四方法连续性P2 actual RED→GREEN后294通过；最小native App直接注册actual RED→GREEN后295/CLI25/fixture20/类型/9CJS静态/pins通过，精确十一路径freeze见[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-application-bridge-local.md)。
