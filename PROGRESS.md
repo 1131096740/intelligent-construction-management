@@ -1,3 +1,8 @@
+## Task16 Schema204 源码资格桥（2026-11-09，HOLD待双轴）
+
+- [~] 独立9a4基底的精确204源码/mock桥已完成作者验证：有界重演实际80 routine/22 registry链；20表/54列/16约束结构/3partial unique及精确B6技术trigger delta连续见证，完整305模型/四exact relocation接线。最终同386项全通过（0fail/skip，480613ms），类型/lint/CJS语法及196449依赖保全通过；driver384cc/原SQL七片/SDK11/资金ACL与4000分案不变，dirty仍拒封包。[范围收据](docs/progress/2026-11-09-task16-schema204-source-qualification.md)。
+- [ ] 真实R_app/R_file及权限供应、pinned引擎传递尚未实现；实际baseline adapter在首owner SQL/child前固定NOT_IMPLEMENTED/NOT_ATTEMPTED，无flag开放、不假owner/finance、不补GRANT。全fake normal仅协议模拟，不是204实际安装/PG/ACL/资金通过。本片未提交推送或合中央，#398/#394及14/45限定阶段保持；待完整源双轴复审。
+
 ## Task12 lifecycle consumer A1 源审修复（2026-11-09，HOLD待增量双轴）
 
 - [~] A0 Standards0/Spec2P2：原公开RED后最小对齐Word/PDF冻结顺序；原required缺Fact导致详情仍archived的RED后抽取同一只读持久proof供详情/原keyGET复用，作者/财务各自原授权不混用。缺Evidence保既有详情400，缺Fact/Impact/后果模式或金额漂移明确不可认完成；not_applicable沿原冻结模式，不按今日启用重判或修复。[本片收据](docs/progress/2026-11-09-task12-lifecycle-consumer-contract-local.md)。

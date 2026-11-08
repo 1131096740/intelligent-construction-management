@@ -84,11 +84,11 @@ BEGIN
  (SELECT * FROM pg_temp.jg_task16_acl_now WHERE grantee<>0 AND grantee NOT IN (owner_oid,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='pg_database_owner'),(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_runtime'),(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_observer')) EXCEPT SELECT * FROM pg_temp.jg_task16_acl_before WHERE grantee<>0 AND grantee NOT IN (owner_oid,(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='pg_database_owner'),(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_runtime'),(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='jg_task01_observer')))) THEN RAISE EXCEPTION 'task16 unrelated grantee ACL changed'; END IF;
 
  IF NOT (__FUNCTION_PROOF_SQL__) THEN RAISE EXCEPTION 'task16 registered full function source changed'; END IF;
- IF (__OBJECT_WITNESS_SQL__) IS DISTINCT FROM __OBJECT_WITNESS_JSON__::jsonb THEN RAISE EXCEPTION 'task16 installed object catalog changed'; END IF;
  IF final_stage THEN
   IF NOT (__REFERENCE_GUARD_SQL__) THEN RAISE EXCEPTION 'task16 lock-only reference guard missing or changed'; END IF;
  ELSE
   IF NOT (__REFERENCE_ABSENT_SQL__) THEN RAISE EXCEPTION 'task16 reference instrumentation already exists'; END IF;
  END IF;
+ IF (__OBJECT_WITNESS_SQL__) IS DISTINCT FROM __OBJECT_WITNESS_JSON__::jsonb THEN RAISE EXCEPTION 'task16 installed object catalog changed'; END IF;
  RETURN TRUE;
 END $matrix$;

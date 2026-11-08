@@ -27,7 +27,7 @@ function fixture(t) {
   put("services/api/prisma/task16-baseline-access.json", fs.readFileSync(path.join(__dirname,"task16-baseline-access.json")));
   put("services/api/prisma/schema.prisma", "// synthetic only\n");
   put("services/api/prisma/migrations/migration_lock.toml", 'provider = "postgresql"\n');
-  for (let index = 0; index < 203; index++) put(`services/api/prisma/migrations/${String(index).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${index}\n`);
+  for (let index = 0; index < 204; index++) put(`services/api/prisma/migrations/${String(index).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${index}\n`);
   put("services/api/src/database/registered-payment-postgres.fixture.ts", "// synthetic, never imported\n");
   put("services/api/src/database/registered-payment-postgres.cases.ts", fs.readFileSync(path.join(__dirname, "../src/database/registered-payment-postgres.cases.ts")));
   const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
@@ -40,7 +40,7 @@ function fixture(t) {
   const packetBytes = fs.readFileSync(packetFile);
   const packet = JSON.parse(packetBytes);
   const resourceReceipt = { runId: "da49e313-e3da-407f-b279-3d09caecfc3e", sourceSha: packet.candidateSha, status: "started-awaiting-driver-verification", databaseName: "jg_task01_da49e313e3da407fb2793d09caecfc3e", containerId: "c".repeat(64), networkId: "d".repeat(64), daemonId: "synthetic-daemon-only", endpoint: "unix:///synthetic/docker.sock", imageId: "sha256:" + "e".repeat(64), port: 15432, cleanup: { status: "pending" } };
-  const identity = { database: resourceReceipt.databaseName, databaseOid: "12345", systemIdentifier: "7234567890123456789", ownerRole: "jg_task01_owner", ownerOid:"10000", installedObjectWitness:{columns:[],constraints:[],triggers:[]}, loginRole: "jg_task01_owner", ownerIsDatabaseOwner: true, runtimeRole: "jg_task01_runtime", runtimeSafe: true, strictRuntimeSafe:true, runtimeOid:"20001", observerRole:"jg_task01_observer", observerOid:"20002", observerSafe:true, serverVersion: 160004, tls: true, replication: "origin", migrationLedger: packet.migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })) };
+  const identity = { database: resourceReceipt.databaseName, databaseOid: "12345", systemIdentifier: "7234567890123456789", ownerRole: "jg_task01_owner", ownerOid:"10000", installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}, loginRole: "jg_task01_owner", ownerIsDatabaseOwner: true, runtimeRole: "jg_task01_runtime", runtimeSafe: true, strictRuntimeSafe:true, runtimeOid:"20001", observerRole:"jg_task01_observer", observerOid:"20002", observerSafe:true, serverVersion: 160004, tls: true, replication: "origin", migrationLedger: packet.migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })) };
   const calls = [];
   const resource = {
     getReceipt: () => structuredClone(resourceReceipt),
@@ -186,7 +186,7 @@ test("the actual installation command checks runtime safety and the frozen migra
 });
 
 function baseline(f) {
-  return { status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED", candidateRoot:f.repo, sourceSha:f.packet.candidateSha,
+  return { status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",schema204PhysicalVerified:true, candidateRoot:f.repo, sourceSha:f.packet.candidateSha,
     manifestSha256:hash(fs.readFileSync(path.join(f.repo,"services/api/prisma/task16-baseline-access.json"))),
     databaseOid:f.identity.databaseOid, systemIdentifier:f.identity.systemIdentifier,
     ownerOid:"10000",runtimeRole:"jg_task01_runtime", observerRole:"jg_task01_observer", runtimeOid:"20001", observerOid:"20002" };

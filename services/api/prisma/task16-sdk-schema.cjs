@@ -21,13 +21,29 @@ function tokens(text){
 function schemaBridge(source,generated,expected){
  if(hash(source)===hash(generated)){need(expected.rawSchemaEqual===true);return 'EXACT_RAW_SCHEMA';}
  const b=expected.acceptedFormattingBridge;
- need(expected.rawSchemaEqual===false&&b?.kind==='exact-single-ExpenseClaim-index-relocation'&&hash(source)===b.sourceSchemaSha256&&hash(generated)===b.generatedSchemaSha256);
- // This is one reviewed exact source/generated pair, not a formatter policy.
- need(b.sourceSchemaSha256==='630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf'&&b.generatedSchemaSha256==='5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c');
- const x=tokens(source),y=tokens(generated),needle=tokens('@@index([generalProcurementId])');
- const trim=items=>{const hits=[];for(let i=0;i<=items.length-needle.length;i++)if(JSON.stringify(items.slice(i,i+needle.length))===JSON.stringify(needle))hits.push(i);need(hits.length===1);const at=hits[0];let model;for(let i=0;i<at;i++)if(items[i][0]==='word'&&items[i][1]==='model')model=items[i+1]?.[1];need(model==='ExpenseClaim');return items.slice(0,at).concat(items.slice(at+needle.length));};
- need(x.length===35390&&y.length===35390&&x.length===b.sourceTokens&&y.length===b.generatedTokens&&hash(JSON.stringify(x))===b.sourceTokensSha256&&hash(JSON.stringify(y))===b.generatedTokensSha256);
- const a=trim(x),c=trim(y);need(JSON.stringify(a)===JSON.stringify(c)&&hash(JSON.stringify(a))===b.remainingTokensSha256);return 'EXACT_REVIEWED_INDEX_RELOCATION';
+ need(expected.rawSchemaEqual===false&&b?.kind==='exact-four-model-bound-relocations'&&hash(source)===b.sourceSchemaSha256&&hash(generated)===b.generatedSchemaSha256);
+ // One reviewed complete Schema204 pair; no generic formatting exceptions.
+ need(b.sourceSchemaSha256==='3f41995f48430e7adfeefb8ec605203d8ce501bb7214c66619a9142bfcf7a3f1'&&b.generatedSchemaSha256==='b1680aab44e174477ae5394e0dd7d629f8f4331dd4fd2533575e8f36cfc73552');
+ const fixed=[
+  ['ExpenseClaim','@@index([generalProcurementId])',25340,25491],
+  ['ContractArchiveFile','// V2-only uniqueness and Version/R/T composite FKs live in migration 204.',16502,16492],
+  ['ContractArchiveEvidenceFile','// Composite parent/version and private-file FKs live in migration 204.',16560,16542],
+  ['ContractSealTask','@@unique([id,contractVersionId,approvalInstanceId])',16874,16854]
+ ];
+ let x=tokens(source),y=tokens(generated);
+ need(x.length===35529&&y.length===35529&&b.sourceTokens===35529&&b.generatedTokens===35529&&hash(JSON.stringify(x))===b.sourceTokensSha256&&hash(JSON.stringify(y))===b.generatedTokensSha256&&Array.isArray(b.relocations)&&b.relocations.length===fixed.length);
+ const trim=(items,model,needle,at)=>{
+  const hits=[];for(let i=0;i<=items.length-needle.length;i++)if(JSON.stringify(items.slice(i,i+needle.length))===JSON.stringify(needle))hits.push(i);
+  need(hits.length===1&&hits[0]===at);let owner;for(let i=0;i<at;i++)if(items[i][0]==='word'&&items[i][1]==='model')owner=items[i+1]?.[1];
+  need(owner===model);return items.slice(0,at).concat(items.slice(at+needle.length));
+ };
+ for(let i=0;i<fixed.length;i++){
+  const [model,text,sourceAt,generatedAt]=fixed[i],needle=tokens(text),proof=b.relocations[i];
+  need(proof.model===model&&JSON.stringify(proof.exactTokenSequence)===JSON.stringify(needle)&&proof.sourceIndexAfterPriorRemovals===sourceAt&&proof.generatedIndexAfterPriorRemovals===generatedAt&&proof.uniqueInBoth===true);
+  x=trim(x,model,needle,sourceAt);y=trim(y,model,needle,generatedAt);
+ }
+ need(x.length===35507&&y.length===35507&&b.remainingTokenCount===35507&&b.remainingTokensSha256==='918a2e3c6653a8879f729f3009531fbfa09ab9bfc15688d173336965977d6ed9'&&JSON.stringify(x)===JSON.stringify(y)&&hash(JSON.stringify(x))===b.remainingTokensSha256);
+ return 'EXACT_REVIEWED_FOUR_MODEL_RELOCATIONS';
 }
 function inspectTask16SdkSource(root,entry){
  try{

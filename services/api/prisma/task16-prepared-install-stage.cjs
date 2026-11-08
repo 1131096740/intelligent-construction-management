@@ -25,7 +25,7 @@ async function installTask16PreparedStage(input){
  }
  need(baseline.databaseOid===input.ownerTransport?.databaseOid&&baseline.systemIdentifier===input.ownerTransport?.systemIdentifier,"TASK16_INSTALL_HANDOFF_DATABASE");
  const result=await installTask16RegisteredSql({resource,packetFile:input.options.packetFile,expectedPacketSha256:input.options.expectedPacketSha256,expectedResource:witness,ownerRole:"jg_task01_owner",runtimeRole:baseline.runtimeRole,authorizationReference:source.inputs.authorizationReference,expectedBaseline:{...baseline,candidateRoot:source.candidateRoot}});
- const completed=result.installedObjectWitness&&["columns","constraints","triggers"].every(key=>Array.isArray(result.installedObjectWitness[key]))&&result.baselineContinuityVerified===true&&result.runtimeOid===baseline.runtimeOid&&result.observerOid===baseline.observerOid&&result.ownerOid===baseline.ownerOid;
+ const completed=result.installedObjectWitness&&["relations","indexes","columns","constraints","triggers"].every(key=>Array.isArray(result.installedObjectWitness[key]))&&result.baselineContinuityVerified===true&&result.runtimeOid===baseline.runtimeOid&&result.observerOid===baseline.observerOid&&result.ownerOid===baseline.ownerOid;
  if(!completed)throw Object.assign(fault("TASK16_INSTALL_HANDOFF_CONTINUITY"),{installationOutcome:"UNKNOWN_DO_NOT_RETRY"});
  for(const row of captures){
   let actual;try{actual=read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_INSTALL_HANDOFF_SOURCE"});}catch{throw Object.assign(fault("TASK16_INSTALL_HANDOFF_SOURCE"),{installationOutcome:"UNKNOWN_DO_NOT_RETRY"});}

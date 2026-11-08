@@ -32,10 +32,10 @@ function fixture(t) {
                     if(hooks[label]) await hooks[label](sql);
                     const phase = label === "task16-registered-access-preflight" ? "preflight" : "committed";
                     const nonce = /'([a-f0-9]{64})' AS nonce/u.exec(sql)?.[1];
-                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), schema203Verified:true,schema203TypeAclWitness:structuredClone(TYPE_ACL),functionsVerified:true,otherGranteeAclWitness:[],baselineGuardsVerified:true,newGuardsAbsent:phase==="preflight",matrixVerified:phase==="committed",guardVerified:phase==="committed",installedObjectWitness:{columns:[],constraints:[],triggers:[]}, runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
+                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), schema204PhysicalVerified:true,schema203Verified:true,schema203TypeAclWitness:structuredClone(TYPE_ACL),functionsVerified:true,otherGranteeAclWitness:[],baselineGuardsVerified:true,newGuardsAbsent:phase==="preflight",matrixVerified:phase==="committed",guardVerified:phase==="committed",installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}, runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
                 }, close: async () => { calls.push("close-resource"); receipt.status = "closed"; receipt.cleanup = { status: "completed", containerAbsent: true, volumesAbsent: true, networkAbsent: true }; } };
             return resource;
-        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 203 }), installBaselineAccess: async context=>({schema203TypeAclWitness:structuredClone(TYPE_ACL),status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",ownerOid:"10000",sourceSha:source.candidateSha,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,runtimeRole:"jg_task01_runtime",observerRole:"jg_task01_observer",runtimeOid:"20001",observerOid:"20002",manifestSha256:hash(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"))),expectedMatrixSha256:hash(JSON.stringify([JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).runtime,JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).observer])),resourceWitness:structuredClone(context.resourceWitness)}),installPreparedSql:async context=>({status:"SQL_INSTALLATION_COMMIT_OBSERVED",candidateSha:source.candidateSha,packetSha256:options.expectedPacketSha256,sourceSealSha256:source.sealSha256,fragmentCount:7,databaseName:receipt.databaseName,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerRole:"jg_task01_owner",ownerOid:"10000",runtimeRole:"jg_task01_runtime",runtimeOid:"20001",observerRole:"jg_task01_observer",observerOid:"20002",baselineManifestSha256:context.baselineAccess.manifestSha256,baselineContinuityVerified:true,installedObjectWitness:{columns:[],constraints:[],triggers:[]}}),installRegisteredAccess:async context=>require("./task16-registered-access.cjs").installTask16RegisteredAccess(context), connectRestrictedClients: async context => {calls.push("clients"); assert.equal(context.registeredAccess.status,"REGISTERED_ACL_COMMIT_OBSERVED");return {close:async()=>{}};}, startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
+        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 204 }), installBaselineAccess: async context=>({schema203TypeAclWitness:structuredClone(TYPE_ACL),status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",schema204PhysicalVerified:true,ownerOid:"10000",sourceSha:source.candidateSha,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,runtimeRole:"jg_task01_runtime",observerRole:"jg_task01_observer",runtimeOid:"20001",observerOid:"20002",manifestSha256:hash(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"))),expectedMatrixSha256:hash(JSON.stringify([JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).runtime,JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).observer])),resourceWitness:structuredClone(context.resourceWitness)}),installPreparedSql:async context=>({status:"SQL_INSTALLATION_COMMIT_OBSERVED",candidateSha:source.candidateSha,packetSha256:options.expectedPacketSha256,sourceSealSha256:source.sealSha256,fragmentCount:7,databaseName:receipt.databaseName,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerRole:"jg_task01_owner",ownerOid:"10000",runtimeRole:"jg_task01_runtime",runtimeOid:"20001",observerRole:"jg_task01_observer",observerOid:"20002",baselineManifestSha256:context.baselineAccess.manifestSha256,baselineContinuityVerified:true,installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}}),installRegisteredAccess:async context=>require("./task16-registered-access.cjs").installTask16RegisteredAccess(context), connectRestrictedClients: async context => {calls.push("clients"); assert.equal(context.registeredAccess.status,"REGISTERED_ACL_COMMIT_OBSERVED");return {close:async()=>{}};}, startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
     return { options, adapters, calls, source, replies, hooks, resource: () => resource, receipt: () => receipt, passwords: () => passwords };
 }
 
@@ -48,7 +48,7 @@ test("registered ACL completes after the seven-fragment proof and before restric
 test("registered ACL rejects a new type ACL that no longer matches the first B5 witness",async t=>{
  const f=fixture(t),prior=f.adapters.installBaselineAccess;
  f.adapters.installBaselineAccess=async c=>({...await prior(c),schema203TypeAclWitness:structuredClone(TYPE_ACL)});
- f.replies.preflight={schema203Verified:true,schema203TypeAclWitness:[{type:'synthetic-changed',grantee:'30000',grantable:true}]};
+ f.replies.preflight={schema204PhysicalVerified:true,schema203Verified:true,schema203TypeAclWitness:[{type:'synthetic-changed',grantee:'30000',grantable:true}]};
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);
  assert.equal(receipt.failureCode,'TASK16_REGISTERED_SCHEMA203_TYPE_ACL_CONTINUITY');
  assert.equal(receipt.registeredAccessOutcome,'NOT_ATTEMPTED');
@@ -97,7 +97,7 @@ test("observed transaction protocol is delta-only and retains exact full-body pr
  assert.ok(observed.length>200000);assert.equal(observed.includes("REVOKE ALL ON ALL TABLES"),false);assert.equal(observed.includes("CREATE ROLE"),false);
  assert.equal(observed.includes("jg_task16_runtime_reference_read_only"),true);assert.equal(observed.includes("p.prosrc=proof->>'body'"),true);
  const manifest=JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-registered-access.json"),"utf8"));
- assert.equal(manifest.functionProofs.length,48);assert.equal(manifest.runtime.tables.some(row=>row.table==="RegisteredContractHistoryRevision"),false);
+ assert.equal(manifest.functionProofs.length,80);assert.equal(manifest.runtime.tables.some(row=>row.table==="RegisteredContractHistoryRevision"),false);
  assert.deepEqual(manifest.observer.functions,["public.jg_task01_connection_identity()"]);
  assert.equal(manifest.runtime.functions.includes("public.jg_registered_timestamp_iso(timestamp with time zone)"),false);
  for(const table of ["UserPosition","ApprovalInstance","CompanyEntity"])assert.equal(manifest.lockOnlyGuards.some(row=>row.table===table),true);
@@ -135,8 +135,11 @@ test("owner catalog request binds named inputs and TABLE output names types orde
 test("every lock-only guard catalog request excludes WHEN and UPDATE OF filters",async t=>{
  const f=fixture(t);
  for(const phase of ["task16-registered-access-preflight","task16-registered-access-transaction"])f.hooks[phase]=sql=>{
-  const guardPredicates=[...sql.matchAll(/t\.tgtype=19([^)]{0,100})/gu)];assert.ok(guardPredicates.length>0);
+  const guardPredicates=[...sql.matchAll(/EXISTS\(SELECT 1 FROM pg_catalog\.pg_trigger t[^\n]{0,300}?WHERE t\.tgname='jg_task16_runtime_[a-z_]+_read_only'[^\n]{0,300}?t\.tgtype=19([^)]{0,100})/gu)];assert.ok(guardPredicates.length>0);
   for(const match of guardPredicates)assert.equal(match[1].startsWith(" AND t.tgqual IS NULL AND t.tgattr=''::int2vector"),true,"conditional or column-filtered guard still admitted by owner catalog request");
+  if(phase==='task16-registered-access-transaction')for(const [table,trigger] of [['UserPosition','jg_task16_runtime_user_position_read_only'],['ApprovalInstance','jg_task16_runtime_approval_read_only'],['CompanyEntity','jg_task16_runtime_company_read_only']]){
+   assert.ok(sql.includes(`t.tgname='${trigger}' AND t.tgrelid='public."${table}"'::regclass AND t.tgfoid=pg_catalog.to_regprocedure('public.jg_task16_runtime_reference_read_only()') AND t.tgtype=19 AND t.tgqual IS NULL AND t.tgattr=''::int2vector`));
+  }
  };
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,"SIMULATED_CASE_PROTOCOL_COMPLETED",receipt.failureCode);assert.equal(receipt.nativeExecution,false);
 });
@@ -162,4 +165,39 @@ test("registered SQL carries only the fixed runtime AuthRateLimit technical gran
   assert.equal(sql.includes('a.grantee=0 OR (a.is_grantable'),true,'PUBLIC/grant option rejection remains');
  };
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',receipt.failureCode);assert.equal(receipt.nativeExecution,false);
+});
+
+for(const phase of ['preflight','committed'])test(`Schema204 physical metadata missing at ${phase} refuses the public ACL stage`,async t=>{
+ const f=fixture(t);f.replies[phase]={schema204PhysicalVerified:false};
+ const result=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(result.failureCode,'TASK16_REGISTERED_SCHEMA204_PHYSICAL_PROOF');
+ assert.equal(result.registeredAccessOutcome,phase==='preflight'?'NOT_ATTEMPTED':'UNKNOWN_DO_NOT_RETRY');
+ assert.equal(f.calls.includes('clients'),false);assert.equal(f.calls.at(-1),'close-resource');
+});
+
+for(const kind of ['valid','missing','wrong-body','wrong-owner','wrong-oid','same-name-wrong-table','extra-copy','third-party-drift','preexisting'])test(`expanded archive catalog permits only proved B6 approval trigger delta: ${kind}`,async t=>{
+ const f=fixture(t),old={indexes:[],relations:[{table:'ApprovalInstance',relationOid:'81000',ownerOid:'10000',rowSecurity:false}],columns:[],constraints:[],triggers:[{table:'ContractArchiveFile',name:'third_party_original',functionOid:'61000'}]};
+ const install=f.adapters.installPreparedSql;f.adapters.installPreparedSql=async c=>({...await install(c),installedObjectWitness:structuredClone(old)});
+ f.replies.preflight={installedObjectWitness:structuredClone(old),newGuardsAbsent:kind!=='preexisting'};
+ f.hooks['task16-registered-access-transaction']=sql=>{
+  // A finite independent catalog fixture observes this public SQL protocol;
+  // it does not parse/execute SQL or implement a general PostgreSQL engine.
+  const exact=["c.relname='ApprovalInstance'","t.tgname='jg_task16_runtime_approval_read_only'","t.tgfoid IS NOT DISTINCT FROM pg_catalog.to_regprocedure('public.jg_task16_runtime_reference_read_only()')","t.tgtype=19","t.tgenabled='A'","NOT t.tgisinternal","t.tgnargs=0","t.tgqual IS NULL","t.tgattr=''::int2vector","NOT t.tgdeferrable","NOT t.tginitdeferred"].every(word=>sql.includes(word));
+  const proof=sql.indexOf("RAISE EXCEPTION 'task16 lock-only reference guard missing or changed'"),compare=sql.indexOf("RAISE EXCEPTION 'task16 installed object catalog changed'");
+  assert.ok(proof>=0&&compare>proof,'full reference proof must precede normalized catalog equality');
+  const after=structuredClone(old),added={table:'ApprovalInstance',name:'jg_task16_runtime_approval_read_only',functionOid:'62000',type:19,enabled:'A',args:0,when:null,columns:'',deferrable:false,initiallyDeferred:false};
+  if(kind==='wrong-body'||kind==='wrong-owner'||kind==='missing'||kind==='wrong-oid'||kind==='same-name-wrong-table')throw new Error('bounded exact reference proof rejected');
+  if(!exact)after.triggers.push(added);
+  if(kind==='extra-copy')after.triggers.push({...added,name:'jg_task16_runtime_approval_read_only_extra'});
+  if(kind==='third-party-drift')after.triggers[0].functionOid='61999';
+  f.replies.committed={installedObjectWitness:after};
+ };
+ const result=await runTask16RegisteredPg(f.options,f.adapters);
+ if(kind==='valid'){assert.equal(result.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',result.failureCode);assert.equal(f.calls.includes('clients'),true);}
+ else{
+  assert.equal(result.status,'FAILED_CLOSED');assert.equal(f.calls.includes('clients'),false);
+  assert.equal(result.registeredAccessOutcome,kind==='preexisting'?'NOT_ATTEMPTED':'UNKNOWN_DO_NOT_RETRY');
+  if(kind==='extra-copy'||kind==='third-party-drift')assert.equal(result.failureCode,'TASK16_REGISTERED_OBJECT_WITNESS');
+ }
+ assert.equal(f.calls.at(-1),'close-resource');
 });

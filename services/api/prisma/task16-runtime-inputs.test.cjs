@@ -48,7 +48,7 @@ function preparedRuntime(t) {
   const roots = ["node_modules", "services/api/node_modules", "packages/shared-domain/node_modules", "services/api/dist", "packages/shared-domain/dist"];
   for (const relative of roots) put(`${relative}/synthetic-marker.txt`, "synthetic runtime bytes\n");
   put("services/api/node_modules/@prisma/client/package.json", JSON.stringify({ main: "index.js" }));
-  const sdkMetadata = JSON.parse(fs.readFileSync(path.join(project,"services/api/prisma/testdata/task16-schema203-sdk-metadata.json"),"utf8"));
+  const sdkMetadata = JSON.parse(fs.readFileSync(path.join(project,"services/api/prisma/testdata/task16-schema204-sdk-metadata.json"),"utf8"));
   const config = {clientVersion:"5.22.0",engineVersion:"605197351a3c8bdd595af2d2a9bc3025bca48ea2",copyEngine:false,inlineSchema:sdkMetadata.generatedSchema};
   put("services/api/node_modules/@prisma/client/index.js", `const config=${JSON.stringify(config)};\nconfig.runtimeDataModel=JSON.parse(${JSON.stringify(sdkMetadata.runtimeDataModelText)});\nthrow new Error('TASK_OWNED_FAKE_SDK_MUST_NOT_BE_IMPORTED');\n`);
   put("services/api/node_modules/.prisma/client/schema.prisma",sdkMetadata.generatedSchema);
@@ -113,16 +113,16 @@ function preparedRuntime(t) {
       const root=packet.source.repo,roles=['jg_task01_owner','jg_task01_runtime','jg_task01_observer'],oids=['10000','20001','20002'];
       const typeAcl=[{type:'public."OperatingLedgerFactWritePayloadV2"',typeOid:'41001',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false},{type:'public."OperatingLedgerImpactWritePayloadV2"',typeOid:'41002',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false}];
       const plan=JSON.parse(fs.readFileSync(path.join(root,'services/api/prisma/task16-registered-access.json'))),basePlan=JSON.parse(fs.readFileSync(path.join(root,'services/api/prisma/task16-baseline-access.json')));
-      const identity={ownerOid:oids[0],runtimeOid:oids[1],observerOid:oids[2],databaseOid:'16384',systemIdentifier:'7234567890123456789'},objects={columns:[],constraints:[],triggers:[]};
+      const identity={ownerOid:oids[0],runtimeOid:oids[1],observerOid:oids[2],databaseOid:'16384',systemIdentifier:'7234567890123456789'},objects={relations:[],indexes:[],columns:[],constraints:[],triggers:[]};
       const codeHash=n=>hash(fs.readFileSync(path.join(root,'services/api/prisma/'+n))),ca=path.join(path.dirname(options.inputsFile),'owned-ca.crt');fs.writeFileSync(ca,'synthetic CA only',{mode:0o600});
       const tls={caSha256:hash(fs.readFileSync(ca)),correctCertificateDerSha256:'1'.repeat(64)};let source,resourceReceipt,pendingSdkDrift=false;
       adapters.startResource=async c=>{source=c.source;calls.push('resource');resourceReceipt={...source.inputs.docker,runId:c.runId,sourceSha:source.candidateSha,containerId:'d'.repeat(64),networkId:'e'.repeat(64),databaseName:'jg_task01_'+c.runId.replaceAll('-',''),port:15432,status:'started-awaiting-driver-verification',cleanup:{status:'pending'},requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:tls.correctCertificateDerSha256},tls};
-        return{containerId:resourceReceipt.containerId,networkId:resourceReceipt.networkId,databaseName:resourceReceipt.databaseName,port:resourceReceipt.port,caPath:ca,serverCertHashes:tls,getReceipt:()=>structuredClone(resourceReceipt),close:async()=>{calls.push('close-resource');resourceReceipt.status='closed';resourceReceipt.cleanup={status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true};},execOwnerSql:async sql=>({stdout:JSON.stringify({...identity,phase:'clients-check',nonce:/'([a-f0-9]{64})' AS nonce/u.exec(sql)[1],database:resourceReceipt.databaseName,ownerRole:roles[0],loginRole:roles[0],ownerIsDatabaseOwner:true,runtimeRole:roles[1],observerRole:roles[2],tls:true,version:160004,replication:'origin',readOnly:'off',schema203Verified:true,schema203TypeAclWitness:typeAcl,functionsVerified:true,baselineGuardsVerified:true,matrixVerified:true,guardVerified:true,installedObjectWitness:objects,otherGranteeAclWitness:[],migrationLedger:source.migrations.map(row=>({name:row.path.split('/').at(-2),sha256:row.sha256,finished:true,rolledBack:false}))})})};};
+        return{containerId:resourceReceipt.containerId,networkId:resourceReceipt.networkId,databaseName:resourceReceipt.databaseName,port:resourceReceipt.port,caPath:ca,serverCertHashes:tls,getReceipt:()=>structuredClone(resourceReceipt),close:async()=>{calls.push('close-resource');resourceReceipt.status='closed';resourceReceipt.cleanup={status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true};},execOwnerSql:async sql=>({stdout:JSON.stringify({...identity,phase:'clients-check',nonce:/'([a-f0-9]{64})' AS nonce/u.exec(sql)[1],database:resourceReceipt.databaseName,ownerRole:roles[0],loginRole:roles[0],ownerIsDatabaseOwner:true,runtimeRole:roles[1],observerRole:roles[2],tls:true,version:160004,replication:'origin',readOnly:'off',schema204PhysicalVerified:true,schema203Verified:true,schema203TypeAclWitness:typeAcl,functionsVerified:true,baselineGuardsVerified:true,matrixVerified:true,guardVerified:true,installedObjectWitness:objects,otherGranteeAclWitness:[],migrationLedger:source.migrations.map(row=>({name:row.path.split('/').at(-2),sha256:row.sha256,finished:true,rolledBack:false}))})})};};
       adapters.verifyOwnerTransport=async()=>({status:'OWNER_TLS_CONTROLS_VERIFIED',...identity,caSha256:tls.caSha256,tlsWitness:tls});
-      adapters.migrateBaseline=async()=>({migrationCount:203});
-      adapters.installBaselineAccess=async c=>({status:'BASELINE_ROLE_ACL_COMMIT_OBSERVED',...identity,runtimeRole:roles[1],observerRole:roles[2],sourceSha:source.candidateSha,manifestSha256:codeHash('task16-baseline-access.json'),expectedMatrixSha256:hash(JSON.stringify([basePlan.runtime,basePlan.observer])),resourceWitness:structuredClone(c.resourceWitness),schema203TypeAclWitness:typeAcl});
+      adapters.migrateBaseline=async()=>({migrationCount:204});
+      adapters.installBaselineAccess=async c=>({status:'BASELINE_ROLE_ACL_COMMIT_OBSERVED',schema204PhysicalVerified:true,...identity,runtimeRole:roles[1],observerRole:roles[2],sourceSha:source.candidateSha,manifestSha256:codeHash('task16-baseline-access.json'),expectedMatrixSha256:hash(JSON.stringify([basePlan.runtime,basePlan.observer])),resourceWitness:structuredClone(c.resourceWitness),schema203TypeAclWitness:typeAcl});
       adapters.installPreparedSql=async c=>({status:'SQL_INSTALLATION_COMMIT_OBSERVED',...identity,candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256,packetSha256:options.expectedPacketSha256,baselineContinuityVerified:true,baselineManifestSha256:c.baselineAccess.manifestSha256,fragmentCount:7,installedObjectWitness:objects});
-      adapters.installRegisteredAccess=async c=>{if(specification.clientsProtocol==='model-drift')source.runtimeAdmission.sdkSchema.runtimeDataModelTextSha256='0'.repeat(64);if(specification.clientsProtocol==='lost-proof')delete source.runtimeAdmission.sdkSchema;if(specification.clientsProtocol==='fd-drift')pendingSdkDrift=true;return{status:'REGISTERED_ACL_COMMIT_OBSERVED',...identity,sourceSha:source.candidateSha,sourceSealSha256:source.sealSha256,manifestSha256:codeHash('task16-registered-access.json'),baselineManifestSha256:c.baselineAccess.manifestSha256,expectedMatrixSha256:hash(JSON.stringify([plan.runtime,plan.observer])),installedObjectWitness:objects,otherGranteeAclWitness:[],schema203TypeAclWitness:typeAcl};};
+      adapters.installRegisteredAccess=async c=>{if(specification.clientsProtocol==='model-drift')source.runtimeAdmission.sdkSchema.runtimeDataModelTextSha256='0'.repeat(64);if(specification.clientsProtocol==='lost-proof')delete source.runtimeAdmission.sdkSchema;if(specification.clientsProtocol==='fd-drift')pendingSdkDrift=true;return{status:'REGISTERED_ACL_COMMIT_OBSERVED',schema204PhysicalVerified:true,...identity,sourceSha:source.candidateSha,sourceSealSha256:source.sealSha256,manifestSha256:codeHash('task16-registered-access.json'),baselineManifestSha256:c.baselineAccess.manifestSha256,expectedMatrixSha256:hash(JSON.stringify([plan.runtime,plan.observer])),installedObjectWitness:objects,otherGranteeAclWitness:[],schema203TypeAclWitness:typeAcl};};
       adapters.connectRestrictedClients={command:async(exe,args,control)=>{const stdout=adapters.readOnlyCommand(exe,args,control).toString();if(pendingSdkDrift&&args.includes('compare')&&args[args.indexOf('--root')+1]===path.join(root,'packages/shared-domain/dist')){pendingSdkDrift=false;fs.appendFileSync(path.join(root,'services/api/node_modules/.prisma/client/index.js'),'\\n// changed after B2\\n');}return{actualSettled:true,code:0,timedOut:false,stdout,stderr:''};},createClient:(configuration,Class)=>{const client=new Class();calls.push('construct-'+configuration.role);const i=roles.indexOf(configuration.role);client.$connect=async()=>{calls.push('connect-'+configuration.role);if(specification.clientsProtocol==='connect-fd-drift'&&i===0)fs.appendFileSync(path.join(root,'services/api/node_modules/.prisma/client/index.js'),'\\n// changed after connect await\\n');};client.$disconnect=async()=>calls.push('disconnect-'+configuration.role);client.$transaction=async action=>action(client);client.$queryRawUnsafe=async(sql,nonce)=>[{nonce,database:resourceReceipt.databaseName,...identity,effectiveRole:roles[i],loginRole:roles[i],effectiveOid:oids[i],loginOid:oids[i],pid:12001+i,version:160004,tls:true,replication:'origin',readOnly:i===2?'on':'off',defaultReadOnly:i===2?'on':'off'}];return client;}};
       adapters.startApplication=async()=>{calls.push('app');return{close:async()=>calls.push('close-app')};};
     }
@@ -162,9 +162,9 @@ test("the public driver admits its own source/tools/worktree and compares all fi
   assert.equal(result.receipt.nativeExecution, false);
   assert.equal(result.receipt.financialAcceptance, false);
   assert.equal(result.sdkSchema.contentBound,true);
-  assert.equal(result.sdkSchema.sourceSchemaSha256,"630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf");
-  assert.equal(result.sdkSchema.generatedSchemaSha256,"5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c");
-  assert.equal(result.sdkSchema.runtimeDataModelTextSha256,"3688965d8c9ace9e00d14505562fd5067d0aecc3b581abc5daf9bff3fa624ac0");
+  assert.equal(result.sdkSchema.sourceSchemaSha256,"3f41995f48430e7adfeefb8ec605203d8ce501bb7214c66619a9142bfcf7a3f1");
+  assert.equal(result.sdkSchema.generatedSchemaSha256,"b1680aab44e174477ae5394e0dd7d629f8f4331dd4fd2533575e8f36cfc73552");
+  assert.equal(result.sdkSchema.runtimeDataModelTextSha256,"f661dc0fd9db3d641ae09c4a514ac981078de5d26f63936e1ae8ef61ff2e6695");
   assert.equal(result.sdkSchema.rawSchemaEqual,false);
   assert.equal(result.sdkSchema.nativeRuntimeQualification,false);
   assert.equal(result.sdkSchema.reviewedGeneratedBundleMatched,false);
@@ -361,18 +361,32 @@ for(const mode of ['normal','model-drift','fd-drift','lost-proof','connect-fd-dr
  const f=preparedRuntime(t);f.hooks.clientsProtocol=mode;
  const plan=JSON.parse(fs.readFileSync(path.join(project,'services/api/prisma/task16-registered-access.json'),'utf8'));for(const row of plan.sources)if(!f.packet.source.files.some(file=>file.path===row.path)){f.put(row.path,fs.readFileSync(path.join(project,row.path)));f.packet.source.files.push({path:row.path,sha256:row.sha256});}
  f.put('services/api/node_modules/@prisma/client/index.js',"module.exports={PrismaClient:class OwnedFakeClient{},Prisma:{prismaVersion:{client:'5.22.0',engine:'605197351a3c8bdd595af2d2a9bc3025bca48ea2'}}};\n");
- f.packet.migrations=Array.from({length:203},(_,i)=>({path:`services/api/prisma/migrations/${String(20260101000000+i)}_synthetic/migration.sql`,sha256:'c'.repeat(64)}));f.sealPacket();f.recapture('services/api/node_modules');
+ f.packet.migrations=Array.from({length:204},(_,i)=>({path:`services/api/prisma/migrations/${String(20260101000000+i)}_synthetic/migration.sql`,sha256:'c'.repeat(64)}));f.sealPacket();f.recapture('services/api/node_modules');
  const result=f.run();assert.equal(result.receipt.nativeExecution,false);
  if(mode==='normal'){assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',JSON.stringify(result.receipt));assert.equal(result.calls.filter(x=>x.startsWith('construct-')).length,3);assert.equal(result.calls.filter(x=>x.startsWith('disconnect-')).length,3);}
  else{assert.equal(result.receipt.failureCode,'TASK16_CLIENT_SDK_SCHEMA',JSON.stringify(result.receipt));assert.equal(result.calls.filter(x=>x.startsWith('construct-')).length,mode==='connect-fd-drift'?1:0);assert.equal(result.calls.filter(x=>x.startsWith('disconnect-')).length,mode==='connect-fd-drift'?1:0);assert.equal(result.calls.includes('app'),false);}
  assert.equal(result.calls.at(-1),'close-resource');
 });
 
-for(const kind of ['inline-schema','runtime-model','generated-schema','computed-config'])test(`whole SDK schema/model source binding rejects ${kind} drift without executing SDK`,t=>{
- const f=preparedRuntime(t),file='services/api/node_modules/.prisma/client/index.js',metadata=JSON.parse(fs.readFileSync(path.join(project,'services/api/prisma/testdata/task16-schema203-sdk-metadata.json'),'utf8'));
+for(const kind of ['inline-schema','runtime-model','generated-schema','computed-config','archive-nullability','archive-unique','evidence-model','seal-unique','approval-unique','old203-pair'])test(`whole SDK schema/model source binding rejects ${kind} drift without executing SDK`,t=>{
+ const f=preparedRuntime(t),file='services/api/node_modules/.prisma/client/index.js',metadata=JSON.parse(fs.readFileSync(path.join(project,'services/api/prisma/testdata/task16-schema204-sdk-metadata.json'),'utf8'));
  const config={clientVersion:'5.22.0',engineVersion:'605197351a3c8bdd595af2d2a9bc3025bca48ea2',copyEngine:false,inlineSchema:metadata.generatedSchema};
  if(kind==='inline-schema')config.inlineSchema+='\n// second unapproved difference';
- let model=metadata.runtimeDataModelText;if(kind==='runtime-model'){const value=JSON.parse(model);value.models.AuthRateLimit.fields[0].isRequired=!value.models.AuthRateLimit.fields[0].isRequired;model=JSON.stringify(value);}
+ let model=metadata.runtimeDataModelText;
+ if(['runtime-model','archive-nullability','archive-unique','evidence-model','seal-unique','approval-unique'].includes(kind)){
+  const value=JSON.parse(model);
+  if(kind==='runtime-model')value.models.AuthRateLimit.fields[0].isRequired=!value.models.AuthRateLimit.fields[0].isRequired;
+  if(kind==='archive-nullability')value.models.ContractArchiveFile.fields.find(field=>field.name==='fileId').isRequired=true;
+  if(kind==='archive-unique')value.models.ContractArchiveFile.fields.find(field=>field.name==='idempotencyKey').isUnique=false;
+  if(kind==='evidence-model')delete value.models.ContractArchiveEvidenceFile;
+  if(kind==='seal-unique')value.models.ContractSealTask.uniqueFields=[];
+  if(kind==='approval-unique')value.models.ApprovalInstance.uniqueFields=[];
+  model=JSON.stringify(value);
+ }
+ if(kind==='old203-pair'){
+  const old=JSON.parse(fs.readFileSync(path.join(project,'services/api/prisma/testdata/task16-schema203-sdk-metadata.json'),'utf8'));
+  config.inlineSchema=old.generatedSchema;model=old.runtimeDataModelText;f.put('services/api/node_modules/.prisma/client/schema.prisma',old.generatedSchema);
+ }
  if(kind==='generated-schema')f.put('services/api/node_modules/.prisma/client/schema.prisma',metadata.generatedSchema+'\n// unapproved generated member');
  const literal=kind==='computed-config'?JSON.stringify(config).replace('"copyEngine":false','"copyEngine":Boolean(0)'):JSON.stringify(config);
  f.put(file,`const config=${literal};\nconfig.runtimeDataModel=JSON.parse(${JSON.stringify(model)});\nthrow Error('SDK_SOURCE_MUST_NOT_EXECUTE');\n`);f.recapture('services/api/node_modules');
@@ -387,4 +401,16 @@ for(const [name,mutation] of [
  const f=preparedRuntime(t),file='services/api/node_modules/.prisma/client/index.js',original=fs.readFileSync(path.join(f.root,file),'utf8');
  assert.ok(original.includes('\nthrow new Error('));f.put(file,original.replace('\nthrow new Error(',`\n${mutation}\nthrow new Error(`));f.recapture('services/api/node_modules');
  const result=f.run();assert.equal(result.receipt.failureCode,'TASK16_RUNTIME_SDK_SCHEMA');assert.deepEqual(result.calls,[]);assert.equal(result.commands.filter(row=>row.args.includes('compare')).length,5);
+});
+
+for(const kind of ['missing-relocation','wrong-model','wrong-position','comment-change','old-bridge'])test(`Schema204 exact four relocations reject ${kind} despite caller resealing source metadata`,t=>{
+ const f=preparedRuntime(t),relative='services/api/prisma/task16-sdk-schema-proof.json';
+ const proof=JSON.parse(fs.readFileSync(path.join(f.root,relative),'utf8')),bridge=proof.acceptedFormattingBridge;
+ if(kind==='missing-relocation')bridge.relocations.pop();
+ if(kind==='wrong-model')bridge.relocations[1].model='Contract';
+ if(kind==='wrong-position')bridge.relocations[3].sourceIndexAfterPriorRemovals++;
+ if(kind==='comment-change')bridge.relocations[1].exactTokenSequence[0][1]+=' changed';
+ if(kind==='old-bridge')bridge.kind='exact-single-ExpenseClaim-index-relocation';
+ const bytes=JSON.stringify(proof);f.put(relative,bytes);f.packet.source.files.find(row=>row.path===relative).sha256=hash(bytes);f.sealPacket();
+ const result=f.run();assert.equal(result.receipt.failureCode,'TASK16_RUNTIME_SDK_SCHEMA');assert.deepEqual(result.calls,[]);
 });

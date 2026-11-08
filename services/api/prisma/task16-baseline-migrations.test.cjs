@@ -2,7 +2,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const { EventEmitter } = require("node:events");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
 const { runTask16RegisteredPg } = require("./run-task16-registered-pg-local.cjs");
@@ -59,246 +58,47 @@ function fixture(t) {
   return { options, adapters, calls, source, identity, ledger, replies, commandCount: () => commandCount, resource: () => resource, receipt: () => receipt, password: () => password };
 }
 
-test("the public run explicitly opts into the real migration stage with simulated process/owner boundaries", async t => {
-  const f = fixture(t);
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED");
-  assert.equal(receipt.nativeExecution, false); assert.equal(receipt.financialAcceptance, false);
-  assert.equal(f.commandCount(), 1);
-  assert.deepEqual(f.calls, ["task16-migration-preflight", "prisma", "task16-migration-ledger", "access", "close-resource"]);
+test("the public run rejects the unimplemented Schema204 caller supply before owner SQL or child command", async t => {
+  const f=fixture(t);const result=await runTask16RegisteredPg(f.options,f.adapters);
+  assert.equal(result.status,'FAILED_CLOSED');assert.equal(result.failureCode,'TASK16_MIGRATE_SCHEMA204_CALLABILITY_NOT_IMPLEMENTED');
+  assert.equal(result.migrationOutcome,'NOT_ATTEMPTED');assert.equal(result.nativeExecution,false);assert.equal(result.financialAcceptance,false);
+  assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });
 
-test("the native migration adapter is never inherited by an incomplete injected command descriptor", async t => {
-  const f = fixture(t); f.adapters.migrateBaseline = {};
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_DRIVER_CAPABILITIES_INCOMPLETE");
-  assert.deepEqual(f.calls, []); assert.equal(receipt.nativeExecution, false);
+test("source metadata cannot opt into Schema204 callability supply", async t => {
+  const f=fixture(t);f.source.schema204Callability={status:'QUALIFIED',applicationRoleOid:'10000',fileCallerOids:[10000],implemented:true};
+  const result=await runTask16RegisteredPg(f.options,f.adapters);
+  assert.equal(result.failureCode,'TASK16_MIGRATE_SCHEMA204_CALLABILITY_NOT_IMPLEMENTED');assert.equal(result.migrationOutcome,'NOT_ATTEMPTED');
+  assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });
 
-test("all 203 exact source entries are required before invoking Prisma", async t => {
-  const f = fixture(t); f.source.migrations.pop();
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_SOURCE_INVENTORY");
-  assert.equal(receipt.migrationOutcome, "NOT_ATTEMPTED");
-  assert.equal(f.commandCount(), 0); assert.deepEqual(f.calls, ["close-resource"]);
+test("incomplete injected command never inherits a native migration adapter",async t=>{
+ const f=fixture(t);f.adapters.migrateBaseline={};const result=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(result.failureCode,'TASK16_DRIVER_CAPABILITIES_INCOMPLETE');assert.deepEqual(f.calls,[]);
 });
 
-test("changed source metadata cannot silently select different migration bytes", async t => {
-  const f = fixture(t); f.source.migrations[0].sha256 = "0".repeat(64);
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_SOURCE_CHANGED");
-  assert.equal(f.commandCount(), 0); assert.ok(f.calls.includes("close-resource"));
+for(const count of [203,205])test(`exact204 inventory rejects ${count} before callability gate`,async t=>{
+ const f=fixture(t);if(count===203)f.source.migrations.pop();else f.source.migrations.push({...f.source.migrations.at(-1)});
+ const result=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(result.failureCode,'TASK16_MIGRATE_SOURCE_INVENTORY');
+ assert.equal(result.migrationOutcome,'NOT_ATTEMPTED');assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });
 
-for (const [field, value] of [["ownerRole", "postgres"], ["loginRole", "unbound_owner"], ["database", "foreign_database"], ["databaseOid", "99999"], ["systemIdentifier", "8234567890123456789"], ["tls", false], ["replication", "replica"], ["version", 150004]]) {
-  test(`owner ${field} mismatch prevents the migration command`, async t => {
-    const f = fixture(t); f.replies.preflight[field] = value;
-    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.failureCode, "TASK16_MIGRATE_OWNER_IDENTITY");
-    assert.equal(receipt.migrationOutcome, "NOT_ATTEMPTED");
-    assert.equal(f.commandCount(), 0); assert.equal(f.calls.at(-1), "close-resource");
-  });
-}
-
-test("an existing ledger is not treated as an invitation to resume or retry migrations", async t => {
-  const f = fixture(t); f.replies.preflight.ledgerExists = true;
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_FRESH_DATABASE_REQUIRED");
-  assert.equal(f.commandCount(), 0); assert.equal(f.calls.includes("access"), false);
+test("changed migration bytes are rejected before the fixed unavailable capability",async t=>{
+ const f=fixture(t);f.source.migrations[0].sha256='0'.repeat(64);const result=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(result.failureCode,'TASK16_MIGRATE_SOURCE_CHANGED');assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });
 
-test("a different resource source identity is rejected before any owner query", async t => {
-  const f = fixture(t); const start = f.adapters.startResource;
-  f.adapters.startResource = async context => { const resource = await start(context); f.receipt().sourceSha = "f".repeat(40); return resource; };
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_RESOURCE_IDENTITY");
-  assert.deepEqual(f.calls, ["close-resource"]);
+test("changed Schema identity is rejected before the fixed unavailable capability",async t=>{
+ const f=fixture(t);f.source.schema.sha256='0'.repeat(64);const result=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(result.failureCode,'TASK16_MIGRATE_SCHEMA');assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });
 
-test("a missing owner TLS control result is an unimplemented prerequisite, not a bypass", async t => {
-  const f = fixture(t); f.adapters.verifyOwnerTransport = async () => undefined;
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_OWNER_TRANSPORT");
-  assert.equal(f.commandCount(), 0); assert.deepEqual(f.calls, ["close-resource"]);
+test("resource source identity cannot be replaced before callability rejection",async t=>{
+ const f=fixture(t),start=f.adapters.startResource;f.adapters.startResource=async c=>{const r=await start(c);f.receipt().sourceSha='f'.repeat(40);return r;};
+ const result=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(result.failureCode,'TASK16_MIGRATE_RESOURCE_IDENTITY');assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });
 
-for (const change of ["missing", "duplicate", "checksum", "unfinished", "rolled back"]) {
-  test(`a ${change} ledger row cannot turn exit zero into verified migration completion`, async t => {
-    const f = fixture(t);
-    if (change === "missing") f.ledger.pop();
-    if (change === "duplicate") f.ledger.push(f.ledger[0]);
-    if (change === "checksum") f.ledger[0].sha256 = "0".repeat(64);
-    if (change === "unfinished") f.ledger[0].finished = false;
-    if (change === "rolled back") f.ledger[0].rolledBack = true;
-    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.failureCode, "TASK16_MIGRATE_LEDGER_MISMATCH");
-    assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-    assert.equal(f.commandCount(), 1); assert.equal(f.calls.includes("access"), false); assert.equal(f.calls.at(-1), "close-resource");
-  });
-}
-
-test("a changed post-command cluster identity is unknown and blocks all later SQL", async t => {
-  const f = fixture(t); f.replies.ledger.systemIdentifier = "8234567890123456789";
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_OWNER_IDENTITY");
-  assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-  assert.equal(f.commandCount(), 1); assert.equal(f.calls.includes("access"), false);
-});
-
-test("matching mutations to both public resource IDs and its receipt cannot replace the initially witnessed container", async t => {
-  const f = fixture(t); const original = f.adapters.migrateBaseline.command;
-  f.adapters.migrateBaseline.command = async (...args) => {
-    const result = await original(...args);
-    f.receipt().containerId = "9".repeat(64); f.resource().containerId = f.receipt().containerId;
-    return result;
-  };
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_RESOURCE_IDENTITY");
-  assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-  assert.equal(f.commandCount(), 1); assert.equal(f.calls.includes("task16-migration-ledger"), false); assert.equal(f.calls.includes("access"), false);
-});
-
-test("cancellation while the process returns exit zero remains unknown and never reaches ledger acceptance", async t => {
-  const f = fixture(t); const controller = new AbortController(); f.options.signal = controller.signal;
-  const original = f.adapters.migrateBaseline.command;
-  f.adapters.migrateBaseline.command = async (...args) => { const result = await original(...args); controller.abort(); return result; };
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_ABORTED");
-  assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-  assert.equal(f.commandCount(), 1); assert.equal(f.calls.includes("task16-migration-ledger"), false); assert.equal(f.calls.at(-1), "close-resource");
-});
-
-test("changing both an owned tool and its mutable descriptor after launch cannot replace the witnessed executable", async t => {
-  const f = fixture(t); const original = f.adapters.migrateBaseline.command;
-  f.adapters.migrateBaseline.command = async (...args) => {
-    const result = await original(...args);
-    fs.appendFileSync(f.source.inputs.tools.pnpm.path, "# changed during command\n");
-    f.source.inputs.tools.pnpm.sha256 = hash(fs.readFileSync(f.source.inputs.tools.pnpm.path));
-    return result;
-  };
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_TOOL_IDENTITY");
-  assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-  assert.equal(f.commandCount(), 1); assert.equal(f.calls.includes("task16-migration-ledger"), false);
-});
-
-for (const condition of ["nonzero", "timeout", "unsettled", "oversized output", "lost acknowledgement"]) {
-  test(`${condition} process outcome is never retried or allowed to reach access installation`, async t => {
-    const f = fixture(t); const original = f.adapters.migrateBaseline.command;
-    f.adapters.migrateBaseline.command = async (...args) => {
-      const result = await original(...args);
-      if (condition === "nonzero") return { ...result, code: 1, stderr: `private-url-password=${f.password()}` };
-      if (condition === "timeout") return { ...result, timedOut: true };
-      if (condition === "unsettled") return { ...result, actualSettled: false };
-      if (condition === "oversized output") return { ...result, stdout: Buffer.alloc(1048577) };
-      throw new Error(`private migration acknowledgement ${f.password()}`);
-    };
-    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.status, "FAILED_CLOSED"); assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-    assert.equal(f.commandCount(), 1); assert.equal(f.calls.includes("task16-migration-ledger"), false); assert.equal(f.calls.includes("access"), false);
-    assert.equal(f.calls.at(-1), "close-resource");
-    assert.equal(JSON.stringify(receipt).includes(f.password()), false);
-  });
-}
-
-for (const boundary of ["transport", "owner preflight"]) {
-  test(`an unsealed migration added at ${boundary} is rejected before Prisma launch`, async t => {
-    const f = fixture(t);
-    const directory = path.join(ROOT, "services/api/prisma/migrations/20990101000000_review_extra");
-    assert.equal(fs.existsSync(directory), false);
-    const add = () => { fs.mkdirSync(directory); fs.writeFileSync(path.join(directory, "migration.sql"), "-- synthetic review marker only\n"); };
-    t.after(() => { if (fs.existsSync(directory)) { assert.equal(fs.readFileSync(path.join(directory, "migration.sql"), "utf8"), "-- synthetic review marker only\n"); fs.unlinkSync(path.join(directory, "migration.sql")); fs.rmdirSync(directory); } });
-    const original = f.adapters.verifyOwnerTransport;
-    f.adapters.verifyOwnerTransport = async (...args) => {
-      const result = await original(...args);
-      if (boundary === "transport") add();
-      else { const read = f.resource().execOwnerSql; f.resource().execOwnerSql = async (...sqlArgs) => { const row = await read(...sqlArgs); if (sqlArgs[1] === "task16-migration-preflight") add(); return row; }; }
-      return result;
-    };
-    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-    assert.equal(receipt.failureCode, "TASK16_MIGRATE_SOURCE_INVENTORY");
-    assert.equal(receipt.migrationOutcome, "NOT_ATTEMPTED"); assert.equal(f.commandCount(), 0); assert.equal(f.calls.at(-1), "close-resource");
-  });
-}
-
-function processFixture(f, { noPid = false } = {}) {
-  const child = new EventEmitter(); child.stdout = noPid ? undefined : new EventEmitter(); child.stderr = noPid ? undefined : new EventEmitter();
-  child.pid = noPid ? undefined : 12345; child.unref = () => {};
-  let alive = !noPid, spawned = false, clock = 0, sequence = 0;
-  const timers = new Map(), signals = [];
-  const process = {
-    spawn: () => { spawned = true; return child; },
-    groupSignal: (pid, signal) => { assert.equal(pid, 12345); signals.push(signal); },
-    groupExists: pid => { assert.equal(pid, 12345); return alive; },
-    setTimer: (callback, delay) => { const id = ++sequence; timers.set(id, { callback, at: clock + delay }); return id; },
-    clearTimer: id => timers.delete(id)
-  };
-  f.adapters.migrateBaseline = { process };
-  return { child, signals, spawned: () => spawned, gone: () => { alive = false; }, advance: ms => {
-    const end = clock + ms;
-    for (;;) { const next = [...timers].filter(([, t]) => t.at <= end).sort((a, b) => a[1].at - b[1].at)[0]; if (!next) break; clock = next[1].at; timers.delete(next[0]); next[1].callback(); }
-    clock = end;
-  } };
-}
-const flush = () => new Promise(resolve => setImmediate(resolve));
-test("leader close during cancellation retains group escalation until absence is witnessed", async t => {
-  const f = fixture(t), controller = new AbortController(); f.options.signal = controller.signal;
-  const p = processFixture(f); let done = false;
-  const run = runTask16RegisteredPg(f.options, f.adapters).then(receipt => { done = true; return receipt; });
-  await flush(); assert.equal(p.spawned(), true);
-  controller.abort(); p.child.emit("close", 0); await flush(); assert.equal(done, false);
-  p.advance(1000); assert.deepEqual(p.signals, ["SIGTERM", "SIGKILL"]); await flush(); assert.equal(done, false);
-  p.gone(); p.advance(100); const receipt = await run;
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_ABORTED"); assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-  assert.equal(f.calls.at(-1), "close-resource"); assert.equal(receipt.nativeExecution, false);
-});
-
-for (const code of ["EMFILE", "ENFILE"]) {
-  test(`${code} without PID or stdio still handles asynchronous error and closes resources`, async t => {
-    const f = fixture(t), p = processFixture(f, { noPid: true });
-    const run = runTask16RegisteredPg(f.options, f.adapters);
-    await flush(); assert.equal(p.spawned(), true);
-    await new Promise(resolve => queueMicrotask(() => { p.child.emit("error", Object.assign(new Error(code), { code })); p.child.emit("close", -1); resolve(); }));
-    const receipt = await run;
-    assert.equal(receipt.failureCode, "TASK16_MIGRATE_SPAWN_FAILED"); assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-    assert.deepEqual(p.signals, []); assert.equal(f.calls.at(-1), "close-resource"); assert.equal(f.calls.includes("access"), false);
-    assert.equal(receipt.nativeExecution, false);
-  });
-}
-for (const disappears of [true, false]) {
-  test(`exit zero with a remaining group ${disappears ? "fails after group absence" : "fails at the hard deadline"}`, async t => {
-    const f = fixture(t), p = processFixture(f); let done = false;
-    const run = runTask16RegisteredPg(f.options, f.adapters).then(receipt => { done = true; return receipt; });
-    await flush(); assert.equal(p.spawned(), true); p.child.emit("close", 0); await flush(); assert.equal(done, false);
-    p.advance(1000); assert.deepEqual(p.signals, ["SIGTERM", "SIGKILL"]);
-    if (disappears) { p.gone(); p.advance(100); } else p.advance(4000);
-    const receipt = await run;
-    assert.equal(receipt.failureCode, "TASK16_MIGRATE_PROCESS_REMAINS"); assert.equal(receipt.migrationOutcome, "UNKNOWN_DO_NOT_RETRY");
-    assert.equal(f.calls.at(-1), "close-resource"); assert.equal(f.calls.includes("access"), false); assert.equal(receipt.nativeExecution, false);
-  });
-}
-test("a normal process succeeds only after both close and owned group absence", async t => {
-  const f = fixture(t), p = processFixture(f);
-  const run = runTask16RegisteredPg(f.options, f.adapters); await flush(); assert.equal(p.spawned(), true);
-  p.gone(); p.child.emit("close", 0);
-  const receipt = await run;
-  assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED"); assert.deepEqual(p.signals, []); assert.equal(receipt.nativeExecution, false);
-});
-test("an incomplete process boundary fails before any resource creation", async t => {
-  const f = fixture(t); f.adapters.migrateBaseline = { process: { spawn: () => { throw new Error("must not be called"); } } };
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.status, "FAILED_CLOSED"); assert.deepEqual(f.calls, []); assert.equal(receipt.nativeExecution, false);
-});
-test("owner preflight cannot replace a sealed tool and its mutable descriptor before launch", async t => {
-  const f = fixture(t), original = f.adapters.verifyOwnerTransport;
-  f.adapters.verifyOwnerTransport = async (...args) => {
-    const result = await original(...args), read = f.resource().execOwnerSql;
-    f.resource().execOwnerSql = async (...sqlArgs) => {
-      const row = await read(...sqlArgs);
-      if (sqlArgs[1] === "task16-migration-preflight") { fs.appendFileSync(f.source.inputs.tools.pnpm.path, "# callback mutation\n"); f.source.inputs.tools.pnpm.sha256 = hash(fs.readFileSync(f.source.inputs.tools.pnpm.path)); }
-      return row;
-    }; return result;
-  };
-  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
-  assert.equal(receipt.failureCode, "TASK16_MIGRATE_TOOL_IDENTITY"); assert.equal(receipt.migrationOutcome, "NOT_ATTEMPTED"); assert.equal(f.commandCount(), 0); assert.equal(f.calls.at(-1), "close-resource");
+test("missing owner transport is rejected before callability rejection",async t=>{
+ const f=fixture(t);f.adapters.verifyOwnerTransport=async()=>undefined;
+ const result=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(result.failureCode,'TASK16_MIGRATE_OWNER_TRANSPORT');assert.equal(f.commandCount(),0);assert.deepEqual(f.calls,['close-resource']);
 });

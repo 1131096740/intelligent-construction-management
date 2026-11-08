@@ -1,22 +1,144 @@
 {
   "schemaVersion": 1,
   "purpose": "task16-reviewed-schema-content-binding-types-and-source-only-not-native-approval",
-  "preflightSha256": "8aced2bd99107f11d01af8d86f9a758e65f948805e2d87bbc66adce666492ef8",
-  "sourceSetSha256": "4f037bda858fc9291b1e3a1eae43f15e88a3111ae9d0376bbe782b79990bf5da",
-  "sourceSchemaSha256": "630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf",
-  "generatedSchemaSha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
+  "preflightSha256": "4a50f00c1a603e6ca3bcb08dfbe7176fd2320ab8bfe2bd372529ce38bc41eef4",
+  "sourceSetSha256": "caee64fb859fbc9dd7a23b382f9dc1abc8e58450d258e077e888c567c004fbf0",
+  "sourceSchemaSha256": "3f41995f48430e7adfeefb8ec605203d8ce501bb7214c66619a9142bfcf7a3f1",
+  "generatedSchemaSha256": "b1680aab44e174477ae5394e0dd7d629f8f4331dd4fd2533575e8f36cfc73552",
   "rawSchemaEqual": false,
   "acceptedFormattingBridge": {
-    "kind": "exact-single-ExpenseClaim-index-relocation",
-    "sourceSchemaSha256": "630401ecd59c4df458fa0c08bc302e7f2a9ff5c9fd1cd1002965f7976a2868bf",
-    "generatedSchemaSha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
-    "sourceTokens": 35390,
-    "generatedTokens": 35390,
-    "sourceTokensSha256": "7145da6b6d5104db39cea81c0f99755bd37f11afe0d8c2d56af7d3385919894d",
-    "generatedTokensSha256": "9f2f44ae307704f36450ab9f50590d80a6eb1a2823b0aa583d4fe1708460a6b3",
-    "remainingTokensSha256": "ab3ad3300215f6b8b11fcefce7bc869c861c165e30a1718f44fcd46f90c5f4b6",
-    "directive": "@@index([generalProcurementId])",
-    "scope": "TYPE/source only; no arbitrary normalization"
+    "kind": "exact-four-model-bound-relocations",
+    "sourceSchemaSha256": "3f41995f48430e7adfeefb8ec605203d8ce501bb7214c66619a9142bfcf7a3f1",
+    "generatedSchemaSha256": "b1680aab44e174477ae5394e0dd7d629f8f4331dd4fd2533575e8f36cfc73552",
+    "sourceTokens": 35529,
+    "generatedTokens": 35529,
+    "sourceTokensSha256": "e200cafb2acdeb31a0e4e90da346e5b3a2c8a566f5041ace99edd7a068eaba74",
+    "generatedTokensSha256": "1827a5a313c2ded92c18b9dbd4ab7410ae0ab597aadc506915fbf0ab82cb7ae7",
+    "remainingTokensSha256": "918a2e3c6653a8879f729f3009531fbfa09ab9bfc15688d173336965977d6ed9",
+    "remainingTokenCount": 35507,
+    "relocations": [
+      {
+        "model": "ExpenseClaim",
+        "exactTokenSequence": [
+          [
+            "punctuation",
+            "@"
+          ],
+          [
+            "punctuation",
+            "@"
+          ],
+          [
+            "word",
+            "index"
+          ],
+          [
+            "punctuation",
+            "("
+          ],
+          [
+            "punctuation",
+            "["
+          ],
+          [
+            "word",
+            "generalProcurementId"
+          ],
+          [
+            "punctuation",
+            "]"
+          ],
+          [
+            "punctuation",
+            ")"
+          ]
+        ],
+        "sourceIndexAfterPriorRemovals": 25340,
+        "generatedIndexAfterPriorRemovals": 25491,
+        "uniqueInBoth": true
+      },
+      {
+        "model": "ContractArchiveFile",
+        "exactTokenSequence": [
+          [
+            "comment",
+            "// V2-only uniqueness and Version/R/T composite FKs live in migration 204."
+          ]
+        ],
+        "sourceIndexAfterPriorRemovals": 16502,
+        "generatedIndexAfterPriorRemovals": 16492,
+        "uniqueInBoth": true
+      },
+      {
+        "model": "ContractArchiveEvidenceFile",
+        "exactTokenSequence": [
+          [
+            "comment",
+            "// Composite parent/version and private-file FKs live in migration 204."
+          ]
+        ],
+        "sourceIndexAfterPriorRemovals": 16560,
+        "generatedIndexAfterPriorRemovals": 16542,
+        "uniqueInBoth": true
+      },
+      {
+        "model": "ContractSealTask",
+        "exactTokenSequence": [
+          [
+            "punctuation",
+            "@"
+          ],
+          [
+            "punctuation",
+            "@"
+          ],
+          [
+            "word",
+            "unique"
+          ],
+          [
+            "punctuation",
+            "("
+          ],
+          [
+            "punctuation",
+            "["
+          ],
+          [
+            "word",
+            "id"
+          ],
+          [
+            "punctuation",
+            ","
+          ],
+          [
+            "word",
+            "contractVersionId"
+          ],
+          [
+            "punctuation",
+            ","
+          ],
+          [
+            "word",
+            "approvalInstanceId"
+          ],
+          [
+            "punctuation",
+            "]"
+          ],
+          [
+            "punctuation",
+            ")"
+          ]
+        ],
+        "sourceIndexAfterPriorRemovals": 16874,
+        "generatedIndexAfterPriorRemovals": 16854,
+        "uniqueInBoth": true
+      }
+    ],
+    "scope": "TYPE/source only; four exact model-bound relocations, no arbitrary normalization"
   },
   "packageEntrySha256": "0cfff057c91fcb7559bd1a3bb4891404e455829ced5b18a87c9393ee1721ace4",
   "generatedMembers": [
@@ -37,32 +159,32 @@
     },
     {
       "file": "edge.js",
-      "sha256": "1201b4966091f048e19bab06f934e6bf56537011faab73034996e8fbab330c5d",
+      "sha256": "9cd9b627d860e3033b4a43d1751e306b481bc72f207b9191ce3027cf6045beae",
       "mode": "0o644"
     },
     {
       "file": "index-browser.js",
-      "sha256": "4f7948ce55bb78d88d08d9cb2ca502f9ddfa5e5036c9ac165ec415b304504f30",
+      "sha256": "5468dd2928bb9205770fb147a90d83d8130c700f845df15606cb612112291306",
       "mode": "0o644"
     },
     {
       "file": "index.d.ts",
-      "sha256": "67c60a3e91980d9351a3b91e74925b80b49e3b18a70019a1c28e8640a7210e5d",
+      "sha256": "f35f883ef402fa7e54d3cc2d6a16b21c06a33cd229c4b1ae6621d6ff2e6c5268",
       "mode": "0o644"
     },
     {
       "file": "index.js",
-      "sha256": "9d50747e15dc3d019117f039590af161681e8f01bf09fd10fba43c3eb021b694",
+      "sha256": "923242ad83a47bcf35616cc2811db76d9892f433b033b0c821baccc4d50a8391",
       "mode": "0o644"
     },
     {
       "file": "package.json",
-      "sha256": "b86d67c8aae480469564bf0aca8508dda3ac01db652ace6507a856b8e79ee3ac",
+      "sha256": "a4dbb7a7dbc51b4e1648cfa9977c02fc327e1660090c493a3b5d6c3224ef9522",
       "mode": "0o644"
     },
     {
       "file": "schema.prisma",
-      "sha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
+      "sha256": "b1680aab44e174477ae5394e0dd7d629f8f4331dd4fd2533575e8f36cfc73552",
       "mode": "0o644"
     },
     {
@@ -72,12 +194,12 @@
     },
     {
       "file": "wasm.js",
-      "sha256": "4f7948ce55bb78d88d08d9cb2ca502f9ddfa5e5036c9ac165ec415b304504f30",
+      "sha256": "5468dd2928bb9205770fb147a90d83d8130c700f845df15606cb612112291306",
       "mode": "0o644"
     }
   ],
-  "inlineSchemaSha256": "5dba68a98fddc0a0036a491198c12abde31afc880d9a0d8c73844cc4ded53c4c",
-  "runtimeDataModelTextSha256": "3688965d8c9ace9e00d14505562fd5067d0aecc3b581abc5daf9bff3fa624ac0",
+  "inlineSchemaSha256": "b1680aab44e174477ae5394e0dd7d629f8f4331dd4fd2533575e8f36cfc73552",
+  "runtimeDataModelTextSha256": "f661dc0fd9db3d641ae09c4a514ac981078de5d26f63936e1ae8ef61ff2e6695",
   "clientVersion": "5.22.0",
   "engineVersion": "605197351a3c8bdd595af2d2a9bc3025bca48ea2",
   "copyEngine": false,
