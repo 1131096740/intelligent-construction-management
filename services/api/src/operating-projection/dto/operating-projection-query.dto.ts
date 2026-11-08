@@ -52,11 +52,21 @@ export class OperatingProjectionScopedQueryDto {
   contractRelationship?: ContractRelationship;
 }
 
-export class OperatingProjectionProjectQueryDto extends OperatingProjectionScopedQueryDto {}
+export class OperatingProjectionProjectQueryDto extends OperatingProjectionScopedQueryDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "经营读取金额协议必须是明确字符串" })
+  @IsIn(["1", "2"], { message: "经营读取金额协议必须为1或2" })
+  numericProtocolVersion?: "1" | "2";
+}
 
-export class OperatingProjectionCompanyQueryDto extends OperatingProjectionScopedQueryDto {}
+export class OperatingProjectionCompanyQueryDto extends OperatingProjectionScopedQueryDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "经营读取金额协议必须是明确字符串" })
+  @IsIn(["1", "2"], { message: "经营读取金额协议必须为1或2" })
+  numericProtocolVersion?: "1" | "2";
+}
 
-export class OperatingProjectionAsOfQueryDto extends OperatingProjectionScopedQueryDto {
+class OperatingProjectionAsOfScopeQueryDto extends OperatingProjectionScopedQueryDto {
   @IsString({ message: "经营投影范围必须是字符串" })
   @MaxLength(QUERY_VALUE_MAX_LENGTH, { message: "经营投影范围不能超过 256 个字符" })
   @IsIn(SCOPE_KINDS, { message: "经营投影范围必须是单项目、公司或多项目" })
@@ -73,7 +83,19 @@ export class OperatingProjectionAsOfQueryDto extends OperatingProjectionScopedQu
   projectIds?: string;
 }
 
+export class OperatingProjectionAsOfQueryDto extends OperatingProjectionAsOfScopeQueryDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "经营读取金额协议必须是明确字符串" })
+  @IsIn(["1", "2"], { message: "经营读取金额协议必须为1或2" })
+  numericProtocolVersion?: "1" | "2";
+}
+
 class OperatingProjectionDetailQueryDto extends OperatingProjectionScopedQueryDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "经营读取金额协议必须是明确字符串" })
+  @IsIn(["1", "2"], { message: "经营读取金额协议必须为1或2" })
+  numericProtocolVersion?: "1" | "2";
+
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "经营投影明细游标必须是字符串" })
   @MaxLength(QUERY_LIST_MAX_LENGTH, { message: "经营投影明细游标不能超过 2048 个字符" })
@@ -94,7 +116,12 @@ export class OperatingProjectionProjectDetailQueryDto
 export class OperatingProjectionCompanyDetailQueryDto
   extends OperatingProjectionDetailQueryDto {}
 
-export class OperatingProjectionAsOfDetailQueryDto extends OperatingProjectionAsOfQueryDto {
+export class OperatingProjectionAsOfDetailQueryDto extends OperatingProjectionAsOfScopeQueryDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "经营读取金额协议必须是明确字符串" })
+  @IsIn(["1", "2"], { message: "经营读取金额协议必须为1或2" })
+  numericProtocolVersion?: "1" | "2";
+
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "经营投影明细游标必须是字符串" })
   @MaxLength(QUERY_LIST_MAX_LENGTH, { message: "经营投影明细游标不能超过 2048 个字符" })

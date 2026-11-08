@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { recordIndependentApproval } from "../approval/independent-approval-evidence";
 import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import {businessDay} from "./contract-proxy-bank";
@@ -28,7 +29,7 @@ export class UpwardReceiptMatchService {
   const availableReceipts=receipts.filter(r=>!reversedIds.has(r.fundExecutionId));
   const settlements=await tx.projectAffiliateSettlementFact.findMany({where:{projectId,entryKind:"original",status:"confirmed",affiliateCompanyContractId:{not:null}}});
   const matches=await tx.upwardReceiptMatch.findMany({where:{projectId},orderBy:{createdAt:"desc"}});
-  return {canPrepare:true,canReview:roles.includes("finance_director"),receipts:await Promise.all(availableReceipts.map(async r=>({id:r.id,label:`到账 ${r.occurredAt.toISOString().slice(0,10)} · ${r.amountCents.toString()} 分`,amountCents:r.amountCents.toString(),matchedCents:(await matchedUpwardReceipts(tx,{receiptFactId:r.id})).toString(),occurredAt:r.occurredAt}))),settlements:settlements.map(s=>({id:s.ledgerId,label:`${s.periodLabel} · ${s.counterpartyName}`})),matches:matches.map(r=>({...r,amountCents:r.amountCents.toString(),canConfirm:r.status==="pending_confirm"&&r.recordedByUserId!==actor&&roles.includes("finance_director")}))};
+  return {canPrepare:true,canReview:roles.includes("finance_director"),receipts:await Promise.all(availableReceipts.map(async r=>({id:r.id,label:`到账 ${r.occurredAt.toISOString().slice(0,10)} · ${requireLegacyOperatingCents(r).toString()} 分`,amountCents:requireLegacyOperatingCents(r).toString(),matchedCents:(await matchedUpwardReceipts(tx,{receiptFactId:r.id})).toString(),occurredAt:r.occurredAt}))),settlements:settlements.map(s=>({id:s.ledgerId,label:`${s.periodLabel} · ${s.counterpartyName}`})),matches:matches.map(r=>({...r,amountCents:r.amountCents.toString(),canConfirm:r.status==="pending_confirm"&&r.recordedByUserId!==actor&&roles.includes("finance_director")}))};
  });}
  private async context(tx:Prisma.TransactionClient,input:PrepareReceiptMatch,amount:bigint,excludeId?:string){
   const receipt=await tx.operatingFact.findFirst({where:{id:input.receiptFactId,projectId:input.projectId,sourceType:"fund_execution",direction:"inflow",status:"confirmed"},include:{impacts:true}});
@@ -48,7 +49,7 @@ export class UpwardReceiptMatchService {
    const returns=await tx.upwardReceiptMatch.aggregate({where:{originalId:prior.id,status:"confirmed"},_sum:{amountCents:true}});
    if(amount+(returns._sum.amountCents??0n)>prior.amountCents)throw new ConflictException("解除金额超过原有效核销");
   }else{
-   if(amount+await matchedUpwardReceipts(tx,{receiptFactId:receipt.id},true,excludeId)>receipt.amountCents)throw new ConflictException("核销超过该到账未匹配金额");
+   if(amount+await matchedUpwardReceipts(tx,{receiptFactId:receipt.id},true,excludeId)>requireLegacyOperatingCents(receipt))throw new ConflictException("核销超过该到账未匹配金额");
    const paid=await tx.projectUpstreamFundFact.findMany({where:{projectId:input.projectId,factType:"affiliate_remittance_to_company",affiliateSettlementFactId:{in:rows.map(r=>r.id)},OR:[{status:"confirmed"},{status:"pending_confirm",effectDirection:"increase"}]}});
    const net=rows.reduce((s,r)=>s+(r.effectDirection==="decrease"?-r.amountCents:r.amountCents),0n);
    const used=paid.reduce((s,r)=>s+(r.effectDirection==="decrease"?-r.amountCents:r.amountCents),0n)+await matchedUpwardReceipts(tx,{settlementLedgerId:original.ledgerId},true,excludeId);

@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { randomUUID } from "node:crypto";
 import {
@@ -652,7 +653,7 @@ export class OperatingTakeoverService {
         entryKind,
         adjustsFactId: adjustsFactId ?? null,
         subjects: canonicalize(subjects) as Prisma.InputJsonObject,
-        impacts: impacts.map((impact) => ({ ...impact, amountCents: impact.amountCents.toString() })) as unknown as Prisma.InputJsonValue
+        impacts: impacts.map((impact) => ({ ...impact, amountCents: requireLegacyOperatingCents(impact).toString() })) as unknown as Prisma.InputJsonValue
       },
       entryType: entryType ?? null,
       deductionType: deductionType ?? null,

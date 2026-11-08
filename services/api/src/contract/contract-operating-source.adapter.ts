@@ -1,5 +1,7 @@
-import { economicExcludedAt } from "../contract-ledger/contract-economic-coverage";
+import { economicExcludedAt, economicExcludedYuanAt } from "../contract-ledger/contract-economic-coverage";
 import { BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { normalizeBusinessAmount, businessAmountFromLegacyCents } from "@jiangkong/shared-domain";
 import { downstreamContractRelationship } from "@jiangkong/shared-domain";
 import {
   frozenAffiliateFromJson, occurredBeforeEffectiveDate, readAffiliateSnapshot,
@@ -47,23 +49,45 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const confirmedByUserId = archive?.confirmedByUserId ?? formalFile?.confirmedByUserId ?? takeover?.activatedByUserId;
     if (!confirmedByUserId) throw new BadRequestException("生效合同缺少归档或接管确认依据");
     if (!counterparty?.businessPartyVersionId) throw new BadRequestException("合同承诺缺少受控相对方快照，请先核对签约主体");
+    const numeric2 = version.numericProtocolVersion === 2;
     const knownAmount = version.amountLimitType !== "uncapped";
     const priorAmount = predecessor && predecessor.amountLimitType !== "uncapped" ? predecessor.amountCents : 0n;
     const economicRef = `contract:${contract.id}`;
-    const economicExcludedCents = await economicExcludedAt(tx, projectId, economicRef, version.effectiveAt, `${version.id}:${version.documentContentRevision}`);
+    const economicExcludedCents = numeric2?null:await economicExcludedAt(tx, projectId, economicRef, version.effectiveAt, `${version.id}:${version.documentContentRevision}`);
+    const Decimal=Prisma.Decimal.clone({precision:60});
+    const economicExcludedYuan=numeric2?await economicExcludedYuanAt(tx,projectId,economicRef,version.effectiveAt,`${version.id}:${version.documentContentRevision}`):null;
     let priorAppliedExclusion = 0n;
+    let priorAppliedExclusionYuan = new Decimal(0);
     if (predecessor) {
       const fact = await tx.operatingFact.findFirst({ where: { projectId, sourceType: this.sourceType, sourceBusinessId: predecessor.id } });
       const priorSnapshot = fact?.sourceSnapshot as Record<string, unknown> | undefined;
       priorAppliedExclusion = typeof priorSnapshot?.economicExcludedCents === "string" ? BigInt(priorSnapshot.economicExcludedCents) : 0n;
+      if(numeric2)priorAppliedExclusionYuan=new Decimal(typeof priorSnapshot?.economicExcludedYuan==="string"?normalizeBusinessAmount(priorSnapshot.economicExcludedYuan,{allowNegative:true})!:businessAmountFromLegacyCents(priorAppliedExclusion)!);
       const laterReviews = await tx.contractEconomicReview.findMany({ where: { projectId, status: "confirmed", confirmedAt: { gt: predecessor.effectiveAt!, lte: version.effectiveAt } } });
       for (const review of laterReviews) if (Array.isArray(review.frozenSources)) for (const raw of review.frozenSources) {
         const d = raw as Record<string, unknown>;
-        if (d.ref === economicRef && d.formal === true && typeof d.excludedDeltaCents === "string") priorAppliedExclusion += BigInt(d.excludedDeltaCents);
+        if (d.ref !== economicRef || d.formal !== true)continue;
+        if(numeric2){
+          if(d.coverageNumericProtocolVersion===2||d.numericProtocolVersion===2){
+            if(typeof d.excludedDeltaYuan!=="string")throw new BadRequestException("前版履约复核缺少四位排除金额");
+            priorAppliedExclusionYuan=priorAppliedExclusionYuan.plus(normalizeBusinessAmount(d.excludedDeltaYuan,{allowNegative:true})!);
+          }else if(typeof d.excludedDeltaCents==="string")priorAppliedExclusionYuan=priorAppliedExclusionYuan.plus(businessAmountFromLegacyCents(d.excludedDeltaCents)!);
+        }else if(typeof d.excludedDeltaCents==="string")priorAppliedExclusion+=BigInt(d.excludedDeltaCents);
+        else if(d.coverageNumericProtocolVersion===2||d.numericProtocolVersion===2)throw new BadRequestException("原分合同不能按分读取新版履约复核，请使用四位元协议");
       }
     }
-    if (knownAmount && economicExcludedCents > version.amountCents) throw new BadRequestException("已确认重叠范围超过合同新金额，请先复核");
-    const delta = (knownAmount ? version.amountCents : 0n) - priorAmount - economicExcludedCents + priorAppliedExclusion;
+    // V2 authority is the decimal source; the old cents column is display compatibility only.
+    const sourceAmountYuan = numeric2 ? normalizeBusinessAmount(version.amountYuan === null ? null : version.amountYuan.toString()) : null;
+    const priorAmountYuan = !predecessor ? "0.0000" : predecessor.numericProtocolVersion === 2
+      ? normalizeBusinessAmount(predecessor.amountYuan === null ? null : predecessor.amountYuan.toString())
+      : predecessor.amountLimitType === "uncapped" ? null : businessAmountFromLegacyCents(predecessor.amountCents);
+    const excludedYuan = numeric2?economicExcludedYuan!:businessAmountFromLegacyCents(economicExcludedCents!)!;
+    const priorExcludedYuan = numeric2?priorAppliedExclusionYuan.toFixed(4):businessAmountFromLegacyCents(priorAppliedExclusion)!;
+    if (numeric2 && sourceAmountYuan !== null && new Prisma.Decimal(excludedYuan).gt(sourceAmountYuan)) throw new BadRequestException("已确认重叠范围超过合同新金额，请先复核");
+    const deltaYuan = numeric2 && sourceAmountYuan !== null && priorAmountYuan !== null
+      ? normalizeBusinessAmount(new Decimal(sourceAmountYuan).minus(priorAmountYuan).minus(excludedYuan).plus(priorExcludedYuan).toFixed(4), { allowNegative: true }) : null;
+    if (!numeric2 && knownAmount && economicExcludedCents! > version.amountCents) throw new BadRequestException("已确认重叠范围超过合同新金额，请先复核");
+    const delta = !numeric2?(knownAmount ? version.amountCents : 0n) - priorAmount - economicExcludedCents! + priorAppliedExclusion:null;
     return {
       projectId, sourceType: this.sourceType, sourceBusinessId: version.id,
       sourceBusinessCode: contract.code ?? contract.temporaryCode ?? contract.name,
@@ -73,7 +97,10 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
         signingSubjectType: version.signingSubjectType, companyEntityVersionId: version.companyEntityVersionId,
         companyEntityIdSnapshot: version.companyEntityIdSnapshot, companyEntityNameSnapshot: version.companyEntityNameSnapshot,
         counterpartyName: contract.counterparty, counterpartyVersionId: counterparty.businessPartyVersionId, amountNature: knownAmount ? "fixed" : "uncapped",
-        amountCents: version.amountCents.toString(), economicExcludedCents: economicExcludedCents.toString(), commitmentDeltaCents: delta.toString(),
+        ...(numeric2 ? { numericProtocolVersion: 2, currentAmount: { protocolVersion: 2, amountState: sourceAmountYuan === null ? "unknown" : "known", amountYuan: sourceAmountYuan, sourceAmountStatus: version.amountLimitType },
+          priorAmount: predecessor ? { versionId: predecessor.id, protocolVersion: predecessor.numericProtocolVersion ?? 1, amountState: priorAmountYuan === null ? "unknown" : "known", amountYuan: priorAmountYuan, sourceAmountStatus: predecessor.amountLimitType } : null,
+          amountYuan: sourceAmountYuan, amountState: sourceAmountYuan === null ? "unknown" : "known", sourceAmountStatus: version.amountLimitType, economicExcludedYuan: excludedYuan, commitmentDeltaYuan: deltaYuan }
+          : { amountCents: version.amountCents.toString(), economicExcludedCents: economicExcludedCents!.toString(), commitmentDeltaCents: delta!.toString() }),
         supersedesVersionId: version.supersedesVersionId, occurredAt: version.effectiveAt.toISOString(),
         confirmedAt: version.effectiveAt.toISOString(), confirmedByUserId,
         operatingLedgerEffectiveDate: effectiveDate.toISOString(), affiliate
@@ -84,7 +111,13 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const source = requiredJsonRecord(snapshot.sourceSnapshot, "合同承诺");
     const affiliate = frozenAffiliateFromJson(source, "合同承诺");
     const occurredAt = requiredJsonDate(source, "occurredAt", "合同承诺");
-    const delta = requiredJsonMoney(source, "commitmentDeltaCents", "合同承诺");
+    const numeric2 = source.numericProtocolVersion === 2;
+    const deltaYuan = numeric2 ? normalizeBusinessAmount(source.commitmentDeltaYuan === null ? null : requiredJsonText(source, "commitmentDeltaYuan", "合同承诺"), { allowNegative: true }) : null;
+    const delta = numeric2 ? null : requiredJsonMoney(source, "commitmentDeltaCents", "合同承诺");
+    const money = numeric2
+      ? { numericProtocolVersion: 2 as const, amountCents: null, amountYuan: deltaYuan === null ? null : new Prisma.Decimal(deltaYuan).abs().toFixed(4) }
+      : { amountCents: delta! < 0n ? -delta! : delta! };
+    const direction = numeric2 ? deltaYuan === null ? "notice" : new Prisma.Decimal(deltaYuan).lt(0) ? "decrease" : "increase" : delta! < 0n ? "decrease" : "increase";
     if (source.signingSubjectType === "draft_unconfirmed") throw new Error("合同签约主体待补充，不能形成正式经营事实");
     const debtor = source.signingSubjectType === "affiliate"
       ? { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId }
@@ -97,7 +130,7 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       confirmedAt: requiredJsonDate(source, "confirmedAt", "合同承诺"),
       confirmedByUserId: requiredJsonText(source, "confirmedByUserId", "合同承诺"),
       factKind: "downstream_contract", operatingLevel: "project", evidenceLevel: "A",
-      amountCents: delta < 0n ? -delta : delta, currencyCode: "CNY", direction: "neutral",
+      ...money, currencyCode: "CNY", direction: "neutral",
       isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(occurredAt, requiredJsonDate(source, "operatingLedgerEffectiveDate", "合同承诺")),
       affiliateAssignmentId: affiliate.assignmentId, affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
       affiliateNameSnapshot: affiliate.name, affiliateCreditCodeSnapshot: affiliate.creditCode, sourceSnapshot: snapshot.sourceSnapshot,
@@ -105,7 +138,7 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       subjects: { debtor, creditor }, impacts: [{
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:commitment`,
         sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference",
-        amountCents: delta < 0n ? -delta : delta, direction: delta < 0n ? "decrease" : "increase",
+        ...money, direction,
         subjectRole: "debtor", subject: debtor, description: "生效合同版本净增减，仅影响承诺，不形成成本或应付"
       }]
     } };

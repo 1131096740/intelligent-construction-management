@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
 import { resolveRegisteredExistingSource } from "./registered-payment-existing-source";
 import { currentRegisteredPaymentDomain } from "./registered-payment-domain";
@@ -67,7 +68,7 @@ export class RegisteredPaymentExecutionService {
       const canSupplementVoucher = Boolean(funding && execution.voucherFileId === null && voucherFileId === null);
       const intercompany = relationshipEntries.map(entry=>({entryId:entry.id,debtorCompanyId:entry.originalDebtorCompanyId,creditorCompanyId:entry.creditorCompanyId,amountCents:entry.amountCents.toString(),status:entry.status,voucherPending:voucherFileId===null}));
       const effects = facts.map(fact=>({ factId: fact.id, sourceVersion: fact.sourceVersion, recordedVoucherPending: fact.basisSnapshot && typeof fact.basisSnapshot === "object" && !Array.isArray(fact.basisSnapshot) ? fact.basisSnapshot.voucherPending === true : false, actualPayerKind: fact.actualPayerSubjectKind, actualPayerId: fact.actualPayerSubjectId,
-        impacts: impacts.filter(impact=>impact.factId===fact.id).map(impact=>({ kind: impact.impactKind, amountCents: impact.amountCents.toString(), subjectKind: impact.subjectKind, subjectId: impact.subjectId })) }));
+        impacts: impacts.filter(impact=>impact.factId===fact.id).map(impact=>({ kind: impact.impactKind, amountCents: requireLegacyOperatingCents(impact).toString(), subjectKind: impact.subjectKind, subjectId: impact.subjectId })) }));
       return { status: "recorded", canSupplementVoucher, execution: {
         executionId: execution.id, paymentId: execution.paymentRequestId,
         amountCents: execution.amountCents.toString(), paidAt: chinaDateOnly(execution.paidAt),

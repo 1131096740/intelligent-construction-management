@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { createHash, randomUUID } from "node:crypto";
 
 import { ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
@@ -2428,7 +2429,7 @@ export class HistoricalWageTakeoverService {
         fact.factKind !== "project_wage" ||
         !["original", "correction", "reversal"].includes(fact.entryKind) ||
         fact.status !== "confirmed" ||
-        fact.amountCents <= 0n
+        (typeof fact.amountCents !== "bigint" || fact.amountCents <= 0n)
       ) {
         throw new ConflictException("历史 project_wage 来源已变化或不完整，必须零写入失败");
       }
@@ -2486,7 +2487,7 @@ export class HistoricalWageTakeoverService {
         ...authorityCoordinates,
         costImpactId: costImpacts[0]!.id,
         payableImpactId: payableImpacts[0]!.id,
-        amountCents: fact.amountCents,
+        amountCents: requireLegacyOperatingCents(fact),
         factId: fact.id,
         entryKind: fact.entryKind as "original" | "correction" | "reversal",
         direction,
@@ -6918,7 +6919,7 @@ export function historicalWageLegacyFingerprint(fact: {
   sourceType: string;
   sourceBusinessId: string;
   sourceVersion: number;
-  amountCents: bigint;
+  amountCents: bigint | null;
   occurredAt?: Date | string | null;
   costBearingCompanySubjectKind?: string | null;
   costBearingCompanySubjectId?: string | null;
@@ -6926,7 +6927,7 @@ export function historicalWageLegacyFingerprint(fact: {
   adjustsFactId?: string | null;
   status: string;
   sourceSnapshot: unknown;
-  impacts: Array<{ id: string; impactKind: string; amountCents: bigint; direction: string; sourceImpactKey: string; impactSnapshot?: unknown }>;
+  impacts: Array<{ id: string; impactKind: string; amountCents: bigint | null; direction: string; sourceImpactKey: string; impactSnapshot?: unknown }>;
 }) {
   return fingerprint({
     factId: fact.id ?? null,
@@ -6934,7 +6935,7 @@ export function historicalWageLegacyFingerprint(fact: {
     sourceType: fact.sourceType,
     sourceBusinessId: fact.sourceBusinessId,
     sourceVersion: fact.sourceVersion,
-    amountCents: fact.amountCents,
+    amountCents: requireLegacyOperatingCents(fact),
     occurredAt: fact.occurredAt instanceof Date
       ? fact.occurredAt.toISOString()
       : typeof fact.occurredAt === "string"
@@ -6950,7 +6951,7 @@ export function historicalWageLegacyFingerprint(fact: {
       .map((impact) => ({
         id: impact.id,
         impactKind: impact.impactKind,
-        amountCents: impact.amountCents,
+        amountCents: requireLegacyOperatingCents(impact),
         direction: impact.direction,
         sourceImpactKey: impact.sourceImpactKey,
         impactSnapshot: impact.impactSnapshot ?? null
@@ -8738,7 +8739,7 @@ function historicalWageOptionLegacy(fact: {
   sourceBusinessId: string;
   sourceVersion: number;
   factKind: string;
-  amountCents: bigint;
+  amountCents: bigint | null;
   occurredAt?: Date | string | null;
   costBearingCompanySubjectKind?: string | null;
   costBearingCompanySubjectId?: string | null;
@@ -8749,7 +8750,7 @@ function historicalWageOptionLegacy(fact: {
   impacts: Array<{
     id: string;
     impactKind: string;
-    amountCents: bigint;
+    amountCents: bigint | null;
     direction: string;
     sourceImpactKey: string;
     impactSnapshot?: unknown;
@@ -8761,7 +8762,7 @@ function historicalWageOptionLegacy(fact: {
   sourceBusinessId: string;
   sourceVersion: number;
   factKind: string;
-  amountCents: bigint;
+  amountCents: bigint | null;
   occurredAt?: Date | string | null;
   costBearingCompanySubjectKind?: string | null;
   costBearingCompanySubjectId?: string | null;
@@ -8769,14 +8770,14 @@ function historicalWageOptionLegacy(fact: {
   adjustsFactId?: string | null;
   status: string;
   sourceSnapshot: unknown;
-  impacts: Array<{ id: string; impactKind: string; amountCents: bigint; direction: string; sourceImpactKey: string; impactSnapshot?: unknown }>;
+  impacts: Array<{ id: string; impactKind: string; amountCents: bigint | null; direction: string; sourceImpactKey: string; impactSnapshot?: unknown }>;
 }): ResolvedLegacy | null {
   if (
     fact.sourceType !== "project_wage" ||
     fact.factKind !== "project_wage" ||
     !["original", "correction", "reversal"].includes(fact.entryKind) ||
     fact.status !== "confirmed" ||
-    fact.amountCents <= 0n
+    (typeof fact.amountCents !== "bigint" || fact.amountCents <= 0n)
   ) return null;
   const directions = sortedUnique(fact.impacts
     .filter((impact) => impact.impactKind === "confirmed_cost" || impact.impactKind === "payable_increase" || impact.impactKind === "payable_decrease")
@@ -8809,7 +8810,7 @@ function historicalWageOptionLegacy(fact: {
     ...authorityCoordinates,
     costImpactId: costImpacts[0]!.id,
     payableImpactId: payableImpacts[0]!.id,
-    amountCents: fact.amountCents,
+    amountCents: requireLegacyOperatingCents(fact),
     factId: fact.id,
     entryKind: fact.entryKind as "original" | "correction" | "reversal",
     direction,

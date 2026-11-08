@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 
@@ -1460,7 +1461,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
       fact.payeeSubjectId === null &&
       fact.creditorSubjectId === null
     )).toBe(true);
-    expect(facts.reduce((sum, fact) => sum + fact.amountCents, 0n)).toBe(150000n);
+    expect(facts.reduce((sum, fact) => sum + requireLegacyOperatingCents(fact), 0n)).toBe(150000n);
     const refs = await observer.wagePayableRef.findMany({
       where: { confirmedVersionId: draftResult.versionId }
     });
@@ -1609,7 +1610,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     });
     expect(effectiveImpacts.length).toBeGreaterThan(0);
     expect(effectiveImpacts.reduce(
-      (sum, impact) => sum + (impact.direction === "decrease" ? -impact.amountCents : impact.amountCents),
+      (sum, impact) => sum + (impact.direction === "decrease" ? -requireLegacyOperatingCents(impact) : requireLegacyOperatingCents(impact)),
       0n
     )).toBe(0n);
     await expect(first.wageApprovedSourceVersion.update({
@@ -1984,7 +1985,7 @@ describeDatabase("wage statement PostgreSQL constraints", () => {
     expect(effectiveImpacts.length).toBeGreaterThan(0);
     expect(effectiveImpacts.reduce(
       (sum, impact) => sum + (
-        impact.direction === "decrease" ? -impact.amountCents : impact.amountCents
+        impact.direction === "decrease" ? -requireLegacyOperatingCents(impact) : requireLegacyOperatingCents(impact)
       ),
       0n
     )).toBe(0n);

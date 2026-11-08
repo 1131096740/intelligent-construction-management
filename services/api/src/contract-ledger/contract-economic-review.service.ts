@@ -11,7 +11,7 @@ import { PrismaService } from "../database/prisma.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { AuthService } from "../auth/auth.service";
 import { AuditService } from "../audit/audit.service";
-import { documentFingerprint, economicDocuments, excludedAmount, latestEconomicReviews, lockEconomicProject, normalizeCoverage, suspectedOverlap } from "./contract-economic-coverage";
+import { documentFingerprint, economicDocuments, economicDocumentYuan, excludedAmount, excludedAmountYuan, latestEconomicReviews, lockEconomicProject, normalizeCoverage, suspectedOverlap } from "./contract-economic-coverage";
 
 const PREPARERS: RoleKey[] = ["contract_staff","contract_director","budget_staff","budget_director"];
 const READERS: RoleKey[] = [...PREPARERS,"finance_staff","finance_director","project_manager","chairman","general_manager"];
@@ -60,7 +60,7 @@ export class ContractEconomicReviewService {
        const doc=selected.find(d=>d.ref===row.contractRef);if(!doc)continue;
        const valid=reviews.filter(r=>r.status==="confirmed"&&(r.leftSourceRef===doc.ref?r.leftFingerprint===documentFingerprint(doc):r.rightSourceRef===doc.ref&&r.rightFingerprint===documentFingerprint(doc)));
        const options=economicScopeOptions(doc,valid);
-       if(options)pendingSettlements.push({...row,scopes:options.scopes.map(s=>({...s,capacityCents:s.capacityCents.toString()}))});
+       if(options)pendingSettlements.push({...row,scopes:options.scopes.map(s=>({...s,capacityCents:s.capacityCents?.toString()??null}))});
      }
      return {pendingSettlements,documents:documents.map(d=>({...d,amountCents:d.amountCents?.toString()??null,settledCents:d.settledCents.toString()})),
        reviews:reviews.map(r=>({...r,canContractReview:r.status==="pending_review"&&r.preparedByUserId!==actor&&roles.includes("contract_director"),
@@ -111,7 +111,7 @@ export class ContractEconomicReviewService {
      const left=documents.find(d=>d.ref===refs[0]),right=documents.find(d=>d.ref===refs[1]);
      if(!left||!right) throw new NotFoundException("所选文书不存在或不属于该项目");
      // 输入左右顺序必须与页面顺序一致，排序后同步交换覆盖数据和归属。
-     const raw=input.leftSourceRef===refs[0]?input.coverage:Array.isArray(input.coverage)?input.coverage.map(r=>({...r,leftAmountCents:r.rightAmountCents,rightAmountCents:r.leftAmountCents,owner:r.owner==="left"?"right":"left"})):input.coverage;
+     const raw=input.leftSourceRef===refs[0]?input.coverage:Array.isArray(input.coverage)?input.coverage.map(r=>({...r,leftAmountCents:r.rightAmountCents,rightAmountCents:r.leftAmountCents,leftAmountYuan:r.rightAmountYuan,rightAmountYuan:r.leftAmountYuan,owner:r.owner==="left"?"right":"left"})):input.coverage;
      const coverage=normalizeCoverage(raw,input.relation,left,right);
      const canonical={targetSourceRef:target?.ref??null,targetVersionId:target?.targetVersionId??null,supersedesReviewId:input.supersedesReviewId??null,projectId:input.projectId,leftSourceRef:refs[0],rightSourceRef:refs[1],relation:input.relation,coverage,reason:input.reason.trim(),leftFingerprint:documentFingerprint(left),rightFingerprint:documentFingerprint(right)};
      const fingerprint=createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
@@ -150,6 +150,8 @@ export class ContractEconomicReviewService {
      const latest=await tx.contractEconomicReview.findFirst({where:{projectId:row.projectId,leftSourceRef:row.leftSourceRef,rightSourceRef:row.rightSourceRef,status:"confirmed"},orderBy:{confirmedAt:"desc"}});
      if((latest?.id??null)!==row.supersedesReviewId)throw new ConflictException("原履约复核已被更新，请退回后重新核对");
      const coverage=normalizeCoverage(row.coverage,row.relation,left,right);
+     const numeric2=left.numericProtocolVersion===2||right.numericProtocolVersion===2;
+     const Decimal=Prisma.Decimal.clone({precision:60});
      for(const d of [left,right]) {
        const prior=await tx.contractEconomicReview.findMany({where:{projectId:row.projectId,status:"confirmed",OR:[{leftSourceRef:d.ref},{rightSourceRef:d.ref}],NOT:{leftSourceRef:row.leftSourceRef,rightSourceRef:row.rightSourceRef}}});
        for(const previous of latestEconomicReviews(prior)) for(const oldLine of previous.coverage as unknown as import("./contract-economic-coverage").EconomicCoverage[]) for(const line of coverage) {
@@ -159,6 +161,12 @@ export class ContractEconomicReviewService {
          if(oldOwner!==newOwner)throw new ConflictException("同一履约分项已有唯一归属，请关联原归属文书，不能多次分配或形成循环替代");
        }
        await assertSettledScopesPreserved(tx,d,[...latestEconomicReviews(prior),{...row,coverage,confirmedAt:new Date()}]);
+       if(numeric2){
+         const excluded=latestEconomicReviews(prior).reduce((sum,r)=>sum.plus(excludedAmountYuan(r,d.ref)),new Decimal(excludedAmountYuan({...row,coverage},d.ref)));
+         const total=economicDocumentYuan(d);
+         if(total!==null&&(excluded.gt(total)||new Decimal(d.settledCents.toString()).div(100).gt(new Decimal(total).minus(excluded))))throw new ConflictException("重叠部分已有确认结算或超出原金额；须先按原结算更正流程处理，不能直接冲掉成本或欠款");
+         continue;
+       }
        const excluded=excludedAmount({...row,coverage},d.ref)+latestEconomicReviews(prior).reduce((sum,r)=>sum+excludedAmount(r,d.ref),0n);
        if(d.amountCents!==null && (excluded>d.amountCents||d.settledCents>d.amountCents-excluded))throw new ConflictException("重叠部分已有确认结算或超出原金额；须先按原结算更正流程处理，不能直接冲掉成本或欠款");
      }
@@ -167,16 +175,17 @@ export class ContractEconomicReviewService {
      const frozenSources=[];
      if(finish) for(const d of [left,right]) {
        const previous=await tx.contractEconomicReview.findMany({where:{projectId:row.projectId,leftSourceRef:row.leftSourceRef,rightSourceRef:row.rightSourceRef,status:"confirmed"},orderBy:{confirmedAt:"desc"}});
-       const delta=excludedAmount(row,d.ref)-(previous[0]?excludedAmount(previous[0],d.ref):0n);
+       const delta=numeric2?new Decimal(excludedAmountYuan(row,d.ref)).minus(previous[0]?excludedAmountYuan(previous[0],d.ref):"0.0000"):excludedAmount(row,d.ref)-(previous[0]?excludedAmount(previous[0],d.ref):0n);
+       const nonzero=typeof delta==="bigint"?delta!==0n:!delta.isZero();
        let baseline=null;
-       if(d.formal&&delta!==0n){
+       if(d.formal&&nonzero){
          const original=await tx.operatingFact.findFirst({where:{projectId:row.projectId,sourceType:d.ref.startsWith("contract:")?"contract_version":"project_affiliate_contract_fact",sourceBusinessId:d.version.split(":")[0]}});
          if(!original)throw new ConflictException("原合同承诺尚未完成经营接管，不能自动调整历史金额；请先核对该范围的基线");
          const epoch=await tx.project.findUniqueOrThrow({where:{id:row.projectId},select:{operatingLedgerEffectiveDate:true}});
-         baseline={operatingLedgerEffectiveDate:epoch.operatingLedgerEffectiveDate?.toISOString(),sourceSnapshot:original.sourceSnapshot,affiliateAssignmentId:original.affiliateAssignmentId,affiliateBusinessPartyVersionId:original.affiliateBusinessPartyVersionId,affiliateNameSnapshot:original.affiliateNameSnapshot,affiliateCreditCodeSnapshot:original.affiliateCreditCodeSnapshot,
+         baseline={...(numeric2?{originalOperatingFactId:original.id,originalSourceType:original.sourceType,originalSourceBusinessId:original.sourceBusinessId,originalSourceVersion:original.sourceVersion,numericProtocolVersion:original.numericProtocolVersion,amountState:original.numericProtocolVersion===2&&original.amountYuan===null?"unknown":"known",amountCents:original.numericProtocolVersion===2?null:original.amountCents?.toString(),amountYuan:original.numericProtocolVersion===2?original.amountYuan?.toFixed(4)??null:null}:{}),operatingLedgerEffectiveDate:epoch.operatingLedgerEffectiveDate?.toISOString(),sourceSnapshot:original.sourceSnapshot,affiliateAssignmentId:original.affiliateAssignmentId,affiliateBusinessPartyVersionId:original.affiliateBusinessPartyVersionId,affiliateNameSnapshot:original.affiliateNameSnapshot,affiliateCreditCodeSnapshot:original.affiliateCreditCodeSnapshot,
            subjects:{debtor:{kind:original.debtorSubjectKind,id:original.debtorSubjectId},creditor:{kind:original.creditorSubjectKind,id:original.creditorSubjectId}}};
        }
-       frozenSources.push({...d,excludedDeltaCents:delta.toString(),operatingBaseline:baseline});
+       frozenSources.push({...d,...(typeof delta==="bigint"?{excludedDeltaCents:delta.toString()}:{coverageNumericProtocolVersion:2 as const,excludedDeltaYuan:delta.toFixed(4)}),operatingBaseline:baseline});
      }
      const confirmedAt = new Date();
      const updated=await tx.contractEconomicReview.update({where:{id},data:{financeRequired,revision:{increment:1},status:finish?"confirmed":"pending_finance",
@@ -188,7 +197,7 @@ export class ContractEconomicReviewService {
        preserveHistoricalContinuation: row.status === "pending_finance",
        nodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }, ...(financeRequired ? [{ name: "财务主管", mode: "any" as const, roleKeys: ["finance_director"] }] : [])],
        signedAt: confirmedAt, form: await ledgerApprovalFacts(tx, "contract_economic_review", id) });
-     if(finish) for(const d of frozenSources) if(d.formal&&d.operatingBaseline&&d.excludedDeltaCents!=="0") await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx,{projectId:row.projectId,sourceType:"contract_economic_review",sourceBusinessId:`${row.id}:${d.ref}`},actor);
+     if(finish) for(const d of frozenSources) if(d.formal&&d.operatingBaseline&&("excludedDeltaYuan" in d?d.excludedDeltaYuan!=="0.0000":d.excludedDeltaCents!=="0")) await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx,{projectId:row.projectId,sourceType:"contract_economic_review",sourceBusinessId:`${row.id}:${d.ref}`},actor);
      await this.audit.record(tx,{actorUserId:actor,action:"contract.economic_review.review",businessType:"contract_economic_review",businessId:id,metadata:{projectId:row.projectId,status:updated.status}});
      return updated;
    });

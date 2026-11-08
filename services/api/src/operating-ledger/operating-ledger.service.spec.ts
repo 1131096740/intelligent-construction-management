@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { ContractOperatingSourceAdapter } from "../contract/contract-operating-source.adapter";
+import { syntheticOperatingWrite } from "./operating-precision.persistence.test-support";
 
 import {
   OperatingLedgerService,
@@ -62,6 +64,58 @@ describe("OperatingLedgerService", () => {
     await expect(service.appendFromSource(baseInput(), "actor-1"))
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("经公开经营写入与读取保留合同承诺1.5340元，事实及影响均不冒充分", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = { ...baseInput(), sourceType: "contract_version", sourceBusinessId: "contract-version-precision", sourceBusinessCode: "HT-PRECISION", factKind: "downstream_contract", direction: "neutral", numericProtocolVersion: 2, amountCents: null, amountYuan: "1.5340", sourceSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "1.5340" } }, subjects: { debtor: { kind: "participating_company", id: "company-1" }, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } }, impacts: [{ idempotencyKey: "precision-commitment", sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: "1.5340", direction: "increase", subjectRole: "debtor", subject: { kind: "participating_company", id: "company-1" } }] };
+    await service.appendFromSource(input as never, "actor-1");
+    const read = await new OperatingLedgerService(prisma as never).readFacts("project-1", "actor-1") as unknown as Array<{ numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null; impacts: Array<{ numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null }> }>;
+    expect(read).toHaveLength(1);
+    expect(read[0]).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+    expect(read[0].amountYuan?.toFixed(4)).toBe("1.5340");
+    expect(read[0].impacts).toHaveLength(1);
+    expect(read[0].impacts[0]).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+    expect(read[0].impacts[0].amountYuan?.toFixed(4)).toBe("1.5340");
+  });
+
+  it("公开持久化重读区分待确定合同总价与已知零元，重放不互换", async () => {
+    for (const amountYuan of [null, "0.0000"]) {
+      const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+      const input = { ...baseInput(), sourceType: "contract_version", sourceBusinessId: "contract-version-unknown", factKind: "downstream_contract", direction: "neutral", numericProtocolVersion: 2, amountCents: null, amountYuan, subjects: { debtor: { kind: "participating_company", id: "company-1" }, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } }, impacts: [{ idempotencyKey: "unknown-commitment", sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan, direction: amountYuan === null ? "notice" : "increase", subjectRole: "debtor", subject: { kind: "participating_company", id: "company-1" } }] };
+      await new OperatingLedgerService(prisma as never).appendFromSource(input as never, "actor-1");
+      const reader = new OperatingLedgerService(prisma as never);
+      await reader.appendFromSource(input as never, "actor-1");
+      const read = await reader.readFacts("project-1", "actor-1");
+      expect(read).toHaveLength(1);
+      expect(read[0].amountCents).toBeNull();
+      expect(read[0].amountYuan === null ? null : read[0].amountYuan.toFixed(4)).toBe(amountYuan);
+      expect(read[0].sourceSnapshot).toMatchObject({ numericFacts: { protocolVersion: 2, amountState: amountYuan === null ? "unknown" : "known", amountYuan } });
+      expect(read[0].impacts[0].amountYuan === null ? null : read[0].impacts[0].amountYuan.toFixed(4)).toBe(amountYuan);
+      const otherAmount = amountYuan === null ? "0.0000" : null;
+      await expect(reader.appendFromSource({ ...input, amountYuan: otherAmount, impacts: [{ ...input.impacts[0], amountYuan: otherAmount }] } as never, "actor-1")).rejects.toBeInstanceOf(BadRequestException);
+    }
+  });
+
+  it("拒绝把待确定合同承诺写成已知零元影响", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+    const input = { ...baseInput(), sourceType: "contract_version", sourceBusinessId: "contract-version-mismatch", factKind: "downstream_contract", direction: "neutral", numericProtocolVersion: 2, amountCents: null, amountYuan: null, subjects: { debtor: { kind: "participating_company", id: "company-1" }, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } }, impacts: [{ idempotencyKey: "mismatch-commitment", sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0000", direction: "increase", subjectRole: "debtor", subject: { kind: "participating_company", id: "company-1" } }] };
+    const service = new OperatingLedgerService(prisma as never);
+    await expect(service.appendFromSource(input as never, "actor-1")).rejects.toBeInstanceOf(BadRequestException);
+    expect(await service.readFacts("project-1", "actor-1")).toEqual([]);
+  });
+
+  it("公开合同适配和经营写入保留前版净减少0.0050元", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
+    const source = { projectId: "project-1", sourceType: "contract_version", sourceBusinessId: "contract-version-decrease", sourceBusinessCode: "HT-DEC", sourceVersion: 2, status: "confirmed" as const, sourceSnapshot: { numericProtocolVersion: 2, commitmentDeltaYuan: "-0.0050", amountNature: "fixed", signingSubjectType: "our_company", companyEntityVersionId: "company-1", counterpartyVersionId: "counterparty-version-1", occurredAt: "2026-08-14T00:00:00.000Z", confirmedAt: "2026-08-14T01:00:00.000Z", confirmedByUserId: "actor-1", operatingLedgerEffectiveDate: "2026-08-01T00:00:00.000Z", affiliate: { assignmentId: "assignment-1", businessPartyVersionId: "affiliate-version-1", name: "施工企业", creditCode: "91110000000000000A" } } };
+    const { input } = new ContractOperatingSourceAdapter().toOperatingFactInput(source);
+    await new OperatingLedgerService(prisma as never).appendFromSource(input, "actor-1");
+    const read = await new OperatingLedgerService(prisma as never).readFacts("project-1", "actor-1");
+    expect(read[0].amountCents).toBeNull();
+    expect(read[0].amountYuan?.toFixed(4)).toBe("0.0050");
+    expect(read[0].impacts[0].direction).toBe("decrease");
+    expect(read[0].impacts[0].amountYuan?.toFixed(4)).toBe("0.0050");
   });
 
   it("writes one fact with multiple impact keys and replays the same source idempotently", async () => {
@@ -826,6 +880,7 @@ function closeStage(stageKey: string, projectionCutoffAt: Date) {
 }
 
 function createPrismaMock(options: {
+  persistControlledRows?: boolean;
   user?: { id: string; isActive: boolean } | null;
   projectMembers?: Array<{ positionKey: string }>;
   project?: ReturnType<typeof projectRecord> | null;
@@ -840,7 +895,17 @@ function createPrismaMock(options: {
   let controlledWriteCount = 0;
   const tx = {
     $executeRaw: jest.fn(),
-    $queryRaw: jest.fn().mockImplementation(async () => {
+    $queryRaw: jest.fn().mockImplementation(async (query: Prisma.Sql) => {
+      if (options.persistControlledRows) {
+        const written = syntheticOperatingWrite(query);
+        if (written.kind === "Fact") { storedFact = { ...written.row, impacts: storedImpacts }; return [{ id: written.row.id, projectId: written.row.projectId, sourceType: written.row.sourceType, sourceBusinessId: written.row.sourceBusinessId }]; }
+        if (written.row.numericProtocolVersion === 2) {
+          if (!storedFact || storedFact.numericProtocolVersion !== 2 || written.row.factId !== storedFact.id || written.row.sourceType !== storedFact.sourceType || written.row.sourceBusinessId !== storedFact.sourceBusinessId || written.row.sourceImpactKey !== "contract_commitment_reference" || written.row.impactKind !== "contract_commitment_reference" || (written.row.amountYuan === null ? written.row.direction !== "notice" : !["increase", "decrease"].includes(String(written.row.direction))) || written.row.subjectRole !== "debtor" || written.row.subjectKind !== storedFact.debtorSubjectKind || written.row.subjectId !== storedFact.debtorSubjectId || (written.row.amountYuan === null ? storedFact.amountYuan !== null : storedFact.amountYuan === null || !new Prisma.Decimal(String(written.row.amountYuan)).equals(String(storedFact.amountYuan)))) throw new Error("合成持久层拒绝不对应原合同承诺的影响");
+        }
+        storedImpacts.push(written.row);
+        if (storedFact) storedFact.impacts = storedImpacts;
+        return [{ id: written.row.id }];
+      }
       if (!storedFact) {
         storedFact = {
           id: "fact-1",
@@ -952,6 +1017,7 @@ function createPrismaMock(options: {
       })
     },
     operatingFact: {
+      findMany: jest.fn().mockImplementation(async () => storedFact ? [{ ...storedFact, impacts: storedImpacts }] : []),
       findUnique: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
         if (where.id) return options.originalFact ?? null;
         return storedFact;
@@ -972,6 +1038,7 @@ function createPrismaMock(options: {
     },
     operatingImpactEntry: {
       findUnique: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if (options.persistControlledRows && where.id) return storedImpacts.find(impact => impact.id === where.id) ?? null;
         const key = where.sourceType_sourceBusinessId_sourceImpactKey as Record<string, string> | undefined;
         return storedImpacts.find((impact) => impact.sourceImpactKey === key?.sourceImpactKey) ?? null;
       }),

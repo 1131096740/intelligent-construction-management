@@ -1,3 +1,4 @@
+import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import {readCompanyTransferBalances} from "../company-transfer/company-transfer-summary";
 import { createReadStream } from "node:fs";
 import { mkdtemp, open, rm, type FileHandle } from "node:fs/promises";
@@ -16,6 +17,8 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   canPerform,
+  businessAmountFromLegacyCents,
+  normalizeBusinessAmount,
   operatingProjectionExportMatches,
   OPERATING_PROJECTION_ROW_STATUSES,
   OPERATING_PROJECTION_ROW_STATUS_LABELS,
@@ -42,9 +45,14 @@ import {
   toOperatingProjectionAggregate,
   OperatingProjectionStreamAccumulator,
   projectionFactMatchesFilters,
+  projectionLegacyContractAmountUnknown,
   toOperatingProjectionPublicDetail,
   type OperatingProjectionAggregateView,
   type OperatingProjectionReadModel,
+  type OperatingProjectionV2ReadModel,
+  type OperatingProjectionV2AggregateView,
+  type ProjectionV2FactInput,
+  type ProjectionV2ImpactInput,
   type ProjectionFactInput,
   type ProjectionFilters,
   type ProjectionHolderAliasInput,
@@ -84,17 +92,22 @@ const STATEMENT_TIMEOUT_MS = 15_000;
 const CLEARING_SOURCE_TYPE = "clearing_event_version";
 const CLEARING_COST_CATEGORY_CODE = "construction_enterprise_deduction";
 
+type ProtocolReadModel<P extends 1 | 2> = P extends 2 ? OperatingProjectionV2ReadModel : OperatingProjectionReadModel;
+
 export interface ProjectProjectionQuery extends ProjectionFilters {
+  numericProtocolVersion?: 1 | 2;
   projectId: string;
   asOf?: string;
 }
 
 export interface CompanyProjectionQuery extends ProjectionFilters {
+  numericProtocolVersion?: 1 | 2;
   companyEntityId: string;
   asOf?: string;
 }
 
 export interface AsOfProjectionQuery extends ProjectionFilters {
+  numericProtocolVersion?: 1 | 2;
   scopeKind: "project" | "company" | "projects";
   projectId?: string;
   projectIds?: string[];
@@ -108,6 +121,7 @@ export interface ProjectionDetailPageQuery {
 }
 
 export interface AsOfProjectionDetailQuery extends ProjectionFilters, ProjectionDetailPageQuery {
+  numericProtocolVersion?: 1 | 2;
   scopeKind: string;
   projectId?: string;
   projectIds?: string | string[];
@@ -116,6 +130,7 @@ export interface AsOfProjectionDetailQuery extends ProjectionFilters, Projection
 }
 
 type ProjectionReadContext = {
+  numericProtocolVersion?: 1 | 2;
   readAt: Date;
   cutoffAt: Date;
   scope: ProjectionScopeInput;
@@ -190,11 +205,15 @@ export class OperatingProjectionService {
     }
   }
 
+  async getProjectView(actorUserId: string, input: ProjectProjectionQuery & { numericProtocolVersion: 2 }): Promise<OperatingProjectionV2AggregateView>;
+  async getProjectView(actorUserId: string, input: ProjectProjectionQuery & { numericProtocolVersion?: 1 }): Promise<OperatingProjectionAggregateView>;
   async getProjectView(
     actorUserId: string,
     input: ProjectProjectionQuery
-  ): Promise<OperatingProjectionAggregateView> {
+  ): Promise<OperatingProjectionAggregateView | OperatingProjectionV2AggregateView> {
     const projectId = required(input.projectId, "项目标识不能为空");
+    if (input.numericProtocolVersion === 2) return toOperatingProjectionAggregate(await this.readProjection({ numericProtocolVersion: 2, actorUserId, scope: { kind: "project", projectId, filters: projectionFilters(input) }, asOf: input.asOf }));
+    if (input.numericProtocolVersion !== undefined && input.numericProtocolVersion !== 1) throw new BadRequestException("经营读取金额协议不正确");
     return toOperatingProjectionAggregate(await this.readProjection({
       actorUserId,
       scope: {
@@ -206,11 +225,15 @@ export class OperatingProjectionService {
     }));
   }
 
+  async getCompanyView(actorUserId: string, input: CompanyProjectionQuery & { numericProtocolVersion: 2 }): Promise<OperatingProjectionV2AggregateView>;
+  async getCompanyView(actorUserId: string, input: CompanyProjectionQuery & { numericProtocolVersion?: 1 }): Promise<OperatingProjectionAggregateView>;
   async getCompanyView(
     actorUserId: string,
     input: CompanyProjectionQuery
-  ): Promise<OperatingProjectionAggregateView> {
+  ): Promise<OperatingProjectionAggregateView | OperatingProjectionV2AggregateView> {
     const companyEntityId = required(input.companyEntityId, "公司主体标识不能为空");
+    if (input.numericProtocolVersion === 2) return toOperatingProjectionAggregate(await this.readProjection({ numericProtocolVersion: 2, actorUserId, scope: { kind: "company", companyEntityId, filters: { ...projectionFilters(input), companyEntityId } }, asOf: input.asOf }));
+    if (input.numericProtocolVersion !== undefined && input.numericProtocolVersion !== 1) throw new BadRequestException("经营读取金额协议不正确");
     return toOperatingProjectionAggregate(await this.readProjection({
       actorUserId,
       scope: {
@@ -222,22 +245,24 @@ export class OperatingProjectionService {
     }));
   }
 
+  async getAsOfView(actorUserId: string, input: AsOfProjectionQuery & { numericProtocolVersion: 2 }): Promise<OperatingProjectionV2AggregateView>;
+  async getAsOfView(actorUserId: string, input: AsOfProjectionQuery & { numericProtocolVersion?: 1 }): Promise<OperatingProjectionAggregateView>;
+  async getAsOfView(actorUserId: string, input: AsOfProjectionQuery): Promise<OperatingProjectionAggregateView | OperatingProjectionV2AggregateView>;
   async getAsOfView(
     actorUserId: string,
     input: AsOfProjectionQuery
-  ): Promise<OperatingProjectionAggregateView> {
+  ): Promise<OperatingProjectionAggregateView | OperatingProjectionV2AggregateView> {
+    const { numericProtocolVersion, ...viewInput } = input;
+    if (numericProtocolVersion !== undefined && numericProtocolVersion !== 1 && numericProtocolVersion !== 2) throw new BadRequestException("经营读取金额协议不正确");
     if (input.scopeKind === "project") {
-      return this.getProjectView(actorUserId, {
-        ...input,
-        projectId: required(input.projectId, "项目标识不能为空")
-      });
+      const request = { ...viewInput, projectId: required(input.projectId, "项目标识不能为空") };
+      return numericProtocolVersion === 2 ? this.getProjectView(actorUserId, { ...request, numericProtocolVersion: 2 }) : this.getProjectView(actorUserId, request);
     }
     if (input.scopeKind === "company") {
-      return this.getCompanyView(actorUserId, {
-        ...input,
-        companyEntityId: required(input.companyEntityId, "公司主体标识不能为空")
-      });
+      const request = { ...viewInput, companyEntityId: required(input.companyEntityId, "公司主体标识不能为空") };
+      return numericProtocolVersion === 2 ? this.getCompanyView(actorUserId, { ...request, numericProtocolVersion: 2 }) : this.getCompanyView(actorUserId, request);
     }
+    if (numericProtocolVersion === 2) return toOperatingProjectionAggregate(await this.readProjection({ numericProtocolVersion: 2, actorUserId, scope: { kind: "projects", projectIds: input.projectIds, filters: projectionFilters(input) }, asOf: input.asOf }));
     return toOperatingProjectionAggregate(await this.readProjection({
       actorUserId,
       scope: {
@@ -258,6 +283,7 @@ export class OperatingProjectionService {
       const projectId = required(input.projectId, "项目标识不能为空");
       return await this.readDetailPageWithAcquiredSlot(actorUserId, {
         scope: { kind: "project", projectId, filters: projectionFilters(input) },
+        numericProtocolVersion: input.numericProtocolVersion,
         asOf: input.asOf,
         cursor: input.cursor,
         pageSize: input.pageSize
@@ -280,6 +306,7 @@ export class OperatingProjectionService {
           companyEntityId,
           filters: { ...projectionFilters(input), companyEntityId }
         },
+        numericProtocolVersion: input.numericProtocolVersion,
         asOf: input.asOf,
         cursor: input.cursor,
         pageSize: input.pageSize
@@ -310,11 +337,13 @@ export class OperatingProjectionService {
     actorUserId: string,
     input: {
       scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
+      numericProtocolVersion?: 1 | 2;
       asOf?: string;
       cursor?: string;
       pageSize?: number | string;
     }
   ) {
+    if (input.numericProtocolVersion !== undefined && input.numericProtocolVersion !== 1 && input.numericProtocolVersion !== 2) throw new BadRequestException("经营读取金额协议不正确");
     const pageSize = projectionDetailPageSize(input.pageSize);
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
       throw new BadRequestException("经营投影明细每页条数必须是 1 到 200 的整数");
@@ -330,6 +359,7 @@ export class OperatingProjectionService {
       : null;
     const bundle = await this.readProjectionBundleWithAcquiredSlot({
       actorUserId,
+      numericProtocolVersion: input.numericProtocolVersion ?? 1,
       scope: input.scope,
       asOf: input.asOf,
       requireDetailPermission: true,
@@ -379,7 +409,7 @@ export class OperatingProjectionService {
           })
         : null;
       const response = {
-        projection: toOperatingProjectionAggregate(projection),
+        projection: projection.schema === "operating_projection/V2" ? toOperatingProjectionAggregate(projection) : toOperatingProjectionAggregate(projection),
         items: detailPage.items,
         page: {
           pageSize,
@@ -545,6 +575,7 @@ export class OperatingProjectionService {
         businessType: "operating_projection",
         metadata: {
           exportKind,
+          ...(input.numericProtocolVersion === 2 ? { numericProtocolVersion: 2 } : {}),
           scope: auditScope,
           filters: auditFilters,
           effectiveRoleKeysByProject: auditContext.effectiveRoleKeysByProject,
@@ -698,19 +729,21 @@ export class OperatingProjectionService {
     };
   }
 
-  private async readProjection(input: {
+  private async readProjection<P extends 1 | 2 = 1>(input: {
+    numericProtocolVersion?: P;
     actorUserId: string;
     scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
     asOf?: string;
     requireDetailPermission?: boolean;
-  }): Promise<OperatingProjectionReadModel> {
+  }): Promise<ProtocolReadModel<P>> {
     return (await this.readProjectionBundle({
       ...input,
       requireOverviewPermission: true
     })).projection;
   }
 
-  private async readProjectionBundle<T = undefined>(input: {
+  private async readProjectionBundle<T = undefined, P extends 1 | 2 = 1>(input: {
+    numericProtocolVersion?: P;
     actorUserId: string;
     scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
     asOf?: string;
@@ -723,9 +756,9 @@ export class OperatingProjectionService {
     tx: Prisma.TransactionClient,
     projectIds: string[],
     context: ProjectionReadContext,
-    projection: OperatingProjectionReadModel
+    projection: ProtocolReadModel<P>
   ) => Promise<T>): Promise<{
-    projection: OperatingProjectionReadModel;
+    projection: ProtocolReadModel<P>;
     additional: T;
   }> {
     const releaseReadSlot = this.readLimiter.acquire(input.actorUserId);
@@ -736,7 +769,8 @@ export class OperatingProjectionService {
     }
   }
 
-  private async readProjectionBundleWithAcquiredSlot<T = undefined>(input: {
+  private async readProjectionBundleWithAcquiredSlot<T = undefined, P extends 1 | 2 = 1>(input: {
+    numericProtocolVersion?: P;
     actorUserId: string;
     scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
     asOf?: string;
@@ -750,9 +784,9 @@ export class OperatingProjectionService {
     tx: Prisma.TransactionClient,
     projectIds: string[],
     context: ProjectionReadContext,
-    projection: OperatingProjectionReadModel
+    projection: ProtocolReadModel<P>
   ) => Promise<T>): Promise<{
-    projection: OperatingProjectionReadModel;
+    projection: ProtocolReadModel<P>;
     additional: T;
   }> {
     try {
@@ -955,6 +989,7 @@ export class OperatingProjectionService {
         : affiliateAssignments;
       const scope: ProjectionScopeInput = { ...input.scope, projectIds };
       const contextFingerprint = projectionContextFingerprint({
+        numericProtocolVersion: input.numericProtocolVersion ?? 1,
         projects: projects
           .map((project) => ({ id: project.id, code: project.code, name: project.name }))
           .sort((left, right) => left.id.localeCompare(right.id)),
@@ -1011,6 +1046,7 @@ export class OperatingProjectionService {
             ])))
         : undefined;
       const accumulator = new OperatingProjectionStreamAccumulator({
+        numericProtocolVersion: input.numericProtocolVersion ?? 1,
         scope,
         cutoffAt: cutoffAt.toISOString(),
         collectSourceReferenceTotals: input.collectSourceReferenceTotals,
@@ -1036,11 +1072,11 @@ export class OperatingProjectionService {
       );
       await readOperatingFactsInBatches(tx, projectIds, cutoffAt, readAt, {
         startFacts: (facts) => {
-          const mapped = facts.map((fact) => projectionFactFromStored(fact, projectById));
+          const mapped = facts.map((fact) => versionedProjectionFactFromStored(fact, projectById, input.numericProtocolVersion ?? 1));
           accumulator.startFacts(mapped);
         },
         addImpacts: (impacts) => accumulator.addImpacts(
-          impacts.map((impact) => ({ ...projectionImpactFromStored(impact), factId: impact.factId }))
+          impacts.map((impact) => ({ ...versionedProjectionImpactFromStored(impact, input.numericProtocolVersion ?? 1), factId: impact.factId }))
         ),
         finishFacts: () => accumulator.finishFacts()
       });
@@ -1227,7 +1263,7 @@ export class OperatingProjectionService {
         values.push(impact);
         replacementImpactsByFactId.set(impact.factId, values);
       }
-      const projection = reduceOperatingProjection({
+      const reduction = {
         scope,
         readAt: readAt.toISOString(),
         cutoffAt: cutoffAt.toISOString(),
@@ -1248,7 +1284,8 @@ export class OperatingProjectionService {
         riskByProject,
         holderAliases,
         restrictionSources
-      });
+      };
+      const projection = (input.numericProtocolVersion === 2 ? reduceOperatingProjection({ ...reduction, numericProtocolVersion: 2 }) : reduceOperatingProjection(reduction)) as ProtocolReadModel<P>;
       projection.companyTransferBalances=await readCompanyTransferBalances(tx,projectIds,cutoffAt,scope.filters?.companyEntityId);
       const riskDetailsAllowed = projection.restrictions.relationshipCompleteness !==
           "integrity_conflict" &&
@@ -1261,6 +1298,7 @@ export class OperatingProjectionService {
         ? await readAdditional(tx, projectIds, {
             readAt,
             cutoffAt,
+            numericProtocolVersion: input.numericProtocolVersion ?? 1,
             scope,
             projectById,
             constructionEnterpriseSubjectIds,
@@ -1441,6 +1479,8 @@ type DetailStoredFact = Pick<StoredOperatingFact,
   "operatingLevel" |
   "evidenceLevel" |
   "amountCents" |
+  "numericProtocolVersion" |
+  "amountYuan" |
   "direction" |
   "entryKind" |
   "adjustsFactId" |
@@ -1461,6 +1501,8 @@ type DetailStoredImpact = Pick<StoredOperatingImpact,
   "id" |
   "impactKind" |
   "amountCents" |
+  "numericProtocolVersion" |
+  "amountYuan" |
   "direction" |
   "subjectKind" |
   "subjectId" |
@@ -1471,9 +1513,9 @@ type ProjectionExportMetadata = {
   sourceType: string;
   factKind: string;
   impactKind: string;
-  factAmountCents: string;
   subjectLabels: string[];
-};
+  legacyContractAmountUnknown?:true;
+} & ({ numericProtocolVersion?: 1; factAmountCents: string } | { numericProtocolVersion: 2; factAmountCents: null; factAmountYuan: string | null });
 type ProjectionDetailPageResult = {
   items: Array<Record<string, unknown>>;
   nextPosition: OperatingProjectionCursorPosition | null;
@@ -1824,7 +1866,7 @@ async function readFactDetailPageInTransaction(
   includeExportMetadata = false
 ): Promise<{ items: Array<Record<string, unknown>>; nextPosition: OperatingProjectionCursorPosition | null }> {
   const items: Array<Record<string, unknown>> = [];
-  const needsSubjectSnapshots = includeExportMetadata || Boolean(
+  const needsSubjectSnapshots = context.numericProtocolVersion === 2 || includeExportMetadata || Boolean(
     context.scope.filters?.constructionEnterpriseId ||
       context.scope.filters?.companyEntityId ||
       context.scope.filters?.counterpartyId
@@ -1858,6 +1900,8 @@ async function readFactDetailPageInTransaction(
         id: true,
         impactKind: true,
         amountCents: true,
+        numericProtocolVersion: true,
+        amountYuan: true,
         direction: true,
         subjectKind: true,
         subjectId: true,
@@ -1879,6 +1923,8 @@ async function readFactDetailPageInTransaction(
             operatingLevel: true,
             evidenceLevel: true,
             amountCents: true,
+            numericProtocolVersion: true,
+            amountYuan: true,
             direction: true,
             entryKind: true,
             adjustsFactId: true,
@@ -1905,11 +1951,13 @@ async function readFactDetailPageInTransaction(
     });
     if (!rows.length) break;
     for (const row of rows) {
-      const fact = projectionFactFromDetailStored(
-        row.fact,
-        context.projectById
-      );
-      const impact = projectionImpactFromDetailStored(row);
+      const fact = context.numericProtocolVersion === 2
+        ? versionedProjectionFactFromStored({ ...row.fact, sourceSnapshot: row.fact.sourceSnapshot ?? {}, subjectSnapshot: row.fact.subjectSnapshot ?? {} }, context.projectById, 2)
+        : projectionFactFromDetailStored(row.fact, context.projectById);
+      if (row.numericProtocolVersion === 2 && row.amountCents !== null) throw new BadRequestException("新版经营明细混用了原分金额，请核对原资料");
+      const impact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput = row.numericProtocolVersion === 2
+        ? { id: row.id, impactKind: row.impactKind, numericProtocolVersion: 2, amountCents: null, amountYuan: row.amountYuan === null ? null : row.amountYuan.toFixed(4), direction: row.direction, subjectKind: row.subjectKind, subjectId: row.subjectId }
+        : projectionImpactFromDetailStored(row);
       after = {
         phase: "facts",
         occurredAt: fact.occurredAt,
@@ -1940,14 +1988,21 @@ async function readFactDetailPageInTransaction(
         impact,
         context.cutoffAt.toISOString()
       );
+      const legacyUnknown=context.numericProtocolVersion===2&&fact.numericProtocolVersion!==2&&projectionLegacyContractAmountUnknown(fact);
+      if(legacyUnknown&&impact.impactKind!=="contract_commitment_reference")throw new ConflictException("未定价原合同包含非承诺影响，不能推断经营金额");
       items.push({
         ...publicDetail,
+        ...(context.numericProtocolVersion === 2 && fact.numericProtocolVersion !== 2 ? { numericProtocolVersion: 1, amountYuan: businessAmountFromLegacyCents(fact.amountCents), signedImpactYuan: businessAmountFromLegacyCents(publicDetail.signedImpactCents), amountState: publicDetail.signedImpactCents === null ? "unknown" : "known" } : {}),
+        ...(legacyUnknown?{numericProtocolVersion:1,sourceAmountCents:requireLegacyOperatingCents(fact).toString(),sourceSignedImpactCents:publicDetail.signedImpactCents,amountYuan:null,signedImpactCents:null,signedImpactYuan:null,amountState:"unknown"}:{}),
         ...(includeExportMetadata ? {
           _export: {
             sourceType: fact.sourceType,
             factKind: fact.factKind,
             impactKind: impact.impactKind,
-            factAmountCents: fact.amountCents.toString(),
+            ...(legacyUnknown?{legacyContractAmountUnknown:true as const}:{}),
+            ...(fact.numericProtocolVersion === 2
+              ? { numericProtocolVersion: 2 as const, factAmountCents: null, factAmountYuan: fact.amountYuan }
+              : { factAmountCents: requireLegacyOperatingCents(fact).toString() }),
             subjectLabels: exportSubjectDisplayLabels(row.fact.subjectSnapshot)
           } satisfies ProjectionExportMetadata
         } : {}),
@@ -2113,6 +2168,22 @@ async function readOperatingFactsInBatches(
   }
 }
 
+function versionedProjectionFactFromStored(fact: ProjectionStoredFact, projectById: Map<string, { id: string; code: string; name: string }>, protocol: 1 | 2): ProjectionFactInput | ProjectionV2FactInput {
+  if (fact.numericProtocolVersion !== 2) return projectionFactFromStored(fact, projectById);
+  if (protocol !== 2) throw new BadRequestException("此经营读取协议不能表达新版四位金额，请使用新版经营读取入口");
+  if (fact.amountCents !== null) throw new BadRequestException("新版经营事实混用了旧分金额，请核对原资料");
+  const project = projectById.get(fact.projectId);
+  return { numericProtocolVersion: 2, amountCents: null, amountYuan: fact.amountYuan === null ? null : fact.amountYuan.toFixed(4),
+    id: fact.id, projectId: fact.projectId, projectCode: project?.code ?? "未知项目", projectName: project?.name ?? "未知项目", sourceType: fact.sourceType, sourceBusinessId: fact.sourceBusinessId, sourceVersion: fact.sourceVersion, sourceBusinessCode: fact.sourceBusinessCode,
+    occurredAt: fact.occurredAt.toISOString(), confirmedAt: fact.confirmedAt.toISOString(), affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId, affiliateNameSnapshot: fact.affiliateNameSnapshot, factKind: fact.factKind, operatingLevel: fact.operatingLevel, evidenceLevel: fact.evidenceLevel, direction: fact.direction, sourceSnapshot: fact.sourceSnapshot, entryKind: fact.entryKind, adjustsFactId: fact.adjustsFactId,
+    debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null, creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null, subjectReferences: projectionFactSubjectReferences(fact), impacts: [] };
+}
+function versionedProjectionImpactFromStored(impact: StoredOperatingImpact, protocol: 1 | 2): ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput {
+  if (impact.numericProtocolVersion !== 2) return projectionImpactFromStored(impact);
+  if (protocol !== 2 || impact.amountCents !== null) throw new BadRequestException("此经营读取协议不能表达新版四位影响，请使用新版经营读取入口");
+  return { numericProtocolVersion: 2, amountCents: null, amountYuan: impact.amountYuan === null ? null : impact.amountYuan.toFixed(4), id: impact.id, impactKind: impact.impactKind, direction: impact.direction, subjectRole: impact.subjectRole, subjectKind: impact.subjectKind, subjectId: impact.subjectId, costCategoryCode: impact.costCategoryCode, fundPurpose: impact.fundPurpose, description: impact.description, impactSnapshot: impact.impactSnapshot };
+}
+
 function projectionFactFromStored(
   fact: ProjectionStoredFact,
   projectById: Map<string, { id: string; code: string; name: string }>,
@@ -2135,7 +2206,7 @@ function projectionFactFromStored(
     factKind: fact.factKind,
     operatingLevel: fact.operatingLevel,
     evidenceLevel: fact.evidenceLevel,
-    amountCents: fact.amountCents,
+    amountCents: requireLegacyOperatingCents(fact),
     direction: fact.direction,
     sourceSnapshot: fact.sourceSnapshot,
     entryKind: fact.entryKind,
@@ -2178,7 +2249,7 @@ function projectionReplacementTargetFromStored(
     factKind: fact.factKind,
     operatingLevel: fact.operatingLevel,
     evidenceLevel: fact.evidenceLevel,
-    amountCents: fact.amountCents,
+    amountCents: requireLegacyOperatingCents(fact),
     direction: fact.direction,
     sourceSnapshot: {},
     entryKind: fact.entryKind,
@@ -2186,7 +2257,7 @@ function projectionReplacementTargetFromStored(
     impacts: impacts.map((impact) => ({
       id: impact.id,
       impactKind: impact.impactKind,
-      amountCents: impact.amountCents,
+      amountCents: requireLegacyOperatingCents(impact),
       direction: impact.direction
     }))
   };
@@ -2198,7 +2269,7 @@ function projectionImpactFromStored(
   return {
     id: impact.id,
     impactKind: impact.impactKind,
-    amountCents: impact.amountCents,
+    amountCents: requireLegacyOperatingCents(impact),
     direction: impact.direction,
     subjectRole: impact.subjectRole,
     subjectKind: impact.subjectKind,
@@ -2216,7 +2287,7 @@ function projectionImpactFromDetailStored(
   return {
     id: impact.id,
     impactKind: impact.impactKind,
-    amountCents: impact.amountCents,
+    amountCents: requireLegacyOperatingCents(impact),
     direction: impact.direction,
     subjectKind: impact.subjectKind,
     subjectId: impact.subjectId,
@@ -2478,11 +2549,14 @@ function asOfProjectionInput(
 ): {
   actorUserId: string;
   scope: Omit<ProjectionScopeInput, "projectIds"> & { projectIds?: string[] };
+  numericProtocolVersion?: 1 | 2;
   asOf?: string;
 } {
+  if (input.numericProtocolVersion !== undefined && input.numericProtocolVersion !== 1 && input.numericProtocolVersion !== 2) throw new BadRequestException("经营读取金额协议不正确");
   if (input.scopeKind === "project") {
     return {
       actorUserId,
+      ...(input.numericProtocolVersion === undefined ? {} : { numericProtocolVersion: input.numericProtocolVersion }),
       scope: {
         kind: "project",
         projectId: required(input.projectId, "项目标识不能为空"),
@@ -2495,6 +2569,7 @@ function asOfProjectionInput(
     const companyEntityId = required(input.companyEntityId, "公司主体标识不能为空");
     return {
       actorUserId,
+      ...(input.numericProtocolVersion === undefined ? {} : { numericProtocolVersion: input.numericProtocolVersion }),
       scope: {
         kind: "company",
         companyEntityId,
@@ -2505,6 +2580,7 @@ function asOfProjectionInput(
   }
   return {
     actorUserId,
+    ...(input.numericProtocolVersion === undefined ? {} : { numericProtocolVersion: input.numericProtocolVersion }),
     scope: {
       kind: "projects",
       projectIds: input.projectIds,
@@ -2708,15 +2784,33 @@ function projectionExportCsvRow(
     if (filters.occurredFrom && time < new Date(`${filters.occurredFrom}T00:00:00.000+08:00`).getTime()) return null;
     if (filters.occurredTo && time > new Date(`${filters.occurredTo}T23:59:59.999+08:00`).getTime()) return null;
   }
+  let amountYuan: string;
+  let amountBasis: string;
+  if(metadata.legacyContractAmountUnknown===true){
+    if(metadata.sourceType!=="contract_version"||metadata.factKind!=="downstream_contract"||metadata.impactKind!=="contract_commitment_reference"||metadata.numericProtocolVersion===2||item.numericProtocolVersion!==1||item.sourceAmountCents!==metadata.factAmountCents||item.amountState!=="unknown"||item.signedImpactCents!==null||item.signedImpactYuan!==null)throw new ConflictException("原合同未知金额与冻结来源不一致，已拒绝导出");
+    amountYuan="待确定";amountBasis="合同参考金额（待确定）";
+  } else if (metadata.numericProtocolVersion === 2) {
+    if (item.numericProtocolVersion !== 2 || metadata.factAmountCents !== null || item.signedImpactCents !== null) throw new ConflictException("新版经营导出混用了原分金额，请核对原资料");
+    if (metadata.factAmountYuan === null) {
+      if (item.amountState !== "unknown" || item.signedImpactYuan !== null) throw new ConflictException("合同参考金额未知状态与导出值不一致");
+      amountYuan = "待确定";
+    } else {
+      if (item.amountState !== "known" || typeof metadata.factAmountYuan !== "string" || typeof item.signedImpactYuan !== "string") throw new ConflictException("合同参考金额缺少真实四位值，已拒绝导出");
+      try { amountYuan = normalizeBusinessAmount(item.signedImpactYuan, { allowNegative: true })!; }
+      catch { throw new ConflictException("合同参考金额超出可导出精度，请核对原资料"); }
+    }
+    amountBasis = "合同参考金额（四位元）";
+  } else {
   const signedImpactCents = nullableStringValue(item.signedImpactCents);
   const factAmountCents = stringValue(metadata.factAmountCents);
   const amountCents = signedImpactCents ?? (evidenceLevel === "C" ? factAmountCents : null);
-  const amountYuan = amountCents === null ? "不适用" : centsAsYuan(amountCents);
-  const amountBasis = evidenceLevel === "C"
+    amountYuan = amountCents === null ? "不适用" : centsAsYuan(amountCents);
+    amountBasis = evidenceLevel === "C"
     ? "C级证据缺口"
     : impactKind === "estimated_clearing_expense"
       ? "预计金额"
       : "正式事实";
+  }
   const subjectLabels = Array.isArray(metadata.subjectLabels)
     ? metadata.subjectLabels.filter((value): value is string => typeof value === "string")
     : [];

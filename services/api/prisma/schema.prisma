@@ -739,7 +739,9 @@ model OperatingFact {
   factKind                             String
   operatingLevel                       String
   evidenceLevel                        String
-  amountCents                          BigInt
+  amountCents BigInt?
+  numericProtocolVersion Int @default(1)
+  amountYuan Decimal? @db.Decimal(24, 4)
   currencyCode                         String   @default("CNY")
   direction                            String
   debtorSubjectKind                    String?
@@ -792,7 +794,9 @@ model OperatingImpactEntry {
   sourceImpactKey                     String
   idempotencyKey                      String                                      @unique
   impactKind                          String
-  amountCents                         BigInt
+  amountCents BigInt?
+  numericProtocolVersion Int @default(1)
+  amountYuan Decimal? @db.Decimal(24, 4)
   direction                           String
   subjectRole                         String?
   subjectKind                         String?
