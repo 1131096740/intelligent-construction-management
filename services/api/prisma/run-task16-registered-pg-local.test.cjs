@@ -101,17 +101,19 @@ test("a fulfilled close without absence proof is not accepted", async () => {
   assert.deepEqual(receipt.cleanupFailures, ["resource-proof"]);
 });
 
-test("native CLI remains incomplete after runtime admission is implemented and creates no artifacts or resources", t => {
+test("native CLI has every source adapter but remains SOURCE_ONLY before source or resources", t => {
   const root = fs.mkdtempSync("/private/tmp/jg-task16-driver-cli-simulation-");
   t.after(() => fs.rmSync(root, { recursive: true }));
   const artifacts = path.join(root, "not-created");
   const result = spawnSync(process.execPath, [path.join(__dirname, "run-task16-registered-pg-local.cjs"), "--packet", path.join(root, "not-read-packet.json"), "--packet-sha256", "a".repeat(64), "--inputs", path.join(root, "not-read-inputs.json"), "--inputs-sha256", "b".repeat(64), "--artifacts", artifacts], { encoding: "utf8", timeout: 5000 });
   assert.equal(result.status, 1);
   const receipt = JSON.parse(result.stdout);
-  assert.equal(receipt.failureCode, "TASK16_DRIVER_CAPABILITIES_INCOMPLETE");
+  assert.equal(receipt.failureCode, "TASK16_DRIVER_SOURCE_ONLY");
   assert.equal(receipt.nativeExecution, false);
   assert.equal(receipt.resource.status, "not-created");
   assert.deepEqual(receipt.stages, []);
+  assert.equal(receipt.sourceSha, null);
+  assert.equal(receipt.financialAcceptance, false);
   assert.equal(fs.existsSync(artifacts), false);
   assert.ok(!receipt.missingCapabilities.includes("verifiedRuntimeInputAndDependencyAdmission"));
   assert.ok(!receipt.missingCapabilities.includes("migrateBaseline"));
@@ -120,7 +122,7 @@ test("native CLI remains incomplete after runtime admission is implemented and c
   assert.ok(!receipt.missingCapabilities.includes("installPreparedSql"));
   assert.ok(!receipt.missingCapabilities.includes("installRegisteredAccess"));
   assert.ok(!receipt.missingCapabilities.includes("connectRestrictedClients"));
-  assert.deepEqual(receipt.missingCapabilities,["runNormalCase"]);
+  assert.deepEqual(receipt.missingCapabilities,[]);
 });
 
 test("the native CLI has no simulation or skip-guard flag", () => {
@@ -171,6 +173,8 @@ test('a throwing fixture outcome getter is discarded without exposing its except
  assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.failureCode,'TASK16_FIXTURE_FAILED_CLOSED');assert.equal(receipt.fixtureOutcome,undefined);assert.equal(reads,1);assert.equal(JSON.stringify(receipt).includes('synthetic-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);
 });
 
-test("default public driver registers App source but stops before reading missing source or acquiring resources",async t=>{
- const root=fs.mkdtempSync('/private/tmp/jg-task16-default-capabilities-');t.after(()=>fs.rmSync(root,{recursive:true}));const artifacts=path.join(root,'not-created');const receipt=await runTask16RegisteredPg({packetFile:path.join(root,'not-read-packet.json'),expectedPacketSha256:'a'.repeat(64),inputsFile:path.join(root,'not-read-inputs.json'),expectedInputsSha256:'b'.repeat(64),artifactsDir:artifacts});assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.failureCode,'TASK16_DRIVER_CAPABILITIES_INCOMPLETE');assert.deepEqual(receipt.missingCapabilities,['runNormalCase']);assert.deepEqual(receipt.stages,[]);assert.equal(receipt.resource.status,'not-created');assert.equal(fs.existsSync(artifacts),false);assert.equal(receipt.nativeExecution,false);assert.equal(receipt.financialAcceptance,false);
+test("default public driver registers all source but SOURCE_ONLY stops before input IO or resources",async t=>{
+ const root=fs.mkdtempSync('/private/tmp/jg-task16-default-capabilities-');t.after(()=>fs.rmSync(root,{recursive:true}));const artifacts=path.join(root,'not-created');const receipt=await runTask16RegisteredPg({packetFile:path.join(root,'not-read-packet.json'),expectedPacketSha256:'a'.repeat(64),inputsFile:path.join(root,'not-read-inputs.json'),expectedInputsSha256:'b'.repeat(64),artifactsDir:artifacts,authorizationReference:'source-only-reference-is-not-live-permission',nativeExecution:true,mock:false});assert.equal(receipt.status,'FAILED_CLOSED');assert.equal(receipt.failureCode,'TASK16_DRIVER_SOURCE_ONLY');assert.deepEqual(receipt.missingCapabilities,[]);assert.deepEqual(receipt.stages,[]);assert.equal(receipt.resource.status,'not-created');assert.equal(fs.existsSync(artifacts),false);assert.equal(receipt.nativeExecution,false);assert.equal(receipt.financialAcceptance,false);
 });
+test('normal case outcome getter is captured once before its finite receipt relay',async()=>{const f=simulation();let reads=0;f.adapters.runNormalCase=async()=>{throw{code:'TASK16_CASE_FAILED_CLOSED',get normalCaseOutcome(){return ++reads===1?'UNKNOWN_DO_NOT_RETRY':'owned-private-token';}};};const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(reads,1);assert.equal(receipt.normalCaseOutcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(JSON.stringify(receipt).includes('owned-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);});
+test('normal case outcome getter exceptions cannot expose raw SDK or transport errors',async()=>{const f=simulation();let reads=0;f.adapters.runNormalCase=async()=>{throw{code:'TASK16_CASE_FAILED_CLOSED',get normalCaseOutcome(){reads++;throw new Error('owned-private-password token SQL');}};};const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(reads,1);assert.equal(receipt.normalCaseOutcome,undefined);assert.equal(JSON.stringify(receipt).includes('owned-private-password'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);});

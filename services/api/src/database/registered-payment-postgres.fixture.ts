@@ -46,6 +46,8 @@ export interface RegisteredPgExecutionContext {
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
   fetch: typeof fetch;
+  /** Source-owned case request checker; never a caller route list. */
+  assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
 }
 
 export interface RegisteredPgFixturePlan {
@@ -196,7 +198,8 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
   const application = new URL(context.proof.application.origin);
   const target = new URL(route, application);
   requireCondition(target.origin === application.origin && !target.username && !target.password && !target.hash, "PG_RESOURCE_HTTP_TARGET_ORIGIN");
-  if (continuity) requireCondition(method === "POST" && ["/auth/login", "/fund-accounts/openings"].includes(route), "PG_RESOURCE_SEED_HTTP_ROUTE");
+  if (continuity?.assertHttpRequest) continuity.assertHttpRequest(route, method);
+  else if (continuity) requireCondition(method === "POST" && ["/auth/login", "/fund-accounts/openings"].includes(route), "PG_RESOURCE_SEED_HTTP_ROUTE");
   const transport = continuity ? continuity.fetch : fetch;
   requireCondition(typeof transport === "function", "PG_RESOURCE_HTTP_TRANSPORT");
   light();

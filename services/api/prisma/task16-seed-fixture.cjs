@@ -24,9 +24,22 @@ function validateTask16SeedAdmission(context){
  need(transport&&typeof transport.fetch==='function'&&transport.qualified===true&&transport.simulation===context.simulation&&own(globalThis,'fetch')===transport.fetch);
  return first;
 }
+const seedRuns=new WeakSet(),completedSeeds=new WeakMap();
+function releaseTask16SeedHandoff(context){completedSeeds.delete(context);}
+function samePreparedData(current,snapshot){
+ if(snapshot===null||typeof snapshot!=='object')return current===snapshot;
+ if(!current||typeof current!=='object')return false;
+ const descriptors=Object.getOwnPropertyDescriptors(current),keys=Reflect.ownKeys(snapshot);
+ return Reflect.ownKeys(descriptors).length===keys.length&&keys.every(key=>Object.hasOwn(descriptors[key]??{},'value')&&samePreparedData(descriptors[key].value,snapshot[key]));
+}
+function takeTask16SeedHandoff(context){
+ const handoff=completedSeeds.get(context);completedSeeds.delete(context);
+ need(handoff&&context.source===handoff.source&&own(context,'fixture')===handoff.prepared&&samePreparedData(handoff.prepared,handoff.snapshot));handoff.checkLight();return handoff;
+}
 async function seedTask16Fixture(context){
  let attempted=false;
  try{
+  need(!seedRuns.has(context));seedRuns.add(context);
   const admission=validateTask16SeedAdmission(context),life=fixed(context,'clientLifecycleWitness'),app=fixed(context,'applicationLifecycleWitness'),transport=fixed(context,'seedTransportWitness'),source=context.source,registered=context.registeredAccess,installation=context.installation,witness=fixed(context,'resourceWitness');
   need(life?.handle===context.clients&&app?.handle===context.application&&typeof life.loadFixtureModules==='function'&&app.runtime===life.runtime&&typeof app.inspect==='function');
   const methods=Object.freeze(Object.fromEntries(['checkLight','verifyFull','loadFixtureModules'].map(k=>[k,life[k]])));need(Object.values(methods).every(fn=>typeof fn==='function'));
@@ -45,10 +58,13 @@ async function seedTask16Fixture(context){
   };
   check();await methods.verifyFull();check();const loaded=methods.loadFixtureModules();check();
   const base=context.baselineAccess;const proof={authorizationReference:source.inputs.authorizationReference,runId:witness.runId.replaceAll('-','').slice(0,12),resourceRunId:witness.runId,databaseName:witness.databaseName,databaseOid:base.databaseOid,systemIdentifier:base.systemIdentifier,host:'127.0.0.1',port:witness.port,ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',sourceSealSha256:headers.sourceSealSha256,preparedSqlSha256:Object.fromEntries(admission.fragments.map(row=>[path.basename(row.path),row.sha256])),transport:'isolated-loopback-tls-verify-full',application:{origin:app.origin,databaseRole:'jg_task01_runtime',sourceSealSha256:headers.sourceSealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'}};
-  const plan=loaded.buildRegisteredPgFixturePlan(proof.runId,admission.dates.paidAt,admission.dates.openingDate);check();const execution={proof,owner:life.owner,runtime:life.runtime,observer:life.observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000};
+  const plan=loaded.buildRegisteredPgFixturePlan(proof.runId,admission.dates.paidAt,admission.dates.openingDate);check();Object.freeze(proof.application);Object.freeze(proof.preparedSqlSha256);Object.freeze(proof);const execution=Object.freeze({proof,owner:life.owner,runtime:life.runtime,observer:life.observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   let prepared;
   try{prepared=await loaded.seedRegisteredPgFixture(execution,plan,Object.freeze({checkLight:check,fetch:transport.fetch}));}catch(error){let outcome;try{outcome=error?.fixtureOutcome;}catch{ /* Discard untrusted getter errors without retaining credentials. */ }attempted=outcome!=='NOT_ATTEMPTED';throw fault();}
-  attempted=true;check();await methods.verifyFull();check();return prepared;
- }catch{throw Object.assign(fault(),{fixtureOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED'});}
+  attempted=true;check();await methods.verifyFull();check();
+  const snapshot=structuredClone(prepared);const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};freeze(snapshot);
+  const inspectPrepared=()=>{check();need(own(context,'fixture')===prepared&&samePreparedData(prepared,snapshot));};
+  completedSeeds.set(context,Object.freeze({source,prepared,snapshot,execution,checkLight:inspectPrepared,verifyFull:methods.verifyFull,transport:transport.fetch}));return prepared;
+ }catch{releaseTask16SeedHandoff(context);throw Object.assign(fault(),{fixtureOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED'});}
 }
-module.exports={seedTask16Fixture,validateTask16SeedAdmission};
+module.exports={seedTask16Fixture,validateTask16SeedAdmission,takeTask16SeedHandoff,releaseTask16SeedHandoff};

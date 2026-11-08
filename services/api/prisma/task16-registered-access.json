@@ -1230,7 +1230,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "827cd7291f7f17f58b4617677a2a0bf76ea1a2307a6e59ee29ca4c629e0bad79",
+  "baselineManifestSha256": "4aa4e99c7090cb1eac1f44e911ed6048599ad74467b9b74f3e943cb651ab7631",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -4222,7 +4222,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "827cd7291f7f17f58b4617677a2a0bf76ea1a2307a6e59ee29ca4c629e0bad79"
+      "sha256": "4aa4e99c7090cb1eac1f44e911ed6048599ad74467b9b74f3e943cb651ab7631"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
@@ -4258,11 +4258,11 @@
     },
     {
       "path": "services/api/src/database/registered-payment-postgres.cases.ts",
-      "sha256": "49a80afb9b8739c8648096ee221ddcfc5031e8addc32c924993085bd47d37ad2"
+      "sha256": "b0a3a237d2b4bdd29e16982279e3ec248c2e344029a6446076f224ff60216a46"
     },
     {
       "path": "services/api/src/database/registered-payment-postgres.fixture.ts",
-      "sha256": "ca72e890f156cde4f2256a4af1af0123150f6cd0d093aac52e9d43931341d65a"
+      "sha256": "8e22311d5b8f7722e45395a8fdd9dd54866f4e933be7d83a2a1c54c2588441ed"
     },
     {
       "path": "services/api/src/fund-account/fund-account.service.ts",

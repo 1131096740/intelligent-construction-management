@@ -1,9 +1,9 @@
 "use strict";
 
 // B2: dedicated normal-case lifecycle plus runtime-input admission source. No command runs on import.
-// Native execution remains disabled until every required adapter is implemented
-// and independently reviewed. Source packets and approval-reference strings are
-// not authority to create resources or execute SQL.
+// Source adapter presence is not permission to execute. The fixed native
+// SOURCE_ONLY gate requires a separately authorized and reviewed source change;
+// packets, options and approval-reference strings cannot open it.
 const Module = require("node:module");
 const EARLY_LOADER = Object.freeze({
  freshCli: require.main===module && process.argv[1]===__filename && process.execArgv.length===0 && !process.env.NODE_OPTIONS && !process.env.NODE_PATH && !(process._preload_modules?.length) && Object.keys(require.cache).every(file=>file===__filename),
@@ -21,6 +21,10 @@ const EARLY_FETCH_QUALIFIED=Boolean(EARLY_FETCH&&Object.hasOwn(EARLY_FETCH,'valu
 const NATIVE_SEED_MODULE=(()=>{try{return require('./task16-seed-fixture.cjs');}catch{return undefined;}})();
 const NATIVE_SEED_STAGE=NATIVE_SEED_MODULE?.seedTask16Fixture;
 const NATIVE_SEED_ADMISSION=NATIVE_SEED_MODULE?.validateTask16SeedAdmission;
+const NATIVE_SEED_RELEASE=NATIVE_SEED_MODULE?.releaseTask16SeedHandoff;
+const NATIVE_CASE_MODULE=(()=>{try{return require('./task16-normal-case.cjs');}catch{return undefined;}})();
+const NATIVE_CASE_STAGE=NATIVE_CASE_MODULE?.runTask16NormalCase;
+const NATIVE_CASE_ADMISSION=NATIVE_CASE_MODULE?.validateTask16CaseAdmission;
 let nativeAttempted=false;
 const path = require("node:path");
 const { randomBytes, randomUUID } = require("node:crypto");
@@ -67,8 +71,8 @@ function nativeAdapters() {
       return connectTask16RestrictedClients(context,boundary);
     },
     startApplication: NATIVE_APPLICATION_STAGE,
-    seedFixture: NATIVE_SEED_STAGE
-    // Unimplemented stages are absent, never no-op functions returning success.
+    seedFixture: NATIVE_SEED_STAGE,
+    runNormalCase: NATIVE_CASE_STAGE
   };
 }
 
@@ -134,6 +138,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       }
     } catch { /* Invalid factory metadata stays non-callable: safe missing capability, no fallback. */ }
   }
+  const nativeCaseSelected=typeof NATIVE_CASE_STAGE==='function'&&adapters.runNormalCase===NATIVE_CASE_STAGE;
   const nativeSeedSelected=typeof NATIVE_SEED_STAGE==='function'&&adapters.seedFixture===NATIVE_SEED_STAGE;
   const nativeApplicationSelected=typeof NATIVE_APPLICATION_STAGE==="function"&&adapters.startApplication===NATIVE_APPLICATION_STAGE;
   const stages = [];
@@ -165,6 +170,9 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     }
     receipt.missingCapabilities = REQUIRED.filter(name => typeof adapters[name] !== "function");
     need(receipt.missingCapabilities.length === 0, "TASK16_DRIVER_CAPABILITIES_INCOMPLETE");
+    // Fixed source-only boundary: no input can authorize native execution.
+    // Explicit adapters remain simulated and cannot produce financial acceptance.
+    need(simulation, "TASK16_DRIVER_SOURCE_ONLY");
     if(!simulation)need(EARLY_LOADER.freshCli===true,"TASK16_DRIVER_FRESH_CLI_REQUIRED");
     context.source = await stage("verifySource");
     const clientEntryWitness=structuredClone(context.source?.runtimeAdmission?.clientEntry);
@@ -194,8 +202,10 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     const fixtureAdmission=structuredClone(context.source?.runtimeAdmission?.fixture);
     const freeze=value=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
     Object.defineProperty(context,'seedAdmissionWitness',{value:freeze(fixtureAdmission),writable:false,configurable:false});
+    Object.defineProperty(context,'normalCaseAdmissionWitness',{value:freeze(structuredClone(context.source?.runtimeAdmission?.normalCase)),writable:false,configurable:false});
     Object.defineProperty(context,'seedTransportWitness',{value:Object.freeze({fetch:seedTransport,simulation,qualified:simulation?typeof seedTransport==='function'&&!seedTransportIsBuiltin:EARLY_FETCH_QUALIFIED}),writable:false,configurable:false});
     if(nativeSeedSelected)NATIVE_SEED_ADMISSION(context);
+    if(nativeCaseSelected){need(nativeSeedSelected&&nativeApplicationSelected,'TASK16_DRIVER_CASE_STAGE_LINEAGE');NATIVE_CASE_ADMISSION(context);}
     context.resource = await stage("startResource");
     need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
     const initialReceipt=structuredClone(context.resource.getReceipt());
@@ -230,6 +240,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       Object.defineProperty(context,"clientLifecycleWitness",{value:Object.freeze({handle:context.clients,bindingObject:binding.value,sourceBinding,
 
         ...Object.fromEntries([...lifecycleMethods,"owner","runtime","observer"].map(key=>[key,lifecycleDescriptors[key].value])),
+        loadNormalCaseModules:lifecycleDescriptors.loadNormalCaseModules?.value,
         loadFixtureModules:lifecycleDescriptors.loadFixtureModules?.value}),writable:false,configurable:false});
     }
     receipt.appStartupOutcome="UNKNOWN_DO_NOT_RETRY";
@@ -253,6 +264,8 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       if(allowed.includes(value))receipt[field]=value;
     }
     if(receipt.appCleanupOutcome==="UNKNOWN_DO_NOT_CONTINUE")receipt.cleanupFailures.push("application");
+    let normalCaseOutcome;try{normalCaseOutcome=error?.normalCaseOutcome;}catch{ /* Discard untrusted getter exceptions. */ }
+    if(['NOT_ATTEMPTED','UNKNOWN_DO_NOT_RETRY'].includes(normalCaseOutcome))receipt.normalCaseOutcome=normalCaseOutcome;
     let fixtureOutcome;
     try { fixtureOutcome = error?.fixtureOutcome; } catch { /* Discard untrusted getter exceptions. */ }
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(fixtureOutcome)) receipt.fixtureOutcome = fixtureOutcome;
@@ -267,6 +280,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.migrationOutcome)) receipt.migrationOutcome = error.migrationOutcome;
     receipt.failureCode = typeof error?.code === "string" && /^(?:TASK16|TASK01)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_DRIVER_STAGE_FAILED";
   } finally {
+    if(typeof NATIVE_SEED_RELEASE==='function'){try{NATIVE_SEED_RELEASE(context);}catch{receipt.cleanupFailures.push('fixture-private-handoff');}}
     options?.signal?.removeEventListener?.("abort", onCallerAbort);
     controller.abort();
     for (const [name, handle] of [["application", context.application], ["clients", context.clients], ["resource", context.resource]]) {
