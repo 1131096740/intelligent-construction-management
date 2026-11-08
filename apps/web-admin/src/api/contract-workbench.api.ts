@@ -450,6 +450,80 @@ export function fetchContractDraftWorkbench(contractVersionId: string) {
   );
 }
 
+export interface ContractBodyEditPlan {
+  protocolVersion: 1;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  edits: Array<{ positionId: string; text: string }>;
+  additions?: Array<{ id: string; afterPositionId: string; text: string }>;
+  deletedPositionIds?: string[];
+  paragraphOrder?: string[];
+}
+
+export interface ContractBodyDeleteSavedAdditionAction {
+  kind: "delete_saved_addition";
+  additionId: string;
+}
+
+export type ContractBodyAction = ContractBodyDeleteSavedAdditionAction | { kind: "regenerate"; confirmOverwrite: true };
+
+export interface ContractBodyUpdateContext {
+  contractVersionId: string;
+  draftRevision: number;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  action: ContractBodyAction;
+}
+
+export interface ContractBodyDeleteSavedAdditionContext extends ContractBodyUpdateContext {
+  action: ContractBodyDeleteSavedAdditionAction;
+}
+
+export interface ContractBodyParagraph {
+  id: string;
+  kind: "paragraph";
+  text: string;
+  editable: boolean;
+  format: { fontFamily?: string; fontSizePt?: number; align: string; bold?: boolean };
+  blankFields: string[];
+}
+
+export type ContractBodyFlowNode = { kind: "paragraph"; paragraphId: string } | {
+  kind: "table";
+  columns: number[];
+  rows: Array<{ repeatHeader: boolean; cells: Array<{
+    paragraphIds: string[]; columnSpan: number; verticalMerge: string | null; flow: ContractBodyFlowNode[];
+  }> }>;
+};
+
+export interface ContractDraftBodyReadModel {
+  contractVersionId: string;
+  draftRevision: number;
+  documentContentRevision: number;
+  layoutTemplateVersionId: string;
+  sourceSha256: string;
+  warnings?: readonly string[];
+  blocks: ContractBodyParagraph[];
+  flow: ContractBodyFlowNode[];
+  paragraphGroups: string[][];
+  savePoints: Array<{ id: string; createdAt: string; documentContentRevision: number; layoutTemplateVersionId: string; documentBody: ContractBodyEditPlan | null }>;
+}
+
+const approvedBodyWarnings = new Set(["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"]);
+const incompleteBodyWarning = "正文提示暂无法完整读取，请核对当前填写资料后重新读取正文。";
+function normalizeBodyWarnings(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8 || value.some(item => typeof item !== "string" || item.length > 256 || !approvedBodyWarnings.has(item))) return [incompleteBodyWarning];
+  return [...new Set(value as string[])];
+}
+export async function fetchContractDraftBody(contractVersionId: string) {
+  const body = await readJson<ContractDraftBodyReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/document-body`, true,
+    { "x-contract-numeric-protocol": "2" }
+  );
+  return { ...body, warnings: normalizeBodyWarnings(body.warnings) };
+}
+
 export function fetchContractDraftOperationCapabilities(
   contractVersionId: string
 ) {

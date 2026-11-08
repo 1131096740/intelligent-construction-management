@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 728,
-    "exactRouteCount": 728,
-    "normalizedRouteCount": 728,
+    "routeCount": 729,
+    "exactRouteCount": 729,
+    "normalizedRouteCount": 729,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 511,
-    "pageRouteCount": 529,
+    "derivedProductionPageCount": 512,
+    "pageRouteCount": 530,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 582,
+      "web_api_wrapper": 583,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 582,
+    "productionWrapperRouteCount": 583,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -2040,6 +2040,49 @@
     },
     {
       "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/document-body",
+      "normalizedKey": "GET /contract-drafts/:param/document-body",
+      "controller": "ContractDraftController",
+      "handler": "documentBody",
+      "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractDraftBody",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/document-body",
+            "normalizedKey": "GET /contract-drafts/:param/document-body",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/contract-drafts/:contractVersionId/save-requests/:idempotencyKey",
       "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
       "controller": "ContractDraftController",
@@ -2156,6 +2199,7 @@
             "normalizedPath": "/contract-drafts/:param/workbench",
             "normalizedKey": "GET /contract-drafts/:param/workbench",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
@@ -3203,6 +3247,7 @@
             "normalizedPath": "/contract-workbench/:param/documents",
             "normalizedKey": "GET /contract-workbench/:param/documents",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
             ]
           }
@@ -4177,6 +4222,7 @@
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
             ]
@@ -4220,6 +4266,7 @@
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
             ]
@@ -4235,6 +4282,7 @@
               "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
@@ -14501,6 +14549,7 @@
             "normalizedPath": "/contract-drafts/:param/preview-generation",
             "normalizedKey": "POST /contract-drafts/:param/preview-generation",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
@@ -18232,6 +18281,7 @@
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
             ]

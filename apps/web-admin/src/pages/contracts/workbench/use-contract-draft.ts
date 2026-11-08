@@ -1029,6 +1029,7 @@ function assignAggregateModel(
 }
 
 function assignModel(target: ContractDraftModel, source: ContractDraftModel): void {
+  target.numericProtocolVersion = source.numericProtocolVersion;
   target.contractName = source.contractName;
   target.companyEntityId = source.companyEntityId;
   if (source.layoutTemplateVersionId !== undefined) target.layoutTemplateVersionId = source.layoutTemplateVersionId;
@@ -1038,6 +1039,7 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
   target.pricingNature = source.pricingNature;
   target.amountSource = source.amountSource;
   target.manualAmountCents = source.manualAmountCents;
+  target.manualAmountYuan = source.manualAmountYuan;
   target.estimatedAmountCents = source.estimatedAmountCents;
   target.amountAdjustmentReason = source.amountAdjustmentReason;
   target.paymentTermsOriginalText = source.paymentTermsOriginalText;
@@ -2307,6 +2309,51 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       currentWorkbench.draft["issueCounts"] = { ...result.issueCounts };
       currentWorkbench.draft["documentsOutdated"] =
         documentsOutdated;
+    }
+    // Consume only this acknowledged one-shot instruction. Keep newer body
+    // input and the frozen retry/query snapshot untouched, even if another
+    // draft field changed while this request was in flight.
+    const sentDraft = savingState.inFlightSnapshot.draft;
+    const sentAction = sentDraft.extraDraftData["documentBodyAction"];
+    const currentAction = aggregateModel.draft.extraDraftData["documentBodyAction"];
+    const sentBody = sentDraft.extraDraftData["documentBody"];
+    const currentBody = aggregateModel.draft.extraDraftData["documentBody"];
+    if (contractVersionId.value === result.contractVersionId && sentDraft.numericProtocolVersion === 2 &&
+      aggregateModel.draft.numericProtocolVersion === 2 && result.versionAmount?.numericProtocolVersion === 2 &&
+      currentWorkbench.version.layoutTemplateVersionId == null && authorityReceipt.version.layoutTemplateVersionId == null &&
+      !Object.hasOwn(sentDraft.extraDraftData, "documentBodyAction") && !Object.hasOwn(aggregateModel.draft.extraDraftData, "documentBodyAction") &&
+      !Object.hasOwn(sentDraft.extraDraftData, "documentBody") && !Object.hasOwn(aggregateModel.draft.extraDraftData, "documentBody") &&
+      typeof sentDraft.layoutTemplateVersionId === "string" && sentDraft.layoutTemplateVersionId.length > 0 &&
+      sentDraft.layoutTemplateVersionId === aggregateModel.draft.layoutTemplateVersionId) {
+      currentWorkbench.version.layoutTemplateVersionId = sentDraft.layoutTemplateVersionId;
+      authorityReceipt.version.layoutTemplateVersionId = sentDraft.layoutTemplateVersionId;
+    }
+    const sameAcknowledgedBodyAction = isRecord(sentAction) && isRecord(currentAction) &&
+      Object.keys(sentAction).length === 2 && Object.keys(currentAction).length === 2 && (
+        (sentAction["kind"] === "delete_saved_addition" && currentAction["kind"] === sentAction["kind"] &&
+        typeof sentAction["additionId"] === "string" && currentAction["additionId"] === sentAction["additionId"]) ||
+        (sentAction["kind"] === "regenerate" && currentAction["kind"] === "regenerate" &&
+        sentAction["confirmOverwrite"] === true && currentAction["confirmOverwrite"] === true)
+      );
+    const omittedRegenerationBody = isRecord(sentAction) && sentAction["kind"] === "regenerate" &&
+      sentDraft.numericProtocolVersion === 2 && aggregateModel.draft.numericProtocolVersion === 2 &&
+      result.versionAmount?.numericProtocolVersion === 2 &&
+      !Object.hasOwn(sentDraft.extraDraftData, "documentBody") && !Object.hasOwn(aggregateModel.draft.extraDraftData, "documentBody") &&
+      typeof sentDraft.layoutTemplateVersionId === "string" && sentDraft.layoutTemplateVersionId.length > 0 &&
+      sentDraft.layoutTemplateVersionId === aggregateModel.draft.layoutTemplateVersionId;
+    if (contractVersionId.value === result.contractVersionId && sameAcknowledgedBodyAction && (omittedRegenerationBody || (
+      isRecord(sentBody) && isRecord(currentBody) && sentBody["protocolVersion"] === 1 && currentBody["protocolVersion"] === 1 &&
+      typeof sentBody["sourceSha256"] === "string" && sentBody["sourceSha256"] === currentBody["sourceSha256"] &&
+      typeof sentBody["layoutTemplateVersionId"] === "string" && sentBody["layoutTemplateVersionId"] === currentBody["layoutTemplateVersionId"] &&
+      sentBody["layoutTemplateVersionId"] === sentDraft.layoutTemplateVersionId && sentDraft.layoutTemplateVersionId === aggregateModel.draft.layoutTemplateVersionId &&
+      JSON.stringify(currentBody) === JSON.stringify(sentBody)))) {
+      if (omittedRegenerationBody) {
+        currentWorkbench.version.layoutTemplateVersionId = sentDraft.layoutTemplateVersionId;
+        authorityReceipt.version.layoutTemplateVersionId = sentDraft.layoutTemplateVersionId;
+      }
+      const extraDraftData = { ...aggregateModel.draft.extraDraftData };
+      delete extraDraftData["documentBodyAction"];
+      aggregateModel.draft.extraDraftData = extraDraftData;
     }
   }
 

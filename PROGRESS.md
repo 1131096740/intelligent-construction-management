@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，Task10最新中央隔离候选与整票复审）
+
+- [~] 候选 `/private/tmp/jg-382-task10-final-integration-20261108` 基于准确中央 `0d563bb565b7229d3488c2ffcc5e379dae953a8e`，完整181路径承接作者8f7+WIP；原作者树181逐SHA和中央52非ledger路径再核未变，Schema/迁移不变。私有生成client/Shared与fresh API/Web构建、共享58,799项守卫见本地收据，不借旧dist。
+- [~] 全票SOURCE ONLY两轴提出2个P2，已原公有反例修复待增量复审：普通原段GUI结构删除复用既有deletedPositionIds（保受控/表格/新增anchor约束），桌面/手机保存重读及同R/F实际Word/PDF过；formatter嵌套typed透传逐调用实参来源验证，unknown error不读取，纸面两操作链沿已有固定中文fallback。新增/原删除外层2/2、完整治理364/364及原CI369/369均0skip，canonical7write+7check全过；类型/lint/check:ui/fresh builds及准确源码差异桥见[候选收据](docs/progress/2026-11-08-enterprise-simplification-task10-current-candidate-checkpoint.md)。原RED与夹具失败均保留。
+- [ ] 整票仍OPEN：剩余既定纸面/UI资源批次9–15已逐组实际通过（跨源各1选中/1未选），每组全181与76843冻结同；旧1–8及纯HTTP336明确为先前actual加不变生产源码闭包桥，非当前整SHA重跑。最终全票execution/两MD桥仍待独立复核；compact/材料运输业务口径及任务12提交consumer保持pending，不以分片0解除。此阶段未commit/push/mainmerge、未DB/SQL/部署/生产操作；未来范围内提交仍须[skip ci]。
+
 ## Current continuation (2026-11-08): B9a owner fixture source integrated
 
 - [~] Author `92569289` merged `6f4336a3e9e6134e9d9042750df94411274c7db9`;v2freeze93cc dualreview0, getterP2 RED/GREEN retained/closed. Central fresh255=232+fixtureSource20+driver3,CLI25,fixtureJest20/APItype/directedTS+CJSlint/3syntax/2JSONpins/diff passed. Exactmerge sourcepacket3312/202/7/1. [Integration receipt](docs/progress/2026-11-08-enterprise-simplification-task16-seed-source-integrated.md); finaldocs exactseal/remote separate.

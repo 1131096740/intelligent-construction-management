@@ -64,7 +64,9 @@ export const CONTRACT_BILL_ROW_PLACEHOLDER_ALIASES: Record<string, string> = {
   含税金额: "taxInclusiveAmount",
   不含税金额: "taxExclusiveAmount",
   税额: "taxAmount",
-  备注: "remark"
+  备注: "remark",
+  是否含燃油: "fuelIncluded",
+  是否带操作人员: "operatorIncluded"
 };
 
 const BILL_ROW_PLACEHOLDERS = new Set([
@@ -80,6 +82,12 @@ const BILL_ROW_PLACEHOLDERS = new Set([
 
 export function isContractBillRowPlaceholder(value: string) {
   return BILL_ROW_PLACEHOLDERS.has(value);
+}
+
+/** Optional row labels render from data without reclassifying old ordinary text. */
+export function isContractBillReadonlyRowPlaceholder(value: string) {
+  return isContractBillRowPlaceholder(value) &&
+    !["是否含燃油", "是否带操作人员", "fuelIncluded", "operatorIncluded"].includes(value);
 }
 
 export function canonicalContractPlaceholder(tag: string) {

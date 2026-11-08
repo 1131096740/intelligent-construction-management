@@ -7,6 +7,7 @@ import { OperationalWriteFreezeService } from "../operational-write-freeze/opera
 import { AccountRateLimitGuard } from "../auth/guards/account-rate-limit.guard";
 import { AuthRateLimitService } from "../auth/auth-rate-limit.service";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractWorkbenchController } from "../contract-workbench/contract-workbench.controller";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
@@ -164,6 +165,7 @@ export class TemplateSyntheticStore {
     standardClause: this.table("standardClause"), standardClauseVersion: this.table("standardClauseVersion"),
     contractBusinessTemplate: this.table("contractBusinessTemplate"), contractBusinessTemplateVersion: this.table("contractBusinessTemplateVersion"),
     contractOfflineRevision: this.table("contractOfflineRevision"), contractDocumentComparison: this.table("contractDocumentComparison"),
+    contractNegotiationRound: this.table("contractNegotiationRound"), contractDocumentDifference: this.table("contractDocumentDifference"),
     // Explicitly empty adjacent-domain bindings for the real private-file policy.
     approvalActionLog: this.table("approvalActionLog"),
     approvalInstance: this.table("approvalInstance"),
@@ -208,7 +210,7 @@ export class TemplateSyntheticStore {
     contractBusinessScenario: this.table("contractBusinessScenario"),
     contract: this.table("contract"), contractPartySnapshot: this.table("contractPartySnapshot"), contractBill: this.table("contractBill"), contractBillRow: this.table("contractBillRow"),
     contractVersion: this.table("contractVersion"), contractGeneratedDocument: this.table("contractGeneratedDocument"),
-    // Only the existing aggregate's three fixed lock projections are modeled.
+    // Only explicitly registered business/file lock and read projections are modeled.
     // This does not connect to a database or execute SQL; every other query is rejected.
     $queryRaw: async (query: Prisma.Sql): Promise<Row[]> => {
       const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
@@ -235,6 +237,26 @@ export class TemplateSyntheticStore {
       const id = query.values[0];
       if (typeof id !== "string" || !query.values.every(value => value === id)) throw new Error("合成锁投影参数不符");
       if (text === 'SELECT "id", "isActive" FROM "Project" WHERE "id" = ? FOR UPDATE') { const project = await this.prisma.project.findUnique({ where: { id } }); return project ? [project] : []; }
+      // Current FileService first checks the registered-payment voucher join.
+      // These contract-only fixtures create no voucher relation; a future
+      // nonempty relation is deliberately not modeled as permission-free.
+      if (createHash("sha256").update(text).digest("hex") === "a3ffde9e356083472920cfdbfe8d370880c9725a212caf612b0dc2e8ffb428e2") {
+        if (query.values.length !== 1 || (this.rows.registeredPaymentVoucher ?? []).length !== 0) throw new Error("合成实付凭证读取投影未登记当前关系");
+        return [];
+      }
+      // FileService's real referenced-predecessor cleanup path. Model only the
+      // exact lock and positive generated-document reference facts of this fake;
+      // orphan/unmodeled references remain refused, never guessed false.
+      if (text === 'SELECT "id" FROM "FileObject" WHERE "id" = ? FOR UPDATE') {
+        const file = await this.prisma.fileObject.findUnique({ where: { id } });
+        return file ? [{ id: file.id }] : [];
+      }
+      if (createHash("sha256").update(text).digest("hex") === "9e5581891d6da3266df4f8d8f74e654da7036f7f480db9216b09fbcc69b19203") {
+        if (query.values.length !== 73) throw new Error("合成文件引用投影参数不符");
+        const documents = await this.prisma.contractGeneratedDocument.findMany();
+        if (!documents.some(document => document.docxFileId === id || document.pdfFileId === id)) throw new Error("合成文件引用投影仅支持已生成文书的正引用事实");
+        return [{ referenced: true }];
+      }
       const version = await this.prisma.contractVersion.findUnique({ where: { id } });
       if (text === 'SELECT c.* FROM "Contract" c INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id" WHERE cv."id" = ? FOR UPDATE OF c') {
         const contract = version ? await this.prisma.contract.findUnique({ where: { id: version.contractId } }) : null;
@@ -273,7 +295,7 @@ export function syntheticWordSource(includeSignatures = false) {
   return zip.generate({ type: "nodebuffer" });
 }
 
-export async function createTemplateTestServer(options: { draftWorkbench?: boolean } = {}) {
+export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean } = {}) {
   const store = new TemplateSyntheticStore();
   const actors = [
     { id: "director", name: "合成合同主管", phone: "13800001101", role: "contract_director" },
@@ -301,13 +323,13 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
   const audit = new AuditService(prisma);
   const tokens = new JwtTokenService();
   const auth = new AuthService(prisma, tokens, audit);
-  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
+  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController, ...(options.legacyWorkbenchReads ? [ContractWorkbenchController] : [])] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
     { provide: PrivateFileStorage, useValue: storage }, ProjectVisibilityService, ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     { provide: FileService, useFactory: (moduleRef: ModuleRef) => new FileService(prisma, audit, storage, undefined, undefined, moduleRef), inject: [ModuleRef] },
     { provide: ContractDocumentService, useFactory: (files: FileService) => new ContractDocumentService(prisma, audit, files, new BusinessNumberingService()), inject: [FileService] },
-    { provide: ContractNegotiationService, useValue: {} }, { provide: AuthService, useValue: auth },
+    { provide: ContractNegotiationService, useFactory: (files: FileService) => options.realNegotiationReads ? new ContractNegotiationService(prisma, audit, files, auth) : {}, inject: [FileService] }, { provide: AuthService, useValue: auth },
     LayoutTemplateService, ContractTemplateService, { provide: ContractScenarioService, useValue: {} },
     ...(options.draftWorkbench ? [
       { provide: ContractDraftAggregateService, useFactory: (files: FileService) => new ContractDraftAggregateService(prisma, new ContractWorkbenchService(prisma, audit), new ContractBillService(prisma, audit), new BusinessPartyService(prisma, audit), files, audit), inject: [FileService] },

@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 416,
-    "pageActionCount": 63,
+    "registeredActionCount": 418,
+    "pageActionCount": 65,
     "backgroundActionCount": 353,
-    "reachableVueFileCount": 209,
+    "reachableVueFileCount": 212,
     "routeRootCount": 74,
-    "totalVueFileCount": 222,
-    "parsedVueFileCount": 222,
-    "reachableProductionModuleCount": 360,
-    "templateEventDirectiveCount": 1334,
+    "totalVueFileCount": 225,
+    "parsedVueFileCount": 225,
+    "reachableProductionModuleCount": 363,
+    "templateEventDirectiveCount": 1374,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 407,
-    "candidateProductionMutationConsumerCount": 407,
-    "acceptedProductionMutationConsumerCount": 407,
-    "productionMutationConsumerPairCount": 407,
+    "coveredProductionMutationConsumerCount": 409,
+    "candidateProductionMutationConsumerCount": 409,
+    "acceptedProductionMutationConsumerCount": 409,
+    "productionMutationConsumerPairCount": 409,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 379,
-    "reachableProductionModuleCount": 360,
-    "totalVueFileCount": 222,
-    "parsedVueFileCount": 222
+    "totalProductionModuleCount": 382,
+    "reachableProductionModuleCount": 363,
+    "totalVueFileCount": 225,
+    "parsedVueFileCount": 225
   },
   "actions": [
     {
@@ -4141,7 +4141,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 779,
+        "sourceLine": 865,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4299,6 +4299,192 @@
       ]
     },
     {
+      "id": "contract-draft.body-paper-generate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "generateCurrentDraft",
+        "kind": "event",
+        "sourceLine": 29,
+        "sourceColumn": 6
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "generationGrant.value.actions",
+        "key": "queue_contract_draft_preview",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "queueContractDraftPreview",
+          "method": "POST",
+          "path": "/contract-drafts/:param/preview-generation",
+          "normalizedKey": "POST /contract-drafts/:param/preview-generation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-drafts/:contractVersionId/preview-generation",
+            "normalizedKey": "POST /contract-drafts/:param/preview-generation",
+            "controller": "ContractDraftController",
+            "handler": "generatePreview",
+            "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "generateCurrentDraft",
+              "queueContractDraftPreview"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.body-paper-preview",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "confirmPreview",
+        "kind": "event",
+        "sourceLine": 93,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "previewGrant.value.serverAvailableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmPreview",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5465,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmPreview",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5465,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "contract-draft.create",
       "usage": "background",
       "routePaths": [
@@ -4381,7 +4567,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 746,
+        "sourceLine": 832,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4890,7 +5076,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 970,
+        "sourceLine": 1060,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8439,7 +8625,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 954,
+        "sourceLine": 1044,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8505,7 +8691,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 912,
+        "sourceLine": 1002,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8571,7 +8757,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 925,
+        "sourceLine": 1015,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8637,7 +8823,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 938,
+        "sourceLine": 1028,
         "sourceColumn": 0
       },
       "semantic": "business_write",

@@ -18,13 +18,20 @@ import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { compareContractDocumentSnapshots } from "./contract-document-comparison";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, finalizeContractBodyLineBoxScope, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, reviewedTypographySourceSha256, isReviewedTypographyVersion, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, isContractBodyTableLayoutVersion, prepareContractBodyTableMargins, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, renderContractBody } from "./contract-body-document";
+import { assertContractBodyPdfRuntimeLock, convertContractBodyDocxToPdf } from "./contract-body-pdf-converter";
+import { createHash } from "node:crypto";
 import {
   CONTRACT_DOCUMENT_ENGINE_VERSION,
+  CONTRACT_BODY_DOCUMENT_ENGINE_VERSION,
+  CONTRACT_BODY_DOCX4J_ENGINE_VERSION,
   declaredBillKeys,
   requiredPlaceholderKeys,
   type ContractDocumentInputSnapshot
 } from "./contract-document.service";
 import { convertDocxToPdf } from "./libreoffice-converter";
+import { assertContractPreviewFontOutput } from "./contract-preview-font-output";
+import { completeContractDocxFontTableType } from "./contract-docx-package-metadata";
 import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
@@ -36,6 +43,12 @@ const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
   "合同版式预览清单数据格式不正确",
   "合同生成文档前驱文件记录异常，无法接入版本链",
   "合同文档输入快照格式不正确",
+  "合同文书金额口径版本无法核对，请联系管理员处理",
+  "合同签署日期呈现版本无法核对，请联系管理员处理",
+  "合同页码呈现版本无法核对，请联系管理员处理",
+  "合同文书表格版式版本无法核对，请联系管理员处理",
+  "合同正文字体呈现版本无法核对，请联系管理员处理",
+  "合同模板的表格边距设置暂不支持，请核对模板后再生成",
   "合同金额格式不正确",
   "合同金额超出中文大写金额可转换范围",
   "合同文档缺少必填内容，请补充后重试",
@@ -50,6 +63,11 @@ const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
   "合同 PDF 转换超时，请稍后重试",
   "合同 PDF 转换失败，请稍后重试",
   "合同 PDF 转换未生成输出文件，请稍后重试",
+  "合同 PDF 字体输出异常，请联系管理员核对转换服务字体后重试",
+  "合同 Word 模板的字体资料无法安全核对，请检查模板后重试",
+  "合同正文转换运行环境未就绪，请联系管理员",
+  "合同正文 PDF 转换失败，请联系管理员核对保留的转换记录",
+  "合同正文文件无法安全转换，请核对文件内容",
   "合同正文 PDF 格式不正确",
   "合同附件文件类型不受支持",
   "合同附件处理失败，请检查文件是否完整且格式正确",
@@ -325,6 +343,7 @@ export class ContractDocumentProcessor
         version.templateSnapshot
       );
       const convertedPdf = await convertDocxToPdf(revision.buffer);
+      await assertContractPreviewFontOutput(convertedPdf);
       const normalizedPdf = await normalizeContractPdf(convertedPdf, []);
       const preview = await this.files.uploadPrivateFile({
         originalName: `${job.label.replace(/[\\/\0\r\n]/gu, "_")}.pdf`,
@@ -498,6 +517,7 @@ export class ContractDocumentProcessor
         requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport)
       );
       const pdf = await convertDocxToPdf(docx);
+      await assertContractPreviewFontOutput(pdf);
       const uploaded = await this.files.uploadPrivateFile({
         originalName: `layout-preview-${job.id}.pdf`,
         mimeType: "application/pdf",
@@ -563,6 +583,7 @@ export class ContractDocumentProcessor
     const uploadedFileIds: string[] = [];
     try {
       const snapshot = this.documentSnapshot(job.inputSnapshot);
+      if (snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5") await assertContractBodyPdfRuntimeLock(snapshot.bodyDocument.runtimeLockSha256!, snapshot.bodyDocument.typographyVersion);
       const template = await this.files.getFileBuffer(snapshot.templateFileId);
       // Old queued jobs keep their original bytes. New jobs use only the exact
       // confirmed coordinates captured when queued, never a current template.
@@ -571,12 +592,15 @@ export class ContractDocumentProcessor
         draftRevision: snapshot.layoutSourceMapping.draftRevision,
         placeholderSchema: { sourceMapping: snapshot.layoutSourceMapping }
       });
-      const docx = renderContractDocx(
-        source,
-        snapshot.renderInput,
-        snapshot.requiredKeys,
-        { allowBlankWatermark: job.purpose === "external" }
-      );
+      if (snapshot.bodyDocument && createHash("sha256").update(template.buffer).digest("hex") !== snapshot.bodyDocument.sourceSha256) throw new Error("正文所用模板已变化，请重新核对后生成");
+      const renderedBody = snapshot.bodyDocument
+        ? renderContractBody(template.buffer, source, snapshot.renderInput, snapshot.requiredKeys, snapshot.bodyDocument.layoutTemplateVersionId, snapshot.bodyDocument.editPlan,
+          { allowBlankWatermark: job.purpose === "external", tableLayoutVersion: snapshot.bodyDocument.tableLayoutVersion,
+            ...(Object.hasOwn(snapshot.bodyDocument, "typographyVersion") ? { typographyVersion: snapshot.bodyDocument.typographyVersion } : {}),
+            ...(Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion") ? { signatureDateVersion: snapshot.bodyDocument.signatureDateVersion } : {}),
+            ...(Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion") ? { pageNumberVersion: snapshot.bodyDocument.pageNumberVersion } : {}) })
+        : undefined;
+      const docx = renderedBody ? renderedBody.docx : renderContractDocx(source, snapshot.renderInput, snapshot.requiredKeys, { allowBlankWatermark: job.purpose === "external" });
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
@@ -586,7 +610,23 @@ export class ContractDocumentProcessor
           type: this.attachmentType(attachment.originalName, attachment.mimeType)
         });
       }
-      const finalDocx = appendDocxImageAttachments(docx, attachments);
+      const completedPackage = completeContractDocxFontTableType(
+        prepareContractBodyTableMargins(appendDocxImageAttachments(docx, attachments), snapshot.bodyDocument?.tableLayoutVersion),
+        createHash("sha256").update(template.buffer).digest("hex")
+      );
+      const finalDocx = completedPackage.docx;
+      const finalLineBoxScope = renderedBody?.lineBoxScope ? finalizeContractBodyLineBoxScope(finalDocx, renderedBody.lineBoxScope) : undefined;
+      const useDocx4j = snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5";
+      const bodyConversion = useDocx4j
+        ? await convertContractBodyDocxToPdf(finalDocx, snapshot.bodyDocument!.runtimeLockSha256!, {
+          ...(snapshot.bodyDocument!.typographyVersion ? { typographyVersion: snapshot.bodyDocument!.typographyVersion } : {}),
+          ...(finalLineBoxScope ? { lineBoxScope: finalLineBoxScope } : {}) }) : undefined;
+      const pdfAttachments = attachments.filter((attachment) => attachment.type === "pdf");
+      const bodyNormalized = useDocx4j ? await normalizeContractPdf(bodyConversion!.pdf, pdfAttachments) : undefined;
+      const legacyPdf = useDocx4j ? undefined : await convertDocxToPdf(finalDocx);
+      if (legacyPdf) await assertContractPreviewFontOutput(legacyPdf);
+      const normalized = useDocx4j ? bodyNormalized! : await normalizeContractPdf(legacyPdf!, pdfAttachments);
+      // Both frozen engines finish conversion and output checks before either upload.
       const docxFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.docx`,
         mimeType:
@@ -596,9 +636,6 @@ export class ContractDocumentProcessor
         buffer: finalDocx
       });
       uploadedFileIds.push(docxFile.id);
-      const convertedPdf = await convertDocxToPdf(finalDocx);
-      const pdfAttachments = attachments.filter((attachment) => attachment.type === "pdf");
-      const normalized = await normalizeContractPdf(convertedPdf, pdfAttachments);
       const pdfFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.pdf`,
         mimeType: "application/pdf",
@@ -711,13 +748,18 @@ export class ContractDocumentProcessor
             pdfFileId: pdfFile.id,
             completedAt,
             errorMessage: null,
-            engineVersion: CONTRACT_DOCUMENT_ENGINE_VERSION,
+            engineVersion: snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5" ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION
+              : snapshot.bodyDocument ? CONTRACT_BODY_DOCUMENT_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION,
             inputSnapshot: {
               ...snapshot,
               inspection: {
                 pageCount: normalized.pageCount,
                 pageSizes: normalized.pageSizes,
-                warnings: normalized.warnings
+                warnings: normalized.warnings,
+                ...(completedPackage.normalization ? { packageMetadataNormalization: completedPackage.normalization } : {}),
+                ...(bodyConversion ? { runtime: { ...bodyConversion.provenance,
+                  exportedDocxSha256: createHash("sha256").update(finalDocx).digest("hex"),
+                  exportedPdfSha256: createHash("sha256").update(normalized.buffer).digest("hex") } } : {})
               }
             } as unknown as Prisma.InputJsonValue
           }
@@ -981,6 +1023,64 @@ export class ContractDocumentProcessor
       !Array.isArray(snapshot.attachmentFiles)
     ) {
       throw new Error("合同文档输入快照格式不正确");
+    }
+    if (snapshot.bodyDocument !== undefined && (!snapshot.bodyDocument || typeof snapshot.bodyDocument !== "object" || Array.isArray(snapshot.bodyDocument) || snapshot.bodyDocument.protocolVersion !== 1 || typeof snapshot.bodyDocument.layoutTemplateVersionId !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.sourceSha256))) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.bodyDocument?.pdfEngine !== undefined && (snapshot.bodyDocument.pdfEngine !== "docx4j-17.3.5" || typeof snapshot.bodyDocument.runtimeLockSha256 !== "string" || !SHA256_PATTERN.test(snapshot.bodyDocument.runtimeLockSha256))) throw new Error("合同文档输入快照格式不正确");
+    if (snapshot.bodyDocument?.pdfEngine === undefined && snapshot.bodyDocument?.runtimeLockSha256 !== undefined) throw new Error("合同文档输入快照格式不正确");
+    const values = snapshot.renderInput.values;
+    const hasBodyVersion = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "renderSemanticVersion"));
+    const hasValueVersion = Boolean(values && Object.hasOwn(values, "contract.renderSemanticVersion"));
+    if ((hasBodyVersion || hasValueVersion) && (!hasBodyVersion || !hasValueVersion ||
+      snapshot.bodyDocument?.renderSemanticVersion !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION ||
+      values["contract.renderSemanticVersion"] !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION)) {
+      throw new Error("合同文书金额口径版本无法核对，请联系管理员处理");
+    }
+    const hasBodyLayoutVersion = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "tableLayoutVersion"));
+    const hasValueLayoutVersion = Boolean(values && Object.hasOwn(values, "contract.tableLayoutVersion"));
+    if ((hasBodyLayoutVersion || hasValueLayoutVersion) && (!hasBodyLayoutVersion || !hasValueLayoutVersion ||
+      !isContractBodyTableLayoutVersion(snapshot.bodyDocument?.tableLayoutVersion) ||
+      values["contract.tableLayoutVersion"] !== snapshot.bodyDocument?.tableLayoutVersion)) {
+      throw new Error("合同文书表格版式版本无法核对，请联系管理员处理");
+    }
+    if (snapshot.bodyDocument?.typographyVersion === REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION && snapshot.bodyDocument.pdfEngine !== "docx4j-17.3.5") {
+      throw new Error("合同正文纸面运行版本无法核对，请联系管理员处理");
+    }
+    const hasPageBody = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "pageNumberVersion"));
+    const hasPageValue = Object.hasOwn(values, "contract.pageNumberVersion");
+    if ((hasPageBody || hasPageValue) && (!hasPageBody || !hasPageValue ||
+      snapshot.bodyDocument?.pageNumberVersion !== REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION || values["contract.pageNumberVersion"] !== REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION ||
+      snapshot.bodyDocument?.sourceSha256 !== REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256 || snapshot.bodyDocument?.pdfEngine !== "docx4j-17.3.5" ||
+      snapshot.bodyDocument?.renderSemanticVersion !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION ||
+      Object.hasOwn(snapshot.bodyDocument, "typographyVersion") || Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion") ||
+      Object.hasOwn(values, "contract.typographyVersion") || Object.hasOwn(values, "contract.signatureDateVersion") || Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion"))) {
+      throw new Error("合同页码呈现版本无法核对，请联系管理员处理");
+    }
+    const hasDateBody = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "signatureDateVersion"));
+    const hasDateValue = Object.hasOwn(values, "contract.signatureDateVersion");
+    if ((hasDateBody || hasDateValue) && (!hasDateBody || !hasDateValue ||
+      snapshot.bodyDocument?.signatureDateVersion !== REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION || values["contract.signatureDateVersion"] !== REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION ||
+      snapshot.bodyDocument?.sourceSha256 !== REVIEWED_MATERIAL_SOURCE_SHA256 || snapshot.bodyDocument?.typographyVersion !== REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION ||
+      snapshot.bodyDocument?.pdfEngine !== "docx4j-17.3.5")) {
+      throw new Error("合同签署日期呈现版本无法核对，请联系管理员处理");
+    }
+    const hasBodyTypography = Boolean(snapshot.bodyDocument && Object.hasOwn(snapshot.bodyDocument, "typographyVersion"));
+    const hasValueTypography = Object.hasOwn(values, "contract.typographyVersion");
+    if ((hasBodyTypography || hasValueTypography) && (!hasBodyTypography || !hasValueTypography ||
+      !isReviewedTypographyVersion(snapshot.bodyDocument?.typographyVersion) ||
+      values["contract.typographyVersion"] !== snapshot.bodyDocument?.typographyVersion ||
+      snapshot.bodyDocument?.sourceSha256 !== reviewedTypographySourceSha256(snapshot.bodyDocument?.typographyVersion) ||
+      (snapshot.bodyDocument?.typographyVersion === REVIEWED_LABOR_TYPOGRAPHY_VERSION
+        ? !Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion")
+        : Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion")))) {
+      throw new Error("合同正文字体呈现版本无法核对，请联系管理员处理");
+    }
+    if (Object.hasOwn(values, "contract.reviewedLaborTaxBindingVersion") &&
+      (values["contract.reviewedLaborTaxBindingVersion"] !== REVIEWED_LABOR_TAX_BINDING_VERSION ||
+        snapshot.bodyDocument?.sourceSha256 !== REVIEWED_LABOR_SOURCE_SHA256 ||
+        values["contract.renderSemanticVersion"] !== CONTRACT_BODY_MONEY_SEMANTICS_VERSION ||
+        !["tax_inclusive", "tax_exclusive"].includes(values["contract.amountBasis"] as string) ||
+        typeof values["contract.taxRateLabel"] !== "string" || !/^(?:待补充|\d+(?:\.\d+)?%)$/u.test(values["contract.taxRateLabel"] as string))) {
+      throw new Error("合同正文税率呈现版本无法核对，请联系管理员处理");
     }
     return {
       ...snapshot,

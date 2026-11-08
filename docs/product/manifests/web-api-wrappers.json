@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 43,
-    "exportedFunctionCount": 701,
-    "transportWrapperCount": 679,
+    "exportedFunctionCount": 702,
+    "transportWrapperCount": 680,
     "pureExportCount": 22,
-    "mainRequestBindingCount": 719,
+    "mainRequestBindingCount": 720,
     "ticketFollowupCount": 5,
-    "requestEdgeCount": 708,
-    "productionConsumerCount": 592,
+    "requestEdgeCount": 709,
+    "productionConsumerCount": 593,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 379,
-    "reachableProductionModuleCount": 360
+    "productionModuleCount": 382,
+    "reachableProductionModuleCount": 363
   },
   "wrappers": [
     {
@@ -3348,7 +3348,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2269,
+          "sourceLine": 2343,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -3378,7 +3378,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2269,
+          "sourceLine": 2343,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template?numericProtocolVersion=2",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -3475,7 +3475,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1826,
+          "sourceLine": 1900,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -3556,7 +3556,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2269,
+          "sourceLine": 2343,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/export",
           "normalizedPath": "/contract-drafts/:param/bills/:param/export",
@@ -3664,6 +3664,36 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractDraftBody",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 129,
+          "method": "GET",
+          "path": "/contract-drafts/:param/document-body",
+          "normalizedPath": "/contract-drafts/:param/document-body",
+          "normalizedKey": "GET /contract-drafts/:param/document-body",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractDraftBody",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -3792,6 +3822,7 @@
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
       "unreachableConsumers": []
@@ -3862,7 +3893,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1344,
+          "sourceLine": 1418,
           "method": "GET",
           "path": "/business-parties/create-capability",
           "normalizedPath": "/business-parties/create-capability",
@@ -4123,6 +4154,7 @@
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
       ],
       "unreachableConsumers": []
@@ -4551,6 +4583,7 @@
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
       "unreachableConsumers": []
@@ -6970,6 +7003,7 @@
         "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
         "apps/web-admin/src/components/files/PrivatePdfActions.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
         "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
       ],
@@ -9181,6 +9215,7 @@
         "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",

@@ -72,6 +72,16 @@ export class ContractDraftController {
       : this.aggregate.getWorkbench(contractVersionId, user.id, numericProtocol);
   }
 
+  @Get(":contractVersionId/document-body")
+  @RequireProjectRole("contract.create")
+  documentBody(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-numeric-protocol") numericProtocol?: string
+  ) {
+    return this.documents.getDraftBody(contractVersionId, user.id, numericProtocol);
+  }
+
   @Put(":contractVersionId")
   @RequireProjectRole("contract.create")
   saveDraft(

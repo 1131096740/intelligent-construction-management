@@ -76,7 +76,9 @@
     "preverify:pol108-operating-projection:facts:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
     "verify:pol108-operating-projection:impacts:local": "node prisma/run-pol108-operating-projection-local.cjs --shard impacts",
     "preverify:pol108-operating-projection:impacts:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
-    "verify:contract-classification:local": "node prisma/run-contract-classification-local.cjs"
+    "verify:contract-classification:local": "node prisma/run-contract-classification-local.cjs",
+    "test:acceptance:task10:browser": "jest --config jest.task10-browser-acceptance.config.cjs --runInBand --bail",
+    "test:acceptance:task10:native": "jest --config jest.task10-native-acceptance.config.cjs --runInBand --bail"
   },
   "dependencies": {
     "@jiangkong/shared-domain": "workspace:*",

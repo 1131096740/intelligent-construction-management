@@ -131,7 +131,7 @@ export class LayoutTemplateService {
       if (saved.count !== 1) throw new ConflictException("模板修订已变化，请重新读取并选择位置");
       await tx.contractLayoutPreviewJob.updateMany({ where: { layoutTemplateVersionId: versionId, status: { in: ["queued", "processing", "succeeded"] } }, data: { status: "stale" } });
       await this.record(tx, actorUserId, "source_mapping_draft", versionId, { sourceFileId: version.docxFileId, sourceSha256: prepared.mapping.sourceSha256, draftRevision: prepared.mapping.draftRevision, mappingFingerprint: prepared.mapping.fingerprint });
-      return { draftRevision: prepared.mapping.draftRevision, mappingFingerprint: prepared.mapping.fingerprint, confirmed: false, preview: readLayoutSourcePositions(prepared.docx).positions };
+      return { draftRevision: prepared.mapping.draftRevision, mappingFingerprint: prepared.mapping.fingerprint, confirmed: false, preview: prepared.preview.positions };
     });
   }
 

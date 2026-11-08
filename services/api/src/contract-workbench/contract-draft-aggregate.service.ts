@@ -24,6 +24,8 @@ import { calculateContractDocumentContentFingerprint } from "./contract-document
 import { ContractWorkbenchService } from "./contract-workbench.service";
 import { CONTRACT_BASIC_ENTRY_DEFINITION, CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION, contractBasicEntryValues, resolveContractTemplateEntry, resolveContractBillEntries } from "./contract-business-entry-definition";
 import { projectContractDraftOperationCapabilities } from "./contract-mutation-authority";
+import { mappedLayoutSourceForVersion } from "../contract-template/layout-field-mapping";
+import { REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256, REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, CONTRACT_BODY_RENDER_PROFILE_KEY, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, REVIEWED_MECHANICAL_SOURCE_SHA256, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION, assertReviewedTypographySource, REVIEWED_LABOR_SOURCE_SHA256, REVIEWED_LABOR_TAX_BINDING_VERSION, REVIEWED_LABOR_TYPOGRAPHY_VERSION, REVIEWED_GENERIC_SOURCE_SHA256, REVIEWED_GENERIC_TYPOGRAPHY_VERSION, readContractBodyRenderProfile, upgradeReviewedLaborTaxPlan, normalizeContractBodyPlan } from "../contract-document/contract-body-document";
 import type {
   SaveContractDraftAggregateDto,
   SaveContractDraftAttachmentDto
@@ -364,6 +366,114 @@ export class ContractDraftAggregateService {
         if (effectiveLayoutTemplateVersionId && effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId) {
           await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, currentDraftBusinessType);
         }
+        const draftDataForSave = { ...input.draft.draftData };
+        const currentDraftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : {};
+        const currentBodyRenderProfile = readContractBodyRenderProfile(currentDraftData); // Unknown persisted profiles never fall back.
+        if (Object.hasOwn(draftDataForSave, CONTRACT_BODY_RENDER_PROFILE_KEY) &&
+          this.stableJson(draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY]) !== this.stableJson(currentDraftData[CONTRACT_BODY_RENDER_PROFILE_KEY])) {
+          throw new BadRequestException("合同文书呈现资料由系统维护，请刷新后重新保存");
+        }
+        delete draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY];
+        let reviewedLaborTaxBindingVersion: typeof REVIEWED_LABOR_TAX_BINDING_VERSION | undefined;
+        let typographyVersion: typeof REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION | typeof REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION | typeof REVIEWED_LABOR_TYPOGRAPHY_VERSION | typeof REVIEWED_GENERIC_TYPOGRAPHY_VERSION | undefined;
+        if (effectiveLayoutTemplateVersionId && (input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2)) {
+          const selected = await tx.contractLayoutTemplateVersion.findUnique({ where: { id: effectiveLayoutTemplateVersionId } });
+          if (!selected) throw new BadRequestException("原已选合同模板不存在，请保留当前正文并重新选择模板");
+          const selectedSource = await this.files.getFileBuffer(selected.docxFileId);
+          const selectedSourceSha256 = createHash("sha256").update(selectedSource.buffer).digest("hex");
+          if (selectedSourceSha256 === REVIEWED_LABOR_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_LABOR_TYPOGRAPHY_VERSION);
+            reviewedLaborTaxBindingVersion = REVIEWED_LABOR_TAX_BINDING_VERSION;
+            typographyVersion = REVIEWED_LABOR_TYPOGRAPHY_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { reviewedLaborTaxBindingVersion, typographyVersion };
+          } else if (selectedSourceSha256 === REVIEWED_MATERIAL_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION);
+            typographyVersion = REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { typographyVersion, signatureDateVersion: REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION };
+          } else if (selectedSourceSha256 === REVIEWED_MECHANICAL_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION);
+            typographyVersion = REVIEWED_MECHANICAL_TYPOGRAPHY_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { typographyVersion };
+          } else if (selectedSourceSha256 === REVIEWED_ORIGINAL_MECHANICAL_SOURCE_SHA256) {
+            assertReviewedOriginalMechanicalPageSource(selectedSource.buffer);
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { pageNumberVersion: REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION };
+          } else if (selectedSourceSha256 === REVIEWED_GENERIC_SOURCE_SHA256) {
+            assertReviewedTypographySource(selectedSource.buffer, REVIEWED_GENERIC_TYPOGRAPHY_VERSION);
+            typographyVersion = REVIEWED_GENERIC_TYPOGRAPHY_VERSION;
+            draftDataForSave[CONTRACT_BODY_RENDER_PROFILE_KEY] = { typographyVersion };
+          }
+        }
+        const bodyAction = draftDataForSave.documentBodyAction;
+        const bodyActionRecord = bodyAction && typeof bodyAction === "object" && !Array.isArray(bodyAction) ? bodyAction as Record<string, unknown> : null;
+        delete draftDataForSave.documentBodyAction;
+        const regenerateBody = bodyActionRecord?.kind === "regenerate";
+        const deleteSavedAddition = bodyActionRecord?.kind === "delete_saved_addition";
+        if ((bodyAction !== undefined && !regenerateBody && !deleteSavedAddition) ||
+          (regenerateBody && (!bodyActionRecord || Object.keys(bodyActionRecord).some(key => !["kind", "confirmOverwrite"].includes(key)) || bodyActionRecord.confirmOverwrite !== true))) {
+          throw new ConflictException("重新生成将覆盖手工正文，请先确认覆盖影响，原内容已保留");
+        }
+        if (deleteSavedAddition && (!bodyActionRecord || Object.keys(bodyActionRecord).some(key => !["kind", "additionId"].includes(key)) ||
+          typeof bodyActionRecord.additionId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/u.test(bodyActionRecord.additionId) ||
+          version.numericProtocolVersion !== 2 || input.draft.numericProtocolVersion !== 2)) {
+          throw new ConflictException("删除新增条款的信息已变化，请保留当前输入并重新读取后重试");
+        }
+        let provedSoleAdditionDeletion = false;
+        const bodyHasManualChanges = (value: unknown) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+          const body = value as Record<string, unknown>;
+          return [body.edits, body.additions, body.deletedPositionIds, body.paragraphOrder].some(items => Array.isArray(items) && items.length > 0);
+        };
+        const hadManualBody = bodyHasManualChanges(currentDraftData.documentBody);
+        if (hadManualBody && effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId && !regenerateBody) throw new ConflictException("重新生成或更换模板将覆盖手工正文，请先确认覆盖影响，原内容已保留");
+        if (!regenerateBody && draftDataForSave.documentBody === undefined && currentDraftData.documentBody !== undefined) {
+          draftDataForSave.documentBody = currentDraftData.documentBody;
+        }
+        if (draftDataForSave.documentBody !== undefined) {
+          if (!effectiveLayoutTemplateVersionId) throw new BadRequestException("请先选择合同模板，再保存正文");
+          // Retaining the already selected immutable source is not a new selection.
+          // A business-type-only save may keep its manual body until the operator
+          // confirms a replacement; generation still enforces selection policy.
+          const layout = effectiveLayoutTemplateVersionId === version.layoutTemplateVersionId
+            ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: effectiveLayoutTemplateVersionId } })
+            : await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, currentDraftBusinessType);
+          if (!layout) throw new BadRequestException("原已选合同模板不存在，请保留当前正文并重新选择模板");
+          const source = await this.files.getFileBuffer(layout.docxFileId);
+          const mapped = mappedLayoutSourceForVersion(source.buffer, layout);
+          const upgradeLaborTaxOrder = currentBodyRenderProfile?.reviewedLaborTaxBindingVersion === undefined && reviewedLaborTaxBindingVersion === REVIEWED_LABOR_TAX_BINDING_VERSION;
+          const normalizeSavedBody = (value: unknown) => upgradeLaborTaxOrder
+            ? upgradeReviewedLaborTaxPlan(value, source.buffer, mapped, layout.id)
+            : normalizeContractBodyPlan(value, source.buffer, mapped, layout.id, reviewedLaborTaxBindingVersion);
+          draftDataForSave.documentBody = normalizeSavedBody(draftDataForSave.documentBody);
+          if (deleteSavedAddition) {
+            const old = normalizeSavedBody(currentDraftData.documentBody);
+            const additionId = bodyActionRecord!.additionId;
+            if (effectiveLayoutTemplateVersionId !== version.layoutTemplateVersionId || old.edits.length || old.deletedPositionIds?.length ||
+              old.paragraphOrder?.length || old.additions?.length !== 1 || old.additions[0].id !== additionId) {
+              throw new ConflictException("删除新增条款的信息已变化，请保留当前输入并重新读取后重试");
+            }
+            const expected = normalizeContractBodyPlan({ ...old, additions: old.additions.filter(addition => addition.id !== additionId) }, source.buffer, mapped, layout.id, reviewedLaborTaxBindingVersion);
+            if (this.stableJson(draftDataForSave.documentBody) !== this.stableJson(expected)) {
+              throw new ConflictException("删除操作与当前正文不一致，请保留当前输入并重新读取后重试");
+            }
+            provedSoleAdditionDeletion = true;
+          }
+        }
+        if (deleteSavedAddition && !provedSoleAdditionDeletion) throw new ConflictException("删除新增条款的信息已变化，请保留当前输入并重新读取后重试");
+        // Judge the resulting document semantics, never operation-shaped metadata.
+        // An unchanged order is normalized away and cannot hide an implicit reset.
+        if (hadManualBody && !bodyHasManualChanges(draftDataForSave.documentBody) && !regenerateBody && !provedSoleAdditionDeletion) throw new ConflictException("重新生成或更换模板将覆盖手工正文，请先确认覆盖影响，原内容已保留");
+        if (regenerateBody && bodyHasManualChanges(draftDataForSave.documentBody)) throw new BadRequestException("重新生成须使用当前填写资料，不能同时覆盖为另一份手工正文");
+        if (regenerateBody && hadManualBody) {
+          const existing = await tx.contractDraftCheckpoint.findMany({ where: { contractVersionId }, orderBy: { sequenceNo: "desc" } });
+          const checkpoint = await tx.contractDraftCheckpoint.create({ data: {
+            contractVersionId, sequenceNo: Math.max(0, ...existing.map(row => row.sequenceNo)) + 1,
+            name: "正文重新生成前", createdByUserId: actorUserId,
+            snapshot: { kind: "contract_body", protocolVersion: 1, documentBody: currentDraftData.documentBody!, layoutTemplateVersionId: version.layoutTemplateVersionId,
+              documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint }
+          } });
+          await this.audit.record(tx, { actorUserId, action: "contract.draft.checkpoint.create", businessType: "contract_version", businessId: contractVersionId,
+            metadata: { checkpointId: checkpoint.id, sequenceNo: checkpoint.sequenceNo, reason: "document_body_regenerate" } });
+        }
 
         await tx.$queryRaw(Prisma.sql`
           SELECT "id" FROM "ContractBill"
@@ -536,9 +646,8 @@ export class ContractDraftAggregateService {
         if (attachmentResult.changed) {
           effectiveChangedSections.add("attachments");
         }
-        const fieldInput = input.draft.layoutTemplateVersionId === undefined
-          ? { ...input, draft: { ...input.draft, layoutTemplateVersionId: version.layoutTemplateVersionId ?? undefined } }
-          : input;
+        const fieldInput = { ...input, draft: { ...input.draft, draftData: draftDataForSave,
+          ...(input.draft.layoutTemplateVersionId === undefined ? { layoutTemplateVersionId: version.layoutTemplateVersionId ?? undefined } : {}) } };
         const fieldResult =
           await this.workbench.prepareAggregateDraftFieldsInTransaction(
             tx,

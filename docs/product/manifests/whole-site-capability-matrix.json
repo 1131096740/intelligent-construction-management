@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "3fc133fca6dd25743063eefe944540e97ec766f7d31430bddd6f01aa8098eda0",
+      "sha256": "c236766353d52cf32515dbb402dee23c317c6ed5bce2e284f832047ee09098f6",
       "status": "ready",
       "summary": {
-        "routeCount": 728
+        "routeCount": 729
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "55a88091866cc493325b231c46cb03b85c09a2e1c64ee36592b522b6583d141f",
+      "sha256": "bf4ba8ac6d43b69043489bd73107f0a8ee3359801115299629457cecd976bb68",
       "status": "ready",
       "summary": {
         "apiModuleCount": 43,
-        "exportedFunctionCount": 701,
-        "transportWrapperCount": 679,
+        "exportedFunctionCount": 702,
+        "transportWrapperCount": 680,
         "pureExportCount": 22,
-        "mainRequestBindingCount": 719,
+        "mainRequestBindingCount": 720,
         "ticketFollowupCount": 5,
-        "requestEdgeCount": 708,
-        "productionConsumerCount": 592,
+        "requestEdgeCount": 709,
+        "productionConsumerCount": 593,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "2e3752904faf4c720ea5a3c45d8700e20301d9e343d5028334dfde680f4aa9b1",
+      "sha256": "01387d2bc145920fc4e4fa632c8ceb1581e8f5ccaf3c6799e83f70a81272c7d1",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 416,
-        "pageActionCount": 63,
+        "registeredActionCount": 418,
+        "pageActionCount": 65,
         "backgroundActionCount": 353,
-        "reachableVueFileCount": 209,
+        "reachableVueFileCount": 212,
         "routeRootCount": 74,
-        "totalVueFileCount": 222,
-        "parsedVueFileCount": 222,
-        "reachableProductionModuleCount": 360,
-        "templateEventDirectiveCount": 1334,
+        "totalVueFileCount": 225,
+        "parsedVueFileCount": 225,
+        "reachableProductionModuleCount": 363,
+        "templateEventDirectiveCount": 1374,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 407,
-        "candidateProductionMutationConsumerCount": 407,
-        "acceptedProductionMutationConsumerCount": 407,
-        "productionMutationConsumerPairCount": 407,
+        "coveredProductionMutationConsumerCount": 409,
+        "candidateProductionMutationConsumerCount": 409,
+        "acceptedProductionMutationConsumerCount": 409,
+        "productionMutationConsumerPairCount": 409,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "59803966a737aa1c8e10d996f4e1fb65a9fec3bd0b0a6c24d399f0addcab425b",
+      "sha256": "f1161f8dc420ea8d59891cf20c2435d2529b3bc637d7a3f1a2926c8f58bc0edb",
       "status": "ready",
       "summary": {
-        "routeCount": 728,
-        "exactRouteCount": 728,
-        "normalizedRouteCount": 728,
+        "routeCount": 729,
+        "exactRouteCount": 729,
+        "normalizedRouteCount": 729,
         "classificationOverrideCount": 217,
         "consumerSurfaceOverrideCount": 40,
         "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
         "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-        "derivedProductionPageCount": 511,
-        "pageRouteCount": 529,
+        "derivedProductionPageCount": 512,
+        "pageRouteCount": 530,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 90,
         "internalTaskCount": 39,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 582,
+          "web_api_wrapper": 583,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 728,
-    "pageRouteCount": 529,
+    "routeCount": 729,
+    "pageRouteCount": 530,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 90,
     "internalTaskRouteCount": 39,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 719,
+    "mainRequestBindingCount": 720,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 416,
-    "actionBindingCount": 480,
-    "acceptedActionBindingCount": 442,
+    "registeredActionCount": 418,
+    "actionBindingCount": 483,
+    "acceptedActionBindingCount": 444,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 407,
-    "coveredProductionMutationConsumerPairCount": 407,
+    "productionMutationConsumerPairCount": 409,
+    "coveredProductionMutationConsumerPairCount": 409,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -2354,6 +2354,48 @@
     {
       "route": {
         "method": "GET",
+        "path": "/contract-drafts/:contractVersionId/document-body",
+        "normalizedKey": "GET /contract-drafts/:param/document-body",
+        "controller": "ContractDraftController",
+        "handler": "documentBody",
+        "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "contract.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractDraftBody",
+          "method": "GET",
+          "path": "/contract-drafts/:param/document-body",
+          "normalizedKey": "GET /contract-drafts/:param/document-body",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/contract-drafts/:contractVersionId/save-requests/:idempotencyKey",
         "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
         "controller": "ContractDraftController",
@@ -2488,6 +2530,7 @@
           "normalizedKey": "GET /contract-drafts/:param/workbench",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
           "testConsumers": [
@@ -3565,6 +3608,7 @@
           "normalizedKey": "GET /contract-workbench/:param/documents",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
           ],
           "testConsumers": [
@@ -4720,6 +4764,7 @@
             "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
             "apps/web-admin/src/components/files/PrivatePdfActions.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
             "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
           ],
@@ -4739,6 +4784,7 @@
             "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
@@ -4799,6 +4845,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/components/ContractBankVerificationPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-draft.body-paper-preview",
+          "bindingIndex": 0,
+          "identity": "contract-draft.body-paper-preview\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadPrivateFileByTicket\u0000GET\u0000GET /files/:param/download-ticket-capability\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "previewGrant.value.serverAvailableActions",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
           ],
           "causalVerified": true,
           "accepted": false,
@@ -18349,6 +18421,7 @@
           "normalizedKey": "POST /contract-drafts/:param/preview-generation",
           "bodyKind": "json",
           "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
           "testConsumers": [
@@ -18359,6 +18432,32 @@
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "contract-draft.body-paper-generate",
+          "bindingIndex": 0,
+          "identity": "contract-draft.body-paper-generate\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000queueContractDraftPreview\u0000POST\u0000POST /contract-drafts/:param/preview-generation\u00000",
+          "usage": "page_action",
+          "semantic": "technical_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "generationGrant.value.actions",
+            "key": "queue_contract_draft_preview",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "queueContractDraftPreview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "contract-draft.preview-queue",
           "bindingIndex": 0,
@@ -24196,6 +24295,7 @@
             "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
             "apps/web-admin/src/components/files/PrivatePdfActions.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
             "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
           ],
@@ -24305,6 +24405,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-draft.body-paper-preview",
+          "bindingIndex": 1,
+          "identity": "contract-draft.body-paper-preview\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadPrivateFileByTicket\u0000POST\u0000POST /files/:param/download-ticket\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "previewGrant.value.serverAvailableActions",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue"
           ],
           "causalVerified": true,
           "accepted": true,
