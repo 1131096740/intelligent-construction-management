@@ -1,0 +1,88 @@
+{
+  "purpose": "Confirmed unified main material and transport technical template version; not production adoption or seed publication",
+  "originalPath": "scripts/probes/task08-documents/samples/material-purchase-real-v1.docx",
+  "originalSha256": "8d707f8ecd65e2ca69c6920991dcb542cbc23ada42cf39a62299ab25e5820334",
+  "outputPath": "services/api/assets/templates/material-purchase-unified-v2.docx",
+  "sourceSha256": "3fcd682276933ccf69014ac30ddcb32e7e15322a3c433e19db437478fac95722",
+  "changedParts": [
+    "word/document.xml",
+    "word/footer1.xml",
+    "word/footer2.xml"
+  ],
+  "changedParagraphs": [
+    {
+      "before": "第一条  货物名称、规格型号、数量、价格等",
+      "after": "第一条  材料及运输项目名称、规格型号、数量、价格等"
+    },
+    {
+      "before": "货物",
+      "after": "项目"
+    },
+    {
+      "before": "{#材料清单}{序号}",
+      "after": "{#材料清单}{rowNumber}"
+    },
+    {
+      "before": "{税额单价}",
+      "after": "{taxUnitPrice}"
+    },
+    {
+      "before": "材料合计",
+      "after": "清单合计（含运输）"
+    },
+    {
+      "before": "{生产厂家}",
+      "after": "{manufacturer}"
+    },
+    {
+      "before": "4.本合同单价为综合单价，包含货物的出厂价、运输费、包装费、运杂费、装卸费、服务费、损耗、保险、利润等到达买方指定地点交付前的所有费用。",
+      "after": "4.材料与运输费用按本条统一清单分别列示，均已包含在本合同总价中；同一运输费用不得重复计入材料行单价或另行收取。其他未单独列示的包装费、装卸费、服务费、损耗、保险、利润等费用，已包含在相应材料行单价中。"
+    },
+    {
+      "before": "2.运输方式及费用：由卖方负责运输，运至买方指定交货地点，卖方应自行选择适宜的运输工具及线路安排货物的运输，运输费由卖方承担，有关费用已包含在合同单价中。",
+      "after": "2.运输方式及费用：由卖方负责运输至买方指定交货地点，运输费用在统一清单中单独列示并已计入本合同总价，不再另行收取。卖方应自行选择适宜的运输工具及线路。"
+    }
+  ],
+  "removedSeparateTransportNodes": 3,
+  "totalRowGridSpans": [
+    5,
+    1,
+    2,
+    1,
+    2,
+    2
+  ],
+  "totalRowMergeOnlyEmptyUnitPriceCells": true,
+  "footerQualifications": [
+    {
+      "part": "word/footer1.xml",
+      "sha256": "873a36bc9d0f2473c7c8ee5c91afed33525f7506dbb325eeb889d8625273b631",
+      "frame": {
+        "w": "2880",
+        "h": "2880",
+        "hAnchor": "margin",
+        "vAnchor": "text",
+        "xAlign": "center",
+        "y": "0",
+        "wrap": "none",
+        "hRule": "atLeast"
+      }
+    },
+    {
+      "part": "word/footer2.xml",
+      "sha256": "9b99cd0e68f87b9567592511786361e6b738cf612e505ae0bd4830975e8b5cdb",
+      "frame": {
+        "w": "1159",
+        "h": "359",
+        "hAnchor": "page",
+        "vAnchor": "page",
+        "x": "1888",
+        "y": "15090",
+        "wrap": "none",
+        "hRule": "atLeast"
+      }
+    }
+  ],
+  "nominalGeometryOnlyNotOriginalPaintEquivalence": true,
+  "sourceStylesSectionsRelationshipsAndOtherMembersUnchanged": true
+}

@@ -17,7 +17,7 @@ describe("task10 default URL-only actual layout sample preview", () => {
   it("prepares two real template pages through public queue and previews the authorized private file", async () => {
     const started = performance.now();
     const repository = await realpath(resolve(__dirname, "../../../.."));
-    if (repository !== "/private/tmp/jg-382-task10-final-integration-20261108" || await realpath(process.cwd()) !== join(repository, "services/api")) throw new Error("默认样张检查仅允许准确任务10API目录");
+    if (repository !== "/private/tmp/jg-382-task10-material-unified-20261108" || await realpath(process.cwd()) !== join(repository, "services/api")) throw new Error("默认样张检查仅允许准确任务10API目录");
     const runtimePath = process.env.TEMPLATE_PDF_RUNTIME_MANIFEST;
     if (!runtimePath || process.env.TEMPLATE_PDF_RUNTIME_MODE !== "font-profile") throw new Error("默认样张需要已核定的隔离字体运行清单");
     const runtime = JSON.parse(await readFile(runtimePath, "utf8")) as { workspace: string; fontconfig: { path: string; sha256: string }; converter: { wrapper: { path: string; sha256: string }; native: { path: string; sha256: string } }; fonts: Array<{ path: string; sha256: string }>; inspectorExecutable: string };
@@ -140,7 +140,7 @@ describe("task10 default URL-only actual layout sample preview", () => {
   it("refuses the observed only-notdef default preview before worker upload", async () => {
     const started = performance.now();
     const repository = await realpath(resolve(__dirname, "../../../.."));
-    if (repository !== "/private/tmp/jg-382-task10-final-integration-20261108" || await realpath(process.cwd()) !== join(repository, "services/api")) throw new Error("默认样张检查仅允许准确任务10API目录");
+    if (repository !== "/private/tmp/jg-382-task10-material-unified-20261108" || await realpath(process.cwd()) !== join(repository, "services/api")) throw new Error("默认样张检查仅允许准确任务10API目录");
     const runtimePath = process.env.TEMPLATE_PDF_RUNTIME_MANIFEST;
     if (!runtimePath || process.env.TEMPLATE_PDF_RUNTIME_MODE !== "font-profile") throw new Error("默认样张需要已核定的隔离字体运行清单");
     const runtime = JSON.parse(await readFile(runtimePath, "utf8")) as { workspace: string; fontconfig: { path: string; sha256: string }; converter: { wrapper: { path: string; sha256: string }; native: { path: string; sha256: string } }; fonts: Array<{ path: string; sha256: string }>; inspectorExecutable: string };

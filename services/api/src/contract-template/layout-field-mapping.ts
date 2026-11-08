@@ -22,6 +22,9 @@ const REQUIRED_AND_PRIMARY_MAPPING_FIELDS = [
 export const LAYOUT_MAPPING_FIELDS = [
   ...REQUIRED_AND_PRIMARY_MAPPING_FIELDS,
   { key: "contract.taxExclusiveAmount", label: "不含税总额" },
+  { key: "contract.taxExclusiveAmountUppercase", label: "不含税总额大写" },
+  { key: "contract.taxAmount", label: "税额总计" },
+  { key: "contract.taxAmountUppercase", label: "税额总计大写" },
   { key: "contract.pricingNatureLabel", label: "计价方式" },
   { key: "field.invoiceType", label: "发票类型" },
   ...Object.entries(CONTRACT_VALUE_PLACEHOLDER_ALIASES).map(([label, key]) => ({ key, label }))
