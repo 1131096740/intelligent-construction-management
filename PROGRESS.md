@@ -1,3 +1,8 @@
+## 任务16 B8 首纵向factory源码（2026-11-08，v2待增量复审）
+
+- [~] 从准确c77ae5f独立准备专用module/实际factory及原run两函数fake Nest接缝，override-before-compile/同runtime/配置/loopback-address/partial handle与首败清理。首271被两轴同1项外层getter/Proxy资格P2拒绝，已原publicrun两实际RED→GREEN及单次快照正控集中修；当前原255＋19＝274模拟、CLI25/fixture20/API类型与定向静态过。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-application-factory-local.md)。原bd7/9715冻结/前像/失败均保留，新六路径v2待双轴增量，不挪旧pass覆盖新源码。
+- [ ] native仍缺App/seed/case三cap；qualified模块/source/B7 live连续性与环境准备桥未实现，实际SDK/Nest/HTTP/listener/SQL/PG/资源/资金/物理清理未验证。#398/依赖/13of45不变；未commit/push/部署生产，所有futurecommit/finalHEAD[skip ci]。
+
 ## 当前接续（2026-11-08，Task10已审实现合入原integration）
 
 - [~] Task10完整181路径候选22dd324b以no-ff合入0db47613，完整tree相等；最终702冻结承接644d，两轴整票P2及EOF窄桥均0。本地364/369/14治理、双端删除同R/F实际Word/PDF、9–15七组actual与旧1–8/336不变闭包分别登记，未冒全库存重跑。[独立整合收据](docs/progress/2026-11-08-enterprise-simplification-task10-integrated.md)。
