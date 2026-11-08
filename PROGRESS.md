@@ -1,3 +1,8 @@
+## 经营精度桥A4归属锚点更正（2026-11-08，HOLD待增量双轴）
+
+- [~] 基点为已审作者提交c4d1a1fb，中央仍d78/202。本次只将203 Fact精确guard从4纠正为6及其一处当期注释，Impact仍精确1；独立按全部202迁移顺序重演，原Fact body与Task16独立32d200fc…原件逐字一致，六处归属期均前置原helper。原4 guard拒真实6的before静态失败保留；修6后source-contract通过。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。
+- [ ] 原A3见证遗漏POL284参与公司整体/逐主体分段演变，仅原body+公司补丁的4锚点结论失效，原48/1148/失败原件保。TS/Schema与c4d byte/mode完全不变，1148/type/lint只按输入不变桥承接、未重跑；无SQL parser/execute/PG/SDK/新Schema/routine/权限/资源。完整48与三路径最小delta另封待复审，无commit/push/amend/主分支/部署；Task12只读计划已暂停。
+
 ## 经营精度桥A3审查修复（2026-11-08，HOLD待增量双轴）
 
 - [~] A2完整48双轴unique3个P2已最小修复待复审：真实adapter→writer→inspect共用来源规范化且真漂移保；direct/bounded所选V2与旧uncapped追溯计数一致；203新增Review专用invoker helper只将已验证原Fact日期用于Fact四处/Impact一处归属期校验，保本次Review业务日和原V1/旧202。34套公开mock实际1148/1148零skip、全API私有203类型/lint/diff0。[本地收据](docs/progress/2026-11-08-operating-precision-bridge-local.md)。

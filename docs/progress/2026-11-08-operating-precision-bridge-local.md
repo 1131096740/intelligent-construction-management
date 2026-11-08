@@ -1,3 +1,17 @@
+# 经营精度桥A4：精确六锚点更正（2026-11-08，HOLD）
+
+基点是已审作者提交`c4d1a1fbf947ebc60fa5be19fa424d394d365011`，未推送/未合中央；中央仍d78/202。源码仅203末尾Fact guard `4→6`及相邻`four→six`注释，Impact仍精确1，新helper、原SD、其它203正文全部byte保持。本两MD只prepend当前更正，原A3/A2与冻结/1148日志完整保留，不amend历史。
+
+**更正原因**：原A3 source witness仅从20260814原Fact body套20261020日期补丁，漏掉中间POL284把参与公司校验拆成整体FOR SHARE与逐主体NOT EXISTS两段，错误认定4。真实完整旧202演变为affiliate一对+participant整体一对+participant逐主体一对，共6。独立Task16完整源重演发现的是静态source-contract失配，不是实际PG失败；本次不改mock冒SQL红绿，也不放宽为4/6兼容。
+
+外部`foundation-A4-fix/source-replay.py`只做已知字面源码创建/替换的有序文本重演，遍历并逐SHA核全部202原迁移，遇未知validator演变拒绝。依序覆盖POL05/06、POL13最终Impact定义、POL224、POL284、20261020两次Fact替换各3和Impact一次1；原Fact body SHA **`32d200fc146e6615bcd50f1c67c5a12448f4a5f4919a8ffb73bea1c6e6bc6373`**，与独立审查原件逐字同。`before-static.json/log`记录旧guard4拒真实6（exit2）；仅改6后`after-static.json/log` source-contract exit0，六处原Fact锚点各前置helper，Impact一处不变，替换可逆还原全部原body。未调用SQL parser、pg_get_functiondef、DO或SQL执行。
+
+当前完整48与相对c4d三路径delta见`/private/tmp/jg-operating-precision-bridge-evidence-20261108/foundation-A4-freeze/`。所有TS/Schema/依赖输入相对c4d字节和mode不变，原A3 34 suites1148/1148零skip、全API类型/lint0仅按精确输入不变桥承接，**本次没有重跑**。只新普通文本source-contract和diff验证；原202不可变。无新Schema/routine/SDK/权限或业务，不改Task16/中央/原Task12树。真实PG/角色/锁/COMMIT等仍未验；先HOLD，待双轴增量0再由merger以后继commit(parent c4d、[skip ci])处理，作者不commit/push/amend。
+
+---
+
+以下A3及更早为原冻结历史，其中四锚点见证已由上方A4完整演变更正，不能继续当当前有效证据。
+
 # 经营精度桥A3：审查修复待增量双轴（2026-11-08）
 
 准确base/HEAD仍`d78b49905337599fa850b5693c6335f2c9ed80ea`。A2完整48源e76ca0及1145日志原件保；本次只改七个已有code/test路径和本两MD，共九路径delta、完整范围仍48路径。

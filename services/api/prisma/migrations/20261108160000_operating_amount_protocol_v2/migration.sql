@@ -502,7 +502,7 @@ END;
 $review_ownership$;
 REVOKE ALL ON FUNCTION public.jg_contract_economic_review_ownership_date(public."OperatingFact") FROM PUBLIC;
 
--- Rewrite only the four ownership-period expressions and the one parent ownership-date projection.
+-- Rewrite only the six ownership-period expressions and the one parent ownership-date projection.
 -- Exact-count guards preserve unrelated business dates, locks and the existing company-repayment branch.
 DO $review_reference_dates$
 DECLARE
@@ -515,7 +515,7 @@ BEGIN
   anchor := 'COALESCE(public.jg_company_repayment_ownership_date(NEW."sourceType", NEW."sourceBusinessId", NEW."projectId"), NEW."occurredAt")::DATE';
   replacement := 'COALESCE(public.jg_contract_economic_review_ownership_date(NEW::public."OperatingFact"), public.jg_company_repayment_ownership_date(NEW."sourceType", NEW."sourceBusinessId", NEW."projectId"), NEW."occurredAt")::DATE';
   occurrences := (length(definition) - length(replace(definition, anchor, ''))) / length(anchor);
-  IF occurrences IS DISTINCT FROM 4 THEN
+  IF occurrences IS DISTINCT FROM 6 THEN
     RAISE EXCEPTION 'Review ownership fact validator drift' USING ERRCODE = '23514';
   END IF;
   EXECUTE replace(definition, anchor, replacement);
