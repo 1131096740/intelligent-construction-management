@@ -1,3 +1,20 @@
+import { ContractEconomicReviewOperatingSourceAdapter } from "../contract-ledger/contract-economic-review-operating-source.adapter";
+import { MeController } from "../me/me.controller";
+import { MeService } from "../me/me.service";
+import { ArchiveController } from "../archive/archive.controller";
+import { ArchiveService } from "../archive/archive.service";
+import { ContractEconomicReviewService } from "../contract-ledger/contract-economic-review.service";
+import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
+import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+import { syntheticOperatingWrite } from "../operating-ledger/operating-precision.persistence.test-support";
+import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
+import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import { OperatingSourceAdapterRegistry } from "../operating-ledger/operating-source-adapter";
+import { ContractOperatingSourceAdapter } from "../contract/contract-operating-source.adapter";
+import { NON_RECEIPT_FILE_BINDINGS } from "../file/file-business-binding";
+import { ContractV2ArchiveService } from "../contract/contract-v2-archive.service";
+import { ContractVersionActivationService } from "../contract/contract-version-activation.service";
 import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { ContractApprovalRouteService } from "../contract/contract-approval-route.service";
 import { ContractSealService } from "../contract/contract-seal.service";
@@ -75,7 +92,7 @@ function matches(row: Row, where: Row = {}): boolean {
   return Object.entries(where).every(([key, expected]) => {
     if (key === "OR") return (expected as Row[]).some(item => matches(row, item));
     if (key === "AND") return (expected as Row[]).every(item => matches(row, item));
-    if (key === "companyEntityId_versionNo") return matches(row, expected as Row);
+    if (["companyEntityId_versionNo", "sourceType_sourceBusinessId", "sourceType_sourceBusinessId_sourceImpactKey"].includes(key)) return matches(row, expected as Row);
     const value = row[key];
     if (expected && typeof expected === "object" && !Array.isArray(expected)) {
       const rule = expected as Row;
@@ -97,16 +114,23 @@ export class TemplateSyntheticStore {
   private rows: Record<string, Row[]> = {};
   private queue = Promise.resolve();
   participantProjectionCount = 0;
+  private transactionBindingLockHeld = false;
+  private transactionFileLockIds = new Set<string>();
+  private transactionTryDenied = false;
+  archiveBindingLockResult: "available" | "busy" | "missing" = "available";
+  private transactionSealTaskLocked = false;
+  archiveCommitOutcome: "persist" | "return_without_persisting" = "persist";
 
   table(name: string) {
     this.rows[name] ??= [];
     const find = (where?: Row) => this.rows[name].filter(row => matches(row, where));
     return {
       findUnique: async ({ where }: { where: Row }) => fixtureClone(find(where)[0] ?? null),
+      findUniqueOrThrow: async ({ where }: { where: Row }) => { const row = find(where)[0]; if (!row) throw new Error("合成持久层未找到唯一记录"); return fixtureClone(row); },
       findFirst: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy)[0] ?? null,
       findMany: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy),
       create: async ({ data }: { data: Row }) => {
-        const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contract" ? { voidedAt: null } : {}), ...(name === "contractVersion" ? { baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, documentContentRevision: 1, documentContentFingerprint: null, readinessSnapshot: null, companyEntityId: null, companyEntityNameSnapshot: null, estimatedAmountCents: null, estimatedAmountYuan: null, settlementMode: "none", settlementModeConfirmedAt: null, latestDraftPreviewDocumentId: null } : {}), ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
+        const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contract" ? { voidedAt: null } : {}), ...(name === "contractEconomicReview" ? { revision: 1, status: "pending_review", confirmedAt: null, contractReviewedById: null, financeReviewedById: null, frozenSources: null } : {}), ...(name === "contractVersion" ? { baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, documentContentRevision: 1, documentContentFingerprint: null, readinessSnapshot: null, companyEntityId: null, companyEntityNameSnapshot: null, estimatedAmountCents: null, estimatedAmountYuan: null, settlementMode: "none", settlementModeConfirmedAt: null, latestDraftPreviewDocumentId: null } : {}), ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
         this.apply(row, data, name);
         this.rows[name].push(row);
         return fixtureClone(row);
@@ -175,10 +199,64 @@ export class TemplateSyntheticStore {
         row.status === "cancelled" && (approved || unapproved) && (completed || uncompleted) && row.cancelledByUserId != null && row.cancelledAt != null && typeof row.cancellationReason === "string" && row.cancellationReason.trim().length > 0;
       if (!valid) throw new Error("合成持久层拒绝违反ContractSealTask现有CHECK的状态事实");
     }
+    if (tableName === "contractArchiveFile" && row.archiveProtocolVersion === 2) {
+      // Fake DB RETURNING contract only: different opaque values deliberately
+      // do not implement PostgreSQL JSONB canonical serialization/digest.
+      const e = row.authoritySnapshot as Row;
+      const basis = e.sourceBasis as Row;
+      const participation = (basis.subjects as Row).participation as Row;
+      const actualParticipant = (this.rows.projectParticipatingCompany ?? []).find(p => p.id === participation.id);
+      if (!actualParticipant || !(actualParticipant.effectiveFrom instanceof Date) || participation.effectiveFrom !== actualParticipant.effectiveFrom.toISOString().slice(0, 10)) throw new Error("合成归档Date列来源必须保日期域，不能用ISO瞬间替代");
+      // Finite independent structure oracle from c579 manifest's word/pdf
+      // paths, not a SQL interpreter or an implementation of PG digest.
+      const round = (this.rows.approvalInstance ?? []).find(item => item.id === row.approvalInstanceId);
+      const frozen = Array.isArray(round?.frozenNodes) ? (round.frozenNodes[0] as Row)?.submissionSnapshot as Row : undefined;
+      const originalRefs = Array.isArray(frozen?.files) ? frozen.files as Row[] : [];
+      const word = originalRefs.filter(ref => ref.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      const pdf = originalRefs.filter(ref => ref.mimeType === "application/pdf");
+      const evidence = basis.versionEvidence as Row;
+      const pair = evidence.generatedDocumentFiles as Row;
+      const generated = (this.rows.contractGeneratedDocument ?? []).find(item => item.id === evidence.generatedDocumentId);
+      if (!pair || Array.isArray(pair) || Object.keys(pair).sort().join(",") !== "pdf,word" || originalRefs.length !== 2 || word.length !== 1 || pdf.length !== 1 || !generated || generated.id !== frozen?.generatedDocumentId || generated.docxFileId !== word[0].fileId || generated.pdfFileId !== pdf[0].fileId || generated.docxFileId === generated.pdfFileId || JSON.stringify(jsonbValue(pair.word)) !== JSON.stringify(jsonbValue(word[0])) || JSON.stringify(jsonbValue(pair.pdf)) !== JSON.stringify(jsonbValue(pdf[0]))) throw new Error("合成持久边界拒绝非当前唯一Word/PDF完整对象引用");
+      const consequence = e.operatingConsequence as Row;
+      const projectState = (this.rows.project ?? []).find(item => item.id === e.projectId);
+      const effectiveDate = projectState?.operatingLedgerEffectiveDate;
+      const expectedProjectDate = effectiveDate instanceof Date ? effectiveDate.toISOString().slice(0, 10) : null;
+      if (consequence.operatingLedgerEffectiveDateSnapshot !== expectedProjectDate) throw new Error("合成持久边界拒绝Project DATE快照瞬间或错误日期，须保原Date列日期/null");
+
+      row.authoritySha256 = "a".repeat(64);
+      row.fileManifestSha256 = "c".repeat(64);
+      row.authoritySnapshot = { ...e, sourceBasisSha256: "b".repeat(64), fileManifestSha256: "c".repeat(64),
+        operatingConsequence: { ...consequence, expectedSource: consequence.expectedSource ? { ...consequence.expectedSource as Row, sourceBasisSha256: "b".repeat(64) } : null } };
+    }
     row.updatedAt = new Date();
   }
 
   readonly prisma = {
+    upwardContractAmountRevision: this.table("upwardContractAmountRevision"),
+    contractBankVerificationRequest: this.table("contractBankVerificationRequest"),
+    contractProxyExecution: this.table("contractProxyExecution"),
+    upwardReceiptMatch: this.table("upwardReceiptMatch"),
+    expenseClaim: this.table("expenseClaim"),
+    projectExpenseRequest: this.table("projectExpenseRequest"),
+    settlementSignedDocumentGenerationClaim: this.table("settlementSignedDocumentGenerationClaim"),
+    settlementTemplate: this.table("settlementTemplate"),
+    settlementTemplateVersion: this.table("settlementTemplateVersion"),
+    spotProcurementVersion: this.table("spotProcurementVersion"),
+
+    clearingCase: this.table("clearingCase"),
+    clearingEventVersion: this.table("clearingEventVersion"),
+    clearingReconciliationRevision: this.table("clearingReconciliationRevision"),
+    clearingReconciliationCoverage: this.table("clearingReconciliationCoverage"),
+    clearingReconciliationResolution: this.table("clearingReconciliationResolution"),
+    clearingReconciliationResolutionLine: this.table("clearingReconciliationResolutionLine"),
+    clearingReconciliationDefinitionReversal: this.table("clearingReconciliationDefinitionReversal"),
+    affiliateClearingAuthorityVersion: this.table("affiliateClearingAuthorityVersion"),
+    projectNecessaryExpenseReserveReplacement: this.table("projectNecessaryExpenseReserveReplacement"),
+    projectFundDisputeReplacement: this.table("projectFundDisputeReplacement"),
+    interEntityRelationshipEntry: this.table("interEntityRelationshipEntry"),
+    companyTransfer: this.table("companyTransfer"),
+    companyTransferEvent: this.table("companyTransferEvent"),
     authRateLimit: this.table("authRateLimit"),
     user: this.table("user"), userPosition: this.table("userPosition"), position: this.table("position"),
     project: this.table("project"), projectRosterMember: this.table("projectRosterMember"),
@@ -197,7 +275,11 @@ export class TemplateSyntheticStore {
     approvalInstance: this.table("approvalInstance"),
     approvalDelegation: this.table("approvalDelegation"),
     handwrittenSignatureVersion: this.table("handwrittenSignatureVersion"),
-    contractArchiveFile: this.table("contractArchiveFile"),
+    contractArchiveFile: this.table("contractArchiveFile"), archiveRecord: this.table("archiveRecord"),
+    contractArchiveEvidenceFile: this.table("contractArchiveEvidenceFile"),
+    contractEconomicReview: this.table("contractEconomicReview"),
+    contractEconomicSettlementCoverage: this.table("contractEconomicSettlementCoverage"),
+    projectAffiliateContractFact: this.table("projectAffiliateContractFact"), projectAffiliateSettlementFact: this.table("projectAffiliateSettlementFact"),
     generalProcurement: this.table("generalProcurement"),
     invoiceExceptionConfirmation: this.table("invoiceExceptionConfirmation"),
     invoiceRecord: this.table("invoiceRecord"),
@@ -226,7 +308,7 @@ export class TemplateSyntheticStore {
     paymentTermsVersion: this.table("paymentTermsVersion"),
     paymentTermsStage: this.table("paymentTermsStage"),
     contractVersionAuthorizationLink: this.table("contractVersionAuthorizationLink"),
-    contractFormalFile: this.table("contractFormalFile"),
+    contractFormalFile: this.table("contractFormalFile"), contractTakeover: this.table("contractTakeover"),
     contractAuthorization: this.table("contractAuthorization"),
     businessEntrySubmissionSnapshot: this.table("businessEntrySubmissionSnapshot"),
     contractSealTask: this.table("contractSealTask"),
@@ -235,14 +317,83 @@ export class TemplateSyntheticStore {
     contractNumberTombstone: this.table("contractNumberTombstone"),
     contractDraftDeletionReceipt: this.table("contractDraftDeletionReceipt"),
     contractDraftDeletionCodeTombstone: this.table("contractDraftDeletionCodeTombstone"),
-    businessParty: this.table("businessParty"),
+    businessParty: this.table("businessParty"), businessPartyVersion: this.table("businessPartyVersion"),
+    projectAffiliateAssignment: this.table("projectAffiliateAssignment"),
+    operatingFact: this.table("operatingFact"), operatingImpactEntry: this.table("operatingImpactEntry"),
+    projectCloseAggregate: this.table("projectCloseAggregate"), projectCloseImpact: this.table("projectCloseImpact"), projectCloseStageVersion: this.table("projectCloseStageVersion"),
     contractBusinessScenario: this.table("contractBusinessScenario"),
     contract: this.table("contract"), contractPartySnapshot: this.table("contractPartySnapshot"), contractBill: this.table("contractBill"), contractBillRow: this.table("contractBillRow"),
     contractVersion: this.table("contractVersion"), contractGeneratedDocument: this.table("contractGeneratedDocument"),
+    $executeRawUnsafe: async (statement: string) => { if (statement !== "SET TRANSACTION READ ONLY") throw new Error("合成只读事务拒绝未知语句"); return 0; },
+    $executeRaw: async (query: Prisma.Sql): Promise<number> => {
+      const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
+      if (!['SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', 'SELECT 1 FROM "ProjectCloseAggregate" WHERE "projectId" = ? FOR UPDATE'].includes(text) || query.values.length !== 1 || typeof query.values[0] !== "string") throw new Error("合成经营锁拒绝未知形状");
+      return 1;
+    },
     // Only explicitly registered business/file lock and read projections are modeled.
     // This does not connect to a database or execute SQL; every other query is rejected.
-    $queryRaw: async (query: Prisma.Sql): Promise<Row[]> => {
+    $queryRaw: async (queryInput: Prisma.Sql | TemplateStringsArray, ...bindings: unknown[]): Promise<Row[]> => {
+      const query = "strings" in queryInput ? queryInput : Prisma.sql(queryInput, ...bindings);
       const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
+      if (text === 'SELECT pg_advisory_xact_lock( ?::int, ?::int )::text AS "lockResult"') {
+        if (query.values.length !== 2 || query.values[0] !== 190731 || query.values[1] !== 13) throw new Error("合成文件绑定锁不接受其它namespace/key");
+        if (this.transactionSealTaskLocked) throw new Error("合成新归档拒绝阻塞式global锁，须F后try且失败退出");
+        this.transactionBindingLockHeld = true;
+        return [{ lockResult: "" }];
+      }
+      if (text === 'SELECT "id" FROM "ContractSealTask" WHERE "id" = ? FOR UPDATE') this.transactionSealTaskLocked = true;
+      // Final bounded oracle: complete sorted F first, then nonblocking G;
+      // never start a distinct F lock after G or continue after a false try.
+      if (this.transactionTryDenied) throw new Error("合成归档拒绝try锁失败后仍在原事务查询");
+      if (this.transactionSealTaskLocked && text === 'SELECT "id" FROM "FileObject" WHERE "id" = ? FOR UPDATE') {
+        if (typeof query.values[0] !== "string") throw new Error("归档文件锁身份不符");
+        if (this.transactionBindingLockHeld && !this.transactionFileLockIds.has(query.values[0])) throw new Error("合成归档拒绝全局锁后新增FileObject锁");
+        this.transactionFileLockIds.add(query.values[0]);
+      }
+      if (text === 'SELECT pg_try_advisory_xact_lock( ?::int, ?::int ) AS "acquired"') {
+        if (query.values.length !== 2 || query.values[0] !== 190731 || query.values[1] !== 13 || !this.transactionSealTaskLocked || !this.transactionFileLockIds.size) throw new Error("合成归档try锁须在原F锁后且使用同一双int身份");
+        if (this.archiveBindingLockResult === "missing") { this.transactionTryDenied = true; return []; }
+        if (this.archiveBindingLockResult === "busy") { this.transactionTryDenied = true; return [{ acquired: false }]; }
+        this.transactionBindingLockHeld = true;
+        return [{ acquired: true }];
+      }
+
+      if (text === "SELECT DISTINCT up.\"projectId\" FROM \"UserPosition\" up JOIN \"Position\" p ON p.id=up.\"positionId\" JOIN \"User\" u ON u.id=up.\"userId\" WHERE u.\"isActive\"=TRUE AND up.\"userId\"=? AND up.\"projectId\" IS NOT NULL AND p.key IN ('finance_staff','finance_director') UNION SELECT pm.\"projectId\" FROM \"ProjectMember\" pm JOIN \"User\" u ON u.id=pm.\"userId\" WHERE u.\"isActive\"=TRUE AND pm.\"userId\"=? AND pm.\"positionKey\" IN ('finance_staff','finance_director')") {
+        const actor = query.values[0];
+        if (typeof actor !== "string" || query.values[1] !== actor) throw new Error("合成财务项目查询身份不一致");
+        if (!(await this.prisma.user.findUnique({ where: { id: actor } }))?.isActive) return [];
+        const positions = await this.prisma.position.findMany({ where: { key: { in: ["finance_staff", "finance_director"] } } });
+        const assignments = await this.prisma.userPosition.findMany({ where: { userId: actor, projectId: { not: null }, positionId: { in: positions.map(row => row.id) } } });
+        const members = await this.prisma.projectMember.findMany({ where: { userId: actor, positionKey: { in: ["finance_staff", "finance_director"] } } });
+        return [...new Set([...assignments, ...members].map(row => row.projectId))].map(projectId => ({ projectId }));
+      }
+      if (text === "SELECT CURRENT_TIMESTAMP AS \"readAt\", set_config('statement_timeout', ?, true)") {
+        if (query.values.length !== 1 || !/^\d+$/u.test(String(query.values[0]))) throw new Error("合成读取时点参数不符");
+        return [{ readAt: new Date() }];
+      }
+
+      if (createHash("sha256").update(text).digest("hex") === "41b7ac454fb4d84f2eb267002707a2aed9169da8fe3b575fbabc6d618d8d5e62") {
+        if (query.values.length !== 7 || typeof query.values[0] !== "string") throw new Error("合成限制读取预算参数不符");
+        const restrictions = (this.rows.operatingFact ?? []).filter(row => row.projectId === query.values[0] && ["project_necessary_expense_reserve_entry", "project_fund_dispute_entry"].includes(String(row.sourceType)));
+        if (restrictions.length) throw new Error("本合同合成读取未登记限制快照来源");
+        return [{ replacementCount: 0n, snapshotBytes: 0n, maxSnapshotBytes: 0 }];
+      }
+      if (createHash("sha256").update(text).digest("hex") === "0dca1ffc31a615edbf215e15be8da59a2f7333e1cdd7d87043f6efc1cf30d251") {
+        const [projectId, cutoffAt, readAt] = query.values;
+        if (query.values.length !== 9 || typeof projectId !== "string" || !(cutoffAt instanceof Date) || !(readAt instanceof Date)) throw new Error("合成经营读取预算参数不符");
+        const facts = (this.rows.operatingFact ?? []).filter(row => row.projectId === projectId && row.status === "confirmed" && Number(row.occurredAt) <= cutoffAt.getTime() && Number(row.confirmedAt) <= readAt.getTime() && Number(row.createdAt) <= readAt.getTime());
+        if (facts.some(row => ["project_necessary_expense_reserve_entry", "project_fund_dispute_entry"].includes(String(row.sourceType)))) throw new Error("本合同合成预算未声明限制替代目标");
+        const ids = new Set(facts.map(row => row.id));
+        const impacts = (this.rows.operatingImpactEntry ?? []).filter(row => ids.has(row.factId) && Number(row.createdAt) <= readAt.getTime());
+        const bytes = Buffer.byteLength(JSON.stringify([...facts, ...impacts], (_key, value) => typeof value === "bigint" ? value.toString() : value));
+        return [{ workFactCount: BigInt(facts.length), workImpactCount: BigInt(impacts.length), workBytes: BigInt(bytes), targetCount: 0n }];
+      }
+      if (/^SELECT \* FROM public\."appendOperating(?:Fact|Impact)ThroughService"\(/u.test(text)) {
+        const write = syntheticOperatingWrite(query);
+        const table = write.kind === "Fact" ? this.prisma.operatingFact : this.prisma.operatingImpactEntry;
+        const row = await table.create({ data: write.row });
+        return [{ id: row.id, projectId: write.row.projectId, sourceType: write.row.sourceType, sourceBusinessId: write.row.sourceBusinessId, createdAt: row.createdAt }];
+      }
       // The existing one-contract audit/approval participant read projection.
       // Fixed normalized SQL fingerprint; evaluate only the synthetic stored facts.
       if (createHash("sha256").update(text).digest("hex") === "d600870300bbe7561e1b2c5b09efb160a203677722461258a58711490198d01d") {
@@ -298,7 +449,18 @@ export class TemplateSyntheticStore {
           return position && roles.includes(String(position.key)) && users.some(u => u.id === row.userId && u.isActive === true) && (text !== applicantSql || row.userId === query.values[0]) ? [{ userId: row.userId, roleKey: position.key }] : [];
         });
       }
+      // Fixed FileService referenced-file projection. All declared adjacent
+      // binding relations begin empty in this synthetic store; actual stored
+      // references and replacement links are evaluated, never guessed unbound.
+      if (createHash("sha256").update(text).digest("hex") === "9427575dbfd2ca374c101826fd58fd43e37d969006524631a0b86a91b4e1b057") {
+        const id = query.values[0];
+        if (typeof id !== "string" || query.values.length !== 75 || !query.values.every(value => value === id)) throw new Error("合成文件引用参数不符");
+        const bound = NON_RECEIPT_FILE_BINDINGS.some(binding => (this.rows[binding.table[0].toLowerCase() + binding.table.slice(1)] ?? []).some(row => binding.columns.some(column => row[column] === id)));
+        const replacement = (this.rows.fileObject ?? []).some(row => row.supersedesFileObjectId === id || row.id === id && row.supersedesFileObjectId != null);
+        return [{ referenced: bound || replacement }];
+      }
       const id = query.values[0];
+      if (text === 'SELECT "id", "status" FROM "BusinessParty" WHERE "id" IN (?) ORDER BY "id" FOR UPDATE' && query.values.length === 1) return this.prisma.businessParty.findMany({ where: { id } });
       if (text === `SELECT "id" FROM "ApprovalInstance" WHERE "businessType" = 'contract_version' AND "businessId" = ? AND "flowType" = 'contract.approve' AND ( "id" = ? OR "status" = 'in_progress' ) ORDER BY "id" FOR UPDATE`) {
         if (query.values.length !== 2) throw new Error("合成审批锁参数不符");
         return this.prisma.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: id, flowType: "contract.approve", OR: [{ id: query.values[1] }, { status: "in_progress" }] } });
@@ -307,7 +469,7 @@ export class TemplateSyntheticStore {
         if (query.values.length !== 2 || query.values.some(value => typeof value !== "string")) throw new Error("合成公司参与关系锁参数不符");
         return this.prisma.projectParticipatingCompany.findMany({ where: { projectId: id, companyEntityId: query.values[1] } });
       }
-      if (typeof id !== "string" || !query.values.every(value => value === id)) throw new Error("合成锁投影参数不符");
+      if (typeof id !== "string" || !query.values.every(value => value === id)) throw new Error(`合成投影参数未登记 sha=${createHash("sha256").update(text).digest("hex")} count=${query.values.length}`);
       if (text === 'SELECT "id" FROM "ContractVersion" WHERE "id" = ? FOR UPDATE') return this.prisma.contractVersion.findMany({ where: { id } });
       if (text === 'SELECT "id" FROM "Contract" WHERE "id" = ? FOR UPDATE') return this.prisma.contract.findMany({ where: { id } });
       if (text === 'SELECT "id", "contractId", "status", "contractGovernanceVersion", "numericProtocolVersion" FROM "ContractVersion" WHERE "id" = ? FOR UPDATE') return this.prisma.contractVersion.findMany({ where: { id } });
@@ -325,6 +487,7 @@ export class TemplateSyntheticStore {
         if (!version || version.baseVersionId !== null) throw new Error("本合成来源投影仅登记原合同");
         return (await this.prisma.auditLog.findMany({ where: { businessType: "contract", businessId: version.contractId, action: { in: ["contract.draft.create", "contract.draft.copy"] } } })).map(row => ({ actorUserId: row.actorUserId }));
       }
+      if (text === 'SELECT "id" FROM "Project" WHERE "id" = ? FOR UPDATE') return this.prisma.project.findMany({ where: { id } });
       if (text === 'SELECT "id", "isActive" FROM "Project" WHERE "id" = ? FOR UPDATE') { const project = await this.prisma.project.findUnique({ where: { id } }); return project ? [project] : []; }
       // Current FileService first checks the registered-payment voucher join.
       // These contract-only fixtures create no voucher relation; a future
@@ -361,6 +524,13 @@ export class TemplateSyntheticStore {
       if (text === "SELECT \"id\" FROM \"ContractPartySnapshot\" WHERE \"contractVersionId\" = ? ORDER BY \"id\" FOR UPDATE") return this.prisma.contractPartySnapshot.findMany({ where: { contractVersionId: id } });
       if (text === "SELECT \"id\" FROM \"PaymentTermsVersion\" WHERE \"contractVersionId\" = ? ORDER BY \"id\" FOR UPDATE") return this.prisma.paymentTermsVersion.findMany({ where: { contractVersionId: id } });
       if (text === "SELECT s.\"id\" FROM \"PaymentTermsStage\" s JOIN \"PaymentTermsVersion\" t ON t.\"id\" = s.\"paymentTermsVersionId\" WHERE t.\"contractVersionId\" = ? ORDER BY s.\"id\" FOR UPDATE") { const terms = await this.prisma.paymentTermsVersion.findMany({ where: { contractVersionId: id } }); return this.prisma.paymentTermsStage.findMany({ where: { paymentTermsVersionId: { in: terms.map(term => term.id) } } }); }
+      if (text === 'SELECT p."key" FROM "UserPosition" up JOIN "Position" p ON p."id"=up."positionId" JOIN "User" u ON u."id"=up."userId" WHERE up."userId"=? AND up."projectId" IS NULL AND u."isActive"=TRUE') {
+        const user = await this.prisma.user.findUnique({ where: { id } });
+        if (!user?.isActive) return [];
+        const assignments = await this.prisma.userPosition.findMany({ where: { userId: id, projectId: null } });
+        const positions = await this.prisma.position.findMany({ where: { id: { in: assignments.map(row => row.positionId) } } });
+        return positions.map(position => ({ key: position.key }));
+      }
       throw new Error("合成持久层拒绝未登记的锁投影：" + text);
     },
     $transaction: async <T>(work: (client: unknown) => Promise<T>): Promise<T> => {
@@ -369,9 +539,17 @@ export class TemplateSyntheticStore {
       this.queue = new Promise<void>(resolve => { release = resolve; });
       await previous;
       const snapshot = fixtureClone(this.rows);
-      try { return await work(this.prisma); }
+      this.transactionBindingLockHeld = false;
+      this.transactionSealTaskLocked = false;
+      this.transactionFileLockIds = new Set();
+      this.transactionTryDenied = false;
+      try {
+        const result = await work(this.prisma);
+        if (this.archiveCommitOutcome === "return_without_persisting" && (this.rows.contractArchiveFile?.length ?? 0) > (snapshot.contractArchiveFile?.length ?? 0)) this.rows = snapshot;
+        return result;
+      }
       catch (error) { this.rows = snapshot; throw error; }
-      finally { release(); }
+      finally { this.transactionBindingLockHeld = false; this.transactionSealTaskLocked = false; this.transactionFileLockIds = new Set(); this.transactionTryDenied = false; release(); }
     }
   };
 }
@@ -414,9 +592,9 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
   const audit = new AuditService(prisma);
   const tokens = new JwtTokenService();
   const auth = new AuthService(prisma, tokens, audit);
-  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController, ...(options.legacyWorkbenchReads ? [ContractWorkbenchController] : [])] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
+  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController, ArchiveController, MeController, ...(options.legacyWorkbenchReads ? [ContractWorkbenchController] : [])] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
-    { provide: PrivateFileStorage, useValue: storage }, ProjectVisibilityService, ContractReadService,
+    { provide: PrivateFileStorage, useValue: storage }, MeService, ProjectVisibilityService, ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     { provide: FileService, useFactory: (moduleRef: ModuleRef) => new FileService(prisma, audit, storage, undefined, undefined, moduleRef), inject: [ModuleRef] },
     { provide: ContractDocumentService, useFactory: (files: FileService) => new ContractDocumentService(prisma, audit, files, new BusinessNumberingService()), inject: [FileService] },
@@ -426,7 +604,10 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
       { provide: ContractDraftAggregateService, useFactory: (files: FileService) => new ContractDraftAggregateService(prisma, new ContractWorkbenchService(prisma, audit), new ContractBillService(prisma, audit), new BusinessPartyService(prisma, audit), files, audit), inject: [FileService] },
       { provide: ContractDraftEditLeaseService, useFactory: () => new ContractDraftEditLeaseService(prisma, auth, audit) },
       // Real creation and read-only project choices join the same guarded workbench seam.
-      ContractApprovalRouteService, BusinessNumberingService, ContractV2SubmissionService,
+      ArchiveService, ContractApprovalRouteService, BusinessNumberingService, ContractV2SubmissionService, ContractV2ArchiveService, ContractVersionActivationService,
+      OperatingLedgerService,
+      { provide: OperatingSourceAdapterRegistry, useFactory: () => new OperatingSourceAdapterRegistry([new ContractOperatingSourceAdapter(), new ContractEconomicReviewOperatingSourceAdapter()]) },
+      OperatingSourceReplayService, ContractEconomicReviewService, OperatingProjectionService, CompanyRoleResolverService, ClearingReconciliationReaderService,
       { provide: ContractSealService, useFactory: () => new ContractSealService(prisma, audit, undefined, auth) },
       { provide: ContractService, useFactory: () => new ContractService(prisma, audit) },
       { provide: ContractWorkbenchService, useFactory: () => new ContractWorkbenchService(prisma, audit) },

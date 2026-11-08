@@ -88,6 +88,9 @@ export interface ContractSettlementPaymentReadModel {
 
 export interface ContractArchiveFileReadModel {
   archiveRecordId: string;
+  archiveProtocolVersion?: 1 | 2;
+  evidenceId?: string;
+  displayOrder?: number;
   fileId: string;
   fileName: string;
   mimeType: string;

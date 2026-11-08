@@ -1,7 +1,7 @@
 import { economicExcludedAt, economicExcludedYuanAt } from "../contract-ledger/contract-economic-coverage";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { normalizeBusinessAmount, businessAmountFromLegacyCents } from "@jiangkong/shared-domain";
+import { chinaDateOnly, normalizeBusinessAmount, businessAmountFromLegacyCents } from "@jiangkong/shared-domain";
 import { downstreamContractRelationship } from "@jiangkong/shared-domain";
 import {
   frozenAffiliateFromJson, occurredBeforeEffectiveDate, readAffiliateSnapshot,
@@ -48,6 +48,31 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     ]);
     const confirmedByUserId = archive?.confirmedByUserId ?? formalFile?.confirmedByUserId ?? takeover?.activatedByUserId;
     if (!confirmedByUserId) throw new BadRequestException("生效合同缺少归档或接管确认依据");
+    if (archive?.archiveProtocolVersion === 2) {
+      if (!archive.authoritySnapshot || !archive.authoritySha256 || !archive.confirmedAt || archive.confirmedAt.getTime() !== version.effectiveAt.getTime()) throw new BadRequestException("新归档经营来源缺少真实权威");
+      const authority = requiredJsonRecord(archive.authoritySnapshot, "合同归档");
+      const basis = requiredJsonRecord(authority.sourceBasis!, "归档独立依据");
+      const locator = requiredJsonRecord(basis.sourceLocator!, "归档来源");
+      const money = requiredJsonRecord(basis.money!, "归档金额");
+      const subjects = requiredJsonRecord(basis.subjects!, "签约主体");
+      const parties = subjects.parties;
+      if (authority.projectId !== projectId || authority.contractVersionId !== version.id || locator.sourceVersion !== version.versionNo) throw new BadRequestException("新归档经营来源的项目或版本不一致");
+      if (!Array.isArray(parties) || !version.companyEntityIdSnapshot || !counterparty?.businessPartyVersionId) throw new BadRequestException("新归档经营来源的受控签约主体不完整");
+      const frozenParty = parties.filter(party => party && typeof party === "object" && !Array.isArray(party) && party.roleKey === "party_b" && party.businessPartyVersionId === counterparty.businessPartyVersionId);
+      if (frozenParty.length !== 1 || version.signingSubjectType !== "our_company") throw new BadRequestException("新归档签约主体不一致");
+      return { projectId, sourceType: this.sourceType, sourceBusinessId: version.id, sourceBusinessCode: contract.code ?? contract.temporaryCode ?? contract.name,
+        sourceVersion: version.versionNo, status: "confirmed", sourceSnapshot: sourceJson({
+          contractId: contract.id, contractVersionId: version.id, contractRelationship: relationship, signingSubjectType: version.signingSubjectType,
+          companyEntityVersionId: version.companyEntityVersionId, companyEntityIdSnapshot: version.companyEntityIdSnapshot, companyEntityNameSnapshot: version.companyEntityNameSnapshot,
+          counterpartyVersionId: counterparty.businessPartyVersionId, counterpartyName: contract.counterparty,
+          archiveProtocolVersion: 2, archiveAuthorityId: archive.id, archiveAuthoritySha256: archive.authoritySha256, sourceBasisSha256: authority.sourceBasisSha256, sourceBasis: basis,
+          amountNature: money.amountState === "unknown" ? "uncapped" : "fixed", numericProtocolVersion: 2, amountYuan: money.amountYuan, amountState: money.amountState, sourceAmountStatus: version.amountLimitType,
+          currentAmount: { protocolVersion: 2, amountState: money.amountState, amountYuan: money.amountYuan, sourceAmountStatus: version.amountLimitType }, priorAmount: null,
+          economicExcludedYuan: money.economicExcludedYuan, commitmentDeltaYuan: money.commitmentDeltaYuan, supersedesVersionId: null,
+          occurredAt: version.effectiveAt.toISOString(), confirmedAt: archive.confirmedAt.toISOString(), confirmedByUserId: archive.confirmedByUserId,
+          operatingLedgerEffectiveDate: effectiveDate.toISOString(), archiveBusinessDay: chinaDateOnly(archive.confirmedAt), affiliate
+        }) };
+    }
     if (!counterparty?.businessPartyVersionId) throw new BadRequestException("合同承诺缺少受控相对方快照，请先核对签约主体");
     const numeric2 = version.numericProtocolVersion === 2;
     const knownAmount = version.amountLimitType !== "uncapped";
@@ -121,7 +146,7 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     if (source.signingSubjectType === "draft_unconfirmed") throw new Error("合同签约主体待补充，不能形成正式经营事实");
     const debtor = source.signingSubjectType === "affiliate"
       ? { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId }
-      : { kind: "participating_company" as const, id: requiredJsonText(source, "companyEntityVersionId", "合同签约主体") };
+      : { kind: "participating_company" as const, id: requiredJsonText(source, source.archiveProtocolVersion === 2 ? "companyEntityIdSnapshot" : "companyEntityVersionId", "合同签约主体") };
     const creditor = { kind: "downstream_counterparty" as const, id: requiredJsonText(source, "counterpartyVersionId", "合同相对方") };
     return { entryKind: "original", input: {
       projectId: snapshot.projectId, sourceType: snapshot.sourceType, sourceBusinessId: snapshot.sourceBusinessId,
@@ -131,7 +156,9 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       confirmedByUserId: requiredJsonText(source, "confirmedByUserId", "合同承诺"),
       factKind: "downstream_contract", operatingLevel: "project", evidenceLevel: "A",
       ...money, currencyCode: "CNY", direction: "neutral",
-      isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(occurredAt, requiredJsonDate(source, "operatingLedgerEffectiveDate", "合同承诺")),
+      isBeforeOperatingLedgerEffectiveDate: source.archiveProtocolVersion === 2
+        ? requiredJsonText(source, "archiveBusinessDay", "归档业务日") < requiredJsonDate(source, "operatingLedgerEffectiveDate", "合同承诺").toISOString().slice(0, 10)
+        : occurredBeforeEffectiveDate(occurredAt, requiredJsonDate(source, "operatingLedgerEffectiveDate", "合同承诺")),
       affiliateAssignmentId: affiliate.assignmentId, affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
       affiliateNameSnapshot: affiliate.name, affiliateCreditCodeSnapshot: affiliate.creditCode, sourceSnapshot: snapshot.sourceSnapshot,
       basisSnapshot: sourceJson({ authority: "effective_contract_version", amountNature: source.amountNature }),

@@ -11,6 +11,7 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   EVIDENCE_LEVELS,
+  chinaDateOnly,
   normalizeBusinessAmount,
   OPERATING_FACT_KINDS,
   OPERATING_IMPACT_KINDS,
@@ -900,13 +901,14 @@ export class OperatingLedgerService {
       };
     }
     if (subject.kind === "participating_company") {
+      const participationDate = await archivedContractOwnershipDay(tx, input) ?? ownershipOccurredAt;
       const participant = await tx.projectParticipatingCompany.findFirst({
         where: {
           projectId: input.projectId,
           AND: [
             { OR: [{ companyEntityId: subject.id }, { companyEntityVersionId: subject.id }] },
-            { effectiveFrom: { lte: ownershipOccurredAt } },
-            { OR: [{ endedAt: null }, { endedAt: { gt: ownershipOccurredAt } }] }
+            { effectiveFrom: { lte: participationDate } },
+            { OR: [{ endedAt: null }, { endedAt: { gt: participationDate } }] }
           ]
         },
         select: {
@@ -982,7 +984,9 @@ export class OperatingLedgerService {
     if (!project.operatingLedgerEffectiveDate) {
       throw new BadRequestException("项目尚未启用经营账，不能登记正式经营事实");
     }
-    const expectedBefore = dateOnly(input.occurredAt) < dateOnly(project.operatingLedgerEffectiveDate);
+    const archiveOwnershipDay = await archivedContractOwnershipDay(tx, input);
+    const participationDate = archiveOwnershipDay ?? ownershipOccurredAt;
+    const expectedBefore = (archiveOwnershipDay ? chinaDateOnly(input.occurredAt) : dateOnly(input.occurredAt)) < dateOnly(project.operatingLedgerEffectiveDate);
     if (input.isBeforeOperatingLedgerEffectiveDate !== expectedBefore) {
       throw new BadRequestException("经营事实的生效日前后属性与项目经营账生效日不一致");
     }
@@ -1038,8 +1042,8 @@ export class OperatingLedgerService {
           projectId: input.projectId,
           AND: [
             { OR: [{ companyEntityId: subject.id }, { companyEntityVersionId: subject.id }] },
-            { effectiveFrom: { lte: ownershipOccurredAt } },
-            { OR: [{ endedAt: null }, { endedAt: { gt: ownershipOccurredAt } }] }
+            { effectiveFrom: { lte: participationDate } },
+            { OR: [{ endedAt: null }, { endedAt: { gt: participationDate } }] }
           ]
         },
         select: { id: true }
@@ -1591,6 +1595,39 @@ function assertCompatibleImpact(
     throw new BadRequestException("同一来源影响键已登记不同分录，不能覆盖原分录");
   }
 }
+
+/** Only a real immutable Archive2 can select the new Date-column day domain.
+ * Review sources arrive here only after assertV2EconomicReviewSource completed;
+ * this re-reads its immutable original and requires the exact same A/B/X binding.
+ * Assignment DateTime periods continue using ownershipOccurredAt, never this day.
+ */
+async function archivedContractOwnershipDay(tx: OperatingLedgerTransaction, input: AppendOperatingFactInput): Promise<Date | null> {
+  if (input.numericProtocolVersion !== 2 || !["contract_version", "contract_economic_review"].includes(input.sourceType)) return null;
+  let source: unknown = input.sourceSnapshot;
+  let versionId = input.sourceBusinessId;
+  let originalInstant = input.occurredAt;
+  let sourceVersion = input.sourceVersion;
+  if (input.sourceType === "contract_economic_review") {
+    const baseline = archiveObject(input.sourceSnapshot.baseline);
+    if (typeof baseline.originalOperatingFactId !== "string") throw new BadRequestException("履约复核缺少原事实来源");
+    const original = await tx.operatingFact.findUnique({ where: { id: baseline.originalOperatingFactId } });
+    if (!original || original.projectId !== input.projectId || original.sourceType !== "contract_version") return null;
+    source = original.sourceSnapshot; versionId = original.sourceBusinessId; originalInstant = original.occurredAt; sourceVersion = original.sourceVersion;
+  }
+  const snapshot = archiveObject(source);
+  const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: versionId, archiveProtocolVersion: 2, status: "confirmed" } });
+  if (!archive || archive.archiveProtocolVersion !== 2) {
+    if (snapshot.archiveAuthorityId !== undefined || snapshot.archiveAuthoritySha256 !== undefined || snapshot.sourceBasisSha256 !== undefined) throw new BadRequestException("归档标记不能代替真实持久归档来源");
+    return null;
+  }
+  const authority = archiveObject(archive.authoritySnapshot), basis = archiveObject(authority.sourceBasis);
+  const locator = archiveObject(basis.sourceLocator), businessTime = archiveObject(basis.businessTime);
+  if (!archive.confirmedAt || authority.projectId !== input.projectId || authority.contractVersionId !== versionId || locator.sourceVersion !== sourceVersion
+    || snapshot.archiveAuthorityId !== archive.id || snapshot.archiveAuthoritySha256 !== archive.authoritySha256 || snapshot.sourceBasisSha256 !== authority.sourceBasisSha256
+    || !sameJson(snapshot.sourceBasis, basis) || originalInstant.getTime() !== archive.confirmedAt.getTime() || businessTime.businessDay !== chinaDateOnly(archive.confirmedAt)) throw new BadRequestException("经营归属必须绑定真实归档权威及原发生时刻");
+  return new Date(`${chinaDateOnly(archive.confirmedAt)}T00:00:00.000Z`);
+}
+function archiveObject(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 
 function sameJson(left: unknown, right: unknown) {
   return JSON.stringify(sortJson(left)) === JSON.stringify(sortJson(right));

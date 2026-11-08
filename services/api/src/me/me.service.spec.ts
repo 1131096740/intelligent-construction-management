@@ -2083,7 +2083,7 @@ describe("MeService", () => {
   });
 
   it("derives the untruncated contract queue only from canonical contract pending sources", async () => {
-    const service = new MeService({} as never, {} as never) as unknown as {
+    const service = new MeService({ contract: { findMany: jest.fn().mockResolvedValue([]) }, contractVersion: { findMany: jest.fn().mockResolvedValue([]) } } as never, {} as never) as unknown as {
       getContractPendingWorkItems(userId: string): Promise<WorkItem[]>;
       loadProjectRoleScopes(): Promise<Array<{ projectId: string; roleKeys: string[] }>>;
       projectNames(projectIds: string[]): Promise<Map<string, string>>;

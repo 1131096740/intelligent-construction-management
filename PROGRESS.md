@@ -1,3 +1,28 @@
+## Task12 面A business A3 源审修复（2026-11-09，HOLD待增量双轴）
+
+- [~] 原完整A2两轴实质问题为**2P1（Word/PDF对象形状、Project DATE）+1P2（文件锁次序）**，均保原报告/28源/2120+1及首败。原公开POST有限持久oracle先实际拒旧数组/ISO日期，再最小producer改完整word/pdf对象与Date-only/null；真实归档instant不改。[当前收据](docs/progress/2026-11-08-task12-archive-authority-source.md)。
+- [~] 最终保原C/V/R/T/P/全部排序F，在F后、绑定DML前复用同双int的非阻塞tryG；false中文409/缺行503终止TX，退出后原key只读核对、不补发，已成功samekey忙时早return。中间G-beforeF红绿不是完整解，原P/global与旧uploadFinal F/global反例保；不改旧blocking helper/其它入口，无P/F NOWAIT或锁策略全域重构。
+- [~] 新当前50suite实际2120/2121、1原PGskip，API type/lint/diff0；全28输入gates前后字节mode同，后仅两MD更新。Schema3f/SQLc579/SDK/shared source与dist保持，无重生成/重build/SQL执行；完整A3+对A2六路径delta另封，待两轴。
+- [ ] 仍仅source/mock，无真实PG/ACL/RLS/锁调度/COMMIT或资源资格；Task16 204桥/后继backend明确action context/Web/FaceB/完整5×3未完，cap不开放/#394不关闭，不commit/push/合中央/部署生产。
+
+## Task12 面A归档 backend/source/mock 闭合待双轴（2026-11-09）
+
+- [~] 本地 e08 身份checkpoint续片，只实现表内/generated/original：真实公开HTTP审批→综合主管确认已盖章→原合同员两PDF直接归档、生效与按当次启用预期真实adapter/Replay/writer同TX；详情/档案逐Evidence、授权下载与真实待办接线。新提交回执GET和归档结果GET只读，resolvedTX无持久行/required缺Fact或金额漂移不报成功，未知不自动补发。原409/410/旧流程保。[本片收据](docs/progress/2026-11-08-task12-archive-authority-source.md)。
+- [~] 当前50受影响suite实际2120通过/2121总数，1原PG门skip；私有204全API纯类型/lint/diff0。真0、未知NULL、100.0054减真实复核6=94.0054、CV2/joinV1与北京归档/后继Review各自发生日、未启用后GET不补账/独立正式回放均有原公共接缝证据。shared纯TS build68产物仅一DTS有意刷新，JS全同；旧失败/原生成native拒/所有历史freeze保。
+- [ ] Schema3f4199与204 SQL c579ed28源码固定，旧203及更早SQL/lock不变；204源码双轴仅覆盖其各精确输入，当前完整业务源待独立双轴。未真实SQL解析执行、PG/ACL/RLS/锁并发/COMMIT或SDK构造/网关资源；Task16新204库存桥未做，Web与FaceB/direct/表外/对上/inline及完整5×3验收未完成，cap不开放/#394不关闭，无commit/push/中央合入/部署生产。
+
+## Task12 面A归档 A1 源审修复（2026-11-08，HOLD待增量双轴）
+
+- [~] 仅新204源码修复A0三P2：CV最终期间赋值保北京日；Fact/归档同UTC无时区时刻域比较；独立按真实已确认、适用版本、归档时刻的Review覆盖重算排除/承诺净额/影响方向，同pair同时确认歧义拒。真实v2金额按持久amountYuan是否NULL，限额/定价/来源原值保；无上限非NULL估算不改成确定总额或成本/应付。
+- [~] 普通文本重演/独立算例仅source合同验证，非SQL运行红绿；新增真实Review九列共同caller读取资格，缺资格拒、无grant。Schema3f4199和旧203迁移/lock字节保持，六例程不增。[本片收据](docs/progress/2026-11-08-task12-archive-authority-source.md)。
+- [ ] 首归档404、A0全冻、单次生成native拒记录、两处nullable类型错误全保；归档业务未GREEN、不开放cap/不关闭394，无SDK重生成/实例化、SQL解析执行、PG/角色/资源、commit/push。只读静态204声明可供后继编译，不是原生或DDL资格。
+
+## Task12 面A归档Schema源码准备（2026-11-08，HOLD待源审/私有204生成GO）
+
+- [~] 准确本地identity S e08eac40接续；原真实Nest并联/重审/已盖章→private合成双方PDF→新signed-archive公开POST实际404，预期201，首RED保。[源码准备收据](docs/progress/2026-11-08-task12-archive-authority-source.md)。仅审定面A Schema/204迁移源码，旧203迁移+lock逐字守恒，Schema旧前像另保。
+- [ ] 单次私有204 CLI返回0并生成engine=none产物，但guard阻断可选fsevents.node native尝试后CLI捕获继续；按停止条件暂停资格链，未AST提取/tsc、不重试，不能冒204 type或原生资格绿；当前归档业务未实现GREEN/不开放cap，不关闭394。DDL仅文字源，未SQL parser/execute/PG/ACL/角色或COMMIT验证；新helper/Evidence缺资格即拒，registry仅原权限精确保留SOURCE，不执行真实GRANT。
+- [ ] 后继必要owner桥：new persistent archiveProtocol2稳定公司ID与选定/加入版本分开、旧activation未知税不能假confirmed/付款原文不强迫结构化；旧UTC DATE期间owner与北京日的差异经root明确授权，仅新持久A加日期桥SOURCE，旧Review全核/真实瞬间/非A回退保，旧203/通用政策不改。无Web/upward/inline新kind/专属桥或生产/部署/Git写；私有codegen具体方案外部待批准。
+
 ## Task12 identity A1 审查修复（2026-11-08，HOLD待增量双轴）
 
 - [~] 原A0两轴各1P2已按原公开HTTP接缝实际RED→GREEN：参与关系按稳定公司ID/北京业务日半开期间核唯一，当前签约公司v2与加入时v1分开留存，不改参与历史；复用shared chinaDateOnly，仅Date列用业务日参数，snapshot occurredAt仍真实时刻。[本地收据](docs/progress/2026-11-08-task12-post-precision-identity-local.md)。

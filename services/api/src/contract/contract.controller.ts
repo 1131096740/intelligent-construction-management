@@ -1,3 +1,5 @@
+import { ContractV2ArchiveService } from "./contract-v2-archive.service";
+import { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
 import { ContractV2SubmissionService } from "./contract-v2-submission.service";
 import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
@@ -8,6 +10,7 @@ import {
   Get,
   Headers,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -84,7 +87,8 @@ export class ContractController {
     @Optional() private readonly seals?: ContractSealService,
     @Optional() private readonly pristineDeletion?: PristineDraftDeletionService,
     @Optional() private readonly approvalProgress?: ApprovalProgressService,
-    @Optional() private readonly preciseLifecycle?: ContractV2SubmissionService
+    @Optional() private readonly preciseLifecycle?: ContractV2SubmissionService,
+    @Optional() private readonly signedArchives?: ContractV2ArchiveService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -369,6 +373,20 @@ export class ContractController {
   ) {
     if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
     return this.seals.complete(contractVersionId, user.id, body);
+  }
+
+  @Get(":contractVersionId/archive-requests/:idempotencyKey")
+  @RequireProjectRole("contract.submit")
+  archiveResult(@Param("contractVersionId") id: string, @Param("idempotencyKey", new ParseUUIDPipe({ version: "4" })) key: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!this.signedArchives) throw new InternalServerErrorException("合同归档服务尚未就绪");
+    return this.signedArchives.getArchiveResult(id, user.id, key);
+  }
+
+  @Post(":contractVersionId/signed-archive")
+  @RequireProjectRole("contract.submit")
+  archiveSignedContract(@Param("contractVersionId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ArchiveSignedContractV2Dto) {
+    if (!this.signedArchives) throw new InternalServerErrorException("合同归档服务暂不可用");
+    return this.signedArchives.archive(id, user.id, body);
   }
 
   @Post(":contractVersionId/seal-confirmation")

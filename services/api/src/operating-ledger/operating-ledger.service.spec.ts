@@ -894,6 +894,7 @@ function createPrismaMock(options: {
   const storedImpacts: Array<Record<string, unknown>> = [];
   let controlledWriteCount = 0;
   const tx = {
+    contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn().mockImplementation(async (query: Prisma.Sql) => {
       if (options.persistControlledRows) {

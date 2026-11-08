@@ -17,6 +17,8 @@ describe("non-receipt file binding registry", () => {
       const fieldPattern =
         /^\s+(fileId|[A-Za-z][A-Za-z0-9]*(?:FileId|FileIdSnapshot))\s+String\??(?:\s|$)/gmu;
       for (const fieldMatch of body.matchAll(fieldPattern)) {
+        // This field references the parent ContractArchiveFile identity, not a FileObject.
+        if (model === "ContractArchiveEvidenceFile" && fieldMatch[1] === "archiveFileId") continue;
         schemaBindings.push(`${model}.${fieldMatch[1]}`);
       }
     }
@@ -25,8 +27,9 @@ describe("non-receipt file binding registry", () => {
       ({ table, columns }) =>
         columns.map((column) => `${table}.${column}`)
     );
-    expect(registered).toHaveLength(98);
+    expect(registered).toHaveLength(100);
     expect(registered).toContain("GeneralProcurement.archiveFileId");
+    expect(registered).toContain("ContractArchiveEvidenceFile.fileId");
     expect(registered).toContain(
       "InvoiceEvidenceRepairResolution.replacementFileId"
     );

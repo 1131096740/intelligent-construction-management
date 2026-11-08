@@ -7,12 +7,12 @@ export type Server = Awaited<ReturnType<typeof createTemplateTestServer>>;
 export type Draft = Awaited<ReturnType<typeof createTask09Draft>>;
 export type Body = { sourceSha256: string; documentContentRevision: number; blocks: Array<{ id: string; kind: string; text: string; editable: boolean }> };
 
-export async function saveBody(draft: Draft, documentBody: unknown, partyA = "当前单甲方", billRows: Array<Record<string, unknown>> = [], bodyAction?: unknown, layoutId?: string) {
+export async function saveBody(draft: Draft, documentBody: unknown, partyA = "当前单甲方", billRows: Array<Record<string, unknown>> = [], bodyAction?: unknown, layoutId?: string, partyBVersionId?: string, defaultTaxRateOverride?: string | null) {
   const current = await fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json()) as { version: { draftRevision: number; draftData: Record<string, unknown>; layoutTemplateVersionId: string }; bills: Array<{ billKey: string; revision: number }> };
   return fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
     idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "parties"],
-    draft: { numericProtocolVersion: 2, draftData: { ...current.version.draftData, documentBody, ...(bodyAction === undefined ? {} : { documentBodyAction: bodyAction }) }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layoutId ?? current.version.layoutTemplateVersionId, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: billRows.length ? "0" : null, source: "contract_document" } },
-    parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: partyA } }, { roleKey: "party_b", displayOrder: 0, snapshot: { name: "当前单乙方" } }],
+    draft: { numericProtocolVersion: 2, draftData: { ...current.version.draftData, documentBody, ...(bodyAction === undefined ? {} : { documentBodyAction: bodyAction }) }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layoutId ?? current.version.layoutTemplateVersionId, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: defaultTaxRateOverride === undefined ? (billRows.length ? "0" : null) : defaultTaxRateOverride, source: "contract_document" } },
+    parties: [{ roleKey: "party_a", displayOrder: 0, snapshot: { name: partyA } }, { roleKey: "party_b", displayOrder: 0, snapshot: { name: "当前单乙方" }, ...(partyBVersionId ? { businessPartyVersionId: partyBVersionId } : {}) }],
     bills: current.bills.map((bill, index) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2, rows: index === 0 ? billRows : [] })), paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
   }) });
 }

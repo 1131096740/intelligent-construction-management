@@ -1407,6 +1407,7 @@ export class FileService {
         UNION ALL SELECT 1 FROM "ApprovalFormGenerationClaim" WHERE "uploadedFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "SettlementArchiveFile" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractArchiveFile" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractArchiveEvidenceFile" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ArchiveRecord" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "PdfDocument" WHERE "fileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractFormalFile" WHERE "fileId" = ${fileId}
@@ -2524,6 +2525,18 @@ export class FileService {
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
+    }
+
+    const contractArchiveEvidence = await tx.contractArchiveEvidenceFile.findFirst({ where: { fileId: file.id } });
+    if (contractArchiveEvidence) {
+      const parent = await tx.contractArchiveFile.findUnique({ where: { id: contractArchiveEvidence.archiveFileId } });
+      if (!parent || parent.archiveProtocolVersion !== 2 || parent.status !== "confirmed" || parent.contractVersionId !== contractArchiveEvidence.contractVersionId) {
+        throw new BadRequestException("合同归档原件的绑定信息不完整，暂不能下载");
+      }
+      const version = await tx.contractVersion.findUnique({ where: { id: parent.contractVersionId } });
+      const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+      if (contract && await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES)) return;
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
     }
 
     const contractArchiveFile = await tx.contractArchiveFile.findFirst({

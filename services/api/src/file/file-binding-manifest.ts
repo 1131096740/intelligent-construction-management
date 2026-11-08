@@ -220,6 +220,7 @@ export function classifyFileBinding(
 const CONTRACT_VERSION_FILE_BINDINGS = [
   { table: "ContractDraftAttachment", column: "fileId", versionIdColumn: "contractVersionId" },
   { table: "ContractArchiveFile", column: "fileId", versionIdColumn: "contractVersionId" },
+  { table: "ContractArchiveEvidenceFile", column: "fileId", versionIdColumn: "contractVersionId" },
   { table: "ContractFormalFile", column: "fileId", versionIdColumn: "contractVersionId" },
   { table: "ContractGeneratedDocument", column: "docxFileId", versionIdColumn: "contractVersionId" },
   { table: "ContractGeneratedDocument", column: "pdfFileId", versionIdColumn: "contractVersionId" },

@@ -58,6 +58,15 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
   const registeredVoucherSql = '/* registered_payment_voucher_download */ SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256" FROM "RegisteredPaymentVoucher" voucher LEFT JOIN "RegisteredPaymentFunding" funding ON funding."executionId" = voucher."executionId" LEFT JOIN "PaymentExecution" execution ON execution."id" = voucher."executionId" WHERE voucher."fileId" = ?';
   const proxy = new Proxy(transaction, {
     get(target, property, receiver) {
+      if (property === "contractArchiveEvidenceFile" && Reflect.get(target, property, target) == null) {
+        return { findFirst: async (query: unknown) => {
+          const input = query && typeof query === "object" ? query as { where?: unknown } : null;
+          const where = input?.where && typeof input.where === "object" ? input.where as { fileId?: unknown } : null;
+          if (!input || Object.keys(input).join(",") !== "where" || !where || Object.keys(where).join(",") !== "fileId" || typeof where.fileId !== "string" || !where.fileId.trim()) throw new Error("Unsupported empty legacy contract archive evidence lookup");
+          return null;
+        } };
+      }
+
       if ((property === "projectNecessaryExpenseReserveEntry" || property === "projectFundDisputeEntry") &&
         Reflect.get(target,property,target) == null && Reflect.get(target,"$queryRaw",target) == null) {
         const relation = property === "projectNecessaryExpenseReserveEntry" ? "reserve" : "dispute";

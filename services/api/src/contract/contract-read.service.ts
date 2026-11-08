@@ -185,102 +185,43 @@ export class ContractReadService {
     return toHistoricalContractPaymentBalance(takeover);
   }
 
-  private async contractArchiveFilesForVersion(
-    contractVersionId: string
-  ): Promise<ContractDetailReadModel["archiveFiles"]> {
-    const client = this.prisma as unknown as {
-      contractArchiveFile?: {
-        findMany(args: {
-          where: { contractVersionId: string };
-          orderBy: { createdAt: "desc" };
-        }): Promise<
-          Array<{
-            id: string;
-            fileId: string;
-            status: string;
-            uploadedByUserId: string;
-            confirmedByUserId: string | null;
-            createdAt: Date;
-            confirmedAt: Date | null;
-          }>
-        >;
-      };
-      fileObject?: {
-        findMany(args: { where: { id: { in: string[] } } }): Promise<
-          Array<{
-            id: string;
-            originalName: string;
-            mimeType: string;
-            sizeBytes: number;
-          }>
-        >;
-      };
-      user?: {
-        findMany(args: { where: { id: { in: string[] } }; select: { id: true; name: true } }): Promise<
-          Array<{
-            id: string;
-            name: string;
-          }>
-        >;
-      };
-    };
-
-    if (!client.contractArchiveFile || !client.fileObject) {
-      return [];
-    }
-
-    const archiveFiles = await client.contractArchiveFile.findMany({
-      where: { contractVersionId },
-      orderBy: { createdAt: "desc" }
-    });
-    const fileIds = Array.from(new Set(archiveFiles.map((file) => file.fileId)));
-    if (!fileIds.length) {
-      return [];
-    }
-
-    const userIds = Array.from(
-      new Set(
-        archiveFiles.flatMap((file) => [
-          file.uploadedByUserId,
-          ...(file.confirmedByUserId ? [file.confirmedByUserId] : [])
-        ])
-      )
-    );
-    const [files, users] = await Promise.all([
-      client.fileObject.findMany({ where: { id: { in: fileIds } } }),
-      client.user && userIds.length
-        ? client.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
-        : Promise.resolve([])
-    ]);
-    const fileById = new Map(files.map((file) => [file.id, file]));
-    const userNameById = new Map(users.map((user) => [user.id, user.name]));
-
-    return archiveFiles.flatMap((archiveFile) => {
-      const file = fileById.get(archiveFile.fileId);
-      if (!file) {
-        return [];
+  private async contractArchiveFilesForVersion(contractVersionId: string): Promise<ContractDetailReadModel["archiveFiles"]> {
+    const client = this.prisma;
+    if (!client.contractArchiveFile || !client.fileObject) return [];
+    const parents = await client.contractArchiveFile.findMany({ where: { contractVersionId }, orderBy: { createdAt: "desc" } });
+    const parentIds = parents.filter(parent => parent.archiveProtocolVersion === 2).map(parent => parent.id);
+    if (parentIds.length && !client.contractArchiveEvidenceFile) throw new BadRequestException("新版归档原件读取尚未就绪，请稍后核对");
+    const evidence = parentIds.length ? await client.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: { in: parentIds } }, orderBy: [{ archiveFileId: "asc" }, { displayOrder: "asc" }] }) : [];
+    type Reference = { parent: typeof parents[number]; fileId: string; evidence?: typeof evidence[number] };
+    const refs: Reference[] = [];
+    for (const parent of parents) {
+      if (parent.archiveProtocolVersion === 2) {
+        const children = evidence.filter(child => child.archiveFileId === parent.id).sort((a, b) => a.displayOrder - b.displayOrder);
+        if (parent.fileId !== null || !children.length || children.some((child, index) => child.contractVersionId !== contractVersionId || child.displayOrder !== index)) throw new BadRequestException("归档原件清单不完整，请核对原归档记录");
+        for (const child of children) refs.push({ parent, evidence: child, fileId: child.fileId });
+      } else {
+        if (!parent.fileId) throw new BadRequestException("原归档记录缺少文件，请先核对资料");
+        refs.push({ parent, fileId: parent.fileId });
       }
-      const canDownload = archiveFile.status === "confirmed" || Boolean(archiveFile.confirmedAt);
-
-      return [
-        {
-          archiveRecordId: archiveFile.id,
-          fileId: file.id,
-          fileName: file.originalName,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes,
-          status: archiveFile.status,
-          statusLabel: this.settlementArchiveFileStatusLabel(archiveFile),
-          uploadedByName: userNameById.get(archiveFile.uploadedByUserId) ?? "上传人未读取",
-          createdAt: archiveFile.createdAt.toISOString(),
-          confirmedByName: archiveFile.confirmedByUserId
-            ? (userNameById.get(archiveFile.confirmedByUserId) ?? "确认人未读取")
-            : null,
-          confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
-          canDownload,
-          disabledReason: canDownload ? null : "归档确认后开放下载"
-        }
-      ];
+    }
+    const ids = [...new Set(refs.map(ref => ref.fileId))];
+    const userIds = [...new Set(parents.flatMap(parent => [parent.uploadedByUserId, ...(parent.confirmedByUserId ? [parent.confirmedByUserId] : [])]))];
+    const [files, users] = await Promise.all([client.fileObject.findMany({ where: { id: { in: ids } } }), client.user && userIds.length ? client.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : Promise.resolve([])]);
+    const fileById = new Map(files.map(file => [file.id, file]));
+    const names = new Map(users.map(user => [user.id, user.name]));
+    return refs.flatMap(({ parent, fileId, evidence: child }) => {
+      const file = fileById.get(fileId);
+      if (!file) {
+        if (child) throw new BadRequestException("归档原件资料缺失，请核对原归档记录");
+        return []; // Preserve the old single-file historical read behavior.
+      }
+      if (child && (child.mimeType !== file.mimeType || child.sizeBytes !== file.sizeBytes || child.contentSha256 !== file.contentSha256)) throw new BadRequestException("归档原件身份与冻结记录不一致，请核对原文件");
+      const canDownload = parent.status === "confirmed" || Boolean(parent.confirmedAt);
+      return [{ archiveRecordId: parent.id, ...(child ? { archiveProtocolVersion: 2 as const, evidenceId: child.id, displayOrder: child.displayOrder } : {}),
+        fileId: file.id, fileName: file.originalName, mimeType: file.mimeType, sizeBytes: file.sizeBytes, status: parent.status,
+        statusLabel: child ? "已归档" : this.settlementArchiveFileStatusLabel(parent), uploadedByName: names.get(parent.uploadedByUserId) ?? "上传人未读取", createdAt: parent.createdAt.toISOString(),
+        confirmedByName: parent.confirmedByUserId ? (names.get(parent.confirmedByUserId) ?? "确认人未读取") : null, confirmedAt: parent.confirmedAt?.toISOString() ?? null,
+        canDownload, disabledReason: canDownload ? null : "归档确认后开放下载" }];
     });
   }
 

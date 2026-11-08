@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
 // 与数据库触发器共用同一事务级锁。文件正式绑定频率低，先用单一锁保证
@@ -48,6 +49,7 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   { table: "ContractTakeoverHistoricalPaymentVoucher", columns: ["fileId"] },
   { table: "ContractTakeoverExcessEvidence", columns: ["fileId"] },
   { table: "ContractArchiveFile", columns: ["fileId"] },
+  { table: "ContractArchiveEvidenceFile", columns: ["fileId"] },
   { table: "ContractFormalFile", columns: ["fileId"] },
   { table: "ContractAuthorization", columns: ["fileId"] },
   { table: "Settlement", columns: ["preparerSignatureFileId"] },
@@ -302,4 +304,20 @@ export async function nonReceiptBusinessFileBindingIds(
     `
   );
   return rows.map((row) => row.fileId);
+}
+
+/** Nonblocking variant for callers already holding the complete file set. */
+export async function tryAcquireFileBusinessBindingTransactionLock(
+  tx: Prisma.TransactionClient
+): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ acquired: boolean }>>(Prisma.sql`
+    SELECT pg_try_advisory_xact_lock(
+      ${FILE_BUSINESS_BINDING_LOCK_NAMESPACE}::int,
+      ${FILE_BUSINESS_BINDING_LOCK_KEY}::int
+    ) AS "acquired"
+  `);
+  if (!Array.isArray(rows) || rows.length !== 1 || typeof rows[0]?.acquired !== "boolean") {
+    throw new ServiceUnavailableException("文件绑定锁结果尚未确认，请查询原归档标识，不要重复发起");
+  }
+  return rows[0].acquired;
 }

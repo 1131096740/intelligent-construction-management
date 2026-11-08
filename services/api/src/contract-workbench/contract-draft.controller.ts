@@ -62,6 +62,16 @@ export class ContractDraftController {
     return this.aggregate.getSaveResult(contractVersionId, user.id, idempotencyKey, numericProtocol);
   }
 
+  @Get(":contractVersionId/submission-requests/:idempotencyKey")
+  @RequireProjectRole("contract.create")
+  submissionResult(
+    @Param("contractVersionId") contractVersionId: string,
+    @Param("idempotencyKey", new ParseUUIDPipe({ version: "4" })) idempotencyKey: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.v2Submission.getSubmissionResult(contractVersionId, user.id, idempotencyKey);
+  }
+
   @Get(":contractVersionId/workbench")
   @RequireProjectRole("contract.create")
   workbench(

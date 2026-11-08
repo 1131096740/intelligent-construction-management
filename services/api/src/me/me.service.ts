@@ -1,3 +1,5 @@
+import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "../contract/contract-parallel-duty-access";
+import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { spotPurchaseWorkItems } from "../spot-procurement/spot-purchase-work-items";
 import { fundReviewWorkItems } from "../fund-account/fund-account-work-items";
@@ -628,6 +630,7 @@ export class MeService {
         this.projectIdsFor(scopes, ["spot_procurement.payment.execute"]),
         projectNameById
       )),
+      ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)),
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.seal"]),
         ["approved_pending_seal"],
@@ -1040,6 +1043,7 @@ export class MeService {
     const projectIds = scopes.map((scope) => scope.projectId);
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
+      ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)),
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
         "待同意用章", "核对审批结果后同意经办人线下取章", "warning", undefined, "governed", undefined
@@ -1775,6 +1779,41 @@ export class MeService {
     });
   }
 
+  private async contractV2RoundVersionIds(versionIds: string[]) {
+    if (!versionIds.length) return new Set<string>();
+    const rounds = await this.prisma.approvalInstance.findMany({ where: { businessId: { in: versionIds }, businessType: "contract_version", flowType: "contract.approve", status: "approved" } });
+    return new Set(rounds.filter(round => contractRoundSubmissionSnapshot(round.frozenNodes)?.contractVersionId === round.businessId).map(round => round.businessId));
+  }
+
+  private async contractV2LifecycleWorkItems(userId: string, projectIds: string[], names: ReadonlyMap<string, string>): Promise<WorkItem[]> {
+    if (!projectIds.length) return [];
+    const contracts = await this.prisma.contract.findMany({ where: { projectId: { in: projectIds }, voidedAt: null } });
+    const byId = new Map(contracts.map(contract => [contract.id, contract]));
+    const versions = (await this.prisma.contractVersion.findMany({ where: { contractId: { in: contracts.map(contract => contract.id) }, numericProtocolVersion: 2, status: { in: ["approved_pending_seal", "seal_approved_pending_archive"] } } })).filter(version => version.numericProtocolVersion === 2);
+    if (!versions.length || !(await this.prisma.user.findUnique({ where: { id: userId } }))?.isActive) return [];
+    const result: WorkItem[] = [];
+    for (const version of versions) {
+      const contract = byId.get(version.contractId);
+      if (!contract) continue;
+      const task = await this.prisma.contractSealTask.findFirst({ where: { contractVersionId: version.id, status: { in: ["in_seal", "completed"] } }, orderBy: { createdAt: "desc" } });
+      if (!task) continue;
+      const round = await this.prisma.approvalInstance.findUnique({ where: { id: task.approvalInstanceId } });
+      const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
+      if (!round || round.status !== "approved" || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== version.id || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint || round.applicantUserId !== contract.ownerUserId || task.handlerUserId !== contract.ownerUserId) continue;
+      const seal = version.status === "approved_pending_seal" && task.status === "in_seal";
+      const archive = version.status === "seal_approved_pending_archive" && task.status === "completed" && task.completedAt && task.completedByUserId;
+      if (seal ? !await hasActiveContractGlobalRole(this.prisma, userId, "comprehensive_director") : !archive || task.handlerUserId !== userId || !(await resolveGovernedFinalArchiveAccess(this.prisma, { actorUserId: userId, projectId: contract.projectId, handlerUserId: task.handlerUserId })).canUpload) continue;
+      const code = contract.code ?? contract.temporaryCode;
+      if (!code) continue;
+      result.push({ id: `contract-v2-${seal ? "seal" : "archive"}:${version.id}`, type: "archive", businessType: "contract_version", businessId: version.id,
+        title: contract.name, projectName: names.get(contract.projectId) ?? "所属项目", businessCode: code,
+        amountText: version.amountYuan === null ? "金额待确定" : `${version.amountYuan.toFixed(4)} 元`,
+        currentNode: seal ? "确认已盖章" : "归档双方签章原件", nextAction: seal ? "核对线下盖章完成后确认" : "上传双方签章PDF后直接归档生效",
+        stayedText: this.stayedText(version.updatedAt), targetPath: `/合同管理/${code}`, tone: seal ? "warning" : "primary" });
+    }
+    return result;
+  }
+
   private async contractArchiveWorkItems(
     projectIds: string[],
     statuses: string[],
@@ -1811,12 +1850,13 @@ export class MeService {
           select: {
             id: true,
             contractId: true,
-            amountCents: true,
+            amountCents: true, numericProtocolVersion: true,
             updatedAt: true,
             contractGovernanceVersion: true
           }
         })
       : [];
+    const v2RoundVersionIds = await this.contractV2RoundVersionIds(versions.filter(version => version.numericProtocolVersion === 2).map(version => version.id));
     const governedPendingIds = versions
       .filter((version) =>
         version.contractGovernanceVersion === 1 &&
@@ -1838,6 +1878,7 @@ export class MeService {
     );
 
     return versions.flatMap((version) => {
+      if (v2RoundVersionIds.has(version.id)) return [];
       if (version.contractGovernanceVersion === 1 && statuses.includes("seal_approved_pending_archive")) {
         return [];
       }
@@ -1883,8 +1924,9 @@ export class MeService {
         id: { in: tasks.map((item) => item.contractVersionId) },
         status: { in: ["in_seal", "seal_approved_pending_archive"] }
       },
-      select: { id: true, contractId: true, status: true, amountCents: true, updatedAt: true }
+      select: { id: true, contractId: true, status: true, amountCents: true, numericProtocolVersion: true, updatedAt: true }
     });
+    const v2RoundVersionIds = await this.contractV2RoundVersionIds(versions.filter(version => version.numericProtocolVersion === 2).map(version => version.id));
     const contracts = versions.length ? await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((item) => item.contractId))] }
@@ -1893,6 +1935,7 @@ export class MeService {
     }) : [];
     const contractById = new Map(contracts.map((item) => [item.id, item]));
     return versions.flatMap((version) => {
+      if (v2RoundVersionIds.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;
@@ -1956,8 +1999,9 @@ export class MeService {
         contractGovernanceVersion: 1,
         status: "seal_approved_pending_archive"
       },
-      select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+      select: { id: true, contractId: true, amountCents: true, numericProtocolVersion: true, updatedAt: true }
     });
+    const v2RoundVersionIds = await this.contractV2RoundVersionIds(versions.filter(version => version.numericProtocolVersion === 2).map(version => version.id));
     const contracts = versions.length ? await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((item) => item.contractId))] },
@@ -1967,6 +2011,7 @@ export class MeService {
     }) : [];
     const contractById = new Map(contracts.map((item) => [item.id, item]));
     return versions.flatMap((version) => {
+      if (v2RoundVersionIds.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;

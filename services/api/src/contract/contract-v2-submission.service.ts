@@ -107,6 +107,33 @@ export class ContractV2SubmissionService {
     });
   }
 
+  /** Receipt lookup is a read of the original submission, not today's status. */
+  async getSubmissionResult(contractVersionId: string, actorUserId: string, idempotencyKey: string) {
+    return this.prisma.$transaction(async tx => {
+      const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+      if (!contract || contract.voidedAt || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对本次提交结果");
+      const receipt = await tx.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey } });
+      if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.applicantUserId !== actorUserId || version?.numericProtocolVersion !== 2) return { status: "unknown" as const };
+      const round = await tx.approvalInstance.findUnique({ where: { id: receipt.approvalInstanceId } });
+      const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
+      if (!round || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== contractVersionId || round.applicantUserId !== actorUserId || !snapshot || snapshot.contractVersionId !== contractVersionId || snapshot.applicantUserId !== actorUserId || snapshot.draftRevision !== receipt.expectedRevision || snapshot.blanksReviewed !== true) return { status: "unknown" as const };
+      const intent = { expectedRevision: receipt.expectedRevision, submissionProtocolVersion: 2 as const,
+        documentContentRevision: snapshot.documentContentRevision, documentContentFingerprint: snapshot.documentContentFingerprint,
+        generatedDocumentId: snapshot.generatedDocumentId, sourceSha256: snapshot.sourceSha256, blanksReviewed: true };
+      if (!Number.isInteger(intent.expectedRevision) || intent.expectedRevision < 1 || intent.expectedRevision > 2_147_483_647
+        || !Number.isInteger(intent.documentContentRevision) || typeof intent.documentContentRevision !== "number" || intent.documentContentRevision < 1 || intent.documentContentRevision > 2_147_483_647
+        || typeof intent.documentContentFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(intent.documentContentFingerprint)
+        || typeof intent.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(intent.sourceSha256)
+        || typeof intent.generatedDocumentId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(intent.generatedDocumentId)
+        || typeof snapshot.formalCode !== "string" || !snapshot.formalCode.trim() || receipt.formalCode !== snapshot.formalCode) return { status: "unknown" as const };
+      const requestSha256 = hash(JSON.stringify({ contractVersionId, actorUserId, ...intent }));
+      const result = receipt.responseSnapshot;
+      if (requestSha256 !== receipt.requestSha256 || !result || typeof result !== "object" || Array.isArray(result) || result.contractVersionId !== contractVersionId || result.approvalInstanceId !== round.id || result.status !== "in_approval" || typeof result.formalCode !== "string" || !result.formalCode.trim() || result.formalCode !== receipt.formalCode) return { status: "unknown" as const };
+      return { status: "submitted" as const, result, requestSha256: receipt.requestSha256, intent };
+    });
+  }
+
   async submit(contractVersionId: string, actorUserId: string, input: SubmitContractDraftDto, leaseToken?: string) {
     const requestSha256 = hash(JSON.stringify({ contractVersionId, actorUserId,
       expectedRevision: input.expectedRevision, submissionProtocolVersion: input.submissionProtocolVersion,

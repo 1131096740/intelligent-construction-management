@@ -1,3 +1,4 @@
+import { ContractV2ArchiveService } from "./contract-v2-archive.service";
 import { CONTRACT_VERSION_FILE_READ_AUTHORITY } from "./contract-version-file-read-authority";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { forwardRef, Module } from "@nestjs/common";
@@ -41,6 +42,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   providers: [
     ContractService,
     ContractV2SubmissionService,
+    ContractV2ArchiveService,
     ContractStatusService,
     ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
@@ -53,6 +55,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
   exports: [
     ContractService,
     ContractV2SubmissionService,
+    ContractV2ArchiveService,
     ContractStatusService,
     ContractReadService,
     CONTRACT_VERSION_FILE_READ_AUTHORITY,

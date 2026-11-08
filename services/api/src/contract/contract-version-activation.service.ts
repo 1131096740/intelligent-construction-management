@@ -223,6 +223,20 @@ export class ContractVersionActivationService {
     return { effectiveVersion, supersededVersionId: predecessor?.id ?? null };
   }
 
+  /** New archive authority only. Preserve unknown tax and free-form payment facts. */
+  async activateArchivedV2(tx: Prisma.TransactionClient, versionId: string, actorUserId: string, effectiveAt: Date, archiveId: string) {
+    const archive = await tx.contractArchiveFile.findUnique({ where: { id: archiveId } });
+    const version = await tx.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
+    if (!archive || archive.archiveProtocolVersion !== 2 || archive.contractVersionId !== versionId || archive.uploadedByUserId !== actorUserId || !archive.authoritySha256 || version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.supersedesVersionId || version.status !== "seal_approved_pending_archive") throw new ConflictException("新版合同缺少同一归档权威，不能生效");
+    await tx.contractVersion.update({ where: { id: versionId }, data: { status: "effective", effectiveAt, taxFactsFrozenAt: effectiveAt } });
+    await tx.paymentTermsVersion.updateMany({ where: { contractVersionId: versionId }, data: { status: "effective" } });
+    const contract = await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
+    const project = await tx.project.findUniqueOrThrow({ where: { id: contract.projectId } });
+    // The archive freezes whether this transaction owes a projection. A later
+    // project enablement cannot rewrite a not-applicable archive receipt.
+    if (project.operatingLedgerEffectiveDate) await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: contract.projectId, sourceType: "contract_version", sourceBusinessId: versionId }, actorUserId);
+  }
+
   private async lockContract(tx: Prisma.TransactionClient, contractId: string) {
     if (typeof (tx as { $queryRaw?: unknown }).$queryRaw !== "function") return;
     await tx.$queryRaw(Prisma.sql`
