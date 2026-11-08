@@ -1,3 +1,9 @@
+## 当前接续（2026-11-08，Task16 B10 normal-case源码及固定闭门已整合）
+
+- [~] 作者8de6619d以no-ff合入5584d1ef，final85fd16路径/full与v2/v3两轴0（原final fact/impact P2已实际RED2/GREEN4关闭），完整tree同。原40元/B100→60、actualcompiled case+7fake HTTP/3readonly快照保持。[独立整合](docs/progress/2026-11-08-enterprise-simplification-task16-normal-case-integrated.md)。
+- [~] 中央新完整344/344零skip（428.965s，原命令自然结束、无改预算/重跑）、CLI25/fixture20/APItype/10CJS与2TS静态/19+42pins/diff全0，旧340=306/34fail及CLI常量窄桥保留。Schema202/ACL/七SQL不变；准确merge source-only3486/202/7/1 prepareverify0，后继两文档最终HEAD另封/远端另核，全commit[skip ci]、空checks非CI、旧fe70事故保。
+- [ ] native源码cap[]只说明齐备；固定SOURCE_ONLY在source/输入/artifacts/资源前拒default/冷CLI，options/reference不可开，native/financial false，仅完整ownedfake可SIMULATED。14阶段/#398/真实16-42-44门不变，#394仍实施；无SDK/Nest/真实fetch/HTTP/SQL/PG/资源、close/ready/mainmerge/部署生产，02/A2/privateSDK203不混入。
+
 ## 任务16 B10 normal-case源码（2026-11-08，待双轴）
 
 - [~] 准确5da31981独立source/mock新增实际compiled normalcase wrapper、B9 private one-shot handoff/原password-proof、首case FD/source/build与同registry归属、每await light/full事务外及固定7HTTP/3readonly快照；原4000分=40元/B100→60/经营未启用不改。prepared指针换基线actual RED→GREEN与2分/确认丢失/重放/取消等窄反例留存。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-normal-case-local.md)，首完整340实际306/34fail（CLI旧limits同根因），仅同步一条精确常量后CLI25/installer34/准入7/B2witness1及类型/fixture20/10CJS/2TS静态/pins0；按闭包承接未受影响306，非最终全340重跑，准确16路径/证据另封。
