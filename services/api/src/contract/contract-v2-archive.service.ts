@@ -1,6 +1,6 @@
+import { archiveRequestSha, assertContractV2ArchivePersistentProof } from "./contract-v2-archive-persistent-proof";
 import { tryAcquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
-import { isDeepStrictEqual } from "node:util";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
@@ -9,7 +9,7 @@ import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { AuditService } from "../audit/audit.service";
-import { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
+import { ArchiveSignedContractV2Dto, type ContractArchiveBindingBusyResponse } from "./dto/contract-lifecycle-v2.dto";
 import { contractRoundSubmissionSnapshot } from "./contract-parallel-duty-access";
 import { latestEconomicReviews, excludedAmountYuan, reviewAppliesToVersion } from "../contract-ledger/contract-economic-coverage";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
@@ -17,14 +17,9 @@ import { ContractVersionActivationService } from "./contract-version-activation.
 const sha = (v: Buffer | string) => createHash("sha256").update(v).digest("hex");
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v, (_k, value) => typeof value === "bigint" ? value.toString() : value));
 function object(v: unknown): Record<string, unknown> { return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; }
-function archiveRequestSha(versionId: string, actor: string, input: ArchiveSignedContractV2Dto) {
-  return sha(JSON.stringify({ versionId, actor, archiveProtocolVersion: input.archiveProtocolVersion, archiveSource: input.archiveSource,
-    idempotencyKey: input.idempotencyKey, expectedApprovalInstanceId: input.expectedApprovalInstanceId, expectedSealTaskId: input.expectedSealTaskId,
-    documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint,
-    fileIds: input.fileIds, confirmedMatchingSignedDocument: input.confirmedMatchingSignedDocument }));
-}
-const same = (a: unknown, b: unknown) => isDeepStrictEqual(json(a), json(b));
+
 function conflict(text: string): never { throw new ConflictException(text); }
+class ArchiveBindingBusyBeforeWrite extends Error {}
 
 /** ArchiveProtocol2 is persisted authority. No legacy seal/terminal approval is synthesized. */
 @Injectable()
@@ -76,7 +71,7 @@ export class ContractV2ArchiveService {
         for (const fileId of [...new Set([...input.fileIds, ...refs.map(ref => String(ref.fileId))])].sort()) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE`);
         // Old callers use both G→F and F→G. Never wait for G while holding F/P;
         // after acquiring all F, a failed try must leave this transaction.
-        if (!await tryAcquireFileBusinessBindingTransactionLock(tx)) throw new ConflictException("文件绑定正在办理，请稍后查询原归档标识，不要重复发起");
+        if (!await tryAcquireFileBusinessBindingTransactionLock(tx)) throw new ArchiveBindingBusyBeforeWrite("文件绑定正在办理，请先查询本次归档结果，再手动继续原请求");
 
         for (const ref of refs) {
           const file = await tx.fileObject.findUnique({ where: { id: String(ref.fileId) } });
@@ -127,6 +122,12 @@ export class ContractV2ArchiveService {
     // fail. Read the durable original key; never resend from catch or finally.
     const result = await this.getArchiveResult(versionId, actor, input.idempotencyKey);
     if (result.status === "unknown") {
+      // This exact branch wrote nothing. Claim only this attempt's outcome,
+      // after leaving the failed TX and finishing the fresh original-key read.
+      if (transactionError instanceof ArchiveBindingBusyBeforeWrite) {
+        const response: ContractArchiveBindingBusyResponse = { statusCode: 409, error: "Conflict", code: "CONTRACT_ARCHIVE_BINDING_BUSY", attemptOutcome: "not_applied", message: transactionError.message };
+        throw new ConflictException(response);
+      }
       if (transactionError) throw transactionError;
       throw new ServiceUnavailableException("归档结果尚未确认，请保留本次标识并查询结果，不要重复发起归档");
     }
@@ -147,32 +148,9 @@ export class ContractV2ArchiveService {
     // Version is the persisted link; avoid accepting a stale caller's contract.
     const version = await this.prisma.contractVersion.findUnique({ where: { id: versionId } });
     const owner = version ? await this.prisma.contract.findUnique({ where: { id: version.contractId } }) : null;
-    const files = await this.prisma.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: durable.id }, orderBy: { displayOrder: "asc" } });
-    const frozen = object(durable.authoritySnapshot), consequence = object(frozen.operatingConsequence);
     if (!owner || owner.ownerUserId !== actor || owner.voidedAt) throw new ForbiddenException("当前经办权限已变化，不能读取归档结果");
     const currentAccess = await resolveGovernedFinalArchiveAccess(this.prisma, { actorUserId: actor, projectId: owner.projectId, handlerUserId: durable.uploadedByUserId });
     if (!currentAccess.canUpload) throw new ForbiddenException("当前账号已无本项目合同经办上传权限，不能读取归档结果");
-    if (version?.status !== "effective" || !version.effectiveAt || durable.archiveProtocolVersion !== 2 || !durable.authoritySha256 || !durable.fileManifestSha256 || !same(files.map(f => ({ fileId: f.fileId, displayOrder: f.displayOrder, mimeType: f.mimeType, sizeBytes: f.sizeBytes, contentSha256: f.contentSha256 })), frozen.fileManifest)) throw new ServiceUnavailableException("归档持久结果尚未完整核对，请查询原标识，不要重发");
-    if (consequence.mode === "projection_required") {
-      const fact = await this.prisma.operatingFact.findUnique({ where: { idempotencyKey: `contract_version:${versionId}` } });
-      const impact = await this.prisma.operatingImpactEntry.findUnique({ where: { idempotencyKey: `contract_version:${versionId}:commitment` } });
-      const expected = object(consequence.expectedSource), basis = object(frozen.sourceBasis), locator = object(basis.sourceLocator), money = object(basis.money), subjects = object(basis.subjects), signing = object(subjects.signingIdentity), company = object(signing.company);
-      const persistedSource = object(fact?.sourceSnapshot);
-      const amountMatches = (value: Prisma.Decimal | null | undefined) => expected.amountYuan === null ? value === null : typeof expected.amountYuan === "string" && value !== null && value !== undefined && value.toFixed(4) === expected.amountYuan;
-      const basisDelta = typeof money.commitmentDeltaYuan === "string" ? new Prisma.Decimal(money.commitmentDeltaYuan).abs().toFixed(4) : null;
-      if (!fact || !impact || expected.sourceType !== "contract_version" || expected.sourceBusinessId !== versionId || expected.sourceVersion !== locator.sourceVersion || expected.entryKind !== "original" || expected.numericProtocolVersion !== 2 || expected.amountYuan !== basisDelta || expected.direction !== money.direction || expected.amountState !== (basisDelta === null ? "unknown" : "known") || expected.sourceImpactKey !== "contract_commitment_reference" || expected.impactKind !== "contract_commitment_reference" || expected.factIdempotencyKey !== fact.idempotencyKey || expected.impactIdempotencyKey !== impact.idempotencyKey ||
-        fact.projectId !== owner.projectId || fact.sourceType !== expected.sourceType || fact.sourceBusinessId !== versionId || fact.sourceVersion !== expected.sourceVersion || fact.entryKind !== "original" || fact.factKind !== "downstream_contract" || fact.status !== "confirmed" || fact.numericProtocolVersion !== 2 || fact.amountCents !== null || !amountMatches(fact.amountYuan) || fact.direction !== "neutral" || fact.currencyCode !== "CNY" || fact.debtorSubjectKind !== "participating_company" || fact.debtorSubjectId !== company.companyEntityId || fact.confirmedByUserId !== actor || fact.occurredAt.getTime() !== durable.confirmedAt?.getTime() || fact.confirmedAt.getTime() !== durable.confirmedAt?.getTime() ||
-        persistedSource.archiveProtocolVersion !== 2 || persistedSource.archiveAuthorityId !== durable.id || persistedSource.archiveAuthoritySha256 !== durable.authoritySha256 || persistedSource.sourceBasisSha256 !== frozen.sourceBasisSha256 || !same(persistedSource.sourceBasis, basis) ||
-        impact.factId !== fact.id || impact.projectId !== owner.projectId || impact.sourceType !== fact.sourceType || impact.sourceBusinessId !== versionId || impact.numericProtocolVersion !== 2 || impact.amountCents !== null || !amountMatches(impact.amountYuan) || impact.sourceImpactKey !== expected.sourceImpactKey || impact.impactKind !== expected.impactKind || impact.direction !== expected.direction || impact.subjectRole !== "debtor" || impact.subjectKind !== fact.debtorSubjectKind || impact.subjectId !== fact.debtorSubjectId) throw new ServiceUnavailableException("经营事实的持久结果尚未确认，请查询原标识，不要重发");
-    } else if (consequence.mode !== "not_applicable") throw new ServiceUnavailableException("归档后果预期尚未确认，请查询原标识");
-    if (!durable.approvalInstanceId || !durable.sealTaskId || durable.documentContentRevision === null || !durable.documentContentFingerprint) throw new ServiceUnavailableException("归档请求坐标尚未完整核对，请保留原标识");
-    const intent: ArchiveSignedContractV2Dto = { archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: key,
-      expectedApprovalInstanceId: durable.approvalInstanceId, expectedSealTaskId: durable.sealTaskId,
-      documentContentRevision: durable.documentContentRevision, documentContentFingerprint: durable.documentContentFingerprint,
-      fileIds: files.map(file => file.fileId), confirmedMatchingSignedDocument: true };
-    if (!intent.expectedApprovalInstanceId || !intent.expectedSealTaskId || !Number.isInteger(intent.documentContentRevision) || intent.documentContentRevision < 1 || !/^[a-f0-9]{64}$/.test(intent.documentContentFingerprint) || !files.length || archiveRequestSha(versionId, actor, intent) !== durable.requestSha256) throw new ServiceUnavailableException("归档请求身份尚未完整核对，请保留原标识");
-    const response = object(durable.responseSnapshot);
-    if (response.archiveId !== durable.id || response.contractVersionId !== versionId || response.status !== "effective" || !same(response.fileIds, intent.fileIds)) throw new ServiceUnavailableException("归档回执尚未完整核对，请保留原标识");
-    return { status: "archived" as const, result: durable.responseSnapshot, requestSha256: durable.requestSha256, intent };
+    return assertContractV2ArchivePersistentProof(this.prisma, owner, version, durable);
   }
 }

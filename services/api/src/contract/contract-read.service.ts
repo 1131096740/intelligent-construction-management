@@ -1,3 +1,4 @@
+import { readContractV2LifecycleContext } from "./contract-v2-lifecycle-context";
 import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import { Prisma } from "@prisma/client";
@@ -1463,6 +1464,7 @@ export class ContractReadService {
         ? await loadContractOwnerRisk(this.prisma, contract.projectId)
         : null;
 
+    const v2Lifecycle = await readContractV2LifecycleContext(this.prisma, contract, version, actorUserId, readOnlyHistory || version.id !== versions[0]?.id);
     const status = this.statusView(version.status);
     const availableActions = readOnlyHistory
       ? []
@@ -1505,6 +1507,15 @@ export class ContractReadService {
         withdrawApprovalContext
       }
     );
+
+    if (version.numericProtocolVersion === 2) {
+      const legacySigningKeys = new Set(["approve_seal", "complete_seal", "upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
+      for (let index = availableActions.length - 1; index >= 0; index -= 1) if (legacySigningKeys.has(availableActions[index].key)) availableActions.splice(index, 1);
+      if (v2Lifecycle?.status === "ready" && v2Lifecycle.state !== "archived") {
+        const currentAction = v2Lifecycle.state === "pending_seal" ? v2Lifecycle.sealAction : v2Lifecycle.archiveAction;
+        availableActions.unshift(detailAction({ key: currentAction.key, label: v2Lifecycle.state === "pending_seal" ? "确认已盖章" : "归档双方签章原件", kind: "primary", roleKeys, skipRoleCheck: true, enabled: false, disabledReason: currentAction.reason ?? "新版合同办理入口尚未开放", requiresFile: v2Lifecycle.state === "pending_archive" }));
+      }
+    }
 
     if (
       !readOnlyHistory &&
@@ -1658,6 +1669,7 @@ export class ContractReadService {
       settlementBlockMessage: this.settlementBlockMessage(version.status, contract.contractTypeKey),
       settlementPayment: financialReadModel,
       archiveFiles: contractArchiveFiles,
+      ...(v2Lifecycle ? { v2Lifecycle } : {}),
       formalFiles: signingFacts.formalFiles,
       ...(ownerContractRiskReadModel
         ? { ownerContractRisk: ownerContractRiskReadModel }

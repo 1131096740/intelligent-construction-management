@@ -120,6 +120,7 @@ export class TemplateSyntheticStore {
   archiveBindingLockResult: "available" | "busy" | "missing" = "available";
   private transactionSealTaskLocked = false;
   archiveCommitOutcome: "persist" | "return_without_persisting" = "persist";
+  sealCommitOutcome: "persist" | "return_without_persisting" = "persist";
 
   table(name: string) {
     this.rows[name] ??= [];
@@ -130,7 +131,7 @@ export class TemplateSyntheticStore {
       findFirst: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy)[0] ?? null,
       findMany: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy),
       create: async ({ data }: { data: Row }) => {
-        const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contract" ? { voidedAt: null } : {}), ...(name === "contractEconomicReview" ? { revision: 1, status: "pending_review", confirmedAt: null, contractReviewedById: null, financeReviewedById: null, frozenSources: null } : {}), ...(name === "contractVersion" ? { baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, documentContentRevision: 1, documentContentFingerprint: null, readinessSnapshot: null, companyEntityId: null, companyEntityNameSnapshot: null, estimatedAmountCents: null, estimatedAmountYuan: null, settlementMode: "none", settlementModeConfirmedAt: null, latestDraftPreviewDocumentId: null } : {}), ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
+        const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contract" ? { voidedAt: null } : {}), ...(name === "contractSealTask" ? { approvedByUserId: null, approvedAt: null, completedByUserId: null, completedAt: null, cancelledByUserId: null, cancelledAt: null, cancellationReason: null } : {}), ...(name === "contractEconomicReview" ? { revision: 1, status: "pending_review", confirmedAt: null, contractReviewedById: null, financeReviewedById: null, frozenSources: null } : {}), ...(name === "contractVersion" ? { baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, documentContentRevision: 1, documentContentFingerprint: null, readinessSnapshot: null, companyEntityId: null, companyEntityNameSnapshot: null, estimatedAmountCents: null, estimatedAmountYuan: null, settlementMode: "none", settlementModeConfirmedAt: null, latestDraftPreviewDocumentId: null } : {}), ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
         this.apply(row, data, name);
         this.rows[name].push(row);
         return fixtureClone(row);
@@ -545,6 +546,8 @@ export class TemplateSyntheticStore {
       this.transactionTryDenied = false;
       try {
         const result = await work(this.prisma);
+        if (this.sealCommitOutcome === "return_without_persisting" && (this.rows.contractSealTask ?? []).some(task => task.status === "completed" && !(snapshot.contractSealTask ?? []).some(old => old.id === task.id && old.status === "completed"))) this.rows = snapshot;
+
         if (this.archiveCommitOutcome === "return_without_persisting" && (this.rows.contractArchiveFile?.length ?? 0) > (snapshot.contractArchiveFile?.length ?? 0)) this.rows = snapshot;
         return result;
       }

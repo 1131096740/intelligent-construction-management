@@ -289,13 +289,126 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         const legacy = await fetch(`${await server.app.getUrl()}/contracts/${draft.version.id}/${path}`, { method: "POST", headers: { ...draft.headers, authorization: `Bearer ${director}` }, body: JSON.stringify(body) });
         expect({ status: legacy.status, body: await legacy.json() }).toMatchObject({ status: 409, body: { message: "新版合同请使用当前轮次的盖章确认入口" } });
       }
+      const lifecycleBeforeSealResponse = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } });
+      const lifecycleBeforeSeal = await lifecycleBeforeSealResponse.json();
+      if (contractType === "other") {
+        // Keep the pre-existing legal inline submission/approval positive. Its
+        // not-yet-supported archive source must not advertise a ready context.
+        expect({ status: lifecycleBeforeSealResponse.status, context: lifecycleBeforeSeal.v2Lifecycle }).toMatchObject({ status: 200, context: { status: "unavailable", sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false }, webWriteReleased: false } });
+      } else expect({ status: lifecycleBeforeSealResponse.status, context: lifecycleBeforeSeal.v2Lifecycle }).toMatchObject({ status: 200, context: {
+        status: "ready", protocolVersion: 2, source: "generated_approval", scope: "inside_original", webWriteReleased: false,
+        contractVersionId: draft.version.id, approvalInstanceId: secondRound!.id, sealTaskId: sealTask!.id,
+        documentContentRevision: sealConfirmation.documentContentRevision, documentContentFingerprint: sealConfirmation.documentContentFingerprint,
+        state: "pending_seal", sealAction: { eligible: true, enabled: false }, archiveAction: { eligible: false, enabled: false },
+        sealOutcome: { status: "pending", completedAt: null, completedByUserId: null }, approvalSource: { status: "references_ready" }
+      } });
+      expect(lifecycleBeforeSeal.availableActionKeys).not.toEqual(expect.arrayContaining(["approve_seal"]));
+      if (contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff") {
+        const freshRound = await server.store.prisma.approvalInstance.findUnique({ where: { id: secondRound!.id } });
+        const originalNodes = freshRound!.frozenNodes as Prisma.JsonArray;
+        const firstNode = originalNodes[0] as Prisma.JsonObject;
+        const originalSnapshot = firstNode.submissionSnapshot as Prisma.JsonObject;
+        const selectedDocument = await server.store.prisma.contractGeneratedDocument.findUnique({ where: { id: String(originalSnapshot.generatedDocumentId) } });
+        const originalTrace = selectedDocument!.inputSnapshot as Prisma.JsonObject;
+        const snapshotWithoutSHA = { ...originalSnapshot }; delete snapshotWithoutSHA.sourceSha256;
+        const traceMappingWithoutSHA = { ...(originalTrace.layoutSourceMapping as Prisma.JsonObject) }; delete traceMappingWithoutSHA.sourceSha256;
+        await server.store.prisma.approvalInstance.update({ where: { id: freshRound!.id }, data: { frozenNodes: originalNodes.map((node, index) => index === 0 ? { ...firstNode, submissionSnapshot: snapshotWithoutSHA } : node) } });
+        await server.store.prisma.contractGeneratedDocument.update({ where: { id: selectedDocument!.id }, data: { inputSnapshot: { ...originalTrace, layoutSourceMapping: traceMappingWithoutSHA } } });
+        const absentSource = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } }).then(response => response.json());
+        expect(absentSource.v2Lifecycle).toMatchObject({ status: "unavailable", sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false } });
+        expect(absentSource.v2Lifecycle).not.toHaveProperty("approvalInstanceId");
+        await server.store.prisma.approvalInstance.update({ where: { id: freshRound!.id }, data: { frozenNodes: originalNodes } });
+        await server.store.prisma.contractGeneratedDocument.update({ where: { id: selectedDocument!.id }, data: { inputSnapshot: originalTrace } });
+        const readContextDetail = (token = director) => fetch(`${awaitUrl}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: { ...draft.headers, authorization: `Bearer ${token}` } }).then(response => response.json());
+        const awaitUrl = await server.app.getUrl();
+        const originalFileRefs = originalSnapshot.files as Prisma.JsonArray;
+        const wordFileRef = originalFileRefs.map(raw => raw as Prisma.JsonObject).find(ref => ref.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document")!;
+        const missingHashRefs = originalFileRefs.map(raw => { const ref = raw as Prisma.JsonObject; return ref.fileId === wordFileRef.fileId ? { ...ref, contentSha256: null } : ref; });
+        await server.store.prisma.approvalInstance.update({ where: { id: freshRound!.id }, data: { frozenNodes: originalNodes.map((node, index) => index === 0 ? { ...firstNode, submissionSnapshot: { ...originalSnapshot, files: missingHashRefs } } : node) } });
+        await server.store.prisma.fileObject.update({ where: { id: String(wordFileRef.fileId) }, data: { contentSha256: null } });
+        expect((await readContextDetail()).v2Lifecycle).toMatchObject({ status: "unavailable", sealAction: { eligible: false, enabled: false } });
+        await server.store.prisma.approvalInstance.update({ where: { id: freshRound!.id }, data: { frozenNodes: originalNodes } });
+        await server.store.prisma.fileObject.update({ where: { id: String(wordFileRef.fileId) }, data: { contentSha256: wordFileRef.contentSha256 } });
+        const originalTask = await server.store.prisma.contractSealTask.findUnique({ where: { id: sealTask!.id } });
+        await server.store.prisma.contractSealTask.update({ where: { id: sealTask!.id }, data: { approvalInstanceId: rounds[0].id } });
+        const staleRoundContext = await readContextDetail();
+        expect(staleRoundContext.v2Lifecycle).toMatchObject({ status: "unavailable", webWriteReleased: false });
+        expect(staleRoundContext.availableActions.some((action: { key: string }) => ["approve_seal", "complete_seal", "upload_archive", "confirm_archive", "upload_final_contract", "confirm_final_contract"].includes(action.key))).toBe(false);
+        await server.store.prisma.contractSealTask.update({ where: { id: sealTask!.id }, data: { approvalInstanceId: originalTask!.approvalInstanceId } });
+        await server.store.prisma.contractGeneratedDocument.update({ where: { id: selectedDocument!.id }, data: { pdfFileId: selectedDocument!.docxFileId } });
+        expect((await readContextDetail()).v2Lifecycle.status).toBe("unavailable");
+        await server.store.prisma.contractGeneratedDocument.update({ where: { id: selectedDocument!.id }, data: { pdfFileId: selectedDocument!.pdfFileId } });
+        const controlledCurrentParty = await server.store.prisma.contractPartySnapshot.findFirst({ where: { contractVersionId: draft.version.id, roleKey: "party_b" }, orderBy: { displayOrder: "asc" } });
+        await server.store.prisma.contractPartySnapshot.update({ where: { id: controlledCurrentParty!.id }, data: { businessPartyVersionId: randomUUID() } });
+        expect((await readContextDetail()).v2Lifecycle.status).toBe("unavailable");
+        await server.store.prisma.contractPartySnapshot.update({ where: { id: controlledCurrentParty!.id }, data: { businessPartyVersionId: controlledCurrentParty!.businessPartyVersionId } });
+        const originalVersion = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+        await server.store.prisma.contractVersion.update({ where: { id: draft.version.id }, data: { documentContentFingerprint: "e".repeat(64) } });
+        expect((await readContextDetail()).v2Lifecycle.status).toBe("unavailable");
+        await server.store.prisma.contractVersion.update({ where: { id: draft.version.id }, data: { documentContentFingerprint: originalVersion!.documentContentFingerprint } });
+        await server.store.prisma.contractVersion.update({ where: { id: draft.version.id }, data: { signingSubjectType: "affiliate" } });
+        expect((await readContextDetail()).v2Lifecycle.status).toBe("unavailable");
+        await server.store.prisma.contractVersion.update({ where: { id: draft.version.id }, data: { signingSubjectType: originalVersion!.signingSubjectType } });
+        const technicalContext = await readContextDetail(technical);
+        expect(technicalContext.v2Lifecycle).toMatchObject({ status: "ready", sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false } });
+        const newDraftVersion = await server.store.prisma.contractVersion.create({ data: { contractId: draft.contract.id, numericProtocolVersion: 2, versionNo: 2, changeType: "change", status: "draft", signingSubjectType: "draft_unconfirmed", amountCents: 0n, amountYuan: null } });
+        const historyContext = await readContextDetail();
+        expect(historyContext.v2Lifecycle).toMatchObject({ status: "unavailable", reason: expect.stringContaining("历史版本"), webWriteReleased: false });
+        await server.store.prisma.contractVersion.delete({ where: { id: newDraftVersion.id } });
+        const legacyContract = await server.store.prisma.contract.create({ data: { projectId: draft.projectId, ownerUserId: "staff", name: "原V1流程只读控制", contractTypeKey: "material_purchase", counterparty: "原供应单位", code: "HT-LEGACY-READ", temporaryCode: "LEGACY-READ" } });
+        const legacyVersion = await server.store.prisma.contractVersion.create({ data: { contractId: legacyContract.id, numericProtocolVersion: 1, amountCents: 10000n, amountYuan: null, versionNo: 1, changeType: "original", status: "approved_pending_seal", contractGovernanceVersion: null, signingSubjectType: "our_company", companyEntityVersionId: originalVersion!.companyEntityVersionId, companyEntityIdSnapshot: originalVersion!.companyEntityIdSnapshot, firstSubmittedAt: new Date() } });
+        await server.store.prisma.paymentTermsVersion.create({ data: { contractId: legacyContract.id, contractVersionId: legacyVersion.id, versionNo: 1, status: "active" } });
+        const legacyDetail = await fetch(`${awaitUrl}/contracts/${legacyContract.id}?versionId=${legacyVersion.id}`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } });
+        const legacyBody = await legacyDetail.json();
+        expect({ status: legacyDetail.status, actions: legacyBody.availableActionKeys }).toMatchObject({ status: 200, actions: expect.arrayContaining(["approve_seal"]) });
+        expect(legacyBody).not.toHaveProperty("v2Lifecycle");
+
+      }
+
       const beforeSealTodo = await fetch(`${await server.app.getUrl()}/me/work-items`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } });
       const sealTodo = await beforeSealTodo.json();
       expect({ status: beforeSealTodo.status, pending: sealTodo.queues?.pending }).toMatchObject({ status: 200, pending: expect.arrayContaining([expect.objectContaining({ businessId: draft.version.id, currentNode: "确认已盖章", nextAction: "核对线下盖章完成后确认" })]) });
+      if (contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff") {
+        server.store.sealCommitOutcome = "return_without_persisting";
+        const resolvedButNotPersistedSeal = await confirmSeal();
+        expect(resolvedButNotPersistedSeal.status).toBe(201);
+        const persistedSealRead = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } }).then(response => response.json());
+        expect(persistedSealRead.v2Lifecycle).toMatchObject({ status: "ready", state: "pending_seal", sealOutcome: { status: "pending", completedAt: null, completedByUserId: null } });
+        expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal.complete" } })).toBe(0);
+        server.store.sealCommitOutcome = "persist";
+        // The next POST is an explicit operator continuation of the same tuple,
+        // not an automatic retry inferred from the unknown persistent outcome.
+      }
       const sealed = await fetch(`${await server.app.getUrl()}/contracts/${draft.version.id}/seal-confirmation`, { method: "POST", headers: { ...draft.headers, authorization: `Bearer ${director}` }, body: JSON.stringify(sealConfirmation) });
       const sealResult = await sealed.json();
       expect({ status: sealed.status, body: sealResult }).toMatchObject({ status: 201, body: { status: "seal_approved_pending_archive" } });
+      const completedSealDetail = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: draft.headers }).then(response => response.json());
+      if (contractType === "other") expect(completedSealDetail.v2Lifecycle.status).toBe("unavailable");
+      else expect(completedSealDetail.v2Lifecycle).toMatchObject({ status: "ready", state: "pending_archive", contractVersionId: draft.version.id, approvalInstanceId: secondRound!.id, sealTaskId: sealTask!.id, webWriteReleased: false,
+        sealOutcome: { status: "completed", completedByUserId: "director", completedAt: expect.any(String) }, sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: true, enabled: false } });
+
+      if (contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff") {
+        const detailUrl = `${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`;
+        const readCurrent = () => fetch(detailUrl, { headers: draft.headers }).then(response => response.json());
+        await server.store.prisma.project.update({ where: { id: draft.projectId }, data: { isActive: false } });
+        expect((await readCurrent()).v2Lifecycle).toMatchObject({ status: "ready", state: "pending_archive", archiveAction: { eligible: false, enabled: false, reason: "项目当前不可办理归档" } });
+        await server.store.prisma.project.update({ where: { id: draft.projectId }, data: { isActive: true } });
+        const originalParticipant = await server.store.prisma.projectParticipatingCompany.findFirst({ where: { projectId: draft.projectId } });
+        const originalEnd = originalParticipant!.endedAt;
+        await server.store.prisma.projectParticipatingCompany.update({ where: { id: originalParticipant!.id }, data: { endedAt: new Date("2000-01-01T00:00:00.000Z") } });
+        expect((await readCurrent()).v2Lifecycle).toMatchObject({ status: "ready", state: "pending_archive", archiveAction: { eligible: false, enabled: false, reason: "签约公司在当前归档日期的项目参与资格已变化" } });
+        await server.store.prisma.projectParticipatingCompany.update({ where: { id: originalParticipant!.id }, data: { endedAt: originalEnd } });
+        expect((await readCurrent()).v2Lifecycle.archiveAction).toMatchObject({ eligible: true, enabled: false });
+      }
+
       expect(await (await confirmSeal()).json()).toEqual(sealResult);
+      if (contractType === "material_purchase" && !operatingEnabled && handlerRole === "project_staff") {
+        await server.store.prisma.userPosition.create({ data: { userId: "employee", positionId: "comprehensive_director", projectId: null } });
+        expect((await confirmSeal({}, employee)).status).toBe(409);
+        const anotherActorDetail = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: { ...draft.headers, authorization: `Bearer ${employee}` } }).then(response => response.json());
+        expect(anotherActorDetail.v2Lifecycle).toMatchObject({ actorUserId: "employee", sealOutcome: { status: "completed", completedByUserId: "director" }, sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false } });
+      }
+
       expect((await confirmSeal({ expectedSealTaskId: randomUUID() })).status).toBe(409);
       expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal.complete" } })).toBe(1);
       expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.archive_task.create" } })).toBe(1);
@@ -351,6 +464,20 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
           await server.store.prisma.projectMember.create({ data: staffMembership });
         }
+        if (!operatingEnabled && handlerRole === "project_staff") {
+          const currentRound = await server.store.prisma.approvalInstance.findUnique({ where: { id: secondRound!.id } });
+          const nodes = currentRound!.frozenNodes as Prisma.JsonArray;
+          const first = nodes[0] as Prisma.JsonObject;
+          const source = first.submissionSnapshot as Prisma.JsonObject;
+          await server.store.prisma.approvalInstance.update({ where: { id: secondRound!.id }, data: { frozenNodes: nodes.map((node, index) => index === 0 ? { ...first, submissionSnapshot: { ...source, files: [...source.files as Prisma.JsonArray].reverse() } } : node) } });
+          const reversedDetail = await fetch(`${serverUrl}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: draft.headers }).then(response => response.json());
+          expect(reversedDetail.v2Lifecycle).toMatchObject({ status: "unavailable", archiveAction: { eligible: false, enabled: false } });
+          expect((await sendArchive()).status).toBe(409);
+          expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+          expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.archive.complete" } })).toBe(0);
+          await server.store.prisma.approvalInstance.update({ where: { id: secondRound!.id }, data: { frozenNodes: nodes } });
+          expect((await fetch(`${serverUrl}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: draft.headers }).then(response => response.json())).v2Lifecycle).toMatchObject({ status: "ready", state: "pending_archive", archiveAction: { eligible: true, enabled: false } });
+        }
         const archiveDocumentId = String(((secondRound!.frozenNodes as Array<Record<string, unknown>>)[0].submissionSnapshot as Record<string, unknown>).generatedDocumentId);
         const archiveDocument = await server.store.prisma.contractGeneratedDocument.findUnique({ where: { id: archiveDocumentId } });
         const originalTrace = archiveDocument!.inputSnapshot as Prisma.JsonObject;
@@ -364,12 +491,21 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         for (const unavailable of ["busy", "missing"] as const) {
           server.store.archiveBindingLockResult = unavailable;
           const locked = await sendArchive();
-          expect({ status: locked.status, body: await locked.json() }).toMatchObject({ status: unavailable === "busy" ? 409 : 503, body: { message: expect.stringContaining(unavailable === "busy" ? "文件绑定正在办理" : "文件绑定锁结果尚未确认") } });
+          const lockedBody = await locked.json();
+          expect({ status: locked.status, body: lockedBody }).toMatchObject({ status: unavailable === "busy" ? 409 : 503, body: { message: expect.stringContaining(unavailable === "busy" ? "文件绑定正在办理" : "文件绑定锁结果尚未确认") } });
+          if (unavailable === "busy") expect(lockedBody).toMatchObject({ code: "CONTRACT_ARCHIVE_BINDING_BUSY", attemptOutcome: "not_applied" });
+          else { expect(lockedBody).not.toHaveProperty("attemptOutcome"); expect(lockedBody).not.toHaveProperty("code"); }
+
           expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
           expect(await server.store.prisma.contractArchiveEvidenceFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
           expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status).toBe("seal_approved_pending_archive");
           expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.archive.complete" } })).toBe(0);
           expect(await (await readArchiveResult()).json()).toEqual({ status: "unknown" });
+          const freshRecoveryContext = await fetch(`${serverUrl}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: draft.headers }).then(response => response.json());
+          expect(freshRecoveryContext.v2Lifecycle).toMatchObject({ status: "ready", state: "pending_archive", actorUserId: "staff", contractVersionId: draft.version.id,
+            approvalInstanceId: archiveInput.expectedApprovalInstanceId, sealTaskId: archiveInput.expectedSealTaskId, documentContentRevision: archiveInput.documentContentRevision, documentContentFingerprint: archiveInput.documentContentFingerprint,
+            archiveAction: { eligible: true, enabled: false }, webWriteReleased: false });
+
         }
         server.store.archiveBindingLockResult = "available";
         if (!operatingEnabled) {
@@ -379,12 +515,28 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
           expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.archive.complete" } })).toBe(0);
           expect(await (await readArchiveResult()).json()).toEqual({ status: "unknown" });
+          const freshRecoveryContext = await fetch(`${serverUrl}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: draft.headers }).then(response => response.json());
+          expect(freshRecoveryContext.v2Lifecycle).toMatchObject({ status: "ready", state: "pending_archive", actorUserId: "staff", contractVersionId: draft.version.id,
+            approvalInstanceId: archiveInput.expectedApprovalInstanceId, sealTaskId: archiveInput.expectedSealTaskId, documentContentRevision: archiveInput.documentContentRevision, documentContentFingerprint: archiveInput.documentContentFingerprint,
+            archiveAction: { eligible: true, enabled: false }, webWriteReleased: false });
+
           server.store.archiveCommitOutcome = "persist";
           // This explicit next POST models the operator's new deliberate action;
           // neither the archive service nor its GET re-sends automatically.
         }
+        const originalIntentBytes = JSON.stringify(archiveInput);
         const archive = await sendArchive();
-        const archiveResult = await archive.json();
+        let archiveResult;
+        if (operatingEnabled && sourceAmount === "100.0054") {
+          // The successful HTTP response body is deliberately discarded, like
+          // a response lost at the transport boundary. Only the original-key
+          // durable GET supplies the outcome used by the consumer.
+          const recoveredResponse = await readArchiveResult();
+          const recovered = await recoveredResponse.json();
+          expect({ status: recoveredResponse.status, body: recovered }).toMatchObject({ status: 200, body: { status: "archived", intent: archiveInput } });
+          archiveResult = recovered.result;
+        } else archiveResult = await archive.json();
+        expect(JSON.stringify(archiveInput)).toBe(originalIntentBytes);
         expect({ status: archive.status, body: archiveResult }).toMatchObject({ status: 201, body: { contractVersionId: draft.version.id, status: "effective" } });
         const archiveReceipt = await readArchiveResult();
         expect({ status: archiveReceipt.status, body: await archiveReceipt.json() }).toMatchObject({ status: 200, body: { status: "archived", result: archiveResult, requestSha256: expect.any(String), intent: archiveInput } });
@@ -399,6 +551,8 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         expect(doneTodo.queues.pending.filter((item: { businessId: string; type: string }) => item.businessId === draft.version.id && item.type === "archive")).toEqual([]);
         const detailResponse = await fetch(`${serverUrl}/contracts/${draft.contract.id}`, { headers: draft.headers });
         const detail = await detailResponse.json();
+        expect(detail.v2Lifecycle).toMatchObject({ status: "ready", state: "archived", webWriteReleased: false, sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false } });
+        expect(detail.availableActions.some((action: { key: string }) => ["approve_seal", "complete_seal", "upload_archive", "confirm_archive", "upload_final_contract", "confirm_final_contract"].includes(action.key))).toBe(false);
         expect({ status: detailResponse.status, files: detail.archiveFiles }).toMatchObject({ status: 200, files: [
           { archiveRecordId: archiveResult.archiveId, archiveProtocolVersion: 2, displayOrder: 0, fileId: signedFile.id },
           { archiveRecordId: archiveResult.archiveId, archiveProtocolVersion: 2, displayOrder: 1, fileId: appendixFile.id }
@@ -410,6 +564,34 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           { archiveRecordId: archiveResult.archiveId, archiveProtocolVersion: 2, displayOrder: 1, fileId: appendixFile.id, fileSource: "合成双方签章附件.pdf", documentNo: result.formalCode }
         ], summary: { total: 2, contractArchives: 2 } } });
         const financeToken = await loginTemplateActor(server, "finance");
+        const readDetailContext = async (tokenHeaders = draft.headers) => {
+          const response = await fetch(`${serverUrl}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: tokenHeaders });
+          const body = await response.json();
+          return { status: response.status, context: body.v2Lifecycle, message: body.message };
+        };
+        const financeHeaders = { ...draft.headers, authorization: `Bearer ${financeToken}` };
+        expect(await readDetailContext(financeHeaders)).toMatchObject({ status: 200, context: { status: "ready", state: "archived", actorUserId: "finance" } });
+        expect((await fetch(`${serverUrl}/contracts/${draft.version.id}/archive-requests/${archiveInput.idempotencyKey}`, { headers: financeHeaders })).status).toBe(403);
+        const assertIncompleteDetail = async (detailStatus: 200 | 400 = 200) => {
+          const auditsBefore = await server.store.prisma.auditLog.count();
+          expect((await readArchiveResult()).status).toBe(503);
+          const expected = detailStatus === 400 ? { status: 400, context: undefined, message: "归档原件清单不完整，请核对原归档记录" } : { status: 200, context: { status: "unavailable", archiveAction: { eligible: false, enabled: false } } };
+          expect(await readDetailContext()).toMatchObject(expected);
+          expect(await readDetailContext(financeHeaders)).toMatchObject(expected);
+          expect(await server.store.prisma.auditLog.count()).toBe(auditsBefore);
+        };
+        if (!operatingEnabled && handlerRole === "project_staff") {
+          const authority = await server.store.prisma.contractArchiveFile.findUnique({ where: { id: archiveResult.archiveId } });
+          const frozen = authority!.authoritySnapshot as Prisma.JsonObject;
+          const originalEvidence = await server.store.prisma.contractArchiveEvidenceFile.findFirst({ where: { archiveFileId: authority!.id }, orderBy: { displayOrder: "asc" } });
+          await server.store.prisma.contractArchiveEvidenceFile.delete({ where: { id: originalEvidence!.id } });
+          await assertIncompleteDetail(400);
+          await server.store.prisma.contractArchiveEvidenceFile.create({ data: originalEvidence! });
+          await server.store.prisma.contractArchiveFile.update({ where: { id: authority!.id }, data: { authoritySnapshot: { ...frozen, operatingConsequence: { ...(frozen.operatingConsequence as Prisma.JsonObject), mode: "missing_mode" } } } });
+          await assertIncompleteDetail();
+          await server.store.prisma.contractArchiveFile.update({ where: { id: authority!.id }, data: { authoritySnapshot: frozen } });
+          expect(await readDetailContext()).toMatchObject({ status: 200, context: { status: "ready", state: "archived" } });
+        }
         for (const [file, bytes] of [[signedFile, signedBytes], [appendixFile, appendixBytes]] as const) {
           const ticketResponse = await fetch(`${serverUrl}/files/${file.id}/download-ticket`, { method: "POST", headers: { ...draft.headers, authorization: `Bearer ${financeToken}` }, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对合同归档原件" }) });
           const ticket = await ticketResponse.json();
@@ -433,6 +615,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(await server.store.prisma.operatingFact.count({ where: { projectId: draft.projectId } })).toBe(1);
           expect(await (await readArchiveResult()).json()).toMatchObject({ status: "archived", result: archiveResult });
           expect((await server.store.prisma.contractArchiveFile.findUnique({ where: { id: archiveResult.archiveId } }))!.authoritySnapshot).toEqual(frozenNotApplicable!.authoritySnapshot);
+          expect(await readDetailContext()).toMatchObject({ status: 200, context: { status: "ready", state: "archived" } });
         }
         if (operatingEnabled) {
           const view = await server.app.get(OperatingProjectionService).getProjectView("finance", { projectId: draft.projectId, numericProtocolVersion: 2 });
@@ -450,13 +633,18 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(await server.store.prisma.operatingFact.count({ where: { projectId: draft.projectId } })).toBe(1);
           expect(await server.store.prisma.operatingImpactEntry.count({ where: { projectId: draft.projectId } })).toBe(1);
           await server.store.prisma.operatingFact.delete({ where: { id: fact!.id } });
-          expect((await readArchiveResult()).status).toBe(503);
+          await assertIncompleteDetail();
           await server.store.prisma.operatingFact.create({ data: fact! });
+          await server.store.prisma.operatingImpactEntry.delete({ where: { id: impact!.id } });
+          await assertIncompleteDetail();
+          await server.store.prisma.operatingImpactEntry.create({ data: impact! });
           await server.store.prisma.operatingImpactEntry.update({ where: { id: impact!.id }, data: { amountYuan: new Prisma.Decimal("0.0001") } });
           const inconsistent = await readArchiveResult();
           expect({ status: inconsistent.status, body: await inconsistent.json() }).toMatchObject({ status: 503, body: { message: expect.stringContaining("经营事实") } });
+          expect(await readDetailContext()).toMatchObject({ status: 200, context: { status: "unavailable" } });
           await server.store.prisma.operatingImpactEntry.update({ where: { id: impact!.id }, data: { amountYuan: impact!.amountYuan } });
           expect((await readArchiveResult()).status).toBe(200);
+          expect(await readDetailContext(financeHeaders)).toMatchObject({ status: 200, context: { status: "ready", state: "archived" } });
           if (archiveInstant === "2026-11-08T23:30:00+08:00") {
             jest.setSystemTime(new Date("2026-11-09T00:30:00+08:00"));
             draft.headers.authorization = `Bearer ${await loginTemplateActor(server, "staff")}`;

@@ -1,3 +1,16 @@
+## Task12 lifecycle consumer A1 源审修复（2026-11-09，HOLD待增量双轴）
+
+- [~] A0 Standards0/Spec2P2：原公开RED后最小对齐Word/PDF冻结顺序；原required缺Fact导致详情仍archived的RED后抽取同一只读持久proof供详情/原keyGET复用，作者/财务各自原授权不混用。缺Evidence保既有详情400，缺Fact/Impact/后果模式或金额漂移明确不可认完成；not_applicable沿原冻结模式，不按今日启用重判或修复。[本片收据](docs/progress/2026-11-09-task12-lifecycle-consumer-contract-local.md)。
+- [~] 新A1同50完整实际2120通过/2121总数、1原PGskip，API type/lint/diff0；十输入门前后字节mode同，之后只两MD。新增唯一合同专用proof helper，无新DI/Schema/SQL/SDK/sharedDTO或dist改动；四保护树及全部204迁移/私有SDK守恒。原A0九源/195artifacts/类型桥和全部首败保持；提取后TS6133保为本实现编译/类型失败（HTTP未运行），与实际HTTP RED及cwd工具错误分列。完整十源与A0六delta另冻待双轴。
+- [ ] 仍source/mock，不是PG/ACL/RLS/锁/COMMIT或资源证明；cap关闭/#394未完，无commit/push/中央合入/部署生产，Web/FaceB/完整5×3/Task16新库存桥留后继。
+
+## Task12 生命周期 consumer 合同源码候选（2026-11-09，HOLD待双轴）
+
+- [~] 独立准确9a4基点新增详情v2Lifecycle ready/unavailable，真实V/R/T/R_F/受控相对方/WordPDF metadata对应；当前业务eligible与未开放Web写明确区分，历史/inline等未支持来源不落旧盖章归档action。pending_archive按真实原参与公司北京DATE和项目active投影，V1保原。[本片收据](docs/progress/2026-11-09-task12-lifecycle-consumer-contract-local.md)。
+- [~] 盖章按持久task核真实完成者；归档只有精确tryG=false且TX退出/fresh原keyunknown才有busy机器码与本次not_applied。UNKNOWN允许用户fresh核对后手动同actor/V/key/完整payload继续；无自动补发/换key，不修改CON10提交恢复合同。
+- [~] 两处DTO类型修正前的精确七输入50suite实际2120通过/2121总数、1原PGskip；随后仅enabled/webWriteReleased接口false→boolean，运行false与其它业务/测试源同字节，以类型桥承接原整集，不冒新sourceSet重跑。补API/shared type/lint各0及公开context窄回归1通过/12未选。自有shared纯TS build68仅一DTS合法变化，JS同；四受保护树源码/依赖守恒，Schema3f/204SQLc579/全部204迁移和私有SDK保持，无生成/实例化。
+- [ ] 完整九路径freeze待双轴，仍source/mock，无PG/SQL/ACL/RLS/锁/COMMIT或资源资格。Web/FaceB/direct/完整5×3/Task16新库存桥未闭，cap关闭/#394不关闭；未commit/push/合中央/部署生产，旧失败与freeze全保。
+
 ## Task12 面A business A3 源审修复（2026-11-09，HOLD待增量双轴）
 
 - [~] 原完整A2两轴实质问题为**2P1（Word/PDF对象形状、Project DATE）+1P2（文件锁次序）**，均保原报告/28源/2120+1及首败。原公开POST有限持久oracle先实际拒旧数组/ISO日期，再最小producer改完整word/pdf对象与Date-only/null；真实归档instant不改。[当前收据](docs/progress/2026-11-08-task12-archive-authority-source.md)。

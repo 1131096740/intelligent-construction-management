@@ -48,3 +48,12 @@ export class ArchiveSignedContractV2Dto {
   @Equals(true, { message: "请核对原件与本轮合同内容一致" })
   confirmedMatchingSignedDocument!: true;
 }
+
+/** Only the exact pre-DML busy branch, after TX exit and a fresh unknown key. */
+export interface ContractArchiveBindingBusyResponse {
+  statusCode: 409;
+  error: "Conflict";
+  code: "CONTRACT_ARCHIVE_BINDING_BUSY";
+  attemptOutcome: "not_applied";
+  message: string;
+}
