@@ -1,3 +1,8 @@
+## 当前接续（2026-11-08，Task16 B8 factory源码首片已整合）
+
+- [~] 作者f35c0463合入原integration 668c5050，完整tree一致；7b074六路径/efad四源码双轴P2及final执行桥0。中央独立274模拟（255+19）、CLI25、fixture20、API类型/定向TS与3CJS静态、19/42 pins及准确clean source-only prepare/verify通过，3466/202/7/1。[整合收据](docs/progress/2026-11-08-enterprise-simplification-task16-application-factory-integrated.md)。
+- [ ] 仅actual factory/TS metadata加自有fake，非真实Nest DI/SDK/guard/监听/HTTP/PG/SQL/资源；default App/seed/case三缺与qualified loader/B7live/env桥仍未完成。#398/17-24/16-42-44、13/45及Task10/12门不变。所有新提交/最终HEAD[skip ci]，准确最终封包/远端另记，空checks非CI，旧fe70事故保留；无main/close/ready/部署生产。
+
 ## 任务16 B8 首纵向factory源码（2026-11-08，v2待增量复审）
 
 - [~] 从准确c77ae5f独立准备专用module/实际factory及原run两函数fake Nest接缝，override-before-compile/同runtime/配置/loopback-address/partial handle与首败清理。首271被两轴同1项外层getter/Proxy资格P2拒绝，已原publicrun两实际RED→GREEN及单次快照正控集中修；当前原255＋19＝274模拟、CLI25/fixture20/API类型与定向静态过。[本地收据](docs/progress/2026-11-08-enterprise-simplification-task16-application-factory-local.md)。原bd7/9715冻结/前像/失败均保留，新六路径v2待双轴增量，不挪旧pass覆盖新源码。
