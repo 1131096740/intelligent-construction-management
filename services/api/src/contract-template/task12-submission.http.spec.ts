@@ -129,6 +129,8 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       let driftOnContinuity = false;
       let successorReads = 0;
       let completionInstalled = false;
+      let archiveTransitionInstalled = false;
+      let archiveTransitionExact = true;
       let completionExact = true;
       let completionDrifts = false;
       let completionReads = 0;
@@ -146,7 +148,16 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
             successorOid: "42007", constraintOid: "42008", predecessorSha256: "2".repeat(64),
             constraintSha256: (driftOnContinuity && successorReads === 2 ? "4" : "3").repeat(64), exactSuccessor: true,
             completionOid: completionInstalled ? "43001" : null, completionReadable: completionInstalled,
+            archiveTransitionOid: archiveTransitionInstalled ? "44001" : null,
             sealHandoffEnabled: sealHandoffDrifts && successorReads === 2 ? false : sealHandoffEnabled }] : [];
+        }
+        if (sql.startsWith("/* contract_generated_upward_archive_transition_catalog_v1 */")) {
+          const { databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId } = oldProfile;
+          return [{ databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId,
+            transitionOid: "44001", submissionOid: "42007", completionOid: "43001", guardOid: "43003",
+            priorConstraintOid: "43002", priorConstraintSha256: "6".repeat(64),
+            constraintOid: "44002", constraintSha256: "8".repeat(64), completionSha256: "9".repeat(64),
+            exactTransition: archiveTransitionExact }];
         }
         if (sql.startsWith("/* contract_generated_upward_seal_completion_catalog_v1 */")) {
           completionReads++;
@@ -155,7 +166,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
             submissionOid: "42007", completionOid: "43001", predecessorConstraintOid: "42008", constraintOid: "43002",
             predecessorSha256: "5".repeat(64), constraintSha256: (completionDrifts && completionReads === 2 ? "7" : "6").repeat(64),
             guardOid: "43003", versionTriggerOid: "43004", roundTriggerOid: "43005", taskTriggerOid: "43006", completionTriggerOid: "43007",
-            exactCompletion: completionExact }] : [];
+            exactCompletion: completionExact && (!archiveTransitionInstalled || query.values.includes("44002")) }] : [];
         }
         return native(raw, ...parameters);
       };
@@ -274,6 +285,12 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const secondInput = { ...input, idempotencyKey: randomUUID(), expectedRevision: revised.draftRevision, documentContentRevision: revised.documentContentRevision,
         documentContentFingerprint: revised.documentContentFingerprint, generatedDocumentId: revisedQueued.generationId };
       completionInstalled = true;
+      archiveTransitionInstalled = true;
+      archiveTransitionExact = false;
+      expect((await submit(secondInput)).status).toBe(503);
+      expect(await (await readReceipt(secondInput.idempotencyKey)).json()).toEqual({ status: "unknown" });
+      expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status).toBe("draft");
+      archiveTransitionExact = true;
       const second = await submit(secondInput);
       const secondResult = await second.json();
       expect({ status: second.status, body: secondResult }).toMatchObject({ status: 201, body: { status: "in_approval", formalCode: result.formalCode } });
