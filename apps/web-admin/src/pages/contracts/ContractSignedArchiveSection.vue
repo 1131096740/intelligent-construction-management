@@ -2,7 +2,8 @@
   <section class="contract-v2-signing" aria-label="盖章与签章归档">
     <h2>盖章与签章归档</h2>
     <p v-if="detail.v2Lifecycle?.status === 'unavailable'">{{ detail.v2Lifecycle.reason }}</p>
-    <p v-else-if="context && !context.webWriteReleased">新版合同办理入口尚未开放，当前资料仅供核对。</p>
+    <p v-else-if="context && context.state !== 'archived' && !context.webWriteReleased">新版合同办理入口尚未开放，当前资料仅供核对。</p>
+    <p v-else-if="context?.state === 'pending_archive' && !context.archiveAction.enabled">{{ context.archiveAction.reason }}</p>
     <p v-if="message" role="status">{{ message }}</p>
     <t-button v-if="canSeal" :loading="busy" @click="sealDialog = true">确认已盖章</t-button>
     <t-button v-if="sealIntent" :loading="busy" variant="outline" @click="querySeal">查询本次盖章结果</t-button>

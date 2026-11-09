@@ -243,7 +243,7 @@ export interface ProjectExpenseApprovalDetailReadModel {
 export interface ContractV2LifecycleActionReadModel {
   key: "confirm_seal_v2" | "archive_signed_v2";
   eligible: boolean;
-  /** Business eligibility never opens the unreleased Web write surface. */
+  /** Commands still recheck the current authority in their own transaction. */
   enabled: boolean;
   reason: string | null;
 }
@@ -261,7 +261,7 @@ export type ContractV2LifecycleReadModel = {
 } | {
   status: "ready";
   source: "generated_approval";
-  scope: "inside_original";
+  scope: "inside_original" | "outside_original" | "upward_original";
   actorUserId: string;
   approvalInstanceId: string;
   sealTaskId: string;

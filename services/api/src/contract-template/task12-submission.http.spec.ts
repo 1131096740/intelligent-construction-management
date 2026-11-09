@@ -1653,6 +1653,22 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     }
     const completedTask = await store.contractSealTask.findUnique({ where: { id: sealTaskId } });
     expect(completedTask).toMatchObject({ status: "completed", completedAt: expect.any(Date), completedByUserId: "director" });
+    const contract = await store.contract.findUniqueOrThrow({ where: { id: draft.contract.id } });
+    const lifecycleUrl = `${await server.app.getUrl()}/contracts/${encodeURIComponent(String(contract.code))}?versionId=${contractVersionId}`;
+    const lifecycle = await fetch(lifecycleUrl, { headers: draft.headers });
+    expect({ status: lifecycle.status, body: await lifecycle.json() }).toMatchObject({ status: 200, body: {
+      v2Lifecycle: { status: "ready", scope: `${archiveSource.relationship}_original`, state: "pending_archive", webWriteReleased: true,
+        actorUserId: "staff", contractVersionId, approvalInstanceId, sealTaskId,
+        archiveAction: { key: "archive_signed_v2", eligible: true, enabled: true } }
+    } });
+    nativeInstallationQualified = false;
+    try {
+      const closed = await fetch(lifecycleUrl, { headers: draft.headers });
+      expect({ status: closed.status, body: await closed.json() }).toMatchObject({ status: 200, body: {
+        v2Lifecycle: { status: "unavailable", webWriteReleased: false, archiveAction: { enabled: false } }
+      } });
+    } finally { nativeInstallationQualified = true; }
+
     expect(await store.contractVersion.findUnique({ where: { id: contractVersionId } })).toMatchObject({ status: result.status });
     const transfer = await store.auditLog.findFirst({ where: { businessId: contractVersionId, action: "contract.archive_task.create" } });
     expect(transfer).toMatchObject({ metadata: { approvalInstanceId, sealTaskId, handlerUserId: "staff" } });
@@ -1673,6 +1689,7 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     witness.mockImplementation(prove);
     nativeInstallationQualified = false;
     await exerciseGeneratedArchivePreparation(server, draft, sealInput, fileIds[1], preparationEnabled, installation);
+    witness.mockImplementation(nativeSeal);
 
     if (archiveSource.relationship === "outside") {
       const handler = await loginTemplateActor(server, "staff");
@@ -2261,6 +2278,13 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect(completionReads).toBe(priorCompletionReads + 1);
     markerQualified = true;
     expect(await (await lookup()).json()).toMatchObject({ status: "archived", result });
+    const currentContract = await store.contract.findUniqueOrThrow({ where: { id: draft.contract.id } });
+    const archivedDetail = await fetch(`${await server.app.getUrl()}/contracts/${encodeURIComponent(String(currentContract.code))}?versionId=${draft.version.id}`,
+      { headers: draft.headers });
+    expect({ status: archivedDetail.status, body: await archivedDetail.json() }).toMatchObject({ status: 200, body: {
+      v2Lifecycle: { status: "ready", state: "archived", webWriteReleased: false,
+        sealAction: { enabled: false }, archiveAction: { enabled: false } }
+    } });
     expect(await (await archive()).json()).toEqual(result);
     expect((await archive({ ...input, fileIds: [...fileIds].reverse() })).status).toBe(409);
     expect(append).toHaveBeenCalledTimes(4);

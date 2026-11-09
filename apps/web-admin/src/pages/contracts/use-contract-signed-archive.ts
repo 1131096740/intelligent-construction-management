@@ -39,7 +39,8 @@ function sameArchiveBody(a: unknown, b: ContractSignedArchiveV2Payload) {
 }
 function readyContext(detail: ContractDetailReadModel | null, actor: string | undefined): Ready | null {
   const value = detail?.v2Lifecycle;
-  return value?.status === "ready" && value.protocolVersion === 2 && value.source === "generated_approval" && value.scope === "inside_original" &&
+  return value?.status === "ready" && value.protocolVersion === 2 && value.source === "generated_approval" &&
+    (value.scope === "inside_original" || value.scope === "outside_original" || value.scope === "upward_original") &&
     !detail?.historyReadOnly && !!actor && value.actorUserId === actor && value.contractVersionId === detail?.contractVersionId &&
     uuid.test(value.contractVersionId) && uuid.test(value.approvalInstanceId) && uuid.test(value.sealTaskId) &&
     Number.isInteger(value.documentContentRevision) && value.documentContentRevision > 0 && fingerprint.test(value.documentContentFingerprint) &&
