@@ -104,7 +104,9 @@ export class ContractV2SubmissionService {
       const result = { contractVersionId, approvalInstanceId: round.id, sealTaskId: task.id, status: "seal_approved_pending_archive" };
       if (task.status === "completed" && task.completedByUserId === actorUserId && ["seal_approved_pending_archive", "effective"].includes(version.status)) return result;
       if (version.status !== "approved_pending_seal" || task.status !== "in_seal" || !task.approvedByUserId || !task.approvedAt) conflict("当前盖章任务已处理，请刷新后重试");
-      if (version.signingSubjectType === "affiliate") {
+      const identity = snapshot.signingIdentity;
+      const relationship = identity && typeof identity === "object" && "relationship" in identity ? identity.relationship : null;
+      if (version.signingSubjectType === "affiliate" || relationship === "outside") {
         throw new ServiceUnavailableException("表外生成合同归档资格尚未就绪，请保留当前合同资料");
       }
       const completedAt = new Date();

@@ -105,9 +105,20 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         .toMatchObject({ status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") } });
       expect(await readState()).toEqual(pending);
 
-      await prisma.contractVersion.update({ where: { id: version.id }, data: { signingSubjectType: "our_company" } });
+      await prisma.contractVersion.update({ where: { id: version.id }, data: {
+        signingSubjectType: "our_company", affiliateAssignmentId: null, affiliateBusinessPartyVersionId: null,
+        affiliateNameSnapshot: null, affiliateCreditCodeSnapshot: null
+      } });
       await assertBlocked(director, "seal");
-      await prisma.contractVersion.update({ where: { id: version.id }, data: { signingSubjectType: "affiliate" } });
+      const mismatched = await readState();
+      const mismatchedConfirmation = await confirm();
+      expect({ status: mismatchedConfirmation.status, body: await mismatchedConfirmation.json() })
+        .toMatchObject({ status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") } });
+      expect(await readState()).toEqual(mismatched);
+      await prisma.contractVersion.update({ where: { id: version.id }, data: {
+        signingSubjectType: "affiliate", affiliateAssignmentId: assignment.id, affiliateBusinessPartyVersionId: enterpriseVersionId,
+        affiliateNameSnapshot: enterpriseName
+      } });
 
       // Existing completed rows were written under the prior application behavior.
       await prisma.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: "director", completedAt: approvedAt } });
