@@ -761,6 +761,36 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         } else archiveResult = await archive.json();
         expect(JSON.stringify(archiveInput)).toBe(originalIntentBytes);
         expect({ status: archive.status, body: archiveResult }).toMatchObject({ status: 201, body: { contractVersionId: draft.version.id, status: "effective" } });
+        if (!operatingEnabled) {
+          const durable = (await server.store.prisma.contractArchiveFile.findUnique({ where: { id: archiveResult.archiveId } }))!;
+          const response = durable.responseSnapshot as Prisma.JsonObject;
+          const corrupted = { ...response, internalProjectReference: "synthetic-other-project-reference" };
+          const counts = async () => ({
+            archives: await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } }),
+            files: await server.store.prisma.contractArchiveEvidenceFile.count({ where: { contractVersionId: draft.version.id } }),
+            audits: await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id } })
+          });
+          const beforeRead = await counts();
+          try {
+            await server.store.prisma.contractArchiveFile.update({ where: { id: durable.id }, data: { responseSnapshot: corrupted } });
+            const lookup = await readArchiveResult();
+            const replay = await sendArchive();
+            expect({ lookup: await lookup.json(), replay: await replay.json() }).toEqual({
+              lookup: { status: "archived", result: archiveResult, requestSha256: durable.requestSha256, intent: archiveInput },
+              replay: archiveResult
+            });
+            expect([lookup.status, replay.status]).toEqual([200, 201]);
+            expect((await server.store.prisma.contractArchiveFile.findUnique({ where: { id: durable.id } }))!.responseSnapshot).toEqual(corrupted);
+            await server.store.prisma.contractArchiveFile.update({ where: { id: durable.id }, data: {
+              responseSnapshot: { ...corrupted, fileIds: [...archiveInput.fileIds].reverse() }
+            } });
+            expect((await readArchiveResult()).status).toBe(503);
+            expect((await sendArchive()).status).toBe(503);
+            expect(await counts()).toEqual(beforeRead);
+          } finally {
+            await server.store.prisma.contractArchiveFile.update({ where: { id: durable.id }, data: { responseSnapshot: response } });
+          }
+        }
         const archiveReceipt = await readArchiveResult();
         expect({ status: archiveReceipt.status, body: await archiveReceipt.json() }).toMatchObject({ status: 200, body: { status: "archived", result: archiveResult, requestSha256: expect.any(String), intent: archiveInput } });
         expect((await (await readArchiveResult(randomUUID())).json())).toEqual({ status: "unknown" });

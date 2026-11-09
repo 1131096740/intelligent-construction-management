@@ -42,6 +42,10 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
     fileIds: files.map(file => file.fileId), confirmedMatchingSignedDocument: true };
   if (!intent.expectedApprovalInstanceId || !intent.expectedSealTaskId || !Number.isInteger(intent.documentContentRevision) || intent.documentContentRevision < 1 || !/^[a-f0-9]{64}$/.test(intent.documentContentFingerprint) || !files.length || archiveRequestSha(versionId, actor, intent) !== durable.requestSha256) throw new ServiceUnavailableException("归档请求身份尚未完整核对，请保留原标识");
   const response = object(durable.responseSnapshot);
-  if (response.archiveId !== durable.id || response.contractVersionId !== versionId || response.status !== "effective" || !same(response.fileIds, intent.fileIds)) throw new ServiceUnavailableException("归档回执尚未完整核对，请保留原标识");
-  return { status: "archived" as const, result: durable.responseSnapshot, requestSha256: durable.requestSha256, intent };
+  const result = { archiveId: durable.id, contractVersionId: versionId, status: "effective" as const, fileIds: intent.fileIds };
+  if (response.archiveId !== result.archiveId || response.contractVersionId !== result.contractVersionId
+    || response.status !== result.status || !Array.isArray(response.fileIds) || !same(response.fileIds, result.fileIds)) {
+    throw new ServiceUnavailableException("归档回执尚未完整核对，请保留原标识");
+  }
+  return { status: "archived" as const, result, requestSha256: durable.requestSha256, intent };
 }
