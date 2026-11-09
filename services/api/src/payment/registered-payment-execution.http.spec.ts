@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Prisma } from "@prisma/client";
 import { FileController } from "../file/file.controller";
 import { fingerprint } from "../operating-takeover/operating-takeover.utils";
@@ -48,8 +51,21 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
   const previousOperatingWriteSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
   const previousStorageDriver = process.env.FILE_STORAGE_DRIVER;
   const previousStorageRoot = process.env.FILE_STORAGE_ROOT;
-  beforeAll(()=>{process.env.FILE_STORAGE_DRIVER="local";process.env.FILE_STORAGE_ROOT="/private/tmp/jg-task16-evidence-20261106/private-voucher-bytes";});
-  afterAll(()=>{if(previousStorageDriver===undefined)delete process.env.FILE_STORAGE_DRIVER;else process.env.FILE_STORAGE_DRIVER=previousStorageDriver;if(previousStorageRoot===undefined)delete process.env.FILE_STORAGE_ROOT;else process.env.FILE_STORAGE_ROOT=previousStorageRoot;});
+  let voucherStorageRoot: string | undefined;
+
+  beforeAll(async () => {
+    voucherStorageRoot = await mkdtemp(join(tmpdir(), "jg-task16-voucher-fixture-"));
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = voucherStorageRoot;
+  });
+
+  afterAll(async () => {
+    if (previousStorageDriver === undefined) delete process.env.FILE_STORAGE_DRIVER;
+    else process.env.FILE_STORAGE_DRIVER = previousStorageDriver;
+    if (previousStorageRoot === undefined) delete process.env.FILE_STORAGE_ROOT;
+    else process.env.FILE_STORAGE_ROOT = previousStorageRoot;
+    if (voucherStorageRoot) await rm(voucherStorageRoot, { recursive: true, force: true });
+  });
   beforeAll(() => { process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "synthetic-local-payment16-not-a-database-credential"; });
   afterAll(() => { if (previousOperatingWriteSecret === undefined) delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET; else process.env.OPERATING_LEDGER_DB_WRITE_SECRET = previousOperatingWriteSecret; });
   beforeEach(async () => {
