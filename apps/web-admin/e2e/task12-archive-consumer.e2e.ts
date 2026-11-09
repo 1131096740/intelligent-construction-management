@@ -11,7 +11,7 @@ const T = "33333333-3333-4333-8333-333333333333";
 const F = "a".repeat(64);
 const CODE = "HT-20261109-019";
 
-async function openDetail(page: Page, options: { archive?: boolean } = {}) {
+async function openDetail(page: Page, options: { archive?: boolean; scope?: "outside_original" | "upward_original" } = {}) {
   const writes: Record<string, unknown>[] = [];
   const actor = options.archive ? "staff-archive" : "director-seal";
   const archives: Record<string, unknown>[] = [];
@@ -29,7 +29,7 @@ async function openDetail(page: Page, options: { archive?: boolean } = {}) {
   const fileIds = ["44444444-4444-4444-8444-444444444441", "44444444-4444-4444-8444-444444444442"];
   const archiveId = "55555555-5555-4555-8555-555555555555";
   const context: Extract<ContractV2LifecycleReadModel, { status: "ready" }> = {
-    protocolVersion: 2, status: "ready", source: "generated_approval", scope: "inside_original",
+    protocolVersion: 2, status: "ready", source: "generated_approval", scope: options.scope ?? "inside_original",
     contractVersionId: V, actorUserId: actor, approvalInstanceId: R, sealTaskId: T,
     documentContentRevision: 7, documentContentFingerprint: F, webWriteReleased: true,
     state: options.archive ? "pending_archive" : "pending_seal", sealAction: { key: "confirm_seal_v2", eligible: true, enabled: true, reason: null },
@@ -188,6 +188,34 @@ async function selectAndArchive(page: Page) {
   await page.getByRole("button", { name: "归档双方签章原件", exact: true }).click();
   await page.getByText("我已人工核对原件与本轮合同内容一致", { exact: true }).click();
   await page.getByRole("button", { name: "确认归档", exact: true }).click();
+}
+
+for (const [label, scope] of [["表外", "outside_original"], ["对上", "upward_original"]] as const) {
+  test(`${label}签章归档网页按原标识处理未知结果`, async ({ page }) => {
+    const state = await openDetail(page, { archive: true, scope });
+    state.context.archiveAction = { key: "archive_signed_v2", eligible: false, enabled: false, reason: "当前账号无本合同归档权限" };
+    await page.reload();
+    await expect(page.getByText("当前账号无本合同归档权限", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("选择双方签章PDF", { exact: true })).toHaveCount(0);
+    expect(state.archives).toHaveLength(0);
+    state.context.archiveAction = { key: "archive_signed_v2", eligible: true, enabled: true, reason: null };
+    await page.reload();
+    state.outcome.archiveMode = "no_persist";
+    await selectAndArchive(page);
+    await expect(page.getByText("归档结果待核对，请保留原请求；可查询或按原请求继续", { exact: true })).toBeVisible();
+    expect(state.archives).toHaveLength(1);
+    const original = state.archives[0];
+    await page.reload();
+    await page.getByRole("button", { name: "查询本次归档结果", exact: true }).click();
+    await expect(page.getByText("归档结果待核对，请保留原请求；可查询或按原请求继续", { exact: true })).toBeVisible();
+    expect(state.archives).toHaveLength(1);
+    state.outcome.archiveMode = "persist";
+    await page.getByRole("button", { name: "按原请求继续", exact: true }).click();
+    await page.getByRole("button", { name: "确认按原请求继续", exact: true }).click();
+    await expect(page.getByText("双方签章原件已归档，合同已生效", { exact: true })).toBeVisible();
+    expect(state.archives).toEqual([original, original]);
+    expect(state.uploads).toHaveLength(2);
+  });
 }
 
 test("归档UNKNOWN刷新只查原结果，人工继续仍用原key和文件顺序", async ({ page }, testInfo) => {

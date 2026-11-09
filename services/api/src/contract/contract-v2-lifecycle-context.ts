@@ -1,18 +1,70 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { assertContractV2ArchivePersistentProof } from "./contract-v2-archive-persistent-proof";
 import { isDeepStrictEqual } from "node:util";
-import type { Contract, ContractVersion, Prisma } from "@prisma/client";
+import type { ApprovalInstance, Contract, ContractSealTask, ContractVersion, Prisma } from "@prisma/client";
 import { chinaDateOnly, type ContractV2LifecycleReadModel, type ContractV2LifecycleActionReadModel } from "@jiangkong/shared-domain";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "./contract-parallel-duty-access";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
+import { generatedArchiveSealScope } from "./contract-generated-archive-seal-authority";
+import { qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-installation";
+import { qualifyGeneratedUpwardSealCompletion } from "./contract-upward-pending-save-profile";
 
 const WEB_WRITE_CLOSED = "新版合同办理入口尚未开放";
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
-function action(key: ContractV2LifecycleActionReadModel["key"], eligible: boolean, reason: string): ContractV2LifecycleActionReadModel {
-  return { key, eligible, enabled: false, reason: eligible ? WEB_WRITE_CLOSED : reason };
+function action(key: ContractV2LifecycleActionReadModel["key"], eligible: boolean, reason: string, released = false): ContractV2LifecycleActionReadModel {
+  const enabled = eligible && released;
+  return { key, eligible, enabled, reason: enabled ? null : eligible ? WEB_WRITE_CLOSED : reason };
+}
+
+async function readExternalLifecycle(tx: Prisma.TransactionClient, contract: Contract, version: ContractVersion,
+  round: ApprovalInstance, task: ContractSealTask, snapshot: Record<string, unknown>, actorUserId: string,
+  unavailable: (reason: string) => ContractV2LifecycleReadModel): Promise<ContractV2LifecycleReadModel> {
+  const fingerprint = version.documentContentFingerprint;
+  if (!fingerprint || object(version.draftData)?.directSigningInput) return unavailable("当前签约来源尚未支持此办理入口");
+  const pendingSeal = version.status === "approved_pending_seal" && task.status === "in_seal"
+    && task.approvedAt && task.approvedByUserId && !task.completedAt && !task.completedByUserId;
+  const completedSeal = task.status === "completed" && task.completedAt && task.completedByUserId;
+  const state = pendingSeal ? "pending_seal" : completedSeal && version.status === "seal_approved_pending_archive"
+    ? "pending_archive" : completedSeal && version.status === "effective" ? "archived" : null;
+  if (!state) return unavailable("当前合同或盖章任务状态不可办理");
+  const confirmer = state === "pending_seal" ? actorUserId : task.completedByUserId;
+  if (!confirmer) return unavailable("当前盖章任务来源尚未完整确认");
+
+  let relationship: "outside" | "upward";
+  try {
+    const scope = generatedArchiveSealScope(contract, version, round, task, snapshot, confirmer, fingerprint);
+    if (!scope) return unavailable("当前签约主体与审批冻结来源不一致");
+    relationship = scope.relationship;
+    if (state === "archived") {
+      const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
+        archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed" } });
+      if (!archive || archive.approvalInstanceId !== round.id || archive.sealTaskId !== task.id) {
+        return unavailable("当前归档持久证据尚未完整确认，请查询原归档标识");
+      }
+      await assertContractV2ArchivePersistentProof(tx, contract, version, archive);
+    } else {
+      if (state === "pending_seal" && !await hasActiveContractGlobalRole(tx, actorUserId, "comprehensive_director")) {
+        return unavailable("仅当前有效综合主管可确认已盖章");
+      }
+      if (state === "pending_seal" && relationship === "upward") await qualifyGeneratedUpwardSealCompletion(tx);
+      await qualifyGeneratedArchiveSealAuthority(tx, scope);
+    }
+  } catch {
+    return unavailable(state === "archived" ? "当前归档持久证据尚未完整确认，请查询原归档标识" : "当前盖章或归档办理资格尚未就绪，请保留当前资料");
+  }
+
+  const canArchive = state === "pending_archive" && actorUserId === task.handlerUserId
+    && (await resolveGovernedFinalArchiveAccess(tx, { actorUserId, projectId: contract.projectId, handlerUserId: task.handlerUserId })).canUpload;
+  return { protocolVersion: 2, contractVersionId: version.id, status: "ready", source: "generated_approval",
+    scope: relationship === "outside" ? "outside_original" : "upward_original", webWriteReleased: state !== "archived", actorUserId,
+    approvalInstanceId: round.id, sealTaskId: task.id, documentContentRevision: version.documentContentRevision, documentContentFingerprint: fingerprint,
+    state, sealAction: action("confirm_seal_v2", state === "pending_seal", "当前不处于待盖章确认阶段", true),
+    archiveAction: action("archive_signed_v2", canArchive, state === "pending_archive" ? "仅当前原经办人且具备项目合同上传权限可归档" : "当前不处于待归档阶段", true),
+    sealOutcome: { status: completedSeal ? "completed" : "pending", completedAt: task.completedAt?.toISOString() ?? null, completedByUserId: task.completedByUserId },
+    approvalSource: { status: "references_ready" }, signedFilePolicy: { mimeType: "application/pdf", minCount: 1, maxCount: 20, ordered: true } };
 }
 
 /** Read hint only. Commands independently recheck current authority in their TX. */
@@ -27,7 +79,8 @@ export async function readContractV2LifecycleContext(
     sealAction: action("confirm_seal_v2", false, reason), archiveAction: action("archive_signed_v2", false, reason)
   });
   if (historyReadOnly) return unavailable("历史版本仅供查阅，不能办理当前盖章或归档");
-  if (contract.voidedAt || version.changeType !== "original" || version.supersedesVersionId || version.signingSubjectType !== "our_company") return unavailable("当前签约来源尚未支持此办理入口");
+  const external = version.signingSubjectType === "affiliate" || version.signingSubjectType === "upward";
+  if (contract.voidedAt || version.changeType !== "original" || version.supersedesVersionId || !external && version.signingSubjectType !== "our_company") return unavailable("当前签约来源尚未支持此办理入口");
   if (!actorUserId || !(await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } }))?.isActive) return unavailable("当前登录身份不可办理合同");
   const tasks = await tx.contractSealTask.findMany({ where: { contractVersionId: version.id, status: { not: "cancelled" } } });
   if (tasks.length !== 1) return unavailable("当前盖章任务来源尚未完整确认");
@@ -35,6 +88,7 @@ export async function readContractV2LifecycleContext(
   const round = await tx.approvalInstance.findUnique({ where: { id: task.approvalInstanceId } });
   const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
   if (!round || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== version.id || round.status !== "approved" || activeApprovalNodeIndexes(round.frozenNodes, 0).length || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint || !version.documentContentFingerprint || round.applicantUserId !== contract.ownerUserId || task.handlerUserId !== contract.ownerUserId) return unavailable("当前审批轮次或正文已变化，请核对当前合同");
+  if (external) return readExternalLifecycle(tx, contract, version, round, task, snapshot, actorUserId, unavailable);
   const identity = object(snapshot.signingIdentity), company = object(identity?.company);
   if (identity?.relationship !== "inside" || company?.id !== version.companyEntityVersionId || company?.companyEntityId !== version.companyEntityIdSnapshot) return unavailable("当前签约主体与审批冻结来源不一致");
   if (typeof snapshot.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(snapshot.sourceSha256)) return unavailable("当前审批文书原文校验来源不完整");

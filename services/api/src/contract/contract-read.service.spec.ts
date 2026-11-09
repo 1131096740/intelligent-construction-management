@@ -1795,6 +1795,7 @@ describe("ContractReadService", () => {
     const tx = { contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
       contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(archive) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) } };
     Object.assign(db, { $transaction: async (operation: (client: typeof tx) => unknown) => operation(tx) });
     const scopes = { globalRoleKeys: [], projectRoleKeys: ["finance_staff"] };

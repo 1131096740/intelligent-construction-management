@@ -1534,7 +1534,13 @@ export class ContractReadService {
         ? await loadContractOwnerRisk(this.prisma, contract.projectId)
         : null;
 
-    const v2Lifecycle = await readContractV2LifecycleContext(this.prisma, contract, version, actorUserId, readOnlyHistory || version.id !== versions[0]?.id);
+    const lifecycleReadOnly = readOnlyHistory || version.id !== versions[0]?.id;
+    const externalLifecycle = !lifecycleReadOnly && !directPending && version.numericProtocolVersion === 2
+      && (version.signingSubjectType === "affiliate" || version.signingSubjectType === "upward")
+      && ["approved_pending_seal", "seal_approved_pending_archive", "effective"].includes(version.status);
+    const v2Lifecycle = externalLifecycle
+      ? await this.prisma.$transaction(tx => readContractV2LifecycleContext(tx, contract, version, actorUserId, lifecycleReadOnly))
+      : await readContractV2LifecycleContext(this.prisma, contract, version, actorUserId, lifecycleReadOnly);
     const canReadUpwardReference = actorUserId && this.projectVisibility && contractInReadScope
       && (contract.ownerUserId === actorUserId || hasSensitiveLedgerReadRole("settlement", roleKeys));
     const upwardReference = canReadUpwardReference && version.numericProtocolVersion === 2
