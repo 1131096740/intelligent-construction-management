@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Prisma, type Contract, type ContractVersion, type ContractArchiveFile, type ContractArchiveEvidenceFile, type FileObject } from "@prisma/client";
 import { readGeneratedArchiveOriginals, requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
 import { readGeneratedArchiveCompletion, type GeneratedArchiveCompletion, type GeneratedArchiveOperatingReceipt, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
+import { readGeneratedOutsideCommitment } from "./contract-generated-outside-commitment";
 import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
 import type { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
 
@@ -108,11 +109,19 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
       }
       operatingReceipt = { policy: "upward_internal_reference",
         operatingLedgerEffectiveDateSnapshot: policy.reference.operatingLedgerEffectiveDateSnapshot };
+    } else if (consequence.mode === "projection_required") {
+      const policy = readGeneratedArchiveOperatingPolicy({ archive: durable, contract: owner, version });
+      if (policy?.mode !== "outside_downstream_commitment") {
+        throw new ServiceUnavailableException("表外合同下游承诺尚未完整核对，请保留本次标识");
+      }
+      operatingReceipt = await readGeneratedOutsideCommitment(tx, policy);
     }
-    const expectedConsequence = { protocolVersion: 1, expectedSource: null,
-      ...(operatingReceipt.policy === "upward_internal_reference"
-        ? { mode: "internal_reference_only", operatingLedgerEffectiveDateSnapshot: operatingReceipt.operatingLedgerEffectiveDateSnapshot }
-        : { mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null }) };
+    const expectedConsequence = operatingReceipt.policy === "operating_ledger_not_enabled"
+      ? { protocolVersion: 1, mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null, expectedSource: null }
+      : { protocolVersion: 1, operatingLedgerEffectiveDateSnapshot: operatingReceipt.operatingLedgerEffectiveDateSnapshot,
+        ...(operatingReceipt.policy === "upward_internal_reference"
+          ? { mode: "internal_reference_only", expectedSource: null }
+          : { mode: "projection_required", expectedSource: consequence.expectedSource }) };
     const actual = generatedArchiveCompletion(owner, durable, files, originals, operatingReceipt);
     if (!completion || completion.transaction !== tx || !same(completion.completion, actual)
       || (expected && !same(expected, actual)) || !same(consequence, expectedConsequence)) {

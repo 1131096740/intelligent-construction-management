@@ -1,3 +1,6 @@
+import type { Contract, ContractArchiveFile, ContractVersion } from "@prisma/client";
+import { readGeneratedArchiveOperatingPolicy } from "../contract/contract-generated-archive-operating-policy";
+import { normalizeOperatingSourceSnapshot } from "../operating-ledger/operating-money-protocol";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { Prisma } from "@prisma/client";
 import { ContractEconomicReviewService } from "../contract-ledger/contract-economic-review.service";
@@ -2355,6 +2358,70 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect(server.store.pinnedPrivateStorageReads).toBe(pinnedReads);
     expect(server.store.privateStorageReads).toBe(ordinaryReads);
     expect(server.store.privateStorageWrites).toBe(storageWrites);
+    if (relationship === "outside") {
+      // Model the result of the separately guarded outside SQL successor. The HTTP test never enables its writer.
+      const version = { ...await store.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } }),
+        supersedesVersionId: null, companyEntityIdSnapshot: null, companyEntityVersionId: null } as unknown as ContractVersion;
+      const owner = { ...currentContract, companyEntityId: null } as unknown as Contract;
+      await store.contract.update({ where: { id: owner.id }, data: { companyEntityId: null } });
+      await store.contractVersion.update({ where: { id: version.id }, data: {
+        supersedesVersionId: null, companyEntityIdSnapshot: null, companyEntityVersionId: null
+      } });
+      const durable = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: result.archiveId } }) as unknown as ContractArchiveFile;
+      const authority = durable.authoritySnapshot as Prisma.JsonObject;
+      const basis = authority.sourceBasis as Prisma.JsonObject;
+      const amount = version.amountYuan?.toFixed(4) ?? null;
+      const direction = amount === null ? "notice" : "increase";
+      const factKey = `contract_version:${version.id}`, impactKey = `${factKey}:commitment`;
+      const frozen = { ...authority, sourceBasis: { ...basis, money: { ...basis.money as Prisma.JsonObject,
+        economicExcludedYuan: "0.0000", economicReviewSources: [], commitmentDeltaYuan: amount, direction } },
+        operatingConsequence: { protocolVersion: 1, mode: "projection_required", operatingLedgerEffectiveDateSnapshot: ledgerDate,
+          expectedSource: { sourceType: "contract_version", sourceBusinessId: version.id, sourceVersion: version.versionNo, entryKind: "original",
+            factIdempotencyKey: factKey, impactIdempotencyKey: impactKey, sourceImpactKey: "contract_commitment_reference",
+            impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountState: amount === null ? "unknown" : "known", amountYuan: amount, direction } } };
+      const mapped = readGeneratedArchiveOperatingPolicy({ archive: { ...durable, authoritySnapshot: frozen }, contract: owner, version });
+      if (mapped?.mode !== "outside_downstream_commitment") throw new Error("合成表外承诺未生成");
+      const fact = mapped.fact.input, [impact] = fact.impacts;
+      const factId = randomUUID(), impactId = randomUUID();
+      const { affiliate } = fact.sourceSnapshot;
+      const affiliateBasis = affiliate as Prisma.JsonObject;
+      const debtor = { ...fact.subjects.debtor, businessPartyId: affiliateBasis.businessPartyId,
+        businessPartyVersionId: fact.affiliateBusinessPartyVersionId, name: fact.affiliateNameSnapshot, creditCode: fact.affiliateCreditCodeSnapshot ?? null };
+      const creditor = fact.subjects.creditor;
+      expect(debtor).toMatchObject({ kind: "construction_enterprise", id: version.affiliateBusinessPartyVersionId });
+      expect(creditor).toMatchObject({ kind: "downstream_counterparty", id: expect.any(String) });
+      await store.contractArchiveFile.delete({ where: { id: result.archiveId } });
+      await server.store.table("contractArchiveFile").createMany({ data: [{ ...durable, authoritySnapshot: frozen }] });
+      const originalMarker = await completionStore.findUnique({ where: { archiveId: result.archiveId } });
+      await completionStore.update({ where: { archiveId: result.archiveId }, data: { completion: {
+        ...originalMarker?.completion as Prisma.JsonObject, policy: "outside_downstream_commitment",
+        operatingLedgerEffectiveDateSnapshot: ledgerDate, operatingFactId: factId, operatingImpactId: impactId
+      } } });
+      expect((await lookup()).status).toBe(503);
+      await server.store.table("operatingFact").create({ data: { ...fact, id: factId, status: "confirmed", entryKind: "original",
+        recordedByUserId: fact.confirmedByUserId, amountYuan: amount === null ? null : new Prisma.Decimal(amount),
+        operatingLedgerEffectiveDateSnapshot: new Date(ledgerDate), sourceSnapshot: normalizeOperatingSourceSnapshot(fact),
+        subjectSnapshot: { debtor, creditor }, debtorSubjectKind: debtor.kind, debtorSubjectId: debtor.id,
+        creditorSubjectKind: creditor?.kind, creditorSubjectId: creditor?.id } });
+      expect((await lookup()).status).toBe(503);
+      await server.store.table("operatingImpactEntry").create({ data: { ...impact, ...source, id: impactId, factId, projectId: owner.projectId,
+        amountYuan: amount === null ? null : new Prisma.Decimal(amount), subjectKind: debtor.kind, subjectId: debtor.id,
+        impactSnapshot: { numericFacts: { protocolVersion: 2, amountState: amount === null ? "unknown" : "known", amountYuan: amount },
+          subjectSnapshot: debtor } } });
+      markerQualified = false;
+      expect((await lookup()).status).toBe(503);
+      markerQualified = true;
+      const outsideLookup = await lookup();
+      expect({ status: outsideLookup.status, body: await outsideLookup.json() }).toMatchObject({ status: 200, body: { status: "archived", result } });
+      expect(await (await archive()).json()).toEqual(result);
+      expect(await counts()).toEqual([1, 2, 2, 1, 1, 1, 1]);
+      await server.store.table("operatingFact").update({ where: { id: factId }, data: { creditorSubjectId: randomUUID() } });
+      expect((await lookup()).status).toBe(503);
+      await server.store.table("operatingFact").update({ where: { id: factId }, data: { creditorSubjectId: creditor?.id } });
+      await server.store.table("operatingImpactEntry").update({ where: { id: impactId }, data: { impactKind: "project_cost" } });
+      expect((await lookup()).status).toBe(503);
+      expect(append).toHaveBeenCalledTimes(4);
+    }
   } finally {
     server.store.archiveCommitOutcome = "persist";
     store.$queryRaw = nativeQuery;

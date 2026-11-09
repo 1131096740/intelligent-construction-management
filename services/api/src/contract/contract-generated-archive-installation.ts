@@ -117,7 +117,9 @@ export const readGeneratedArchiveRequestBinding: (
 
 export type GeneratedArchiveOperatingReceipt =
   | Readonly<{ policy: "operating_ledger_not_enabled" }>
-  | Readonly<{ policy: "upward_internal_reference"; operatingLedgerEffectiveDateSnapshot: string }>;
+  | Readonly<{ policy: "upward_internal_reference"; operatingLedgerEffectiveDateSnapshot: string }>
+  | Readonly<{ policy: "outside_downstream_commitment"; operatingLedgerEffectiveDateSnapshot: string;
+    operatingFactId: string; operatingImpactId: string }>;
 
 export type GeneratedArchiveCompletion = GeneratedArchiveOperatingReceipt & Readonly<{
   protocolVersion: 1;
