@@ -21,14 +21,17 @@ describe("表外已签合同的正式登记", () => {
         expect(query.values[0]).toBe(nonce);
         issuedCoordinates = query.values.slice(1);
         return [{ intentId }];
-      }), client(async query => {
-        expect(query.sql).toContain("jg_execute_contract_direct_archive_outside_v1");
-        expect(query.values).toEqual([nonce, intentId, ...issuedCoordinates!]);
-        invocations.executed++;
-        await store.prisma.$transaction(async () => persistSyntheticRegistration(store, query.values.slice(2)));
+      }), { $transaction: async operation => {
+        await store.prisma.$transaction(async () => operation(client(async query => {
+          expect(query.sql).toContain("jg_execute_contract_direct_archive_outside_v1");
+          expect(query.values).toEqual([nonce, intentId, ...issuedCoordinates!]);
+          invocations.executed++;
+          const archiveId = await persistSyntheticRegistration(store, query.values.slice(2));
+          return [{ archiveId }];
+        })));
         // The separate database session committed but its first response was lost.
         throw new Error("合成执行连接在提交后丢失响应");
-      }));
+      } });
     } });
     try {
       const draft = await openDirectPendingDraft(server);
@@ -210,4 +213,5 @@ async function persistSyntheticRegistration(store: TemplateSyntheticStore, value
   await store.table("directArchiveGenerationProof").create({ data: { archiveId, snapshot: {
     protocolVersion: 1, archiveId, contractVersionId: versionId, authoritySha256, originals
   } } });
+  return archiveId;
 }

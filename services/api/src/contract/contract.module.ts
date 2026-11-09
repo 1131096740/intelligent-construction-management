@@ -1,5 +1,5 @@
 import { DIRECT_ARCHIVE_EXECUTOR, DIRECT_ARCHIVE_ISSUER_CLIENT, DIRECT_ARCHIVE_RUNTIME_CLIENT,
-  nativeDirectArchiveExecutor, type DirectArchiveSqlClient } from "./contract-direct-archive-executor";
+  nativeDirectArchiveExecutor, type DirectArchiveRuntimeClient, type DirectArchiveSqlClient } from "./contract-direct-archive-executor";
 import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "./contract-generated-upward-operating";
 import { nativeGeneratedUpwardOperatingActivation } from "./contract-generated-upward-operating-installation";
 import { GENERATED_ARCHIVE_PREPARATION_READER } from "./contract-generated-archive-preparation";
@@ -54,8 +54,8 @@ import { ContractVersionActivationService } from "./contract-version-activation.
       provide: DIRECT_ARCHIVE_EXECUTOR,
       inject: [PrivateFileStorage, { token: DIRECT_ARCHIVE_ISSUER_CLIENT, optional: true },
         { token: DIRECT_ARCHIVE_RUNTIME_CLIENT, optional: true }],
-      useFactory: (storage: PrivateFileStorage, issuer?: DirectArchiveSqlClient, runtime?: DirectArchiveSqlClient) =>
-        issuer && runtime && issuer !== runtime ? nativeDirectArchiveExecutor(storage, issuer, runtime) : undefined
+      useFactory: (storage: PrivateFileStorage, issuer?: DirectArchiveSqlClient, runtime?: DirectArchiveRuntimeClient) =>
+        issuer && runtime && !Object.is(issuer, runtime) ? nativeDirectArchiveExecutor(storage, issuer, runtime) : undefined
     },
     ContractStatusService,
     ContractReadService,
