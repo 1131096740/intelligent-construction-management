@@ -10,6 +10,7 @@ import { Test } from "@nestjs/testing";
 import { ContractDraftController } from "./contract-draft.controller";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import { ContractService } from "../contract/contract.service";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { PristineDraftDeletionService } from "./pristine-draft-deletion.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import {
@@ -129,7 +130,7 @@ describe("ContractDraftAggregateService", () => {
     } as never);
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractDraftAggregateService, useValue: service },
-      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
     ] }).compile();
     const app = module.createNestApplication();
     app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "actor-1" }; next(); });
@@ -686,7 +687,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     prisma.position.findMany.mockResolvedValue([{ id: "contract-role", key: "contract_staff" }] as never);
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractDraftAggregateService, useValue: service },
-      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
     ] }).compile();
     const app = module.createNestApplication({ logger: false });
     const tokens = new JwtTokenService();
@@ -728,7 +729,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     if (stored !== null) Object.assign(originalVersion, { defaultTaxRatePercent: new Prisma.Decimal(stored) });
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractDraftAggregateService, useValue: service },
-      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
     ] }).compile();
     const app = module.createNestApplication({ logger: false });
     app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
@@ -759,7 +760,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     if (stored !== null) Object.assign(originalVersion, { defaultTaxRatePercent: new Prisma.Decimal(stored), invoiceType: "vat_special", taxFactSource: "contract_document" });
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractDraftAggregateService, useValue: service },
-      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
     ] }).compile();
     const app = module.createNestApplication({ logger: false });
     app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
@@ -784,7 +785,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       taxInclusiveAmountCents: 1n, taxExclusiveAmountCents: 1n, taxAmountCents: 0n })) });
     const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
       { provide: ContractDraftAggregateService, useValue: service },
-      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService].map(provide => ({ provide, useValue: {} }))
+      ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService].map(provide => ({ provide, useValue: {} }))
     ] }).compile();
     const app = module.createNestApplication({ logger: false });
     app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });

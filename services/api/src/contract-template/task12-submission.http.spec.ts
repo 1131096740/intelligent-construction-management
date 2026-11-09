@@ -134,7 +134,77 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const { createHash } = await import("node:crypto");
       await server.store.prisma.fileObject.update({ where: { id: pdf.id }, data: { contentSha256: createHash("sha256").update("synthetic current PDF").digest("hex") } });
       const submit = () => fetch(`${draft.base}/submission`, { method: "POST", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify(input) });
-      const response = await submit();
+      let response: Response;
+      if (contractType === "other") {
+        const store = server.store.prisma;
+        const receipts = store.contractDraftSubmissionRequest;
+        const auditCount = await store.auditLog.count();
+        const submitAfterCollision = async (
+          key: string,
+          target: string[],
+          prepareWinner?: (receipt: Record<string, unknown>) => Promise<() => Promise<void>>
+        ) => {
+          const collision = new Prisma.PrismaClientKnownRequestError("合成唯一约束冲突", {
+            code: "P2002", clientVersion: "synthetic", meta: { modelName: "ContractDraftSubmissionRequest", target }
+          });
+          const transaction = store.$transaction;
+          let commitWinner: (() => Promise<void>) | undefined;
+          const receiptWrite = jest.spyOn(receipts, "create").mockImplementationOnce(async ({ data }) => {
+            commitWinner = await prepareWinner?.(data);
+            throw collision;
+          });
+          // The synthetic store serializes transactions. The winning row becomes
+          // visible only after the losing transaction has rolled back.
+          const transactions = jest.spyOn(store, "$transaction").mockImplementation(async work => {
+            try { return await transaction(work); }
+            catch (error) {
+              const commit = commitWinner;
+              commitWinner = undefined;
+              await commit?.();
+              throw error;
+            }
+          });
+          try {
+            return await rawSubmit({ ...input, idempotencyKey: key });
+          } finally {
+            transactions.mockRestore();
+            receiptWrite.mockRestore();
+          }
+        };
+        const foreignKey = randomUUID();
+        const foreign = await submitAfterCollision(foreignKey, ["idempotencyKey"], async data => async () => {
+          await receipts.create({ data: { ...data, contractVersionId: randomUUID(), applicantUserId: "other-originator",
+            requestSha256: "0".repeat(64), approvalInstanceId: randomUUID(), formalCode: "他人原合同编号",
+            responseSnapshot: { status: "in_approval" } } });
+        });
+        expect({ status: foreign.status, body: await foreign.json() }).toMatchObject({ status: 409, body: { message: "本次提交标识已用于其他内容，请刷新后重新提交" } });
+        expect(await (await fetch(`${draft.base}/submission-requests/${foreignKey}`, { headers: draft.headers })).json()).toEqual({ status: "unknown" });
+
+        const unknown = await submitAfterCollision(randomUUID(), ["idempotencyKey"]);
+        expect({ status: unknown.status, body: await unknown.json() }).toMatchObject({ status: 503, body: { message: expect.stringContaining("保留本次标识") } });
+        expect((await submitAfterCollision(randomUUID(), ["approvalInstanceId"])).status).toBe(500);
+        expect(await store.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(0);
+        expect(await store.auditLog.count()).toBe(auditCount);
+        expect(await store.contractVersion.findUnique({ where: { id: draft.version.id } })).toMatchObject({ status: "draft" });
+
+        let winningResult: unknown;
+        response = await submitAfterCollision(input.idempotencyKey, ["idempotencyKey"], async data => {
+          const round = await store.approvalInstance.findUniqueOrThrow({ where: { id: data.approvalInstanceId } });
+          const committedVersion = await store.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } });
+          winningResult = data.responseSnapshot;
+          return async () => {
+            await store.approvalInstance.create({ data: round });
+            await store.contractVersion.update({ where: { id: draft.version.id }, data: committedVersion });
+            await store.contract.update({ where: { id: draft.contract.id }, data: { code: data.formalCode } });
+            await receipts.create({ data });
+          };
+        });
+        expect(await response.clone().json()).toEqual(winningResult);
+        expect(await store.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(1);
+        expect(await store.auditLog.count()).toBe(auditCount);
+      } else {
+        response = await submit();
+      }
       const result = await response.json();
       expect({ status: response.status, result }).toMatchObject({ status: 201, result: { contractVersionId: draft.version.id, status: "in_approval" } });
       const submissionReceipt = await fetch(`${draft.base}/submission-requests/${input.idempotencyKey}`, { headers: draft.headers });
@@ -150,6 +220,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       for (const badResult of [{ ...result, formalCode: "另一正式编号" }, { contractVersionId: result.contractVersionId, approvalInstanceId: result.approvalInstanceId, status: result.status }]) {
         await server.store.prisma.contractDraftSubmissionRequest.update({ where: { idempotencyKey: input.idempotencyKey }, data: { responseSnapshot: badResult } });
         expect(await (await getReceipt()).json()).toEqual({ status: "unknown" });
+        expect((await submit()).status).toBe(503);
       }
       await server.store.prisma.contractDraftSubmissionRequest.update({ where: { idempotencyKey: input.idempotencyKey }, data: { responseSnapshot: originalReceipt!.responseSnapshot } });
       expect(await server.store.prisma.auditLog.count()).toBe(auditBeforeReceiptChecks);
@@ -190,6 +261,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       expect({ status: withdrawal.status, body: await withdrawal.json() }).toMatchObject({ status: 201, body: { status: "draft" } });
       expect((await server.store.prisma.approvalInstance.findUnique({ where: { id: rounds[0].id } }))!.status).toBe("withdrawn");
       expect(await (await getReceipt()).json()).toMatchObject({ status: "submitted", result, intent: { documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint } });
+      expect(await (await submit()).json()).toEqual(result);
       expect(await server.store.prisma.approvalActionLog.count({ where: { approvalInstanceId: rounds[0].id, action: "approve" } })).toBe(1);
       expect((await reviewRequest()).status).toBe(409);
       const editable = await fetch(`${draft.base}/document-body`, { headers: draft.headers }).then(r => r.json()) as Body;
@@ -209,6 +281,8 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const secondResult = await second.json();
       expect({ status: second.status, body: secondResult }).toMatchObject({ status: 201, body: { status: "in_approval" } });
       expect(secondResult.approvalInstanceId).not.toBe(rounds[0].id);
+      expect(await (await submit()).json()).toEqual(result);
+      expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(2);
       const originalRound = await server.store.prisma.approvalInstance.findUnique({ where: { id: rounds[0].id } });
       expect((originalRound!.frozenNodes as Array<Record<string, unknown>>)[0].submissionSnapshot).toMatchObject({ documentContentFingerprint: input.documentContentFingerprint, generatedDocumentId: document.id });
       const secondRound = await server.store.prisma.approvalInstance.findUnique({ where: { id: secondResult.approvalInstanceId } });

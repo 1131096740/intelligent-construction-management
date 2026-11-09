@@ -1,6 +1,6 @@
 import { freezeInsideContractSigningIdentity } from "./contract-v2-signing-identity";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { Prisma, type Contract, type ContractDraftSubmissionRequest, type ContractVersion } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
@@ -24,6 +24,14 @@ import { AuthService } from "../auth/auth.service";
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item));
 function conflict(message: string): never { throw new ConflictException(message); }
+
+class SubmissionKeyCollision extends Error {}
+
+function submissionReceiptUnavailable() {
+  return new ServiceUnavailableException("提交回执尚未完整核对，请保留本次标识并查询结果，不要重复发起提交");
+}
+
+type SubmissionIdentity = { contractVersionId: string; actorUserId: string; requestSha256: string };
 
 /** Explicit v2 consumer of saved Task10 outputs. Legacy serial submissions stay separate. */
 @Injectable()
@@ -115,23 +123,42 @@ export class ContractV2SubmissionService {
       if (!contract || contract.voidedAt || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对本次提交结果");
       const receipt = await tx.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey } });
       if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.applicantUserId !== actorUserId || version?.numericProtocolVersion !== 2) return { status: "unknown" as const };
-      const round = await tx.approvalInstance.findUnique({ where: { id: receipt.approvalInstanceId } });
-      const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
-      if (!round || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== contractVersionId || round.applicantUserId !== actorUserId || !snapshot || snapshot.contractVersionId !== contractVersionId || snapshot.applicantUserId !== actorUserId || snapshot.draftRevision !== receipt.expectedRevision || snapshot.blanksReviewed !== true) return { status: "unknown" as const };
-      const intent = { expectedRevision: receipt.expectedRevision, submissionProtocolVersion: 2 as const,
-        documentContentRevision: snapshot.documentContentRevision, documentContentFingerprint: snapshot.documentContentFingerprint,
-        generatedDocumentId: snapshot.generatedDocumentId, sourceSha256: snapshot.sourceSha256, blanksReviewed: true };
-      if (!Number.isInteger(intent.expectedRevision) || intent.expectedRevision < 1 || intent.expectedRevision > 2_147_483_647
-        || !Number.isInteger(intent.documentContentRevision) || typeof intent.documentContentRevision !== "number" || intent.documentContentRevision < 1 || intent.documentContentRevision > 2_147_483_647
-        || typeof intent.documentContentFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(intent.documentContentFingerprint)
-        || typeof intent.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(intent.sourceSha256)
-        || typeof intent.generatedDocumentId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(intent.generatedDocumentId)
-        || typeof snapshot.formalCode !== "string" || !snapshot.formalCode.trim() || receipt.formalCode !== snapshot.formalCode) return { status: "unknown" as const };
-      const requestSha256 = hash(JSON.stringify({ contractVersionId, actorUserId, ...intent }));
-      const result = receipt.responseSnapshot;
-      if (requestSha256 !== receipt.requestSha256 || !result || typeof result !== "object" || Array.isArray(result) || result.contractVersionId !== contractVersionId || result.approvalInstanceId !== round.id || result.status !== "in_approval" || typeof result.formalCode !== "string" || !result.formalCode.trim() || result.formalCode !== receipt.formalCode) return { status: "unknown" as const };
-      return { status: "submitted" as const, result, requestSha256: receipt.requestSha256, intent };
+      return (await this.proveSubmissionReceipt(tx, receipt)) ?? { status: "unknown" as const };
     });
+  }
+
+  private async proveSubmissionReceipt(tx: Prisma.TransactionClient, receipt: ContractDraftSubmissionRequest) {
+    const { contractVersionId, applicantUserId: actorUserId } = receipt;
+    const round = await tx.approvalInstance.findUnique({ where: { id: receipt.approvalInstanceId } });
+    const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
+    if (!round || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== contractVersionId || round.applicantUserId !== actorUserId || !snapshot || snapshot.contractVersionId !== contractVersionId || snapshot.applicantUserId !== actorUserId || snapshot.draftRevision !== receipt.expectedRevision || snapshot.blanksReviewed !== true) return null;
+    const intent = { expectedRevision: receipt.expectedRevision, submissionProtocolVersion: 2 as const,
+      documentContentRevision: snapshot.documentContentRevision, documentContentFingerprint: snapshot.documentContentFingerprint,
+      generatedDocumentId: snapshot.generatedDocumentId, sourceSha256: snapshot.sourceSha256, blanksReviewed: true };
+    if (!Number.isInteger(intent.expectedRevision) || intent.expectedRevision < 1 || intent.expectedRevision > 2_147_483_647
+      || !Number.isInteger(intent.documentContentRevision) || typeof intent.documentContentRevision !== "number" || intent.documentContentRevision < 1 || intent.documentContentRevision > 2_147_483_647
+      || typeof intent.documentContentFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(intent.documentContentFingerprint)
+      || typeof intent.sourceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(intent.sourceSha256)
+      || typeof intent.generatedDocumentId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(intent.generatedDocumentId)
+      || typeof snapshot.formalCode !== "string" || !snapshot.formalCode.trim() || receipt.formalCode !== snapshot.formalCode) return null;
+    const requestSha256 = hash(JSON.stringify({ contractVersionId, actorUserId, ...intent }));
+    const result = receipt.responseSnapshot;
+    if (requestSha256 !== receipt.requestSha256 || !result || typeof result !== "object" || Array.isArray(result) || result.contractVersionId !== contractVersionId || result.approvalInstanceId !== round.id || result.status !== "in_approval" || typeof result.formalCode !== "string" || !result.formalCode.trim() || result.formalCode !== receipt.formalCode) return null;
+    return { status: "submitted" as const, result, requestSha256: receipt.requestSha256, intent };
+  }
+
+  private async replaySubmission(
+    tx: Prisma.TransactionClient,
+    receipt: ContractDraftSubmissionRequest,
+    { contractVersionId, actorUserId, requestSha256 }: SubmissionIdentity,
+    contract: Contract | null,
+    version: ContractVersion | null
+  ) {
+    if (receipt.contractVersionId !== contractVersionId || receipt.applicantUserId !== actorUserId || receipt.requestSha256 !== requestSha256) conflict("本次提交标识已用于其他内容，请刷新后重新提交");
+    if (!contract || contract.voidedAt || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对本次提交结果");
+    const proven = version?.numericProtocolVersion === 2 ? await this.proveSubmissionReceipt(tx, receipt) : null;
+    if (!proven) throw submissionReceiptUnavailable();
+    return proven.result;
   }
 
   async submit(contractVersionId: string, actorUserId: string, input: SubmitContractDraftDto, leaseToken?: string) {
@@ -139,16 +166,14 @@ export class ContractV2SubmissionService {
       expectedRevision: input.expectedRevision, submissionProtocolVersion: input.submissionProtocolVersion,
       documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint,
       generatedDocumentId: input.generatedDocumentId, sourceSha256: input.sourceSha256, blanksReviewed: input.blanksReviewed }));
+    const expected = { contractVersionId, actorUserId, requestSha256 };
     return this.prisma.$transaction(async tx => {
       const boundary = await lockContractDraftMutationBoundary<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>(tx, contractVersionId);
       if (!boundary) conflict("未找到当前合同，请刷新后重试");
-      const receipt = await tx.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
-      if (receipt) {
-        if (receipt.contractVersionId !== contractVersionId || receipt.applicantUserId !== actorUserId || receipt.requestSha256 !== requestSha256) conflict("本次提交标识已用于其他内容，请刷新后重新提交");
-        return receipt.responseSnapshot;
-      }
       const version = boundary.version;
       const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      const receipt = await tx.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+      if (receipt) return this.replaySubmission(tx, receipt, expected, contract, version);
       if (!contract || contract.voidedAt || version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.status !== "draft" || boundary.formalBlockers.length) conflict("当前合同不能从新版草稿入口提交");
       if (contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以提交审批");
       await tx.$queryRaw(Prisma.sql`SELECT "contractVersionId" FROM "ContractDraftEditLease" WHERE "contractVersionId" = ${contractVersionId} FOR UPDATE`);
@@ -199,9 +224,33 @@ export class ContractV2SubmissionService {
       await tx.contractVersion.update({ where: { id: contractVersionId }, data: { status: "in_approval", firstSubmittedAt: version.firstSubmittedAt ?? submissionTime, readinessSnapshot: snapshot } });
       await tx.contract.update({ where: { id: contract.id }, data: { code: formalCode } });
       const response = { contractVersionId, approvalInstanceId: round.id, formalCode, status: "in_approval" };
-      await tx.contractDraftSubmissionRequest.create({ data: { idempotencyKey: input.idempotencyKey, contractVersionId, expectedRevision: input.expectedRevision, applicantUserId: actorUserId, requestSha256, approvalInstanceId: round.id, formalCode, responseSnapshot: response } });
+      try {
+        await tx.contractDraftSubmissionRequest.create({ data: { idempotencyKey: input.idempotencyKey, contractVersionId, expectedRevision: input.expectedRevision, applicantUserId: actorUserId, requestSha256, approvalInstanceId: round.id, formalCode, responseSnapshot: response } });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          const { modelName, target } = error.meta ?? {};
+          if ((modelName === undefined || modelName === "ContractDraftSubmissionRequest")
+            && (target === "ContractDraftSubmissionRequest_pkey" || (Array.isArray(target) && target.length === 1 && target[0] === "idempotencyKey"))) {
+            throw new SubmissionKeyCollision();
+          }
+        }
+        throw error;
+      }
       await this.audit.record(tx, { actorUserId, action: "contract.approval.submit", businessType: "contract_version", businessId: contractVersionId, metadata: json(response) });
       return response;
+    }).catch(error => {
+      if (!(error instanceof SubmissionKeyCollision)) throw error;
+      // The failed write has rolled back. Only read and verify the committed winner.
+      return this.prisma.$transaction(async tx => {
+        const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+        const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+        const receipt = await tx.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+        if (!receipt) throw submissionReceiptUnavailable();
+        return this.replaySubmission(tx, receipt, expected, contract, version);
+      }).catch(readError => {
+        if (readError instanceof HttpException) throw readError;
+        throw submissionReceiptUnavailable();
+      });
     });
   }
 }
