@@ -13,7 +13,7 @@ import { addContractRelationshipSummaries } from "../contract-ledger/contract-re
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ContractVersion } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import {
   canPerform,
@@ -588,6 +588,7 @@ export class MeService {
       "contract.create",
       "contract.submit"
     ]);
+    const contractLifecycleItems = await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById);
     const pending = [
       ...(await spotPurchaseWorkItems(this.prisma as Prisma.TransactionClient, userId, this.projectIdsFor(scopes, ["spot_procurement.create"]))),
       ...(await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, "procurement")),
@@ -630,7 +631,7 @@ export class MeService {
         this.projectIdsFor(scopes, ["spot_procurement.payment.execute"]),
         projectNameById
       )),
-      ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)),
+      ...contractLifecycleItems.pending,
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.seal"]),
         ["approved_pending_seal"],
@@ -718,20 +719,23 @@ export class MeService {
       projectNameById
     );
 
-    const blocked = await this.contractTakeoverWorkItems(
-      this.projectIdsFor(scopes, ["contract.create", "contract.archive.confirm", "payment.create"]),
-      activeTakeoverStatuses.filter((status) => status !== "draft"),
-      projectNameById,
-      "历史余额未确认",
-      "确认余额后付款容量才可信",
-      "danger",
-      {
-        OR: [
-          { takeoverStatus: { not: "confirmed" } },
-          { historicalBalanceConfirmedAt: null }
-        ]
-      }
-    );
+    const blocked = [
+      ...(await this.contractTakeoverWorkItems(
+        this.projectIdsFor(scopes, ["contract.create", "contract.archive.confirm", "payment.create"]),
+        activeTakeoverStatuses.filter((status) => status !== "draft"),
+        projectNameById,
+        "历史余额未确认",
+        "确认余额后付款容量才可信",
+        "danger",
+        {
+          OR: [
+            { takeoverStatus: { not: "confirmed" } },
+            { historicalBalanceConfirmedAt: null }
+          ]
+        }
+      )),
+      ...contractLifecycleItems.blocked
+    ];
 
     const started = await this.approvalWorkItems(scopes, userId, "started", evaluatedAt);
     const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
@@ -1043,7 +1047,7 @@ export class MeService {
     const projectIds = scopes.map((scope) => scope.projectId);
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
-      ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)),
+      ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)).pending,
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
         "待同意用章", "核对审批结果后同意经办人线下取章", "warning", undefined, "governed", undefined
@@ -1779,19 +1783,30 @@ export class MeService {
     });
   }
 
-  private async contractV2RoundVersionIds(versionIds: string[]) {
-    if (!versionIds.length) return new Set<string>();
+  private async contractV2LegacySigningExclusions(versions: Array<Pick<ContractVersion, "id" | "numericProtocolVersion" | "signingSubjectType">>) {
+    const excluded = new Set<string>();
+    const versionIds: string[] = [];
+    for (const version of versions) {
+      if (version.numericProtocolVersion !== 2) continue;
+      // A missing frozen round cannot restore a legacy signing action for these V2 subjects.
+      if (version.signingSubjectType === "affiliate") excluded.add(version.id);
+      else versionIds.push(version.id);
+    }
+    if (!versionIds.length) return excluded;
     const rounds = await this.prisma.approvalInstance.findMany({ where: { businessId: { in: versionIds }, businessType: "contract_version", flowType: "contract.approve", status: "approved" } });
-    return new Set(rounds.filter(round => contractRoundSubmissionSnapshot(round.frozenNodes)?.contractVersionId === round.businessId).map(round => round.businessId));
+    for (const round of rounds) {
+      if (contractRoundSubmissionSnapshot(round.frozenNodes)?.contractVersionId === round.businessId) excluded.add(round.businessId);
+    }
+    return excluded;
   }
 
-  private async contractV2LifecycleWorkItems(userId: string, projectIds: string[], names: ReadonlyMap<string, string>): Promise<WorkItem[]> {
-    if (!projectIds.length) return [];
+  private async contractV2LifecycleWorkItems(userId: string, projectIds: string[], names: ReadonlyMap<string, string>) {
+    const result: { pending: WorkItem[]; blocked: WorkItem[] } = { pending: [], blocked: [] };
+    if (!projectIds.length) return result;
     const contracts = await this.prisma.contract.findMany({ where: { projectId: { in: projectIds }, voidedAt: null } });
     const byId = new Map(contracts.map(contract => [contract.id, contract]));
     const versions = (await this.prisma.contractVersion.findMany({ where: { contractId: { in: contracts.map(contract => contract.id) }, numericProtocolVersion: 2, status: { in: ["approved_pending_seal", "seal_approved_pending_archive"] } } })).filter(version => version.numericProtocolVersion === 2);
-    if (!versions.length || !(await this.prisma.user.findUnique({ where: { id: userId } }))?.isActive) return [];
-    const result: WorkItem[] = [];
+    if (!versions.length || !(await this.prisma.user.findUnique({ where: { id: userId } }))?.isActive) return result;
     for (const version of versions) {
       const contract = byId.get(version.contractId);
       if (!contract) continue;
@@ -1805,11 +1820,17 @@ export class MeService {
       if (seal ? !await hasActiveContractGlobalRole(this.prisma, userId, "comprehensive_director") : !archive || task.handlerUserId !== userId || !(await resolveGovernedFinalArchiveAccess(this.prisma, { actorUserId: userId, projectId: contract.projectId, handlerUserId: task.handlerUserId })).canUpload) continue;
       const code = contract.code ?? contract.temporaryCode;
       if (!code) continue;
-      result.push({ id: `contract-v2-${seal ? "seal" : "archive"}:${version.id}`, type: "archive", businessType: "contract_version", businessId: version.id,
+      const identity = snapshot.signingIdentity;
+      const relationship = identity && typeof identity === "object" && "relationship" in identity ? identity.relationship : null;
+      // The current installation has no generated archive authority for these sources.
+      const blocked = version.signingSubjectType === "affiliate" || relationship === "outside";
+      const queue = blocked ? result.blocked : result.pending;
+      queue.push({ id: `contract-v2-${seal ? "seal" : "archive"}:${version.id}`, type: blocked ? "blocker" : "archive", businessType: "contract_version", businessId: version.id,
         title: contract.name, projectName: names.get(contract.projectId) ?? "所属项目", businessCode: code,
         amountText: version.amountYuan === null ? "金额待确定" : `${version.amountYuan.toFixed(4)} 元`,
-        currentNode: seal ? "确认已盖章" : "归档双方签章原件", nextAction: seal ? "核对线下盖章完成后确认" : "上传双方签章PDF后直接归档生效",
-        stayedText: this.stayedText(version.updatedAt), targetPath: `/合同管理/${code}`, tone: seal ? "warning" : "primary" });
+        currentNode: blocked ? (seal ? "盖章办理暂不可用" : "归档办理暂不可用") : (seal ? "确认已盖章" : "归档双方签章原件"),
+        nextAction: blocked ? "查看合同详情并保留当前资料" : (seal ? "核对线下盖章完成后确认" : "上传双方签章PDF后直接归档生效"),
+        stayedText: this.stayedText(version.updatedAt), targetPath: `/合同管理/${code}`, tone: blocked || seal ? "warning" : "primary" });
     }
     return result;
   }
@@ -1850,13 +1871,13 @@ export class MeService {
           select: {
             id: true,
             contractId: true,
-            amountCents: true, numericProtocolVersion: true,
+            amountCents: true, numericProtocolVersion: true, signingSubjectType: true,
             updatedAt: true,
             contractGovernanceVersion: true
           }
         })
       : [];
-    const v2RoundVersionIds = await this.contractV2RoundVersionIds(versions.filter(version => version.numericProtocolVersion === 2).map(version => version.id));
+    const v2Exclusions = await this.contractV2LegacySigningExclusions(versions);
     const governedPendingIds = versions
       .filter((version) =>
         version.contractGovernanceVersion === 1 &&
@@ -1878,7 +1899,7 @@ export class MeService {
     );
 
     return versions.flatMap((version) => {
-      if (v2RoundVersionIds.has(version.id)) return [];
+      if (v2Exclusions.has(version.id)) return [];
       if (version.contractGovernanceVersion === 1 && statuses.includes("seal_approved_pending_archive")) {
         return [];
       }
@@ -1924,9 +1945,9 @@ export class MeService {
         id: { in: tasks.map((item) => item.contractVersionId) },
         status: { in: ["in_seal", "seal_approved_pending_archive"] }
       },
-      select: { id: true, contractId: true, status: true, amountCents: true, numericProtocolVersion: true, updatedAt: true }
+      select: { id: true, contractId: true, status: true, amountCents: true, numericProtocolVersion: true, signingSubjectType: true, updatedAt: true }
     });
-    const v2RoundVersionIds = await this.contractV2RoundVersionIds(versions.filter(version => version.numericProtocolVersion === 2).map(version => version.id));
+    const v2Exclusions = await this.contractV2LegacySigningExclusions(versions);
     const contracts = versions.length ? await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((item) => item.contractId))] }
@@ -1935,7 +1956,7 @@ export class MeService {
     }) : [];
     const contractById = new Map(contracts.map((item) => [item.id, item]));
     return versions.flatMap((version) => {
-      if (v2RoundVersionIds.has(version.id)) return [];
+      if (v2Exclusions.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;
@@ -1999,9 +2020,9 @@ export class MeService {
         contractGovernanceVersion: 1,
         status: "seal_approved_pending_archive"
       },
-      select: { id: true, contractId: true, amountCents: true, numericProtocolVersion: true, updatedAt: true }
+      select: { id: true, contractId: true, amountCents: true, numericProtocolVersion: true, signingSubjectType: true, updatedAt: true }
     });
-    const v2RoundVersionIds = await this.contractV2RoundVersionIds(versions.filter(version => version.numericProtocolVersion === 2).map(version => version.id));
+    const v2Exclusions = await this.contractV2LegacySigningExclusions(versions);
     const contracts = versions.length ? await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((item) => item.contractId))] },
@@ -2011,7 +2032,7 @@ export class MeService {
     }) : [];
     const contractById = new Map(contracts.map((item) => [item.id, item]));
     return versions.flatMap((version) => {
-      if (v2RoundVersionIds.has(version.id)) return [];
+      if (v2Exclusions.has(version.id)) return [];
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;

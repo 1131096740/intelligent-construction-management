@@ -18,6 +18,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const enterpriseName = "合成施工企业";
       const approvedAt = new Date("2026-11-08T08:00:00Z");
       await prisma.project.create({ data: { id: projectId, code: "T12-AFFILIATE-SEAL", name: "合成盖章项目", isActive: true } });
+      await prisma.projectMember.create({ data: { projectId, userId: "staff", positionKey: "contract_staff" } });
       await prisma.businessParty.create({ data: { id: enterpriseId, name: enterpriseName, status: "active" } });
       await prisma.businessPartyVersion.create({ data: { id: enterpriseVersionId, businessPartyId: enterpriseId, versionNo: 1, snapshot: { name: enterpriseName } } });
       const assignment = await prisma.projectAffiliateAssignment.create({ data: {
@@ -35,6 +36,8 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         affiliateBusinessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: enterpriseName,
         amountCents: 0n, amountYuan: null, firstSubmittedAt: approvedAt, documentContentRevision, documentContentFingerprint
       } });
+      await prisma.paymentTermsVersion.create({ data: { contractId: contract.id, contractVersionId: version.id,
+        versionNo: 1, status: "active", originalText: "合成历史付款条款" } });
       const submissionSnapshot = { submissionProtocolVersion: 2, contractVersionId: version.id, documentContentRevision,
         documentContentFingerprint, signingIdentity: { relationship: "outside" } };
       const duties = ["material_director", "contract_director", "project_manager", "finance_director", "general_manager"];
@@ -51,8 +54,12 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       } });
       await prisma.position.upsert({ where: { id: "comprehensive_director" }, create: { id: "comprehensive_director", key: "comprehensive_director" }, update: {} });
       await prisma.userPosition.create({ data: { userId: "director", positionId: "comprehensive_director", projectId: null } });
+      await prisma.userPosition.create({ data: { userId: "technical", positionId: "comprehensive_director", projectId: null } });
       const director = await loginTemplateActor(server, "director");
-      const confirm = async () => fetch(`${await server.app.getUrl()}/contracts/${version.id}/seal-confirmation`, {
+      const handler = await loginTemplateActor(server, "staff");
+      const technical = await loginTemplateActor(server, "technical");
+      const base = await server.app.getUrl();
+      const confirm = () => fetch(`${base}/contracts/${version.id}/seal-confirmation`, {
         method: "POST", headers: { authorization: `Bearer ${director}`, "content-type": "application/json" },
         body: JSON.stringify({ expectedApprovalInstanceId: round.id, expectedSealTaskId: task.id, documentContentRevision, documentContentFingerprint, confirmed: true })
       });
@@ -61,11 +68,46 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         prisma.contractSealTask.findUnique({ where: { id: task.id } }),
         prisma.auditLog.count({ where: { businessId: version.id } })
       ]);
+      const workItems = async (token: string) => {
+        const response = await fetch(`${base}/me/work-items`, { headers: { authorization: `Bearer ${token}` } });
+        const { queues } = await response.json() as { queues: Record<"pending" | "blocked", Array<{ businessId: string }>> };
+        return { status: response.status, pending: queues?.pending.filter(item => item.businessId === version.id),
+          blocked: queues?.blocked.filter(item => item.businessId === version.id) };
+      };
+      const headers = (token: string) => ({ authorization: `Bearer ${token}`, "x-contract-numeric-protocol": "2" });
+      const workbench = async (view: string, token: string) => {
+        const response = await fetch(`${base}/contracts/workbench?view=${view}`, { headers: headers(token) });
+        const body = await response.json() as { rows?: Array<{ contractVersionId: string }> };
+        return { status: response.status, versions: body.rows?.filter(row => row.contractVersionId === version.id).map(row => row.contractVersionId) };
+      };
+      const assertBlocked = async (token: string, phase: "seal" | "archive") => {
+        const before = await readState();
+        expect(await workItems(token)).toEqual({ status: 200, pending: [], blocked: [expect.objectContaining({
+          id: `contract-v2-${phase}:${version.id}`, type: "blocker", targetPath: "/合同管理/HT-SYNTHETIC-AFFILIATE",
+          currentNode: phase === "seal" ? "盖章办理暂不可用" : "归档办理暂不可用", nextAction: "查看合同详情并保留当前资料"
+        })] });
+        expect(await workbench("pending_action", token)).toEqual({ status: 200, versions: [] });
+        for (const view of ["all", phase === "seal" ? "pending_seal" : "pending_archive"]) {
+          expect(await workbench(view, token)).toEqual({ status: 200, versions: [version.id] });
+        }
+        const detail = await fetch(`${base}/contracts/HT-SYNTHETIC-AFFILIATE?versionId=${version.id}`, { headers: headers(token) });
+        const body = await detail.json();
+        expect({ status: detail.status, body }).toMatchObject({ status: 200, body: { contractVersionId: version.id,
+          v2Lifecycle: { status: "unavailable", webWriteReleased: false, sealAction: { enabled: false }, archiveAction: { enabled: false } } } });
+        expect(body.availableActionKeys.filter((key: string) => ["approve_seal", "complete_seal", "confirm_seal_v2", "archive_signed_v2", "upload_archive", "upload_final_contract"].includes(key))).toEqual([]);
+        expect(await readState()).toEqual(before);
+      };
       const pending = await readState();
+      await assertBlocked(director, "seal");
+      expect(await workItems(technical)).toEqual({ status: 200, pending: [], blocked: [] });
       const denied = await confirm();
       expect({ status: denied.status, body: await denied.json() })
         .toMatchObject({ status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") } });
       expect(await readState()).toEqual(pending);
+
+      await prisma.contractVersion.update({ where: { id: version.id }, data: { signingSubjectType: "our_company" } });
+      await assertBlocked(director, "seal");
+      await prisma.contractVersion.update({ where: { id: version.id }, data: { signingSubjectType: "affiliate" } });
 
       // Existing completed rows were written under the prior application behavior.
       await prisma.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: "director", completedAt: approvedAt } });
@@ -75,6 +117,18 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       expect({ status: replay.status, body: await replay.json() }).toEqual({
         status: 201, body: { contractVersionId: version.id, approvalInstanceId: round.id, sealTaskId: task.id, status: "seal_approved_pending_archive" }
       });
+      expect(await readState()).toEqual(completed);
+      await assertBlocked(handler, "archive");
+      expect(await workItems(director)).toEqual({ status: 200, pending: [], blocked: [] });
+
+      const originalRound = await prisma.approvalInstance.findUnique({ where: { id: round.id } });
+      const nodes = originalRound!.frozenNodes as Prisma.JsonArray;
+      const first = { ...nodes[0] as Prisma.JsonObject };
+      delete first.submissionSnapshot;
+      await prisma.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: [first, ...nodes.slice(1)] } });
+      expect(await workItems(handler)).toEqual({ status: 200, pending: [], blocked: [] });
+      expect(await workbench("pending_action", handler)).toEqual({ status: 200, versions: [] });
+      await prisma.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: nodes } });
       expect(await readState()).toEqual(completed);
     } finally { await server.app.close(); }
   });
