@@ -81,8 +81,9 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
           'registryTriggers',(SELECT jsonb_object_agg(tgname,oid::text) FROM watched_triggers)),
         'generatedDispatchUsesOperatingSuccessor',EXISTS(SELECT 1 FROM pg_catalog.pg_proc p
           WHERE p.oid=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(text,boolean)')
-            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
-              'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'),
+            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IN (
+              'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f',
+              'd3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4')),
         'generatedDispatchQualified',2=(SELECT count(*) FROM (VALUES
             ('public.jg_contract_archive_v2_ownership_day(pg_catalog.text)','7bfc159db4085773d9be238c257739f5c881e8f550c4efb061fed6f1a5c2ab13',FALSE,
               'search_path=pg_catalog, public'),
@@ -95,8 +96,9 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
             AND p.prorettype='pg_catalog.date'::regtype AND p.provolatile='v' AND p.proparallel='u'
             AND NOT p.prosecdef AND p.proconfig=ARRAY[h.path] AND NOT p.proisstrict AND NOT p.proretset
             AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=h.sha OR (h.qualified_acl
-              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
-                'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'))
+              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IN (
+                'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f',
+                'd3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4')))
             AND (NOT h.qualified_acl OR (
               EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
                 WHERE a.grantee=current_user::regrole::oid AND a.grantor=c.relowner

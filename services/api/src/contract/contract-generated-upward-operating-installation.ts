@@ -3,11 +3,54 @@ import type { GeneratedUpwardOperatingActivation, UpwardActivationBinding } from
 
 export const upwardOperatingParentBody = "cbc9b7890e3fe02c730c1fa8617eb8b13b74a401c962083506d8a3372ec7a522";
 
+export const outsideFactAppendBody = "a2c695903580d69b86a37bc8f697b4e344780a9a07fc4ad18fdd6b7fb42835ea";
+
+// Only the complete 232 tuple may qualify a successor to the existing upstream routines.
+const outsideOperatingProfile = Prisma.sql`
+  SELECT 6=(SELECT count(*) FROM (VALUES
+    ('public.jg_generated_archive_activation_basis_v1(text,boolean)','d3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4','pg_catalog.date',FALSE,FALSE,'search_path=pg_catalog, pg_temp','app'),
+    ('public.jg_capture_generated_archive_completion_v1(text)','7a284c9b3f2a5dcacf69c45eaddc9560909156cd69aa499b0fc31b4e482feb2e','pg_catalog.jsonb',FALSE,FALSE,'search_path=pg_catalog, public','private'),
+    ('public.jg_apply_generated_archive_write_v1()','206473c94130778e2c90194a9529782849a30b3561a640ea38e1ebb332572670','pg_catalog.trigger',TRUE,FALSE,'search_path=pg_catalog, pg_temp','private'),
+    ('public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",text,text)','a2c695903580d69b86a37bc8f697b4e344780a9a07fc4ad18fdd6b7fb42835ea','pg_catalog.record',TRUE,TRUE,'search_path=pg_catalog, public','legacy'),
+    ('public.jg_generated_outside_commitment_basis_v1(text)','0e147b26625992b359ef91f096995550aad56f803adc65e310aea795a4225c24','pg_catalog.jsonb',FALSE,FALSE,'search_path=pg_catalog, pg_temp','private'),
+    ('public.jg_require_generated_outside_commitment_v1()','e72db7166e9f363fac5216e954be25fc2e339a0783dd4cc627b3b0a47ed20542','pg_catalog.trigger',TRUE,FALSE,'search_path=pg_catalog, pg_temp','private')
+  ) q(signature,sha,result_type,definer,returns_set,path,access)
+    JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(q.signature) AND p.proowner=b."ownerOid"
+      AND p.pronamespace=b."namespaceOid" AND p.prokind='f' AND p.provolatile='v' AND p.proparallel='u'
+      AND p.prorettype=pg_catalog.to_regtype(q.result_type) AND p.prosecdef=q.definer AND p.proconfig=ARRAY[q.path]
+      AND NOT p.proisstrict AND p.proretset=q.returns_set
+      AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=q.sha
+    JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
+    WHERE (q.access<>'app' OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
+      WHERE a.grantee=b."applicationRoleOid" AND a.grantor=p.proowner AND a.privilege_type='EXECUTE' AND NOT a.is_grantable))
+      AND ((q.access='legacy' AND EXISTS(SELECT 1 FROM public.jg_contract_direct_pending_binding_v1 legacy
+        JOIN pg_catalog.pg_class c ON c.oid=legacy.tableoid AND c.relowner=b."ownerOid" AND c.relnamespace=b."namespaceOid"
+          AND c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
+        CROSS JOIN LATERAL (SELECT legacy."bindings"->'routines'->
+          'public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",pg_catalog.text,pg_catalog.text)' AS item) stored
+        WHERE legacy."protocolVersion"=1 AND legacy."applicationRoleOid"=b."applicationRoleOid"
+          AND legacy."databaseOid"=b."databaseOid" AND legacy."anchorNamespaceOid"=b."namespaceOid" AND legacy."anchorOwnerOid"=p.proowner
+          AND stored.item->>'oid'=p.oid::text AND stored.item->'acl' IS NOT DISTINCT FROM COALESCE(to_jsonb(p.proacl),'null'::jsonb)
+          AND stored.item->>'bodySha256' IN (
+            'aa00bcbe5651be1b48054e338d5881d81900eef0eb2c86880f80fa5d9d350a58',
+            '1dd955715e4102b2f3a44b65e92860d457ebcc11981f06e2ca1e0c494f566c4f')
+          AND pg_catalog.has_function_privilege(b."applicationRoleOid",p.oid,'EXECUTE')))
+        OR (q.access<>'legacy' AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+          WHERE a.grantor<>p.proowner OR (a.grantee<>p.proowner AND
+            (q.access<>'app' OR a.grantee<>b."applicationRoleOid" OR a.privilege_type<>'EXECUTE' OR a.is_grantable))))))
+    AND EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t
+      WHERE t.tgname='jg_generated_outside_commitment_required' AND t.tgrelid=pg_catalog.to_regclass('public."ContractArchiveFile"')
+        AND t.tgfoid=pg_catalog.to_regprocedure('public.jg_require_generated_outside_commitment_v1()')
+        AND t.tgtype=5 AND t.tgenabled='O' AND NOT t.tgisinternal AND t.tgdeferrable AND t.tginitdeferred
+        AND t.tgconstraint<>0 AND t.tgqual IS NULL AND t.tgnargs=0 AND t.tgattr::text='') AS qualified
+`;
+
 export const generatedUpwardOperatingCatalog = Prisma.sql`
   SELECT b."ownerOid" AS relowner,b."namespaceOid" AS relnamespace,
     b."ownerOid"::text AS "ownerOid",b."namespaceOid"::text AS "namespaceOid",b."databaseOid"::text AS "databaseOid",
     current_user::regrole::oid::text AS "currentRoleOid",session_user::regrole::oid::text AS "sessionRoleOid",
-    pg_catalog.pg_backend_pid() AS "backendPid",pg_catalog.txid_current()::text AS "transactionId"
+    pg_catalog.pg_backend_pid() AS "backendPid",pg_catalog.txid_current()::text AS "transactionId",
+    successor.qualified AS "outsideOperatingQualified"
   FROM public.jg_contract_generated_upward_seal_binding_v1 b
   JOIN pg_catalog.pg_database d ON d.oid=b."databaseOid" AND d.datname=pg_catalog.current_database()
   JOIN pg_catalog.pg_class c ON c.oid=b.tableoid AND c.relowner=b."ownerOid" AND c.relnamespace=b."namespaceOid"
@@ -15,6 +58,7 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
   JOIN pg_catalog.pg_class v ON v.oid=pg_catalog.to_regclass('public.jg_contract_generated_archive_version_transition_v1')
     AND v.relowner=b."ownerOid" AND v.relnamespace=b."namespaceOid"
     AND v.relkind='r' AND v.relpersistence='p' AND NOT v.relispartition AND NOT v.relrowsecurity AND NOT v.relforcerowsecurity
+  CROSS JOIN LATERAL (${outsideOperatingProfile}) successor
   WHERE b."protocolVersion"=1 AND b."namespaceOid"=pg_catalog.to_regnamespace('public')
     AND b."applicationRoleOid"=current_user::regrole::oid AND b."applicationRoleOid"=session_user::regrole::oid
     AND b."ownerOid"<>b."applicationRoleOid" AND pg_catalog.current_setting('session_replication_role')='origin'
@@ -34,7 +78,14 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
       JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(x.signature) AND p.proowner=b."ownerOid"
         AND p.pronamespace=b."namespaceOid" AND p.prokind='f' AND p.provolatile='v' AND p.proparallel='u'
         AND p.prorettype=pg_catalog.to_regtype(x.result_type) AND p.prosecdef=x.definer AND p.proconfig=ARRAY[x.path]
-        AND NOT p.proisstrict AND NOT p.proretset AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.sha
+        AND NOT p.proisstrict AND NOT p.proretset
+        AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=CASE WHEN successor.qualified THEN
+          CASE x.signature
+            WHEN 'public.jg_generated_archive_activation_basis_v1(text,boolean)' THEN 'd3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4'
+            WHEN 'public.jg_capture_generated_archive_completion_v1(text)' THEN '7a284c9b3f2a5dcacf69c45eaddc9560909156cd69aa499b0fc31b4e482feb2e'
+            WHEN 'public.jg_apply_generated_archive_write_v1()' THEN '206473c94130778e2c90194a9529782849a30b3561a640ea38e1ebb332572670'
+            ELSE x.sha END
+          ELSE x.sha END
       JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
       WHERE (x.access<>'app' OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
         WHERE a.grantee=b."applicationRoleOid" AND a.grantor=p.proowner AND a.privilege_type='EXECUTE' AND NOT a.is_grantable))
@@ -60,16 +111,16 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
 `;
 
 export async function hasGeneratedUpwardOperatingInstallation(
-  tx: Prisma.TransactionClient, identity: Record<string, unknown>
+  tx: Prisma.TransactionClient, identity: Record<string, unknown>, requireOutside = false
 ) {
   const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
     /* contract_generated_upward_operating_installation_v1 */
-    SELECT "ownerOid","namespaceOid","databaseOid","currentRoleOid","sessionRoleOid","backendPid","transactionId"
+    SELECT "ownerOid","namespaceOid","databaseOid","currentRoleOid","sessionRoleOid","backendPid","transactionId","outsideOperatingQualified"
     FROM (${generatedUpwardOperatingCatalog}) installed LIMIT 2
   `);
   if (rows.length !== 1) return false;
-  const { ownerOid, ...observed } = rows[0];
-  return ownerOid === identity.anchorOwnerOid &&
+  const { ownerOid, outsideOperatingQualified, ...observed } = rows[0];
+  return ownerOid === identity.anchorOwnerOid && (!requireOutside || outsideOperatingQualified === true) &&
     ["namespaceOid", "databaseOid", "currentRoleOid", "sessionRoleOid", "backendPid", "transactionId"]
       .every(key => observed[key] === identity[key]);
 }

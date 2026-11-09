@@ -21,10 +21,11 @@ export const generatedArchiveIngressCatalog = Prisma.sql`
     AND p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND p.prosecdef AND p.provolatile='v'
     AND p.prorettype='pg_catalog.trigger'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']::text[]
     AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${writerIngressBody} OR (
-      encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
-        '03174cabf7b24f57ddad58ecf2c92360caa32f6d84299d3ab8ac4117d9f8465f'
-      AND 1=(SELECT count(*) FROM (${generatedUpwardOperatingCatalog}) u
-        WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
+      1=(SELECT count(*) FROM (${generatedUpwardOperatingCatalog}) u
+        WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
+          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=CASE WHEN u."outsideOperatingQualified" THEN
+            '206473c94130778e2c90194a9529782849a30b3561a640ea38e1ebb332572670'
+            ELSE '03174cabf7b24f57ddad58ecf2c92360caa32f6d84299d3ab8ac4117d9f8465f' END)))
   WHERE c.oid=pg_catalog.to_regclass('public.jg_contract_generated_archive_write_v1')
     AND c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
     AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
@@ -104,12 +105,14 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
           AND f.proparallel='u' AND f.prorettype=pg_catalog.to_regtype(q.return_type) AND f.prosecdef=q.definer
           AND f.proconfig=ARRAY[q.path] AND NOT f.proisstrict AND NOT f.proretset
           AND (encode(public.digest(convert_to(f.prosrc,'UTF8'),'sha256'),'hex')=q.sha OR (
-            1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)
-            AND encode(public.digest(convert_to(f.prosrc,'UTF8'),'sha256'),'hex')=CASE q.signature
-              WHEN 'public.jg_apply_generated_archive_write_v1()' THEN
-                '03174cabf7b24f57ddad58ecf2c92360caa32f6d84299d3ab8ac4117d9f8465f'
-              WHEN 'public.jg_capture_generated_archive_completion_v1(text)' THEN
-                'ebc6784cf581ecc1f53f53e1cafcaafadba6004b8a6a0ef71f4e94f3ae872f6d' END))
+            1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
+              AND encode(public.digest(convert_to(f.prosrc,'UTF8'),'sha256'),'hex')=CASE q.signature
+                WHEN 'public.jg_apply_generated_archive_write_v1()' THEN CASE WHEN u."outsideOperatingQualified" THEN
+                  '206473c94130778e2c90194a9529782849a30b3561a640ea38e1ebb332572670'
+                  ELSE '03174cabf7b24f57ddad58ecf2c92360caa32f6d84299d3ab8ac4117d9f8465f' END
+                WHEN 'public.jg_capture_generated_archive_completion_v1(text)' THEN CASE WHEN u."outsideOperatingQualified" THEN
+                  '7a284c9b3f2a5dcacf69c45eaddc9560909156cd69aa499b0fc31b4e482feb2e'
+                  ELSE 'ebc6784cf581ecc1f53f53e1cafcaafadba6004b8a6a0ef71f4e94f3ae872f6d' END END)))
           AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(f.proacl,pg_catalog.acldefault('f',f.proowner))) a
             WHERE a.grantee<>f.proowner OR a.grantor<>f.proowner))
       AND 10=(SELECT count(*) FROM recipes q JOIN pg_catalog.pg_trigger t ON t.tgfoid=pg_catalog.to_regprocedure(q.fn)
@@ -128,9 +131,10 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
       AND basis.proowner=c.relowner AND basis.pronamespace=c.relnamespace AND NOT basis.prosecdef
       AND (encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')=
         '7d231034f736945ec01332f494a33dba7e816eb54aefaae56d13a149c62a2f56' OR (
-        encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')=
-          'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'
-        AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
+        1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
+          AND encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')=CASE WHEN u."outsideOperatingQualified" THEN
+            'd3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4'
+            ELSE 'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f' END)))
       AS qualified,
     1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)
       AS "upwardOperatingQualified"
