@@ -1,3 +1,5 @@
+import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "./contract-generated-upward-operating";
+import { nativeGeneratedUpwardOperatingActivation } from "./contract-generated-upward-operating-installation";
 import { GENERATED_ARCHIVE_PREPARATION_READER } from "./contract-generated-archive-preparation";
 import { ContractV2ArchiveService } from "./contract-v2-archive.service";
 import { CONTRACT_VERSION_FILE_READ_AUTHORITY } from "./contract-version-file-read-authority";
@@ -53,7 +55,8 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     ContractFormalFileService,
     ContractAuthorizationService,
     ContractSealService,
-    ContractVersionActivationService
+    ContractVersionActivationService,
+    { provide: GENERATED_UPWARD_OPERATING_ACTIVATION, useValue: nativeGeneratedUpwardOperatingActivation }
   ],
   exports: [
     ContractService,

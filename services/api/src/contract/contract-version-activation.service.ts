@@ -244,7 +244,7 @@ export class ContractVersionActivationService {
     const ledgerDay = projectBefore?.operatingLedgerEffectiveDate?.toISOString().slice(0, 10);
     const upward = externalContract && ledgerDay
       ? await requireGeneratedUpwardActivation(tx, externalContract, version, archive, ledgerDay, this.upwardOperating) : null;
-    if (upward) await assertGeneratedUpwardHasNoOperatingFact(tx, upward.projectId, version.id);
+    if (upward) await assertGeneratedUpwardHasNoOperatingFact(tx, version.id);
 
     const effective = await tx.contractVersion.update({ where: { id: versionId }, data: { status: "effective", effectiveAt, taxFactsFrozenAt: effectiveAt } });
     await tx.paymentTermsVersion.updateMany({ where: { contractVersionId: versionId }, data: { status: "effective" } });
@@ -257,7 +257,7 @@ export class ContractVersionActivationService {
       const policy = readGeneratedArchiveOperatingPolicy({ archive, contract, version: effective });
       if (!upward || policy?.mode !== "upward_internal_reference"
         || policy.reference.operatingLedgerEffectiveDateSnapshot !== currentLedgerDay) throw generatedOperatingUnavailable();
-      await assertGeneratedUpwardHasNoOperatingFact(tx, contract.projectId, version.id);
+      await assertGeneratedUpwardHasNoOperatingFact(tx, version.id);
       return;
     }
     await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, {

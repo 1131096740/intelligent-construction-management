@@ -8,13 +8,16 @@ import { assertGeneratedArchiveSealSources, generatedArchiveSealScope } from "./
 import { readGeneratedArchiveWriteInstallation } from "./contract-generated-archive-write-authority";
 import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "./contract-parallel-duty-access";
 
-async function readScope(tx: Prisma.TransactionClient, candidate: GeneratedArchiveSealScope, forArchive: boolean) {
+async function readScope(tx: Prisma.TransactionClient, candidate: GeneratedArchiveSealScope, forArchive: boolean,
+  installation: GeneratedArchiveSealAuthority["installation"]) {
   const version = await tx.contractVersion.findUnique({ where: { id: candidate.contractVersionId } });
   if (!version || version.numericProtocolVersion !== 2 || !version.firstSubmittedAt || !version.documentContentFingerprint) return null;
   const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
   if (!contract || contract.voidedAt) return null;
   const project = await tx.project.findUnique({ where: { id: contract.projectId } });
-  if (!project?.isActive || project.operatingLedgerEffectiveDate !== null) return null;
+  if (!project?.isActive || (project.operatingLedgerEffectiveDate !== null &&
+    (installation.upwardOperatingQualified !== true || candidate.relationship !== "upward"
+      || version.signingSubjectType !== "upward"))) return null;
 
   const rounds = await tx.approvalInstance.findMany({ where: { businessId: version.id, businessType: "contract_version",
     flowType: "contract.approve", status: { in: ["in_progress", "approved"] } } });
@@ -55,7 +58,7 @@ export async function readNativeGeneratedArchiveSealAuthority(tx: Prisma.Transac
   candidate: GeneratedArchiveSealScope): Promise<GeneratedArchiveSealAuthority | null> {
   const installation = await readGeneratedArchiveWriteInstallation(tx);
   if (!installation) return null;
-  const scope = await readScope(tx, candidate, false);
+  const scope = await readScope(tx, candidate, false, installation);
   return scope ? { transaction: tx, scope, installation } : null;
 }
 
@@ -64,7 +67,7 @@ export async function readNativeGeneratedArchiveRequestBinding(tx: Prisma.Transa
 ): Promise<GeneratedArchiveBindingWitness | null> {
   const installation = await readGeneratedArchiveWriteInstallation(tx);
   if (!installation) return null;
-  const scope = await readScope(tx, candidate.scope, true);
+  const scope = await readScope(tx, candidate.scope, true, installation);
   if (!scope || scope.handlerUserId !== candidate.uploaderUserId
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(candidate.idempotencyKey)) return null;
   const uploaderUserId = scope.handlerUserId;

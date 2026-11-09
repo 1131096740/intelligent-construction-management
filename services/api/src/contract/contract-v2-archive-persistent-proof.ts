@@ -3,7 +3,8 @@ import { archiveRequestSha } from "./contract-archive-request-digest";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma, type Contract, type ContractVersion, type ContractArchiveFile, type ContractArchiveEvidenceFile, type FileObject } from "@prisma/client";
 import { readGeneratedArchiveOriginals, requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
-import { readGeneratedArchiveCompletion, type GeneratedArchiveCompletion, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
+import { readGeneratedArchiveCompletion, type GeneratedArchiveCompletion, type GeneratedArchiveOperatingReceipt, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
+import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
 import type { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
 
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v, (_k, value) => typeof value === "bigint" ? value.toString() : value));
@@ -59,12 +60,13 @@ export async function readGeneratedArchiveDownloadGeneration(tx: Prisma.Transact
 }
 
 export function generatedArchiveCompletion(owner: Contract, archive: ContractArchiveFile,
-  files: readonly ContractArchiveEvidenceFile[], originals: readonly GeneratedArchiveSignedOriginal[]): GeneratedArchiveCompletion {
+  files: readonly ContractArchiveEvidenceFile[], originals: readonly GeneratedArchiveSignedOriginal[],
+  operatingReceipt: GeneratedArchiveOperatingReceipt): GeneratedArchiveCompletion {
   const { approvalInstanceId, sealTaskId, idempotencyKey, requestSha256, authoritySha256, fileManifestSha256, confirmedAt } = archive;
   if (!approvalInstanceId || !sealTaskId || !idempotencyKey || !requestSha256 || !authoritySha256 || !fileManifestSha256 || !confirmedAt) {
     throw new ServiceUnavailableException("归档请求持久证据尚未完整核对，请保留原标识");
   }
-  return { protocolVersion: 1, policy: "operating_ledger_not_enabled", archiveId: archive.id, projectId: owner.projectId,
+  return { protocolVersion: 1, ...operatingReceipt, archiveId: archive.id, projectId: owner.projectId,
     contractId: owner.id, contractVersionId: archive.contractVersionId, approvalInstanceId, sealTaskId,
     uploaderUserId: archive.uploadedByUserId, idempotencyKey, requestSha256, authoritySha256, fileManifestSha256,
     archivedAt: confirmedAt.toISOString(), evidenceIds: files.map(file => file.id), originals };
@@ -96,10 +98,24 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
   if (requiresFixedOriginals) {
     const originals = await readGeneratedArchiveOriginals(tx, owner, version, durable, files);
     const completion = await readGeneratedArchiveCompletion(tx, durable.id).catch(() => null);
-    const actual = generatedArchiveCompletion(owner, durable, files, originals);
+    let operatingReceipt: GeneratedArchiveOperatingReceipt = { policy: "operating_ledger_not_enabled" };
+    if (consequence.mode === "internal_reference_only") {
+      const policy = readGeneratedArchiveOperatingPolicy({ archive: durable, contract: owner, version });
+      const source = { sourceType: "contract_version", sourceBusinessId: versionId };
+      if (policy?.mode !== "upward_internal_reference" || await tx.operatingFact.count({ where: source })
+        || await tx.operatingImpactEntry.count({ where: source })) {
+        throw new ServiceUnavailableException("对上合同经营依据尚未核对，请保留本次标识");
+      }
+      operatingReceipt = { policy: "upward_internal_reference",
+        operatingLedgerEffectiveDateSnapshot: policy.reference.operatingLedgerEffectiveDateSnapshot };
+    }
+    const expectedConsequence = { protocolVersion: 1, expectedSource: null,
+      ...(operatingReceipt.policy === "upward_internal_reference"
+        ? { mode: "internal_reference_only", operatingLedgerEffectiveDateSnapshot: operatingReceipt.operatingLedgerEffectiveDateSnapshot }
+        : { mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null }) };
+    const actual = generatedArchiveCompletion(owner, durable, files, originals, operatingReceipt);
     if (!completion || completion.transaction !== tx || !same(completion.completion, actual)
-      || (expected && !same(expected, actual))
-      || !same(consequence, { protocolVersion: 1, mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null, expectedSource: null })) {
+      || (expected && !same(expected, actual)) || !same(consequence, expectedConsequence)) {
       throw new ServiceUnavailableException("归档原件固定版本已核对，正式归档结果尚未确认，请保留本次标识");
     }
   }

@@ -1,3 +1,5 @@
+import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "../contract/contract-generated-upward-operating";
+import { nativeGeneratedUpwardOperatingActivation } from "../contract/contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { createBusinessEntryDefinitionRegistry } from "@jiangkong/shared-domain";
 import { CONTRACT_SETTLEMENT_MODE_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
@@ -1002,6 +1004,7 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
       { provide: ContractFormalFileService, useFactory: (files: FileService) => new ContractFormalFileService(prisma, audit, files), inject: [FileService] },
       { provide: ContractAuthorizationService, useFactory: (formal: ContractFormalFileService) => new ContractAuthorizationService(prisma, formal, audit), inject: [ContractFormalFileService] },
       ArchiveService, ContractApprovalRouteService, BusinessNumberingService, ContractV2SubmissionService, ContractV2ArchiveService, ContractVersionActivationService,
+      { provide: GENERATED_UPWARD_OPERATING_ACTIVATION, useValue: nativeGeneratedUpwardOperatingActivation },
       OperatingLedgerService,
       { provide: OperatingSourceAdapterRegistry, useFactory: () => new OperatingSourceAdapterRegistry([new ContractOperatingSourceAdapter(), new ContractEconomicReviewOperatingSourceAdapter()]) },
       OperatingSourceReplayService, ContractEconomicReviewService, OperatingProjectionService, CompanyRoleResolverService, ClearingReconciliationReaderService,

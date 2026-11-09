@@ -1487,10 +1487,11 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
   const nativeSeal = generatedArchiveInstallation.readGeneratedArchiveSealAuthority;
   const nativeQuery = store.$queryRaw;
   let nativeInstallationQualified = true;
+  let nativeUpwardInstalled = false;
   store.$queryRaw = async (raw, ...parameters) => {
     const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
     if (query.strings.join("?").trim().startsWith("/* contract_generated_archive_write_catalog_v1 */")) {
-      return [{ ...installation, qualified: nativeInstallationQualified }];
+      return [{ ...installation, qualified: nativeInstallationQualified, upwardOperatingQualified: nativeUpwardInstalled }];
     }
     return nativeQuery(raw, ...parameters);
   };
@@ -1639,6 +1640,10 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
       expect((await confirmSeal(director)).status).toBe(503);
       await assertPending();
     } finally { await store.approvalInstance.delete({ where: { id: duplicateRound.id } }); }
+    if (archiveSource.relationship === "upward") {
+      nativeUpwardInstalled = true;
+      await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: new Date("2026-01-01") } });
+    }
     witness.mockClear();
     const result = { contractVersionId, approvalInstanceId, sealTaskId, status: "seal_approved_pending_archive" };
     const sealed = await confirmSeal(director);
@@ -1668,6 +1673,10 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
         v2Lifecycle: { status: "unavailable", webWriteReleased: false, archiveAction: { enabled: false } }
       } });
     } finally { nativeInstallationQualified = true; }
+    if (archiveSource.relationship === "upward") {
+      nativeUpwardInstalled = false;
+      await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: null } });
+    }
 
     expect(await store.contractVersion.findUnique({ where: { id: contractVersionId } })).toMatchObject({ status: result.status });
     const transfer = await store.auditLog.findFirst({ where: { businessId: contractVersionId, action: "contract.archive_task.create" } });
@@ -1714,7 +1723,7 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     expect(await auditCount("contract.archive_task.create")).toBe(1);
     if (preparationEnabled) {
       witness.mockImplementation(nativeSeal);
-      await exerciseGeneratedArchiveWriter(server, draft, sealInput, installation);
+      await exerciseGeneratedArchiveWriter(server, draft, sealInput, installation, archiveSource.relationship);
     }
   } finally {
     store.$queryRaw = nativeQuery;
@@ -2079,7 +2088,7 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
 
 async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof createTemplateTestServer>>,
   draft: Awaited<ReturnType<typeof createTask09Draft>>, seal: GeneratedSealInput,
-  installation: generatedArchiveInstallation.GeneratedArchiveSealAuthority["installation"]) {
+  installation: generatedArchiveInstallation.GeneratedArchiveSealAuthority["installation"], relationship: "outside" | "upward") {
   const store = server.store.prisma;
   const pinStore = server.store.table("generatedArchiveWriterOriginal");
   const completionStore = server.store.table("generatedArchiveWriterCompletion");
@@ -2114,6 +2123,9 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   const nativeExecute = store.$executeRaw;
   let writerAvailable = true;
   let writerQualified = true;
+  let upwardOperatingInstalled = false;
+  let nativeBindingMatches = true;
+  const ledgerDate = "2026-01-01";
   const catalog = { relationOid: "45001", anchorOid: "43001", ownerOid: "9001", databaseOid: "13000", roleOid: "7001",
     backendPid: 71302, transactionId: "500006", qualified: true };
   let markerAvailable = true;
@@ -2123,7 +2135,18 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
     const sql = query.strings.join("?").trim();
     if (sql.startsWith("/* contract_generated_archive_write_catalog_v1 */")) {
-      return writerAvailable ? [{ ...installation, qualified: writerQualified }] : [];
+      return writerAvailable ? [{ ...installation, qualified: writerQualified, upwardOperatingQualified: upwardOperatingInstalled }] : [];
+    }
+    if (sql.startsWith("/* contract_generated_upward_operating_activation_v1 */")) {
+      const archive = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: String(query.values.at(-1)) } });
+      const frozen = archive.authoritySnapshot as Prisma.JsonObject;
+      const version = await store.contractVersion.findUniqueOrThrow({ where: { id: archive.contractVersionId } });
+      expect(version.status).toBe("seal_approved_pending_archive");
+      expect(await pinStore.count({ where: { archiveId: archive.id } })).toBe(fileIds.length);
+      return upwardOperatingInstalled ? [{ mode: "internal_reference_only", projectId: draft.projectId,
+        contractVersionId: version.id, archiveId: archive.id, requestSha256: archive.requestSha256, authoritySha256: archive.authoritySha256,
+        sourceBasisSha256: nativeBindingMatches ? frozen.sourceBasisSha256 : "9".repeat(64), approvalInstanceId: archive.approvalInstanceId, sealTaskId: archive.sealTaskId,
+        archivedAt: (archive.confirmedAt as Date).toISOString(), operatingLedgerEffectiveDateSnapshot: ledgerDate }] : [];
     }
     if (sql.startsWith("/* contract_generated_archive_original_catalog_v1 */")) return [catalog];
     if (sql.startsWith("/* contract_generated_archive_original_read_v1 */")) {
@@ -2171,8 +2194,10 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect(activated.status).toBe("effective");
     expect(await store.auditLog.count({ where: { businessId: activated.id, action: "contract.archive.complete" } })).toBe(1);
     await completionStore.create({ data: { archiveId, completion: {
-      protocolVersion: 1, policy: "operating_ledger_not_enabled", archiveId,
-      projectId: draft.projectId, contractId: draft.contract.id, contractVersionId: activated.id,
+      protocolVersion: 1,
+      ...(upwardOperatingInstalled ? { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate }
+        : { policy: "operating_ledger_not_enabled" }),
+      archiveId, projectId: draft.projectId, contractId: draft.contract.id, contractVersionId: activated.id,
       approvalInstanceId: persisted.approvalInstanceId, sealTaskId: persisted.sealTaskId,
       uploaderUserId: persisted.uploadedByUserId, idempotencyKey: persisted.idempotencyKey,
       requestSha256: persisted.requestSha256, authoritySha256: persisted.authoritySha256,
@@ -2213,6 +2238,13 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect((await archive()).status).toBe(503);
     expect(append).not.toHaveBeenCalled();
     await expectRolledBack();
+    if (relationship === "outside") {
+      upwardOperatingInstalled = true;
+      expect((await archive()).status).toBe(503);
+      expect(append).not.toHaveBeenCalled();
+      await expectRolledBack();
+      upwardOperatingInstalled = false;
+    }
     await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: null } });
 
     writerQualified = false;
@@ -2256,13 +2288,26 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect((await archive()).status).toBe(503);
     await expectRolledBack();
 
+    if (relationship === "upward") {
+      upwardOperatingInstalled = true;
+      await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: new Date(ledgerDate) } });
+      // The in-memory store does not apply the database's nullable column defaults.
+      await store.contractVersion.update({ where: { id: draft.version.id }, data: { supersedesVersionId: null } });
+      nativeBindingMatches = false;
+      expect((await archive()).status).toBe(503);
+      await expectRolledBack();
+      nativeBindingMatches = true;
+    }
     server.store.archiveCommitOutcome = "throw_after_persisting";
     const recovered = await archive();
-    expect(recovered.status).toBe(201);
     const result = await recovered.json() as { archiveId: string };
-    expect(result).toEqual({ archiveId: expect.any(String), contractVersionId: draft.version.id, status: "effective", fileIds });
+    expect({ status: recovered.status, result }).toEqual({ status: 201, result: { archiveId: expect.any(String),
+      contractVersionId: draft.version.id, status: "effective", fileIds } });
     expect(server.store.archiveCommitSignalLosses).toBe(1);
     expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
+    if (relationship === "upward") expect(await completionStore.findUnique({ where: { archiveId: result.archiveId } })).toMatchObject({
+      completion: { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate }
+    });
     expect(await store.contractVersion.findUnique({ where: { id: draft.version.id } })).toMatchObject({ status: "effective", effectiveAt: expect.any(Date) });
 
     const pinnedReads = server.store.pinnedPrivateStorageReads;
@@ -2277,17 +2322,33 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect((await lookup()).status).toBe(503);
     expect(completionReads).toBe(priorCompletionReads + 1);
     markerQualified = true;
+    if (relationship === "upward") {
+      const marker = await completionStore.findUnique({ where: { archiveId: result.archiveId } });
+      const completion = marker?.completion as Prisma.JsonObject;
+      await completionStore.update({ where: { archiveId: result.archiveId }, data: {
+        completion: { ...completion, operatingLedgerEffectiveDateSnapshot: "2026-01-02" }
+      } });
+      expect((await lookup()).status).toBe(503);
+      await completionStore.update({ where: { archiveId: result.archiveId }, data: { completion } });
+      const unexpectedFact = await server.store.table("operatingFact").create({ data: { ...source, projectId: randomUUID() } });
+      try { expect((await lookup()).status).toBe(503); }
+      finally { await server.store.table("operatingFact").delete({ where: { id: unexpectedFact.id } }); }
+    }
     expect(await (await lookup()).json()).toMatchObject({ status: "archived", result });
     const currentContract = await store.contract.findUniqueOrThrow({ where: { id: draft.contract.id } });
     const archivedDetail = await fetch(`${await server.app.getUrl()}/contracts/${encodeURIComponent(String(currentContract.code))}?versionId=${draft.version.id}`,
       { headers: draft.headers });
-    expect({ status: archivedDetail.status, body: await archivedDetail.json() }).toMatchObject({ status: 200, body: {
+    const detail = await archivedDetail.json();
+    expect({ status: archivedDetail.status, body: detail }).toMatchObject({ status: 200, body: {
       v2Lifecycle: { status: "ready", state: "archived", webWriteReleased: false,
         sealAction: { enabled: false }, archiveAction: { enabled: false } }
     } });
+    if (relationship === "upward") expect(detail.baseInfo).toContainEqual({
+      label: "对上内部依据", value: "我方公司：本项目我方参与公司；施工企业：本项目实际施工企业"
+    });
     expect(await (await archive()).json()).toEqual(result);
     expect((await archive({ ...input, fileIds: [...fileIds].reverse() })).status).toBe(409);
-    expect(append).toHaveBeenCalledTimes(4);
+    expect(append).toHaveBeenCalledTimes(relationship === "upward" ? 5 : 4);
     expect(appendCompletion).toHaveBeenCalledTimes(3);
     expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
     expect(await store.contractGeneratedDocument.findMany({ where: archiveWhere })).toEqual(generated);

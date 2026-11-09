@@ -6,7 +6,7 @@ import { assertContractV2ArchivePersistentProof } from "./contract-v2-archive-pe
 
 export const GENERATED_UPWARD_OPERATING_ACTIVATION = Symbol("GENERATED_UPWARD_OPERATING_ACTIVATION");
 
-type UpwardActivationBinding = Readonly<{
+export type UpwardActivationBinding = Readonly<{
   mode: "internal_reference_only";
   projectId: string;
   contractVersionId: string;
@@ -20,7 +20,7 @@ type UpwardActivationBinding = Readonly<{
   operatingLedgerEffectiveDateSnapshot: string;
 }>;
 
-/** Future installer must qualify the exact native policy and reconstruct this binding in the supplied transaction. */
+/** Independently qualify the native policy and reconstruct the stored binding in the supplied transaction. */
 export interface GeneratedUpwardOperatingActivation {
   readBeforeActivation(tx: Prisma.TransactionClient, binding: UpwardActivationBinding):
     Promise<{ transaction: Prisma.TransactionClient; binding: UpwardActivationBinding } | null>;
@@ -54,8 +54,8 @@ export async function requireGeneratedUpwardActivation(tx: Prisma.TransactionCli
   return binding;
 }
 
-export async function assertGeneratedUpwardHasNoOperatingFact(tx: Prisma.TransactionClient, projectId: string, contractVersionId: string) {
-  const source = { projectId, sourceType: "contract_version", sourceBusinessId: contractVersionId };
+export async function assertGeneratedUpwardHasNoOperatingFact(tx: Prisma.TransactionClient, contractVersionId: string) {
+  const source = { sourceType: "contract_version", sourceBusinessId: contractVersionId };
   if (await tx.operatingFact.count({ where: source }) || await tx.operatingImpactEntry.count({ where: source })) {
     throw generatedOperatingUnavailable();
   }
@@ -69,6 +69,6 @@ export async function readQualifiedGeneratedUpwardReference(tx: Prisma.Transacti
   await assertContractV2ArchivePersistentProof(tx, contract, version, archive);
   const policy = readGeneratedArchiveOperatingPolicy({ archive, contract, version });
   if (policy && policy.mode !== "upward_internal_reference") throw generatedOperatingUnavailable();
-  await assertGeneratedUpwardHasNoOperatingFact(tx, contract.projectId, version.id);
+  await assertGeneratedUpwardHasNoOperatingFact(tx, version.id);
   return policy?.reference ?? null;
 }

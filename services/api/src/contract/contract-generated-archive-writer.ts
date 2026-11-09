@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import type { AuditService } from "../audit/audit.service";
 import type { ContractVersionActivationService } from "./contract-version-activation.service";
-import type { GeneratedArchiveRequestBinding, GeneratedArchiveWriterAuthority } from "./contract-generated-archive-installation";
+import type { GeneratedArchiveOperatingReceipt, GeneratedArchiveRequestBinding, GeneratedArchiveWriterAuthority } from "./contract-generated-archive-installation";
 import { assertContractV2ArchivePersistentProof, generatedArchiveCompletion } from "./contract-v2-archive-persistent-proof";
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -14,13 +14,6 @@ function json(value: unknown): Prisma.InputJsonValue {
 
 function unavailable(): never {
   throw new ServiceUnavailableException("正式归档资格或经营状态尚未核对，请保留原件和本次标识");
-}
-
-async function assertOperatingLedgerNotEnabled(tx: Prisma.TransactionClient, projectId: string, contractVersionId: string) {
-  const project = await tx.project.findUnique({ where: { id: projectId }, select: { isActive: true, operatingLedgerEffectiveDate: true } });
-  if (!project?.isActive || project.operatingLedgerEffectiveDate !== null) unavailable();
-  const source = { projectId, sourceType: "contract_version", sourceBusinessId: contractVersionId };
-  if (await tx.operatingFact.count({ where: source }) || await tx.operatingImpactEntry.count({ where: source })) unavailable();
 }
 
 export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input: {
@@ -39,7 +32,23 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
   if (!actingRoleKey || version.id !== scope.contractVersionId || owner.id !== scope.contractId
     || owner.projectId !== scope.projectId || owner.ownerUserId !== actor || scope.handlerUserId !== actor
     || writer.transaction !== tx || !isDeepStrictEqual(writer.binding, binding)) unavailable();
-  await assertOperatingLedgerNotEnabled(tx, scope.projectId, scope.contractVersionId);
+  async function readOperatingReceipt(): Promise<GeneratedArchiveOperatingReceipt> {
+    const project = await tx.project.findUnique({ where: { id: scope.projectId }, select: { isActive: true, operatingLedgerEffectiveDate: true } });
+    if (!project?.isActive) unavailable();
+    const ledgerDate = project.operatingLedgerEffectiveDate;
+    if (ledgerDate !== null && (scope.relationship !== "upward" || version.signingSubjectType !== "upward"
+      || writer.installation.upwardOperatingQualified !== true)) unavailable();
+    const source = { sourceType: "contract_version", sourceBusinessId: scope.contractVersionId,
+      ...(ledgerDate === null ? { projectId: scope.projectId } : {}) };
+    if (await tx.operatingFact.count({ where: source }) || await tx.operatingImpactEntry.count({ where: source })) unavailable();
+    return ledgerDate === null ? { policy: "operating_ledger_not_enabled" }
+      : { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate.toISOString().slice(0, 10) };
+  }
+  const operatingReceipt = await readOperatingReceipt();
+  const operatingConsequence = operatingReceipt.policy === "upward_internal_reference"
+    ? { protocolVersion: 1, mode: "internal_reference_only",
+      operatingLedgerEffectiveDateSnapshot: operatingReceipt.operatingLedgerEffectiveDateSnapshot, expectedSource: null }
+    : { protocolVersion: 1, mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null, expectedSource: null };
 
   const manifest = binding.originals.map(({ fileId, displayOrder, mimeType, sizeBytes, contentSha256 }) =>
     ({ fileId, displayOrder, mimeType, sizeBytes, contentSha256 }));
@@ -76,7 +85,7 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
       sourceRevision: scope.sourceRevision, documentContentRevision: scope.documentContentRevision,
       documentContentFingerprint: scope.documentContentFingerprint, approvalInstanceId: scope.approvalInstanceId,
       sealTaskId: scope.sealTaskId, sourceBasis, fileManifest: manifest,
-      operatingConsequence: { protocolVersion: 1, mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null, expectedSource: null }
+      operatingConsequence
     }), responseSnapshot: json(response)
   } });
   const authority = archive.authoritySnapshot as Prisma.JsonObject | null;
@@ -90,11 +99,11 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
       archiveFileId: id, contractVersionId: scope.contractVersionId, ...file
     } }));
   }
-  const completion = generatedArchiveCompletion(owner, archive, evidence, binding.originals);
+  const completion = generatedArchiveCompletion(owner, archive, evidence, binding.originals, operatingReceipt);
   await writer.appendOriginals(JSON.parse(JSON.stringify(completion)) as typeof completion);
 
   // The project row is already locked by the archive service. Recheck after the installed callback and before activation.
-  await assertOperatingLedgerNotEnabled(tx, scope.projectId, scope.contractVersionId);
+  if (!isDeepStrictEqual(operatingReceipt, await readOperatingReceipt())) unavailable();
   await activation.activateArchivedV2(tx, scope.contractVersionId, actor, archivedAt, id);
   await audit.record(tx, {
     actorUserId: actor, action: "contract.archive.complete", businessType: "contract_version", businessId: scope.contractVersionId,
@@ -102,7 +111,7 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
       fileIds: response.fileIds, authoritySha256: archive.authoritySha256, actingRoleKey })
   });
   await writer.appendCompletion(id);
-  await assertOperatingLedgerNotEnabled(tx, scope.projectId, scope.contractVersionId);
+  if (!isDeepStrictEqual(operatingReceipt, await readOperatingReceipt())) unavailable();
   const effective = await tx.contractVersion.findUnique({ where: { id: scope.contractVersionId } });
   const persisted = await tx.contractArchiveFile.findUnique({ where: { idempotencyKey: binding.idempotencyKey } });
   if (!persisted || persisted.id !== id) unavailable();

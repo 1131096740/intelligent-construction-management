@@ -131,7 +131,9 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
         encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')=
           'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'
         AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
-      AS qualified
+      AS qualified,
+    1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)
+      AS "upwardOperatingQualified"
     FROM pg_catalog.pg_class c
     JOIN public.jg_contract_generated_upward_seal_binding_v1 b ON b."protocolVersion"=1
       AND b."namespaceOid"=pg_catalog.to_regnamespace('public') AND b."applicationRoleOid"=current_user::regrole::oid
@@ -151,7 +153,8 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
   const { databaseOid, namespaceOid, currentRoleOid, sessionRoleOid, archiveWriterOid,
     signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId } = row;
   return { databaseOid, namespaceOid, currentRoleOid, sessionRoleOid, archiveWriterOid,
-    signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId };
+    signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId,
+    ...(row.upwardOperatingQualified === true ? { upwardOperatingQualified: true as const } : {}) };
 }
 
 export async function readNativeGeneratedArchiveWriter(
@@ -173,7 +176,10 @@ export async function readNativeGeneratedArchiveWriter(
     transaction: tx, installation, binding,
     async appendOriginals(command) {
       const { scope } = binding;
-      if (writtenArchiveId || !command.archiveId || command.policy !== "operating_ledger_not_enabled"
+      const operatingQualified = command.policy === "operating_ledger_not_enabled"
+        || (command.policy === "upward_internal_reference" && scope.relationship === "upward"
+          && installation.upwardOperatingQualified === true);
+      if (writtenArchiveId || !command.archiveId || !operatingQualified
         || command.projectId !== scope.projectId || command.contractId !== scope.contractId
         || command.contractVersionId !== scope.contractVersionId || command.approvalInstanceId !== scope.approvalInstanceId
         || command.sealTaskId !== scope.sealTaskId || command.uploaderUserId !== binding.uploaderUserId

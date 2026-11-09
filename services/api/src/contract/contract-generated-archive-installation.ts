@@ -38,6 +38,7 @@ export type GeneratedArchiveSealAuthority = {
     signedFileAuthorityOid: string;
     archiveReceiptReaderOid: string;
     operatingAuthorityOid: string;
+    upwardOperatingQualified?: true;
     backendPid: number;
     transactionId: string;
   };
@@ -114,9 +115,12 @@ export const readGeneratedArchiveRequestBinding: (
   verifiedVersions: readonly GeneratedArchiveVerifiedVersion[]
 ) => Promise<GeneratedArchiveBindingWitness | null> = readNativeGeneratedArchiveRequestBinding;
 
-export type GeneratedArchiveCompletion = Readonly<{
+export type GeneratedArchiveOperatingReceipt =
+  | Readonly<{ policy: "operating_ledger_not_enabled" }>
+  | Readonly<{ policy: "upward_internal_reference"; operatingLedgerEffectiveDateSnapshot: string }>;
+
+export type GeneratedArchiveCompletion = GeneratedArchiveOperatingReceipt & Readonly<{
   protocolVersion: 1;
-  policy: "operating_ledger_not_enabled";
   archiveId: string;
   projectId: string;
   contractId: string;
@@ -189,6 +193,9 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
       AND b."applicationRoleOid"=current_user::regrole::oid AND b."applicationRoleOid"=session_user::regrole::oid
     JOIN pg_catalog.pg_database d ON d.oid=b."databaseOid" AND d.datname=pg_catalog.current_database()
     WHERE m.tableoid=${relationOid}::pg_catalog.oid AND m."archiveId"=${archiveId}
+      AND (m."completion"->>'policy'='operating_ledger_not_enabled' OR (
+        m."completion"->>'policy'='upward_internal_reference'
+        AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
       AND c.relowner<>b."applicationRoleOid" AND c.relnamespace=pg_catalog.to_regnamespace('public')
       AND c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
       AND pg_catalog.current_setting('session_replication_role')='origin'

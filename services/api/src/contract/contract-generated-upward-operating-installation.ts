@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { GeneratedUpwardOperatingActivation, UpwardActivationBinding } from "./contract-generated-upward-operating";
 
 export const upwardOperatingParentBody = "cbc9b7890e3fe02c730c1fa8617eb8b13b74a401c962083506d8a3372ec7a522";
 
@@ -72,3 +73,33 @@ export async function hasGeneratedUpwardOperatingInstallation(
     ["namespaceOid", "databaseOid", "currentRoleOid", "sessionRoleOid", "backendPid", "transactionId"]
       .every(key => observed[key] === identity[key]);
 }
+
+/** Resolve the stored archive and fixed originals before the same transaction may activate the version. */
+export const nativeGeneratedUpwardOperatingActivation: GeneratedUpwardOperatingActivation = {
+  async readBeforeActivation(tx, { archiveId }) {
+    const rows = await tx.$queryRaw<UpwardActivationBinding[]>(Prisma.sql`
+      /* contract_generated_upward_operating_activation_v1 */
+      WITH installed AS MATERIALIZED (${generatedUpwardOperatingCatalog}),
+      candidate AS MATERIALIZED (
+        SELECT a.*,c."projectId",p."operatingLedgerEffectiveDate"
+        FROM public."ContractArchiveFile" a
+        JOIN public."ContractVersion" v ON v."id"=a."contractVersionId"
+        JOIN public."Contract" c ON c."id"=v."contractId"
+        JOIN public."Project" p ON p."id"=c."projectId"
+        WHERE (SELECT count(*) FROM installed)=1 AND a."id"=${archiveId}
+          AND a.xmin::text=mod(pg_catalog.txid_current(),4294967296::bigint)::text
+          AND a."archiveProtocolVersion"=2 AND a."archiveSource"='generated_approval' AND a."status"='confirmed'
+          AND v."signingSubjectType"='upward' AND v."status"='seal_approved_pending_archive'
+          AND c."voidedAt" IS NULL AND p."isActive" AND p."operatingLedgerEffectiveDate" IS NOT NULL
+      )
+      SELECT 'internal_reference_only'::text AS mode,a."projectId",a."contractVersionId",a."id" AS "archiveId",
+        a."requestSha256",a."authoritySha256",a."authoritySnapshot"->>'sourceBasisSha256' AS "sourceBasisSha256",
+        a."approvalInstanceId",a."sealTaskId",to_char(a."confirmedAt",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "archivedAt",
+        to_char(a."operatingLedgerEffectiveDate",'YYYY-MM-DD') AS "operatingLedgerEffectiveDateSnapshot"
+      FROM candidate a
+      WHERE public.jg_verify_generated_upward_archive_reference_v1(a."contractVersionId",a."authoritySnapshot",a."confirmedAt")
+        AND public.jg_generated_archive_activation_basis_v1(a."id",FALSE) IS NOT NULL
+    `);
+    return rows.length === 1 ? { transaction: tx, binding: rows[0] } : null;
+  }
+};
