@@ -40,7 +40,7 @@ const recipe = Prisma.join([
   Prisma.sql`('public.jg_guard_contract_direct_archive_native_nonce_v1()',
     '0c8b12eecce8c9fa02ed8f804084764999ec01b17b670e0e255f013211d6bc8b','anchor','private',FALSE,FALSE)`,
   Prisma.sql`('public.jg_contract_direct_archive_native_channel_v1()',
-    'ee18e2291342b5bed5f9b583c0d78535ab137876b1ed1ef5e90c180851326c17','anchor','logins',TRUE,FALSE)`,
+    'aae763a3a2bd0868a2dc424e673943ed4e8d7e2fa4c1639cd89f8731463555fc','anchor','logins',TRUE,FALSE)`,
   Prisma.sql`('public.jg_record_contract_direct_archive_generations_v1(text,uuid,text,text,text,text,integer,text,text,jsonb)',
     '7f383484f39d3e5b5be0cdb955a8a8910cc95dca5ee5d6d09242ce9ba94d08ed','anchor','executor',FALSE,FALSE)`
 ]);
@@ -68,6 +68,9 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
       AND c."anchorOwnerOid"=b."anchorOwnerOid" AND c."applicationRoleOid"=b."ordinaryApplicationRoleOid"
     JOIN pg_catalog.pg_class cc ON cc.oid=c.tableoid AND cc.relowner=b."anchorOwnerOid" AND cc.relnamespace=b."namespaceOid"
       AND cc.relkind='r' AND cc.relpersistence='p' AND NOT cc.relispartition AND NOT cc.relrowsecurity AND NOT cc.relforcerowsecurity
+    JOIN public.jg_contract_direct_pending_binding_v1 pending ON pending."protocolVersion"=1
+      AND pending."databaseOid"=b."databaseOid" AND pending."anchorOwnerOid"=b."anchorOwnerOid"
+      AND pending."anchorNamespaceOid"=b."namespaceOid" AND pending."applicationRoleOid"=b."ordinaryApplicationRoleOid"
     JOIN pg_catalog.pg_database d ON d.oid=b."databaseOid" AND d.datname=pg_catalog.current_database()
     JOIN pg_catalog.pg_class v ON v.oid=pg_catalog.to_regclass('public.jg_contract_direct_archive_native_binding_v1')
       AND v.relowner=b."anchorOwnerOid" AND v.relnamespace=b."namespaceOid" AND v.relkind='v'
@@ -76,6 +79,9 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
       AND b."namespaceOid"=pg_catalog.to_regnamespace('public')
       AND pg_catalog.current_setting('session_replication_role')='origin'
       AND b."intentBindingSha256"~'^[a-f0-9]{64}$'
+      AND NOT EXISTS(SELECT 1 FROM unnest(pending."fileCallerOids") AS file_actor(id)
+        CROSS JOIN unnest(ARRAY[b."issuerSessionOid",b."issuerOwnerOid",b."runtimeSessionOid",b."executorOwnerOid"]) AS dedicated(id)
+        WHERE file_actor.id<>b."anchorOwnerOid" AND pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER'))
       AND 3=(SELECT count(*) FROM pg_catalog.aclexplode(cc.relacl) a WHERE a.grantor=cc.relowner
         AND a.grantee IN (b."ordinaryApplicationRoleOid",b."issuerOwnerOid",b."executorOwnerOid")
         AND a.privilege_type='SELECT' AND NOT a.is_grantable)
@@ -121,9 +127,7 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
           WHEN q.caller='executorLogin' THEN ARRAY[b."runtimeSessionOid"]
           WHEN q.caller='logins' THEN ARRAY[b."issuerSessionOid",b."runtimeSessionOid"] ELSE ARRAY[]::oid[] END AS callers) rights
         CROSS JOIN LATERAL (SELECT CASE q.caller WHEN 'oldInput' THEN (
-          SELECT pending."bindings"->'routines'->q.signature->'acl' FROM public.jg_contract_direct_pending_binding_v1 pending
-          WHERE pending."protocolVersion"=1 AND pending."databaseOid"=b."databaseOid"
-            AND pending."anchorOwnerOid"=b."anchorOwnerOid" AND pending."applicationRoleOid"=b."ordinaryApplicationRoleOid")
+          pending."bindings"->'routines'->q.signature->'acl')
           WHEN 'oldProof' THEN retention."bindings"#>'{routines,jg_contract_direct_archive_proof_v1,acl}'
           WHEN 'oldHash' THEN retention."bindings"#>'{routines,jg_contract_direct_archive_request_sha_v1,acl}'
           END AS acl

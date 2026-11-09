@@ -39,9 +39,15 @@ BEGIN
   JOIN public.jg_contract_direct_archive_native_nonce_v1 w ON w."protocolVersion"=1
     AND w."intentBindingSha256"=encode(public.digest(convert_to(to_jsonb(i)::text,'UTF8'),'sha256'),'hex')
   JOIN pg_catalog.pg_database d ON d.oid=i."databaseOid" AND d.datname=pg_catalog.current_database()
+  JOIN public.jg_contract_direct_pending_binding_v1 p ON p."protocolVersion"=1 AND p."databaseOid"=i."databaseOid"
+    AND p."anchorOwnerOid"=i."anchorOwnerOid" AND p."anchorNamespaceOid"=i."namespaceOid"
+    AND p."applicationRoleOid"=i."ordinaryApplicationRoleOid"
   WHERE i."protocolVersion"=1 AND i."anchorOwnerOid"=current_user::regrole::oid
     AND i."namespaceOid"=pg_catalog.to_regnamespace('public')
     AND session_user::regrole::oid IN (i."issuerSessionOid",i."runtimeSessionOid")
+    AND NOT EXISTS(SELECT 1 FROM unnest(p."fileCallerOids") AS file_actor(id)
+      CROSS JOIN unnest(ARRAY[i."issuerSessionOid",i."issuerOwnerOid",i."runtimeSessionOid",i."executorOwnerOid"]) AS dedicated(id)
+      WHERE file_actor.id<>i."anchorOwnerOid" AND pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER'))
     AND pg_catalog.current_setting('session_replication_role')='origin';
   RETURN nonce;
 END;
@@ -103,6 +109,8 @@ BEGIN
     OR EXISTS(SELECT 1 FROM public.jg_contract_direct_archive_intent_binding_v1)
     OR 4<>(SELECT count(DISTINCT id) FROM unnest(role_ids) AS roles(id))
     OR anchor_owner=ANY(role_ids) OR anchor."applicationRoleOid"=ANY(role_ids) OR pending."fileCallerOids"&&role_ids
+    OR EXISTS(SELECT 1 FROM unnest(pending."fileCallerOids") AS file_actor(id) CROSS JOIN unnest(role_ids) AS dedicated(id)
+      WHERE file_actor.id<>anchor_owner AND pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER'))
     OR NOT pg_catalog.pg_has_role(anchor_owner,role_ids[2],'USAGE')
     OR NOT pg_catalog.pg_has_role(anchor_owner,role_ids[4],'USAGE')
     OR EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE r.oid=ANY(role_ids) AND (

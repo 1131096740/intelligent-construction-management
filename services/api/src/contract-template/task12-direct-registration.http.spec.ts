@@ -122,6 +122,15 @@ describe("表外已签合同的正式登记", () => {
         data: { snapshot: { ...dispatch.actual, helpers, helpersPrivate: false } } });
       await server.store.table("directArchiveCompletionActual").update({ where: { id: completion.observed.id },
         data: { snapshot: { ...completion.actual, guardsClosed: false, registryAclQualified: false } } });
+      const membership = await server.store.table("directArchiveUntrustedFileRoleInheritance").create({ data: {
+        fileCallerOid: "9921", reachableExecutorOwnerOid: "9912"
+      } });
+      const withInheritedWriteRole = await send();
+      expect({ status: withInheritedWriteRole.status, body: await withInheritedWriteRole.json() })
+        .toMatchObject({ status: 503 });
+      expect(invocations).toEqual({ issued: 0, executed: 0 });
+      expect(await (await lookup()).json()).toEqual({ status: "unknown" });
+      await server.store.table("directArchiveUntrustedFileRoleInheritance").delete({ where: { id: membership.id } });
       const lastVersion = await server.store.table("syntheticPrivateFileVersion").findFirst({ where: { objectGeneration: "sealed-240" } });
       if (!lastVersion) throw new Error("合成存储固定版本缺失");
       await server.store.table("syntheticPrivateFileVersion").delete({ where: { id: lastVersion.id } });
