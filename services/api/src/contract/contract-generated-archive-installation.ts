@@ -104,8 +104,9 @@ export type GeneratedArchiveWriterAuthority = Readonly<{
   transaction: Prisma.TransactionClient;
   installation: GeneratedArchiveSealAuthority["installation"];
   binding: GeneratedArchiveRequestBinding;
-  // An installed adapter appends 224 originals and a separately durable completion under this transaction.
+  // Fixed originals are appended before activation. Completion is captured independently after activation and audit.
   appendOriginals: (command: GeneratedArchiveCompletion) => Promise<void>;
+  appendCompletion: (archiveId: string) => Promise<void>;
 }>;
 
 /** A successor installer must independently qualify the writer, including its database activation and pin permissions. */

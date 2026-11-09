@@ -2076,10 +2076,29 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     await pinStore.createMany({ data: command.originals.map((original, i) => ({
       archiveId: persisted.id, evidenceId: files[i].id, ...original, scope
     })) });
-    await completionStore.create({ data: { archiveId: persisted.id, completion: command } });
   });
+  const captureCompletion = async (archiveId: string) => {
+    const persisted = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: archiveId } });
+    const activated = await store.contractVersion.findUniqueOrThrow({ where: { id: persisted.contractVersionId } });
+    const pins = await pinStore.findMany({ where: { archiveId }, orderBy: { displayOrder: "asc" } });
+    expect(activated.status).toBe("effective");
+    expect(await store.auditLog.count({ where: { businessId: activated.id, action: "contract.archive.complete" } })).toBe(1);
+    await completionStore.create({ data: { archiveId, completion: {
+      protocolVersion: 1, policy: "operating_ledger_not_enabled", archiveId,
+      projectId: draft.projectId, contractId: draft.contract.id, contractVersionId: activated.id,
+      approvalInstanceId: persisted.approvalInstanceId, sealTaskId: persisted.sealTaskId,
+      uploaderUserId: persisted.uploadedByUserId, idempotencyKey: persisted.idempotencyKey,
+      requestSha256: persisted.requestSha256, authoritySha256: persisted.authoritySha256,
+      fileManifestSha256: persisted.fileManifestSha256, archivedAt: (persisted.confirmedAt as Date).toISOString(),
+      evidenceIds: pins.map(pin => pin.evidenceId), originals: pins.map(pin => ({
+        fileId: pin.fileId, displayOrder: pin.displayOrder, mimeType: pin.mimeType, sizeBytes: pin.sizeBytes,
+        contentSha256: pin.contentSha256, bucket: pin.bucket, objectKey: pin.objectKey, objectGeneration: pin.objectGeneration
+      }))
+    } } });
+  };
+  const appendCompletion = jest.fn(captureCompletion);
   const writer = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveWriterAuthority")
-    .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation, appendOriginals: append }));
+    .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation, appendOriginals: append, appendCompletion }));
   const counts = () => Promise.all([
     store.contractArchiveFile.count({ where: archiveWhere }), store.contractArchiveEvidenceFile.count({ where: archiveWhere }),
     pinStore.count(), completionStore.count(), store.auditLog.count({ where: auditWhere }),
@@ -2107,8 +2126,21 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     try {
       expect((await archive()).status).toBe(500);
       expect(append).toHaveBeenCalledTimes(1);
+      expect(appendCompletion).not.toHaveBeenCalled();
       await expectRolledBack();
     } finally { failedAudit.mockRestore(); }
+
+    appendCompletion.mockImplementationOnce(async archiveId => {
+      await captureCompletion(archiveId);
+      await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: new Date("2026-01-01") } });
+    });
+    expect((await archive()).status).toBe(503);
+    await expectRolledBack();
+    expect(await store.project.findUnique({ where: project })).toMatchObject({ operatingLedgerEffectiveDate: null });
+
+    appendCompletion.mockResolvedValueOnce(undefined);
+    expect((await archive()).status).toBe(503);
+    await expectRolledBack();
 
     server.store.archiveCommitOutcome = "throw_after_persisting";
     const recovered = await archive();
@@ -2127,7 +2159,8 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect(await (await lookup()).json()).toMatchObject({ status: "archived", result });
     expect(await (await archive()).json()).toEqual(result);
     expect((await archive({ ...input, fileIds: [...fileIds].reverse() })).status).toBe(409);
-    expect(append).toHaveBeenCalledTimes(2);
+    expect(append).toHaveBeenCalledTimes(4);
+    expect(appendCompletion).toHaveBeenCalledTimes(3);
     expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
     expect(await store.contractGeneratedDocument.findMany({ where: archiveWhere })).toEqual(generated);
     expect(server.store.pinnedPrivateStorageReads).toBe(pinnedReads);

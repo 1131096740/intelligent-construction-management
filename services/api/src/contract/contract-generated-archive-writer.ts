@@ -101,6 +101,7 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
     metadata: json({ archiveId: id, approvalInstanceId: scope.approvalInstanceId, sealTaskId: scope.sealTaskId,
       fileIds: response.fileIds, authoritySha256: archive.authoritySha256, actingRoleKey })
   });
+  await writer.appendCompletion(id);
   await assertOperatingLedgerNotEnabled(tx, scope.projectId, scope.contractVersionId);
   const effective = await tx.contractVersion.findUnique({ where: { id: scope.contractVersionId } });
   const persisted = await tx.contractArchiveFile.findUnique({ where: { idempotencyKey: binding.idempotencyKey } });
