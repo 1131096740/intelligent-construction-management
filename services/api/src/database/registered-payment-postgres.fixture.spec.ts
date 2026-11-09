@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
-import { runRegisteredNullCrossCompanyCommit } from "./registered-payment-postgres.cases";
+import * as registeredCases from "./registered-payment-postgres.cases";
 
 function fixture() {
   const runId = "da49e313-e3da-407f-b279-3d09caecfc3e";
@@ -106,7 +106,8 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it("completes the original normal/replay case using only the approved columns of eleven observer tables", async () => {
+  it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact"])(
+    "verifies the %s case through only the approved observer columns", async scenario => {
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
@@ -150,19 +151,42 @@ describe("registered PG original case: explicit observer projection protocol (no
     }));
     Object.assign(observer, { $executeRawUnsafe: async (sql: string) => { expect(sql).toBe("SET TRANSACTION READ ONLY"); } });
     Object.assign(f.context.observer, { $transaction: async (operation: (client: unknown) => Promise<unknown>) => operation(observer) });
+    const responseCancellations: jest.SpyInstance[] = [];
     const fetch = jest.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const route = new URL(String(input)).pathname;
-      if (route.endsWith("/registration-options")) return new Response(JSON.stringify({ expectedPaymentUpdatedAt: "2026-11-07T00:00:00.000Z", remainingAmountCents: "10000", accounts: [{ scopeKey: `company:${ids.companyB}`, eligible: true }] }), { status: 200 });
+      const respond = (status: number, body: unknown) => {
+        const response = new Response(JSON.stringify(body), { status });
+        Object.defineProperty(response, "url", { value: String(input) });
+        return response;
+      };
+      if (route.endsWith("/registration-options")) return respond(200, { expectedPaymentUpdatedAt: "2026-11-07T00:00:00.000Z", remainingAmountCents: "10000", accounts: [{ scopeKey: `company:${ids.companyB}`, eligible: true }] });
       if (route.endsWith("/registrations") && init?.method === "POST") {
-        recorded = true; return new Response("{}", { status: 201 });
+        if (scenario === "upstream-failure") return respond(503, {});
+        recorded = scenario !== "absent-db-fact";
+        const response = respond(201, {});
+        responseCancellations.push(jest.spyOn(response.body!, "cancel"));
+        return response;
       }
-      if (route === `/payment-executions/results/${ids.requestKey}`) return new Response(JSON.stringify({ status: "recorded", execution: { executionId: "execution-one", amountCents: "4000", paidAt: plan.paidAt }, effects: [], intercompany: [{}] }), { status: 200 });
+      if (route === `/payment-executions/results/${ids.requestKey}`) return respond(200, { status: "recorded", execution: { executionId: "execution-one", amountCents: "4000", paidAt: plan.paidAt }, effects: [], intercompany: [{}] });
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
-      await expect(runRegisteredNullCrossCompanyCommit(f.context, prepared)).resolves.toMatchObject({ caseId: "registered.null-cross-company.commit", passed: true, executionId: "execution-one", rootId: "root-one" });
-      expect([...reads].sort()).toEqual(Object.keys(allowed).sort());
-      expect(fetch).toHaveBeenCalledTimes(4);
+      const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn() };
+      const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared)
+        : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
+      if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
+        await expect(run).rejects.toThrow(scenario === "upstream-failure" ? "PG_CASE_RESPONSE_LOSS_BOUNDARY" : "PG_CASE_COMMITTED_GRAPH_COUNTS");
+        expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
+      } else {
+        await expect(run).resolves.toMatchObject({ caseId: scenario === "normal" ? "registered.null-cross-company.commit"
+          : "registered.null-cross-company.response-loss", passed: true, executionId: "execution-one", rootId: "root-one" });
+        expect([...reads].sort()).toEqual(Object.keys(allowed).sort());
+        expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(scenario === "normal" ? ["GET", "POST", "POST", "GET"] : ["GET", "POST", "GET", "POST"]);
+        expect(responseCancellations.map(cancel => cancel.mock.calls.length)).toEqual(scenario === "normal" ? [0, 0] : [1, 0]);
+        const [original, replay] = fetch.mock.calls.filter(([, request]) => request?.method === "POST").map(([, request]) => request?.body);
+        expect(JSON.parse(String(original)).idempotencyKey).toBe(ids.requestKey);
+        expect(replay).toBe(original);
+      }
     } finally { fetch.mockRestore(); }
   });
 });
