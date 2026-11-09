@@ -18,6 +18,8 @@ const generatedUnavailable = () => new ServiceUnavailableException("对上生成
 const sealHandoffUnavailable = () => new ServiceUnavailableException("对上生成合同盖章交接资格尚未就绪，审批仍保留在当前轮次");
 const generatedBindingBody = "08c0c90d9c755152e26fb05d6a1e343fbd6d9c415f2722ff96c395b00452130e";
 const sealCompletionGuardBody = "835ff5e902400a816b886d194a7078709a0aad01208d67f4b8f2b080108e84d6";
+const archiveTransitionGuardBody = "ae9d017bf6f9fd6617e7a58a3908c64c76c0130b0c49aa73a316d34ffbb44449";
+const archiveTransitionBindingBody = "140b5ff086a6f5db6b764fbd8ba55e9a968653fc8c3d82b94c928f7d92561f66";
 const sealCompletionBindingBody = "6f015163d2cb70636950fd6af29f8322a99c78a7dbc1216cf693b74d23d109f0";
 const transactionIdentity = ["databaseOid", "namespaceOid", "anchorOwnerOid", "currentRoleOid",
   "sessionRoleOid", "bindingOid", "backendPid", "transactionId"] as const;
@@ -32,7 +34,8 @@ async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: R
     WITH proof AS (
       SELECT n.*, p.tableoid AS previous_oid, p."subjectConstraintSha256" AS subject_sha,
         p."upwardConstraintSha256" AS previous_upward_sha, c.oid AS successor_oid,
-        pg_catalog.to_regclass('public.jg_contract_generated_upward_seal_binding_v1')::oid AS completion_oid
+        pg_catalog.to_regclass('public.jg_contract_generated_upward_seal_binding_v1')::oid AS completion_oid,
+        pg_catalog.to_regclass('public.jg_contract_generated_archive_version_transition_v1')::oid AS archive_transition_oid
       FROM public.jg_contract_generated_upward_submission_binding_v1 n
       JOIN public.jg_contract_upward_pending_save_binding_v1 p ON p."protocolVersion"=1
         AND p.tableoid=n."predecessorOid" AND p."databaseOid"=n."databaseOid"
@@ -52,7 +55,7 @@ async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: R
       b."ownerOid"::text AS "anchorOwnerOid", b."applicationRoleOid"::text AS "currentRoleOid",
       (session_user::regrole::oid)::text AS "sessionRoleOid", b.previous_oid::text AS "bindingOid",
       b.successor_oid::text AS "successorOid", b."upwardConstraintOid"::text AS "constraintOid",
-      b.completion_oid::text AS "completionOid",
+      b.completion_oid::text AS "completionOid", b.archive_transition_oid::text AS "archiveTransitionOid",
       pg_catalog.has_table_privilege(b."applicationRoleOid",b.completion_oid,'SELECT') AS "completionReadable",
       b."predecessorSha256" AS "predecessorSha256", b."upwardConstraintSha256" AS "constraintSha256",
       COALESCE(to_jsonb(b)->'sealHandoffEnabled'='true'::jsonb,FALSE) AS "sealHandoffEnabled",
@@ -99,12 +102,83 @@ async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: R
     || !isOid(result.constraintOid) || !transactionIdentity.every(key => result[key] === direct[key])
     || ![result.predecessorSha256, result.constraintSha256].every(value =>
       typeof value === "string" && /^[a-f0-9]{64}$/u.test(value))) throw unavailable();
-  if (result.completionOid == null) return result;
+  if (result.completionOid == null) {
+    if (result.archiveTransitionOid != null) throw unavailable();
+    return result;
+  }
   if (!isOid(result.completionOid) || result.completionReadable !== true) throw unavailable();
   return { ...result, sealCompletion: await qualifySealCompletionSuccessor(tx, result) };
 }
 
+async function qualifyArchiveTransitionSuccessor(tx: Prisma.TransactionClient, submission: Record<string, unknown>) {
+  if (submission.archiveTransitionOid == null) return null;
+  if (!isOid(submission.archiveTransitionOid)) throw unavailable();
+  const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+    /* contract_generated_upward_archive_transition_catalog_v1 */
+    SELECT x.tableoid::text AS "transitionOid", s.tableoid::text AS "completionOid",
+      s."predecessorOid"::text AS "submissionOid", prior."predecessorOid"::text AS "bindingOid",
+      s."databaseOid"::text AS "databaseOid", s."namespaceOid"::text AS "namespaceOid",
+      s."ownerOid"::text AS "anchorOwnerOid", current_user::regrole::oid::text AS "currentRoleOid",
+      session_user::regrole::oid::text AS "sessionRoleOid", pg_catalog.pg_backend_pid() AS "backendPid",
+      pg_catalog.txid_current()::text AS "transactionId", s."guardOid"::text AS "guardOid",
+      s."upwardConstraintOid"::text AS "priorConstraintOid", s."upwardConstraintSha256" AS "priorConstraintSha256",
+      x."upwardConstraintOid"::text AS "constraintOid", x."upwardConstraintSha256" AS "constraintSha256",
+      x."sealBindingSha256" AS "completionSha256",
+      x."upwardConstraintOid"<>s."upwardConstraintOid" AND x."upwardConstraintSha256"<>s."upwardConstraintSha256"
+      AND c.relowner=s."ownerOid" AND c.relnamespace=s."namespaceOid" AND c.relkind='r' AND c.relpersistence='p'
+      AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid=c.oid OR i.inhparent=c.oid)
+      AND pg_catalog.current_setting('session_replication_role')='origin'
+      AND EXISTS(SELECT 1 FROM pg_catalog.aclexplode(c.relacl) a WHERE a.grantee=s."applicationRoleOid"
+        AND a.grantor=s."ownerOid" AND a.privilege_type='SELECT' AND NOT a.is_grantable)
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(c.relacl) a
+        WHERE a.grantor<>s."ownerOid" OR a.grantee<>s."ownerOid"
+          AND (a.grantee<>s."applicationRoleOid" OR a.privilege_type<>'SELECT' OR a.is_grantable))
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid
+        AND a.attnum>0 AND NOT a.attisdropped AND a.attacl IS NOT NULL)
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE pg_catalog.pg_has_role(s."applicationRoleOid",r.oid,'MEMBER')
+        AND (r.rolsuper OR r.rolcreaterole OR r.rolbypassrls OR r.rolreplication
+          OR pg_catalog.pg_has_role(r.oid,s."ownerOid",'MEMBER') OR pg_catalog.has_schema_privilege(r.oid,c.relnamespace,'CREATE')
+          OR pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')))
+      AND 2=(SELECT count(*) FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+        JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
+        WHERE t.tgrelid=c.oid AND t.tgenabled='O' AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
+          AND t.tgconstraint=0 AND t.tgnargs=0 AND t.tgattr::text='' AND t.tgqual IS NULL
+          AND ((t.tgname='jg_generated_archive_version_transition_binding_immutable' AND t.tgtype=31)
+            OR (t.tgname='jg_generated_archive_version_transition_binding_no_truncate' AND t.tgtype=34))
+          AND p.oid=pg_catalog.to_regprocedure('public.jg_guard_generated_archive_version_transition_binding_v1()')
+          AND p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND NOT p.prosecdef AND p.provolatile='v'
+          AND p.prokind='f' AND p.prorettype='pg_catalog.trigger'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
+          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${archiveTransitionBindingBody}
+          AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+            WHERE a.grantee<>c.relowner OR a.grantor<>c.relowner))
+      AND 2=(SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgrelid=c.oid)
+      AS "exactTransition"
+    FROM public.jg_contract_generated_archive_version_transition_v1 x
+    JOIN pg_catalog.pg_class c ON c.oid=x.tableoid
+    JOIN public.jg_contract_generated_upward_seal_binding_v1 s ON s.tableoid=x."sealBindingOid"
+      AND s."protocolVersion"=1 AND s."applicationRoleOid"=current_user::regrole::oid
+      AND s."applicationRoleOid"=session_user::regrole::oid AND s."namespaceOid"=pg_catalog.to_regnamespace('public')
+      AND encode(public.digest(convert_to(to_jsonb(s)::text,'UTF8'),'sha256'),'hex')=x."sealBindingSha256"
+    JOIN public.jg_contract_generated_upward_submission_binding_v1 prior ON prior.tableoid=s."predecessorOid"
+      AND prior."protocolVersion"=1 AND prior."applicationRoleOid"=s."applicationRoleOid"
+      AND prior."ownerOid"=s."ownerOid" AND prior."namespaceOid"=s."namespaceOid" AND prior."databaseOid"=s."databaseOid"
+      AND encode(public.digest(convert_to(to_jsonb(prior)::text,'UTF8'),'sha256'),'hex')=s."predecessorSha256"
+    JOIN pg_catalog.pg_database d ON d.oid=s."databaseOid" AND d.datname=pg_catalog.current_database()
+    WHERE x."protocolVersion"=1 AND x.tableoid=${String(submission.archiveTransitionOid)}::pg_catalog.oid
+  `);
+  const result = rows.length === 1 ? rows[0] : null;
+  if (!result || result.exactTransition !== true || result.transitionOid !== submission.archiveTransitionOid
+    || result.completionOid !== submission.completionOid || result.submissionOid !== submission.successorOid
+    || !transactionIdentity.every(key => result[key] === submission[key])
+    || !["guardOid", "priorConstraintOid", "constraintOid"].every(key => isOid(result[key]))
+    || ![result.priorConstraintSha256, result.constraintSha256, result.completionSha256].every(value =>
+      typeof value === "string" && /^[a-f0-9]{64}$/u.test(value))) throw unavailable();
+  return result;
+}
+
 async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, submission: Record<string, unknown>) {
+  const archiveTransition = await qualifyArchiveTransitionSuccessor(tx, submission);
   const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
     /* contract_generated_upward_seal_completion_catalog_v1 */
     WITH proof AS (
@@ -134,10 +208,12 @@ async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, subm
       b."versionTriggerOid"::text AS "versionTriggerOid", b."roundTriggerOid"::text AS "roundTriggerOid",
       b."taskTriggerOid"::text AS "taskTriggerOid", b."completionTriggerOid"::text AS "completionTriggerOid",
       b."upwardConstraintOid"<>b.old_constraint_oid AND b."upwardConstraintSha256"<>b.old_constraint_sha
-      AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.oid=b."upwardConstraintOid"
+      AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c
+        WHERE c.oid=COALESCE(${archiveTransition?.constraintOid ?? null}::pg_catalog.oid,b."upwardConstraintOid")
         AND c.conrelid='public."ContractVersion"'::regclass AND c.contype='c' AND c.convalidated AND c.conislocal
         AND c.conname='ContractVersion_upward_draft_source_check'
-        AND encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(c.oid,false),'UTF8'),'sha256'),'hex')=b."upwardConstraintSha256")
+        AND encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(c.oid,false),'UTF8'),'sha256'),'hex')=
+          COALESCE(${archiveTransition?.constraintSha256 ?? null}::pg_catalog.text,b."upwardConstraintSha256"))
       AND EXISTS(SELECT 1 FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
         WHERE c.oid=b.completion_oid AND a.grantee=b."applicationRoleOid" AND a.grantor=b."ownerOid"
           AND a.privilege_type='SELECT' AND NOT a.is_grantable)
@@ -166,7 +242,8 @@ async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, subm
           AND p.oid=CASE WHEN wanted.oid IS NULL THEN pg_catalog.to_regprocedure('public.jg_guard_generated_upward_seal_binding_v1()')::oid
                          ELSE b."guardOid" END
           AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
-            CASE WHEN wanted.oid IS NULL THEN ${sealCompletionBindingBody} ELSE ${sealCompletionGuardBody} END
+            CASE WHEN wanted.oid IS NULL THEN ${sealCompletionBindingBody}
+              ELSE ${archiveTransition ? archiveTransitionGuardBody : sealCompletionGuardBody} END
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
         WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
           WHERE a.grantee<>b."ownerOid" OR a.grantor<>b."ownerOid"))=6
@@ -181,7 +258,10 @@ async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, subm
     || !["constraintOid", "guardOid", "versionTriggerOid", "roundTriggerOid", "taskTriggerOid", "completionTriggerOid"].every(key => isOid(result[key]))
     || ![result.predecessorSha256, result.constraintSha256].every(value =>
       typeof value === "string" && /^[a-f0-9]{64}$/u.test(value))) throw unavailable();
-  return result;
+  if (archiveTransition && (archiveTransition.priorConstraintOid !== result.constraintOid
+    || archiveTransition.priorConstraintSha256 !== result.constraintSha256
+    || archiveTransition.guardOid !== result.guardOid)) throw unavailable();
+  return archiveTransition ? { ...result, archiveTransition } : result;
 }
 
 export async function qualifyUpwardPendingSave(
