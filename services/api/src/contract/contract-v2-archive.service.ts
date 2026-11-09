@@ -3,6 +3,7 @@ import { assertDirectPendingSourceQualification, hasDirectSigningInput } from ".
 import { readDirectPendingInput } from "./contract-direct-pending-save";
 import { assertDirectArchivePersistentProof } from "./contract-direct-archive-persistent-proof";
 import { readDirectArchivePreflightProfile, rejectUnqualifiedDirectArchiveWriter } from "./contract-direct-archive-writer-profile";
+import { readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { DIRECT_ARCHIVE_EXECUTOR, type DirectArchiveExecution, type DirectArchiveExecutor } from "./contract-direct-archive-executor";
 import { assertDirectArchiveSourceScope } from "./contract-direct-archive-scope";
 import { assertDirectArchiveIntentSourceClosed } from "./contract-direct-archive-intent-source";
@@ -257,6 +258,8 @@ export class ContractV2ArchiveService {
           sourceRevision: input.expectedDraftRevision, inputSha256: input.expectedInputSha256
         }, completion?.actual.relationOid, qualification.bootstrap);
         if (!executor) rejectUnqualifiedDirectArchiveWriter();
+        const admission = await readDirectArchiveNativeAdmission(tx, qualification.bootstrap);
+        if (!admission || admission.completionOid !== completion?.actual.relationOid) rejectUnqualifiedDirectArchiveWriter();
         const originals: DirectArchiveExecution["originals"][number][] = [];
         for (const [displayOrder, fileId] of input.fileIds.entries()) {
           const row = await tx.fileObject.findUnique({ where: { id: fileId } });
@@ -273,7 +276,7 @@ export class ContractV2ArchiveService {
             mimeType: row.mimeType, sizeBytes: row.sizeBytes, contentSha256: row.contentSha256 });
         }
         const command: DirectArchiveExecution = { actor, projectId: project.id, contractId: owner.id, versionId,
-          revision: input.expectedDraftRevision, inputSha256: input.expectedInputSha256, key: input.idempotencyKey, originals };
+          revision: input.expectedDraftRevision, inputSha256: input.expectedInputSha256, key: input.idempotencyKey, nativeNonce: admission.nonce, originals };
         return { requestSha256: directArchiveRequestSha(owner.id, versionId, actor, input), execute: () => executor.execute(command) };
       }
       throw new ServiceUnavailableException("正式登记暂不可办理，请保留原件和本次标识");

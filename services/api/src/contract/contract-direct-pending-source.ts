@@ -5,6 +5,7 @@ import { readDirectArchiveTransitionOid, readPreparedDirectArchiveTransition } f
 import { readDirectArchiveRetentionOid, readDirectArchiveRetentionQualification } from "./contract-direct-archive-retention-qualification";
 import { readDirectArchiveDispatchOid, readDirectArchiveDispatchQualification } from "./contract-direct-archive-dispatch-qualification";
 import { hasGeneratedUpwardOperatingInstallation, outsideFactAppendBody } from "./contract-generated-upward-operating-installation";
+import { directInputSignature } from "./contract-direct-archive-native-admission";
 import { DIRECT_PENDING_DB_RECIPE } from "./contract-direct-pending-recipe";
 
 type ObjectValue = Record<string, unknown>;
@@ -207,8 +208,11 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
       const current = object(dispatch?.legacyProjection[descriptor.signature] ?? routines[descriptor.signature]);
       const observedOutside = descriptor.signature === factAppendSignature && bootstrap.anchorSourceSha256 === outsideFactAppendBody;
       if (observedOutside && current?.bodySha256 !== outsideFactAppendBody) unavailable();
-      const observation = current && observedOutside ? { ...current, bodySha256: descriptor.bodySha256 } : current;
       const identity = object(expectedRoutines[descriptor.signature]);
+      let observation = current && observedOutside ? { ...current, bodySha256: descriptor.bodySha256 } : current;
+      if (dispatch?.native && observation && descriptor.signature === directInputSignature) {
+        observation = { ...observation, acl: identity?.acl };
+      }
       if (!observation || !identity || !isDeepStrictEqual(identity, observation) || observation.bodySha256 !== descriptor.bodySha256
         || observation.securityDefiner !== descriptor.securityDefiner || observation.language !== descriptor.language || observation.returnType !== descriptor.returnType
         || observation.volatility !== descriptor.volatility || observation.parallel !== descriptor.parallel || observation.strict !== descriptor.strict || observation.returnsSet !== descriptor.returnsSet

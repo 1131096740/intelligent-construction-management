@@ -11,19 +11,21 @@ import { seedDirectReviewDatabaseBinding } from "./task12-direct-review-persiste
 describe("表外已签合同的正式登记", () => {
   it("登记两份有序原件后可按原标识查回，且重放没有重复生效或审批", async () => {
     const invocations = { issued: 0, executed: 0 };
+    const nonce = randomUUID();
     const server = await createTemplateTestServer({ draftWorkbench: true, directArchiveExecutor: (store, storage) => {
       const intentId = randomUUID();
       let issuedCoordinates: readonly unknown[] | undefined;
       return nativeDirectArchiveExecutor(storage, client(async query => {
         expect(query.sql).toContain("jg_issue_contract_direct_archive_intent_v1");
         invocations.issued++;
-        issuedCoordinates = query.values;
+        expect(query.values[0]).toBe(nonce);
+        issuedCoordinates = query.values.slice(1);
         return [{ intentId }];
       }), client(async query => {
         expect(query.sql).toContain("jg_execute_contract_direct_archive_outside_v1");
-        expect(query.values).toEqual([intentId, ...issuedCoordinates!]);
+        expect(query.values).toEqual([nonce, intentId, ...issuedCoordinates!]);
         invocations.executed++;
-        await store.prisma.$transaction(async () => persistSyntheticRegistration(store, query.values.slice(1)));
+        await store.prisma.$transaction(async () => persistSyntheticRegistration(store, query.values.slice(2)));
         // The separate database session committed but its first response was lost.
         throw new Error("合成执行连接在提交后丢失响应");
       }));
@@ -79,8 +81,8 @@ describe("表外已签合同的正式登记", () => {
       await seedDirectReviewDatabaseBinding(server);
       await seedPreparedDirectArchiveTransition(server);
       const retention = await seedDirectArchiveRetentionCatalog(server);
-      await seedDirectArchiveDispatchCatalog(server);
-      await seedDirectArchiveCompletionCatalog(server);
+      const dispatch = await seedDirectArchiveDispatchCatalog(server);
+      const completion = await seedDirectArchiveCompletionCatalog(server);
       await observeDirectArchiveCompletionBody(server, retention);
       await server.store.table("directArchiveWriterProbe").create({ data: { snapshot: {
         routineCount: 2, parentGuardCount: 1, transitionGuardCount: 3
@@ -97,6 +99,26 @@ describe("表外已签合同的正式登记", () => {
       const lookup = () => fetch(`${base}/contracts/${version.id}/archive-requests/${key}`, { headers });
       const before = await lookup();
       expect({ status: before.status, body: await before.json() }).toEqual({ status: 200, body: { status: "unknown" } });
+      expect((await send()).status).toBe(503);
+      expect(invocations).toEqual({ issued: 0, executed: 0 });
+      await server.store.table("directArchiveNativeAdmission").create({ data: { snapshot: {
+        completionOid: "29901", executorOwnerOid: "9912", ownerOid: "9001", namespaceOid: "2200", databaseOid: "13000",
+        currentRoleOid: "7001", sessionRoleOid: "7001", backendPid: 71201, transactionId: "500001", intentBindingSha256: "a".repeat(64), nonce
+      } } });
+      const liveHelpers: Record<string, string> = {
+        "public.jg_assert_contract_direct_archive_write_profile_v1()": "b418f8e2de1ae5b4607a898d8de4ca96c1e3b987c2ffbd8a8701018e76c56349",
+        'public.jg_guard_contract_direct_archive_parent_v1(public."ContractArchiveFile")': "1e9d6404ecd618617aa74dc85fc656be334f1b0d8219d7e814361866f6e4b903",
+        "public.jg_require_contract_direct_archive_transition_profile_v1()": "c34dead07d5837558a41e68350b21b8b2d5818f60e21eef23c43c59f68bbb23a",
+        'public.jg_guard_contract_direct_archive_version_transition_v1(public."ContractVersion",public."ContractVersion")':
+          "c376d219b8d97e2d8e895f39fcf6af1b768fef8ae2dff9c37d356d8374086157"
+      };
+      const helpers = Object.fromEntries(Object.entries(dispatch.actual.helpers).map(([signature, raw]) =>
+        [signature, liveHelpers[signature] ? { ...raw as object, bodySha256: liveHelpers[signature],
+          proacl: ["owner-X", "executor-X"] } : raw]));
+      await server.store.table("directArchiveDispatchActual").update({ where: { id: dispatch.observation.id },
+        data: { snapshot: { ...dispatch.actual, helpers, helpersPrivate: false } } });
+      await server.store.table("directArchiveCompletionActual").update({ where: { id: completion.observed.id },
+        data: { snapshot: { ...completion.actual, guardsClosed: false } } });
       const lastVersion = await server.store.table("syntheticPrivateFileVersion").findFirst({ where: { objectGeneration: "sealed-240" } });
       if (!lastVersion) throw new Error("合成存储固定版本缺失");
       await server.store.table("syntheticPrivateFileVersion").delete({ where: { id: lastVersion.id } });

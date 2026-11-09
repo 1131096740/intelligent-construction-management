@@ -13,7 +13,7 @@ function unavailable(): never {
   throw new ServiceUnavailableException("直签归档原件存储版本尚未完整核对，暂不能下载");
 }
 
-async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, anchor: Row) {
+async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, anchor: Row, executorOwnerOid?: string) {
   const rows = await tx.$queryRaw<Row[]>(Prisma.sql`
     /* contract_direct_archive_generation_catalog_v1 */
     WITH recipe(name,signature,sha,volatility,result,strict,readable) AS (VALUES
@@ -61,7 +61,9 @@ async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, 
             OR (k.conkey=ARRAY[2]::smallint[] AND k.confrelid='public.jg_contract_direct_archive_intent_use_v1'::regclass)))
         AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl
           WHERE acl.grantor<>c.relowner OR (acl.grantee<>c.relowner AND
-            (acl.grantee<>b."applicationRoleOid" OR acl.privilege_type<>'SELECT' OR acl.is_grantable)))
+            (acl.grantee<>b."applicationRoleOid" OR acl.privilege_type<>'SELECT' OR acl.is_grantable)
+            ${executorOwnerOid ? Prisma.sql`AND (acl.grantee<>${executorOwnerOid}::oid
+              OR acl.privilege_type NOT IN ('SELECT','INSERT') OR acl.is_grantable)` : Prisma.empty}))
         AND pg_catalog.has_table_privilege(b."applicationRoleOid",c.oid,'SELECT')
         AND 4=(SELECT count(*) FROM routines)
         AND NOT EXISTS(SELECT 1 FROM routines p WHERE p.oid IS DISTINCT FROM pg_catalog.to_regprocedure(p.signature)::oid
@@ -72,7 +74,10 @@ async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, 
           OR pg_catalog.has_function_privilege(b."applicationRoleOid",p.oid,'EXECUTE') IS DISTINCT FROM p.readable
           OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
             WHERE acl.grantor<>p.proowner OR (acl.grantee<>p.proowner AND
-              (NOT p.readable OR acl.grantee<>b."applicationRoleOid" OR acl.privilege_type<>'EXECUTE' OR acl.is_grantable))))
+              (NOT p.readable OR acl.grantee<>b."applicationRoleOid" OR acl.privilege_type<>'EXECUTE' OR acl.is_grantable)
+              ${executorOwnerOid ? Prisma.sql`AND (p.proname NOT IN ('jg_read_contract_direct_archive_generations_v1',
+                'jg_record_contract_direct_archive_generations_v1') OR acl.grantee<>${executorOwnerOid}::oid
+                OR acl.privilege_type<>'EXECUTE' OR acl.is_grantable)` : Prisma.empty})))
         AND 3=(SELECT count(*) FROM observed_triggers)
         AND 3=(SELECT count(*) FROM observed_triggers t JOIN expected_triggers x
           ON x.name=t.tgname AND x.relation_oid=t.tgrelid AND x.function_oid=t.tgfoid AND x.kind=t.tgtype
@@ -100,7 +105,8 @@ export async function readDirectArchiveGenerations(tx: Prisma.TransactionClient,
     const prior = await assertDirectPendingSourceQualification(tx);
     const completionOid = prior.retention?.completion?.actual.relationOid;
     if (typeof completionOid !== "string" || !prior.dispatch) unavailable();
-    const catalog = await readCatalog(tx, completionOid, prior.bootstrap);
+    const executorOwnerOid = prior.dispatch.native?.executorOwnerOid;
+    const catalog = await readCatalog(tx, completionOid, prior.bootstrap, executorOwnerOid);
     const rows = await tx.$queryRaw<Array<{ proof: unknown }>>(Prisma.sql`
       SELECT public.jg_read_contract_direct_archive_generations_v1(${parent.id}::pg_catalog.text) AS proof
     `);
@@ -118,7 +124,7 @@ export async function readDirectArchiveGenerations(tx: Prisma.TransactionClient,
       || !/^[\x21-\x7e]+$/u.test(row.objectGeneration)
       || row.objectGeneration.toLowerCase() === "null" || row.objectGeneration.includes(","))
       || new Set(originals.map(row => row?.fileId)).size !== originals.length) unavailable();
-    if (!isDeepStrictEqual(await readCatalog(tx, completionOid, prior.bootstrap), catalog)) unavailable();
+    if (!isDeepStrictEqual(await readCatalog(tx, completionOid, prior.bootstrap, executorOwnerOid), catalog)) unavailable();
     await assertDirectPendingSourceContinuity(tx, prior);
     return originals;
   } catch {

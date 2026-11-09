@@ -1,3 +1,4 @@
+import { nativeDirectBodies, readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { hasGeneratedUpwardOperatingInstallation, upwardOperatingParentBody } from "./contract-generated-upward-operating-installation";
 import { qualifyUpwardPendingSave, UPWARD_SAVE_ROUTINE_BODIES } from "./contract-upward-pending-save-profile";
 import { qualifyUpwardPendingCreate, UPWARD_CREATE_DISPATCH_BODY } from "./contract-upward-pending-create";
@@ -175,7 +176,10 @@ export async function readDirectArchiveDispatchQualification(
     }
     if (actual.currentRoleOid !== bootstrap.currentRoleOid || actual.sessionRoleOid !== bootstrap.sessionRoleOid
       || actual.backendPid !== bootstrap.backendPid || actual.transactionId !== bootstrap.transactionId
-      || ["registryQualified","legacySlotReads","applicationSlotReads","helpersPrivate"].some(key => actual[key] !== true)) unavailable();
+      || ["registryQualified","legacySlotReads","applicationSlotReads"].some(key => actual[key] !== true)
+      || typeof actual.helpersPrivate !== "boolean") unavailable();
+    const native = actual.helpersPrivate ? null : await readDirectArchiveNativeAdmission(tx, bootstrap);
+    if (!actual.helpersPrivate && !native) unavailable();
 
     const links = object(binding.links);
     if (!links || !transitionOid || !retentionOid || links.pendingOid !== bootstrap.bindingRelationOid
@@ -240,9 +244,11 @@ export async function readDirectArchiveDispatchQualification(
     for (const [signature, bodySha256, strict, resultType] of helpers) {
       const installedHelper = object(installedHelpers[signature]);
       const routine = object(currentHelpers[signature]);
-      const currentBody = upwardSave && signature === slot ? UPWARD_SAVE_ROUTINE_BODIES.slot : bodySha256;
+      const nativeBody = native && nativeDirectBodies[signature];
+      const currentBody = nativeBody || (upwardSave && signature === slot ? UPWARD_SAVE_ROUTINE_BODIES.slot : bodySha256);
+      const compared = nativeBody && routine ? { ...routine, proacl: installedHelper?.proacl } : routine;
       if (!installedHelper || installedHelper.bodySha256 !== bodySha256
-        || !isDeepStrictEqual(routine, { ...installedHelper, bodySha256: currentBody })) unavailable();
+        || !isDeepStrictEqual(compared, { ...installedHelper, bodySha256: currentBody })) unavailable();
       if (!routine || !oid(routine.oid) || routine.proowner !== identity.anchorOwnerOid
         || routine.pronamespace !== identity.namespaceOid || routine.bodySha256 !== currentBody
         || routine.language !== "plpgsql" || routine.prokind !== "f" || routine.prosecdef !== false || routine.proretset !== false
@@ -260,7 +266,7 @@ export async function readDirectArchiveDispatchQualification(
         || trigger.tgattr !== "" || trigger.tgargs !== "" || trigger.tgqual !== null) unavailable();
       if (routine === version && trigger.oid !== object(object(legacy.triggers)?.[name])?.oid) unavailable();
     }
-    return { binding, actual, upwardCreate, upwardSave, legacyProjection, archiveRelationOid: relations.archiveOid, links };
+    return { binding, actual, native, upwardCreate, upwardSave, legacyProjection, archiveRelationOid: relations.archiveOid, links };
   } catch {
     unavailable();
   }

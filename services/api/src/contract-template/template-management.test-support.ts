@@ -453,8 +453,16 @@ export class TemplateSyntheticStore {
         if (await this.table("directArchiveDispatchBinding").count() !== 1) return [];
         return installed.flatMap(binding => actual.map(observed => ({ binding: binding.snapshot, actual: observed.snapshot })));
       }
+      if (text.startsWith("/* contract_direct_native_probe_v1 */ SELECT")) {
+        return [{ readable: await this.table("directArchiveNativeAdmission").count() > 0 }];
+      }
+      if (text.startsWith("/* contract_direct_native_admission_v1 */ WITH recipe")) {
+        return (await this.table("directArchiveNativeAdmission").findMany()).map(row => directCatalogFixtureRow(row.snapshot));
+      }
       if (text.startsWith('/* contract_direct_archive_generation_catalog_v1 */ WITH')) {
-        if (query.values.length !== 1 || query.values[0] !== "29901") throw new Error("合成原件版本目录只接受已核对的217关系");
+        const legacy = query.values.length === 1 && query.values[0] === "29901";
+        const native = query.values.length === 3 && query.values[0] === "9912" && query.values[1] === "9912" && query.values[2] === "29901";
+        if (!legacy && !native) throw new Error("合成原件版本目录只接受已核对的217关系和实际执行所有者");
         return (await this.table("directArchiveGenerationCatalog").findMany()).map(row => directCatalogFixtureRow(row.snapshot));
       }
       if (text === 'SELECT public.jg_read_contract_direct_archive_generations_v1(?::pg_catalog.text) AS proof') {

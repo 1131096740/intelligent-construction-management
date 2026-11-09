@@ -1,3 +1,4 @@
+import { readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { hasGeneratedUpwardOperatingInstallation } from "./contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -164,7 +165,9 @@ export async function readDirectArchiveCompletionQualification(
     const binding = rows.length === 1 ? record(rows[0].binding) : null;
     const actual = rows.length === 1 ? record(rows[0].actual) : null;
     if (!binding || !actual || binding.protocolVersion !== 1 || binding.recipeVersion !== "contract-direct-archive-completion-dispatch-v1/1"
-      || actual.relationOid !== relationOid || actual.registryQualified !== true || actual.guardsClosed !== true) unavailable();
+      || actual.relationOid !== relationOid || actual.registryQualified !== true || typeof actual.guardsClosed !== "boolean") unavailable();
+    const native = actual.guardsClosed ? null : await readDirectArchiveNativeAdmission(tx, anchor);
+    if (!actual.guardsClosed && native?.completionOid !== relationOid) unavailable();
     const identity = {
       applicationRoleOid: anchor.currentRoleOid, databaseOid: anchor.databaseOid,
       namespaceOid: anchor.namespaceOid, anchorOwnerOid: anchor.anchorOwnerOid
@@ -204,7 +207,17 @@ export async function readDirectArchiveCompletionQualification(
     const observedRoutines = record(observed209.routines);
     if (!installedRoutine || !oid(installedRoutine.oid) || record(procedures.completion)?.oid !== installedRoutine.oid
       || !observedRoutines || !isDeepStrictEqual(observedRoutines[legacyCompletionName], { ...installedRoutine, sha: currentBody })) unavailable();
-    return { binding, actual, legacyCatalog: { ...observed209, routines: { ...observedRoutines, [legacyCompletionName]: installedRoutine } } };
+    const legacyRoutines: Catalog = { ...observedRoutines, [legacyCompletionName]: installedRoutine };
+    if (native) {
+      const oldRoutines = record(installed209.routines);
+      for (const name of ["jg_contract_direct_archive_proof_v1", "jg_contract_direct_archive_request_sha_v1", "jg_require_contract_direct_archive_complete_v1"]) {
+        const installed = record(oldRoutines?.[name]);
+        const observed = record(observedRoutines[name]);
+        if (!installed || !observed) unavailable();
+        legacyRoutines[name] = { ...observed, acl: installed.acl };
+      }
+    }
+    return { binding, actual, legacyCatalog: { ...observed209, routines: legacyRoutines } };
   } catch {
     unavailable();
   }
