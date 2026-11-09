@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { generatedArchiveIngressCatalog, installedCompletionGuardBody, readNativeGeneratedArchiveWriter } from "./contract-generated-archive-write-authority";
 
 export type GeneratedArchiveSealFile = { fileId: string; mimeType: string; sizeBytes: number; contentSha256: string };
 
@@ -113,7 +114,7 @@ export type GeneratedArchiveWriterAuthority = Readonly<{
 export const readGeneratedArchiveWriterAuthority: (
   tx: Prisma.TransactionClient,
   binding: GeneratedArchiveRequestBinding
-) => Promise<GeneratedArchiveWriterAuthority | null> = async () => null;
+) => Promise<GeneratedArchiveWriterAuthority | null> = readNativeGeneratedArchiveWriter;
 
 const captureCompletionBody = "802380ee6a481f49a77986ab828b0b48d00d263313360dccf36991eb5387b3b3";
 const guardCompletionBody = "b560be4e264168b89f208299b309b76240a6d589cba5ec5bb9bd201ae8c82eea";
@@ -130,10 +131,11 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
 
   const rows = await tx.$queryRaw<{ completion: unknown }[]>(Prisma.sql`
     /* contract_generated_archive_completion_read_v1 */
-    WITH recipe(fn, result_type, body) AS (VALUES
-      ('public.jg_capture_generated_archive_completion_v1(text)', 'pg_catalog.jsonb', ${captureCompletionBody}),
-      ('public.jg_guard_generated_archive_completion_v1()', 'pg_catalog.trigger', ${guardCompletionBody}),
-      ('public.jg_require_generated_archive_completion_v1()', 'pg_catalog.trigger', ${requireCompletionBody})
+    WITH ingress AS (${generatedArchiveIngressCatalog}),
+    recipe(fn, result_type, body, successor) AS (VALUES
+      ('public.jg_capture_generated_archive_completion_v1(text)', 'pg_catalog.jsonb', ${captureCompletionBody}, NULL),
+      ('public.jg_guard_generated_archive_completion_v1()', 'pg_catalog.trigger', ${guardCompletionBody}, ${installedCompletionGuardBody}),
+      ('public.jg_require_generated_archive_completion_v1()', 'pg_catalog.trigger', ${requireCompletionBody}, NULL)
     ), trigger_recipe(name, relation, fn, kind, deferred) AS (VALUES
       ('jg_generated_archive_completion_append', 'public.jg_contract_generated_archive_completion_v1',
         'public.jg_guard_generated_archive_completion_v1()', 31, FALSE),
@@ -180,9 +182,13 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
           OR pg_catalog.has_table_privilege(r.oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')))
       AND 3=(SELECT count(*) FROM recipe x
         JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(x.fn) AND p.proowner=c.relowner
-          AND p.pronamespace=c.relnamespace AND NOT p.prosecdef AND p.prokind='f' AND p.provolatile='v'
-          AND p.prorettype=pg_catalog.to_regtype(x.result_type) AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
-          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.body
+          AND p.pronamespace=c.relnamespace AND p.prokind='f' AND p.provolatile='v'
+          AND p.prorettype=pg_catalog.to_regtype(x.result_type)
+          AND ((NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
+            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.body)
+            OR (p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']::text[]
+              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.successor
+              AND EXISTS(SELECT 1 FROM ingress i WHERE i.relowner=c.relowner AND i.relnamespace=c.relnamespace)))
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
         WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
           WHERE a.grantee<>p.proowner OR a.grantor<>p.proowner))
