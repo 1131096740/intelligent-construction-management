@@ -1,5 +1,6 @@
 import { DIRECT_ARCHIVE_EXECUTOR, DIRECT_ARCHIVE_ISSUER_CLIENT, DIRECT_ARCHIVE_RUNTIME_CLIENT,
   nativeDirectArchiveExecutor, type DirectArchiveRuntimeClient, type DirectArchiveSqlClient } from "./contract-direct-archive-executor";
+import { ContractDirectArchiveRuntime } from "./contract-direct-archive-runtime";
 import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "./contract-generated-upward-operating";
 import { nativeGeneratedUpwardOperatingActivation } from "./contract-generated-upward-operating-installation";
 import { GENERATED_ARCHIVE_PREPARATION_READER } from "./contract-generated-archive-preparation";
@@ -50,6 +51,17 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     ContractV2SubmissionService,
     ContractV2ArchiveService,
     { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },
+    ContractDirectArchiveRuntime,
+    {
+      provide: DIRECT_ARCHIVE_ISSUER_CLIENT,
+      inject: [ContractDirectArchiveRuntime],
+      useFactory: (runtime: ContractDirectArchiveRuntime) => runtime.issuer
+    },
+    {
+      provide: DIRECT_ARCHIVE_RUNTIME_CLIENT,
+      inject: [ContractDirectArchiveRuntime],
+      useFactory: (runtime: ContractDirectArchiveRuntime) => runtime.executor
+    },
     {
       provide: DIRECT_ARCHIVE_EXECUTOR,
       inject: [PrivateFileStorage, { token: DIRECT_ARCHIVE_ISSUER_CLIENT, optional: true },
