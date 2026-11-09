@@ -191,6 +191,7 @@ test("an owner adapter cannot move cleanup to a substituted resource before migr
   const receipt = await runTask16RegisteredPg(f.options, f.adapters);
   assert.equal(receipt.status, "FAILED_CLOSED");
   assert.equal(receipt.failureCode, "TASK16_DRIVER_RESOURCE_IDENTITY");
+  assert.equal(receipt.migrationOutcome, "NOT_ATTEMPTED");
   assert.deepEqual(receipt.cleanupFailures, []);
   assert.deepEqual(f.calls, ["source", "resource", "owner-transport", "close-resource"]);
 });
@@ -205,6 +206,7 @@ test("changed methods on the original resource do not replace its captured clean
   const receipt = await runTask16RegisteredPg(f.options, f.adapters);
   assert.equal(receipt.status, "FAILED_CLOSED");
   assert.equal(receipt.failureCode, "TASK16_DRIVER_RESOURCE_IDENTITY");
+  assert.equal(receipt.migrationOutcome, "NOT_ATTEMPTED");
   assert.deepEqual(receipt.cleanupFailures, []);
   assert.deepEqual(f.calls, ["source", "resource", "owner-transport", "close-resource"]);
 });

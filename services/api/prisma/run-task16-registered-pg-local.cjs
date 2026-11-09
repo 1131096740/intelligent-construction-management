@@ -162,9 +162,10 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
       resourceMember(ownedResource, "close") === ownedResourceClose &&
       resourceMember(ownedResource, "getReceipt") === ownedResourceReceipt, "TASK16_DRIVER_RESOURCE_IDENTITY");
   }
-  async function stage(name) {
+  async function stage(name, outcomeField) {
     need(!controller.signal.aborted, "TASK16_DRIVER_ABORTED");
     assertOwnedResource();
+    if (outcomeField) receipt[outcomeField] = "UNKNOWN_DO_NOT_RETRY";
     const record = { name, status: "running" }; stages.push(record);
     try { const result = await adapters[name](context); record.status = "completed"; return result; }
     catch (error) { record.status = "failed"; throw error; }
@@ -226,20 +227,15 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     context.ownerTransport = await stage("verifyOwnerTransport");
     if (context.ownerTransport?.ownerPrivateErasureOutcome === "ERASED") receipt.ownerPrivateErasureOutcome = "ERASED";
     if (context.ownerTransport?.ownerRestorationOutcome === "CORRECT_PRESENTATION_RESTORED") receipt.ownerRestorationOutcome = "CORRECT_PRESENTATION_RESTORED";
-    receipt.migrationOutcome = "UNKNOWN_DO_NOT_RETRY";
-    context.migrations = await stage("migrateBaseline");
+    context.migrations = await stage("migrateBaseline", "migrationOutcome");
     receipt.migrationOutcome = "MIGRATION_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
-    receipt.baselineAccessOutcome = "UNKNOWN_DO_NOT_RETRY";
-    context.baselineAccess = await stage("installBaselineAccess");
+    context.baselineAccess = await stage("installBaselineAccess", "baselineAccessOutcome");
     receipt.baselineAccessOutcome = "BASELINE_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
-    receipt.installationOutcome = "UNKNOWN_DO_NOT_RETRY";
-    context.installation = await stage("installPreparedSql");
+    context.installation = await stage("installPreparedSql", "installationOutcome");
     receipt.installationOutcome = "INSTALLATION_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
-    receipt.registeredAccessOutcome = "UNKNOWN_DO_NOT_RETRY";
-    context.registeredAccess = await stage("installRegisteredAccess");
+    context.registeredAccess = await stage("installRegisteredAccess", "registeredAccessOutcome");
     receipt.registeredAccessOutcome = "REGISTERED_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
-    receipt.clientConnectionOutcome="UNKNOWN_DO_NOT_RETRY";
-    context.clients = await stage("connectRestrictedClients");
+    context.clients = await stage("connectRestrictedClients", "clientConnectionOutcome");
     receipt.clientConnectionOutcome="CLIENT_STAGE_RETURNED_NOT_FULL_ACCEPTANCE";
     need(typeof context.clients?.close === "function", "TASK16_DRIVER_CLIENT_HANDLES");
     const lifecycleDescriptors=Object.getOwnPropertyDescriptors(context.clients),lifecycleMethods=["checkLight","verifyFull","loadApplicationModules"];
@@ -255,8 +251,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
         loadNormalCaseModules:lifecycleDescriptors.loadNormalCaseModules?.value,
         loadFixtureModules:lifecycleDescriptors.loadFixtureModules?.value}),writable:false,configurable:false});
     }
-    receipt.appStartupOutcome="UNKNOWN_DO_NOT_RETRY";
-    context.application = await stage("startApplication");
+    context.application = await stage("startApplication", "appStartupOutcome");
     receipt.appStartupOutcome="APP_STAGE_RETURNED_NOT_FULL_PROOF";
     need(typeof context.application?.close === "function", "TASK16_DRIVER_APPLICATION_HANDLE");
     if(nativeApplicationSelected){
