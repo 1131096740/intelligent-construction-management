@@ -35,7 +35,7 @@ function isOid(value: unknown) {
 }
 
 /** The installation owns the command trigger, but only the app may submit its typed column inserts. */
-async function readWriteCatalog(tx: Prisma.TransactionClient) {
+export async function readGeneratedArchiveWriteInstallation(tx: Prisma.TransactionClient) {
   const rows = await tx.$queryRaw<(Installation & { qualified: boolean })[]>(Prisma.sql`
     /* contract_generated_archive_write_catalog_v1 */
     WITH recipes(name, relation, fn, kind, deferred) AS (VALUES
@@ -142,7 +142,7 @@ async function readWriteCatalog(tx: Prisma.TransactionClient) {
 export async function readNativeGeneratedArchiveWriter(
   tx: Prisma.TransactionClient, binding: GeneratedArchiveRequestBinding
 ): Promise<GeneratedArchiveWriterAuthority | null> {
-  const installation = await readWriteCatalog(tx).catch(() => null);
+  const installation = await readGeneratedArchiveWriteInstallation(tx).catch(() => null);
   if (!installation) return null;
 
   let writtenArchiveId: string | null = null;

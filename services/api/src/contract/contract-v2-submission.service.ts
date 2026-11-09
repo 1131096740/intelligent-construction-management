@@ -1,6 +1,7 @@
 import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { freezeGeneratedContractSigningIdentity } from "./contract-v2-signing-identity";
-import { assertGeneratedArchiveSealContinuity, assertGeneratedArchiveSealSources, generatedArchiveSealScope, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-seal-authority";
+import { assertGeneratedArchiveSealSources, generatedArchiveSealScope } from "./contract-generated-archive-seal-authority";
+import { assertGeneratedArchiveSealContinuity, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-installation";
 import { assertGeneratedUpwardSealCompletionContinuity, assertGeneratedUpwardSealHandoffContinuity,
   assertGeneratedUpwardSubmissionContinuity, qualifyGeneratedUpwardSealCompletion, qualifyGeneratedUpwardSealHandoff } from "./contract-upward-pending-save-profile";
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
@@ -98,14 +99,16 @@ export class ContractV2SubmissionService {
     if (!input.confirmed) throw new BadRequestException("请核对线下盖章已完成后再确认");
     return this.prisma.$transaction(async tx => {
       const located = await tx.contractVersion.findUnique({ where: { id: contractVersionId },
-        select: { contractId: true, signingSubjectType: true } });
-      if (located?.signingSubjectType === "upward") {
-        // Match the generated-archive lock order before the successor trigger reads contract and project.
+        select: { contractId: true, signingSubjectType: true, numericProtocolVersion: true } });
+      const locksExternalContract = located?.numericProtocolVersion === 2 && ["affiliate", "upward"].includes(located.signingSubjectType);
+      if (locksExternalContract) {
+        // Seal and archive both lock contract, version, round, task, then project.
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Contract" WHERE "id" = ${located.contractId} FOR UPDATE`);
       }
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE`);
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
-      if (version?.signingSubjectType === "upward" && (located?.signingSubjectType !== "upward" || version.contractId !== located.contractId)) {
+      if (version?.numericProtocolVersion === 2 && ["affiliate", "upward"].includes(version.signingSubjectType)
+        && (!locksExternalContract || version.contractId !== located?.contractId || version.signingSubjectType !== located.signingSubjectType)) {
         conflict("当前合同盖章来源已变化，请刷新后核对");
       }
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${input.expectedApprovalInstanceId} FOR UPDATE`);
@@ -123,6 +126,7 @@ export class ContractV2SubmissionService {
       const scope = generatedArchiveSealScope(contract, version, round, task, snapshot, actorUserId, input.documentContentFingerprint);
       if (scope && (task.completedAt || task.completedByUserId)) conflict("当前盖章任务已有完成记录，请刷新后核对");
       const upwardCompletion = scope?.relationship === "upward" ? await qualifyGeneratedUpwardSealCompletion(tx) : null;
+      if (scope) await tx.$queryRaw(Prisma.sql`SELECT "id", "isActive" FROM "Project" WHERE "id" = ${contract.projectId} FOR UPDATE`);
       const archiveAuthority = scope && await qualifyGeneratedArchiveSealAuthority(tx, scope);
       if (scope) await assertGeneratedArchiveSealSources(tx, scope, snapshot);
       const completedAt = new Date();

@@ -7,7 +7,8 @@ import { assertDirectArchiveSourceScope } from "./contract-direct-archive-scope"
 import { assertDirectArchiveIntentSourceClosed } from "./contract-direct-archive-intent-source";
 import { directArchiveRequestSha } from "./contract-direct-archive-request";
 import { requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
-import { archiveRequestSha, assertContractV2ArchivePersistentProof } from "./contract-v2-archive-persistent-proof";
+import { assertContractV2ArchivePersistentProof } from "./contract-v2-archive-persistent-proof";
+import { archiveRequestSha } from "./contract-archive-request-digest";
 import { tryAcquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Optional, ServiceUnavailableException } from "@nestjs/common";
@@ -25,9 +26,9 @@ import { latestEconomicReviews, excludedAmountYuan, reviewAppliesToVersion } fro
 import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
 import { readStoredDirectReviewPins } from "../contract-ledger/contract-direct-review-source";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
-import { assertGeneratedArchiveSealContinuity, assertGeneratedArchiveSealSources, generatedArchiveSealScope, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-seal-authority";
+import { assertGeneratedArchiveSealSources, generatedArchiveSealScope } from "./contract-generated-archive-seal-authority";
 import { assertGeneratedArchiveRequestBinding, GENERATED_ARCHIVE_PREPARATION_READER, prepareGeneratedArchive, type GeneratedArchivePreparationReader } from "./contract-generated-archive-preparation";
-import { readGeneratedArchiveWriterAuthority, type GeneratedArchiveRequestBinding } from "./contract-generated-archive-installation";
+import { assertGeneratedArchiveSealContinuity, qualifyGeneratedArchiveSealAuthority, readGeneratedArchiveWriterAuthority, type GeneratedArchiveRequestBinding } from "./contract-generated-archive-installation";
 import { writeGeneratedArchive } from "./contract-generated-archive-writer";
 
 const sha = (v: Buffer | string) => createHash("sha256").update(v).digest("hex");
@@ -84,10 +85,10 @@ export class ContractV2ArchiveService {
           await this.lockArchiveFiles(tx, input.fileIds, generatedFileIds);
           await assertGeneratedArchiveSealSources(tx, preparationScope, snapshot);
           const installation = await qualifyGeneratedArchiveSealAuthority(tx, preparationScope);
-          const binding = await prepareGeneratedArchive(tx, this.files, this.preparationReader, preparationScope, {
+          const { binding, verifiedVersions } = await prepareGeneratedArchive(tx, this.files, this.preparationReader, preparationScope, {
             uploaderUserId: actor, idempotencyKey: input.idempotencyKey, requestSha256, fileIds: input.fileIds
           });
-          await assertGeneratedArchiveRequestBinding(tx, installation, binding);
+          await assertGeneratedArchiveRequestBinding(tx, installation, binding, verifiedVersions);
           await assertGeneratedArchiveSealSources(tx, preparationScope, snapshot);
           await assertGeneratedArchiveSealContinuity(tx, preparationScope, installation);
           const writer = await readGeneratedArchiveWriterAuthority(tx, JSON.parse(JSON.stringify(binding)) as GeneratedArchiveRequestBinding);

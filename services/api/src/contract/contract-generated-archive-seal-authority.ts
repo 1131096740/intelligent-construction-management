@@ -1,14 +1,13 @@
-import { ConflictException, ServiceUnavailableException } from "@nestjs/common";
+import { ConflictException } from "@nestjs/common";
 import type { ApprovalInstance, Contract, ContractSealTask, ContractVersion, Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
-import { readGeneratedArchiveSealAuthority, type GeneratedArchiveSealAuthority, type GeneratedArchiveSealFile, type GeneratedArchiveSealScope } from "./contract-generated-archive-installation";
+import type { GeneratedArchiveSealFile, GeneratedArchiveSealScope } from "./contract-generated-archive-installation";
 
 const wordMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const pdfMime = "application/pdf";
 const isId = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const isSha256 = (value: unknown): value is string => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
-const isOid = (value: unknown) => typeof value === "string" && /^[1-9][0-9]{0,9}$/u.test(value) && Number(value) <= 4_294_967_295;
 
 function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -16,10 +15,6 @@ function object(value: unknown): Record<string, unknown> {
 
 function copyJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function unavailable() {
-  return new ServiceUnavailableException("生成合同盖章交接资格尚未就绪，请保留当前合同资料");
 }
 
 function frozenFile(value: unknown, mimeType: string): GeneratedArchiveSealFile {
@@ -90,24 +85,6 @@ export function generatedArchiveSealScope(
     layoutTemplateVersionId: snapshot.layoutTemplateVersionId, sourceSha256: snapshot.sourceSha256,
     signingIdentity: copyJson(identity), generatedDocumentId: snapshot.generatedDocumentId, files: [word, pdf]
   };
-}
-
-export async function qualifyGeneratedArchiveSealAuthority(tx: Prisma.TransactionClient, scope: GeneratedArchiveSealScope) {
-  const witness = await readGeneratedArchiveSealAuthority(tx, copyJson(scope)).catch(() => { throw unavailable(); });
-  if (!witness || witness.transaction !== tx || !isDeepStrictEqual(witness.scope, scope)) throw unavailable();
-  const { installation } = witness;
-  if (!installation || installation.currentRoleOid !== installation.sessionRoleOid
-    || ![installation.databaseOid, installation.namespaceOid, installation.currentRoleOid, installation.archiveWriterOid,
-      installation.signedFileAuthorityOid, installation.archiveReceiptReaderOid, installation.operatingAuthorityOid].every(isOid)
-    || !Number.isSafeInteger(installation.backendPid) || installation.backendPid < 1
-    || typeof installation.transactionId !== "string" || !/^[1-9][0-9]*$/u.test(installation.transactionId)) throw unavailable();
-  return { ...installation };
-}
-
-export async function assertGeneratedArchiveSealContinuity(
-  tx: Prisma.TransactionClient, scope: GeneratedArchiveSealScope, before: GeneratedArchiveSealAuthority["installation"]
-) {
-  if (!isDeepStrictEqual(before, await qualifyGeneratedArchiveSealAuthority(tx, scope))) throw unavailable();
 }
 
 export async function assertGeneratedArchiveSealSources(tx: Prisma.TransactionClient, scope: GeneratedArchiveSealScope,

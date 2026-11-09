@@ -1484,6 +1484,16 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
   };
   const prove = async (transaction: Prisma.TransactionClient, scope: generatedArchiveInstallation.GeneratedArchiveSealScope) =>
     ({ transaction, scope, installation });
+  const nativeSeal = generatedArchiveInstallation.readGeneratedArchiveSealAuthority;
+  const nativeQuery = store.$queryRaw;
+  let nativeInstallationQualified = true;
+  store.$queryRaw = async (raw, ...parameters) => {
+    const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
+    if (query.strings.join("?").trim().startsWith("/* contract_generated_archive_write_catalog_v1 */")) {
+      return [{ ...installation, qualified: nativeInstallationQualified }];
+    }
+    return nativeQuery(raw, ...parameters);
+  };
   const witness = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveSealAuthority").mockImplementation(prove);
   try {
     const technicalAssignment = await store.userPosition.create({ data: { userId: "technical", positionId: "comprehensive_director", projectId: null } });
@@ -1606,6 +1616,29 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
       await assertPending();
     } finally { actorDrift.mockRestore(); }
 
+    witness.mockImplementation(nativeSeal);
+    await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: new Date("2026-01-01") } });
+    expect((await confirmSeal(director)).status).toBe(503);
+    await assertPending();
+    await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: null } });
+    nativeInstallationQualified = false;
+    expect((await confirmSeal(director)).status).toBe(503);
+    await assertPending();
+    nativeInstallationQualified = true;
+    const savedReadiness = (await store.contractVersion.findUniqueOrThrow({ where: { id: contractVersionId } })).readinessSnapshot;
+    await store.contractVersion.update({ where: { id: contractVersionId }, data: {
+      readinessSnapshot: { ...(savedReadiness as Prisma.JsonObject), sourceSha256: "c".repeat(64) }
+    } });
+    expect((await confirmSeal(director)).status).toBe(503);
+    await assertPending();
+    await store.contractVersion.update({ where: { id: contractVersionId }, data: { readinessSnapshot: savedReadiness as Prisma.JsonObject } });
+    const duplicateRound = await store.approvalInstance.create({ data: { businessId: contractVersionId,
+      businessType: "contract_version", flowType: "contract.approve", status: "in_progress", applicantUserId: "staff",
+      currentNodeIndex: 0, frozenNodes: [] } });
+    try {
+      expect((await confirmSeal(director)).status).toBe(503);
+      await assertPending();
+    } finally { await store.approvalInstance.delete({ where: { id: duplicateRound.id } }); }
     witness.mockClear();
     const result = { contractVersionId, approvalInstanceId, sealTaskId, status: "seal_approved_pending_archive" };
     const sealed = await confirmSeal(director);
@@ -1638,6 +1671,7 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     expect(await store.contractSealTask.count({ where: { contractVersionId } })).toBe(1);
     expect(await store.contractArchiveFile.count({ where: { contractVersionId } })).toBe(0);
     witness.mockImplementation(prove);
+    nativeInstallationQualified = false;
     await exerciseGeneratedArchivePreparation(server, draft, sealInput, fileIds[1], preparationEnabled, installation);
 
     if (archiveSource.relationship === "outside") {
@@ -1661,8 +1695,14 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     expect((await confirmSeal(director)).status).toBe(403);
     expect(await auditCount("contract.seal.complete")).toBe(1);
     expect(await auditCount("contract.archive_task.create")).toBe(1);
-    if (preparationEnabled) await exerciseGeneratedArchiveWriter(server, draft, sealInput, installation);
-  } finally { witness.mockRestore(); }
+    if (preparationEnabled) {
+      witness.mockImplementation(nativeSeal);
+      await exerciseGeneratedArchiveWriter(server, draft, sealInput, installation);
+    }
+  } finally {
+    store.$queryRaw = nativeQuery;
+    witness.mockRestore();
+  }
 }
 
 async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<typeof createTemplateTestServer>>,
@@ -2084,8 +2124,6 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     }
     return nativeQuery(raw, ...parameters);
   };
-  const bindingProof = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveRequestBinding")
-    .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation }));
   type CommandPin = { evidenceId: string; bucket: string; objectKey: string; objectGeneration: string };
   const append = jest.fn(async (archiveId: string, pins: CommandPin[]) => {
     const persisted = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: archiveId } });
@@ -2166,6 +2204,17 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     await expectRolledBack();
     writerQualified = true;
 
+    const readFiles = store.fileObject.findMany;
+    const tampered = jest.spyOn(store.fileObject, "findMany").mockImplementation(async args => {
+      const rows = await readFiles(args);
+      return rows.map(file => file.id === fileIds[0] ? { ...file, objectKey: "different-stored-object" } : file);
+    });
+    try {
+      expect((await archive()).status).toBe(503);
+      expect(append).not.toHaveBeenCalled();
+      await expectRolledBack();
+    } finally { tampered.mockRestore(); }
+
     const record = store.auditLog.create;
     const failedAudit = jest.spyOn(store.auditLog, "create").mockImplementation(async args => {
       if (args.data.action === "contract.archive.complete") throw new Error("合成正式归档审计失败");
@@ -2225,7 +2274,6 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     server.store.archiveCommitOutcome = "persist";
     store.$queryRaw = nativeQuery;
     store.$executeRaw = nativeExecute;
-    bindingProof.mockRestore();
   }
 }
 

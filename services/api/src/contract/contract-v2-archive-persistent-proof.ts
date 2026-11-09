@@ -1,5 +1,5 @@
 import { ServiceUnavailableException } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { archiveRequestSha } from "./contract-archive-request-digest";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma, type Contract, type ContractVersion, type ContractArchiveFile, type ContractArchiveEvidenceFile, type FileObject } from "@prisma/client";
 import { readGeneratedArchiveOriginals, requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
@@ -9,13 +9,6 @@ import type { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v, (_k, value) => typeof value === "bigint" ? value.toString() : value));
 function object(v: unknown): Record<string, unknown> { return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {}; }
 const same = (a: unknown, b: unknown) => isDeepStrictEqual(json(a), json(b));
-
-export function archiveRequestSha(versionId: string, actor: string, input: ArchiveSignedContractV2Dto) {
-  return createHash("sha256").update(JSON.stringify({ versionId, actor, archiveProtocolVersion: input.archiveProtocolVersion, archiveSource: input.archiveSource,
-    idempotencyKey: input.idempotencyKey, expectedApprovalInstanceId: input.expectedApprovalInstanceId, expectedSealTaskId: input.expectedSealTaskId,
-    documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint,
-    fileIds: input.fileIds, confirmedMatchingSignedDocument: input.confirmedMatchingSignedDocument })).digest("hex");
-}
 
 function requireOriginalArchiveKey(durable: ContractArchiveFile) {
   const key = durable.idempotencyKey;

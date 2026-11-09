@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { PDFDocument } from "pdf-lib";
 import type { FileService, PrivateFileStorage } from "../file/file.service";
 import { readGeneratedArchiveRequestBinding, type GeneratedArchiveRequestBinding, type GeneratedArchiveSealAuthority,
-  type GeneratedArchiveSealScope, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
+  type GeneratedArchiveSealScope, type GeneratedArchiveSignedOriginal, type GeneratedArchiveVerifiedVersion } from "./contract-generated-archive-installation";
 
 export const GENERATED_ARCHIVE_PREPARATION_READER = Symbol("GENERATED_ARCHIVE_PREPARATION_READER");
 export type GeneratedArchivePreparationReader = Pick<PrivateFileStorage, "readVerifiedVersion">;
@@ -13,7 +13,7 @@ export type GeneratedArchivePreparationReader = Pick<PrivateFileStorage, "readVe
 export async function prepareGeneratedArchive(
   tx: Prisma.TransactionClient, files: FileService, reader: GeneratedArchivePreparationReader,
   scope: GeneratedArchiveSealScope, request: { uploaderUserId: string; idempotencyKey: string; requestSha256: string; fileIds: readonly string[] }
-): Promise<GeneratedArchiveRequestBinding> {
+): Promise<{ binding: GeneratedArchiveRequestBinding; verifiedVersions: readonly GeneratedArchiveVerifiedVersion[] }> {
   const enterprise = scope.signingIdentity.enterprise as Record<string, unknown>;
   const assignment = await tx.projectAffiliateAssignment.findUnique({ where: { id: String(enterprise.assignmentId) } });
   if (!assignment || assignment.id !== enterprise.assignmentId || assignment.projectId !== scope.projectId || assignment.businessPartyId !== enterprise.businessPartyId
@@ -46,20 +46,24 @@ export async function prepareGeneratedArchive(
     if (!pdf.getPageCount()) throw new BadRequestException("归档PDF不能为空");
     originals.push({ fileId, displayOrder, bucket, objectKey, mimeType: file.mimeType, sizeBytes, contentSha256, objectGeneration });
   }
+  const verifiedVersions: GeneratedArchiveVerifiedVersion[] = [];
   for (const { bucket, objectKey, sizeBytes, contentSha256, objectGeneration } of originals) {
-    await readSignedOriginalVersion(reader, { bucket, objectKey, sizeBytes, contentSha256, expectedGeneration: objectGeneration });
+    const verified = await readSignedOriginalVersion(reader, { bucket, objectKey, sizeBytes, contentSha256, expectedGeneration: objectGeneration });
+    verifiedVersions.push({ bucket, objectKey, sizeBytes: verified.buffer.length,
+      contentSha256: verified.contentSha256, objectGeneration: verified.objectGeneration });
   }
-  return {
+  return { binding: {
     protocolVersion: 1, archiveSource: "generated_approval", scope, uploaderUserId: request.uploaderUserId,
     idempotencyKey: request.idempotencyKey, requestSha256: request.requestSha256, originals
-  };
+  }, verifiedVersions };
 }
 
 export async function assertGeneratedArchiveRequestBinding(tx: Prisma.TransactionClient,
-  installation: GeneratedArchiveSealAuthority["installation"], binding: GeneratedArchiveRequestBinding) {
+  installation: GeneratedArchiveSealAuthority["installation"], binding: GeneratedArchiveRequestBinding,
+  verifiedVersions: readonly GeneratedArchiveVerifiedVersion[]) {
   const unavailable = () => new ServiceUnavailableException("归档请求与签章原件的绑定尚未核对，请保留原件和本次标识");
   const lookup = JSON.parse(JSON.stringify(binding)) as GeneratedArchiveRequestBinding;
-  const witness = await readGeneratedArchiveRequestBinding(tx, lookup).catch(() => { throw unavailable(); });
+  const witness = await readGeneratedArchiveRequestBinding(tx, lookup, verifiedVersions).catch(() => { throw unavailable(); });
   if (!witness || witness.transaction !== tx || !isDeepStrictEqual(witness.installation, installation)
     || !isDeepStrictEqual(witness.binding, binding)) {
     throw unavailable();
@@ -74,8 +78,8 @@ async function readSignedOriginalVersion(reader: GeneratedArchivePreparationRead
   if (typeof objectGeneration !== "string" || objectGeneration.length > 1024 || !/^[\x21-\x7e]+$/u.test(objectGeneration)
     || objectGeneration.toLowerCase() === "null" || objectGeneration.includes(",")
     || (input.expectedGeneration !== undefined && objectGeneration !== input.expectedGeneration)
-    || !Buffer.isBuffer(buffer) || buffer.length !== input.sizeBytes || createHash("sha256").update(buffer).digest("hex") !== input.contentSha256) {
-    throw unavailable();
-  }
-  return { buffer, objectGeneration };
+    || !Buffer.isBuffer(buffer) || buffer.length !== input.sizeBytes) throw unavailable();
+  const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+  if (contentSha256 !== input.contentSha256) throw unavailable();
+  return { buffer, objectGeneration, contentSha256 };
 }

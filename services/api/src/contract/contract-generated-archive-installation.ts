@@ -1,4 +1,7 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isDeepStrictEqual } from "node:util";
+import { readNativeGeneratedArchiveRequestBinding, readNativeGeneratedArchiveSealAuthority } from "./contract-generated-archive-proof-source";
 import { generatedArchiveIngressCatalog, installedCompletionGuardBody, readNativeGeneratedArchiveWriter } from "./contract-generated-archive-write-authority";
 
 export type GeneratedArchiveSealFile = { fileId: string; mimeType: string; sizeBytes: number; contentSha256: string };
@@ -39,11 +42,35 @@ export type GeneratedArchiveSealAuthority = {
   };
 };
 
-/** Only an installed archive authority can produce this evidence. The source candidate has no producer. */
+/** Reconstruct current seal evidence only on a qualified archive installation. */
 export const readGeneratedArchiveSealAuthority: (
   tx: Prisma.TransactionClient,
   scope: GeneratedArchiveSealScope
-) => Promise<GeneratedArchiveSealAuthority | null> = async () => null;
+) => Promise<GeneratedArchiveSealAuthority | null> = readNativeGeneratedArchiveSealAuthority;
+
+const isOid = (value: unknown) => typeof value === "string" && /^[1-9][0-9]{0,9}$/u.test(value) && Number(value) <= 4_294_967_295;
+
+function sealUnavailable() {
+  return new ServiceUnavailableException("生成合同盖章交接资格尚未就绪，请保留当前合同资料");
+}
+
+export async function qualifyGeneratedArchiveSealAuthority(tx: Prisma.TransactionClient, scope: GeneratedArchiveSealScope) {
+  const witness = await readGeneratedArchiveSealAuthority(tx, JSON.parse(JSON.stringify(scope)) as GeneratedArchiveSealScope).catch(() => { throw sealUnavailable(); });
+  if (!witness || witness.transaction !== tx || !isDeepStrictEqual(witness.scope, scope)) throw sealUnavailable();
+  const { installation } = witness;
+  if (!installation || installation.currentRoleOid !== installation.sessionRoleOid
+    || ![installation.databaseOid, installation.namespaceOid, installation.currentRoleOid, installation.archiveWriterOid,
+      installation.signedFileAuthorityOid, installation.archiveReceiptReaderOid, installation.operatingAuthorityOid].every(isOid)
+    || !Number.isSafeInteger(installation.backendPid) || installation.backendPid < 1
+    || typeof installation.transactionId !== "string" || !/^[1-9][0-9]*$/u.test(installation.transactionId)) throw sealUnavailable();
+  return { ...installation };
+}
+
+export async function assertGeneratedArchiveSealContinuity(
+  tx: Prisma.TransactionClient, scope: GeneratedArchiveSealScope, before: GeneratedArchiveSealAuthority["installation"]
+) {
+  if (!isDeepStrictEqual(before, await qualifyGeneratedArchiveSealAuthority(tx, scope))) throw sealUnavailable();
+}
 
 export type GeneratedArchiveSignedOriginal = Readonly<{
   fileId: string;
@@ -67,7 +94,10 @@ export type GeneratedArchiveRequestBinding = Readonly<{
   originals: readonly GeneratedArchiveSignedOriginal[];
 }>;
 
-type GeneratedArchiveBindingWitness = Readonly<{
+export type GeneratedArchiveVerifiedVersion = Readonly<Pick<GeneratedArchiveSignedOriginal,
+  "bucket" | "objectKey" | "sizeBytes" | "contentSha256" | "objectGeneration">>;
+
+export type GeneratedArchiveBindingWitness = Readonly<{
   transaction: Prisma.TransactionClient;
   installation: GeneratedArchiveSealAuthority["installation"];
   binding: GeneratedArchiveRequestBinding;
@@ -79,8 +109,9 @@ type GeneratedArchiveBindingWitness = Readonly<{
  */
 export const readGeneratedArchiveRequestBinding: (
   tx: Prisma.TransactionClient,
-  binding: GeneratedArchiveRequestBinding
-) => Promise<GeneratedArchiveBindingWitness | null> = async () => null;
+  binding: GeneratedArchiveRequestBinding,
+  verifiedVersions: readonly GeneratedArchiveVerifiedVersion[]
+) => Promise<GeneratedArchiveBindingWitness | null> = readNativeGeneratedArchiveRequestBinding;
 
 export type GeneratedArchiveCompletion = Readonly<{
   protocolVersion: 1;
