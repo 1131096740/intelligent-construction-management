@@ -1,3 +1,4 @@
+import { GENERATED_ARCHIVE_PREPARATION_READER } from "./contract-generated-archive-preparation";
 import { ContractV2ArchiveService } from "./contract-v2-archive.service";
 import { CONTRACT_VERSION_FILE_READ_AUTHORITY } from "./contract-version-file-read-authority";
 import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
@@ -10,6 +11,7 @@ import { BusinessEntryTransactionModule } from "../business-entry-definition/bus
 import { ContractBillModule } from "../contract-bill/contract-bill.module";
 import { ContractWorkbenchModule } from "../contract-workbench/contract-workbench.module";
 import { FileModule } from "../file/file.module";
+import { PrivateFileStorage } from "../file/file.service";
 import { MeModule } from "../me/me.module";
 import {
   ContractController,
@@ -43,6 +45,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     ContractService,
     ContractV2SubmissionService,
     ContractV2ArchiveService,
+    { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },
     ContractStatusService,
     ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
