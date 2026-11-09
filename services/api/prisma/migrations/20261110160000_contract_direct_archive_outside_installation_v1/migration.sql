@@ -193,7 +193,7 @@ BEGIN
   EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_contract_direct_archive_outside_profile_v1(),
     public.jg_guard_contract_direct_archive_version_transition_v1(public."ContractVersion",public."ContractVersion"),
     public.jg_contract_direct_pending_input_v1(text),public.jg_contract_direct_archive_proof_v1(text),
-    public.jg_require_contract_direct_archive_complete_v1(),public.jg_read_contract_direct_archive_generations_v1(text),
+    public.jg_read_contract_direct_archive_generations_v1(text),
     public.jg_record_contract_direct_archive_generations_v1(text,uuid,text,text,text,text,integer,text,text,jsonb) TO %I',executor_owner);
 
   EXECUTE format('GRANT SELECT ON public."Contract",public."ContractVersion",public."Project",public."FileObject",

@@ -86,7 +86,7 @@ export async function seedDirectArchiveCompletionCatalog(server: Server) {
     registryTriggers: { jg_direct_archive_completion_binding_immutable: "29906", jg_direct_archive_completion_binding_no_truncate: "29907" }
   };
   const binding = { ...identity, protocolVersion: 1, recipeVersion: "contract-direct-archive-completion-dispatch-v1/1", links, bindings };
-  const actual = { ...identity, relationOid: "29901", links, bindings, registryQualified: true, guardsClosed: true,
+  const actual = { ...identity, relationOid: "29901", links, bindings, registryQualified: true, guardsClosed: true, registryAclQualified: true,
     currentRoleOid: "7001", sessionRoleOid: "7001", backendPid: 71201, transactionId: "500001" };
   const probe = await server.store.table("directArchiveCompletionProbe").create({ data: {
     snapshot: { relationOid: "29901", routineCount: 1, triggerCount: 2 }

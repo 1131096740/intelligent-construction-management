@@ -118,7 +118,7 @@ describe("表外已签合同的正式登记", () => {
       await server.store.table("directArchiveDispatchActual").update({ where: { id: dispatch.observation.id },
         data: { snapshot: { ...dispatch.actual, helpers, helpersPrivate: false } } });
       await server.store.table("directArchiveCompletionActual").update({ where: { id: completion.observed.id },
-        data: { snapshot: { ...completion.actual, guardsClosed: false } } });
+        data: { snapshot: { ...completion.actual, guardsClosed: false, registryAclQualified: false } } });
       const lastVersion = await server.store.table("syntheticPrivateFileVersion").findFirst({ where: { objectGeneration: "sealed-240" } });
       if (!lastVersion) throw new Error("合成存储固定版本缺失");
       await server.store.table("syntheticPrivateFileVersion").delete({ where: { id: lastVersion.id } });

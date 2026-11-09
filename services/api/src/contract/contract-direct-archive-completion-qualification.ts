@@ -115,6 +115,9 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
           WHERE encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=helpers.sha
             AND p.proowner=c.relowner AND NOT p.prosecdef
             AND pg_catalog.has_function_privilege(current_user::regrole::oid,p.oid,'EXECUTE') IS FALSE),
+        'registryAclQualified',NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl
+          WHERE acl.grantor<>c.relowner OR (acl.grantee<>c.relowner AND
+            (acl.grantee<>current_user::regrole::oid OR acl.privilege_type<>'SELECT' OR acl.is_grantable))),
         'registryQualified', c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition
           AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity AND pg_catalog.current_setting('session_replication_role')='origin'
           AND (SELECT array_agg(a.attname::text||':'||a.atttypid::text ORDER BY a.attnum)
@@ -126,8 +129,6 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
           AND 1=(SELECT count(*) FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_index i ON i.indexrelid=k.conindid
             WHERE k.conrelid=c.oid AND k.contype='p' AND k.conkey=ARRAY[1]::smallint[] AND k.convalidated
               AND NOT k.condeferrable AND i.indisvalid AND i.indisready)
-          AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl
-            WHERE acl.grantee<>c.relowner AND (acl.grantee<>current_user::regrole::oid OR acl.privilege_type<>'SELECT' OR acl.is_grantable))
           AND pg_catalog.has_table_privilege(current_user::regrole::oid,c.oid,'SELECT')
           AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class a WHERE a.oid IN (
               'public."ContractArchiveFile"'::regclass,'public."ContractArchiveEvidenceFile"'::regclass)
@@ -165,9 +166,10 @@ export async function readDirectArchiveCompletionQualification(
     const binding = rows.length === 1 ? record(rows[0].binding) : null;
     const actual = rows.length === 1 ? record(rows[0].actual) : null;
     if (!binding || !actual || binding.protocolVersion !== 1 || binding.recipeVersion !== "contract-direct-archive-completion-dispatch-v1/1"
-      || actual.relationOid !== relationOid || actual.registryQualified !== true || typeof actual.guardsClosed !== "boolean") unavailable();
-    const native = actual.guardsClosed ? null : await readDirectArchiveNativeAdmission(tx, anchor);
-    if (!actual.guardsClosed && native?.completionOid !== relationOid) unavailable();
+      || actual.relationOid !== relationOid || actual.registryQualified !== true || typeof actual.guardsClosed !== "boolean"
+      || typeof actual.registryAclQualified !== "boolean") unavailable();
+    const native = actual.guardsClosed && actual.registryAclQualified ? null : await readDirectArchiveNativeAdmission(tx, anchor);
+    if ((!actual.guardsClosed || !actual.registryAclQualified) && native?.completionOid !== relationOid) unavailable();
     const identity = {
       applicationRoleOid: anchor.currentRoleOid, databaseOid: anchor.databaseOid,
       namespaceOid: anchor.namespaceOid, anchorOwnerOid: anchor.anchorOwnerOid
@@ -210,7 +212,7 @@ export async function readDirectArchiveCompletionQualification(
     const legacyRoutines: Catalog = { ...observedRoutines, [legacyCompletionName]: installedRoutine };
     if (native) {
       const oldRoutines = record(installed209.routines);
-      for (const name of ["jg_contract_direct_archive_proof_v1", "jg_contract_direct_archive_request_sha_v1", "jg_require_contract_direct_archive_complete_v1"]) {
+      for (const name of ["jg_contract_direct_archive_proof_v1", "jg_contract_direct_archive_request_sha_v1"]) {
         const installed = record(oldRoutines?.[name]);
         const observed = record(observedRoutines[name]);
         if (!installed || !observed) unavailable();

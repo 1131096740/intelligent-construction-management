@@ -25,8 +25,6 @@ const recipe = Prisma.join([
     'anchor','oldProof',FALSE,FALSE)`,
   Prisma.sql`('public.jg_contract_direct_archive_request_sha_v1(text,text,text,text,integer,text,text[])',
     'f3e329de50e81169c974f55e6c0a965237372f47c2af950c12c8e1d406294cbf','anchor','oldHash',FALSE,FALSE)`,
-  Prisma.sql`('public.jg_require_contract_direct_archive_complete_v1()','326ba01217db8a85b777ea5f416fbaf3515d4fa49c9eb3d65d4b895760bae6d5',
-    'anchor','oldComplete',FALSE,FALSE)`,
   Prisma.sql`('public.jg_write_contract_direct_archive_v1(text,text,text,integer,text,text[],jsonb)',
     'df0c7cdab49101a1b09a4b06177918debeeb284635afd9d6e21af931274074c0','anchor','executor',FALSE,TRUE)`,
   Prisma.sql`('public.jg_contract_direct_archive_outside_profile_v1()',
@@ -68,6 +66,8 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
       AND c."protocolVersion"=1 AND c."recipeVersion"='contract-direct-archive-completion-dispatch-v1/1'
       AND c."databaseOid"=b."databaseOid" AND c."namespaceOid"=b."namespaceOid"
       AND c."anchorOwnerOid"=b."anchorOwnerOid" AND c."applicationRoleOid"=b."ordinaryApplicationRoleOid"
+    JOIN pg_catalog.pg_class cc ON cc.oid=c.tableoid AND cc.relowner=b."anchorOwnerOid" AND cc.relnamespace=b."namespaceOid"
+      AND cc.relkind='r' AND cc.relpersistence='p' AND NOT cc.relispartition AND NOT cc.relrowsecurity AND NOT cc.relforcerowsecurity
     JOIN pg_catalog.pg_database d ON d.oid=b."databaseOid" AND d.datname=pg_catalog.current_database()
     JOIN pg_catalog.pg_class v ON v.oid=pg_catalog.to_regclass('public.jg_contract_direct_archive_native_binding_v1')
       AND v.relowner=b."anchorOwnerOid" AND v.relnamespace=b."namespaceOid" AND v.relkind='v'
@@ -76,6 +76,13 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
       AND b."namespaceOid"=pg_catalog.to_regnamespace('public')
       AND pg_catalog.current_setting('session_replication_role')='origin'
       AND b."intentBindingSha256"~'^[a-f0-9]{64}$'
+      AND 3=(SELECT count(*) FROM pg_catalog.aclexplode(cc.relacl) a WHERE a.grantor=cc.relowner
+        AND a.grantee IN (b."ordinaryApplicationRoleOid",b."issuerOwnerOid",b."executorOwnerOid")
+        AND a.privilege_type='SELECT' AND NOT a.is_grantable)
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(cc.relacl) a WHERE a.grantor<>cc.relowner OR
+        (a.grantee<>cc.relowner AND (a.grantee NOT IN (b."ordinaryApplicationRoleOid",b."issuerOwnerOid",b."executorOwnerOid")
+          OR a.privilege_type<>'SELECT' OR a.is_grantable)))
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid=cc.oid AND a.attnum>0 AND a.attacl IS NOT NULL)
       AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(v.relacl) a WHERE a.grantor<>v.relowner
         OR (a.grantee<>v.relowner AND (a.grantee<>b."ordinaryApplicationRoleOid" OR a.privilege_type<>'SELECT' OR a.is_grantable)))
       AND 4=(SELECT count(*) FROM pg_catalog.pg_roles r
@@ -105,10 +112,10 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
               OR (t.tgname='jg_direct_native_nonce_no_truncate' AND t.tgtype=34))
             AND t.tgenabled='O' AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
             AND t.tgnargs=0 AND t.tgattr::text='' AND t.tgqual IS NULL))
-      AND 17=(SELECT count(*) FROM recipe q
+      AND 16=(SELECT count(*) FROM recipe q
         JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(q.signature) AND p.pronamespace=b."namespaceOid"
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname=CASE WHEN q.caller='oldHash' THEN 'sql' ELSE 'plpgsql' END
-        CROSS JOIN LATERAL (SELECT CASE WHEN q.caller IN ('executor','oldInput','oldProof','oldComplete') THEN ARRAY[b."executorOwnerOid"]
+        CROSS JOIN LATERAL (SELECT CASE WHEN q.caller IN ('executor','oldInput','oldProof') THEN ARRAY[b."executorOwnerOid"]
           WHEN q.caller IN ('owners','oldHash') THEN ARRAY[b."executorOwnerOid",b."issuerOwnerOid"]
           WHEN q.caller='issuerLogin' THEN ARRAY[b."issuerSessionOid"]
           WHEN q.caller='executorLogin' THEN ARRAY[b."runtimeSessionOid"]
@@ -119,12 +126,11 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
             AND pending."anchorOwnerOid"=b."anchorOwnerOid" AND pending."applicationRoleOid"=b."ordinaryApplicationRoleOid")
           WHEN 'oldProof' THEN retention."bindings"#>'{routines,jg_contract_direct_archive_proof_v1,acl}'
           WHEN 'oldHash' THEN retention."bindings"#>'{routines,jg_contract_direct_archive_request_sha_v1,acl}'
-          WHEN 'oldComplete' THEN retention."bindings"#>'{routines,jg_require_contract_direct_archive_complete_v1,acl}'
           END AS acl
           FROM public.jg_contract_direct_archive_retention_binding_v1 retention
           WHERE retention."protocolVersion"=1 AND retention.tableoid::text=c."links"->>'retentionOid'
             AND encode(public.digest(convert_to(to_jsonb(retention)::text,'UTF8'),'sha256'),'hex')=c."links"->>'retentionSha') old
-        CROSS JOIN LATERAL (SELECT CASE WHEN q.caller IN ('oldInput','oldProof','oldHash','oldComplete') THEN
+        CROSS JOIN LATERAL (SELECT CASE WHEN q.caller IN ('oldInput','oldProof','oldHash') THEN
           COALESCE(ARRAY(SELECT value::aclitem FROM jsonb_array_elements_text(
             CASE WHEN jsonb_typeof(old.acl)='array' THEN old.acl ELSE '[]'::jsonb END)),ARRAY[]::aclitem[])
           ELSE ARRAY[]::aclitem[] END AS acl) expected
@@ -134,7 +140,7 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
             WHEN q.caller='oldHash' THEN 'i' ELSE 'v' END
           AND p.proparallel::text=CASE WHEN q.caller='oldHash' THEN 's' ELSE 'u' END
           AND NOT p.proretset AND p.prosecdef=q.definer
-          AND (q.caller NOT IN ('oldInput','oldProof','oldHash','oldComplete') OR jsonb_typeof(old.acl)='array')
+          AND (q.caller NOT IN ('oldInput','oldProof','oldHash') OR jsonb_typeof(old.acl)='array')
           AND p.proconfig=CASE WHEN q.writer_path THEN ARRAY['search_path=pg_catalog, public, pg_temp']
             WHEN q.caller='oldInput' THEN ARRAY['search_path=pg_catalog, public']
             ELSE ARRAY['search_path=pg_catalog, pg_temp'] END
