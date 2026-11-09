@@ -1578,7 +1578,8 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     expect(await store.approvalInstance.count({ where: { businessId: contractVersionId } })).toBe(expectedRoundCount);
     expect(await store.contractSealTask.count({ where: { contractVersionId } })).toBe(1);
     expect(await store.contractArchiveFile.count({ where: { contractVersionId } })).toBe(0);
-    await exerciseGeneratedArchivePreparation(server, draft, sealInput, fileIds[1], preparationEnabled);
+    witness.mockImplementation(prove);
+    await exerciseGeneratedArchivePreparation(server, draft, sealInput, fileIds[1], preparationEnabled, installation);
 
     if (archiveSource.relationship === "outside") {
       const handler = await loginTemplateActor(server, "staff");
@@ -1605,7 +1606,8 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
 }
 
 async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<typeof createTemplateTestServer>>,
-  draft: Awaited<ReturnType<typeof createTask09Draft>>, seal: GeneratedSealInput, generatedPdfId: unknown, preparationEnabled: boolean) {
+  draft: Awaited<ReturnType<typeof createTask09Draft>>, seal: GeneratedSealInput, generatedPdfId: unknown, preparationEnabled: boolean,
+  installation: generatedArchiveInstallation.GeneratedArchiveSealAuthority["installation"]) {
   const store = server.store.prisma;
   const storage = server.app.get(PrivateFileStorage);
   const bucket = storage.bucketName();
@@ -1643,6 +1645,7 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
   const writes = server.store.privateStorageWrites;
   const deletes = server.store.privateStorageDeletes;
   const readVersion = jest.spyOn(storage, "readVerifiedVersion");
+  const binder = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveRequestBinding").mockResolvedValue(null);
   try {
     if (!preparationEnabled) {
       const denied = await archive();
@@ -1689,6 +1692,65 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
         status: 503, body: { message: expect.stringContaining("资料文件版本或完整性") }
       });
       await versioned.update({ where: { id: secondVersion.id }, data: { unavailableByVersion: false } });
+      const unbound = await archive();
+      expect({ status: unbound.status, body: await unbound.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("归档请求与签章原件的绑定尚未核对") }
+      });
+      const requestSha256 = createHash("sha256").update(JSON.stringify({
+        versionId: draft.version.id, actor: "staff", ...body
+      })).digest("hex");
+      const originals = [
+        { fileId: second.fileId, displayOrder: 0, ...second.coordinates, mimeType: "application/pdf", objectGeneration: "signed-original-v2" },
+        { fileId: first.fileId, displayOrder: 1, ...first.coordinates, mimeType: "application/pdf", objectGeneration: "signed-original-v1" }
+      ] as const;
+      type Binder = typeof generatedArchiveInstallation.readGeneratedArchiveRequestBinding;
+      type Witness = NonNullable<Awaited<ReturnType<Binder>>>;
+      const prove = (transaction: Prisma.TransactionClient, binding: generatedArchiveInstallation.GeneratedArchiveRequestBinding): Witness => ({
+        transaction, installation,
+        binding: { ...binding, uploaderUserId: "staff", idempotencyKey: body.idempotencyKey, requestSha256, originals,
+          scope: { ...binding.scope, handlerUserId: "staff", actorUserId: "director", projectId: draft.projectId,
+            contractId: draft.contract.id, contractVersionId: draft.version.id,
+            approvalInstanceId: seal.expectedApprovalInstanceId, sealTaskId: seal.expectedSealTaskId } }
+      });
+      const rejectsBinding = async () => {
+        const denied = await archive();
+        expect({ status: denied.status, body: await denied.json() }).toMatchObject({
+          status: 503, body: { message: expect.stringContaining("归档请求与签章原件的绑定尚未核对") }
+        });
+      };
+      const mismatches: Array<(value: Witness) => Witness> = [
+        proof => ({ ...proof, transaction: { ...proof.transaction } }),
+        proof => ({ ...proof, installation: { ...installation, transactionId: "500005" } }),
+        proof => ({ ...proof, binding: { ...proof.binding, uploaderUserId: "director" } }),
+        proof => ({ ...proof, binding: { ...proof.binding, requestSha256: "0".repeat(64) } }),
+        proof => ({ ...proof, binding: { ...proof.binding, idempotencyKey: randomUUID() } }),
+        proof => ({ ...proof, binding: { ...proof.binding, scope: { ...proof.binding.scope, projectId: randomUUID() } } }),
+        proof => ({ ...proof, binding: { ...proof.binding, scope: { ...proof.binding.scope, approvalInstanceId: randomUUID() } } }),
+        proof => ({ ...proof, binding: { ...proof.binding, originals: [originals[1], originals[0]] } }),
+        proof => ({ ...proof, binding: { ...proof.binding, originals: [{ ...originals[0], objectGeneration: "stale" }, originals[1]] } })
+      ];
+      for (const mismatch of mismatches) {
+        binder.mockImplementationOnce(async (tx, binding) => mismatch(prove(tx, binding)));
+        await rejectsBinding();
+      }
+      binder.mockImplementation(async (tx, binding) => prove(tx, binding));
+      const qualification = jest.mocked(generatedArchiveInstallation.readGeneratedArchiveSealAuthority);
+      qualification.mockResolvedValueOnce(null);
+      readVersion.mockClear();
+      const unqualified = await archive();
+      expect({ status: unqualified.status, body: await unqualified.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("盖章交接资格尚未就绪") }
+      });
+      expect(readVersion).not.toHaveBeenCalled();
+      qualification
+        .mockImplementationOnce(async (transaction, scope) => ({ transaction, scope, installation }))
+        .mockImplementationOnce(async (transaction, scope) => ({
+          transaction, scope, installation: { ...installation, signedFileAuthorityOid: "43999" }
+        }));
+      const drifted = await archive();
+      expect({ status: drifted.status, body: await drifted.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("盖章交接资格尚未就绪") }
+      });
       readVersion.mockClear();
       const prepared = await archive();
       expect({ status: prepared.status, body: await prepared.json() }).toMatchObject({
@@ -1710,7 +1772,10 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
     expect(server.store.privateStorageReads).toBe(ordinaryReads);
     expect(server.store.privateStorageWrites).toBe(writes);
     expect(server.store.privateStorageDeletes).toBe(deletes);
-  } finally { readVersion.mockRestore(); }
+  } finally {
+    binder.mockRestore();
+    readVersion.mockRestore();
+  }
 }
 
 /** Existing lifecycle cases now use valid inside subject facts, not unfinished upward provenance. */

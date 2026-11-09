@@ -23,8 +23,8 @@ import { latestEconomicReviews, excludedAmountYuan, reviewAppliesToVersion } fro
 import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
 import { readStoredDirectReviewPins } from "../contract-ledger/contract-direct-review-source";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
-import { assertGeneratedArchiveSealSources, generatedArchiveSealScope } from "./contract-generated-archive-seal-authority";
-import { GENERATED_ARCHIVE_PREPARATION_READER, prepareGeneratedArchive, type GeneratedArchivePreparationReader } from "./contract-generated-archive-preparation";
+import { assertGeneratedArchiveSealContinuity, assertGeneratedArchiveSealSources, generatedArchiveSealScope, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-seal-authority";
+import { assertGeneratedArchiveRequestBinding, GENERATED_ARCHIVE_PREPARATION_READER, prepareGeneratedArchive, type GeneratedArchivePreparationReader } from "./contract-generated-archive-preparation";
 
 const sha = (v: Buffer | string) => createHash("sha256").update(v).digest("hex");
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v, (_k, value) => typeof value === "bigint" ? value.toString() : value));
@@ -79,9 +79,14 @@ export class ContractV2ArchiveService {
           if (input.fileIds.some(fileId => generatedFileIds.includes(fileId))) conflict("双方签章原件须与本轮生成文书分开上传");
           await this.lockArchiveFiles(tx, input.fileIds, generatedFileIds);
           await assertGeneratedArchiveSealSources(tx, preparationScope, snapshot);
-          return prepareGeneratedArchive(tx, this.files, this.preparationReader, preparationScope, {
-            idempotencyKey: input.idempotencyKey, requestSha256, fileIds: input.fileIds
+          const installation = await qualifyGeneratedArchiveSealAuthority(tx, preparationScope);
+          const binding = await prepareGeneratedArchive(tx, this.files, this.preparationReader, preparationScope, {
+            uploaderUserId: actor, idempotencyKey: input.idempotencyKey, requestSha256, fileIds: input.fileIds
           });
+          await assertGeneratedArchiveRequestBinding(tx, installation, binding);
+          await assertGeneratedArchiveSealSources(tx, preparationScope, snapshot);
+          await assertGeneratedArchiveSealContinuity(tx, preparationScope, installation);
+          return true;
         }
         if (version.signingSubjectType !== "our_company") conflict("合同签约主体与本轮归档资料不一致");
         const identity = object(snapshot.signingIdentity), company = object(identity.company);

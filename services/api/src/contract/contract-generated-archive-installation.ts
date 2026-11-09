@@ -43,3 +43,40 @@ export const readGeneratedArchiveSealAuthority: (
   tx: Prisma.TransactionClient,
   scope: GeneratedArchiveSealScope
 ) => Promise<GeneratedArchiveSealAuthority | null> = async () => null;
+
+export type GeneratedArchiveSignedOriginal = Readonly<{
+  fileId: string;
+  displayOrder: number;
+  bucket: string;
+  objectKey: string;
+  mimeType: "application/pdf";
+  sizeBytes: number;
+  contentSha256: string;
+  objectGeneration: string;
+}>;
+
+/** scope.actorUserId identifies the seal confirmer. */
+export type GeneratedArchiveRequestBinding = Readonly<{
+  protocolVersion: 1;
+  archiveSource: "generated_approval";
+  scope: GeneratedArchiveSealScope;
+  uploaderUserId: string;
+  idempotencyKey: string;
+  requestSha256: string;
+  originals: readonly GeneratedArchiveSignedOriginal[];
+}>;
+
+type GeneratedArchiveBindingWitness = Readonly<{
+  transaction: Prisma.TransactionClient;
+  installation: GeneratedArchiveSealAuthority["installation"];
+  binding: GeneratedArchiveRequestBinding;
+}>;
+
+/**
+ * The installed authority reads the exact attestation inside the caller's transaction.
+ * The request supplies lookup coordinates. The authority must verify them independently.
+ */
+export const readGeneratedArchiveRequestBinding: (
+  tx: Prisma.TransactionClient,
+  binding: GeneratedArchiveRequestBinding
+) => Promise<GeneratedArchiveBindingWitness | null> = async () => null;

@@ -1,35 +1,19 @@
 import { BadRequestException, ConflictException, ServiceUnavailableException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { PDFDocument } from "pdf-lib";
 import type { FileService, PrivateFileStorage } from "../file/file.service";
-import type { GeneratedArchiveSealScope } from "./contract-generated-archive-installation";
+import { readGeneratedArchiveRequestBinding, type GeneratedArchiveRequestBinding, type GeneratedArchiveSealAuthority,
+  type GeneratedArchiveSealScope, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
 
 export const GENERATED_ARCHIVE_PREPARATION_READER = Symbol("GENERATED_ARCHIVE_PREPARATION_READER");
 export type GeneratedArchivePreparationReader = Pick<PrivateFileStorage, "readVerifiedVersion">;
 
-type SignedOriginal = Readonly<{
-  fileId: string;
-  displayOrder: number;
-  bucket: string;
-  objectKey: string;
-  mimeType: "application/pdf";
-  sizeBytes: number;
-  contentSha256: string;
-  objectGeneration: string;
-}>;
-
-type PreparedGeneratedArchive = Readonly<{
-  scope: GeneratedArchiveSealScope;
-  idempotencyKey: string;
-  requestSha256: string;
-  originals: readonly SignedOriginal[];
-}>;
-
 export async function prepareGeneratedArchive(
   tx: Prisma.TransactionClient, files: FileService, reader: GeneratedArchivePreparationReader,
-  scope: GeneratedArchiveSealScope, request: { idempotencyKey: string; requestSha256: string; fileIds: readonly string[] }
-): Promise<PreparedGeneratedArchive> {
+  scope: GeneratedArchiveSealScope, request: { uploaderUserId: string; idempotencyKey: string; requestSha256: string; fileIds: readonly string[] }
+): Promise<GeneratedArchiveRequestBinding> {
   const enterprise = scope.signingIdentity.enterprise as Record<string, unknown>;
   const assignment = await tx.projectAffiliateAssignment.findUnique({ where: { id: String(enterprise.assignmentId) } });
   if (!assignment || assignment.id !== enterprise.assignmentId || assignment.projectId !== scope.projectId || assignment.businessPartyId !== enterprise.businessPartyId
@@ -45,7 +29,7 @@ export async function prepareGeneratedArchive(
     }
   }
 
-  const originals: SignedOriginal[] = [];
+  const originals: GeneratedArchiveSignedOriginal[] = [];
   for (const [displayOrder, fileId] of request.fileIds.entries()) {
     await files.assertCanAttachUnlinkedFile(tx, fileId, scope.handlerUserId);
     const file = await tx.fileObject.findUniqueOrThrow({ where: { id: fileId } });
@@ -65,7 +49,21 @@ export async function prepareGeneratedArchive(
   for (const { bucket, objectKey, sizeBytes, contentSha256, objectGeneration } of originals) {
     await readSignedOriginalVersion(reader, { bucket, objectKey, sizeBytes, contentSha256, expectedGeneration: objectGeneration });
   }
-  return { scope, idempotencyKey: request.idempotencyKey, requestSha256: request.requestSha256, originals };
+  return {
+    protocolVersion: 1, archiveSource: "generated_approval", scope, uploaderUserId: request.uploaderUserId,
+    idempotencyKey: request.idempotencyKey, requestSha256: request.requestSha256, originals
+  };
+}
+
+export async function assertGeneratedArchiveRequestBinding(tx: Prisma.TransactionClient,
+  installation: GeneratedArchiveSealAuthority["installation"], binding: GeneratedArchiveRequestBinding) {
+  const unavailable = () => new ServiceUnavailableException("归档请求与签章原件的绑定尚未核对，请保留原件和本次标识");
+  const lookup = JSON.parse(JSON.stringify(binding)) as GeneratedArchiveRequestBinding;
+  const witness = await readGeneratedArchiveRequestBinding(tx, lookup).catch(() => { throw unavailable(); });
+  if (!witness || witness.transaction !== tx || !isDeepStrictEqual(witness.installation, installation)
+    || !isDeepStrictEqual(witness.binding, binding)) {
+    throw unavailable();
+  }
 }
 
 async function readSignedOriginalVersion(reader: GeneratedArchivePreparationReader,
