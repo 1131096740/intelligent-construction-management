@@ -128,6 +128,10 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       let sealHandoffDrifts = false;
       let driftOnContinuity = false;
       let successorReads = 0;
+      let completionInstalled = false;
+      let completionExact = true;
+      let completionDrifts = false;
+      let completionReads = 0;
       const native = server.store.prisma.$queryRaw;
       server.store.prisma.$queryRaw = async (raw, ...parameters) => {
         const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
@@ -141,7 +145,17 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           return installed ? [{ databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId,
             successorOid: "42007", constraintOid: "42008", predecessorSha256: "2".repeat(64),
             constraintSha256: (driftOnContinuity && successorReads === 2 ? "4" : "3").repeat(64), exactSuccessor: true,
+            completionOid: completionInstalled ? "43001" : null, completionReadable: completionInstalled,
             sealHandoffEnabled: sealHandoffDrifts && successorReads === 2 ? false : sealHandoffEnabled }] : [];
+        }
+        if (sql.startsWith("/* contract_generated_upward_seal_completion_catalog_v1 */")) {
+          completionReads++;
+          const { databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId } = oldProfile;
+          return completionInstalled ? [{ databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId,
+            submissionOid: "42007", completionOid: "43001", predecessorConstraintOid: "42008", constraintOid: "43002",
+            predecessorSha256: "5".repeat(64), constraintSha256: (completionDrifts && completionReads === 2 ? "7" : "6").repeat(64),
+            guardOid: "43003", versionTriggerOid: "43004", roundTriggerOid: "43005", taskTriggerOid: "43006", completionTriggerOid: "43007",
+            exactCompletion: completionExact }] : [];
         }
         return native(raw, ...parameters);
       };
@@ -259,6 +273,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       await server.store.prisma.contractGeneratedDocument.update({ where: { id: revisedQueued.generationId }, data: { status: "success", docxFileId: revisedWordFile.id, pdfFileId: revisedPdfFile.id } });
       const secondInput = { ...input, idempotencyKey: randomUUID(), expectedRevision: revised.draftRevision, documentContentRevision: revised.documentContentRevision,
         documentContentFingerprint: revised.documentContentFingerprint, generatedDocumentId: revisedQueued.generationId };
+      completionInstalled = true;
       const second = await submit(secondInput);
       const secondResult = await second.json();
       expect({ status: second.status, body: secondResult }).toMatchObject({ status: 201, body: { status: "in_approval", formalCode: result.formalCode } });
@@ -354,6 +369,33 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       expect({ status: detail.status, body: await detail.json() }).toMatchObject({ status: 200, body: { v2Lifecycle: {
         status: "unavailable", webWriteReleased: false, sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false }
       } } });
+      const archiveInstallation = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveSealAuthority")
+        .mockImplementation(async (transaction, scope) => ({ transaction, scope, installation: {
+          databaseOid: "13000", namespaceOid: "2200", currentRoleOid: "7001", sessionRoleOid: "7001",
+          archiveWriterOid: "43001", signedFileAuthorityOid: "43002", archiveReceiptReaderOid: "43003",
+          operatingAuthorityOid: "43004", backendPid: 71301, transactionId: "500004"
+        } }));
+      const assertCompletionDenied = async () => {
+        expect((await confirmSeal(director)).status).toBe(503);
+        expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status)
+          .toBe("approved_pending_seal");
+        expect((await server.store.prisma.contractSealTask.findUnique({ where: { id: handoff.id } }))!.status).toBe("in_seal");
+        expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal.complete" } })).toBe(0);
+        expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.archive_task.create" } })).toBe(0);
+      };
+      try {
+        completionInstalled = false;
+        await assertCompletionDenied();
+        completionInstalled = true;
+        completionExact = false;
+        await assertCompletionDenied();
+        completionExact = true;
+        completionReads = 0;
+        completionDrifts = true;
+        await assertCompletionDenied();
+        expect(completionReads).toBe(2);
+        completionDrifts = false;
+      } finally { archiveInstallation.mockRestore(); }
       await exerciseGeneratedSealConfirmation({ server, draft, director, confirmSeal, sealInput,
         archiveSource: { relationship: "upward", generatedDocumentId: secondInput.generatedDocumentId, signingIdentity: {
           relationship: "upward", company: { id: companyVersionId, roleKey: "party_a" },

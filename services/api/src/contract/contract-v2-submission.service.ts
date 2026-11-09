@@ -1,7 +1,8 @@
 import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { freezeGeneratedContractSigningIdentity } from "./contract-v2-signing-identity";
 import { assertGeneratedArchiveSealContinuity, assertGeneratedArchiveSealSources, generatedArchiveSealScope, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-seal-authority";
-import { assertGeneratedUpwardSealHandoffContinuity, assertGeneratedUpwardSubmissionContinuity, qualifyGeneratedUpwardSealHandoff } from "./contract-upward-pending-save-profile";
+import { assertGeneratedUpwardSealCompletionContinuity, assertGeneratedUpwardSealHandoffContinuity,
+  assertGeneratedUpwardSubmissionContinuity, qualifyGeneratedUpwardSealCompletion, qualifyGeneratedUpwardSealHandoff } from "./contract-upward-pending-save-profile";
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractDraftSubmissionRequest, type ContractVersion } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -96,8 +97,17 @@ export class ContractV2SubmissionService {
   async confirmSeal(contractVersionId: string, actorUserId: string, input: ConfirmContractSealV2Dto) {
     if (!input.confirmed) throw new BadRequestException("请核对线下盖章已完成后再确认");
     return this.prisma.$transaction(async tx => {
+      const located = await tx.contractVersion.findUnique({ where: { id: contractVersionId },
+        select: { contractId: true, signingSubjectType: true } });
+      if (located?.signingSubjectType === "upward") {
+        // Match the generated-archive lock order before the successor trigger reads contract and project.
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Contract" WHERE "id" = ${located.contractId} FOR UPDATE`);
+      }
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE`);
       const version = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      if (version?.signingSubjectType === "upward" && (located?.signingSubjectType !== "upward" || version.contractId !== located.contractId)) {
+        conflict("当前合同盖章来源已变化，请刷新后核对");
+      }
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${input.expectedApprovalInstanceId} FOR UPDATE`);
       const round = await tx.approvalInstance.findUnique({ where: { id: input.expectedApprovalInstanceId } });
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ContractSealTask" WHERE "id" = ${input.expectedSealTaskId} FOR UPDATE`);
@@ -112,7 +122,8 @@ export class ContractV2SubmissionService {
       if (version.status !== "approved_pending_seal" || task.status !== "in_seal" || !task.approvedByUserId || !task.approvedAt) conflict("当前盖章任务已处理，请刷新后重试");
       const scope = generatedArchiveSealScope(contract, version, round, task, snapshot, actorUserId, input.documentContentFingerprint);
       if (scope && (task.completedAt || task.completedByUserId)) conflict("当前盖章任务已有完成记录，请刷新后核对");
-      const authority = scope && await qualifyGeneratedArchiveSealAuthority(tx, scope);
+      const upwardCompletion = scope?.relationship === "upward" ? await qualifyGeneratedUpwardSealCompletion(tx) : null;
+      const archiveAuthority = scope && await qualifyGeneratedArchiveSealAuthority(tx, scope);
       if (scope) await assertGeneratedArchiveSealSources(tx, scope, snapshot);
       const completedAt = new Date();
       await tx.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: actorUserId, completedAt } });
@@ -121,10 +132,11 @@ export class ContractV2SubmissionService {
         metadata: json({ ...result, documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint, confirmed: true, confirmationRoleKey: "comprehensive_director", handlerUserId: task.handlerUserId }) });
       await this.audit.record(tx, { actorUserId, action: "contract.archive_task.create", businessType: "contract_version", businessId: version.id,
         metadata: json({ approvalInstanceId: round.id, sealTaskId: task.id, handlerUserId: task.handlerUserId }) });
-      if (scope && authority) {
+      if (scope) {
         await assertGeneratedArchiveSealSources(tx, scope, snapshot);
         if (!(await hasActiveContractGlobalRole(tx, actorUserId, "comprehensive_director"))) throw new ForbiddenException("当前账号已无权确认线下盖章完成");
-        await assertGeneratedArchiveSealContinuity(tx, scope, authority);
+        if (upwardCompletion) await assertGeneratedUpwardSealCompletionContinuity(tx, upwardCompletion);
+        if (archiveAuthority) await assertGeneratedArchiveSealContinuity(tx, scope, archiveAuthority);
       }
       return result;
     });
