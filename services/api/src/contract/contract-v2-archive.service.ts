@@ -3,6 +3,7 @@ import { assertDirectPendingSourceQualification, hasDirectSigningInput } from ".
 import { readDirectPendingInput } from "./contract-direct-pending-save";
 import { assertDirectArchivePersistentProof } from "./contract-direct-archive-persistent-proof";
 import { readDirectArchivePreflightProfile, rejectUnqualifiedDirectArchiveWriter } from "./contract-direct-archive-writer-profile";
+import { DIRECT_ARCHIVE_EXECUTOR, type DirectArchiveExecution, type DirectArchiveExecutor } from "./contract-direct-archive-executor";
 import { assertDirectArchiveSourceScope } from "./contract-direct-archive-scope";
 import { assertDirectArchiveIntentSourceClosed } from "./contract-direct-archive-intent-source";
 import { directArchiveRequestSha } from "./contract-direct-archive-request";
@@ -43,7 +44,8 @@ class ArchiveBindingBusyBeforeWrite extends Error {}
 export class ContractV2ArchiveService {
   constructor(private readonly prisma: PrismaService, private readonly files: FileService,
     private readonly audit: AuditService, private readonly activation: ContractVersionActivationService,
-    @Optional() @Inject(GENERATED_ARCHIVE_PREPARATION_READER) private readonly preparationReader?: GeneratedArchivePreparationReader) {}
+    @Optional() @Inject(GENERATED_ARCHIVE_PREPARATION_READER) private readonly preparationReader?: GeneratedArchivePreparationReader,
+    @Optional() @Inject(DIRECT_ARCHIVE_EXECUTOR) private readonly directArchiveExecutor?: DirectArchiveExecutor) {}
 
   async archive(versionId: string, actor: string, input: ArchiveSignedContractV2Dto) {
     const requestSha256 = archiveRequestSha(versionId, actor, input);
@@ -189,7 +191,7 @@ export class ContractV2ArchiveService {
   }
 
   async registerDirect(versionId: string, actor: string, input: RegisterDirectSignedContractV2Dto) {
-    const requestSha256 = await this.prisma.$transaction(async tx => {
+    const prepared = await this.prisma.$transaction(async tx => {
       const located = await tx.contractVersion.findUnique({ where: { id: versionId }, select: { contractId: true } });
       if (!located) throw new ForbiddenException("只有当前合同员经办人可以登记本合同");
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM public."Contract" WHERE "id" = ${located.contractId} FOR UPDATE`);
@@ -207,7 +209,7 @@ export class ContractV2ArchiveService {
           || existing.archiveSource !== "direct_signed" || existing.requestSha256 !== request) {
           conflict("该归档标识已用于不同内容，请核对原归档结果");
         }
-        return request;
+        return { requestSha256: request };
       }
       if (version.numericProtocolVersion !== 2 || version.versionNo !== 1 || version.changeType !== "original"
         || version.supersedesVersionId || !hasDirectSigningInput(version.draftData)) {
@@ -226,7 +228,8 @@ export class ContractV2ArchiveService {
       const qualification = await assertDirectPendingSourceQualification(tx);
       const completion = qualification.retention?.completion;
       const profile = await readDirectArchivePreflightProfile(tx, !!(qualification.dispatch && completion));
-      if (profile === "attached_closed") await assertDirectArchiveIntentSourceClosed(tx, qualification.bootstrap);
+      const executor = object(object(version.draftData).directSigningInput).relationship === "outside" ? this.directArchiveExecutor : undefined;
+      if (profile === "attached_closed" && !executor) await assertDirectArchiveIntentSourceClosed(tx, qualification.bootstrap);
       const source = await readDirectPendingInput(tx, version.id);
       const pending = object(source.Q), locator = object(pending.locator);
       const files: unknown[] = Array.isArray(pending.signedFiles) ? pending.signedFiles : [];
@@ -253,14 +256,38 @@ export class ContractV2ArchiveService {
           contractId: owner.id, versionId: version.id, projectId: project.id, actor,
           sourceRevision: input.expectedDraftRevision, inputSha256: input.expectedInputSha256
         }, completion?.actual.relationOid, qualification.bootstrap);
-        rejectUnqualifiedDirectArchiveWriter();
+        if (!executor) rejectUnqualifiedDirectArchiveWriter();
+        const originals: DirectArchiveExecution["originals"][number][] = [];
+        for (const [displayOrder, fileId] of input.fileIds.entries()) {
+          const row = await tx.fileObject.findUnique({ where: { id: fileId } });
+          const frozen = object(files[displayOrder]);
+          if (!row || row.uploadedByUserId !== actor || row.storageStatus !== "active"
+            || row.purgeReceiptId !== null || row.supersedesFileObjectId !== null
+            || !row.bucket || !row.objectKey || !row.contentSha256 || !/^[a-f0-9]{64}$/u.test(row.contentSha256)
+            || !Number.isSafeInteger(row.sizeBytes) || row.sizeBytes < 1
+            || !["application/pdf", "image/jpeg", "image/png"].includes(row.mimeType)
+            || row.mimeType !== frozen.mimeType || row.sizeBytes !== frozen.sizeBytes || row.contentSha256 !== frozen.contentSha256) {
+            throw new ServiceUnavailableException("直签原件身份尚未完整核对，请保留原件和本次标识");
+          }
+          originals.push({ fileId, displayOrder, bucket: row.bucket, objectKey: row.objectKey,
+            mimeType: row.mimeType, sizeBytes: row.sizeBytes, contentSha256: row.contentSha256 });
+        }
+        const command: DirectArchiveExecution = { actor, projectId: project.id, contractId: owner.id, versionId,
+          revision: input.expectedDraftRevision, inputSha256: input.expectedInputSha256, key: input.idempotencyKey, originals };
+        return { requestSha256: directArchiveRequestSha(owner.id, versionId, actor, input), execute: () => executor.execute(command) };
       }
       throw new ServiceUnavailableException("正式登记暂不可办理，请保留原件和本次标识");
     });
+    // End the ordinary preflight transaction before the confined writer acquires its own locks.
+    // A failed or lost execution response is resolved once from the original durable key.
+    const executionError: unknown = await prepared.execute?.().catch((error: unknown) => error);
     // An exact key can only recover a committed result, even after the draft slot is gone.
     const recovered = await this.getArchiveResult(versionId, actor, input.idempotencyKey);
-    if (recovered.status === "unknown") throw new ServiceUnavailableException("直签归档持久结果尚未确认，请保留原标识");
-    if (recovered.requestSha256 !== requestSha256) conflict("该归档标识已用于不同内容，请核对原归档结果");
+    if (recovered.status === "unknown") {
+      if (executionError instanceof BadRequestException) throw executionError;
+      throw new ServiceUnavailableException("直签归档持久结果尚未确认，请保留原标识");
+    }
+    if (recovered.requestSha256 !== prepared.requestSha256) conflict("该归档标识已用于不同内容，请核对原归档结果");
     return recovered.result;
   }
 

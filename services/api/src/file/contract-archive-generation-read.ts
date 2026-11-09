@@ -93,14 +93,10 @@ async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, 
   return row;
 }
 
-export async function readDirectArchiveGeneration(tx: Prisma.TransactionClient, parent: ContractArchiveFile,
-  evidence: ContractArchiveEvidenceFile, file: FileObject) {
+export async function readDirectArchiveGenerations(tx: Prisma.TransactionClient, parent: ContractArchiveFile) {
   try {
     if (parent.archiveProtocolVersion !== 2 || parent.archiveSource !== "direct_signed" || parent.status !== "confirmed"
-      || parent.id !== evidence.archiveFileId || parent.contractVersionId !== evidence.contractVersionId || evidence.fileId !== file.id
-      || typeof parent.authoritySha256 !== "string" || !/^[a-f0-9]{64}$/u.test(parent.authoritySha256)
-      || file.storageStatus !== "active" || file.purgeReceiptId !== null || file.supersedesFileObjectId !== null
-      || evidence.mimeType !== file.mimeType || evidence.sizeBytes !== file.sizeBytes || evidence.contentSha256 !== file.contentSha256) unavailable();
+      || typeof parent.authoritySha256 !== "string" || !/^[a-f0-9]{64}$/u.test(parent.authoritySha256)) unavailable();
     const prior = await assertDirectPendingSourceQualification(tx);
     const completionOid = prior.retention?.completion?.actual.relationOid;
     if (typeof completionOid !== "string" || !prior.dispatch) unavailable();
@@ -122,14 +118,22 @@ export async function readDirectArchiveGeneration(tx: Prisma.TransactionClient, 
       || !/^[\x21-\x7e]+$/u.test(row.objectGeneration)
       || row.objectGeneration.toLowerCase() === "null" || row.objectGeneration.includes(","))
       || new Set(originals.map(row => row?.fileId)).size !== originals.length) unavailable();
-    const original = originals[evidence.displayOrder];
-    if (!original || original.fileId !== file.id || original.bucket !== file.bucket || original.objectKey !== file.objectKey
-      || original.mimeType !== file.mimeType || original.sizeBytes !== file.sizeBytes || original.contentSha256 !== file.contentSha256
-      || typeof original.objectGeneration !== "string") unavailable();
     if (!isDeepStrictEqual(await readCatalog(tx, completionOid, prior.bootstrap), catalog)) unavailable();
     await assertDirectPendingSourceContinuity(tx, prior);
-    return original.objectGeneration;
+    return originals;
   } catch {
     unavailable();
   }
+}
+
+export async function readDirectArchiveGeneration(tx: Prisma.TransactionClient, parent: ContractArchiveFile,
+  evidence: ContractArchiveEvidenceFile, file: FileObject) {
+  if (parent.id !== evidence.archiveFileId || parent.contractVersionId !== evidence.contractVersionId || evidence.fileId !== file.id
+    || file.storageStatus !== "active" || file.purgeReceiptId !== null || file.supersedesFileObjectId !== null
+    || evidence.mimeType !== file.mimeType || evidence.sizeBytes !== file.sizeBytes || evidence.contentSha256 !== file.contentSha256) unavailable();
+  const original = (await readDirectArchiveGenerations(tx, parent))[evidence.displayOrder];
+  if (!original || original.fileId !== file.id || original.bucket !== file.bucket || original.objectKey !== file.objectKey
+    || original.mimeType !== file.mimeType || original.sizeBytes !== file.sizeBytes || original.contentSha256 !== file.contentSha256
+    || typeof original.objectGeneration !== "string") unavailable();
+  return original.objectGeneration;
 }

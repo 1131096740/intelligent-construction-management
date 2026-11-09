@@ -82,6 +82,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileController } from "../file/file.controller";
 import { FileService, PrivateFileStorage } from "../file/file.service";
+import { DIRECT_ARCHIVE_EXECUTOR, type DirectArchiveExecutor } from "../contract/contract-direct-archive-executor";
 import { GENERATED_ARCHIVE_PREPARATION_READER } from "../contract/contract-generated-archive-preparation";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ContractTemplateController } from "./contract-template.controller";
@@ -942,7 +943,8 @@ export function syntheticWordSource(includeSignatures = false) {
   return zip.generate({ type: "nodebuffer" });
 }
 
-export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean } = {}) {
+export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean;
+  directArchiveExecutor?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => DirectArchiveExecutor } = {}) {
   const store = new TemplateSyntheticStore();
   const actors = [
     { id: "director", name: "合成合同主管", phone: "13800001101", role: "contract_director" },
@@ -992,6 +994,7 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
     { provide: PrivateFileStorage, useValue: storage }, MeService, ProjectVisibilityService, ContractReadService,
     ...(options.generatedArchivePreparation ? [{ provide: GENERATED_ARCHIVE_PREPARATION_READER, useValue: storage }] : []),
+    ...(options.directArchiveExecutor ? [{ provide: DIRECT_ARCHIVE_EXECUTOR, useValue: options.directArchiveExecutor(store, storage) }] : []),
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     { provide: FileService, useFactory: (moduleRef: ModuleRef) => new FileService(prisma, audit, storage, undefined, undefined, moduleRef), inject: [ModuleRef] },
     { provide: ContractDocumentService, useFactory: (files: FileService) => new ContractDocumentService(prisma, audit, files, new BusinessNumberingService()), inject: [FileService] },

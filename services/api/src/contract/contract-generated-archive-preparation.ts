@@ -70,7 +70,7 @@ export async function assertGeneratedArchiveRequestBinding(tx: Prisma.Transactio
   }
 }
 
-async function readSignedOriginalVersion(reader: GeneratedArchivePreparationReader,
+export async function readSignedOriginalVersion(reader: GeneratedArchivePreparationReader,
   input: Parameters<GeneratedArchivePreparationReader["readVerifiedVersion"]>[0]) {
   const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
   const version = await reader.readVerifiedVersion(input).catch(() => { throw unavailable(); });

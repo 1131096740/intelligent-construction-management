@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractArchiveFile, type ContractVersion } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import { assertDirectPendingSourceContinuity, assertDirectPendingSourceQualification } from "./contract-direct-pending-source";
+import { readDirectArchiveGenerations } from "../file/contract-archive-generation-read";
 import { directArchiveRequestSha } from "./contract-direct-archive-request";
 import type { RegisterDirectSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
 
@@ -89,6 +90,8 @@ export async function assertDirectArchivePersistentProof(tx: Prisma.TransactionC
     const requestSha256 = directArchiveRequestSha(owner.id, version.id, durable.uploadedByUserId, intent);
     const result = { archiveId: durable.id, contractVersionId: version.id, status: "effective" as const, fileIds: intent.fileIds };
     if (requestSha256 !== durable.requestSha256 || !isDeepStrictEqual(proof.result, result) || !isDeepStrictEqual(durable.responseSnapshot, result)) unavailable();
+    const originals = await readDirectArchiveGenerations(tx, durable);
+    if (!isDeepStrictEqual(originals.map(original => original?.fileId), intent.fileIds)) unavailable();
     await assertDirectPendingSourceContinuity(tx, qualification);
     if (!isDeepStrictEqual(await readProofRoutines(tx, qualification.bootstrap), routines)) unavailable();
     return { status: "archived" as const, result, requestSha256, intent };
