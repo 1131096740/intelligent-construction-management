@@ -165,7 +165,7 @@ export async function readGeneratedArchiveOriginals(tx: Prisma.TransactionClient
         || typeof row.objectGeneration !== "string" || row.objectGeneration.length > 1024
         || !/^[\x21-\x7e]+$/u.test(row.objectGeneration) || row.objectGeneration.toLowerCase() === "null" || row.objectGeneration.includes(",")
         || !isDeepStrictEqual(row.scope, expectedScope)) unavailable();
-      return { fileId: file.fileId, displayOrder: index, mimeType: row.mimeType, sizeBytes: file.sizeBytes,
+      return { fileId: file.fileId, displayOrder: index, mimeType: "application/pdf" as const, sizeBytes: file.sizeBytes,
         contentSha256: file.contentSha256, bucket: row.bucket, objectKey: row.objectKey, objectGeneration: row.objectGeneration };
     });
     if (!isDeepStrictEqual(await readCatalog(tx), catalog)) unavailable();

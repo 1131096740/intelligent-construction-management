@@ -80,3 +80,42 @@ export const readGeneratedArchiveRequestBinding: (
   tx: Prisma.TransactionClient,
   binding: GeneratedArchiveRequestBinding
 ) => Promise<GeneratedArchiveBindingWitness | null> = async () => null;
+
+export type GeneratedArchiveCompletion = Readonly<{
+  protocolVersion: 1;
+  policy: "operating_ledger_not_enabled";
+  archiveId: string;
+  projectId: string;
+  contractId: string;
+  contractVersionId: string;
+  approvalInstanceId: string;
+  sealTaskId: string;
+  uploaderUserId: string;
+  idempotencyKey: string;
+  requestSha256: string;
+  authoritySha256: string;
+  fileManifestSha256: string;
+  archivedAt: string;
+  evidenceIds: readonly string[];
+  originals: readonly GeneratedArchiveSignedOriginal[];
+}>;
+
+export type GeneratedArchiveWriterAuthority = Readonly<{
+  transaction: Prisma.TransactionClient;
+  installation: GeneratedArchiveSealAuthority["installation"];
+  binding: GeneratedArchiveRequestBinding;
+  // An installed adapter appends 224 originals and a separately durable completion under this transaction.
+  appendOriginals: (command: GeneratedArchiveCompletion) => Promise<void>;
+}>;
+
+/** A successor installer must independently qualify the writer, including its database activation and pin permissions. */
+export const readGeneratedArchiveWriterAuthority: (
+  tx: Prisma.TransactionClient,
+  binding: GeneratedArchiveRequestBinding
+) => Promise<GeneratedArchiveWriterAuthority | null> = async () => null;
+
+/** Read an installed immutable completion by ID. Never derive it from the lookup request. */
+export const readGeneratedArchiveCompletion: (
+  tx: Prisma.TransactionClient,
+  archiveId: string
+) => Promise<{ transaction: Prisma.TransactionClient; completion: GeneratedArchiveCompletion } | null> = async () => null;

@@ -153,7 +153,8 @@ export class TemplateSyntheticStore {
   private transactionTryDenied = false;
   archiveBindingLockResult: "available" | "busy" | "missing" = "available";
   private transactionSealTaskLocked = false;
-  archiveCommitOutcome: "persist" | "return_without_persisting" = "persist";
+  archiveCommitOutcome: "persist" | "return_without_persisting" | "throw_after_persisting" = "persist";
+  archiveCommitSignalLosses = 0;
   sealCommitOutcome: "persist" | "return_without_persisting" = "persist";
 
   table(name: string) {
@@ -240,9 +241,19 @@ export class TemplateSyntheticStore {
       // do not implement PostgreSQL JSONB canonical serialization/digest.
       const e = row.authoritySnapshot as Row;
       const basis = e.sourceBasis as Row;
-      const participation = (basis.subjects as Row).participation as Row;
-      const actualParticipant = (this.rows.projectParticipatingCompany ?? []).find(p => p.id === participation.id);
-      if (!actualParticipant || !(actualParticipant.effectiveFrom instanceof Date) || participation.effectiveFrom !== actualParticipant.effectiveFrom.toISOString().slice(0, 10)) throw new Error("合成归档Date列来源必须保日期域，不能用ISO瞬间替代");
+      const subjects = basis.subjects as Row;
+      const relationship = (subjects.signingIdentity as Row)?.relationship;
+      if (relationship === "outside" || relationship === "upward") {
+        const version = (this.rows.contractVersion ?? []).find(item => item.id === row.contractVersionId);
+        const expectedSubject = relationship === "outside" ? "affiliate" : "upward";
+        if (version?.signingSubjectType !== expectedSubject || version.status !== "seal_approved_pending_archive") {
+          throw new Error("合成生成归档必须使用当前待归档版本和双方关系");
+        }
+      } else {
+        const participation = subjects.participation as Row;
+        const actualParticipant = (this.rows.projectParticipatingCompany ?? []).find(p => p.id === participation.id);
+        if (!actualParticipant || !(actualParticipant.effectiveFrom instanceof Date) || participation.effectiveFrom !== actualParticipant.effectiveFrom.toISOString().slice(0, 10)) throw new Error("合成归档Date列来源必须保日期域，不能用ISO瞬间替代");
+      }
       // Finite independent structure oracle from c579 manifest's word/pdf
       // paths, not a SQL interpreter or an implementation of PG digest.
       const round = (this.rows.approvalInstance ?? []).find(item => item.id === row.approvalInstanceId);
@@ -892,16 +903,24 @@ export class TemplateSyntheticStore {
       this.transactionSealTaskLocked = false;
       this.transactionFileLockIds = new Set();
       this.transactionTryDenied = false;
+      let committed = false;
       try {
         const result = await work(this.prisma);
         if (this.sealCommitOutcome === "return_without_persisting" && (this.rows.contractSealTask ?? []).some(task => task.status === "completed" && !(snapshot.contractSealTask ?? []).some(old => old.id === task.id && old.status === "completed"))) this.rows = snapshot;
 
-        if (this.archiveCommitOutcome === "return_without_persisting" && (this.rows.contractArchiveFile?.length ?? 0) > (snapshot.contractArchiveFile?.length ?? 0)) this.rows = snapshot;
+        if ((this.rows.contractArchiveFile?.length ?? 0) > (snapshot.contractArchiveFile?.length ?? 0)) {
+          if (this.archiveCommitOutcome === "return_without_persisting") this.rows = snapshot;
+          if (this.archiveCommitOutcome === "throw_after_persisting") {
+            committed = true;
+            this.archiveCommitSignalLosses++;
+            throw new Error("合成归档已提交，返回信号丢失");
+          }
+        }
         if (this.directReviewCommitOutcome==="return_without_persisting" &&
           (this.rows.contractEconomicReviewFileReference?.length??0)>(snapshot.contractEconomicReviewFileReference?.length??0)) this.rows=snapshot;
         return result;
       }
-      catch (error) { this.rows = snapshot; throw error; }
+      catch (error) { if (!committed) this.rows = snapshot; throw error; }
       finally { this.transactionBindingLockHeld = false; this.transactionSealTaskLocked = false; this.transactionFileLockIds = new Set(); this.transactionTryDenied = false; release(); }
     }
   };

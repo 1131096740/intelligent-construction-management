@@ -13,6 +13,7 @@ import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-acce
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { PDFDocument } from "pdf-lib";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
@@ -26,6 +27,8 @@ import { readStoredDirectReviewPins } from "../contract-ledger/contract-direct-r
 import { ContractVersionActivationService } from "./contract-version-activation.service";
 import { assertGeneratedArchiveSealContinuity, assertGeneratedArchiveSealSources, generatedArchiveSealScope, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-seal-authority";
 import { assertGeneratedArchiveRequestBinding, GENERATED_ARCHIVE_PREPARATION_READER, prepareGeneratedArchive, type GeneratedArchivePreparationReader } from "./contract-generated-archive-preparation";
+import { readGeneratedArchiveWriterAuthority, type GeneratedArchiveRequestBinding } from "./contract-generated-archive-installation";
+import { writeGeneratedArchive } from "./contract-generated-archive-writer";
 
 const sha = (v: Buffer | string) => createHash("sha256").update(v).digest("hex");
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v, (_k, value) => typeof value === "bigint" ? value.toString() : value));
@@ -87,7 +90,18 @@ export class ContractV2ArchiveService {
           await assertGeneratedArchiveRequestBinding(tx, installation, binding);
           await assertGeneratedArchiveSealSources(tx, preparationScope, snapshot);
           await assertGeneratedArchiveSealContinuity(tx, preparationScope, installation);
-          return true;
+          const writer = await readGeneratedArchiveWriterAuthority(tx, JSON.parse(JSON.stringify(binding)) as GeneratedArchiveRequestBinding);
+          if (!writer) return true;
+          if (!isDeepStrictEqual(writer.installation, installation)) {
+            throw new ServiceUnavailableException("生成合同归档写入资格已变化，请保留原件和本次标识");
+          }
+          await writeGeneratedArchive(tx, {
+            binding, writer, owner: contract, version, snapshot, archivedAt, actingRoleKey: actorAccess.actingRoleKey,
+            activation: this.activation, audit: this.audit
+          });
+          await assertGeneratedArchiveSealSources(tx, preparationScope, snapshot);
+          await assertGeneratedArchiveSealContinuity(tx, preparationScope, installation);
+          return;
         }
         if (version.signingSubjectType !== "our_company") conflict("合同签约主体与本轮归档资料不一致");
         const identity = object(snapshot.signingIdentity), company = object(identity.company);

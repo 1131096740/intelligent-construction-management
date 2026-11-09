@@ -1644,6 +1644,7 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     expect((await confirmSeal(director)).status).toBe(403);
     expect(await auditCount("contract.seal.complete")).toBe(1);
     expect(await auditCount("contract.archive_task.create")).toBe(1);
+    if (preparationEnabled) await exerciseGeneratedArchiveWriter(server, draft, sealInput, installation);
   } finally { witness.mockRestore(); }
 }
 
@@ -1999,6 +2000,145 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
   } finally {
     binder.mockRestore();
     readVersion.mockRestore();
+  }
+}
+
+async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof createTemplateTestServer>>,
+  draft: Awaited<ReturnType<typeof createTask09Draft>>, seal: GeneratedSealInput,
+  installation: generatedArchiveInstallation.GeneratedArchiveSealAuthority["installation"]) {
+  const store = server.store.prisma;
+  const pinStore = server.store.table("generatedArchiveWriterOriginal");
+  const completionStore = server.store.table("generatedArchiveWriterCompletion");
+  const fileIds: string[] = [];
+  const originalGenerations: string[] = [];
+  for (const label of ["SIGNED WRITER ORIGINAL A", "SIGNED WRITER ORIGINAL B"]) {
+    const pdf = await PDFDocument.create();
+    pdf.addPage().drawText(label);
+    const bytes = Buffer.from(await pdf.save());
+    const file = await server.files.uploadPrivateFile({ originalName: "双方签章原件.pdf", mimeType: "application/pdf",
+      sizeBytes: bytes.length, uploadedByUserId: "staff", buffer: bytes });
+    const actual = await store.fileObject.findUniqueOrThrow({ where: { id: file.id } });
+    const objectGeneration = randomUUID();
+    await server.store.table("syntheticPrivateFileVersion").create({ data: { bucket: actual.bucket, objectKey: actual.objectKey,
+      objectGeneration, base64: bytes.toString("base64") } });
+    fileIds.unshift(file.id);
+    originalGenerations.unshift(objectGeneration);
+  }
+  const idempotencyKey = randomUUID();
+  const url = `${await server.app.getUrl()}/contracts/${draft.version.id}`;
+  const input = { archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey,
+    expectedApprovalInstanceId: seal.expectedApprovalInstanceId, expectedSealTaskId: seal.expectedSealTaskId,
+    documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint,
+    fileIds, confirmedMatchingSignedDocument: true };
+  const archive = (body = input) => fetch(url + "/signed-archive", { method: "POST", headers: draft.headers, body: JSON.stringify(body) });
+  const lookup = () => fetch(url + "/archive-requests/" + idempotencyKey, { headers: draft.headers });
+  const project = { id: draft.projectId };
+  const archiveWhere = { contractVersionId: draft.version.id };
+  const source = { sourceType: "contract_version", sourceBusinessId: draft.version.id };
+  const auditWhere = { businessId: draft.version.id, action: "contract.archive.complete" };
+  const nativeQuery = store.$queryRaw;
+  const catalog = { relationOid: "45001", anchorOid: "43001", ownerOid: "9001", databaseOid: "13000", roleOid: "7001",
+    backendPid: 71302, transactionId: "500006", qualified: true };
+  store.$queryRaw = async (raw, ...parameters) => {
+    const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
+    const sql = query.strings.join("?").trim();
+    if (sql.startsWith("/* contract_generated_archive_original_catalog_v1 */")) return [catalog];
+    if (sql.startsWith("/* contract_generated_archive_original_read_v1 */")) {
+      expect(query.values).toEqual([catalog.anchorOid, "staff", catalog.relationOid, expect.any(String), draft.version.id]);
+      return pinStore.findMany({ where: { archiveId: query.values[3] }, orderBy: { displayOrder: "asc" } });
+    }
+    return nativeQuery(raw, ...parameters);
+  };
+  const bindingProof = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveRequestBinding")
+    .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation }));
+  const markerReader = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveCompletion")
+    .mockImplementation(async (transaction, archiveId) => {
+      const stored = await completionStore.findUnique({ where: { archiveId } });
+      return stored ? { transaction, completion: stored.completion as generatedArchiveInstallation.GeneratedArchiveCompletion } : null;
+    });
+  const append = jest.fn(async (command: generatedArchiveInstallation.GeneratedArchiveCompletion) => {
+    const persisted = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: command.archiveId } });
+    const contract = await store.contract.findUniqueOrThrow({ where: { id: draft.contract.id } });
+    const version = await store.contractVersion.findUniqueOrThrow({ where: { id: persisted.contractVersionId } });
+    const task = await store.contractSealTask.findUniqueOrThrow({ where: { id: seal.expectedSealTaskId } });
+    const files = await store.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: persisted.id }, orderBy: { displayOrder: "asc" } });
+    expect(command.evidenceIds).toEqual(files.map(file => file.id));
+    expect(command.originals.map(row => [row.fileId, row.objectGeneration])).toEqual(fileIds.map((id, i) => [id, originalGenerations[i]]));
+    expect(version.status).toBe("seal_approved_pending_archive");
+    expect(command.policy).toBe("operating_ledger_not_enabled");
+    const scope = { protocolVersion: 1, archiveSource: "generated_approval",
+      relationship: version.signingSubjectType === "affiliate" ? "outside" : "upward",
+      projectId: contract.projectId, contractId: contract.id, contractVersionId: version.id,
+      approvalInstanceId: task.approvalInstanceId, sealTaskId: task.id, uploaderUserId: contract.ownerUserId,
+      sealConfirmerUserId: task.completedByUserId, idempotencyKey: persisted.idempotencyKey, requestSha256: persisted.requestSha256,
+      authoritySha256: persisted.authoritySha256, fileManifestSha256: persisted.fileManifestSha256,
+      documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint };
+    await pinStore.createMany({ data: command.originals.map((original, i) => ({
+      archiveId: persisted.id, evidenceId: files[i].id, ...original, scope
+    })) });
+    await completionStore.create({ data: { archiveId: persisted.id, completion: command } });
+  });
+  const writer = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveWriterAuthority")
+    .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation, appendOriginals: append }));
+  const counts = () => Promise.all([
+    store.contractArchiveFile.count({ where: archiveWhere }), store.contractArchiveEvidenceFile.count({ where: archiveWhere }),
+    pinStore.count(), completionStore.count(), store.auditLog.count({ where: auditWhere }),
+    store.operatingFact.count({ where: source }), store.operatingImpactEntry.count({ where: source })
+  ]);
+  const expectRolledBack = async () => {
+    expect(await counts()).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(await store.contractVersion.findUnique({ where: { id: draft.version.id } })).toMatchObject({ status: "seal_approved_pending_archive", effectiveAt: null });
+    expect(await (await lookup()).json()).toEqual({ status: "unknown" });
+  };
+  const ordinaryReads = server.store.privateStorageReads;
+  const storageWrites = server.store.privateStorageWrites;
+  try {
+    await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: new Date("2026-01-01") } });
+    expect((await archive()).status).toBe(503);
+    expect(append).not.toHaveBeenCalled();
+    await expectRolledBack();
+    await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: null } });
+
+    const record = store.auditLog.create;
+    const failedAudit = jest.spyOn(store.auditLog, "create").mockImplementation(async args => {
+      if (args.data.action === "contract.archive.complete") throw new Error("合成正式归档审计失败");
+      return record(args);
+    });
+    try {
+      expect((await archive()).status).toBe(500);
+      expect(append).toHaveBeenCalledTimes(1);
+      await expectRolledBack();
+    } finally { failedAudit.mockRestore(); }
+
+    server.store.archiveCommitOutcome = "throw_after_persisting";
+    const recovered = await archive();
+    expect(recovered.status).toBe(201);
+    const result = await recovered.json() as { archiveId: string };
+    expect(result).toEqual({ archiveId: expect.any(String), contractVersionId: draft.version.id, status: "effective", fileIds });
+    expect(server.store.archiveCommitSignalLosses).toBe(1);
+    expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
+    expect(await store.contractVersion.findUnique({ where: { id: draft.version.id } })).toMatchObject({ status: "effective", effectiveAt: expect.any(Date) });
+
+    const pinnedReads = server.store.pinnedPrivateStorageReads;
+    const generated = await store.contractGeneratedDocument.findMany({ where: archiveWhere });
+    writer.mockResolvedValue(null);
+    markerReader.mockResolvedValueOnce(null);
+    expect((await lookup()).status).toBe(503);
+    expect(await (await lookup()).json()).toMatchObject({ status: "archived", result });
+    expect(await (await archive()).json()).toEqual(result);
+    expect((await archive({ ...input, fileIds: [...fileIds].reverse() })).status).toBe(409);
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
+    expect(await store.contractGeneratedDocument.findMany({ where: archiveWhere })).toEqual(generated);
+    expect(server.store.pinnedPrivateStorageReads).toBe(pinnedReads);
+    expect(server.store.privateStorageReads).toBe(ordinaryReads);
+    expect(server.store.privateStorageWrites).toBe(storageWrites);
+  } finally {
+    server.store.archiveCommitOutcome = "persist";
+    store.$queryRaw = nativeQuery;
+    writer.mockRestore();
+    markerReader.mockRestore();
+    bindingProof.mockRestore();
   }
 }
 
