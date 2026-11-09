@@ -129,12 +129,12 @@ BEGIN
     JOIN public."BusinessPartyVersion" bp ON bp."id"=pa."businessPartyVersionId" AND bp."businessPartyId"=pa."businessPartyId"
     WHERE pa."id"=v."affiliateAssignmentId" AND pa."projectId"=c."projectId"
       AND pa."businessPartyVersionId"=v."affiliateBusinessPartyVersionId" AND pa."businessPartyId"=enterprise->>'businessPartyId'
-      AND pa."effectiveFrom"<=archive_day AND (pa."endedAt" IS NULL OR pa."endedAt">archive_day);
+      AND pa."effectiveFrom"<=a."confirmedAt" AND (pa."endedAt" IS NULL OR pa."endedAt">a."confirmedAt");
   IF NOT FOUND OR assignment."affiliateNameSnapshot" IS DISTINCT FROM v."affiliateNameSnapshot"
     OR assignment."affiliateCreditCodeSnapshot" IS DISTINCT FROM v."affiliateCreditCodeSnapshot"
-    OR enterprise->>'effectiveFrom' IS DISTINCT FROM to_char(assignment."effectiveFrom",'YYYY-MM-DD')||'T00:00:00.000Z'
+    OR enterprise->>'effectiveFrom' IS DISTINCT FROM to_char(assignment."effectiveFrom",'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
     OR (SELECT count(*) FROM public."ProjectAffiliateAssignment" pa WHERE pa."projectId"=c."projectId"
-      AND pa."effectiveFrom"<=archive_day AND (pa."endedAt" IS NULL OR pa."endedAt">archive_day))<>1 THEN
+      AND pa."effectiveFrom"<=a."confirmedAt" AND (pa."endedAt" IS NULL OR pa."endedAt">a."confirmedAt"))<>1 THEN
     RAISE EXCEPTION '表外承诺必须引用实际有效的本项目施工企业版本' USING ERRCODE='23514';
   END IF;
 

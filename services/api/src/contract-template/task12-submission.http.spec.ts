@@ -435,6 +435,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       await server.store.prisma.projectMember.create({ data: { projectId: draft.projectId, userId: "staff", positionKey: "contract_staff" } });
       const enterpriseId = randomUUID(), enterpriseVersionId = randomUUID(), replacementVersionId = randomUUID(), assignmentId = randomUUID();
       const downstreamId = randomUUID(), downstreamVersionId = randomUUID();
+      const assignmentEffectiveFrom = "2026-01-01T08:13:20.123Z";
       for (const [id, versionId, name] of [[enterpriseId, enterpriseVersionId, "本项目施工企业"], [downstreamId, downstreamVersionId, "本合同下游单位"]]) {
         await server.store.prisma.businessParty.create({ data: { id, name, status: "active" } });
         await server.store.prisma.businessPartyVersion.create({ data: { id: versionId, businessPartyId: id, versionNo: 1, snapshot: { name } } });
@@ -444,7 +445,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       await server.store.prisma.project.create({ data: { id: otherProjectId, code: "T12-OTHER", name: "不同项目", isActive: true } });
       await server.store.prisma.projectAffiliateAssignment.create({ data: {
         id: assignmentId, projectId: draft.projectId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId,
-        affiliateNameSnapshot: "本项目施工企业", affiliateCreditCodeSnapshot: null, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), endedAt: null
+        affiliateNameSnapshot: "本项目施工企业", affiliateCreditCodeSnapshot: null, effectiveFrom: new Date(assignmentEffectiveFrom), endedAt: null
       } });
       const parties = [
         { roleKey: enterpriseRole, displayOrder: 0, businessPartyVersionId: enterpriseVersionId, snapshot: {} },
@@ -488,7 +489,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(0);
         expect(await (await readReceipt()).json()).toEqual({ status: "unknown" });
         await server.store.prisma.projectAffiliateAssignment.update({ where: { id: assignmentId }, data: {
-          projectId: draft.projectId, endedAt: null, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), businessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: "本项目施工企业"
+          projectId: draft.projectId, endedAt: null, effectiveFrom: new Date(assignmentEffectiveFrom), businessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: "本项目施工企业"
         } });
       }
       const response = await submit();
@@ -499,7 +500,8 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         signingSubjectType: "affiliate", affiliateAssignmentId: assignmentId, affiliateBusinessPartyVersionId: enterpriseVersionId,
         affiliateNameSnapshot: "本项目施工企业", companyEntityVersionId: null,
         readinessSnapshot: { signingIdentity: { relationship: "outside",
-          enterprise: { assignmentId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId, roleKey: enterpriseRole, displayOrder: 0 },
+          enterprise: { assignmentId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId,
+            roleKey: enterpriseRole, displayOrder: 0, effectiveFrom: assignmentEffectiveFrom },
           downstream: { businessPartyId: inlineDownstream ? null : downstreamId, businessPartyVersionId: inlineDownstream ? null : downstreamVersionId, roleKey: downstreamRole, displayOrder: 0 }
         }, generatedDocumentId: document.id, documentContentFingerprint: input.documentContentFingerprint }
       });
