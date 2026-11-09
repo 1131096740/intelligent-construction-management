@@ -646,9 +646,9 @@
         "update": [],
         "evidence": [
           "services/api/prisma/prepared/task16/registered-funding.sql:93",
-          "services/api/src/payment/payment-request.service.ts:3287",
-          "services/api/src/payment/payment-request.service.ts:3520",
-          "services/api/src/payment/payment-request.service.ts:3707",
+          "services/api/src/payment/payment-request.service.ts:3310",
+          "services/api/src/payment/payment-request.service.ts:3542",
+          "services/api/src/payment/payment-request.service.ts:3729",
           "services/api/src/payment/registered-payment-execution.service.ts:61"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
@@ -720,7 +720,7 @@
         ],
         "evidence": [
           "services/api/src/payment/payment-request.service.ts:3164",
-          "services/api/src/payment/payment-request.service.ts:3609"
+          "services/api/src/payment/payment-request.service.ts:3631"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -918,7 +918,7 @@
           "services/api/prisma/schema.prisma:7156",
           "services/api/src/payment/registered-payment-funding.ts:119",
           "services/api/src/payment/registered-payment-execution.service.ts:64",
-          "services/api/src/payment/payment-request.service.ts:3715"
+          "services/api/src/payment/payment-request.service.ts:3287"
         ]
       },
       {
@@ -986,8 +986,8 @@
           "updatedAt"
         ],
         "evidence": [
-          "services/api/src/payment/payment-request.service.ts:3439",
-          "services/api/src/payment/payment-request.service.ts:3617"
+          "services/api/src/payment/payment-request.service.ts:3461",
+          "services/api/src/payment/payment-request.service.ts:3639"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -1233,7 +1233,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "f1b76bf85db5bb98ed62a1c60a6f2d34bbf9c0f258b280071be3988a0da0e186",
+  "baselineManifestSha256": "d2cbe9085444fd1ef8c96b42d9bc42b5ea2ce2602dcbb7f2ee89a871582bbc48",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -1795,9 +1795,9 @@
           ],
           "update": [],
           "evidence": [
-            "services/api/src/payment/payment-request.service.ts:3287",
-            "services/api/src/payment/payment-request.service.ts:3520",
-            "services/api/src/payment/payment-request.service.ts:3707",
+            "services/api/src/payment/payment-request.service.ts:3310",
+            "services/api/src/payment/payment-request.service.ts:3542",
+            "services/api/src/payment/payment-request.service.ts:3729",
             "services/api/src/payment/registered-payment-execution.service.ts:61"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
@@ -1863,7 +1863,7 @@
           ],
           "evidence": [
             "services/api/src/payment/payment-request.service.ts:3164",
-            "services/api/src/payment/payment-request.service.ts:3609"
+            "services/api/src/payment/payment-request.service.ts:3631"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
         },
@@ -2029,8 +2029,8 @@
             "updatedAt"
           ],
           "evidence": [
-            "services/api/src/payment/payment-request.service.ts:3439",
-            "services/api/src/payment/payment-request.service.ts:3617"
+            "services/api/src/payment/payment-request.service.ts:3461",
+            "services/api/src/payment/payment-request.service.ts:3639"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
         },
@@ -11115,7 +11115,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "f1b76bf85db5bb98ed62a1c60a6f2d34bbf9c0f258b280071be3988a0da0e186"
+      "sha256": "d2cbe9085444fd1ef8c96b42d9bc42b5ea2ce2602dcbb7f2ee89a871582bbc48"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
@@ -11183,7 +11183,7 @@
     },
     {
       "path": "services/api/src/payment/payment-request.service.ts",
-      "sha256": "0a6f4f01c40e5d58bf343af0b238693672064248ef91adbc0bf81529aef6bcbd"
+      "sha256": "d3a860e5dd80bac2f696f8e55e9249faacb0ee1834038dc276fce42c4070d9d5"
     },
     {
       "path": "services/api/src/payment/registered-payment-approval.ts",
