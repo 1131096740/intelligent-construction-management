@@ -10,6 +10,75 @@ import { confirmedBodyLayout, saveBody, type Body } from "./task10-body.test-sup
 import { loginTemplateActor } from "./template-selection.test-support";
 
 describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私有文件）", () => {
+  it("缺少表外归档资格时拒绝新的盖章确认，原已完成结果仍可同坐标查回", async () => {
+    const server = await createTemplateTestServer({ draftWorkbench: true });
+    try {
+      const { prisma } = server.store;
+      const projectId = randomUUID(), enterpriseId = randomUUID(), enterpriseVersionId = randomUUID();
+      const enterpriseName = "合成施工企业";
+      const approvedAt = new Date("2026-11-08T08:00:00Z");
+      await prisma.project.create({ data: { id: projectId, code: "T12-AFFILIATE-SEAL", name: "合成盖章项目", isActive: true } });
+      await prisma.businessParty.create({ data: { id: enterpriseId, name: enterpriseName, status: "active" } });
+      await prisma.businessPartyVersion.create({ data: { id: enterpriseVersionId, businessPartyId: enterpriseId, versionNo: 1, snapshot: { name: enterpriseName } } });
+      const assignment = await prisma.projectAffiliateAssignment.create({ data: {
+        projectId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: enterpriseName,
+        effectiveFrom: new Date("2026-01-01T00:00:00Z"), changeReason: "合成历史派驻", assignedByUserId: "director"
+      } });
+      const contract = await prisma.contract.create({ data: {
+        projectId, ownerUserId: "staff", name: "合成表外历史合同", contractTypeKey: "material_purchase", counterparty: "合成下游单位",
+        code: "HT-SYNTHETIC-AFFILIATE", temporaryCode: "SYNTHETIC-AFFILIATE"
+      } });
+      const documentContentRevision = 1, documentContentFingerprint = "a".repeat(64);
+      const version = await prisma.contractVersion.create({ data: {
+        contractId: contract.id, numericProtocolVersion: 2, versionNo: 1, changeType: "original", contractGovernanceVersion: 1,
+        status: "approved_pending_seal", signingSubjectType: "affiliate", affiliateAssignmentId: assignment.id,
+        affiliateBusinessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: enterpriseName,
+        amountCents: 0n, amountYuan: null, firstSubmittedAt: approvedAt, documentContentRevision, documentContentFingerprint
+      } });
+      const submissionSnapshot = { submissionProtocolVersion: 2, contractVersionId: version.id, documentContentRevision,
+        documentContentFingerprint, signingIdentity: { relationship: "outside" } };
+      const duties = ["material_director", "contract_director", "project_manager", "finance_director", "general_manager"];
+      const round = await prisma.approvalInstance.create({ data: {
+        businessType: "contract_version", businessId: version.id, flowType: "contract.approve", applicantUserId: "staff",
+        status: "approved", currentNodeIndex: duties.length, frozenNodes: duties.map((role, index) => ({
+          protocolVersion: 1, executionMode: "parallel", mode: "any", roleKeys: [role], approvedRoleKeys: [role],
+          ...(index === 0 ? { submissionSnapshot } : {})
+        }))
+      } });
+      const task = await prisma.contractSealTask.create({ data: {
+        contractVersionId: version.id, approvalInstanceId: round.id, handlerUserId: "staff", status: "in_seal",
+        approvedAt, approvedByUserId: "director"
+      } });
+      await prisma.position.upsert({ where: { id: "comprehensive_director" }, create: { id: "comprehensive_director", key: "comprehensive_director" }, update: {} });
+      await prisma.userPosition.create({ data: { userId: "director", positionId: "comprehensive_director", projectId: null } });
+      const director = await loginTemplateActor(server, "director");
+      const confirm = async () => fetch(`${await server.app.getUrl()}/contracts/${version.id}/seal-confirmation`, {
+        method: "POST", headers: { authorization: `Bearer ${director}`, "content-type": "application/json" },
+        body: JSON.stringify({ expectedApprovalInstanceId: round.id, expectedSealTaskId: task.id, documentContentRevision, documentContentFingerprint, confirmed: true })
+      });
+      const readState = () => Promise.all([
+        prisma.contractVersion.findUnique({ where: { id: version.id } }),
+        prisma.contractSealTask.findUnique({ where: { id: task.id } }),
+        prisma.auditLog.count({ where: { businessId: version.id } })
+      ]);
+      const pending = await readState();
+      const denied = await confirm();
+      expect({ status: denied.status, body: await denied.json() })
+        .toMatchObject({ status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") } });
+      expect(await readState()).toEqual(pending);
+
+      // Existing completed rows were written under the prior application behavior.
+      await prisma.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: "director", completedAt: approvedAt } });
+      await prisma.contractVersion.update({ where: { id: version.id }, data: { status: "seal_approved_pending_archive" } });
+      const completed = await readState();
+      const replay = await confirm();
+      expect({ status: replay.status, body: await replay.json() }).toEqual({
+        status: 201, body: { contractVersionId: version.id, approvalInstanceId: round.id, sealTaskId: task.id, status: "seal_approved_pending_archive" }
+      });
+      expect(await readState()).toEqual(completed);
+    } finally { await server.app.close(); }
+  });
+
   it.each([
     ["北京凌晨开始当日可提交", "2026-11-09T00:30:00+08:00", "2026-11-09", null, 201],
     ["北京凌晨停止当日不可提交", "2026-11-09T00:30:00+08:00", "2026-11-08", "2026-11-09", 400],
