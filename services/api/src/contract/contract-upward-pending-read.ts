@@ -27,7 +27,7 @@ type Coordinates = Pick<ContractVersion, "id" | "contractId" | "draftRevision" |
   | "affiliateAssignmentId" | "affiliateBusinessPartyVersionId" | "companyEntityIdSnapshot" | "companyEntityVersionId"> & { projectId: string };
 type Identity = Awaited<ReturnType<typeof assertDirectPendingSourceQualification>>["bootstrap"];
 
-function emptyRead(state: "unavailable" | "incomplete", sourceRevision: number | null = null) {
+export function emptyUpwardDirectPendingRead(state: "unavailable" | "incomplete", sourceRevision: number | null = null) {
   return {
     originalSignedNumber: null,
     originalSignedNumberState: "unavailable",
@@ -137,37 +137,37 @@ export async function readUpwardDirectPending(
   tx: Prisma.TransactionClient, version: Coordinates, actorUserId: string, isOwner: boolean,
   saveQualification?: Awaited<ReturnType<typeof qualifyUpwardPendingSave>>
 ) {
-  if (!isOwner) return emptyRead("unavailable");
+  if (!isOwner) return emptyUpwardDirectPendingRead("unavailable");
   try {
     const access = await resolveGovernedFinalArchiveAccess(tx, {
       actorUserId, handlerUserId: actorUserId, projectId: version.projectId
     });
-    if (!access.canUpload) return emptyRead("unavailable");
+    if (!access.canUpload) return emptyUpwardDirectPendingRead("unavailable");
     // The old profile pins the existing role, file protections and transaction.
     // It is only a prerequisite. The independently pinned upward read routine
     // must also be executable before it is called.
     const base = saveQualification ? null : await assertDirectPendingSourceQualification(tx);
     const identity = base?.bootstrap ?? saveQualification!;
     const before = await readCatalog(tx, identity);
-    if (!before) return emptyRead("unavailable");
+    if (!before) return emptyUpwardDirectPendingRead("unavailable");
     const observedAt = new Date();
     const rows = await tx.$queryRaw<unknown[]>(Prisma.sql`
       SELECT public.jg_contract_upward_pending_read_v1(${version.id}::pg_catalog.text,${actorUserId}::pg_catalog.text) AS input
     `);
     const observed = rows.length === 1 ? object(rows[0]) : null;
-    if (!observed || !("input" in observed)) return emptyRead("unavailable");
+    if (!observed || !("input" in observed)) return emptyUpwardDirectPendingRead("unavailable");
     if (saveQualification) await assertUpwardPendingSaveContinuity(tx, saveQualification);
     if (base) await assertDirectPendingSourceContinuity(tx, base);
-    if (!isDeepStrictEqual(before, await readCatalog(tx, identity))) return emptyRead("unavailable");
-    if (observed.input === null) return emptyRead("incomplete", version.draftRevision);
+    if (!isDeepStrictEqual(before, await readCatalog(tx, identity))) return emptyUpwardDirectPendingRead("unavailable");
+    if (observed.input === null) return emptyUpwardDirectPendingRead("incomplete", version.draftRevision);
     const input = validateInput(observed.input, version, observedAt);
-    if (!input) return emptyRead("unavailable");
+    if (!input) return emptyUpwardDirectPendingRead("unavailable");
     return {
       originalSignedNumber: input.originalSignedNumber, originalSignedNumberState: "available",
       source: { protocolVersion: 2, sourceKind: "upward_direct_signed_pending", state: "complete",
         sourceRevision: version.draftRevision, Q: input.Q, inputSha256: input.inputSha256, reason: null }
     };
   } catch {
-    return emptyRead("unavailable");
+    return emptyUpwardDirectPendingRead("unavailable");
   }
 }

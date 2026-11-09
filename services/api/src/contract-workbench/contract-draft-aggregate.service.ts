@@ -2,7 +2,7 @@ import { assertUpwardPendingSaveContinuity, discoverUpwardPendingSave, qualifyUp
 import { saveUpwardPendingAggregate, UPWARD_PENDING_SAVE_ACTIONS } from "../contract/contract-upward-pending-save";
 import { readUpwardPendingSubjects } from "../contract/contract-upward-pending-subjects";
 import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
-import { isUpwardDirectPendingDraft, readUpwardDirectPending } from "../contract/contract-upward-pending-read";
+import { emptyUpwardDirectPendingRead, isUpwardDirectPendingDraft, readUpwardDirectPending } from "../contract/contract-upward-pending-read";
 import { saveDirectPendingAggregate, readDirectPendingInput } from "../contract/contract-direct-pending-save";
 import { resolveContractDraftBusinessType } from "./contract-draft-basics";
 import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, hasDirectSigningInput } from "../contract/contract-direct-pending-source";
@@ -152,20 +152,26 @@ export class ContractDraftAggregateService {
         const saveQualification = isOwner ? await discoverUpwardPendingSave(tx) : undefined;
         const read = await readUpwardDirectPending(tx, { ...version, projectId: legacyReadModel.contract.projectId },
           actorUserId, isOwner, saveQualification);
-        upwardSaveReady = !!saveQualification && read.source.state !== "unavailable";
-        if (saveQualification && upwardSaveReady) {
-          const [fresh, contract] = await Promise.all([
-            tx.contractVersion.findUnique({ where: { id: version.id } }),
-            tx.contract.findUnique({ where: { id: version.contractId } })
-          ]);
-          if (contract?.ownerUserId === actorUserId && contract.projectId === legacyReadModel.contract.projectId && !contract.voidedAt &&
-            fresh?.contractId === contract.id && fresh.draftRevision === version.draftRevision && fresh.status === "draft" &&
-            fresh.versionNo === 1 && fresh.changeType === "original" && !fresh.firstSubmittedAt && !fresh.effectiveAt && !fresh.endedAt &&
-            isUpwardDirectPendingDraft(fresh.draftData)) {
-            upwardDraftSubjects = await readUpwardPendingSubjects(tx, contract.projectId, fresh.id, fresh.draftRevision, now);
-            await assertUpwardPendingSaveContinuity(tx, saveQualification);
-          }
+        if (read.source.state === "unavailable") return read;
+        const subjects = saveQualification
+          ? await readUpwardPendingSubjects(tx, legacyReadModel.contract.projectId, version.id, version.draftRevision, now)
+          : undefined;
+        if (saveQualification) {
+          if (!subjects) return emptyUpwardDirectPendingRead("unavailable");
+          await assertUpwardPendingSaveContinuity(tx, saveQualification);
         }
+        const [fresh, contract] = await Promise.all([
+          tx.contractVersion.findUnique({ where: { id: version.id } }),
+          tx.contract.findUnique({ where: { id: version.contractId } })
+        ]);
+        if (contract?.ownerUserId !== actorUserId || contract.projectId !== legacyReadModel.contract.projectId || contract.voidedAt ||
+          fresh?.contractId !== contract.id || fresh.draftRevision !== version.draftRevision || fresh.status !== "draft" ||
+          fresh.versionNo !== 1 || fresh.changeType !== "original" || fresh.firstSubmittedAt || fresh.effectiveAt || fresh.endedAt ||
+          !isUpwardDirectPendingDraft(fresh.draftData)) {
+          return emptyUpwardDirectPendingRead("unavailable");
+        }
+        upwardDraftSubjects = subjects;
+        upwardSaveReady = !!saveQualification;
         return read;
       })
       : hasDirectSigningInput(version.draftData) ? await this.prisma.$transaction(async tx => {

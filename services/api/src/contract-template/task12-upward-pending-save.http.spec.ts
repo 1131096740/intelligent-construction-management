@@ -70,6 +70,16 @@ describe("任务12 对上直签保存资格", () => {
         safeRole: true, privateExecute: true, privateRegistryRead: true, bindingShape: true
       };
       let observedCreate = createProfile;
+      let draftRevisionRace: "source" | "subjects" | null = null;
+      let preparedInputRead = false;
+      const companyRead = server.store.prisma.companyEntity.findMany;
+      server.store.prisma.companyEntity.findMany = async options => {
+        const rows = await companyRead(options);
+        if (draftRevisionRace === "subjects" && preparedInputRead) {
+          await server.store.prisma.contractVersion.update({ where: { id: versionId }, data: { draftRevision: 3 } });
+        }
+        return rows;
+      };
       let changedPaperFact: "file" | "date" | "terms" | "participation" | null = null;
       let enterpriseLockMissing = false;
       const identityLocks: string[] = [];
@@ -147,6 +157,12 @@ describe("任务12 对上直签保存资格", () => {
             }, signedFiles
           };
           const qText = JSON.stringify(Q);
+          preparedInputRead = true;
+          if (draftRevisionRace === "source") {
+            await server.store.prisma.contractVersion.update({
+              where: { id: versionId }, data: { draftRevision: Number(version.draftRevision) + 1 }
+            });
+          }
           return [{ input: { Q, qText, inputSha256: createHash("sha256").update(qText).digest("hex") } }];
         }
         return native(input, ...values);
@@ -251,6 +267,22 @@ describe("任务12 对上直签保存资格", () => {
       expect({ status: read.status, body: await read.json() }).toMatchObject({ status: 200, body: {
         directPendingInput: saved.directSigningInput, directPendingCapabilities: { registrationEnabled: false }
       } });
+      for (const race of ["source", "subjects"] as const) {
+        preparedInputRead = false;
+        draftRevisionRace = race;
+        const stalePreparation = await fetch(path + "/workbench", { headers });
+        draftRevisionRace = null;
+        const body = await stalePreparation.json();
+        expect({ race, status: stalePreparation.status, body }).toMatchObject({
+          race, status: 200, body: {
+            directPendingInput: { state: "unavailable", Q: null, inputSha256: null },
+            directPendingCapabilities: { registrationEnabled: false }, draftOperationAvailableActions: []
+          }
+        });
+        expect(body).not.toHaveProperty("upwardDraftSubjects");
+        await server.store.prisma.contractVersion.update({ where: { id: versionId }, data: { draftRevision: 2 } });
+      }
+
       const replay = await send();
       expect({ status: replay.status, body: await replay.json() }).toEqual({ status: 200, body: saved });
       const receipt = await fetch(path + "/save-requests/" + input.idempotencyKey, { headers });
