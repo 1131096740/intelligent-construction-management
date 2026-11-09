@@ -57,18 +57,27 @@ export async function prepareGeneratedArchive(
     if (scope.files.some(generated => generated.contentSha256 === contentSha256)) {
       throw new ConflictException("双方签章原件须与本轮生成文书分开上传");
     }
-    const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
-    const version = await reader.readVerifiedVersion({ bucket, objectKey, sizeBytes, contentSha256 })
-      .catch(() => { throw unavailable(); });
-    const buffer = version?.buffer, objectGeneration = version?.objectGeneration;
-    if (typeof objectGeneration !== "string" || objectGeneration.length > 1024 || !/^[\x21-\x7e]+$/u.test(objectGeneration)
-      || objectGeneration.toLowerCase() === "null" || objectGeneration.includes(",")
-      || !Buffer.isBuffer(buffer) || buffer.length !== sizeBytes || createHash("sha256").update(buffer).digest("hex") !== contentSha256) {
-      throw unavailable();
-    }
+    const { buffer, objectGeneration } = await readSignedOriginalVersion(reader, { bucket, objectKey, sizeBytes, contentSha256 });
     const pdf = await PDFDocument.load(buffer).catch(() => { throw new BadRequestException("归档PDF无法解析，请重新核对原件"); });
     if (!pdf.getPageCount()) throw new BadRequestException("归档PDF不能为空");
     originals.push({ fileId, displayOrder, bucket, objectKey, mimeType: file.mimeType, sizeBytes, contentSha256, objectGeneration });
   }
+  for (const { bucket, objectKey, sizeBytes, contentSha256, objectGeneration } of originals) {
+    await readSignedOriginalVersion(reader, { bucket, objectKey, sizeBytes, contentSha256, expectedGeneration: objectGeneration });
+  }
   return { scope, idempotencyKey: request.idempotencyKey, requestSha256: request.requestSha256, originals };
+}
+
+async function readSignedOriginalVersion(reader: GeneratedArchivePreparationReader,
+  input: Parameters<GeneratedArchivePreparationReader["readVerifiedVersion"]>[0]) {
+  const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+  const version = await reader.readVerifiedVersion(input).catch(() => { throw unavailable(); });
+  const buffer = version?.buffer, objectGeneration = version?.objectGeneration;
+  if (typeof objectGeneration !== "string" || objectGeneration.length > 1024 || !/^[\x21-\x7e]+$/u.test(objectGeneration)
+    || objectGeneration.toLowerCase() === "null" || objectGeneration.includes(",")
+    || (input.expectedGeneration !== undefined && objectGeneration !== input.expectedGeneration)
+    || !Buffer.isBuffer(buffer) || buffer.length !== input.sizeBytes || createHash("sha256").update(buffer).digest("hex") !== input.contentSha256) {
+    throw unavailable();
+  }
+  return { buffer, objectGeneration };
 }

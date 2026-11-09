@@ -1682,16 +1682,27 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
       expect((await archive()).status).toBe(503);
       await versioned.delete({ where: { id: unversioned.id } });
       await seedVersion(first, "signed-original-v1");
-      await seedVersion(second, "signed-original-v2");
+      const secondVersion = await seedVersion(second, "signed-original-v2");
+      await versioned.update({ where: { id: secondVersion.id }, data: { unavailableByVersion: true } });
+      const missingPinned = await archive();
+      expect({ status: missingPinned.status, body: await missingPinned.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("资料文件版本或完整性") }
+      });
+      await versioned.update({ where: { id: secondVersion.id }, data: { unavailableByVersion: false } });
       readVersion.mockClear();
       const prepared = await archive();
       expect({ status: prepared.status, body: await prepared.json() }).toMatchObject({
         status: 503, body: { message: expect.stringContaining("签章原件已核对") }
       });
-      expect(readVersion.mock.calls).toEqual([[second.coordinates], [first.coordinates]]);
+      const expectedReads = [
+        [second.coordinates], [first.coordinates],
+        [{ ...second.coordinates, expectedGeneration: "signed-original-v2" }],
+        [{ ...first.coordinates, expectedGeneration: "signed-original-v1" }]
+      ];
+      expect(readVersion.mock.calls).toEqual(expectedReads);
       readVersion.mockClear();
       expect((await archive()).status).toBe(503);
-      expect(readVersion.mock.calls).toEqual([[second.coordinates], [first.coordinates]]);
+      expect(readVersion.mock.calls).toEqual(expectedReads);
     }
     const receipt = await fetch(url + "/archive-requests/" + body.idempotencyKey, { headers: draft.headers });
     expect({ status: receipt.status, body: await receipt.json() }).toEqual({ status: 200, body: { status: "unknown" } });

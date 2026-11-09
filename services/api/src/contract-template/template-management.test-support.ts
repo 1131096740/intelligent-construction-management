@@ -945,7 +945,8 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
         bucket: input.bucket, objectKey: input.objectKey,
         ...(input.expectedGeneration === undefined ? {} : { objectGeneration: input.expectedGeneration })
       } });
-      const buffer = version && typeof version.base64 === "string" ? Buffer.from(version.base64, "base64") : null;
+      const readable = input.expectedGeneration === undefined || version?.unavailableByVersion !== true;
+      const buffer = readable && version && typeof version.base64 === "string" ? Buffer.from(version.base64, "base64") : null;
       if (!buffer || buffer.length !== input.sizeBytes || createHash("sha256").update(buffer).digest("hex") !== input.contentSha256) {
         throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
       }
