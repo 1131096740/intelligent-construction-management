@@ -416,6 +416,10 @@ export class TemplateSyntheticStore {
         const observed = await this.table("directArchiveRecoveryObservation").findMany({ where: { archiveId: query.values[0] } });
         return observed.length ? observed.map(row => ({ proof: row.proof })) : [{ proof: null }];
       }
+      if (text.startsWith("/* contract_generated_upward_operating_installation_v1 */ SELECT")) {
+        if (query.values.length) throw new Error("合成对上经营目录只接受固定目录查询");
+        return (await this.table("generatedUpwardOperatingCatalog").findMany()).map(row => directCatalogFixtureRow(row.snapshot));
+      }
       if (text.startsWith('/* contract_direct_archive_dispatch_catalog_v1 */ WITH')) {
         if (query.values.length !== 10 || query.values.some(value => typeof value !== "string" || !value.startsWith("public.jg_"))) throw new Error("合成214只接受固定目录例程");
         const bindings = await this.table("directArchiveDispatchBinding").findMany();

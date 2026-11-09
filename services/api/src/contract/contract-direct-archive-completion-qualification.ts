@@ -1,3 +1,4 @@
+import { hasGeneratedUpwardOperatingInstallation } from "./contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -78,6 +79,10 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
             'oid',p.oid::text,'sha256',encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')))
             FROM watched_procs w JOIN pg_catalog.pg_proc p ON p.oid=w.oid),
           'registryTriggers',(SELECT jsonb_object_agg(tgname,oid::text) FROM watched_triggers)),
+        'generatedDispatchUsesOperatingSuccessor',EXISTS(SELECT 1 FROM pg_catalog.pg_proc p
+          WHERE p.oid=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(text,boolean)')
+            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
+              'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'),
         'generatedDispatchQualified',2=(SELECT count(*) FROM (VALUES
             ('public.jg_contract_archive_v2_ownership_day(pg_catalog.text)','7bfc159db4085773d9be238c257739f5c881e8f550c4efb061fed6f1a5c2ab13',FALSE,
               'search_path=pg_catalog, public'),
@@ -89,7 +94,9 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
           WHERE p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND p.prokind='f'
             AND p.prorettype='pg_catalog.date'::regtype AND p.provolatile='v' AND p.proparallel='u'
             AND NOT p.prosecdef AND p.proconfig=ARRAY[h.path] AND NOT p.proisstrict AND NOT p.proretset
-            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=h.sha
+            AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=h.sha OR (h.qualified_acl
+              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
+                'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'))
             AND (NOT h.qualified_acl OR (
               EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
                 WHERE a.grantee=current_user::regrole::oid AND a.grantor=c.relowner
@@ -176,6 +183,8 @@ export async function readDirectArchiveCompletionQualification(
     const currentBody = observedCompletion.sha256;
     if (currentBody !== successorBodySha
       && (currentBody !== generatedDispatchBodySha || actual.generatedDispatchQualified !== true)) unavailable();
+    if (currentBody === generatedDispatchBodySha && actual.generatedDispatchUsesOperatingSuccessor === true
+      && !await hasGeneratedUpwardOperatingInstallation(tx, actual)) unavailable();
     // Compare the intact original registry against the current same-OID routine and known successor.
     const observedLegacy = { ...observedBindings, procedures: {
       ...observedProcedures, completion: { ...observedCompletion, sha256: successorBodySha }

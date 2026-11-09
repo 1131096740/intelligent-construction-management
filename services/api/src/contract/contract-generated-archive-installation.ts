@@ -1,3 +1,4 @@
+import { generatedUpwardOperatingCatalog } from "./contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -162,7 +163,7 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
 
   const rows = await tx.$queryRaw<{ completion: unknown }[]>(Prisma.sql`
     /* contract_generated_archive_completion_read_v1 */
-    WITH ingress AS (${generatedArchiveIngressCatalog}),
+    WITH ingress AS (${generatedArchiveIngressCatalog}), upward_operating AS (${generatedUpwardOperatingCatalog}),
     recipe(fn, result_type, body, successor) AS (VALUES
       ('public.jg_capture_generated_archive_completion_v1(text)', 'pg_catalog.jsonb', ${captureCompletionBody}, NULL),
       ('public.jg_guard_generated_archive_completion_v1()', 'pg_catalog.trigger', ${guardCompletionBody}, ${installedCompletionGuardBody}),
@@ -216,7 +217,11 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
           AND p.pronamespace=c.relnamespace AND p.prokind='f' AND p.provolatile='v'
           AND p.prorettype=pg_catalog.to_regtype(x.result_type)
           AND ((NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
-            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.body)
+            AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.body OR (
+              x.fn='public.jg_capture_generated_archive_completion_v1(text)'
+              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
+                'ebc6784cf581ecc1f53f53e1cafcaafadba6004b8a6a0ef71f4e94f3ae872f6d'
+              AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace))))
             OR (p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']::text[]
               AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.successor
               AND EXISTS(SELECT 1 FROM ingress i WHERE i.relowner=c.relowner AND i.relnamespace=c.relnamespace)))

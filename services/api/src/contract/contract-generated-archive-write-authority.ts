@@ -1,3 +1,4 @@
+import { generatedUpwardOperatingCatalog } from "./contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -19,7 +20,11 @@ export const generatedArchiveIngressCatalog = Prisma.sql`
   JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid AND p.oid=pg_catalog.to_regprocedure('public.jg_apply_generated_archive_write_v1()')
     AND p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND p.prosecdef AND p.provolatile='v'
     AND p.prorettype='pg_catalog.trigger'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']::text[]
-    AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${writerIngressBody}
+    AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${writerIngressBody} OR (
+      encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
+        '03174cabf7b24f57ddad58ecf2c92360caa32f6d84299d3ab8ac4117d9f8465f'
+      AND 1=(SELECT count(*) FROM (${generatedUpwardOperatingCatalog}) u
+        WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
   WHERE c.oid=pg_catalog.to_regclass('public.jg_contract_generated_archive_write_v1')
     AND c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
     AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
@@ -38,7 +43,7 @@ function isOid(value: unknown) {
 export async function readGeneratedArchiveWriteInstallation(tx: Prisma.TransactionClient) {
   const rows = await tx.$queryRaw<(Installation & { qualified: boolean })[]>(Prisma.sql`
     /* contract_generated_archive_write_catalog_v1 */
-    WITH recipes(name, relation, fn, kind, deferred) AS (VALUES
+    WITH upward_operating AS (${generatedUpwardOperatingCatalog}), recipes(name, relation, fn, kind, deferred) AS (VALUES
       ('jg_generated_archive_write_apply','public.jg_contract_generated_archive_write_v1','public.jg_apply_generated_archive_write_v1()',5,FALSE),
       ('jg_generated_archive_write_immutable','public.jg_contract_generated_archive_write_v1','public.jg_apply_generated_archive_write_v1()',27,FALSE),
       ('jg_generated_archive_write_no_truncate','public.jg_contract_generated_archive_write_v1','public.jg_apply_generated_archive_write_v1()',34,FALSE),
@@ -98,7 +103,13 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
         WHERE f.proowner=c.relowner AND f.pronamespace=c.relnamespace AND f.prokind='f' AND f.provolatile='v'
           AND f.proparallel='u' AND f.prorettype=pg_catalog.to_regtype(q.return_type) AND f.prosecdef=q.definer
           AND f.proconfig=ARRAY[q.path] AND NOT f.proisstrict AND NOT f.proretset
-          AND encode(public.digest(convert_to(f.prosrc,'UTF8'),'sha256'),'hex')=q.sha
+          AND (encode(public.digest(convert_to(f.prosrc,'UTF8'),'sha256'),'hex')=q.sha OR (
+            1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)
+            AND encode(public.digest(convert_to(f.prosrc,'UTF8'),'sha256'),'hex')=CASE q.signature
+              WHEN 'public.jg_apply_generated_archive_write_v1()' THEN
+                '03174cabf7b24f57ddad58ecf2c92360caa32f6d84299d3ab8ac4117d9f8465f'
+              WHEN 'public.jg_capture_generated_archive_completion_v1(text)' THEN
+                'ebc6784cf581ecc1f53f53e1cafcaafadba6004b8a6a0ef71f4e94f3ae872f6d' END))
           AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(f.proacl,pg_catalog.acldefault('f',f.proowner))) a
             WHERE a.grantee<>f.proowner OR a.grantor<>f.proowner))
       AND 10=(SELECT count(*) FROM recipes q JOIN pg_catalog.pg_trigger t ON t.tgfoid=pg_catalog.to_regprocedure(q.fn)
@@ -115,7 +126,11 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
         WHERE v."protocolVersion"=1 AND v."sealBindingOid"=b.tableoid
           AND encode(public.digest(convert_to(to_jsonb(b)::text,'UTF8'),'sha256'),'hex')=v."sealBindingSha256")
       AND basis.proowner=c.relowner AND basis.pronamespace=c.relnamespace AND NOT basis.prosecdef
-      AND encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')='7d231034f736945ec01332f494a33dba7e816eb54aefaae56d13a149c62a2f56'
+      AND (encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')=
+        '7d231034f736945ec01332f494a33dba7e816eb54aefaae56d13a149c62a2f56' OR (
+        encode(public.digest(convert_to(basis.prosrc,'UTF8'),'sha256'),'hex')=
+          'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f'
+        AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
       AS qualified
     FROM pg_catalog.pg_class c
     JOIN public.jg_contract_generated_upward_seal_binding_v1 b ON b."protocolVersion"=1

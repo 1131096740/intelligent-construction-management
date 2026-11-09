@@ -1,3 +1,4 @@
+import { hasGeneratedUpwardOperatingInstallation, upwardOperatingParentBody } from "./contract-generated-upward-operating-installation";
 import { qualifyUpwardPendingSave, UPWARD_SAVE_ROUTINE_BODIES } from "./contract-upward-pending-save-profile";
 import { qualifyUpwardPendingCreate, UPWARD_CREATE_DISPATCH_BODY } from "./contract-upward-pending-create";
 import { ServiceUnavailableException } from "@nestjs/common";
@@ -203,7 +204,10 @@ export async function readDirectArchiveDispatchQualification(
       const post = { ...legacyRoutine, bodySha256 };
       if (!isDeepStrictEqual(installedRoutines[signature], post)) unavailable();
       const successorBody = object(currentRoutines[signature])?.bodySha256;
-      if (signature === version && (successorBody === UPWARD_CREATE_DISPATCH_BODY || successorBody === UPWARD_SAVE_ROUTINE_BODIES.version)
+      if (signature === parent && successorBody === upwardOperatingParentBody) {
+        if (!isDeepStrictEqual(currentRoutines[signature], { ...post, bodySha256: successorBody })
+          || !await hasGeneratedUpwardOperatingInstallation(tx, actual)) unavailable();
+      } else if (signature === version && (successorBody === UPWARD_CREATE_DISPATCH_BODY || successorBody === UPWARD_SAVE_ROUTINE_BODIES.version)
         && isDeepStrictEqual(currentRoutines[signature], { ...post, bodySha256: successorBody })) {
         if (successorBody === UPWARD_SAVE_ROUTINE_BODIES.version) upwardSave = await qualifyUpwardPendingSave(tx);
         const witness = await qualifyUpwardPendingCreate(tx, upwardSave);

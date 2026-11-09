@@ -97,7 +97,7 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       await seedDirectReviewDatabaseBinding(server);
       await seedPreparedDirectArchiveTransition(server);
       const retention = await seedDirectArchiveRetentionCatalog(server);
-      await seedDirectArchiveDispatchCatalog(server);
+      const parentDispatch = await seedDirectArchiveDispatchCatalog(server);
       await observeDirectArchiveCompletionBody(server, retention);
       const dispatch = await seedDirectArchiveCompletionCatalog(server);
 
@@ -134,6 +134,29 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       await server.store.table("directArchiveCompletionActual").update({ where: { id: dispatch.observed.id }, data: {
         snapshot: { ...successorActual, generatedDispatchQualified: true }
       } });
+      const parentCatalog = await server.store.table("directPendingActualCatalog").findFirst();
+      if (!parentCatalog) throw new Error("合成归档前态缺失");
+      const parentSnapshot = parentCatalog.snapshot as { routines: Record<string, Record<string, unknown>> };
+      const parentGuard = "public.jg_contract_archive_v2_parent_guard()";
+      await server.store.table("directPendingActualCatalog").update({ where: { id: parentDispatch.oldCatalogId }, data: {
+        snapshot: { ...parentSnapshot, routines: { ...parentSnapshot.routines, [parentGuard]: {
+          ...parentSnapshot.routines[parentGuard], bodySha256: "cbc9b7890e3fe02c730c1fa8617eb8b13b74a401c962083506d8a3372ec7a522"
+        } } }
+      } });
+      await server.store.table("directArchiveCompletionActual").update({ where: { id: dispatch.observed.id }, data: {
+        snapshot: { ...successorActual, generatedDispatchQualified: true, generatedDispatchUsesOperatingSuccessor: true }
+      } });
+      expect((await fetch(base + downloadUrl)).status).toBe(503);
+      const operatingCatalog = { ownerOid: "9001", databaseOid: "13000", namespaceOid: "2200",
+        currentRoleOid: "7001", sessionRoleOid: "7001", backendPid: 71201, transactionId: "500001" };
+      const operatingWitness = await server.store.table("generatedUpwardOperatingCatalog").create({
+        data: { snapshot: { ...operatingCatalog, transactionId: "500002" } }
+      });
+      expect((await fetch(base + downloadUrl)).status).toBe(503);
+      expect(server.store.pinnedPrivateStorageReads).toBe(0);
+      await server.store.table("generatedUpwardOperatingCatalog").update({
+        where: { id: operatingWitness.id }, data: { snapshot: operatingCatalog }
+      });
       const read = await fetch(base + downloadUrl);
       expect({ status: read.status, bytes: Buffer.from(await read.arrayBuffer()) }).toEqual({ status: 200, bytes });
       expect(read.headers.get("x-cos-version-id")).toBeNull();
