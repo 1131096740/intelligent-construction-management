@@ -601,6 +601,7 @@
         "evidence": [
           "services/api/src/payment/payment-request.service.ts:3287",
           "services/api/src/payment/payment-request.service.ts:3520",
+          "services/api/src/payment/payment-request.service.ts:3707",
           "services/api/src/payment/registered-payment-execution.service.ts:61"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
@@ -1233,7 +1234,7 @@
     },
     {
       "path": "services/api/src/payment/payment-request.service.ts",
-      "sha256": "9fa1abc584a762d3dbdd5f0b9df1c20d6d52dabf3be268eed8ba07078100be45"
+      "sha256": "0a6f4f01c40e5d58bf343af0b238693672064248ef91adbc0bf81529aef6bcbd"
     },
     {
       "path": "services/api/src/payment/registered-payment-approval.ts",

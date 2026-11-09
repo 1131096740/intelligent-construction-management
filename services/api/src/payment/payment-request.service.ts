@@ -3715,11 +3715,15 @@ export class PaymentRequestService {
             const receipt = await tx.registeredPaymentFunding.findUnique({ where: { executionId: fact.id } });
             if (!receipt || fact.paymentRequestId !== paymentId || receipt.payloadFingerprint !== registeredPaymentFingerprint(fact.paymentRequestId, actorUserId, registered)) throw new ConflictException("原请求已绑定不同实付内容，请查询原结果");
             return fact;
-          },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+          },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable}).catch(recoveryError => {
+            if (recoveryError instanceof HttpException) throw recoveryError;
+            return null;
+          });
           if (prior) return paymentPostResponseToApi(prior);
           throw new ConflictException({
             code: "PAYMENT_RESULT_UNCONFIRMED",
             resultStatus: "unconfirmed",
+            idempotencyKey,
             message: "尚未确认实际付款登记结果，请保留原请求并先查询，不要重复登记"
           });
         }

@@ -648,6 +648,7 @@
           "services/api/prisma/prepared/task16/registered-funding.sql:93",
           "services/api/src/payment/payment-request.service.ts:3287",
           "services/api/src/payment/payment-request.service.ts:3520",
+          "services/api/src/payment/payment-request.service.ts:3707",
           "services/api/src/payment/registered-payment-execution.service.ts:61"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
@@ -916,7 +917,8 @@
         "evidence": [
           "services/api/prisma/schema.prisma:7156",
           "services/api/src/payment/registered-payment-funding.ts:119",
-          "services/api/src/payment/registered-payment-execution.service.ts:64"
+          "services/api/src/payment/registered-payment-execution.service.ts:64",
+          "services/api/src/payment/payment-request.service.ts:3715"
         ]
       },
       {
@@ -1231,7 +1233,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "97fa82875cddcff4201b84f07be08beeab484ff916d49a326f5b7fa547d860be",
+  "baselineManifestSha256": "f1b76bf85db5bb98ed62a1c60a6f2d34bbf9c0f258b280071be3988a0da0e186",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -1795,6 +1797,7 @@
           "evidence": [
             "services/api/src/payment/payment-request.service.ts:3287",
             "services/api/src/payment/payment-request.service.ts:3520",
+            "services/api/src/payment/payment-request.service.ts:3707",
             "services/api/src/payment/registered-payment-execution.service.ts:61"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
@@ -11112,7 +11115,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "97fa82875cddcff4201b84f07be08beeab484ff916d49a326f5b7fa547d860be"
+      "sha256": "f1b76bf85db5bb98ed62a1c60a6f2d34bbf9c0f258b280071be3988a0da0e186"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
@@ -11180,7 +11183,7 @@
     },
     {
       "path": "services/api/src/payment/payment-request.service.ts",
-      "sha256": "9fa1abc584a762d3dbdd5f0b9df1c20d6d52dabf3be268eed8ba07078100be45"
+      "sha256": "0a6f4f01c40e5d58bf343af0b238693672064248ef91adbc0bf81529aef6bcbd"
     },
     {
       "path": "services/api/src/payment/registered-payment-approval.ts",

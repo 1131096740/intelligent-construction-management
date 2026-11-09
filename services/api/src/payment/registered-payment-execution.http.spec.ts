@@ -564,10 +564,50 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       scopeKey:"company:company-a",expectedRegistrationId:opening.body.id,openingTreatment:"not_included",openingReason:"核对之后线下实付",openingEvidence:"合成付款核对依据",
       sourceAllocations:[{sourceBatchId:opening.body.sources[0].id,amountCents:"4000"}],confirmationPassword:"Synthetic15Password!"
     });
-    expect(response).toMatchObject({status:409,body:{code:"PAYMENT_RESULT_UNCONFIRMED",resultStatus:"unconfirmed",message:expect.any(String)}});
+    expect(response).toMatchObject({status:409,body:{code:"PAYMENT_RESULT_UNCONFIRMED",resultStatus:"unconfirmed",idempotencyKey:key,message:expect.any(String)}});
     expect((await get("keeper",`/payment-executions/results/${key}`)).body.status).toBe("unconfirmed");
     expect(await get("finance","/fund-accounts")).toEqual(beforeFunds);
     expect(await get("keeper")).toEqual(beforeWork);
+  });
+  it("keeps the original key unconfirmed when the read after a write conflict is unavailable", async () => {
+    const opening = await prepareApprovedPayment();
+    const key = "59889bfc-48df-490b-9f88-dd696a604ff2";
+    const paymentPath = "/payment-executions/payment-a/registrations";
+    const resultPath = `/payment-executions/results/${key}`;
+    const work = await get("keeper");
+    const input = {
+      idempotencyKey: key, expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    };
+    expect((await post("keeper", paymentPath, input)).status).toBe(201);
+    const original = await get("keeper", resultPath);
+    const funds = await get("finance", "/fund-accounts");
+    const pending = await get("keeper");
+
+    database.conflictNextTransaction();
+    const transact = database.prisma.$transaction;
+    const transaction = jest.spyOn(database.prisma, "$transaction");
+    transaction.mockImplementationOnce(async run => {
+      try {
+        return await transact(run);
+      } catch (error) {
+        transaction.mockRejectedValueOnce(new Error("Synthetic conflict read unavailable"));
+        throw error;
+      }
+    });
+
+    const response = await post("keeper", paymentPath, input);
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
+    });
+    expect(JSON.stringify(response.body)).not.toContain("Synthetic conflict read unavailable");
+    expect(await get("keeper", resultPath)).toEqual(original);
+    expect(await get("finance", "/fund-accounts")).toEqual(funds);
+    expect(await get("keeper")).toEqual(pending);
+    expect(await get("finance", "/payment-executions/recorded-items")).toMatchObject({ status: 200, body: { total: 1 } });
   });
   it("does not disclose other-project historical sources or distinguish their identity from an unknown source", async () => {
     await prepareApprovedPayment();
