@@ -1,6 +1,7 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractArchiveEvidenceFile, type ContractArchiveFile, type ContractVersion } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
+import { generatedArchiveIngressCatalog, installedOriginalAppendBody } from "./contract-generated-archive-write-authority";
 
 type Row = Record<string, unknown>;
 const appendBody = "13b8c39ba62c7b1ffdb9c1bfd3effe7c640f1a84b00938c4a7b88a37015a3a23";
@@ -27,13 +28,14 @@ export function requiresGeneratedArchiveOriginals(version: ContractVersion, arch
 async function readCatalog(tx: Prisma.TransactionClient) {
   const rows = await tx.$queryRaw<Row[]>(Prisma.sql`
     /* contract_generated_archive_original_catalog_v1 */
-    WITH recipe(name,relation,fn,kind,deferred,sha) AS (VALUES
+    WITH ingress AS (${generatedArchiveIngressCatalog}),
+    recipe(name,relation,fn,kind,deferred,sha,successor) AS (VALUES
       ('jg_generated_archive_original_append','public.jg_contract_generated_archive_original_v1',
-        'public.jg_guard_generated_archive_original_v1()',31,FALSE,${appendBody}),
+        'public.jg_guard_generated_archive_original_v1()',31,FALSE,${appendBody},${installedOriginalAppendBody}),
       ('jg_generated_archive_original_no_truncate','public.jg_contract_generated_archive_original_v1',
-        'public.jg_guard_generated_archive_original_v1()',34,FALSE,${appendBody}),
+        'public.jg_guard_generated_archive_original_v1()',34,FALSE,${appendBody},${installedOriginalAppendBody}),
       ('jg_generated_archive_originals_complete','public."ContractArchiveFile"',
-        'public.jg_require_generated_archive_originals_v1()',5,TRUE,${completionBody})
+        'public.jg_require_generated_archive_originals_v1()',5,TRUE,${completionBody},NULL)
     )
     SELECT c.oid::text AS "relationOid", a.oid::text AS "anchorOid", c.relowner::text AS "ownerOid", d.oid::text AS "databaseOid",
       current_user::regrole::oid::text AS "roleOid",
@@ -70,7 +72,9 @@ async function readCatalog(tx: Prisma.TransactionClient) {
           AND p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND NOT p.prosecdef
           AND p.prokind='f' AND p.provolatile='v' AND p.prorettype='pg_catalog.trigger'::regtype
           AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
-          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.sha
+          AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.sha
+            OR (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.successor
+              AND EXISTS(SELECT 1 FROM ingress i WHERE i.relowner=c.relowner AND i.relnamespace=c.relnamespace)))
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
         JOIN pg_catalog.pg_trigger t ON t.tgfoid=p.oid AND t.tgname=x.name AND t.tgrelid=pg_catalog.to_regclass(x.relation)
           AND t.tgtype=x.kind AND t.tgenabled='O' AND NOT t.tgisinternal

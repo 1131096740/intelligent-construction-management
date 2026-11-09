@@ -2054,6 +2054,9 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   const source = { sourceType: "contract_version", sourceBusinessId: draft.version.id };
   const auditWhere = { businessId: draft.version.id, action: "contract.archive.complete" };
   const nativeQuery = store.$queryRaw;
+  const nativeExecute = store.$executeRaw;
+  let writerAvailable = true;
+  let writerQualified = true;
   const catalog = { relationOid: "45001", anchorOid: "43001", ownerOid: "9001", databaseOid: "13000", roleOid: "7001",
     backendPid: 71302, transactionId: "500006", qualified: true };
   let markerAvailable = true;
@@ -2062,6 +2065,9 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   store.$queryRaw = async (raw, ...parameters) => {
     const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
     const sql = query.strings.join("?").trim();
+    if (sql.startsWith("/* contract_generated_archive_write_catalog_v1 */")) {
+      return writerAvailable ? [{ ...installation, qualified: writerQualified }] : [];
+    }
     if (sql.startsWith("/* contract_generated_archive_original_catalog_v1 */")) return [catalog];
     if (sql.startsWith("/* contract_generated_archive_original_read_v1 */")) {
       expect(query.values).toEqual([catalog.anchorOid, "staff", catalog.relationOid, expect.any(String), draft.version.id]);
@@ -2080,16 +2086,17 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   };
   const bindingProof = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveRequestBinding")
     .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation }));
-  const append = jest.fn(async (command: generatedArchiveInstallation.GeneratedArchiveCompletion) => {
-    const persisted = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: command.archiveId } });
+  type CommandPin = { evidenceId: string; bucket: string; objectKey: string; objectGeneration: string };
+  const append = jest.fn(async (archiveId: string, pins: CommandPin[]) => {
+    const persisted = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: archiveId } });
     const contract = await store.contract.findUniqueOrThrow({ where: { id: draft.contract.id } });
     const version = await store.contractVersion.findUniqueOrThrow({ where: { id: persisted.contractVersionId } });
     const task = await store.contractSealTask.findUniqueOrThrow({ where: { id: seal.expectedSealTaskId } });
     const files = await store.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: persisted.id }, orderBy: { displayOrder: "asc" } });
-    expect(command.evidenceIds).toEqual(files.map(file => file.id));
-    expect(command.originals.map(row => [row.fileId, row.objectGeneration])).toEqual(fileIds.map((id, i) => [id, originalGenerations[i]]));
+    expect(pins.map(pin => pin.evidenceId)).toEqual(files.map(file => file.id));
+    expect(pins.map(pin => pin.objectGeneration)).toEqual(originalGenerations);
+    expect(files.map(file => file.fileId)).toEqual(fileIds);
     expect(version.status).toBe("seal_approved_pending_archive");
-    expect(command.policy).toBe("operating_ledger_not_enabled");
     const scope = { protocolVersion: 1, archiveSource: "generated_approval",
       relationship: version.signingSubjectType === "affiliate" ? "outside" : "upward",
       projectId: contract.projectId, contractId: contract.id, contractVersionId: version.id,
@@ -2097,8 +2104,9 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
       sealConfirmerUserId: task.completedByUserId, idempotencyKey: persisted.idempotencyKey, requestSha256: persisted.requestSha256,
       authoritySha256: persisted.authoritySha256, fileManifestSha256: persisted.fileManifestSha256,
       documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint };
-    await pinStore.createMany({ data: command.originals.map((original, i) => ({
-      archiveId: persisted.id, evidenceId: files[i].id, ...original, scope
+    await pinStore.createMany({ data: pins.map((pin, i) => ({
+      ...pin, archiveId, fileId: files[i].fileId, displayOrder: files[i].displayOrder,
+      mimeType: files[i].mimeType, sizeBytes: files[i].sizeBytes, contentSha256: files[i].contentSha256, scope
     })) });
   });
   const captureCompletion = async (archiveId: string) => {
@@ -2121,8 +2129,18 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     } } });
   };
   const appendCompletion = jest.fn(captureCompletion);
-  const writer = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveWriterAuthority")
-    .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation, appendOriginals: append, appendCompletion }));
+  store.$executeRaw = async query => {
+    if (!query.strings.join("?").trim().startsWith("/* contract_generated_archive_write_command_v1 */")) return nativeExecute(query);
+    const [archiveId, phase, payload] = query.values;
+    expect(typeof archiveId).toBe("string");
+    if (phase === "originals") await append(String(archiveId), JSON.parse(String(payload)) as CommandPin[]);
+    else {
+      expect(phase).toBe("completion");
+      expect(payload).toBe("[]");
+      await appendCompletion(String(archiveId));
+    }
+    return 1;
+  };
   const counts = () => Promise.all([
     store.contractArchiveFile.count({ where: archiveWhere }), store.contractArchiveEvidenceFile.count({ where: archiveWhere }),
     pinStore.count(), completionStore.count(), store.auditLog.count({ where: auditWhere }),
@@ -2141,6 +2159,12 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     expect(append).not.toHaveBeenCalled();
     await expectRolledBack();
     await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: null } });
+
+    writerQualified = false;
+    expect((await archive()).status).toBe(503);
+    expect(append).not.toHaveBeenCalled();
+    await expectRolledBack();
+    writerQualified = true;
 
     const record = store.auditLog.create;
     const failedAudit = jest.spyOn(store.auditLog, "create").mockImplementation(async args => {
@@ -2177,7 +2201,7 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
 
     const pinnedReads = server.store.pinnedPrivateStorageReads;
     const generated = await store.contractGeneratedDocument.findMany({ where: archiveWhere });
-    writer.mockResolvedValue(null);
+    writerAvailable = false;
     const priorCompletionReads = completionReads;
     markerAvailable = false;
     expect((await lookup()).status).toBe(503);
@@ -2200,7 +2224,7 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   } finally {
     server.store.archiveCommitOutcome = "persist";
     store.$queryRaw = nativeQuery;
-    writer.mockRestore();
+    store.$executeRaw = nativeExecute;
     bindingProof.mockRestore();
   }
 }
