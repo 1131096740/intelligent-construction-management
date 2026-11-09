@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 type Catalog = Record<string, unknown>;
 export const legacyCompletionName = "jg_contract_archive_v2_complete_guard";
 const successorBodySha = "5e408b07516786874983ebdaea2d9c526d7056290df422ccc0861176445305ca";
+const generatedDispatchBodySha = "6b8253f544d4940ee068513d0a6c32cbad3d82b7144b664c98032c47a1f64c87";
 const manifestBodySha = "ba4b6cc4fe752c03bc742760f7cb2c818ace1c4c95184504206ee1c8c00d0309";
 const bindingBodySha = "d4be6bb841d6459e13537724ac423592f8db8ebd53df51a62a0e51a9fcfdd1a5";
 
@@ -77,6 +78,26 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
             'oid',p.oid::text,'sha256',encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')))
             FROM watched_procs w JOIN pg_catalog.pg_proc p ON p.oid=w.oid),
           'registryTriggers',(SELECT jsonb_object_agg(tgname,oid::text) FROM watched_triggers)),
+        'generatedDispatchQualified',2=(SELECT count(*) FROM (VALUES
+            ('public.jg_contract_archive_v2_ownership_day(pg_catalog.text)','7bfc159db4085773d9be238c257739f5c881e8f550c4efb061fed6f1a5c2ab13',FALSE,
+              'search_path=pg_catalog, public'),
+            ('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.boolean)','7d231034f736945ec01332f494a33dba7e816eb54aefaae56d13a149c62a2f56',TRUE,
+              'search_path=pg_catalog, pg_temp')
+          ) h(signature,sha,qualified_acl,path)
+          JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(h.signature)
+          JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
+          WHERE p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND p.prokind='f'
+            AND p.prorettype='pg_catalog.date'::regtype AND p.provolatile='v' AND p.proparallel='u'
+            AND NOT p.prosecdef AND p.proconfig=ARRAY[h.path] AND NOT p.proisstrict AND NOT p.proretset
+            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=h.sha
+            AND (NOT h.qualified_acl OR (
+              EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
+                WHERE a.grantee=current_user::regrole::oid AND a.grantor=c.relowner
+                  AND a.privilege_type='EXECUTE' AND NOT a.is_grantable)
+              AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
+                WHERE a.grantor<>c.relowner OR a.grantee<>c.relowner AND
+                  (a.grantee<>current_user::regrole::oid OR a.privilege_type<>'EXECUTE' OR a.is_grantable))
+            ))),
         'guardsClosed',2=(SELECT count(*) FROM (VALUES
             ('public.jg_assert_contract_direct_archive_write_profile_v1()','aefd46b1516b7905971112abbbbf795ad4560f74e975be3ee99f076f2ee93616'),
             ('public.jg_require_contract_direct_archive_transition_profile_v1()','45ea86eac1ba402cfe41b007f164bb876fa3749a0c10d164abfa436b1cba1b0b')
@@ -149,7 +170,17 @@ export async function readDirectArchiveCompletionQualification(
       || !isDeepStrictEqual(links, actual.links)) unavailable();
 
     const bound = record(binding.bindings), procedures = record(bound?.procedures), triggers = record(bound?.registryTriggers);
-    if (!bound || Object.keys(bound).length !== 2 || !isDeepStrictEqual(bound, actual.bindings)
+    const observedBindings = record(actual.bindings), observedProcedures = record(observedBindings?.procedures);
+    const observedCompletion = record(observedProcedures?.completion);
+    if (!bound || !observedBindings || !observedProcedures || !observedCompletion) unavailable();
+    const currentBody = observedCompletion.sha256;
+    if (currentBody !== successorBodySha
+      && (currentBody !== generatedDispatchBodySha || actual.generatedDispatchQualified !== true)) unavailable();
+    // Compare the intact original registry against the current same-OID routine and known successor.
+    const observedLegacy = { ...observedBindings, procedures: {
+      ...observedProcedures, completion: { ...observedCompletion, sha256: successorBodySha }
+    } };
+    if (Object.keys(bound).length !== 2 || !isDeepStrictEqual(bound, observedLegacy)
       || !procedures || Object.keys(procedures).length !== 3 || !triggers || Object.keys(triggers).length !== 2
       || !oid(triggers.jg_direct_archive_completion_binding_immutable) || !oid(triggers.jg_direct_archive_completion_binding_no_truncate)
       || triggers.jg_direct_archive_completion_binding_immutable === triggers.jg_direct_archive_completion_binding_no_truncate) unavailable();
@@ -161,7 +192,7 @@ export async function readDirectArchiveCompletionQualification(
     const installedRoutine = record(record(installed209.routines)?.[legacyCompletionName]);
     const observedRoutines = record(observed209.routines);
     if (!installedRoutine || !oid(installedRoutine.oid) || record(procedures.completion)?.oid !== installedRoutine.oid
-      || !observedRoutines || !isDeepStrictEqual(observedRoutines[legacyCompletionName], { ...installedRoutine, sha: successorBodySha })) unavailable();
+      || !observedRoutines || !isDeepStrictEqual(observedRoutines[legacyCompletionName], { ...installedRoutine, sha: currentBody })) unavailable();
     return { binding, actual, legacyCatalog: { ...observed209, routines: { ...observedRoutines, [legacyCompletionName]: installedRoutine } } };
   } catch {
     unavailable();

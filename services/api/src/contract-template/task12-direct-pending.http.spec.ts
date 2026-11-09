@@ -99,7 +99,7 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       const retention = await seedDirectArchiveRetentionCatalog(server);
       await seedDirectArchiveDispatchCatalog(server);
       await observeDirectArchiveCompletionBody(server, retention);
-      await seedDirectArchiveCompletionCatalog(server);
+      const dispatch = await seedDirectArchiveCompletionCatalog(server);
 
       const catalog = { relationOid: "29908", completionOid: "29901", qualified: true, databaseOid: "13000",
         sessionRoleOid: "7001", currentRoleOid: "7001", backendPid: 71201, transactionId: "500001" };
@@ -114,6 +114,26 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
         bucket: file.bucket, objectKey: file.objectKey, objectGeneration: original.objectGeneration, base64: bytes.toString("base64")
       } });
 
+      // The installed legacy binding stays unchanged when generated completion gets its own branch.
+      const successorBody = "6b8253f544d4940ee068513d0a6c32cbad3d82b7144b664c98032c47a1f64c87";
+      const completion = "jg_contract_archive_v2_complete_guard";
+      const successorActual = { ...dispatch.actual, bindings: { ...dispatch.actual.bindings,
+        procedures: { ...dispatch.actual.bindings.procedures,
+          completion: { ...dispatch.actual.bindings.procedures.completion, sha256: successorBody } }
+      } };
+      await server.store.table("directArchiveRetentionActual").update({ where: { id: retention.observed.id }, data: {
+        snapshot: { ...retention.actual, bindings: { ...retention.actual.bindings, routines: {
+          ...retention.actual.bindings.routines, [completion]: { ...retention.binding.bindings.routines[completion], sha: successorBody }
+        } } }
+      } });
+      await server.store.table("directArchiveCompletionActual").update({ where: { id: dispatch.observed.id }, data: {
+        snapshot: { ...successorActual, generatedDispatchQualified: false }
+      } });
+      expect((await fetch(base + downloadUrl)).status).toBe(503);
+      expect(server.store.pinnedPrivateStorageReads).toBe(0);
+      await server.store.table("directArchiveCompletionActual").update({ where: { id: dispatch.observed.id }, data: {
+        snapshot: { ...successorActual, generatedDispatchQualified: true }
+      } });
       const read = await fetch(base + downloadUrl);
       expect({ status: read.status, bytes: Buffer.from(await read.arrayBuffer()) }).toEqual({ status: 200, bytes });
       expect(read.headers.get("x-cos-version-id")).toBeNull();
