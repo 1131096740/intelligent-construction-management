@@ -2056,6 +2056,9 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   const nativeQuery = store.$queryRaw;
   const catalog = { relationOid: "45001", anchorOid: "43001", ownerOid: "9001", databaseOid: "13000", roleOid: "7001",
     backendPid: 71302, transactionId: "500006", qualified: true };
+  let markerAvailable = true;
+  let markerQualified = true;
+  let completionReads = 0;
   store.$queryRaw = async (raw, ...parameters) => {
     const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
     const sql = query.strings.join("?").trim();
@@ -2064,15 +2067,19 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
       expect(query.values).toEqual([catalog.anchorOid, "staff", catalog.relationOid, expect.any(String), draft.version.id]);
       return pinStore.findMany({ where: { archiveId: query.values[3] }, orderBy: { displayOrder: "asc" } });
     }
+    if (sql.startsWith("/* contract_generated_archive_completion_relation_v1 */")) {
+      return [{ relationOid: markerAvailable ? "45002" : null }];
+    }
+    if (sql.startsWith("/* contract_generated_archive_completion_read_v1 */")) {
+      completionReads++;
+      expect(query.values.slice(-2)).toEqual(["45002", expect.any(String)]);
+      const marker = markerQualified ? await completionStore.findUnique({ where: { archiveId: query.values.at(-1) } }) : null;
+      return marker ? [{ completion: marker.completion }] : [];
+    }
     return nativeQuery(raw, ...parameters);
   };
   const bindingProof = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveRequestBinding")
     .mockImplementation(async (transaction, binding) => ({ transaction, binding, installation }));
-  const markerReader = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveCompletion")
-    .mockImplementation(async (transaction, archiveId) => {
-      const stored = await completionStore.findUnique({ where: { archiveId } });
-      return stored ? { transaction, completion: stored.completion as generatedArchiveInstallation.GeneratedArchiveCompletion } : null;
-    });
   const append = jest.fn(async (command: generatedArchiveInstallation.GeneratedArchiveCompletion) => {
     const persisted = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: command.archiveId } });
     const contract = await store.contract.findUniqueOrThrow({ where: { id: draft.contract.id } });
@@ -2171,8 +2178,15 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     const pinnedReads = server.store.pinnedPrivateStorageReads;
     const generated = await store.contractGeneratedDocument.findMany({ where: archiveWhere });
     writer.mockResolvedValue(null);
-    markerReader.mockResolvedValueOnce(null);
+    const priorCompletionReads = completionReads;
+    markerAvailable = false;
     expect((await lookup()).status).toBe(503);
+    expect(completionReads).toBe(priorCompletionReads);
+    markerAvailable = true;
+    markerQualified = false;
+    expect((await lookup()).status).toBe(503);
+    expect(completionReads).toBe(priorCompletionReads + 1);
+    markerQualified = true;
     expect(await (await lookup()).json()).toMatchObject({ status: "archived", result });
     expect(await (await archive()).json()).toEqual(result);
     expect((await archive({ ...input, fileIds: [...fileIds].reverse() })).status).toBe(409);
@@ -2187,7 +2201,6 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     server.store.archiveCommitOutcome = "persist";
     store.$queryRaw = nativeQuery;
     writer.mockRestore();
-    markerReader.mockRestore();
     bindingProof.mockRestore();
   }
 }
