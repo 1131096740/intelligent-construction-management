@@ -228,9 +228,10 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
           AND ((NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
             AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.body OR (
               x.fn='public.jg_capture_generated_archive_completion_v1(text)'
-              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
-                'ebc6784cf581ecc1f53f53e1cafcaafadba6004b8a6a0ef71f4e94f3ae872f6d'
-              AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace))))
+              AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
+                AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=CASE WHEN u."outsideOperatingQualified" THEN
+                  '7a284c9b3f2a5dcacf69c45eaddc9560909156cd69aa499b0fc31b4e482feb2e'
+                  ELSE 'ebc6784cf581ecc1f53f53e1cafcaafadba6004b8a6a0ef71f4e94f3ae872f6d' END))))
             OR (p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']::text[]
               AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.successor
               AND EXISTS(SELECT 1 FROM ingress i WHERE i.relowner=c.relowner AND i.relnamespace=c.relnamespace)))

@@ -4,9 +4,11 @@ import { isDeepStrictEqual } from "node:util";
 import { readDirectArchiveTransitionOid, readPreparedDirectArchiveTransition } from "./contract-direct-archive-transition";
 import { readDirectArchiveRetentionOid, readDirectArchiveRetentionQualification } from "./contract-direct-archive-retention-qualification";
 import { readDirectArchiveDispatchOid, readDirectArchiveDispatchQualification } from "./contract-direct-archive-dispatch-qualification";
+import { hasGeneratedUpwardOperatingInstallation, outsideFactAppendBody } from "./contract-generated-upward-operating-installation";
 import { DIRECT_PENDING_DB_RECIPE } from "./contract-direct-pending-recipe";
 
 type ObjectValue = Record<string, unknown>;
+const factAppendSignature = 'public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",pg_catalog.text,pg_catalog.text)';
 function object(value: unknown): ObjectValue | null { return value !== null && typeof value === "object" && !Array.isArray(value) ? value as ObjectValue : null; }
 function oid(value: unknown): value is string { return typeof value === "string" && /^[1-9][0-9]*$/u.test(value) && BigInt(value) <= 4294967295n; }
 function unavailable(): never { throw new ServiceUnavailableException("已签合同来源资格尚未完整供应或已变化，请保留原件稍后办理"); }
@@ -74,12 +76,14 @@ async function readBindingCatalog(tx: Prisma.TransactionClient): Promise<ObjectV
     WHERE db.datname=pg_catalog.current_database()
   `);
   const value = rows.length === 1 ? object(object(rows[0])?.catalog) : null;
-  const anchor = DIRECT_PENDING_DB_RECIPE.routines.find(entry => entry.signature === 'public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",pg_catalog.text,pg_catalog.text)');
+  const anchor = DIRECT_PENDING_DB_RECIPE.routines.find(entry => entry.signature === factAppendSignature);
   if (!value || !oid(value.bindingRelationOid) || !oid(value.bindingNamespaceOid) || !oid(value.bindingOwnerOid) || !oid(value.anchorOwnerOid)
     || value.bindingOwnerOid !== value.anchorOwnerOid || value.bindingNamespaceOid !== value.namespaceOid || value.bindingKind !== "r"
-    || value.bindingRls !== false || value.bindingForceRls !== false || value.anchorSourceSha256 !== anchor?.bodySha256 || value.anchorDefiner !== true
+    || value.bindingRls !== false || value.bindingForceRls !== false || value.anchorDefiner !== true
     || value.unsafeRuntimeRole !== false || !oid(value.sessionRoleOid) || value.sessionRoleOid !== value.currentRoleOid
     || !Number.isInteger(value.backendPid) || typeof value.transactionId !== "string" || !/^[1-9][0-9]*$/u.test(value.transactionId)) unavailable();
+  if (value.anchorSourceSha256 !== anchor?.bodySha256 && (value.anchorSourceSha256 !== outsideFactAppendBody
+    || !await hasGeneratedUpwardOperatingInstallation(tx, value, true))) unavailable();
   const names = ["protocolVersion","recipeVersion","applicationRoleOid","fileCallerOids","databaseOid","anchorNamespaceOid","anchorOwnerOid","bindings"];
   const types = ["int4","text","oid","_oid","oid","oid","oid","jsonb"];
   if (!Array.isArray(value.bindingColumns) || value.bindingColumns.length !== names.length || value.bindingColumns.some((raw, index) => {
@@ -200,7 +204,11 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
     const dispatch = dispatchOid === null ? null
       : await readDirectArchiveDispatchQualification(tx, dispatchOid, bootstrap, bound, actual, transitionOid, retentionOid);
     for (const descriptor of DIRECT_PENDING_DB_RECIPE.routines) {
-      const observation = object(dispatch?.legacyProjection[descriptor.signature] ?? routines[descriptor.signature]), identity = object(expectedRoutines[descriptor.signature]);
+      const current = object(dispatch?.legacyProjection[descriptor.signature] ?? routines[descriptor.signature]);
+      const observedOutside = descriptor.signature === factAppendSignature && bootstrap.anchorSourceSha256 === outsideFactAppendBody;
+      if (observedOutside && current?.bodySha256 !== outsideFactAppendBody) unavailable();
+      const observation = current && observedOutside ? { ...current, bodySha256: descriptor.bodySha256 } : current;
+      const identity = object(expectedRoutines[descriptor.signature]);
       if (!observation || !identity || !isDeepStrictEqual(identity, observation) || observation.bodySha256 !== descriptor.bodySha256
         || observation.securityDefiner !== descriptor.securityDefiner || observation.language !== descriptor.language || observation.returnType !== descriptor.returnType
         || observation.volatility !== descriptor.volatility || observation.parallel !== descriptor.parallel || observation.strict !== descriptor.strict || observation.returnsSet !== descriptor.returnsSet
@@ -236,7 +244,9 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
     for (const value of actual.accessibleDefiners) {
       const definer = object(value);
       if (!definer || !DIRECT_PENDING_DB_RECIPE.allowedSecurityDefiners.some(descriptor => {
-        const known = object(routines[descriptor.signature]); return known && known.oid === definer.oid && definer.bodySha256 === descriptor.bodySha256;
+        const known = object(routines[descriptor.signature]);
+        const allowedBody = descriptor.signature === factAppendSignature ? bootstrap.anchorSourceSha256 : descriptor.bodySha256;
+        return known && known.oid === definer.oid && definer.bodySha256 === allowedBody;
       })) unavailable();
     }
     const transition = transitionOid === null ? null : await readPreparedDirectArchiveTransition(tx, transitionOid, expected, bootstrap);

@@ -138,10 +138,18 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       if (!parentCatalog) throw new Error("合成归档前态缺失");
       const parentSnapshot = parentCatalog.snapshot as { routines: Record<string, Record<string, unknown>> };
       const parentGuard = "public.jg_contract_archive_v2_parent_guard()";
+      const factAppend = 'public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",pg_catalog.text,pg_catalog.text)';
+      const outsideAppendSha = "a2c695903580d69b86a37bc8f697b4e344780a9a07fc4ad18fdd6b7fb42835ea";
+      const directBinding = await server.store.table("directPendingBindingCatalog").findFirst();
+      if (!directBinding) throw new Error("合成直签来源资格缺失");
+      await server.store.table("directPendingBindingCatalog").update({ where: { id: directBinding.id }, data: {
+        snapshot: { ...directBinding.snapshot as Record<string, unknown>, anchorSourceSha256: outsideAppendSha }
+      } });
       await server.store.table("directPendingActualCatalog").update({ where: { id: parentDispatch.oldCatalogId }, data: {
         snapshot: { ...parentSnapshot, routines: { ...parentSnapshot.routines, [parentGuard]: {
           ...parentSnapshot.routines[parentGuard], bodySha256: "cbc9b7890e3fe02c730c1fa8617eb8b13b74a401c962083506d8a3372ec7a522"
-        } } }
+        }, [factAppend]: { ...parentSnapshot.routines[factAppend], bodySha256: outsideAppendSha } },
+        accessibleDefiners: [{ oid: parentSnapshot.routines[factAppend].oid, bodySha256: outsideAppendSha }] }
       } });
       await server.store.table("directArchiveCompletionActual").update({ where: { id: dispatch.observed.id }, data: {
         snapshot: { ...successorActual, generatedDispatchQualified: true, generatedDispatchUsesOperatingSuccessor: true }
@@ -156,6 +164,11 @@ describe("任务12 表外已签合同待登记基础（真实HTTP，合成持久
       expect(server.store.pinnedPrivateStorageReads).toBe(0);
       await server.store.table("generatedUpwardOperatingCatalog").update({
         where: { id: operatingWitness.id }, data: { snapshot: operatingCatalog }
+      });
+      expect((await fetch(base + downloadUrl)).status).toBe(503);
+      expect(server.store.pinnedPrivateStorageReads).toBe(0);
+      await server.store.table("generatedUpwardOperatingCatalog").update({
+        where: { id: operatingWitness.id }, data: { snapshot: { ...operatingCatalog, outsideOperatingQualified: true } }
       });
       const read = await fetch(base + downloadUrl);
       expect({ status: read.status, bytes: Buffer.from(await read.arrayBuffer()) }).toEqual({ status: 200, bytes });
