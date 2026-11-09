@@ -142,8 +142,12 @@ export class ContractV2SubmissionService {
       || typeof intent.generatedDocumentId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(intent.generatedDocumentId)
       || typeof snapshot.formalCode !== "string" || !snapshot.formalCode.trim() || receipt.formalCode !== snapshot.formalCode) return null;
     const requestSha256 = hash(JSON.stringify({ contractVersionId, actorUserId, ...intent }));
-    const result = receipt.responseSnapshot;
-    if (requestSha256 !== receipt.requestSha256 || !result || typeof result !== "object" || Array.isArray(result) || result.contractVersionId !== contractVersionId || result.approvalInstanceId !== round.id || result.status !== "in_approval" || typeof result.formalCode !== "string" || !result.formalCode.trim() || result.formalCode !== receipt.formalCode) return null;
+    const storedResult = receipt.responseSnapshot;
+    if (requestSha256 !== receipt.requestSha256 || !storedResult || typeof storedResult !== "object" || Array.isArray(storedResult)
+      || storedResult.contractVersionId !== contractVersionId || storedResult.approvalInstanceId !== round.id
+      || storedResult.status !== "in_approval" || typeof storedResult.formalCode !== "string"
+      || !storedResult.formalCode.trim() || storedResult.formalCode !== receipt.formalCode) return null;
+    const result = { contractVersionId, approvalInstanceId: round.id, formalCode: receipt.formalCode, status: "in_approval" as const };
     return { status: "submitted" as const, result, requestSha256: receipt.requestSha256, intent };
   }
 

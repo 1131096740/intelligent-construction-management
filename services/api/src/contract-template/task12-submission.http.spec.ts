@@ -217,6 +217,21 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       await server.store.prisma.contractDraftSubmissionRequest.update({ where: { idempotencyKey: input.idempotencyKey }, data: { requestSha256: "f".repeat(64) } });
       expect(await (await getReceipt()).json()).toEqual({ status: "unknown" });
       await server.store.prisma.contractDraftSubmissionRequest.update({ where: { idempotencyKey: input.idempotencyKey }, data: { requestSha256: originalReceipt!.requestSha256 } });
+      // An old writer or import can attach non-public facts to the stored JSON.
+      const contaminatedResult = { ...result, partyEntrySnapshots: [{ projectId: randomUUID(), privateNote: "合成异项目内部资料" }] };
+      await server.store.prisma.contractDraftSubmissionRequest.update({
+        where: { idempotencyKey: input.idempotencyKey },
+        data: { responseSnapshot: contaminatedResult }
+      });
+      const [projectedRead, projectedReplay] = await Promise.all([getReceipt(), submit()]);
+      expect({
+        readStatus: projectedRead.status,
+        readResult: (await projectedRead.json()).result,
+        replayStatus: projectedReplay.status,
+        replayResult: await projectedReplay.json()
+      }).toEqual({ readStatus: 200, readResult: result, replayStatus: 201, replayResult: result });
+      expect(await server.store.prisma.contractDraftSubmissionRequest.findUnique({ where: { idempotencyKey: input.idempotencyKey } }))
+        .toMatchObject({ responseSnapshot: contaminatedResult });
       for (const badResult of [{ ...result, formalCode: "另一正式编号" }, { contractVersionId: result.contractVersionId, approvalInstanceId: result.approvalInstanceId, status: result.status }]) {
         await server.store.prisma.contractDraftSubmissionRequest.update({ where: { idempotencyKey: input.idempotencyKey }, data: { responseSnapshot: badResult } });
         expect(await (await getReceipt()).json()).toEqual({ status: "unknown" });
