@@ -522,7 +522,7 @@
         "update": [],
         "evidence": [
           "services/api/src/payment/registered-payment-funding.ts:148",
-          "services/api/src/payment/registered-payment-execution.service.ts:64"
+          "services/api/src/payment/registered-payment-execution.service.ts:69"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -580,7 +580,7 @@
         "insert": [],
         "update": [],
         "evidence": [
-          "services/api/src/payment/registered-payment-execution.service.ts:62"
+          "services/api/src/payment/registered-payment-execution.service.ts:67"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -648,7 +648,7 @@
           "services/api/prisma/prepared/task16/registered-funding.sql:93",
           "services/api/src/payment/payment-request.service.ts:3287",
           "services/api/src/payment/payment-request.service.ts:3520",
-          "services/api/src/payment/registered-payment-execution.service.ts:59"
+          "services/api/src/payment/registered-payment-execution.service.ts:61"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -915,7 +915,8 @@
         "update": [],
         "evidence": [
           "services/api/prisma/schema.prisma:7156",
-          "services/api/src/payment/registered-payment-funding.ts:119"
+          "services/api/src/payment/registered-payment-funding.ts:119",
+          "services/api/src/payment/registered-payment-execution.service.ts:64"
         ]
       },
       {
@@ -1230,7 +1231,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "bc3cf6de00f552b8d88389fb740e826eb3e69193dd99dabc51597f1699c05c15",
+  "baselineManifestSha256": "97fa82875cddcff4201b84f07be08beeab484ff916d49a326f5b7fa547d860be",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -1682,7 +1683,7 @@
           "update": [],
           "evidence": [
             "services/api/src/payment/registered-payment-funding.ts:148",
-            "services/api/src/payment/registered-payment-execution.service.ts:64"
+            "services/api/src/payment/registered-payment-execution.service.ts:69"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
         },
@@ -1740,7 +1741,7 @@
           "insert": [],
           "update": [],
           "evidence": [
-            "services/api/src/payment/registered-payment-execution.service.ts:62"
+            "services/api/src/payment/registered-payment-execution.service.ts:67"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
         },
@@ -1794,7 +1795,7 @@
           "evidence": [
             "services/api/src/payment/payment-request.service.ts:3287",
             "services/api/src/payment/payment-request.service.ts:3520",
-            "services/api/src/payment/registered-payment-execution.service.ts:59"
+            "services/api/src/payment/registered-payment-execution.service.ts:61"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
         },
@@ -11111,7 +11112,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "bc3cf6de00f552b8d88389fb740e826eb3e69193dd99dabc51597f1699c05c15"
+      "sha256": "97fa82875cddcff4201b84f07be08beeab484ff916d49a326f5b7fa547d860be"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
@@ -11195,7 +11196,7 @@
     },
     {
       "path": "services/api/src/payment/registered-payment-execution.service.ts",
-      "sha256": "321eadbc8c8f2231ccffd4b01141187dbb574d5a0cbd7395fe3e86db63c96d31"
+      "sha256": "991282046b6e71d011845320cfe9ed9611efeaabddd872c591cfe02abb4f366d"
     },
     {
       "path": "services/api/src/payment/registered-payment-funding.ts",

@@ -192,6 +192,33 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect((await seed.settlement.findUnique({where:{id:"settlement-a"}}))?.paidAmountCents).toBe(4000n);
     expect((await seed.contractTakeover.findUnique({where:{id:"history-basis-a"}}))?.historicalPaidCents).toBe(4000n);
   });
+  it("keeps a voucherless original result unconfirmed until its funding receipt is visible", async () => {
+    const opening = await prepareApprovedPayment();
+    const key = "49e1a688-357e-4ca3-8b48-bf4bf4d0ad49";
+    const work = await get("keeper");
+    const resultPath = `/payment-executions/results/${key}`;
+    expect((await post("keeper", "/payment-executions/payment-a/registrations", {
+      idempotencyKey: key, expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    })).status).toBe(201);
+    const funds = await get("finance", "/fund-accounts");
+    const records = await get("finance", "/payment-executions/recorded-items");
+    const pendingWork = await get("keeper");
+    const { registeredPaymentFunding } = database.prisma as unknown as Pick<Prisma.TransactionClient, "registeredPaymentFunding">;
+    jest.spyOn(registeredPaymentFunding, "findUnique").mockResolvedValueOnce(null);
+
+    expect(await get("keeper", resultPath)).toEqual({
+      status: 200, body: { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" }
+    });
+    expect(await get("finance", resultPath)).toMatchObject({
+      status: 200, body: { status: "recorded", execution: { paymentId: "payment-a", amountCents: "4000", voucherPending: true } }
+    });
+    expect(await get("finance", "/fund-accounts")).toEqual(funds);
+    expect(await get("finance", "/payment-executions/recorded-items")).toEqual(records);
+    expect(await get("keeper")).toEqual(pendingWork);
+  });
   it("records an independently confirmed new historical-contract payment and replays its original key without rewriting the frozen historical baseline", async () => {
     const {opening,seed}=await prepareConfirmedHistoricalPayment();
     const options=await get("keeper","/payment-executions/payment-a/registration-options");

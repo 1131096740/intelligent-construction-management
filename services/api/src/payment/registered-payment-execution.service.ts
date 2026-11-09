@@ -57,14 +57,17 @@ export class RegisteredPaymentExecutionService {
   async result(actorUserId: string, idempotencyKey: string) {
     return this.prisma.$transaction(async tx => {
       if (!(await this.canRegister(tx, actorUserId))) throw new ForbiddenException("只有当前财务人员或综合部主管可以查询实际付款登记");
+      const unconfirmed = { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" } as const;
       const execution = await tx.paymentExecution.findUnique({ where: { idempotencyKey } });
-      if (!execution) return { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" };
+      if (!execution) return unconfirmed;
       if (!(await currentRegisteredPaymentDomain(tx,execution.paymentRequestId)).supportedDomain) throw new ForbiddenException("该付款记录不属于此办理入口，请经原业务权限入口核验");
+      const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
+      // New registrations have no original voucher and must carry the committed funding receipt.
+      if (execution.voucherFileId === null && !funding) return unconfirmed;
       const facts = await tx.operatingFact.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: execution.id } });
       const impacts = facts.length ? await tx.operatingImpactEntry.findMany({ where: { factId: { in: facts.map(fact=>fact.id) } } }) : [];
       const relationshipEntries = await tx.interEntityRelationshipEntry.findMany({where:{paymentExecutionId:execution.id,sourceType:"registered_payment_execution"}});
       const voucherFileId = await paymentExecutionVoucherFileId(tx,execution);
-      const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
       const canSupplementVoucher = Boolean(funding && execution.voucherFileId === null && voucherFileId === null);
       const intercompany = relationshipEntries.map(entry=>({entryId:entry.id,debtorCompanyId:entry.originalDebtorCompanyId,creditorCompanyId:entry.creditorCompanyId,amountCents:entry.amountCents.toString(),status:entry.status,voucherPending:voucherFileId===null}));
       const effects = facts.map(fact=>({ factId: fact.id, sourceVersion: fact.sourceVersion, recordedVoucherPending: fact.basisSnapshot && typeof fact.basisSnapshot === "object" && !Array.isArray(fact.basisSnapshot) ? fact.basisSnapshot.voucherPending === true : false, actualPayerKind: fact.actualPayerSubjectKind, actualPayerId: fact.actualPayerSubjectId,
