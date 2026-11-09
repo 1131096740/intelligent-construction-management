@@ -807,6 +807,76 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect((await get("keeper")).body.items[0]).toMatchObject({paidAmountCents:"4000",remainingAmountCents:"6000"});
     expect((await get("finance","/fund-accounts")).body.accounts.find((row:{scopeKey:string})=>row.scopeKey==="company:company-a").balanceYuan).toBe("60.0000");
   });
+  it("keeps the shared remainder current when a second authorized payer submits an older request version", async () => {
+    const opening = await prepareApprovedPayment();
+    const registration = "/payment-executions/payment-a/registrations";
+    const options = "/payment-executions/payment-a/registration-options";
+    const recorded = "/payment-executions/recorded-items";
+    const funds = "/fund-accounts";
+    const result = (key: string) => `/payment-executions/results/${key}`;
+    const directorKey = "472ac301-265b-466b-aefb-d6f06a9ced17";
+    const financeKey = "651c29b8-a769-488b-89ba-84a3fb5991b4";
+    const directorView = await get("keeper", options);
+    const financeView = await get("finance", options);
+    for (const view of [directorView, financeView]) {
+      expect(view).toMatchObject({ status: 200, body: {
+        canRegisterPayment: true, paidAmountCents: "0", remainingAmountCents: "10000"
+      } });
+    }
+    const originalVersion = financeView.body.expectedPaymentUpdatedAt;
+    expect(originalVersion).toEqual(expect.any(String));
+    expect(directorView.body.expectedPaymentUpdatedAt).toBe(originalVersion);
+
+    const command = (idempotencyKey: string, amountCents: string) => ({
+      idempotencyKey, amountCents, expectedPaymentUpdatedAt: originalVersion, paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id,
+      openingTreatment: "not_included", openingReason: "核对确认未含期初", openingEvidence: "合成实付登记凭据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents }],
+      confirmationPassword: "Synthetic15Password!"
+    });
+    const financeDraft = command(financeKey, "6000");
+    expect((await post("keeper", registration, command(directorKey, "4000"))).status).toBe(201);
+    const firstFunds = await get("finance", funds);
+    const firstRecords = await get("finance", recorded);
+    const firstAudit = await get("admin", "/audit-logs");
+    expect(firstRecords).toMatchObject({ status: 200, body: { total: 1 } });
+    expect(firstFunds.body.accounts).toContainEqual(expect.objectContaining({
+      scopeKey: "company:company-a", balanceYuan: "60.0000"
+    }));
+
+    const stale = await post("finance", registration, financeDraft);
+    expect(stale).toMatchObject({ status: 409, body: { message: "付款申请已变化，请刷新后重试" } });
+    expect(await get("finance", result(financeKey))).toMatchObject({ status: 200, body: { status: "unconfirmed" } });
+    expect(await get("finance", recorded)).toEqual(firstRecords);
+    expect(await get("finance", funds)).toEqual(firstFunds);
+    expect(await get("admin", "/audit-logs")).toEqual(firstAudit);
+    for (const actor of ["keeper", "finance"]) {
+      expect((await get(actor)).body.items).toContainEqual(expect.objectContaining({
+        paymentId: "payment-a", paidAmountCents: "4000", remainingAmountCents: "6000"
+      }));
+    }
+
+    const refreshed = await get("finance", options);
+    expect(refreshed).toMatchObject({ status: 200, body: { remainingAmountCents: "6000" } });
+    expect(refreshed.body.expectedPaymentUpdatedAt).not.toBe(originalVersion);
+    expect((await post("finance", registration, {
+      ...financeDraft, expectedPaymentUpdatedAt: refreshed.body.expectedPaymentUpdatedAt
+    })).status).toBe(201);
+    for (const actor of ["keeper", "finance"]) {
+      expect((await get(actor)).body.items).not.toContainEqual(expect.objectContaining({ paymentId: "payment-a" }));
+      expect((await get(actor, recorded)).body.items.map((item: { resultKey: string }) => item.resultKey).sort())
+        .toEqual([directorKey, financeKey]);
+    }
+    expect(await get("finance", result(directorKey))).toMatchObject({ status: 200, body: {
+      status: "recorded", execution: { paymentId: "payment-a", amountCents: "4000", voucherPending: true }
+    } });
+    expect(await get("keeper", result(financeKey))).toMatchObject({ status: 200, body: {
+      status: "recorded", execution: { paymentId: "payment-a", amountCents: "6000", voucherPending: true }
+    } });
+    expect((await get("finance", funds)).body.accounts).toContainEqual(expect.objectContaining({
+      scopeKey: "company:company-a", balanceYuan: "0.0000"
+    }));
+  });
   it("shows a later private voucher in the original detail to its project manager without granting registration rights", async () => {
     await prepareDetailPayment();
     database.setProjectMember("delegate","project-a","project_manager");

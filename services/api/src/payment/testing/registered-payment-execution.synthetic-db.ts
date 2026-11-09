@@ -33,6 +33,18 @@ export function createRegisteredPaymentSyntheticDb() {
   }});
   const originalQuery = database.prisma.$queryRaw;
   const rows = database.prisma as unknown as Record<string, {findFirst(args: {where: Record<string,unknown>}):Promise<Record<string,unknown>|null>; findMany(args:{where:Record<string,unknown>}):Promise<Record<string,unknown>[]>;create(args:{data:Record<string,unknown>}):Promise<Record<string,unknown>>}>;
+  type PaymentUpdate = { where: { id: string }; data: Record<string, unknown> };
+  const paymentRequests = rows.paymentRequest as typeof rows.paymentRequest & {
+    update(args: PaymentUpdate): Promise<Record<string, unknown>>;
+  };
+  const updatePayment = paymentRequests.update;
+  paymentRequests.update = async args => {
+    if (args.data.paidAmountCents === undefined || args.data.updatedAt !== undefined) return updatePayment(args);
+    const payment = await paymentRequests.findFirst({ where: args.where });
+    if (!(payment?.updatedAt instanceof Date)) throw new Error("Synthetic payment update requires an existing version");
+    // Model Prisma's @updatedAt for paid-amount changes with a deterministic version step.
+    return updatePayment({ ...args, data: { ...args.data, updatedAt: new Date(payment.updatedAt.getTime() + 1) } });
+  };
   // Simulate only persisted coordinates. This never proves PG trigger/locks.
   const createContract=rows.contract.create;
   Object.assign(rows.contract,{create:async({data}:{data:Record<string,unknown>})=>{
