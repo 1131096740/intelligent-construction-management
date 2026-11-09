@@ -28,11 +28,13 @@ const NATIVE_CASE_ADMISSION=NATIVE_CASE_MODULE?.validateTask16CaseAdmission;
 let nativeAttempted=false;
 const path = require("node:path");
 const { randomBytes, randomUUID } = require("node:crypto");
+const { types: { isProxy } } = require("node:util");
 
 const CASE_ID = "registered.null-cross-company.commit";
 const REQUIRED = ["verifySource", "startResource", "verifyOwnerTransport", "migrateBaseline", "installBaselineAccess", "installPreparedSql", "installRegisteredAccess", "connectRestrictedClients", "startApplication", "seedFixture", "runNormalCase"];
 const fault = code => Object.assign(new Error(code), { code });
 const need = (condition, code) => { if (!condition) throw fault(code); };
+const resourceMember = (handle, key) => handle && !isProxy(handle) ? Object.getOwnPropertyDescriptor(handle, key)?.value : undefined;
 
 function nativeAdapters() {
   return {
@@ -82,9 +84,9 @@ function validateOptions(options) {
   for (const key of ["expectedPacketSha256", "expectedInputsSha256"]) need(typeof options[key] === "string" && /^[a-f0-9]{64}$/u.test(options[key]), "TASK16_DRIVER_DIGEST");
 }
 
-function resourceReceipt(resource, failure) {
+function resourceReceipt(resource, getReceipt, failure) {
   let receipt;
-  try { receipt = resource?.getReceipt?.() ?? failure?.resourceReceipt; } catch { return { status: "receipt-unavailable", cleanup: { status: "unknown" } }; }
+  try { receipt = getReceipt?.call(resource) ?? failure?.resourceReceipt; } catch { return { status: "receipt-unavailable", cleanup: { status: "unknown" } }; }
   if (!receipt) return { status: "not-created", cleanup: { status: "not-needed" } };
   return { status: receipt.status, runId: receipt.runId, containerId: receipt.containerId, networkId: receipt.networkId,
     cleanup: { status: receipt.cleanup?.status, containerAbsent: receipt.cleanup?.containerAbsent === true,
@@ -152,10 +154,17 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
   Object.defineProperties(context,{nativeLoaderFacts:{value:EARLY_LOADER,writable:false},simulation:{value:simulation,writable:false}});
   const nativeReentry=!simulation&&nativeAttempted;
   if(!simulation)nativeAttempted=true;
-  let failed;
+  let failed, ownedResource, ownedResourceClose, ownedResourceReceipt, ownedResourceIdentity;
   let normalCaseCompleted = false;
+  function assertOwnedResource() {
+    if (!ownedResource) return;
+    need(context.resource === ownedResource &&
+      resourceMember(ownedResource, "close") === ownedResourceClose &&
+      resourceMember(ownedResource, "getReceipt") === ownedResourceReceipt, "TASK16_DRIVER_RESOURCE_IDENTITY");
+  }
   async function stage(name) {
     need(!controller.signal.aborted, "TASK16_DRIVER_ABORTED");
+    assertOwnedResource();
     const record = { name, status: "running" }; stages.push(record);
     try { const result = await adapters[name](context); record.status = "completed"; return result; }
     catch (error) { record.status = "failed"; throw error; }
@@ -206,11 +215,14 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     Object.defineProperty(context,'seedTransportWitness',{value:Object.freeze({fetch:seedTransport,simulation,qualified:simulation?typeof seedTransport==='function'&&!seedTransportIsBuiltin:EARLY_FETCH_QUALIFIED}),writable:false,configurable:false});
     if(nativeSeedSelected)NATIVE_SEED_ADMISSION(context);
     if(nativeCaseSelected){need(nativeSeedSelected&&nativeApplicationSelected,'TASK16_DRIVER_CASE_STAGE_LINEAGE');NATIVE_CASE_ADMISSION(context);}
-    context.resource = await stage("startResource");
-    need(typeof context.resource?.close === "function" && typeof context.resource?.getReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
-    const initialReceipt=structuredClone(context.resource.getReceipt());
-    const witness=Object.freeze(Object.fromEntries(["runId","sourceSha","containerId","networkId","daemonId","endpoint","imageId","databaseName","port"].map(key=>[key,initialReceipt[key]])));
-    Object.defineProperty(context,"resourceWitness",{value:witness,writable:false,configurable:false,enumerable:true});
+    ownedResource = await stage("startResource");
+    context.resource = ownedResource;
+    ownedResourceClose = resourceMember(ownedResource, "close");
+    ownedResourceReceipt = resourceMember(ownedResource, "getReceipt");
+    need(typeof ownedResourceClose === "function" && typeof ownedResourceReceipt === "function", "TASK16_DRIVER_RESOURCE_HANDLE");
+    const initialReceipt = structuredClone(ownedResourceReceipt.call(ownedResource));
+    ownedResourceIdentity = Object.freeze(Object.fromEntries(["runId","sourceSha","containerId","networkId","daemonId","endpoint","imageId","databaseName","port"].map(key=>[key,initialReceipt[key]])));
+    Object.defineProperty(context,"resourceWitness",{value:ownedResourceIdentity,writable:false,configurable:false,enumerable:true});
     context.ownerTransport = await stage("verifyOwnerTransport");
     if (context.ownerTransport?.ownerPrivateErasureOutcome === "ERASED") receipt.ownerPrivateErasureOutcome = "ERASED";
     if (context.ownerTransport?.ownerRestorationOutcome === "CORRECT_PRESENTATION_RESTORED") receipt.ownerRestorationOutcome = "CORRECT_PRESENTATION_RESTORED";
@@ -256,6 +268,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     const result = await stage("runNormalCase");
     need(!controller.signal.aborted, "TASK16_DRIVER_ABORTED");
     need(result?.caseId === CASE_ID && result.passed === true, "TASK16_DRIVER_NORMAL_CASE_FAILED");
+    assertOwnedResource();
     normalCaseCompleted = true;
   } catch (error) {
     failed = error;
@@ -283,15 +296,16 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     if(typeof NATIVE_SEED_RELEASE==='function'){try{NATIVE_SEED_RELEASE(context);}catch{receipt.cleanupFailures.push('fixture-private-handoff');}}
     options?.signal?.removeEventListener?.("abort", onCallerAbort);
     controller.abort();
-    for (const [name, handle] of [["application", context.application], ["clients", context.clients], ["resource", context.resource]]) {
+    for (const [name, handle] of [["application", context.application], ["clients", context.clients], ["resource", ownedResource]]) {
       if (!handle) continue;
-      try { need(typeof handle.close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await handle.close(); if(name==="application"&&receipt.appCleanupOutcome!=="UNKNOWN_DO_NOT_CONTINUE")receipt.appCleanupOutcome="APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; if(name==="clients")receipt.clientCleanupOutcome="CLIENT_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; }
+      try { const close = name === "resource" ? ownedResourceClose : handle.close; need(typeof close === "function", "TASK16_DRIVER_CLEANUP_HANDLE"); await close.call(handle); if(name==="application"&&receipt.appCleanupOutcome!=="UNKNOWN_DO_NOT_CONTINUE")receipt.appCleanupOutcome="APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; if(name==="clients")receipt.clientCleanupOutcome="CLIENT_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF"; }
       catch { receipt.cleanupFailures.push(name); if(name==="application")receipt.appCleanupOutcome="UNKNOWN_DO_NOT_CONTINUE"; if(name==="clients")receipt.clientCleanupOutcome="UNKNOWN_DO_NOT_CONTINUE"; }
     }
-    receipt.resource = resourceReceipt(context.resource, failed);
-    if (context.resource || failed?.resourceReceipt) {
+    receipt.resource = resourceReceipt(ownedResource, ownedResourceReceipt, failed);
+    if (ownedResource || failed?.resourceReceipt) {
       const final = receipt.resource;
-      if (final.status !== "closed" || final.cleanup.status !== "completed" || !["containerAbsent", "volumesAbsent", "networkAbsent"].every(key => final.cleanup[key] === true)) receipt.cleanupFailures.push("resource-proof");
+      if (final.status !== "closed" || final.cleanup.status !== "completed" || !["containerAbsent", "volumesAbsent", "networkAbsent"].every(key => final.cleanup[key] === true) ||
+        (ownedResourceIdentity && !["runId", "containerId", "networkId"].every(key => final[key] === ownedResourceIdentity[key]))) receipt.cleanupFailures.push("resource-proof");
     }
     for (const key of Object.keys(context.credentials)) context.credentials[key] = undefined;
   }

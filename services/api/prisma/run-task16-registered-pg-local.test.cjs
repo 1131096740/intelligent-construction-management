@@ -178,3 +178,51 @@ test("default public driver registers all source but SOURCE_ONLY stops before in
 });
 test('normal case outcome getter is captured once before its finite receipt relay',async()=>{const f=simulation();let reads=0;f.adapters.runNormalCase=async()=>{throw{code:'TASK16_CASE_FAILED_CLOSED',get normalCaseOutcome(){return ++reads===1?'UNKNOWN_DO_NOT_RETRY':'owned-private-token';}};};const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(reads,1);assert.equal(receipt.normalCaseOutcome,'UNKNOWN_DO_NOT_RETRY');assert.equal(JSON.stringify(receipt).includes('owned-private-token'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);});
 test('normal case outcome getter exceptions cannot expose raw SDK or transport errors',async()=>{const f=simulation();let reads=0;f.adapters.runNormalCase=async()=>{throw{code:'TASK16_CASE_FAILED_CLOSED',get normalCaseOutcome(){reads++;throw new Error('owned-private-password token SQL');}};};const receipt=await runTask16RegisteredPg(f.options,f.adapters);assert.equal(reads,1);assert.equal(receipt.normalCaseOutcome,undefined);assert.equal(JSON.stringify(receipt).includes('owned-private-password'),false);assert.deepEqual(f.calls.slice(-3),['close-app','close-clients','close-resource']);});
+
+test("an owner adapter cannot move cleanup to a substituted resource before migration", async () => {
+  const f = simulation();
+  f.adapters.verifyOwnerTransport = async context => {
+    f.calls.push("owner-transport");
+    context.resource = {
+      close: async () => { f.calls.push("close-substituted-resource"); },
+      getReceipt: () => { throw Error("substituted receipt must not be read"); }
+    };
+  };
+  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+  assert.equal(receipt.status, "FAILED_CLOSED");
+  assert.equal(receipt.failureCode, "TASK16_DRIVER_RESOURCE_IDENTITY");
+  assert.deepEqual(receipt.cleanupFailures, []);
+  assert.deepEqual(f.calls, ["source", "resource", "owner-transport", "close-resource"]);
+});
+
+test("changed methods on the original resource do not replace its captured cleanup", async () => {
+  const f = simulation();
+  f.adapters.verifyOwnerTransport = async context => {
+    f.calls.push("owner-transport");
+    context.resource.close = async () => { f.calls.push("close-substituted-resource"); };
+    Object.defineProperty(context.resource, "getReceipt", { get() { throw Error("receipt getter must not run"); } });
+  };
+  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+  assert.equal(receipt.status, "FAILED_CLOSED");
+  assert.equal(receipt.failureCode, "TASK16_DRIVER_RESOURCE_IDENTITY");
+  assert.deepEqual(receipt.cleanupFailures, []);
+  assert.deepEqual(f.calls, ["source", "resource", "owner-transport", "close-resource"]);
+});
+
+test("a foreign closure receipt is not proof that the original resource is absent", async () => {
+  const f = simulation();
+  f.adapters.startResource = async () => {
+    let closed = false;
+    return {
+      close: async () => { f.calls.push("close-resource"); closed = true; },
+      getReceipt: () => ({ status: closed ? "closed" : "active", runId: "owned-run",
+        containerId: closed ? "foreign-container" : "owned-container", networkId: "owned-network",
+        cleanup: { status: "completed", containerAbsent: true, volumesAbsent: true, networkAbsent: true } })
+    };
+  };
+  const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+  assert.equal(receipt.status, "FAILED_CLOSED");
+  assert.equal(receipt.failureCode, "TASK16_DRIVER_CLEANUP_FAILED");
+  assert.deepEqual(receipt.cleanupFailures, ["resource-proof"]);
+  assert.equal(f.calls.at(-1), "close-resource");
+});
