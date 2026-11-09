@@ -2378,7 +2378,8 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
         operatingConsequence: { protocolVersion: 1, mode: "projection_required", operatingLedgerEffectiveDateSnapshot: ledgerDate,
           expectedSource: { sourceType: "contract_version", sourceBusinessId: version.id, sourceVersion: version.versionNo, entryKind: "original",
             factIdempotencyKey: factKey, impactIdempotencyKey: impactKey, sourceImpactKey: "contract_commitment_reference",
-            impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountState: amount === null ? "unknown" : "known", amountYuan: amount, direction } } };
+            impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountState: amount === null ? "unknown" : "known",
+            amountYuan: amount, direction, sourceBasisSha256: authority.sourceBasisSha256 } } };
       const mapped = readGeneratedArchiveOperatingPolicy({ archive: { ...durable, authoritySnapshot: frozen }, contract: owner, version });
       if (mapped?.mode !== "outside_downstream_commitment") throw new Error("合成表外承诺未生成");
       const fact = mapped.fact.input, [impact] = fact.impacts;

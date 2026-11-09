@@ -191,7 +191,7 @@ export function readGeneratedArchiveOperatingPolicy({ archive, contract, version
   if (money.commitmentDeltaYuan !== net || money.direction !== direction || !isDeepStrictEqual(consequence.expectedSource, {
     sourceType: "contract_version", sourceBusinessId: version.id, sourceVersion: version.versionNo, entryKind: "original",
     factIdempotencyKey: factKey, impactIdempotencyKey: impactKey, sourceImpactKey: impactKind, impactKind,
-    numericProtocolVersion: 2, amountState, amountYuan: net, direction
+    numericProtocolVersion: 2, amountState, amountYuan: net, direction, sourceBasisSha256: authority.sourceBasisSha256
   })) reject();
 
   const counterpartyVersionId = typeof downstream.businessPartyVersionId === "string" ? downstream.businessPartyVersionId : null;

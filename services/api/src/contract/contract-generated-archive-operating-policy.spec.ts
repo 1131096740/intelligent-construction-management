@@ -57,7 +57,7 @@ function fixture(options: { relationship?: "outside" | "upward"; paper?: boolean
     sourceType: "contract_version", sourceBusinessId: ids.version, sourceVersion: 1, entryKind: "original",
     factIdempotencyKey: "contract_version:version", impactIdempotencyKey: "contract_version:version:commitment",
     sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference",
-    numericProtocolVersion: 2, amountState, amountYuan: net, direction: net === null ? "notice" : "increase"
+    numericProtocolVersion: 2, amountState, amountYuan: net, direction: net === null ? "notice" : "increase", sourceBasisSha256: "b".repeat(64)
   } : null;
   return {
     contract: { id: ids.contract, projectId: ids.project, code: "HT-001", ownerUserId: "contract-staff",
@@ -156,6 +156,9 @@ describe("生成审批合同的经营来源", () => {
     if (!changedIdentity.downstream) throw new Error("缺少表外测试夹具");
     changedIdentity.downstream.partySnapshotId = "another-row";
     expect(() => readGeneratedArchiveOperatingPolicy(changed)).toThrow("冻结经营依据不一致");
+    const substitutedDigest = fixture();
+    substitutedDigest.archive.authoritySnapshot.operatingConsequence.expectedSource!.sourceBasisSha256 = "d".repeat(64);
+    expect(() => readGeneratedArchiveOperatingPolicy(substitutedDigest)).toThrow("冻结经营依据不一致");
     const identical = fixture();
     identical.archive.authoritySnapshot.sourceBasis.subjects.parties[1].snapshot = { name: "施工企业", unifiedSocialCreditCode: "CREDIT-B" };
     identical.version.readinessSnapshot = JSON.parse(JSON.stringify(identical.archive.authoritySnapshot.sourceBasis.subjects));
