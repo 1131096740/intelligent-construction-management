@@ -40,7 +40,7 @@ const recipe = Prisma.join([
   Prisma.sql`('public.jg_guard_contract_direct_archive_native_nonce_v1()',
     '0c8b12eecce8c9fa02ed8f804084764999ec01b17b670e0e255f013211d6bc8b','anchor','private',FALSE,FALSE)`,
   Prisma.sql`('public.jg_contract_direct_archive_native_channel_v1()',
-    'aae763a3a2bd0868a2dc424e673943ed4e8d7e2fa4c1639cd89f8731463555fc','anchor','logins',TRUE,FALSE)`,
+    '21d5cf73c09bd4b46d1a953980efde6e18f53430c5c203695856ee15c867ad9a','anchor','logins',TRUE,FALSE)`,
   Prisma.sql`('public.jg_record_contract_direct_archive_generations_v1(text,uuid,text,text,text,text,integer,text,text,jsonb)',
     '7f383484f39d3e5b5be0cdb955a8a8910cc95dca5ee5d6d09242ce9ba94d08ed','anchor','executor',FALSE,FALSE)`
 ]);
@@ -82,6 +82,11 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
       AND NOT EXISTS(SELECT 1 FROM unnest(pending."fileCallerOids") AS file_actor(id)
         CROSS JOIN unnest(ARRAY[b."issuerSessionOid",b."issuerOwnerOid",b."runtimeSessionOid",b."executorOwnerOid"]) AS dedicated(id)
         WHERE file_actor.id<>b."anchorOwnerOid" AND pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER'))
+      AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles untrusted
+        CROSS JOIN unnest(ARRAY[b."issuerSessionOid",b."issuerOwnerOid",b."runtimeSessionOid",b."executorOwnerOid"]) AS dedicated(id)
+        WHERE NOT untrusted.rolsuper AND untrusted.oid<>b."anchorOwnerOid"
+          AND untrusted.oid NOT IN (b."issuerSessionOid",b."issuerOwnerOid",b."runtimeSessionOid",b."executorOwnerOid")
+          AND pg_catalog.pg_has_role(untrusted.oid,dedicated.id,'MEMBER'))
       AND 3=(SELECT count(*) FROM pg_catalog.aclexplode(cc.relacl) a WHERE a.grantor=cc.relowner
         AND a.grantee IN (b."ordinaryApplicationRoleOid",b."issuerOwnerOid",b."executorOwnerOid")
         AND a.privilege_type='SELECT' AND NOT a.is_grantable)

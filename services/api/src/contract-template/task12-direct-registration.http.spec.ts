@@ -131,6 +131,15 @@ describe("表外已签合同的正式登记", () => {
       expect(invocations).toEqual({ issued: 0, executed: 0 });
       expect(await (await lookup()).json()).toEqual({ status: "unknown" });
       await server.store.table("directArchiveUntrustedFileRoleInheritance").delete({ where: { id: membership.id } });
+      const unexpected = await server.store.table("directArchiveUnexpectedRoleInheritance").create({ data: {
+        loginRoleOid: "9922", reachableExecutorOwnerOid: "9912"
+      } });
+      const withUnexpectedWriteRole = await send();
+      expect({ status: withUnexpectedWriteRole.status, body: await withUnexpectedWriteRole.json() })
+        .toMatchObject({ status: 503 });
+      expect(invocations).toEqual({ issued: 0, executed: 0 });
+      expect(await (await lookup()).json()).toEqual({ status: "unknown" });
+      await server.store.table("directArchiveUnexpectedRoleInheritance").delete({ where: { id: unexpected.id } });
       const lastVersion = await server.store.table("syntheticPrivateFileVersion").findFirst({ where: { objectGeneration: "sealed-240" } });
       if (!lastVersion) throw new Error("合成存储固定版本缺失");
       await server.store.table("syntheticPrivateFileVersion").delete({ where: { id: lastVersion.id } });

@@ -48,6 +48,11 @@ BEGIN
     AND NOT EXISTS(SELECT 1 FROM unnest(p."fileCallerOids") AS file_actor(id)
       CROSS JOIN unnest(ARRAY[i."issuerSessionOid",i."issuerOwnerOid",i."runtimeSessionOid",i."executorOwnerOid"]) AS dedicated(id)
       WHERE file_actor.id<>i."anchorOwnerOid" AND pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER'))
+    AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles untrusted
+      CROSS JOIN unnest(ARRAY[i."issuerSessionOid",i."issuerOwnerOid",i."runtimeSessionOid",i."executorOwnerOid"]) AS dedicated(id)
+      WHERE NOT untrusted.rolsuper AND untrusted.oid<>i."anchorOwnerOid"
+        AND untrusted.oid NOT IN (i."issuerSessionOid",i."issuerOwnerOid",i."runtimeSessionOid",i."executorOwnerOid")
+        AND pg_catalog.pg_has_role(untrusted.oid,dedicated.id,'MEMBER'))
     AND pg_catalog.current_setting('session_replication_role')='origin';
   RETURN nonce;
 END;
@@ -111,6 +116,9 @@ BEGIN
     OR anchor_owner=ANY(role_ids) OR anchor."applicationRoleOid"=ANY(role_ids) OR pending."fileCallerOids"&&role_ids
     OR EXISTS(SELECT 1 FROM unnest(pending."fileCallerOids") AS file_actor(id) CROSS JOIN unnest(role_ids) AS dedicated(id)
       WHERE file_actor.id<>anchor_owner AND pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER'))
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_roles untrusted CROSS JOIN unnest(role_ids) AS dedicated(id)
+      WHERE NOT untrusted.rolsuper AND untrusted.oid<>anchor_owner AND untrusted.oid<>ALL(role_ids)
+        AND pg_catalog.pg_has_role(untrusted.oid,dedicated.id,'MEMBER'))
     OR NOT pg_catalog.pg_has_role(anchor_owner,role_ids[2],'USAGE')
     OR NOT pg_catalog.pg_has_role(anchor_owner,role_ids[4],'USAGE')
     OR EXISTS(SELECT 1 FROM pg_catalog.pg_roles r WHERE r.oid=ANY(role_ids) AND (

@@ -459,6 +459,8 @@ export class TemplateSyntheticStore {
       if (text.startsWith("/* contract_direct_native_admission_v1 */ WITH recipe")) {
         const roleInheritance = await this.table("directArchiveUntrustedFileRoleInheritance").count();
         if (roleInheritance && text.includes("pg_catalog.pg_has_role(file_actor.id,dedicated.id,'MEMBER')")) return [];
+        const unexpectedRole = await this.table("directArchiveUnexpectedRoleInheritance").count();
+        if (unexpectedRole && text.includes("pg_catalog.pg_has_role(untrusted.oid,dedicated.id,'MEMBER')")) return [];
         return (await this.table("directArchiveNativeAdmission").findMany()).map(row => directCatalogFixtureRow(row.snapshot));
       }
       if (text.startsWith('/* contract_direct_archive_generation_catalog_v1 */ WITH')) {
