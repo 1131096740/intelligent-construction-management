@@ -1,6 +1,4 @@
-import type { Contract, ContractArchiveFile, ContractVersion } from "@prisma/client";
-import { readGeneratedArchiveOperatingPolicy } from "../contract/contract-generated-archive-operating-policy";
-import { normalizeOperatingSourceSnapshot } from "../operating-ledger/operating-money-protocol";
+import { ContractOperatingSourceAdapter } from "../contract/contract-operating-source.adapter";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { Prisma } from "@prisma/client";
 import { ContractEconomicReviewService } from "../contract-ledger/contract-economic-review.service";
@@ -425,10 +423,12 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
   });
 
   it.each([
-    ["party_a", "party_b", false],
-    ["party_b", "party_a", true]
-  ] as const)("表外生成审批冻结当前项目施工企业 %s 和下游 %s，当单录入=%s", async (enterpriseRole, downstreamRole, inlineDownstream) => {
-    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: !inlineDownstream });
+    ["party_a", "party_b", false, true],
+    ["party_b", "party_a", true, false],
+    ["party_b", "party_a", true, true]
+  ] as const)("表外生成审批冻结当前项目施工企业 %s 和下游 %s，当单录入=%s，归档存储可用=%s",
+  async (enterpriseRole, downstreamRole, inlineDownstream, preparationEnabled) => {
+    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: preparationEnabled });
     try {
       const layout = await confirmedBodyLayout(server);
       const draft = await createTask09Draft(server, "capped", "material_purchase", "outside");
@@ -577,7 +577,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         archiveSource: { relationship: "outside", generatedDocumentId: document.id, signingIdentity: {
           relationship: "outside", enterprise: { assignmentId, businessPartyVersionId: enterpriseVersionId, roleKey: enterpriseRole },
           downstream: { roleKey: downstreamRole, businessPartyVersionId: inlineDownstream ? null : downstreamVersionId }
-        } }, expectedRoundCount: 1, preparationEnabled: !inlineDownstream });
+        } }, expectedRoundCount: 1, preparationEnabled });
     } finally { await server.app.close(); }
   });
 
@@ -1493,10 +1493,16 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
   const nativeQuery = store.$queryRaw;
   let nativeInstallationQualified = true;
   let nativeUpwardInstalled = false;
+  let nativeOutsideInstalled = false;
+  const priorSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+  const restoreWriteSecret = () => {
+    if (priorSecret === undefined) delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    else process.env.OPERATING_LEDGER_DB_WRITE_SECRET = priorSecret;
+  };
   store.$queryRaw = async (raw, ...parameters) => {
     const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
     if (query.strings.join("?").trim().startsWith("/* contract_generated_archive_write_catalog_v1 */")) {
-      return [{ ...installation, qualified: nativeInstallationQualified, upwardOperatingQualified: nativeUpwardInstalled }];
+      return [{ ...installation, qualified: nativeInstallationQualified, upwardOperatingQualified: nativeUpwardInstalled, outsideWriteQualified: nativeOutsideInstalled }];
     }
     return nativeQuery(raw, ...parameters);
   };
@@ -1645,8 +1651,10 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
       expect((await confirmSeal(director)).status).toBe(503);
       await assertPending();
     } finally { await store.approvalInstance.delete({ where: { id: duplicateRound.id } }); }
-    if (archiveSource.relationship === "upward") {
-      nativeUpwardInstalled = true;
+    if (archiveSource.relationship === "upward" || preparationEnabled) {
+      nativeUpwardInstalled = archiveSource.relationship === "upward";
+      nativeOutsideInstalled = archiveSource.relationship === "outside";
+      if (nativeOutsideInstalled) process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "task12-synthetic-write-port";
       await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: new Date("2026-01-01") } });
     }
     witness.mockClear();
@@ -1678,8 +1686,10 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
         v2Lifecycle: { status: "unavailable", webWriteReleased: false, archiveAction: { enabled: false } }
       } });
     } finally { nativeInstallationQualified = true; }
-    if (archiveSource.relationship === "upward") {
+    if (nativeUpwardInstalled || nativeOutsideInstalled) {
       nativeUpwardInstalled = false;
+      nativeOutsideInstalled = false;
+      restoreWriteSecret();
       await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: null } });
     }
 
@@ -1731,6 +1741,7 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
       await exerciseGeneratedArchiveWriter(server, draft, sealInput, installation, archiveSource.relationship);
     }
   } finally {
+    restoreWriteSecret();
     store.$queryRaw = nativeQuery;
     witness.mockRestore();
   }
@@ -2129,6 +2140,10 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   let writerAvailable = true;
   let writerQualified = true;
   let upwardOperatingInstalled = false;
+  let outsideOperatingInstalled = false;
+  let rejectImpactWrite = false;
+  const priorSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+  const syntheticSecret = "task12-synthetic-write-port";
   let nativeBindingMatches = true;
   const ledgerDate = "2026-01-01";
   const catalog = { relationOid: "45001", anchorOid: "43001", ownerOid: "9001", databaseOid: "13000", roleOid: "7001",
@@ -2138,9 +2153,9 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
   let completionReads = 0;
   store.$queryRaw = async (raw, ...parameters) => {
     const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
-    const sql = query.strings.join("?").trim();
+    const sql = query.strings.join("?").replace(/\s+/gu, " ").trim();
     if (sql.startsWith("/* contract_generated_archive_write_catalog_v1 */")) {
-      return writerAvailable ? [{ ...installation, qualified: writerQualified, upwardOperatingQualified: upwardOperatingInstalled }] : [];
+      return writerAvailable ? [{ ...installation, qualified: writerQualified, upwardOperatingQualified: upwardOperatingInstalled, outsideWriteQualified: outsideOperatingInstalled }] : [];
     }
     if (sql.startsWith("/* contract_generated_upward_operating_activation_v1 */")) {
       const archive = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: String(query.values.at(-1)) } });
@@ -2152,6 +2167,46 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
         contractVersionId: version.id, archiveId: archive.id, requestSha256: archive.requestSha256, authoritySha256: archive.authoritySha256,
         sourceBasisSha256: nativeBindingMatches ? frozen.sourceBasisSha256 : "9".repeat(64), approvalInstanceId: archive.approvalInstanceId, sealTaskId: archive.sealTaskId,
         archivedAt: (archive.confirmedAt as Date).toISOString(), operatingLedgerEffectiveDateSnapshot: ledgerDate }] : [];
+    }
+    if (sql.startsWith('SELECT * FROM public."appendOperatingFactThroughService"(')) {
+      expect(outsideOperatingInstalled).toBe(true);
+      expect(query.values.slice(-2)).toEqual(["staff", syntheticSecret]);
+      const fields = ["id", "projectId", "sourceType", "sourceBusinessId", "sourceVersion", "sourceBusinessCode", "occurredAt",
+        "confirmedAt", "affiliateAssignmentId", "affiliateBusinessPartyVersionId", "affiliateNameSnapshot", "affiliateCreditCodeSnapshot",
+        "operatingLedgerEffectiveDateSnapshot", "isBeforeOperatingLedgerEffectiveDate", "historicalTakeoverBatchId", "factKind",
+        "operatingLevel", "evidenceLevel", "amountCents", "currencyCode", "direction", "debtorSubjectKind", "debtorSubjectId",
+        "creditorSubjectKind", "creditorSubjectId", "approvedPayerSubjectKind", "approvedPayerSubjectId", "actualPayerSubjectKind",
+        "actualPayerSubjectId", "payeeSubjectKind", "payeeSubjectId", "costBearingCompanySubjectKind", "costBearingCompanySubjectId",
+        "subjectSnapshot", "sourceSnapshot", "basisSnapshot", "entryKind", "adjustsFactId", "idempotencyKey", "confirmedByUserId",
+        "status", "paymentExecutionId", "fundExecutionId", "fundExecutionCaseId", "numericProtocolVersion", "amountYuan"];
+      const data = Object.fromEntries(fields.map((key, index) => [key, query.values[index]]));
+      expect(data).toMatchObject({ ...source, projectId: draft.projectId, numericProtocolVersion: 2, amountCents: null,
+        factKind: "downstream_contract", debtorSubjectKind: "construction_enterprise", creditorSubjectKind: "downstream_counterparty" });
+      const stored = await store.contractArchiveFile.findFirst({ where: archiveWhere });
+      expect(stored).toBeTruthy();
+      expect(await pinStore.count({ where: { archiveId: stored?.id } })).toBe(fileIds.length);
+      expect(await store.contractVersion.findUnique({ where: { id: draft.version.id } })).toMatchObject({ status: "effective" });
+      return [await server.store.table("operatingFact").create({ data: { ...data, id: data.id ?? randomUUID(), recordedByUserId: "staff",
+        subjectSnapshot: JSON.parse(String(data.subjectSnapshot)), sourceSnapshot: JSON.parse(String(data.sourceSnapshot)),
+        basisSnapshot: JSON.parse(String(data.basisSnapshot)), amountYuan: data.amountYuan == null ? null : new Prisma.Decimal(String(data.amountYuan))
+      } })];
+    }
+    if (sql.startsWith('SELECT * FROM public."appendOperatingImpactThroughService"(')) {
+      expect(outsideOperatingInstalled).toBe(true);
+      expect(query.values.slice(-2)).toEqual(["staff", syntheticSecret]);
+      const fields = ["id", "factId", "projectId", "sourceType", "sourceBusinessId", "sourceImpactKey", "idempotencyKey",
+        "impactKind", "amountCents", "direction", "subjectRole", "subjectKind", "subjectId", "costCategoryCode", "fundPurpose",
+        "description", "impactSnapshot", "paymentExecutionId", "fundExecutionId", "fundExecutionCaseId", "executionAllocationLineId",
+        "numericProtocolVersion", "amountYuan"];
+      const data = Object.fromEntries(fields.map((key, index) => [key, query.values[index]]));
+      expect(data).toMatchObject({ ...source, projectId: draft.projectId, numericProtocolVersion: 2, amountCents: null,
+        impactKind: "contract_commitment_reference", sourceImpactKey: "contract_commitment_reference", subjectRole: "debtor",
+        subjectKind: "construction_enterprise" });
+      if (rejectImpactWrite) throw new Error("合成承诺影响写入失败");
+      return [await server.store.table("operatingImpactEntry").create({ data: { ...data, id: data.id ?? randomUUID(),
+        impactSnapshot: JSON.parse(String(data.impactSnapshot)), amountYuan: data.amountYuan == null ? null : new Prisma.Decimal(String(data.amountYuan)),
+        createdAt: new Date()
+      } })];
     }
     if (sql.startsWith("/* contract_generated_archive_original_catalog_v1 */")) return [catalog];
     if (sql.startsWith("/* contract_generated_archive_original_read_v1 */")) {
@@ -2198,10 +2253,18 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     const pins = await pinStore.findMany({ where: { archiveId }, orderBy: { displayOrder: "asc" } });
     expect(activated.status).toBe("effective");
     expect(await store.auditLog.count({ where: { businessId: activated.id, action: "contract.archive.complete" } })).toBe(1);
+    const fact = outsideOperatingInstalled ? await store.operatingFact.findFirst({ where: source }) : null;
+    const impact = outsideOperatingInstalled ? await store.operatingImpactEntry.findFirst({ where: source }) : null;
+    if (outsideOperatingInstalled) {
+      expect(fact?.id).toBeTruthy();
+      expect(impact?.factId).toBe(fact?.id);
+    }
+    const operatingReceipt = fact && impact
+      ? { policy: "outside_downstream_commitment", operatingLedgerEffectiveDateSnapshot: ledgerDate, operatingFactId: fact.id, operatingImpactId: impact.id }
+      : upwardOperatingInstalled ? { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate }
+        : { policy: "operating_ledger_not_enabled" };
     await completionStore.create({ data: { archiveId, completion: {
-      protocolVersion: 1,
-      ...(upwardOperatingInstalled ? { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate }
-        : { policy: "operating_ledger_not_enabled" }),
+      protocolVersion: 1, ...operatingReceipt,
       archiveId, projectId: draft.projectId, contractId: draft.contract.id, contractVersionId: activated.id,
       approvalInstanceId: persisted.approvalInstanceId, sealTaskId: persisted.sealTaskId,
       uploaderUserId: persisted.uploadedByUserId, idempotencyKey: persisted.idempotencyKey,
@@ -2303,13 +2366,30 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
       await expectRolledBack();
       nativeBindingMatches = true;
     }
+    if (relationship === "outside") {
+      outsideOperatingInstalled = true;
+      await store.project.update({ where: project, data: { operatingLedgerEffectiveDate: new Date(ledgerDate) } });
+      await store.contractVersion.update({ where: { id: draft.version.id }, data: {
+        supersedesVersionId: null, companyEntityIdSnapshot: null, companyEntityVersionId: null
+      } });
+      await store.contract.update({ where: { id: draft.contract.id }, data: { companyEntityId: null } });
+      delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+      expect((await archive()).status).toBe(503);
+      await expectRolledBack();
+      process.env.OPERATING_LEDGER_DB_WRITE_SECRET = syntheticSecret;
+      rejectImpactWrite = true;
+      const failedImpact = await archive();
+      expect({ status: failedImpact.status, body: await failedImpact.json() }).toMatchObject({ status: 500 });
+      await expectRolledBack();
+      rejectImpactWrite = false;
+    }
     server.store.archiveCommitOutcome = "throw_after_persisting";
     const recovered = await archive();
     const result = await recovered.json() as { archiveId: string };
     expect({ status: recovered.status, result }).toEqual({ status: 201, result: { archiveId: expect.any(String),
       contractVersionId: draft.version.id, status: "effective", fileIds } });
     expect(server.store.archiveCommitSignalLosses).toBe(1);
-    expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
+    expect(await counts()).toEqual([1, 2, 2, 1, 1, Number(outsideOperatingInstalled), Number(outsideOperatingInstalled)]);
     if (relationship === "upward") expect(await completionStore.findUnique({ where: { archiveId: result.archiveId } })).toMatchObject({
       completion: { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate }
     });
@@ -2353,80 +2433,40 @@ async function exerciseGeneratedArchiveWriter(server: Awaited<ReturnType<typeof 
     });
     expect(await (await archive()).json()).toEqual(result);
     expect((await archive({ ...input, fileIds: [...fileIds].reverse() })).status).toBe(409);
-    expect(append).toHaveBeenCalledTimes(relationship === "upward" ? 5 : 4);
+    expect(append).toHaveBeenCalledTimes(5);
     expect(appendCompletion).toHaveBeenCalledTimes(3);
-    expect(await counts()).toEqual([1, 2, 2, 1, 1, 0, 0]);
+    expect(await counts()).toEqual([1, 2, 2, 1, 1, Number(outsideOperatingInstalled), Number(outsideOperatingInstalled)]);
     expect(await store.contractGeneratedDocument.findMany({ where: archiveWhere })).toEqual(generated);
     expect(server.store.pinnedPrivateStorageReads).toBe(pinnedReads);
     expect(server.store.privateStorageReads).toBe(ordinaryReads);
     expect(server.store.privateStorageWrites).toBe(storageWrites);
     if (relationship === "outside") {
-      // Model the result of the separately guarded outside SQL successor. The HTTP test never enables its writer.
-      const version = { ...await store.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } }),
-        supersedesVersionId: null, companyEntityIdSnapshot: null, companyEntityVersionId: null } as unknown as ContractVersion;
-      const owner = { ...currentContract, companyEntityId: null } as unknown as Contract;
-      await store.contract.update({ where: { id: owner.id }, data: { companyEntityId: null } });
-      await store.contractVersion.update({ where: { id: version.id }, data: {
-        supersedesVersionId: null, companyEntityIdSnapshot: null, companyEntityVersionId: null
+      const fact = await store.operatingFact.findFirst({ where: source });
+      const impact = await store.operatingImpactEntry.findFirst({ where: source });
+      const adapter = new ContractOperatingSourceAdapter();
+      const sourceSnapshot = await adapter.readSourceSnapshot(store as unknown as Prisma.TransactionClient, {
+        projectId: draft.projectId, ...source
+      });
+      if (!sourceSnapshot) throw new Error("已归档表外承诺缺少重放来源");
+      expect(adapter.toOperatingFactInput(sourceSnapshot)).toMatchObject({ entryKind: "original", input: {
+        idempotencyKey: fact?.idempotencyKey, subjects: { creditor: { kind: "downstream_counterparty", id: fact?.creditorSubjectId } },
+        impacts: [{ impactKind: "contract_commitment_reference", idempotencyKey: impact?.idempotencyKey,
+          description: "表外原合同承诺，不形成成本或应付" }]
       } });
-      const durable = await store.contractArchiveFile.findUniqueOrThrow({ where: { id: result.archiveId } }) as unknown as ContractArchiveFile;
-      const authority = durable.authoritySnapshot as Prisma.JsonObject;
-      const basis = authority.sourceBasis as Prisma.JsonObject;
-      const amount = version.amountYuan?.toFixed(4) ?? null;
-      const direction = amount === null ? "notice" : "increase";
-      const factKey = `contract_version:${version.id}`, impactKey = `${factKey}:commitment`;
-      const frozen = { ...authority, sourceBasis: { ...basis, money: { ...basis.money as Prisma.JsonObject,
-        economicExcludedYuan: "0.0000", economicReviewSources: [], commitmentDeltaYuan: amount, direction } },
-        operatingConsequence: { protocolVersion: 1, mode: "projection_required", operatingLedgerEffectiveDateSnapshot: ledgerDate,
-          expectedSource: { sourceType: "contract_version", sourceBusinessId: version.id, sourceVersion: version.versionNo, entryKind: "original",
-            factIdempotencyKey: factKey, impactIdempotencyKey: impactKey, sourceImpactKey: "contract_commitment_reference",
-            impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountState: amount === null ? "unknown" : "known",
-            amountYuan: amount, direction, sourceBasisSha256: authority.sourceBasisSha256 } } };
-      const mapped = readGeneratedArchiveOperatingPolicy({ archive: { ...durable, authoritySnapshot: frozen }, contract: owner, version });
-      if (mapped?.mode !== "outside_downstream_commitment") throw new Error("合成表外承诺未生成");
-      const fact = mapped.fact.input, [impact] = fact.impacts;
-      const factId = randomUUID(), impactId = randomUUID();
-      const { affiliate } = fact.sourceSnapshot;
-      const affiliateBasis = affiliate as Prisma.JsonObject;
-      const debtor = { ...fact.subjects.debtor, businessPartyId: affiliateBasis.businessPartyId,
-        businessPartyVersionId: fact.affiliateBusinessPartyVersionId, name: fact.affiliateNameSnapshot, creditCode: fact.affiliateCreditCodeSnapshot ?? null };
-      const creditor = fact.subjects.creditor;
-      expect(debtor).toMatchObject({ kind: "construction_enterprise", id: version.affiliateBusinessPartyVersionId });
-      expect(creditor).toMatchObject({ kind: "downstream_counterparty", id: expect.any(String) });
-      await store.contractArchiveFile.delete({ where: { id: result.archiveId } });
-      await server.store.table("contractArchiveFile").createMany({ data: [{ ...durable, authoritySnapshot: frozen }] });
-      const originalMarker = await completionStore.findUnique({ where: { archiveId: result.archiveId } });
-      await completionStore.update({ where: { archiveId: result.archiveId }, data: { completion: {
-        ...originalMarker?.completion as Prisma.JsonObject, policy: "outside_downstream_commitment",
-        operatingLedgerEffectiveDateSnapshot: ledgerDate, operatingFactId: factId, operatingImpactId: impactId
-      } } });
+      expect(await completionStore.findUnique({ where: { archiveId: result.archiveId } })).toMatchObject({ completion: {
+        policy: "outside_downstream_commitment", operatingLedgerEffectiveDateSnapshot: ledgerDate,
+        operatingFactId: fact?.id, operatingImpactId: impact?.id
+      } });
+      await server.store.table("operatingFact").update({ where: { id: fact?.id }, data: { creditorSubjectId: randomUUID() } });
       expect((await lookup()).status).toBe(503);
-      await server.store.table("operatingFact").create({ data: { ...fact, id: factId, status: "confirmed", entryKind: "original",
-        recordedByUserId: fact.confirmedByUserId, amountYuan: amount === null ? null : new Prisma.Decimal(amount),
-        operatingLedgerEffectiveDateSnapshot: new Date(ledgerDate), sourceSnapshot: normalizeOperatingSourceSnapshot(fact),
-        subjectSnapshot: { debtor, creditor }, debtorSubjectKind: debtor.kind, debtorSubjectId: debtor.id,
-        creditorSubjectKind: creditor?.kind, creditorSubjectId: creditor?.id } });
+      await server.store.table("operatingFact").update({ where: { id: fact?.id }, data: { creditorSubjectId: fact?.creditorSubjectId } });
+      await server.store.table("operatingImpactEntry").update({ where: { id: impact?.id }, data: { impactKind: "project_cost" } });
       expect((await lookup()).status).toBe(503);
-      await server.store.table("operatingImpactEntry").create({ data: { ...impact, ...source, id: impactId, factId, projectId: owner.projectId,
-        amountYuan: amount === null ? null : new Prisma.Decimal(amount), subjectKind: debtor.kind, subjectId: debtor.id,
-        impactSnapshot: { numericFacts: { protocolVersion: 2, amountState: amount === null ? "unknown" : "known", amountYuan: amount },
-          subjectSnapshot: debtor } } });
-      markerQualified = false;
-      expect((await lookup()).status).toBe(503);
-      markerQualified = true;
-      const outsideLookup = await lookup();
-      expect({ status: outsideLookup.status, body: await outsideLookup.json() }).toMatchObject({ status: 200, body: { status: "archived", result } });
-      expect(await (await archive()).json()).toEqual(result);
-      expect(await counts()).toEqual([1, 2, 2, 1, 1, 1, 1]);
-      await server.store.table("operatingFact").update({ where: { id: factId }, data: { creditorSubjectId: randomUUID() } });
-      expect((await lookup()).status).toBe(503);
-      await server.store.table("operatingFact").update({ where: { id: factId }, data: { creditorSubjectId: creditor?.id } });
-      await server.store.table("operatingImpactEntry").update({ where: { id: impactId }, data: { impactKind: "project_cost" } });
-      expect((await lookup()).status).toBe(503);
-      expect(append).toHaveBeenCalledTimes(4);
     }
   } finally {
     server.store.archiveCommitOutcome = "persist";
+    if (priorSecret === undefined) delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    else process.env.OPERATING_LEDGER_DB_WRITE_SECRET = priorSecret;
     store.$queryRaw = nativeQuery;
     store.$executeRaw = nativeExecute;
   }

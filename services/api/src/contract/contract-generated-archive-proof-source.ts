@@ -15,9 +15,15 @@ async function readScope(tx: Prisma.TransactionClient, candidate: GeneratedArchi
   const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
   if (!contract || contract.voidedAt) return null;
   const project = await tx.project.findUnique({ where: { id: contract.projectId } });
-  if (!project?.isActive || (project.operatingLedgerEffectiveDate !== null &&
-    (installation.upwardOperatingQualified !== true || candidate.relationship !== "upward"
-      || version.signingSubjectType !== "upward"))) return null;
+  if (!project?.isActive) return null;
+  if (project.operatingLedgerEffectiveDate !== null) {
+    const upward = installation.upwardOperatingQualified === true && candidate.relationship === "upward"
+      && version.signingSubjectType === "upward";
+    const outside = installation.outsideWriteQualified === true && candidate.relationship === "outside"
+      && version.signingSubjectType === "affiliate"
+      && (version.status === "effective" || Boolean(process.env.OPERATING_LEDGER_DB_WRITE_SECRET?.trim()));
+    if (!upward && !outside) return null;
+  }
 
   const rounds = await tx.approvalInstance.findMany({ where: { businessId: version.id, businessType: "contract_version",
     flowType: "contract.approve", status: { in: ["in_progress", "approved"] } } });

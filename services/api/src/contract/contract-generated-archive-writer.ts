@@ -1,11 +1,14 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import { ConflictException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractArchiveEvidenceFile, type ContractVersion } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import type { AuditService } from "../audit/audit.service";
 import type { ContractVersionActivationService } from "./contract-version-activation.service";
-import type { GeneratedArchiveOperatingReceipt, GeneratedArchiveRequestBinding, GeneratedArchiveWriterAuthority } from "./contract-generated-archive-installation";
+import { excludedAmountYuan, latestEconomicReviews, reviewAppliesToVersion } from "../contract-ledger/contract-economic-coverage";
+import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
+import { readGeneratedOutsideCommitment } from "./contract-generated-outside-commitment";
+import type { GeneratedArchiveOperatingReceipt, GeneratedArchivePinPolicy, GeneratedArchiveRequestBinding, GeneratedArchiveWriterAuthority } from "./contract-generated-archive-installation";
 import { assertContractV2ArchivePersistentProof, generatedArchiveCompletion } from "./contract-v2-archive-persistent-proof";
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -32,27 +35,36 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
   if (!actingRoleKey || version.id !== scope.contractVersionId || owner.id !== scope.contractId
     || owner.projectId !== scope.projectId || owner.ownerUserId !== actor || scope.handlerUserId !== actor
     || writer.transaction !== tx || !isDeepStrictEqual(writer.binding, binding)) unavailable();
-  async function readOperatingReceipt(): Promise<GeneratedArchiveOperatingReceipt> {
+  async function readOperatingPolicy(beforeActivation: boolean): Promise<GeneratedArchivePinPolicy> {
     const project = await tx.project.findUnique({ where: { id: scope.projectId }, select: { isActive: true, operatingLedgerEffectiveDate: true } });
     if (!project?.isActive) unavailable();
     const ledgerDate = project.operatingLedgerEffectiveDate;
-    if (ledgerDate !== null && (scope.relationship !== "upward" || version.signingSubjectType !== "upward"
-      || writer.installation.upwardOperatingQualified !== true)) unavailable();
+    const outside = ledgerDate !== null && scope.relationship === "outside" && version.signingSubjectType === "affiliate"
+      && writer.installation.outsideWriteQualified === true;
+    const upward = ledgerDate !== null && scope.relationship === "upward" && version.signingSubjectType === "upward"
+      && writer.installation.upwardOperatingQualified === true;
+    if (ledgerDate !== null && !outside && !upward) unavailable();
     const source = { sourceType: "contract_version", sourceBusinessId: scope.contractVersionId,
       ...(ledgerDate === null ? { projectId: scope.projectId } : {}) };
-    if (await tx.operatingFact.count({ where: source }) || await tx.operatingImpactEntry.count({ where: source })) unavailable();
-    return ledgerDate === null ? { policy: "operating_ledger_not_enabled" }
-      : { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot: ledgerDate.toISOString().slice(0, 10) };
+    if ((!outside || beforeActivation) && (await tx.operatingFact.count({ where: source })
+      || await tx.operatingImpactEntry.count({ where: source }))) unavailable();
+    if (ledgerDate === null) return { policy: "operating_ledger_not_enabled" };
+    const operatingLedgerEffectiveDateSnapshot = ledgerDate.toISOString().slice(0, 10);
+    return outside ? { policy: "outside_downstream_commitment", operatingLedgerEffectiveDateSnapshot }
+      : { policy: "upward_internal_reference", operatingLedgerEffectiveDateSnapshot };
   }
-  const operatingReceipt = await readOperatingReceipt();
-  const operatingConsequence = operatingReceipt.policy === "upward_internal_reference"
-    ? { protocolVersion: 1, mode: "internal_reference_only",
-      operatingLedgerEffectiveDateSnapshot: operatingReceipt.operatingLedgerEffectiveDateSnapshot, expectedSource: null }
-    : { protocolVersion: 1, mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null, expectedSource: null };
+  const operatingPolicy = await readOperatingPolicy(true);
+  const outside = operatingPolicy.policy === "outside_downstream_commitment";
+  const amount = version.amountYuan?.toFixed(4) ?? null;
+  const commitment = outside ? await freezeOutsideMoney(tx, owner, version, archivedAt, amount) : null;
+  const operatingConsequence = operatingPolicy.policy === "operating_ledger_not_enabled"
+    ? { protocolVersion: 1, mode: "not_applicable", operatingLedgerEffectiveDateSnapshot: null, expectedSource: null }
+    : { protocolVersion: 1, operatingLedgerEffectiveDateSnapshot: operatingPolicy.operatingLedgerEffectiveDateSnapshot,
+      ...(commitment ? { mode: "projection_required", expectedSource: commitment.expectedSource }
+        : { mode: "internal_reference_only", expectedSource: null }) };
 
   const manifest = binding.originals.map(({ fileId, displayOrder, mimeType, sizeBytes, contentSha256 }) =>
     ({ fileId, displayOrder, mimeType, sizeBytes, contentSha256 }));
-  const amount = version.amountYuan?.toFixed(4) ?? null;
   const sourceBasis = {
     basisProtocolVersion: 1,
     sourceLocator: { projectId: scope.projectId, contractId: scope.contractId, contractVersionId: scope.contractVersionId,
@@ -65,9 +77,9 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
       approvalInstanceId: scope.approvalInstanceId, sealTaskId: scope.sealTaskId },
     businessTime: { archivedAt: archivedAt.toISOString(), businessDay: chinaDateOnly(archivedAt), handlerUserId: actor },
     fileManifest: manifest,
-    // Preserve the actual contract facts. No commitment or operating entries are derived in this branch.
     money: { numericProtocolVersion: 2, amountCents: null, amountYuan: amount, amountState: amount === null ? "unknown" : "known",
-      amountLimitType: version.amountLimitType, pricingNature: version.pricingNature, amountSource: version.amountSource },
+      amountLimitType: version.amountLimitType, pricingNature: version.pricingNature, amountSource: version.amountSource,
+      ...commitment?.money },
     subjects: { signingIdentity: scope.signingIdentity, parties: snapshot.parties },
     termsAndTax: { paymentTerms: snapshot.paymentTerms, taxFacts: snapshot.taxFacts }
   };
@@ -99,11 +111,11 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
       archiveFileId: id, contractVersionId: scope.contractVersionId, ...file
     } }));
   }
-  const completion = generatedArchiveCompletion(owner, archive, evidence, binding.originals, operatingReceipt);
-  await writer.appendOriginals(JSON.parse(JSON.stringify(completion)) as typeof completion);
+  const originalsCommand = generatedArchiveCompletion(owner, archive, evidence, binding.originals, operatingPolicy);
+  await writer.appendOriginals(JSON.parse(JSON.stringify(originalsCommand)) as typeof originalsCommand);
 
   // The project row is already locked by the archive service. Recheck after the installed callback and before activation.
-  if (!isDeepStrictEqual(operatingReceipt, await readOperatingReceipt())) unavailable();
+  if (!isDeepStrictEqual(operatingPolicy, await readOperatingPolicy(true))) unavailable();
   await activation.activateArchivedV2(tx, scope.contractVersionId, actor, archivedAt, id);
   await audit.record(tx, {
     actorUserId: actor, action: "contract.archive.complete", businessType: "contract_version", businessId: scope.contractVersionId,
@@ -111,9 +123,46 @@ export async function writeGeneratedArchive(tx: Prisma.TransactionClient, input:
       fileIds: response.fileIds, authoritySha256: archive.authoritySha256, actingRoleKey })
   });
   await writer.appendCompletion(id);
-  if (!isDeepStrictEqual(operatingReceipt, await readOperatingReceipt())) unavailable();
+  if (!isDeepStrictEqual(operatingPolicy, await readOperatingPolicy(false))) unavailable();
   const effective = await tx.contractVersion.findUnique({ where: { id: scope.contractVersionId } });
   const persisted = await tx.contractArchiveFile.findUnique({ where: { idempotencyKey: binding.idempotencyKey } });
-  if (!persisted || persisted.id !== id) unavailable();
+  if (!effective || !persisted || persisted.id !== id) unavailable();
+  let operatingReceipt: GeneratedArchiveOperatingReceipt;
+  if (operatingPolicy.policy === "outside_downstream_commitment") {
+    const policy = readGeneratedArchiveOperatingPolicy({ archive, contract: owner, version: effective });
+    if (policy?.mode !== "outside_downstream_commitment") unavailable();
+    operatingReceipt = await readGeneratedOutsideCommitment(tx, policy);
+  } else {
+    operatingReceipt = operatingPolicy;
+  }
+  const completion = generatedArchiveCompletion(owner, archive, evidence, binding.originals, operatingReceipt);
   await assertContractV2ArchivePersistentProof(tx, owner, effective, persisted, completion);
+}
+
+async function freezeOutsideMoney(tx: Prisma.TransactionClient, owner: Contract, version: ContractVersion, archivedAt: Date, amount: string | null) {
+  const ref = `contract:${owner.id}`, revision = `${version.id}:${version.documentContentRevision}`;
+  const applicable = (await tx.contractEconomicReview.findMany({ where: { projectId: owner.projectId, status: "confirmed",
+    confirmedAt: { lte: archivedAt }, OR: [{ leftSourceRef: ref }, { rightSourceRef: ref }] } }))
+    .filter(review => reviewAppliesToVersion(review, ref, revision));
+  const latest = latestEconomicReviews(applicable);
+  if (latest.some(review => applicable.filter(other => other.leftSourceRef === review.leftSourceRef
+    && other.rightSourceRef === review.rightSourceRef && other.confirmedAt?.getTime() === review.confirmedAt?.getTime()).length !== 1)) {
+    throw new ConflictException("同时确认的履约范围存在歧义，请先核对复核来源");
+  }
+  const Decimal = Prisma.Decimal.clone({ precision: 60 });
+  const excluded = latest.reduce((sum, review) => sum.plus(excludedAmountYuan(review, ref)), new Decimal(0));
+  if (amount !== null && excluded.gt(amount)) throw new ConflictException("已确认排除范围超过合同金额，请先核对");
+  const net = amount === null ? null : new Decimal(amount).minus(excluded).toFixed(4);
+  const direction = net === null ? "notice" : "increase";
+  const reviews = latest.sort((a, b) => a.id.localeCompare(b.id)).map(review => ({
+    reviewId: review.id, revision: review.revision, confirmedAt: review.confirmedAt!.toISOString(),
+    leftSourceRef: review.leftSourceRef, rightSourceRef: review.rightSourceRef, coverage: review.coverage,
+    frozenDocument: (review.frozenSources as Prisma.JsonArray).find(row =>
+      row !== null && typeof row === "object" && !Array.isArray(row) && row.ref === ref)
+  }));
+  const factKey = `contract_version:${version.id}`;
+  return { money: { commitmentDeltaYuan: net, direction, economicExcludedYuan: excluded.toFixed(4), economicReviewSources: reviews, predecessor: null },
+    expectedSource: { sourceType: "contract_version", sourceBusinessId: version.id, sourceVersion: version.versionNo, entryKind: "original",
+      factIdempotencyKey: factKey, impactIdempotencyKey: `${factKey}:commitment`, sourceImpactKey: "contract_commitment_reference",
+      impactKind: "contract_commitment_reference", numericProtocolVersion: 2, amountState: net === null ? "unknown" : "known", amountYuan: net, direction } };
 }

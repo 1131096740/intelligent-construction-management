@@ -1,3 +1,5 @@
+import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
+import { readGeneratedArchiveWriteInstallation } from "./contract-generated-archive-write-authority";
 import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
 import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
@@ -163,7 +165,9 @@ export class ContractVersionActivationService {
   constructor(@Optional() @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort = missingOperatingSourceReplayService(),
     @Optional() @Inject(GENERATED_UPWARD_OPERATING_ACTIVATION)
-    private readonly upwardOperating?: GeneratedUpwardOperatingActivation) {}
+    private readonly upwardOperating?: GeneratedUpwardOperatingActivation,
+    @Optional() @Inject(OperatingLedgerService)
+    private readonly operatingLedger?: OperatingLedgerService) {}
 
   async activate(tx: Prisma.TransactionClient, input: ActivateContractVersionInput) {
     const sourceVersion = await tx.contractVersion.findUnique({ where: { id: input.contractVersionId } });
@@ -242,7 +246,11 @@ export class ContractVersionActivationService {
     const externalContract = generatedExternal ? await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } }) : null;
     const projectBefore = externalContract && await tx.project.findUniqueOrThrow({ where: { id: externalContract.projectId } });
     const ledgerDay = projectBefore?.operatingLedgerEffectiveDate?.toISOString().slice(0, 10);
-    const upward = externalContract && ledgerDay
+    const outside = Boolean(externalContract && ledgerDay && version.signingSubjectType === "affiliate");
+    if (outside && (!this.operatingLedger || (await readGeneratedArchiveWriteInstallation(tx))?.outsideWriteQualified !== true)) {
+      throw generatedOperatingUnavailable();
+    }
+    const upward = externalContract && ledgerDay && !outside
       ? await requireGeneratedUpwardActivation(tx, externalContract, version, archive, ledgerDay, this.upwardOperating) : null;
     if (upward) await assertGeneratedUpwardHasNoOperatingFact(tx, version.id);
 
@@ -255,6 +263,12 @@ export class ContractVersionActivationService {
     if (!currentLedgerDay) return;
     if (generatedExternal) {
       const policy = readGeneratedArchiveOperatingPolicy({ archive, contract, version: effective });
+      if (outside) {
+        if (!this.operatingLedger || policy?.mode !== "outside_downstream_commitment") throw generatedOperatingUnavailable();
+        const appended = await this.operatingLedger.appendConfirmedSourceInTransaction(tx, policy.fact.input, actorUserId);
+        if (!appended.created || appended.impactIds.length !== 1) throw generatedOperatingUnavailable();
+        return;
+      }
       if (!upward || policy?.mode !== "upward_internal_reference"
         || policy.reference.operatingLedgerEffectiveDateSnapshot !== currentLedgerDay) throw generatedOperatingUnavailable();
       await assertGeneratedUpwardHasNoOperatingFact(tx, version.id);

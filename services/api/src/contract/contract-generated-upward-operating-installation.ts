@@ -50,7 +50,22 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
     b."ownerOid"::text AS "ownerOid",b."namespaceOid"::text AS "namespaceOid",b."databaseOid"::text AS "databaseOid",
     current_user::regrole::oid::text AS "currentRoleOid",session_user::regrole::oid::text AS "sessionRoleOid",
     pg_catalog.pg_backend_pid() AS "backendPid",pg_catalog.txid_current()::text AS "transactionId",
-    successor.qualified AS "outsideOperatingQualified"
+    successor.qualified AS "outsideOperatingQualified",
+    successor.qualified AND 2=(SELECT count(*) FROM (VALUES
+      ('public."validateOperatingFactReferences"()','public."OperatingFact"','OperatingFact_validate_references',
+        '26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975'),
+      ('public."validateOperatingImpactEntryReferences"()','public."OperatingImpactEntry"','OperatingImpactEntry_validate_references',
+        'd6666bbad410b5f1cacc8e40fe29dbaea990e2e101f9857cb14585d6a6a9d92b')
+    ) q(signature,relation,hook,sha)
+      JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(q.signature) AND p.proowner=b."ownerOid"
+        AND p.pronamespace=b."namespaceOid" AND NOT p.prosecdef AND p.prokind='f' AND p.provolatile='v' AND p.proparallel='u'
+        AND p.prorettype='pg_catalog.trigger'::regtype AND NOT p.proretset AND NOT p.proisstrict AND p.proconfig IS NULL
+        AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=q.sha
+      JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
+      JOIN pg_catalog.pg_trigger t ON t.tgfoid=p.oid AND t.tgrelid=pg_catalog.to_regclass(q.relation)
+        AND t.tgname=q.hook AND t.tgtype=7 AND t.tgenabled='O' AND NOT t.tgisinternal
+        AND NOT t.tgdeferrable AND NOT t.tginitdeferred AND t.tgconstraint=0 AND t.tgqual IS NULL
+        AND t.tgnargs=0 AND t.tgattr::text='') AS "outsideWriteQualified"
   FROM public.jg_contract_generated_upward_seal_binding_v1 b
   JOIN pg_catalog.pg_database d ON d.oid=b."databaseOid" AND d.datname=pg_catalog.current_database()
   JOIN pg_catalog.pg_class c ON c.oid=b.tableoid AND c.relowner=b."ownerOid" AND c.relnamespace=b."namespaceOid"
