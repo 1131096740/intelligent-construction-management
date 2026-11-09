@@ -78,7 +78,7 @@ async function readCatalog(tx: Prisma.TransactionClient) {
           AND t.tgnargs=0 AND t.tgattr::text='' AND t.tgqual IS NULL
         WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
           WHERE a.grantee<>p.proowner OR a.grantor<>p.proowner))
-      AND 2=(SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgrelid=c.oid) AS qualified
+      AND 2=(SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal) AS qualified
     FROM pg_catalog.pg_class c JOIN pg_catalog.pg_class a
       ON a.oid=pg_catalog.to_regclass('public.jg_contract_generated_upward_seal_binding_v1')
         AND a.relowner=c.relowner AND a.relnamespace=c.relnamespace AND a.relkind='r' AND a.relpersistence='p'
