@@ -8,6 +8,7 @@ import {
   readOperatingLedgerEffectiveDate, requiredJsonDate, requiredJsonMoney,
   requiredJsonRecord, requiredJsonText, sourceJson
 } from "../operating-ledger/formal-operating-source.helpers";
+import { readQualifiedGeneratedUpwardReference } from "./contract-generated-upward-operating";
 import type { OperatingSourceAdapter, OperatingSourceSnapshot, OperatingSourceLocator, OperatingSourceFactInput } from "../operating-ledger/operating-source-adapter";
 
 /** 每个已生效版本只投影相对于直接前版的增减；保留 superseded 版本供历史日期回读。 */
@@ -19,7 +20,8 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       where: { contractId: { in: contracts.map((c) => c.id) }, effectiveAt: { not: null } },
       orderBy: [{ effectiveAt: "asc" }, { versionNo: "asc" }]
     });
-    return Promise.all(versions.map((version) => this.snapshot(tx, projectId, version.id)));
+    const sources = await Promise.all(versions.map((version) => this.snapshot(tx, projectId, version.id)));
+    return sources.filter((source): source is OperatingSourceSnapshot => source !== null);
   }
   async readSourceSnapshot(tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0], locator: OperatingSourceLocator) {
     const version = await tx.contractVersion.findUnique({ where: { id: locator.sourceBusinessId } });
@@ -27,10 +29,18 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const contract = await tx.contract.findFirst({ where: { id: version.contractId, projectId: locator.projectId } });
     return contract ? this.snapshot(tx, locator.projectId, version.id) : null;
   }
-  private async snapshot(tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0], projectId: string, versionId: string): Promise<OperatingSourceSnapshot> {
+  private async snapshot(tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0], projectId: string, versionId: string): Promise<OperatingSourceSnapshot | null> {
     const version = await tx.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
     const contract = await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
     if (contract.projectId !== projectId || !version.effectiveAt) throw new BadRequestException("合同尚未正式生效");
+    if (version.numericProtocolVersion === 2 && version.signingSubjectType === "upward") {
+      const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
+        archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed" } });
+      if (archive) {
+        await readQualifiedGeneratedUpwardReference(tx, contract, version, archive);
+        return null;
+      }
+    }
     const relationship = downstreamContractRelationship(version);
     if (relationship === "unclassified") throw new BadRequestException("生效合同缺少签约主体快照，请先核对，不能默认为表内");
     const predecessor = version.supersedesVersionId

@@ -1,3 +1,4 @@
+import * as upwardOperating from "./contract-generated-upward-operating";
 import { Test } from "@nestjs/testing";
 import { Prisma } from "@prisma/client";
 import { ContractController } from "./contract.controller";
@@ -1782,6 +1783,42 @@ describe("ContractReadService", () => {
     };
     return prisma;
   }
+
+  it("只向在读取事务中仍有项目权限的用户展示对上内部依据", async () => {
+    const db = contractDetailDatabaseFixture();
+    const [existingVersion] = await db.contractVersion.findMany();
+    const contract = await db.contract.findFirst();
+    const version = { ...existingVersion, numericProtocolVersion: 2, signingSubjectType: "upward",
+      versionNo: 1, changeType: "original", baseVersionId: null, supersedesVersionId: null };
+    db.contractVersion.findMany.mockResolvedValue([version]);
+    const archive = { id: "archive" };
+    const tx = { contract: { findUnique: jest.fn().mockResolvedValue(contract) },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(archive) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) } };
+    Object.assign(db, { $transaction: async (operation: (client: typeof tx) => unknown) => operation(tx) });
+    const scopes = { globalRoleKeys: [], projectRoleKeys: ["finance_staff"] };
+    const visibility = {
+      effectiveRoleScopes: jest.fn().mockResolvedValue(scopes),
+      effectiveRoleScopesInTransaction: jest.fn().mockResolvedValue(scopes),
+      visibleProjectIdsInTransaction: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const proof = jest.spyOn(upwardOperating, "readQualifiedGeneratedUpwardReference").mockResolvedValue({
+      company: { name: "冻结我方公司" }, enterprise: { name: "冻结施工企业" }
+    } as never);
+    try {
+      const service = new ContractReadService(db as never, visibility as never);
+      const detail = () => service.getDetail("HT-2026-009", ["project-1"], "reader", undefined, "2");
+      expect((await detail()).baseInfo).toContainEqual({ label: "对上内部依据", value: "我方公司：冻结我方公司；施工企业：冻结施工企业" });
+      expect(proof).toHaveBeenCalledWith(tx, contract, version, archive);
+      visibility.effectiveRoleScopesInTransaction.mockResolvedValueOnce({ globalRoleKeys: [], projectRoleKeys: ["employee"] });
+      expect((await detail()).baseInfo.map(row => row.label)).not.toContain("对上内部依据");
+      visibility.visibleProjectIdsInTransaction.mockResolvedValueOnce([]);
+      expect((await detail()).baseInfo.map(row => row.label)).not.toContain("对上内部依据");
+      expect(proof).toHaveBeenCalledTimes(1);
+    } finally { proof.mockRestore(); }
+  });
 
   it.each(["employee","material_staff","budget_staff","engineering_tech","engineering_foreman"])("无实际参与的%s不能读取合同敏感详情", async role => {
     const db = contractDetailDatabaseFixture();

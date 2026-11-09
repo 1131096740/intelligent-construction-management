@@ -1,4 +1,8 @@
 import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
+import { requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
+import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
+import { GENERATED_UPWARD_OPERATING_ACTIVATION, assertGeneratedUpwardHasNoOperatingFact, generatedOperatingUnavailable,
+  requireGeneratedUpwardActivation, type GeneratedUpwardOperatingActivation } from "./contract-generated-upward-operating";
 import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { OperatingSourceReplayService, missingOperatingSourceReplayService, type OperatingSourceAppendPort } from "../operating-ledger/operating-source-replay.service";
 import { ConflictException, Injectable, Inject, Optional } from "@nestjs/common";
@@ -157,7 +161,9 @@ export interface ActivateContractVersionInput {
 @Injectable()
 export class ContractVersionActivationService {
   constructor(@Optional() @Inject(OperatingSourceReplayService)
-    private readonly operatingSources: OperatingSourceAppendPort = missingOperatingSourceReplayService()) {}
+    private readonly operatingSources: OperatingSourceAppendPort = missingOperatingSourceReplayService(),
+    @Optional() @Inject(GENERATED_UPWARD_OPERATING_ACTIVATION)
+    private readonly upwardOperating?: GeneratedUpwardOperatingActivation) {}
 
   async activate(tx: Prisma.TransactionClient, input: ActivateContractVersionInput) {
     const sourceVersion = await tx.contractVersion.findUnique({ where: { id: input.contractVersionId } });
@@ -232,13 +238,31 @@ export class ContractVersionActivationService {
     const version = await tx.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
     assertNotDirectPendingVersion(version);
     if (!archive || archive.archiveProtocolVersion !== 2 || archive.contractVersionId !== versionId || archive.uploadedByUserId !== actorUserId || !archive.authoritySha256 || version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.supersedesVersionId || version.status !== "seal_approved_pending_archive") throw new ConflictException("新版合同缺少同一归档权威，不能生效");
-    await tx.contractVersion.update({ where: { id: versionId }, data: { status: "effective", effectiveAt, taxFactsFrozenAt: effectiveAt } });
+    const generatedExternal = requiresGeneratedArchiveOriginals(version, archive);
+    const externalContract = generatedExternal ? await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } }) : null;
+    const projectBefore = externalContract && await tx.project.findUniqueOrThrow({ where: { id: externalContract.projectId } });
+    const ledgerDay = projectBefore?.operatingLedgerEffectiveDate?.toISOString().slice(0, 10);
+    const upward = externalContract && ledgerDay
+      ? await requireGeneratedUpwardActivation(tx, externalContract, version, archive, ledgerDay, this.upwardOperating) : null;
+    if (upward) await assertGeneratedUpwardHasNoOperatingFact(tx, upward.projectId, version.id);
+
+    const effective = await tx.contractVersion.update({ where: { id: versionId }, data: { status: "effective", effectiveAt, taxFactsFrozenAt: effectiveAt } });
     await tx.paymentTermsVersion.updateMany({ where: { contractVersionId: versionId }, data: { status: "effective" } });
-    const contract = await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
-    const project = await tx.project.findUniqueOrThrow({ where: { id: contract.projectId } });
-    // The archive freezes whether this transaction owes a projection. A later
-    // project enablement cannot rewrite a not-applicable archive receipt.
-    if (project.operatingLedgerEffectiveDate) await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: contract.projectId, sourceType: "contract_version", sourceBusinessId: versionId }, actorUserId);
+    const contract = externalContract ?? await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
+    const currentProject = await tx.project.findUniqueOrThrow({ where: { id: contract.projectId } });
+    const currentLedgerDay = currentProject.operatingLedgerEffectiveDate?.toISOString().slice(0, 10);
+    if (generatedExternal && currentLedgerDay !== ledgerDay) throw generatedOperatingUnavailable();
+    if (!currentLedgerDay) return;
+    if (generatedExternal) {
+      const policy = readGeneratedArchiveOperatingPolicy({ archive, contract, version: effective });
+      if (!upward || policy?.mode !== "upward_internal_reference"
+        || policy.reference.operatingLedgerEffectiveDateSnapshot !== currentLedgerDay) throw generatedOperatingUnavailable();
+      await assertGeneratedUpwardHasNoOperatingFact(tx, contract.projectId, version.id);
+      return;
+    }
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(tx, {
+      projectId: contract.projectId, sourceType: "contract_version", sourceBusinessId: versionId
+    }, actorUserId);
   }
 
   private async lockContract(tx: Prisma.TransactionClient, contractId: string) {

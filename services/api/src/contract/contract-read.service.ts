@@ -1,6 +1,7 @@
 import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
 import { hasDirectSigningInput } from "./contract-direct-pending-source";
 import { readContractV2LifecycleContext } from "./contract-v2-lifecycle-context";
+import { readQualifiedGeneratedUpwardReference } from "./contract-generated-upward-operating";
 import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import { Prisma } from "@prisma/client";
@@ -12,7 +13,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  Optional
+  Optional,
+  ServiceUnavailableException
 } from "@nestjs/common";
 import {
   CONTRACT_DRAFT_PRIVATE_READ_ROLES,
@@ -1539,6 +1541,12 @@ export class ContractReadService {
     const v2Lifecycle = externalLifecycle
       ? await this.prisma.$transaction(tx => readContractV2LifecycleContext(tx, contract, version, actorUserId, lifecycleReadOnly))
       : await readContractV2LifecycleContext(this.prisma, contract, version, actorUserId, lifecycleReadOnly);
+    const canReadUpwardReference = actorUserId && this.projectVisibility && contractInReadScope
+      && (contract.ownerUserId === actorUserId || hasSensitiveLedgerReadRole("settlement", roleKeys));
+    const upwardReference = canReadUpwardReference && version.numericProtocolVersion === 2
+      && version.signingSubjectType === "upward" && version.status === "effective"
+      ? await this.readUpwardOperatingReference(contract.id, version.id, contract.projectId, actorUserId)
+      : null;
     const directDisplay = directPending ? this.directPendingDisplay(version.status) : null;
     const status = directDisplay ? { label: directDisplay.label, tone: "default" as const } : this.statusView(version.status);
     const availableActions = readOnlyHistory
@@ -1706,7 +1714,7 @@ export class ContractReadService {
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
         { label: "当前版本", value: `合同 v${version.versionNo}` },
-        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version)] },
+        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[upwardReference ? "upward" : downstreamContractRelationship(version)] },
         { label: "付款条款", value: terms ? `v${terms.versionNo} ${this.termsStatusLabel(terms.status)}` : "未填写付款约定" },
         { label: "责任部门", value: "合同部" },
         { label: "当前处理人", value: this.currentOwnerLabel(version.status) },
@@ -1717,6 +1725,8 @@ export class ContractReadService {
         { label: "合同名称", value: contract.name },
         { label: "项目", value: project?.name ?? contract.projectId },
         { label: "相对方", value: contract.counterparty },
+        ...(upwardReference ? [{ label: "对上内部依据",
+          value: `我方公司：${upwardReference.company.name}；施工企业：${upwardReference.enterprise.name}` }] : []),
         { label: "合同金额", value: this.formatContractAmount(version, numericProtocol) },
         {
           label: "发票类型",
@@ -1784,6 +1794,25 @@ export class ContractReadService {
         historicalApprovedInstances
       )
     };
+  }
+
+  private async readUpwardOperatingReference(contractId: string, versionId: string, projectId: string, actorUserId: string) {
+    return this.prisma.$transaction(async tx => {
+      const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+      if (!actor?.isActive || !(await this.projectVisibility?.visibleProjectIdsInTransaction(tx, actorUserId))?.includes(projectId)) return null;
+      const contract = await tx.contract.findUnique({ where: { id: contractId } });
+      const version = await tx.contractVersion.findUnique({ where: { id: versionId } });
+      if (!contract || contract.projectId !== projectId || contract.voidedAt || version?.contractId !== contract.id
+        || version.numericProtocolVersion !== 2 || version.signingSubjectType !== "upward" || version.status !== "effective") return null;
+      const { roleKeys } = await this.actorRoles(actorUserId, projectId, tx);
+      if (contract.ownerUserId !== actorUserId && !hasSensitiveLedgerReadRole("settlement", roleKeys)) return null;
+      const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
+        archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed" } });
+      return archive ? readQualifiedGeneratedUpwardReference(tx, contract, version, archive) : null;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }).catch(error => {
+      if (error instanceof ConflictException || error instanceof ServiceUnavailableException) return null;
+      throw error;
+    });
   }
 
   private sampleDetail(contractId: string): ContractDetailReadModel {
