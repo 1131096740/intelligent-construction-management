@@ -39,6 +39,7 @@ export type GeneratedArchiveSealAuthority = {
     archiveReceiptReaderOid: string;
     operatingAuthorityOid: string;
     upwardOperatingQualified?: true;
+    outsideWriteQualified?: true;
     backendPid: number;
     transactionId: string;
   };
@@ -121,7 +122,10 @@ export type GeneratedArchiveOperatingReceipt =
   | Readonly<{ policy: "outside_downstream_commitment"; operatingLedgerEffectiveDateSnapshot: string;
     operatingFactId: string; operatingImpactId: string }>;
 
-export type GeneratedArchiveCompletion = GeneratedArchiveOperatingReceipt & Readonly<{
+export type GeneratedArchivePinPolicy = GeneratedArchiveOperatingReceipt |
+  Readonly<{ policy: "outside_downstream_commitment"; operatingLedgerEffectiveDateSnapshot: string }>;
+
+export type GeneratedArchiveReceiptFields = Readonly<{
   protocolVersion: 1;
   archiveId: string;
   projectId: string;
@@ -139,12 +143,14 @@ export type GeneratedArchiveCompletion = GeneratedArchiveOperatingReceipt & Read
   originals: readonly GeneratedArchiveSignedOriginal[];
 }>;
 
+export type GeneratedArchiveCompletion = GeneratedArchiveReceiptFields & GeneratedArchiveOperatingReceipt;
+
 export type GeneratedArchiveWriterAuthority = Readonly<{
   transaction: Prisma.TransactionClient;
   installation: GeneratedArchiveSealAuthority["installation"];
   binding: GeneratedArchiveRequestBinding;
   // Fixed originals are appended before activation. Completion is captured independently after activation and audit.
-  appendOriginals: (command: GeneratedArchiveCompletion) => Promise<void>;
+  appendOriginals: (command: GeneratedArchiveReceiptFields & GeneratedArchivePinPolicy) => Promise<void>;
   appendCompletion: (archiveId: string) => Promise<void>;
 }>;
 
@@ -197,7 +203,10 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
     WHERE m.tableoid=${relationOid}::pg_catalog.oid AND m."archiveId"=${archiveId}
       AND (m."completion"->>'policy'='operating_ledger_not_enabled' OR (
         m."completion"->>'policy'='upward_internal_reference'
-        AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)))
+        AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)) OR (
+        m."completion"->>'policy'='outside_downstream_commitment'
+        AND 1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
+          AND u."outsideWriteQualified")))
       AND c.relowner<>b."applicationRoleOid" AND c.relnamespace=pg_catalog.to_regnamespace('public')
       AND c.relkind='r' AND c.relpersistence='p' AND NOT c.relispartition AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
       AND pg_catalog.current_setting('session_replication_role')='origin'

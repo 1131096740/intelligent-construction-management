@@ -3,7 +3,7 @@ import { archiveRequestSha } from "./contract-archive-request-digest";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma, type Contract, type ContractVersion, type ContractArchiveFile, type ContractArchiveEvidenceFile, type FileObject } from "@prisma/client";
 import { readGeneratedArchiveOriginals, requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
-import { readGeneratedArchiveCompletion, type GeneratedArchiveCompletion, type GeneratedArchiveOperatingReceipt, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
+import { readGeneratedArchiveCompletion, type GeneratedArchiveCompletion, type GeneratedArchiveOperatingReceipt, type GeneratedArchivePinPolicy, type GeneratedArchiveReceiptFields, type GeneratedArchiveSignedOriginal } from "./contract-generated-archive-installation";
 import { readGeneratedOutsideCommitment } from "./contract-generated-outside-commitment";
 import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
 import type { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
@@ -60,17 +60,18 @@ export async function readGeneratedArchiveDownloadGeneration(tx: Prisma.Transact
   return original.objectGeneration;
 }
 
-export function generatedArchiveCompletion(owner: Contract, archive: ContractArchiveFile,
+export function generatedArchiveCompletion<Policy extends GeneratedArchivePinPolicy>(owner: Contract, archive: ContractArchiveFile,
   files: readonly ContractArchiveEvidenceFile[], originals: readonly GeneratedArchiveSignedOriginal[],
-  operatingReceipt: GeneratedArchiveOperatingReceipt): GeneratedArchiveCompletion {
+  operatingReceipt: Policy): GeneratedArchiveReceiptFields & Policy {
   const { approvalInstanceId, sealTaskId, idempotencyKey, requestSha256, authoritySha256, fileManifestSha256, confirmedAt } = archive;
   if (!approvalInstanceId || !sealTaskId || !idempotencyKey || !requestSha256 || !authoritySha256 || !fileManifestSha256 || !confirmedAt) {
     throw new ServiceUnavailableException("归档请求持久证据尚未完整核对，请保留原标识");
   }
-  return { protocolVersion: 1, ...operatingReceipt, archiveId: archive.id, projectId: owner.projectId,
+  const fields: GeneratedArchiveReceiptFields = { protocolVersion: 1, archiveId: archive.id, projectId: owner.projectId,
     contractId: owner.id, contractVersionId: archive.contractVersionId, approvalInstanceId, sealTaskId,
     uploaderUserId: archive.uploadedByUserId, idempotencyKey, requestSha256, authoritySha256, fileManifestSha256,
     archivedAt: confirmedAt.toISOString(), evidenceIds: files.map(file => file.id), originals };
+  return { ...operatingReceipt, ...fields };
 }
 
 /** Read-only durable proof, shared by outcome and detail; caller authorization stays with each reader. */

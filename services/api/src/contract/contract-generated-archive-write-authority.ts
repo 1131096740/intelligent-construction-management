@@ -137,7 +137,9 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
             ELSE 'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f' END)))
       AS qualified,
     1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace)
-      AS "upwardOperatingQualified"
+      AS "upwardOperatingQualified",
+    1=(SELECT count(*) FROM upward_operating u WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
+      AND u."outsideWriteQualified") AS "outsideWriteQualified"
     FROM pg_catalog.pg_class c
     JOIN public.jg_contract_generated_upward_seal_binding_v1 b ON b."protocolVersion"=1
       AND b."namespaceOid"=pg_catalog.to_regnamespace('public') AND b."applicationRoleOid"=current_user::regrole::oid
@@ -158,7 +160,8 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
     signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId } = row;
   return { databaseOid, namespaceOid, currentRoleOid, sessionRoleOid, archiveWriterOid,
     signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId,
-    ...(row.upwardOperatingQualified === true ? { upwardOperatingQualified: true as const } : {}) };
+    ...(row.upwardOperatingQualified === true ? { upwardOperatingQualified: true as const } : {}),
+    ...(row.outsideWriteQualified === true ? { outsideWriteQualified: true as const } : {}) };
 }
 
 export async function readNativeGeneratedArchiveWriter(
@@ -182,7 +185,9 @@ export async function readNativeGeneratedArchiveWriter(
       const { scope } = binding;
       const operatingQualified = command.policy === "operating_ledger_not_enabled"
         || (command.policy === "upward_internal_reference" && scope.relationship === "upward"
-          && installation.upwardOperatingQualified === true);
+          && installation.upwardOperatingQualified === true)
+        || (command.policy === "outside_downstream_commitment" && scope.relationship === "outside"
+          && installation.outsideWriteQualified === true);
       if (writtenArchiveId || !command.archiveId || !operatingQualified
         || command.projectId !== scope.projectId || command.contractId !== scope.contractId
         || command.contractVersionId !== scope.contractVersionId || command.approvalInstanceId !== scope.approvalInstanceId
