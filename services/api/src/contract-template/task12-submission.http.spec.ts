@@ -1661,7 +1661,7 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
     const contentSha256 = createHash("sha256").update(buffer).digest("hex");
     const coordinates = { bucket, objectKey, sizeBytes: buffer.length, contentSha256 };
     await store.fileObject.create({ data: { id: fileId, ...coordinates, mimeType: "application/pdf",
-      originalName: "双方签章原件.pdf", uploadedByUserId: "staff", storageStatus: "active" } });
+      originalName: "双方签章原件.pdf", uploadedByUserId: "staff", storageStatus: "active", supersedesFileObjectId: null } });
     return { fileId, buffer, coordinates };
   };
   const first = await seedOriginal("SYNTHETIC SIGNED ORIGINAL ONE");
@@ -1815,6 +1815,17 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
     expect(server.store.privateStorageWrites).toBe(writes);
     expect(server.store.privateStorageDeletes).toBe(deletes);
 
+    const fileBase = `${await server.app.getUrl()}/files/${second.fileId}`;
+    const ticket = (headers = draft.headers) => fetch(fileBase + "/download-ticket", {
+      method: "POST", headers, body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对签章原件" })
+    });
+    await storage.write(second.coordinates.objectKey, second.buffer);
+    const early = await ticket();
+    expect(early.status).toBe(201);
+    const { downloadUrl: earlyUrl } = await early.json() as { downloadUrl: string };
+    const appUrl = await server.app.getUrl();
+    const capability = () => fetch(fileBase + "/download-ticket-capability", { headers: draft.headers });
+
     // Simulate a foreign/corrupt store result, without the inside-only mock writer.
     const archiveId = randomUUID();
     const requestSha256 = createHash("sha256").update(JSON.stringify({
@@ -1869,6 +1880,10 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
     };
     try {
       await assertHeld(await lookup(), "归档原件固定版本尚未完整核对");
+      const latestBefore = server.store.privateStorageReads;
+      const rejectedDownloads = await Promise.all([ticket(), fetch(appUrl + earlyUrl), capability()]);
+      expect(rejectedDownloads.map(response => response.status)).toEqual([503, 503, 503]);
+      expect(server.store.privateStorageReads).toBe(latestBefore);
       catalogRows = [catalog];
       await assertHeld(await lookup(), "归档原件固定版本尚未完整核对");
       const persisted = await store.contractArchiveEvidenceFile.findMany({
@@ -1907,11 +1922,74 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
       });
       try {
         await assertHeld(await lookup(), "归档来源的持久结果尚未核对");
+        await assertHeld(await ticket(), "归档原件固定版本");
       } finally { wrongSource.mockRestore(); }
       await assertHeld(await lookup(), "归档原件固定版本已核对，正式归档结果尚未确认");
       await assertHeld(await archive(), "归档原件固定版本已核对，正式归档结果尚未确认");
       expect(await readArchiveState()).toEqual(beforeReadback);
       expect(readVersion).not.toHaveBeenCalled();
+
+      const storageVersions = server.store.table("syntheticPrivateFileVersion");
+      const originalStorage = { bucket, objectKey: second.coordinates.objectKey, objectGeneration: "signed-original-v2" };
+      const storedOriginal = await storageVersions.findFirst({ where: originalStorage })
+        ?? await storageVersions.create({ data: { ...originalStorage, base64: second.buffer.toString("base64") } });
+      const altered = Buffer.from(second.buffer);
+      altered[0] ^= 1;
+      await storage.write(second.coordinates.objectKey, altered);
+      expect((await capability()).status).toBe(200);
+      const issued = await ticket();
+      expect(issued.status).toBe(201);
+      const payload = await issued.json() as { downloadUrl: string };
+      expect(JSON.stringify(payload)).not.toContain(originalStorage.objectGeneration);
+      expect(JSON.stringify(payload)).not.toContain(second.coordinates.objectKey);
+      const consume = () => fetch(appUrl + payload.downloadUrl);
+      const retrieved = await consume();
+      expect({ status: retrieved.status, bytes: Buffer.from(await retrieved.arrayBuffer()) }).toEqual({ status: 200, bytes: second.buffer });
+      expect(retrieved.headers.get("x-cos-version-id")).toBeNull();
+      expect(readVersion.mock.calls).toEqual([[{ ...second.coordinates, expectedGeneration: "signed-original-v2" }]]);
+      const successAudit = () => store.auditLog.count({ where: { action: "file.download", businessId: second.fileId } });
+      expect(await successAudit()).toBe(1);
+
+      const duplicateId = randomUUID();
+      await store.contractArchiveEvidenceFile.createMany({ data: [{ ...persisted[0], id: duplicateId }] });
+      try {
+        await assertHeld(await ticket(), "归档原件固定版本");
+        await assertHeld(await consume(), "归档原件固定版本");
+      } finally { await store.contractArchiveEvidenceFile.delete({ where: { id: duplicateId } }); }
+
+      const originalWhere = { id: second.fileId };
+      await store.fileObject.update({ where: originalWhere, data: { objectKey: first.coordinates.objectKey } });
+      try {
+        await assertHeld(await ticket(), "归档原件固定版本");
+        await assertHeld(await consume(), "归档原件固定版本");
+      } finally { await store.fileObject.update({ where: originalWhere, data: { objectKey: second.coordinates.objectKey } }); }
+
+      readVersion.mockResolvedValueOnce({ buffer: second.buffer, objectGeneration: "different-generation" });
+      await assertHeld(await consume(), "资料文件版本或完整性");
+      await storageVersions.update({ where: { id: storedOriginal.id }, data: { base64: altered.toString("base64") } });
+      await assertHeld(await consume(), "资料文件版本或完整性");
+      await storageVersions.delete({ where: { id: storedOriginal.id } });
+      await assertHeld(await consume(), "资料文件版本或完整性");
+
+      const userWhere = { id: "staff" };
+      await store.user.update({ where: userWhere, data: { isActive: false } });
+      try { expect((await consume()).status).toBe(403); }
+      finally { await store.user.update({ where: userWhere, data: { isActive: true } }); }
+      const memberWhere = { projectId: draft.projectId, userId: "staff" };
+      const positionWhere = { userId: "staff" };
+      const memberships = await store.projectMember.findMany({ where: memberWhere });
+      const assignments = await store.userPosition.findMany({ where: positionWhere });
+      await store.projectMember.deleteMany({ where: memberWhere });
+      await store.userPosition.deleteMany({ where: positionWhere });
+      try {
+        expect((await ticket()).status).toBe(403);
+        expect((await consume()).status).toBe(403);
+      } finally {
+        await store.projectMember.createMany({ data: memberships });
+        await store.userPosition.createMany({ data: assignments });
+      }
+      expect(server.store.privateStorageReads).toBe(latestBefore);
+      expect(await successAudit()).toBe(1);
     } finally {
       store.$queryRaw = nativeQuery;
       await store.contractArchiveEvidenceFile.deleteMany({ where: { archiveFileId: archiveId } });

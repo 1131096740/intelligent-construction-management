@@ -18,9 +18,10 @@ function unavailable(): never {
 export function requiresGeneratedArchiveOriginals(version: ContractVersion, archive: ContractArchiveFile) {
   if (archive.archiveSource !== "generated_approval") return false;
   const basis = object(object(archive.authoritySnapshot).sourceBasis);
-  const relationship = object(object(basis.subjects).signingIdentity).relationship;
+  const frozenRelationship = object(object(basis.subjects).signingIdentity).relationship;
+  const readinessRelationship = object(object(version.readinessSnapshot).signingIdentity).relationship;
   return version.signingSubjectType === "affiliate" || version.signingSubjectType === "upward"
-    || relationship === "outside" || relationship === "upward";
+    || [frozenRelationship, readinessRelationship].some(relationship => relationship === "outside" || relationship === "upward");
 }
 
 async function readCatalog(tx: Prisma.TransactionClient) {

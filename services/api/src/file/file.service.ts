@@ -44,6 +44,8 @@ import {
 import { hasExactLegacyCleanupKey, lockContractReviewCleanupCohort, reviewReferenceCatalog } from "./contract-review-file-retention";
 import { contractReviewTicketAccess, type ContractReviewFileAccess } from "./contract-review-file-access";
 import { readDirectArchiveGeneration } from "./contract-archive-generation-read";
+import { requiresGeneratedArchiveOriginals } from "../contract/contract-generated-archive-original-read";
+import { readGeneratedArchiveDownloadGeneration } from "../contract/contract-v2-archive-persistent-proof";
 import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
 
 export interface UploadPrivateFileInput {
@@ -1244,6 +1246,8 @@ export class FileService {
         "ticket"
       );
 
+      await this.archiveDownloadGeneration(tx, file, input.actorUserId, "ticket");
+
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
       const token = this.signDownloadToken(
@@ -1309,6 +1313,7 @@ export class FileService {
         throw new Error("资料文件不存在或已被移除");
       }
       await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId, "ticket");
+      await this.archiveDownloadGeneration(tx, file, actorUserId, "ticket");
       return {
         availableActions: ["create_private_file_download_ticket" as const],
         action: {
@@ -1377,8 +1382,8 @@ export class FileService {
       if (accessMode === "preview" && found.mimeType !== "application/pdf") {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
-      const generation = await this.directArchiveDownloadGeneration(
-        tx, found, input.actorUserId, access?.businessType === "contract_economic_review"
+      const generation = await this.archiveDownloadGeneration(
+        tx, found, input.actorUserId, "consume", access?.businessType === "contract_economic_review"
       );
       return { file: found, access, generation };
     }), downloadReason);
@@ -1386,10 +1391,7 @@ export class FileService {
 
     const buffer = generation === null
       ? await this.readVerifiedFileBuffer(file)
-      : (await this.storage.readVerifiedVersion({
-        bucket: file.bucket, objectKey: file.objectKey, sizeBytes: file.sizeBytes,
-        contentSha256: file.contentSha256 ?? "", expectedGeneration: generation
-      })).buffer;
+      : await this.readPinnedArchiveBuffer(file, generation);
     const wageEvidence = await this.isWageEvidenceFile(file.id);
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, wageEvidence ? {
@@ -1430,21 +1432,54 @@ export class FileService {
     };
   }
 
-  private async directArchiveDownloadGeneration(
-    tx: Prisma.TransactionClient, file: FileObject, actorUserId: string, authorizedReviewHistory: boolean
+  private async archiveDownloadGeneration(
+    tx: Prisma.TransactionClient, file: FileObject, actorUserId: string, phase: "ticket" | "consume",
+    authorizedReviewHistory = false
   ) {
-    // The unique evidence file ID also reaches this gate from the existing uploader shortcut.
+    // Also runs after the uploader shortcut and after consumption of tickets issued before archiving.
     const evidence = await tx.contractArchiveEvidenceFile.findFirst({ where: { fileId: file.id } });
     if (!evidence) return null;
     const parent = await tx.contractArchiveFile.findUnique({ where: { id: evidence.archiveFileId } });
     if (!parent) throw new BadRequestException("合同归档原件的绑定信息不完整，暂不能下载");
-    if (parent.archiveSource !== "direct_signed") return null;
+    const unavailable = () => new ServiceUnavailableException("归档原件固定版本尚未完整核对，暂不能下载");
+    const bindings = await tx.contractArchiveEvidenceFile.findMany({ where: { fileId: file.id }, take: 2 });
+    if (bindings.length !== 1 || bindings[0].id !== evidence.id || evidence.fileId !== file.id
+      || parent.id !== evidence.archiveFileId || parent.contractVersionId !== evidence.contractVersionId
+      || parent.archiveProtocolVersion !== 2 || parent.status !== "confirmed") throw unavailable();
+    if (parent.archiveSource === "direct_signed") {
+      if (parent.approvalInstanceId != null || parent.sealTaskId != null) throw unavailable();
+      if (phase === "ticket") return null;
+      const version = await tx.contractVersion.findUnique({ where: { id: evidence.contractVersionId } });
+      const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+      if (!contract || (!authorizedReviewHistory && !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))) {
+        throw new ForbiddenException("当前账号无权下载该合同归档原件");
+      }
+      return readDirectArchiveGeneration(tx, parent, evidence, file);
+    }
+    if (parent.archiveSource !== "generated_approval") throw unavailable();
     const version = await tx.contractVersion.findUnique({ where: { id: evidence.contractVersionId } });
-    const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
-    if (!contract || (!authorizedReviewHistory && !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))) {
+    if (!version || version.id !== evidence.contractVersionId) throw unavailable();
+    if (!requiresGeneratedArchiveOriginals(version, parent)) {
+      if (version.signingSubjectType === "our_company") return null;
+      throw unavailable();
+    }
+    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!contract || actor?.isActive !== true || !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES)) {
       throw new ForbiddenException("当前账号无权下载该合同归档原件");
     }
-    return readDirectArchiveGeneration(tx, parent, evidence, file);
+    return readGeneratedArchiveDownloadGeneration(tx, contract, version, parent, evidence, file);
+  }
+
+  private async readPinnedArchiveBuffer(file: FileObject, generation: string) {
+    const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    const pinned = await this.storage.readVerifiedVersion({
+      bucket: file.bucket, objectKey: file.objectKey, sizeBytes: file.sizeBytes,
+      contentSha256: file.contentSha256 ?? "", expectedGeneration: generation
+    }).catch(() => { throw unavailable(); });
+    if (pinned?.objectGeneration !== generation || !Buffer.isBuffer(pinned.buffer) || pinned.buffer.length !== file.sizeBytes
+      || createHash("sha256").update(pinned.buffer).digest("hex") !== file.contentSha256) throw unavailable();
+    return pinned.buffer;
   }
 
   // 内部服务读取，不走用户下载权限与审计。
