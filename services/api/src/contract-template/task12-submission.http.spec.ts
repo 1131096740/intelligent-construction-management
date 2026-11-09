@@ -1814,6 +1814,110 @@ async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<ty
     expect(server.store.privateStorageReads).toBe(ordinaryReads);
     expect(server.store.privateStorageWrites).toBe(writes);
     expect(server.store.privateStorageDeletes).toBe(deletes);
+
+    // Simulate a foreign/corrupt store result, without the inside-only mock writer.
+    const archiveId = randomUUID();
+    const requestSha256 = createHash("sha256").update(JSON.stringify({
+      versionId: draft.version.id, actor: "staff", ...body
+    })).digest("hex");
+    const manifest = [second, first].map(({ fileId, coordinates }, displayOrder) => ({
+      fileId, displayOrder, mimeType: "application/pdf", sizeBytes: coordinates.sizeBytes, contentSha256: coordinates.contentSha256
+    }));
+    const confirmedAt = new Date();
+    const persistedVersion = await store.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id } });
+    const signingIdentity = (persistedVersion.readinessSnapshot as Prisma.JsonObject).signingIdentity as Prisma.JsonObject;
+    const relationship = signingIdentity.relationship;
+    await store.contractArchiveFile.createMany({ data: [{ id: archiveId, contractVersionId: draft.version.id,
+      archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed", uploadedByUserId: "staff",
+      confirmedByUserId: "staff", confirmedAt, idempotencyKey: body.idempotencyKey, requestSha256,
+      approvalInstanceId: seal.expectedApprovalInstanceId, sealTaskId: seal.expectedSealTaskId,
+      documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint,
+      authoritySha256: "a".repeat(64), fileManifestSha256: "b".repeat(64),
+      authoritySnapshot: { projectId: draft.projectId, contractId: draft.contract.id, contractVersionId: draft.version.id,
+        requestSha256, fileManifestSha256: "b".repeat(64), fileManifest: manifest,
+        sourceBasis: { subjects: { signingIdentity } }, operatingConsequence: { mode: "not_applicable" } },
+      responseSnapshot: { archiveId, contractVersionId: draft.version.id, status: "effective", fileIds: body.fileIds }
+    }] });
+    await store.contractArchiveEvidenceFile.createMany({ data: manifest.map(file => ({
+      ...file, archiveFileId: archiveId, contractVersionId: draft.version.id
+    })) });
+    await store.contractVersion.update({ where: { id: draft.version.id }, data: { status: "effective", effectiveAt: confirmedAt } });
+    const nativeQuery = store.$queryRaw;
+    const catalog = { relationOid: "45001", anchorOid: "43001", ownerOid: "9001", databaseOid: "13000", roleOid: "7001",
+      backendPid: 71302, transactionId: "500006", qualified: true };
+    let catalogRows: Record<string, unknown>[] = [];
+    let catalogDrifts = false;
+    let catalogReads = 0;
+    let pinRows: Record<string, unknown>[] = [];
+    store.$queryRaw = async (raw, ...parameters) => {
+      const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
+      const sql = query.strings.join("?").trim();
+      if (sql.startsWith("/* contract_generated_archive_original_catalog_v1 */")) {
+        return ++catalogReads === 2 && catalogDrifts ? [{ ...catalog, transactionId: "500007" }] : catalogRows;
+      }
+      if (sql.startsWith("/* contract_generated_archive_original_read_v1 */")) {
+        expect(query.values).toEqual([catalog.anchorOid, "staff", catalog.relationOid, archiveId, draft.version.id]);
+        return pinRows;
+      }
+      return nativeQuery(raw, ...parameters);
+    };
+    const lookup = () => fetch(url + "/archive-requests/" + body.idempotencyKey, { headers: draft.headers });
+    const assertHeld = async (response: Response, message: string) => {
+      expect({ status: response.status, body: await response.json() }).toEqual({
+        status: 503, body: { statusCode: 503, error: "Service Unavailable", message: expect.stringContaining(message) }
+      });
+    };
+    try {
+      await assertHeld(await lookup(), "归档原件固定版本尚未完整核对");
+      catalogRows = [catalog];
+      await assertHeld(await lookup(), "归档原件固定版本尚未完整核对");
+      const persisted = await store.contractArchiveEvidenceFile.findMany({
+        where: { archiveFileId: archiveId }, orderBy: { displayOrder: "asc" }
+      });
+      const scope = { protocolVersion: 1, archiveSource: "generated_approval", relationship,
+        projectId: draft.projectId, contractId: draft.contract.id, contractVersionId: draft.version.id,
+        approvalInstanceId: seal.expectedApprovalInstanceId, sealTaskId: seal.expectedSealTaskId, uploaderUserId: "staff",
+        sealConfirmerUserId: "director", idempotencyKey: body.idempotencyKey, requestSha256,
+        authoritySha256: "a".repeat(64), fileManifestSha256: "b".repeat(64),
+        documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint };
+      const pins = [second, first].map(({ coordinates }, index) => ({
+        ...manifest[index], evidenceId: persisted[index].id, bucket: coordinates.bucket, objectKey: coordinates.objectKey,
+        objectGeneration: index === 0 ? "signed-original-v2" : "signed-original-v1", scope
+      }));
+      for (const corrupt of [
+        [...pins].reverse(),
+        [{ ...pins[0], scope: { ...scope, idempotencyKey: randomUUID() } }, pins[1]],
+        [{ ...pins[0], scope: { ...scope, projectId: randomUUID() } }, pins[1]],
+        [{ ...pins[0], objectGeneration: "null" }, pins[1]]
+      ]) {
+        pinRows = corrupt;
+        await assertHeld(await lookup(), "归档原件固定版本尚未完整核对");
+      }
+      pinRows = pins;
+      catalogDrifts = true;
+      catalogReads = 0;
+      await assertHeld(await lookup(), "归档原件固定版本尚未完整核对");
+      catalogDrifts = false;
+      readVersion.mockClear();
+      const beforeReadback = await readArchiveState();
+      const readParent = store.contractArchiveFile.findUnique;
+      const wrongSource = jest.spyOn(store.contractArchiveFile, "findUnique").mockImplementation(async args => {
+        const row = await readParent(args);
+        return row?.id === archiveId ? { ...row, archiveSource: null } : row;
+      });
+      try {
+        await assertHeld(await lookup(), "归档来源的持久结果尚未核对");
+      } finally { wrongSource.mockRestore(); }
+      await assertHeld(await lookup(), "归档原件固定版本已核对，正式归档结果尚未确认");
+      await assertHeld(await archive(), "归档原件固定版本已核对，正式归档结果尚未确认");
+      expect(await readArchiveState()).toEqual(beforeReadback);
+      expect(readVersion).not.toHaveBeenCalled();
+    } finally {
+      store.$queryRaw = nativeQuery;
+      await store.contractArchiveEvidenceFile.deleteMany({ where: { archiveFileId: archiveId } });
+      await store.contractArchiveFile.delete({ where: { id: archiveId } });
+      await store.contractVersion.update({ where: { id: draft.version.id }, data: { status: "seal_approved_pending_archive", effectiveAt: null } });
+    }
   } finally {
     binder.mockRestore();
     readVersion.mockRestore();

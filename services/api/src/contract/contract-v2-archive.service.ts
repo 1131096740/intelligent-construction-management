@@ -6,6 +6,7 @@ import { readDirectArchivePreflightProfile, rejectUnqualifiedDirectArchiveWriter
 import { assertDirectArchiveSourceScope } from "./contract-direct-archive-scope";
 import { assertDirectArchiveIntentSourceClosed } from "./contract-direct-archive-intent-source";
 import { directArchiveRequestSha } from "./contract-direct-archive-request";
+import { requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
 import { archiveRequestSha, assertContractV2ArchivePersistentProof } from "./contract-v2-archive-persistent-proof";
 import { tryAcquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
@@ -293,22 +294,29 @@ export class ContractV2ArchiveService {
     if (!version || !owner || owner.ownerUserId !== actor || owner.voidedAt) throw new ForbiddenException("当前经办权限已变化，不能读取归档结果");
     const currentAccess = await resolveGovernedFinalArchiveAccess(this.prisma, { actorUserId: actor, projectId: owner.projectId, handlerUserId: durable.uploadedByUserId });
     if (!currentAccess.canUpload) throw new ForbiddenException("当前账号已无本项目合同经办上传权限，不能读取归档结果");
-    if (durable.archiveSource === "direct_signed") {
+    if (durable.archiveSource === "direct_signed" || requiresGeneratedArchiveOriginals(version, durable)) {
       return this.prisma.$transaction(async tx => {
         const currentVersion = await tx.contractVersion.findUnique({ where: { id: versionId } });
         const currentOwner = currentVersion ? await tx.contract.findUnique({ where: { id: currentVersion.contractId } }) : null;
         if (!currentVersion || !currentOwner || currentOwner.ownerUserId !== actor || currentOwner.voidedAt) {
           throw new ForbiddenException("当前经办权限已变化，不能读取归档结果");
         }
-        const directAccess = await resolveGovernedFinalArchiveAccess(tx, {
+        const scopedAccess = await resolveGovernedFinalArchiveAccess(tx, {
           actorUserId: actor, projectId: currentOwner.projectId, handlerUserId: actor
         });
-        if (!directAccess.canUpload) throw new ForbiddenException("当前账号已无本项目合同经办上传权限，不能读取归档结果");
+        if (!scopedAccess.canUpload) throw new ForbiddenException("当前账号已无本项目合同经办上传权限，不能读取归档结果");
         const current = await tx.contractArchiveFile.findUnique({ where: { idempotencyKey: key } });
-        if (!current || current.id !== durable.id || current.uploadedByUserId !== actor || current.contractVersionId !== versionId) {
-          throw new ServiceUnavailableException("直签归档持久结果尚未完整核对，请保留原标识");
+        if (!current || current.id !== durable.id || current.uploadedByUserId !== actor || current.contractVersionId !== versionId
+          || current.archiveSource !== durable.archiveSource) {
+          throw new ServiceUnavailableException(durable.archiveSource === "direct_signed"
+            ? "直签归档持久结果尚未完整核对，请保留原标识"
+            : "归档持久结果尚未完整核对，请保留原标识");
         }
-        return assertDirectArchivePersistentProof(tx, currentOwner, currentVersion, current);
+        if (current.archiveSource === "direct_signed") return assertDirectArchivePersistentProof(tx, currentOwner, currentVersion, current);
+        if (!requiresGeneratedArchiveOriginals(currentVersion, current)) {
+          throw new ServiceUnavailableException("归档原件固定版本尚未完整核对，请保留本次标识");
+        }
+        return assertContractV2ArchivePersistentProof(tx, currentOwner, currentVersion, current);
       }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     }
     return assertContractV2ArchivePersistentProof(this.prisma, owner, version, durable);

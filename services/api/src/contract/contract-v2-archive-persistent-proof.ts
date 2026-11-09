@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Prisma, type Contract, type ContractVersion, type ContractArchiveFile } from "@prisma/client";
+import { readGeneratedArchiveOriginals, requiresGeneratedArchiveOriginals } from "./contract-generated-archive-original-read";
 import type { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
 
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v, (_k, value) => typeof value === "bigint" ? value.toString() : value));
@@ -24,7 +25,8 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
   const files = await tx.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: durable.id }, orderBy: { displayOrder: "asc" } });
   const frozen = object(durable.authoritySnapshot), consequence = object(frozen.operatingConsequence);
   if (version?.status !== "effective" || !version.effectiveAt || durable.archiveProtocolVersion !== 2 || !durable.authoritySha256 || !durable.fileManifestSha256 || !same(files.map(f => ({ fileId: f.fileId, displayOrder: f.displayOrder, mimeType: f.mimeType, sizeBytes: f.sizeBytes, contentSha256: f.contentSha256 })), frozen.fileManifest)) throw new ServiceUnavailableException("归档持久结果尚未完整核对，请查询原标识，不要重发");
-  if (consequence.mode === "projection_required") {
+  const requiresFixedOriginals = requiresGeneratedArchiveOriginals(version, durable);
+  if (!requiresFixedOriginals && consequence.mode === "projection_required") {
     const fact = await tx.operatingFact.findUnique({ where: { idempotencyKey: `contract_version:${versionId}` } });
     const impact = await tx.operatingImpactEntry.findUnique({ where: { idempotencyKey: `contract_version:${versionId}:commitment` } });
     const expected = object(consequence.expectedSource), basis = object(frozen.sourceBasis), locator = object(basis.sourceLocator), money = object(basis.money), subjects = object(basis.subjects), signing = object(subjects.signingIdentity), company = object(signing.company);
@@ -35,7 +37,7 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
       fact.projectId !== owner.projectId || fact.sourceType !== expected.sourceType || fact.sourceBusinessId !== versionId || fact.sourceVersion !== expected.sourceVersion || fact.entryKind !== "original" || fact.factKind !== "downstream_contract" || fact.status !== "confirmed" || fact.numericProtocolVersion !== 2 || fact.amountCents !== null || !amountMatches(fact.amountYuan) || fact.direction !== "neutral" || fact.currencyCode !== "CNY" || fact.debtorSubjectKind !== "participating_company" || fact.debtorSubjectId !== company.companyEntityId || fact.confirmedByUserId !== actor || fact.occurredAt.getTime() !== durable.confirmedAt?.getTime() || fact.confirmedAt.getTime() !== durable.confirmedAt?.getTime() ||
       persistedSource.archiveProtocolVersion !== 2 || persistedSource.archiveAuthorityId !== durable.id || persistedSource.archiveAuthoritySha256 !== durable.authoritySha256 || persistedSource.sourceBasisSha256 !== frozen.sourceBasisSha256 || !same(persistedSource.sourceBasis, basis) ||
       impact.factId !== fact.id || impact.projectId !== owner.projectId || impact.sourceType !== fact.sourceType || impact.sourceBusinessId !== versionId || impact.numericProtocolVersion !== 2 || impact.amountCents !== null || !amountMatches(impact.amountYuan) || impact.sourceImpactKey !== expected.sourceImpactKey || impact.impactKind !== expected.impactKind || impact.direction !== expected.direction || impact.subjectRole !== "debtor" || impact.subjectKind !== fact.debtorSubjectKind || impact.subjectId !== fact.debtorSubjectId) throw new ServiceUnavailableException("经营事实的持久结果尚未确认，请查询原标识，不要重发");
-  } else if (consequence.mode !== "not_applicable") throw new ServiceUnavailableException("归档后果预期尚未确认，请查询原标识");
+  } else if (!requiresFixedOriginals && consequence.mode !== "not_applicable") throw new ServiceUnavailableException("归档后果预期尚未确认，请查询原标识");
   if (!durable.approvalInstanceId || !durable.sealTaskId || durable.documentContentRevision === null || !durable.documentContentFingerprint) throw new ServiceUnavailableException("归档请求坐标尚未完整核对，请保留原标识");
   const intent: ArchiveSignedContractV2Dto = { archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: key,
     expectedApprovalInstanceId: durable.approvalInstanceId, expectedSealTaskId: durable.sealTaskId,
@@ -47,6 +49,10 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
   if (response.archiveId !== result.archiveId || response.contractVersionId !== result.contractVersionId
     || response.status !== result.status || !Array.isArray(response.fileIds) || !same(response.fileIds, result.fileIds)) {
     throw new ServiceUnavailableException("归档回执尚未完整核对，请保留原标识");
+  }
+  if (requiresFixedOriginals) {
+    await readGeneratedArchiveOriginals(tx, owner, version, durable, files);
+    throw new ServiceUnavailableException("归档原件固定版本已核对，正式归档结果尚未确认，请保留本次标识");
   }
   return { status: "archived" as const, result, requestSha256: durable.requestSha256, intent };
 }
