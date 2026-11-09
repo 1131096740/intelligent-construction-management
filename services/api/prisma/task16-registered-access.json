@@ -522,7 +522,7 @@
         "update": [],
         "evidence": [
           "services/api/src/payment/registered-payment-funding.ts:148",
-          "services/api/src/payment/registered-payment-execution.service.ts:69"
+          "services/api/src/payment/registered-payment-execution.service.ts:75"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -1233,7 +1233,7 @@
   "schemaVersion": 1,
   "purpose": "task16-registered-normal-case-combined-acl-not-financial-acceptance",
   "caseId": "registered.null-cross-company.commit",
-  "baselineManifestSha256": "d2cbe9085444fd1ef8c96b42d9bc42b5ea2ce2602dcbb7f2ee89a871582bbc48",
+  "baselineManifestSha256": "5396ef93ee47b38b3b4857b2bcae23de5df8eb2e362b907742ef00bd948d1f1a",
   "before": {
     "runtime": {
       "role": "jg_task01_runtime",
@@ -1685,7 +1685,7 @@
           "update": [],
           "evidence": [
             "services/api/src/payment/registered-payment-funding.ts:148",
-            "services/api/src/payment/registered-payment-execution.service.ts:69"
+            "services/api/src/payment/registered-payment-execution.service.ts:75"
           ],
           "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
         },
@@ -11115,7 +11115,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.json",
-      "sha256": "d2cbe9085444fd1ef8c96b42d9bc42b5ea2ce2602dcbb7f2ee89a871582bbc48"
+      "sha256": "5396ef93ee47b38b3b4857b2bcae23de5df8eb2e362b907742ef00bd948d1f1a"
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
@@ -11199,7 +11199,7 @@
     },
     {
       "path": "services/api/src/payment/registered-payment-execution.service.ts",
-      "sha256": "991282046b6e71d011845320cfe9ed9611efeaabddd872c591cfe02abb4f366d"
+      "sha256": "73255d90030c195b73dc4d220be6f56f1fbefd6601d555d77000ece2c9662608"
     },
     {
       "path": "services/api/src/payment/registered-payment-funding.ts",

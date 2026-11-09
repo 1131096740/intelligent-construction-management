@@ -64,8 +64,14 @@ export class RegisteredPaymentExecutionService {
       const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
       // New registrations have no original voucher and must carry the committed funding receipt.
       if (execution.voucherFileId === null && !funding) return unconfirmed;
-      const facts = await tx.operatingFact.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: execution.id } });
-      const impacts = facts.length ? await tx.operatingImpactEntry.findMany({ where: { factId: { in: facts.map(fact=>fact.id) } } }) : [];
+      const facts = await tx.operatingFact.findMany({
+        where: { sourceType: "payment_execution", sourceBusinessId: execution.id },
+        select: { id: true, sourceVersion: true, basisSnapshot: true, actualPayerSubjectKind: true, actualPayerSubjectId: true }
+      });
+      const impacts = facts.length ? await tx.operatingImpactEntry.findMany({
+        where: { factId: { in: facts.map(fact => fact.id) } },
+        select: { factId: true, impactKind: true, amountCents: true, numericProtocolVersion: true, subjectKind: true, subjectId: true }
+      }) : [];
       const relationshipEntries = await tx.interEntityRelationshipEntry.findMany({where:{paymentExecutionId:execution.id,sourceType:"registered_payment_execution"}});
       const voucherFileId = await paymentExecutionVoucherFileId(tx,execution);
       const canSupplementVoucher = Boolean(funding && execution.voucherFileId === null && voucherFileId === null);

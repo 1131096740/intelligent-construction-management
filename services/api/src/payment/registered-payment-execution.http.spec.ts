@@ -843,8 +843,25 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     const recorded = await post("keeper","/payment-executions/payment-a/registrations",{idempotencyKey:key,expectedPaymentUpdatedAt:"2026-11-05T00:00:00.000Z",amountCents:"4000",paidAt:"2026-11-06",scopeKey:"public_cash",expectedRegistrationId:cash.body.id,openingTreatment:"not_included",openingReason:"本次现金实付未含期初",openingEvidence:"纸质现金付款登记",sourceAllocations:[{sourceBatchId:cash.body.sources[0].id,amountCents:"4000"}],confirmationPassword:"Synthetic15Password!"});
     expect(recorded.body.message).toBeUndefined();
     expect(recorded).toMatchObject({status:201});
+    const { operatingFact, operatingImpactEntry } = database.prisma as unknown as {
+      operatingFact: { findMany(args: { select?: Record<string, boolean> }): Promise<Record<string, unknown>[]> };
+      operatingImpactEntry: Pick<Prisma.TransactionClient["operatingImpactEntry"], "findMany">;
+    };
+    const factColumns = ["actualPayerSubjectId", "actualPayerSubjectKind", "basisSnapshot", "id", "sourceVersion"];
+    const findFacts = operatingFact.findMany;
+    jest.spyOn(operatingFact, "findMany").mockImplementationOnce(async args => {
+      const selected = Object.entries(args.select ?? {}).filter(([, enabled]) => enabled).map(([column]) => column).sort();
+      if (selected.join(",") !== factColumns.join(",")) throw new Error("Synthetic registered payment fact column grant rejected");
+      const rows = await findFacts.call(operatingFact, args);
+      return rows.map(row => Object.fromEntries(factColumns.map(column => [column, row[column]])));
+    });
+    const findImpacts = jest.spyOn(operatingImpactEntry, "findMany");
     const result = await get("finance",`/payment-executions/results/${key}`);
     expect(result.status).toBe(200);
+    expect(findImpacts).toHaveBeenCalledWith({
+      where: { factId: { in: [result.body.effects[0].factId] } },
+      select: { factId: true, impactKind: true, amountCents: true, numericProtocolVersion: true, subjectKind: true, subjectId: true }
+    });
     expect(result.body.effects).toEqual([expect.objectContaining({actualPayerKind:"public_cash",actualPayerId:"public_cash",impacts:expect.arrayContaining([expect.objectContaining({kind:"public_cash_funds_decrease",amountCents:"4000",subjectKind:"public_cash",subjectId:"public_cash"})])})]);
     expect(result.body.effects[0].impacts).not.toContainEqual(expect.objectContaining({kind:"company_project_funds_decrease"}));
     expect((await get("keeper","/payment-executions/recorded-items")).body.items).toContainEqual(expect.objectContaining({resultKey:key,actualPayerName:"\u516c\u5171\u73b0\u91d1"}));
