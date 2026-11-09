@@ -827,6 +827,152 @@
       ]
     },
     {
+      "id": "contract-seal-v2.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitSeal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.sealAction.eligible"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmContractSealV2"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal-v2.resume-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitSealContinue"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.sealAction.eligible"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmContractSealV2"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal-v2.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "querySeal"
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "localStorage.sealIntent"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "fetchContractDetail"
+        }
+      ]
+    },
+    {
+      "id": "contract-direct-registration.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDirectRegistration"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "directPendingCapabilities.registrationEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "archiveSignedContractV2"
+        }
+      ]
+    },
+    {
+      "id": "contract-direct-registration.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "directRegistration",
+        "variant": "lookup-original"
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "localStorage.pending"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "fetchDirectSignedContractResult"
+        }
+      ]
+    },
+    {
+      "id": "contract-direct-registration.resume-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "directRegistration",
+        "variant": "resume-original"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "directPendingCapabilities.registrationEnabled"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "archiveSignedContractV2"
+        }
+      ]
+    },
+    {
       "id": "contract-draft.aggregate-autosave",
       "usage": "background",
       "routePaths": [
@@ -10555,6 +10701,58 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "downloadPrivateFileByTicket"
+        }
+      ]
+    },
+    {
+      "id": "contract-generated-archive.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitArchive"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.archiveAction.eligible"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "archiveSignedContractV2"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-generated-archive.resume-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitContinue"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.archiveAction.eligible"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "archiveSignedContractV2"
         }
       ]
     }

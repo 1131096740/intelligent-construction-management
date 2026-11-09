@@ -453,13 +453,21 @@ function stopPolling() {
   }
 }
 
-async function run(action: () => Promise<unknown>, success: string) {
+async function refreshAfterMutation() {
+  await refreshDocuments();
+  emit("reload");
+}
+
+async function run(
+  action: () => Promise<unknown>,
+  success: string,
+  afterSuccess = refreshAfterMutation
+) {
   busy.value = true;
   message.value = "";
   try {
     await action();
-    await refreshDocuments();
-    emit("reload");
+    await afterSuccess();
     message.value = success;
   } catch (error) {
     message.value = formatUnknownApiError(error, "操作失败");
@@ -471,7 +479,9 @@ async function run(action: () => Promise<unknown>, success: string) {
 async function queueDocument() {
   const requestedLayoutId = layoutTemplateVersionId.value;
   const requestedVersionId = versionId.value;
+  const completeMutation = props.completeMutation;
   let prepared = false;
+  let completing = false;
   await run(
     async () => {
       const current = props.prepareMutation
@@ -488,9 +498,14 @@ async function queueDocument() {
         attachmentFileIds: attachments.value.map((file) => file.id)
       });
     },
-    "已加入生成队列"
+    "已加入生成队列",
+    completeMutation ? async () => {
+      // Preparing the saved revision can remount this section before the queue responds.
+      completing = true;
+      await completeMutation(true);
+    } : undefined
   );
-  if (prepared && props.completeMutation) await props.completeMutation(false);
+  if (prepared && completeMutation && !completing) await completeMutation(false);
 }
 
 async function uploadAttachments(event: Event) {

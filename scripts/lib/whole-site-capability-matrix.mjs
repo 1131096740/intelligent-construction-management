@@ -117,7 +117,8 @@ const LIVE_WEB_MANIFESTS = new WeakSet();
 const ACTION_USAGES = new Set(["page_action", "background"]);
 const ACTION_SEMANTICS = new Set([
   "business_write",
-  "technical_write"
+  "technical_write",
+  "read_only"
 ]);
 const EXIT_CANDIDATE_SEMANTICS =
   "candidate_only_no_deletion_authorization";
@@ -1218,6 +1219,7 @@ function validatePageSummary(
     )
   );
   for (const { action, binding } of actionBindings) {
+    if (action.semantic === "read_only") continue;
     for (const consumer of binding.productionConsumers) {
       const key = mutationConsumerKey(
         binding.apiFile,
@@ -1416,6 +1418,22 @@ function validatePageManifestShape(manifest) {
     );
     for (const binding of action.bindings) {
       validateBindingShape(binding);
+    }
+    if (action.semantic === "read_only") {
+      const [binding] = action.bindings;
+      assert(
+        action.bindings.length === 1 &&
+          action.capability.kind === "none" &&
+          !action.capability.serverDerived &&
+          !action.capability.dominatesTrigger &&
+          !Object.hasOwn(action.capability, "key") &&
+          binding.method === "GET" &&
+          binding.bodyKind === "none" &&
+          binding.acceptedProductionConsumers.length === 0 &&
+          binding.ticketFollowups.length === 0,
+        "CAPABILITY_MATRIX_INVALID_READ_ONLY_ACTION",
+        { actionId: action.id }
+      );
     }
   }
 }
@@ -1785,6 +1803,9 @@ function actionBindingReasons(
   binding,
   { hasMutationBinding }
 ) {
+  if (action.semantic === "read_only") {
+    return binding.causalVerified ? [] : ["causal_unverified"];
+  }
   const reasons = [];
   const hasFreshRead = Object.hasOwn(action.capability, "freshRead");
   if (
@@ -1885,6 +1906,16 @@ function buildActionBindings({
         "CAPABILITY_MATRIX_ACTION_NEST_ROUTE_DRIFT",
         { actionId: action.id }
       );
+      if (action.semantic === "read_only") {
+        assert(
+          wrapper?.returnProvenance === "transparent_main_response" &&
+            wrapper.requests.length === 1 &&
+            nestRoute.authentication === "authenticated" &&
+            !nestRoute.isPublic,
+          "CAPABILITY_MATRIX_INVALID_READ_ONLY_TRANSPORT",
+          { actionId: action.id }
+        );
+      }
       for (const consumer of binding.productionConsumers) {
         assert(
           !wrapper ||

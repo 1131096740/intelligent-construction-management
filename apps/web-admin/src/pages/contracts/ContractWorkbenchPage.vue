@@ -3,6 +3,52 @@
     class="workbench-page jg-responsive-workspace"
     data-jg-scroll-owner="child"
   >
+    <section
+      v-if="directRegistration.visible.value"
+      class="create-panel"
+      aria-label="正式登记已签合同"
+    >
+      <t-alert
+        v-if="directRegistration.message.value"
+        theme="info"
+        :message="directRegistration.message.value"
+      />
+      <div class="create-actions">
+        <t-button
+          v-if="directRegistration.available.value && !directRegistration.pending.value"
+          theme="primary"
+          :disabled="!directRegistration.canConfirm.value"
+          @click="directRegistrationConfirmVisible = true"
+        >
+          正式登记
+        </t-button>
+        <t-button
+          v-if="directRegistration.pending.value"
+          variant="outline"
+          :disabled="!directRegistration.canQuery.value"
+          @click="directRegistration.query()"
+        >
+          查询原登记结果
+        </t-button>
+        <t-button
+          v-if="directRegistration.pending.value && directRegistration.available.value"
+          variant="outline"
+          :disabled="!directRegistration.canContinue.value"
+          @click="directRegistration.query(true)"
+        >
+          按原请求继续
+        </t-button>
+      </div>
+      <t-dialog
+        v-model:visible="directRegistrationConfirmVisible"
+        header="确认正式登记已签合同"
+        :confirm-btn="{ content: '确认登记', disabled: !directRegistration.canConfirm.value }"
+        @confirm="confirmDirectRegistration"
+      >
+        请确认已保存的签章 PDF 与纸面合同一致。正式登记完成后合同即生效。
+      </t-dialog>
+    </section>
+
     <!-- Draft-creation flow for /contracts/new ------------------------------->
     <div
       v-if="isNewDraft"
@@ -26,6 +72,7 @@
             :value="initializeDraft.projectId.value"
             :options="projectOptions"
             placeholder="选择项目"
+            :disabled="creating || initializeDraft.creationResultUnknown.value"
             @change="onProjectChange"
           />
         </label>
@@ -33,22 +80,80 @@
       <div class="create-fields">
         <label class="field">
           <span class="field-label">业务类型</span>
-          <t-select :value="initializeDraft.contractTypeKey.value" :options="contractTypeOptions" placeholder="选择业务类型" @change="onContractTypeChange" />
+          <t-select :value="initializeDraft.contractTypeKey.value" :options="contractTypeOptions" placeholder="选择业务类型" :disabled="creating || initializeDraft.creationResultUnknown.value" @change="onContractTypeChange" />
         </label>
         <label class="field">
           <span class="field-label">合同金额上限</span>
-          <t-select :value="initializeDraft.amountLimitType.value" :options="amountLimitTypeOptions" @change="onAmountLimitTypeChange" />
+          <t-select :value="initializeDraft.amountLimitType.value" :options="amountLimitTypeOptions" :disabled="creating || initializeDraft.creationResultUnknown.value" @change="onAmountLimitTypeChange" />
         </label>
         <label class="field">
           <span class="field-label">合同关系</span>
-          <t-select :value="initializeDraft.relationship.value || undefined" :options="relationshipOptions" placeholder="可先留空，生成前选择" @change="initializeDraft.setRelationship" />
+          <t-select :value="initializeDraft.relationship.value || undefined" :options="relationshipOptions" placeholder="可先留空，生成前选择" :disabled="creating || initializeDraft.creationResultUnknown.value" @change="initializeDraft.setRelationship" />
         </label>
       </div>
-      <p class="create-hint">起草只保存未提交资料。进入工作台后补充合同名称和甲乙方，再手动选择模板；不发起审批或生成正式合同。</p>
+      <div v-if="initializeDraft.relationship.value === 'outside' || initializeDraft.relationship.value === 'upward'" class="create-fields">
+        <div class="field">
+          <span class="field-label">办理方式</span>
+          <t-radio-group
+            :value="initializeDraft.handlingMode.value"
+            :disabled="creating || initializeDraft.creationResultUnknown.value"
+            @change="initializeDraft.setHandlingMode"
+          >
+            <t-radio value="generated">起草新合同</t-radio>
+            <t-radio
+              value="direct_signed"
+              :disabled="initializeDraft.relationship.value === 'upward' && !initializeDraft.upwardDirectAvailable.value"
+            >已签合同资料</t-radio>
+          </t-radio-group>
+          <p v-if="initializeDraft.relationship.value === 'upward' && !initializeDraft.upwardDirectAvailable.value" class="create-hint">当前项目暂不能办理对上已签资料</p>
+        </div>
+      </div>
+      <p v-if="initializeDraft.handlingMode.value === 'direct_signed'" class="create-hint">
+        记录已签合同的原编号、双方、条款和签章原件，保存后可继续补充资料。
+      </p>
+      <p v-else class="create-hint">起草只保存未提交资料。进入工作台后补充合同名称和甲乙方，再手动选择模板；不发起审批或生成正式合同。</p>
       <div class="create-actions">
         <t-button theme="primary" :loading="creating" :disabled="!initializeDraft.canCreate.value" @click="onCreateDraft">创建草稿</t-button>
+        <t-button v-if="initializeDraft.creationResultUnknown.value" variant="outline" @click="router.push('/首页')">前往首页核对我的草稿</t-button>
       </div>
       <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+      <t-alert v-if="initializeDraft.creationResultUnknown.value" theme="warning" message="创建结果待核对，请先在我的草稿确认是否已创建。" />
+    </div>
+
+    <DirectPendingDraftSection
+      v-else-if="directPending"
+      :key="route.fullPath + ':' + authStore.user?.id"
+      :contract-id="contractId"
+      :version-id="authoritySnapshot?.contractVersionId ?? ''"
+      :source-state="directPending"
+      :registration-enabled="directRegistration.available.value"
+      :aggregate="aggregateModel"
+      :upward-subjects="directUpwardSubjects"
+      :saved-file-ids="directSavedFileIds"
+      :capture-read-context="captureDirectReadContext"
+      :upload-original="uploadDirectOriginal"
+      :disabled="!canEdit || !online || pendingSaveResult || saveState === 'saving' || directRegistration.locked.value"
+      :online="online"
+      :can-refresh="Boolean(online && !canEdit && !pendingSaveResult && !pendingLocalRecovery && directSourceEditable && directOwned && !directRegistration.locked.value)"
+      :read-only-message="directReadOnlyMessage"
+      :saving="saveState === 'saving'"
+      :saved="saveState === 'saved'"
+      :saved-then-updated="directSaveSuperseded"
+      :dirty="isDirty"
+      :pending-result="pendingSaveResult"
+      :checking="checkingSaveResult"
+      :error="saveError"
+      @patch-draft="patchDirectDraft"
+      @set-payment-terms="setDirectPaymentTerms"
+      @set-parties="setDirectParties"
+      @set-attachments="setDirectAttachments"
+      @save="saveNow"
+      @check-result="checkSaveResult"
+      @refresh="loadExisting"
+    />
+    <div v-else-if="!workbench && !exactVersionError" class="create-panel">
+      <t-alert v-if="errorMessage" theme="error" :message="errorMessage" />
+      <p v-else>正在读取当前合同草稿</p>
     </div>
 
     <!-- Workbench shell for an existing contract ----------------------------->
@@ -939,6 +1044,14 @@
             继续编辑
           </t-button>
           <t-button
+            v-if="canLeaveDirectPending"
+            variant="outline"
+            :disabled="navigationFlushBusy"
+            @click="leaveWithDirectPending"
+          >
+            保留本机输入并离开
+          </t-button>
+          <t-button
             v-if="navigationPrompt?.canFlush"
             theme="primary"
             :loading="navigationFlushBusy"
@@ -970,6 +1083,10 @@
 </template>
 
 <script setup lang="ts">
+import DirectPendingDraftSection from "./workbench/DirectPendingDraftSection.vue";
+import { useDirectContractRegistration } from "./workbench/use-direct-contract-registration";
+import { directPendingBusinessTypes, upwardSubjectOptions, type PendingSigningMarker } from "./workbench/direct-pending-draft";
+import type { ContractDraftAttachmentModel, ContractDraftPaymentTermsModel, ContractDraftWorkbenchReadModel } from "../../api/contract-workbench.api";
 import type {
   ContractReadinessResult,
   ContractSettlementMode,
@@ -1249,10 +1366,16 @@ const draft = useContractDraft({
   replace: (to) => {
     void router.replace(to);
   },
-  userId: () => authStore.user?.id
+  userId: () => authStore.user?.id,
+  routePath: () => router.currentRoute.value.fullPath,
+  sessionIdentity: () => authStore.user
 });
 const {
   aggregateModel,
+  directPending,
+  captureDirectReadContext,
+  directSaveSuperseded,
+  uploadDirectOriginal,
   model,
   authoritySnapshot,
   saveState,
@@ -1261,6 +1384,8 @@ const {
   online,
   checkingSaveResult,
   checkSaveResult,
+  canLeaveDirectPending,
+  persistDirectPendingBeforeLeave,
   conflict,
   dirty,
   isDirty,
@@ -1293,7 +1418,7 @@ const {
 // The receipt remains deeply readonly at the composable boundary. Existing
 // presentation-only child props still describe the legacy mutable read model,
 // so narrow only the view type here without cloning or creating a second state.
-const workbench = computed<ContractWorkbenchReadModel | null>(() => {
+const workbench = computed<(ContractWorkbenchReadModel & { version: { originalSignedNumber?: string | null } }) | null>(() => {
   const receipt = authoritySnapshot.value?.workbench;
   return receipt ? (receipt as unknown as ContractWorkbenchReadModel) : null;
 });
@@ -1323,9 +1448,15 @@ const navigationState = computed(() => ({
   saveState: saveState.value,
   error: saveError.value
 }));
-const navigationPrompt = computed(() =>
-  contractWorkbenchNavigationPrompt(navigationState.value)
-);
+const navigationPrompt = computed(() => directPending.value && pendingSaveResult.value
+  ? {
+      title: "已签合同保存结果待核对",
+      message: saveError.value || "可保留本机输入，返回这份草稿后核对原请求。",
+      actionLabel: "",
+      canFlush: false,
+      tone: "warning" as const
+    }
+  : contractWorkbenchNavigationPrompt(navigationState.value));
 const leaveSave = createContractWorkbenchLeaveSave({
   state: () => navigationState.value,
   flushBeforeLeave: saveNow
@@ -1372,6 +1503,14 @@ function cancelPendingNavigation() {
   const resolve = resolvePendingNavigation;
   resolvePendingNavigation = null;
   resolve?.(false);
+}
+
+function leaveWithDirectPending() {
+  if (!persistDirectPendingBeforeLeave()) return;
+  navigationConfirmVisible.value = false;
+  const resolve = resolvePendingNavigation;
+  resolvePendingNavigation = null;
+  resolve?.(true);
 }
 
 async function flushNavigationAndLeave() {
@@ -2129,11 +2268,7 @@ const autosaveTone = computed(() => {
 
 async function loadContractTypeOptions() {
   if (isNewDraft.value) {
-    contractTypeOptions.value = [
-      { value: "material_purchase", label: "材料采购" }, { value: "equipment_rental", label: "机械租赁" },
-      { value: "labor_subcontract", label: "劳务分包" }, { value: "professional_subcontract", label: "专业分包" },
-      { value: "other", label: "其他" }
-    ];
+    contractTypeOptions.value = directPendingBusinessTypes;
     return;
   }
   try {
@@ -2294,6 +2429,7 @@ async function onConfirmMigration() {
 }
 
 async function onCreateDraft() {
+  if (creating.value) return;
   if (!initializeDraft.canCreate.value) {
     errorMessage.value = "请选择项目和业务类型后起草合同";
     return;
@@ -2307,6 +2443,63 @@ async function onCreateDraft() {
   } finally {
     creating.value = false;
   }
+}
+
+const directRegistrationConfirmVisible = ref(false);
+const directRegistration = useDirectContractRegistration({
+  actor: computed(() => authStore.user?.id),
+  routeContract: computed(() => contractId.value ?? ""),
+  routeVersion: computed(() => queryText(route.query.versionId).trim()),
+  workbench: computed(() => (authoritySnapshot.value?.workbench as ContractDraftWorkbenchReadModel | undefined) ?? null),
+  blocked: computed(() => Boolean(isDirty.value || pendingSaveResult.value || pendingLocalRecovery.value ||
+    saveState.value === "saving" || authoritySnapshot.value?.refreshRequired)),
+  online,
+  completed: (id, versionId) => { void router.replace({ path: `/contracts/${encodeURIComponent(id)}`, query: { versionId } }); }
+});
+watch([directRegistration.confirmationKey, () => authStore.user?.id, () => route.fullPath],
+  () => { directRegistrationConfirmVisible.value = false; }, { flush: "sync" });
+function confirmDirectRegistration() {
+  directRegistrationConfirmVisible.value = false;
+  void directRegistration.confirm();
+}
+
+const directSourceEditable = computed(() => directPending.value === "incomplete" || directPending.value === "complete");
+const directOwned = computed(() => workbench.value?.contract.ownerUserId === authStore.user?.id);
+const directReadOnlyMessage = computed(() => {
+  if (pendingLocalRecovery.value) return localRecoveryError.value || "服务端资料已更新，本机输入仍保留，请联系合同部核对。";
+  if (pendingSaveResult.value || !directSourceEditable.value || canEdit.value) return "";
+  if (!directOwned.value) return "当前账号可查看合同资料，草稿由经办人编辑。";
+  return "当前为只读，请刷新编辑状态。若其他页面仍在编辑，请关闭后稍候重试。";
+});
+const directUpwardSubjects = computed(() => {
+  const receipt = authoritySnapshot.value?.workbench;
+  return receipt ? upwardSubjectOptions(receipt) : null;
+});
+const directSavedFileIds = computed(() => authoritySnapshot.value?.workbench.attachments.map(item => item.fileId) ?? []);
+
+function canMutateDirectDraft() {
+  return Boolean(directPending.value && canEdit.value && online.value && !pendingSaveResult.value && saveState.value !== "saving" && !directRegistration.locked.value);
+}
+function patchDirectDraft(patch: Partial<ContractDraftModel>) {
+  if (!canMutateDirectDraft()) return;
+  Object.assign(model, patch);
+  markDirty("draft");
+}
+function setDirectPaymentTerms(terms: ContractDraftPaymentTermsModel | null) {
+  if (!canMutateDirectDraft()) return;
+  aggregateModel.paymentTerms = terms;
+  markDirty("payment_terms");
+}
+function setDirectParties(parties: ContractDraftPartyModel[], marker: PendingSigningMarker, companyEntityId?: string) {
+  if (!canMutateDirectDraft()) return;
+  aggregateModel.parties = parties;
+  patchDirectDraft({ ...(companyEntityId !== undefined ? { companyEntityId } : {}), extraDraftData: { ...model.extraDraftData, directSigningInput: marker } });
+  markDirty("parties");
+}
+function setDirectAttachments(attachments: ContractDraftAttachmentModel[]) {
+  if (!canMutateDirectDraft()) return;
+  aggregateModel.attachments = attachments;
+  markDirty("attachments");
 }
 
 async function onSave() {
@@ -2800,7 +2993,9 @@ async function onConfirmTransfer() {
 async function loadExisting() {
   const loadContext = {
     contractId: contractId.value,
-    versionId: queryText(route.query.versionId).trim()
+    versionId: queryText(route.query.versionId).trim(),
+    actor: authStore.user?.id,
+    requestId: workbenchLoadRequestId + 1
   };
   if (!loadContext.contractId) {
     return;
@@ -2810,6 +3005,14 @@ async function loadExisting() {
     historicalTakeoverRouteRequired.value = false;
     historicalTakeoverReturnTarget.value = null;
     await loadExpectedWorkbench(loadContext.contractId);
+    if (contractWorkbenchLoadContextCurrent(loadContext) && workbench.value && !directPending.value) {
+      void loadContractTypeOptions();
+      void fetchApprovalDelegationUserOptions().then((users) => {
+        if (contractWorkbenchLoadContextCurrent(loadContext)) transferUsers.value = users;
+      }).catch(() => {
+        if (contractWorkbenchLoadContextCurrent(loadContext)) transferUsers.value = [];
+      });
+    }
   } catch (error) {
     if (!contractWorkbenchLoadContextCurrent(loadContext)) return;
     const code = error && typeof error === "object" && "code" in error
@@ -2844,8 +3047,10 @@ async function loadExisting() {
 function contractWorkbenchLoadContextCurrent(context: {
   contractId: string;
   versionId: string;
+  actor: string | undefined;
+  requestId: number;
 }) {
-  return contractId.value === context.contractId &&
+  return contractWorkbenchComponentAlive && workbenchLoadRequestId === context.requestId && authStore.user?.id === context.actor && contractId.value === context.contractId &&
     queryText(route.query.versionId).trim() === context.versionId;
 }
 
@@ -2858,7 +3063,7 @@ async function loadExpectedWorkbench(id: string) {
   if (!expectedVersionId) {
     throw new Error("工作台缺少合同版本编号，已停止读取最新草稿");
   }
-  await load(expectedVersionId);
+  await load(expectedVersionId, id);
   if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
   const snapshot = authoritySnapshot.value;
   if (
@@ -2889,46 +3094,24 @@ function returnToHistoricalTakeover() {
 
 onMounted(() => {
   void loadProjectOptions();
-  void loadContractTypeOptions();
+  if (isNewDraft.value) void loadContractTypeOptions();
   initializeDraft.setPreciseDraft(true);
   void loadExisting();
-  void fetchApprovalDelegationUserOptions()
-    .then((users) => {
-      transferUsers.value = users;
-    })
-    .catch(() => {
-      transferUsers.value = [];
-    });
 });
 
-// Loading a different contract (or arriving from the create flow) reloads.
-watch(contractId, (next, previous) => {
-  if (next && next !== previous) {
-    clearManualSaveMessage();
-    clearSessionSaveReceipt();
-    focusedBillKey.value = "";
-    workbenchLoadRequestId += 1;
-    clearAuthoritySnapshot();
-    exactVersionError.value = "";
-    historicalTakeoverRouteRequired.value = false;
-    historicalTakeoverReturnTarget.value = null;
-    void loadExisting();
-  }
+// A route replacement can change both coordinates together.
+watch([contractId, () => route.query.versionId, () => authStore.user?.id], ([id, , actor], [previousId]) => {
+  clearManualSaveMessage();
+  clearSessionSaveReceipt();
+  transferUsers.value = [];
+  if (id !== previousId) focusedBillKey.value = "";
+  workbenchLoadRequestId += 1;
+  clearAuthoritySnapshot();
+  exactVersionError.value = "";
+  historicalTakeoverRouteRequired.value = false;
+  historicalTakeoverReturnTarget.value = null;
+  if (id && actor) void loadExisting();
 });
-
-watch(() => route.query.versionId, (next, previous) => {
-  if (contractId.value && next !== previous) {
-    clearManualSaveMessage();
-    clearSessionSaveReceipt();
-    workbenchLoadRequestId += 1;
-    clearAuthoritySnapshot();
-    exactVersionError.value = "";
-    historicalTakeoverRouteRequired.value = false;
-    historicalTakeoverReturnTarget.value = null;
-    void loadExisting();
-  }
-});
-
 watch(
   [() => workbench.value?.version.id, focusedBillKey],
   () => {

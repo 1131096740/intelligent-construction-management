@@ -9,7 +9,8 @@ const EARLY_LOADER = Object.freeze({
  freshCli: require.main===module && process.argv[1]===__filename && process.execArgv.length===0 && !process.env.NODE_OPTIONS && !process.env.NODE_PATH && !(process._preload_modules?.length) && Object.keys(require.cache).every(file=>file===__filename),
  hooks:Object.freeze({load:Module._load,resolve:Module._resolveFilename,find:Module._findPath,require:Module.prototype.require,extensions:Object.freeze(Object.fromEntries([".js",".json",".node"].map(ext=>[ext,Module._extensions[ext]])))})
 });
-const EARLY_DRIVER_SHA=require("./task16-runtime-inputs.cjs").readQualifiedTask16File(__filename,{maxBytes:64*1024*1024,code:"TASK16_DRIVER_SOURCE_FILE"}).sha256;
+const { readQualifiedTask16File } = require("./task16-runtime-inputs.cjs");
+const EARLY_DRIVER_SHA=readQualifiedTask16File(__filename,{maxBytes:64*1024*1024,code:"TASK16_DRIVER_SOURCE_FILE"}).sha256;
 // Pure controller modules only; legacy source-only fixtures may not contain the
 // bridge. Failed import never becomes an available native adapter.
 const NATIVE_APPLICATION_STAGE=(()=>{try{return require("./task16-application-stage.cjs").startTask16Application;}catch{return undefined;}})();
@@ -103,9 +104,11 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
   const seedTransport=fetchDescriptor&&Object.hasOwn(fetchDescriptor,"value")?fetchDescriptor.value:undefined;
   const seedTransportIsBuiltin=typeof seedTransport==='function'&&((EARLY_FETCH_QUALIFIED&&seedTransport===EARLY_FETCH.value)||(typeof EARLY_FETCH_SOURCE==='string'&&EARLY_FETCH_SOURCE.includes(Function.prototype.toString.call(seedTransport))));
   const adapters = injectedAdapters === undefined ? nativeAdapters() : { ...injectedAdapters, verifySource: injectedAdapters.verifySource ?? nativeAdapters().verifySource };
+  let controllerMigration = !simulation;
   if (injectedAdapters?.migrateBaseline && typeof injectedAdapters.migrateBaseline === "object" && Object.keys(injectedAdapters.migrateBaseline).join(",") === "command" && typeof injectedAdapters.migrateBaseline.command === "function") {
     const command = injectedAdapters.migrateBaseline.command;
     adapters.migrateBaseline = context => nativeAdapters().migrateBaseline(context, command);
+    controllerMigration = true;
   }
   if (injectedAdapters?.migrateBaseline && typeof injectedAdapters.migrateBaseline === "object" && Object.keys(injectedAdapters.migrateBaseline).join(",") === "process") {
     const boundary = injectedAdapters.migrateBaseline.process;
@@ -113,6 +116,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     if (boundary && Object.keys(boundary).length === keys.length && keys.every(key => typeof boundary[key] === "function")) {
       const fixed = Object.fromEntries(keys.map(key => [key, boundary[key]]));
       adapters.migrateBaseline = context => nativeAdapters().migrateBaseline(context, undefined, fixed);
+      controllerMigration = true;
     }
   }
 
@@ -224,6 +228,16 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     const initialReceipt = structuredClone(ownedResourceReceipt.call(ownedResource));
     ownedResourceIdentity = Object.freeze(Object.fromEntries(["runId","sourceSha","containerId","networkId","daemonId","endpoint","imageId","databaseName","port"].map(key=>[key,initialReceipt[key]])));
     Object.defineProperty(context,"resourceWitness",{value:ownedResourceIdentity,writable:false,configurable:false,enumerable:true});
+    if (controllerMigration) {
+      const execOwnerSql = resourceMember(ownedResource, "execOwnerSql");
+      const caPath = resourceMember(ownedResource, "caPath");
+      need(typeof execOwnerSql === "function", "TASK16_MIGRATE_RESOURCE_ADAPTER");
+      const ca = readQualifiedTask16File(caPath, { maxBytes: 1024 * 1024, privateFile: true, code: "TASK16_MIGRATE_CA_IDENTITY" });
+      need(ca.sha256 === initialReceipt.tls?.caSha256, "TASK16_MIGRATE_CA_IDENTITY");
+      Object.defineProperty(context, "migrationResourceWitness", { value: Object.freeze({ handle: ownedResource,
+        getReceipt: ownedResourceReceipt, close: ownedResourceClose, execOwnerSql, caPath, caSha256: ca.sha256,
+        caIdentity: Object.freeze(ca.identity) }) });
+    }
     context.ownerTransport = await stage("verifyOwnerTransport");
     if (context.ownerTransport?.ownerPrivateErasureOutcome === "ERASED") receipt.ownerPrivateErasureOutcome = "ERASED";
     if (context.ownerTransport?.ownerRestorationOutcome === "CORRECT_PRESENTATION_RESTORED") receipt.ownerRestorationOutcome = "CORRECT_PRESENTATION_RESTORED";

@@ -30,6 +30,7 @@ import {
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 import { SettlementApprovalWithdrawalResultUnknownError } from "../lib/settlement-approval-result";
 import { apiFetch } from "./api-fetch";
+import type { ApiFetchInit } from "./http";
 import { formatApiErrorMessage } from "./error-message";
 
 export class CoreFlowApiError extends Error {
@@ -75,17 +76,18 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   );
 }
 
-async function readJson<T>(path: string, headers?: Record<string, string>): Promise<T> {
-  const response = await apiFetch(path, headers ? { headers } : undefined);
+async function readJson<T>(path: string, headers?: Record<string, string>, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<T> {
+  const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
 
-async function postJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+async function postJson<TResponse>(path: string, body?: unknown, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    ...options
   });
   await ensureOk(response, "提交失败");
   return response.json() as Promise<TResponse>;
@@ -111,8 +113,8 @@ async function putJson<TResponse>(path: string, body?: unknown): Promise<TRespon
   return response.json() as Promise<TResponse>;
 }
 
-async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
-  const response = await apiFetch(path, { method: "POST", body });
+async function postForm<TResponse>(path: string, body: FormData, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<TResponse> {
+  const response = await apiFetch(path, { method: "POST", body, ...options });
   await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
 }
@@ -141,9 +143,9 @@ export interface ContractSealConfirmationV2Payload {
   confirmed: true;
 }
 
-export function confirmContractSealV2(versionId: string, body: ContractSealConfirmationV2Payload) {
+export function confirmContractSealV2(versionId: string, body: ContractSealConfirmationV2Payload, responseIsCurrent: () => boolean) {
   return postJson<{ contractVersionId: string; approvalInstanceId: string; sealTaskId: string; status: "seal_approved_pending_archive" }>(
-    `/contracts/${encodeURIComponent(versionId)}/seal-confirmation`, body
+    `/contracts/${encodeURIComponent(versionId)}/seal-confirmation`, body, { retryUnauthorized: false, responseIsCurrent }
   );
 }
 
@@ -160,11 +162,35 @@ export interface ContractSignedArchiveV2Result {
 export type ContractSignedArchiveV2Lookup = { status: "unknown" } | {
   status: "archived"; requestSha256: string; intent: ContractSignedArchiveV2Payload; result: ContractSignedArchiveV2Result;
 };
-export function archiveSignedContractV2(versionId: string, body: ContractSignedArchiveV2Payload) {
-  return postJson<ContractSignedArchiveV2Result>(`/contracts/${encodeURIComponent(versionId)}/signed-archive`, body);
-}
 export function fetchSignedContractArchiveV2Result(versionId: string, key: string) {
   return readJson<ContractSignedArchiveV2Lookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`);
+}
+
+export interface ContractDirectRegistrationPayload {
+  archiveProtocolVersion: 2;
+  archiveSource: "direct_signed";
+  idempotencyKey: string;
+  expectedDraftRevision: number;
+  expectedInputSha256: string;
+  fileIds: string[];
+  confirmedMatchingSignedDocument: true;
+}
+export type ContractDirectRegistrationLookup = { status: "unknown" } | {
+  status: "archived"; requestSha256: string; intent: ContractDirectRegistrationPayload; result: ContractSignedArchiveV2Result;
+};
+export function archiveSignedContractV2(versionId: string, body: ContractSignedArchiveV2Payload, responseIsCurrent: () => boolean): Promise<ContractSignedArchiveV2Result>;
+export function archiveSignedContractV2(versionId: string, body: ContractDirectRegistrationPayload, responseIsCurrent: () => boolean): Promise<ContractSignedArchiveV2Result>;
+export function archiveSignedContractV2(
+  versionId: string,
+  body: ContractSignedArchiveV2Payload | ContractDirectRegistrationPayload,
+  responseIsCurrent: () => boolean
+) {
+  const options = { retryUnauthorized: false, responseIsCurrent };
+  return postJson<ContractSignedArchiveV2Result>(`/contracts/${encodeURIComponent(versionId)}/signed-archive`, body, options);
+}
+export function fetchDirectSignedContractResult(versionId: string, key: string, responseIsCurrent: () => boolean) {
+  return readJson<ContractDirectRegistrationLookup>(`/contracts/${encodeURIComponent(versionId)}/archive-requests/${encodeURIComponent(key)}`,
+    undefined, { retryUnauthorized: false, responseIsCurrent });
 }
 
 export interface ContractSigningMaterialChangeActionContext {
@@ -1533,6 +1559,10 @@ export interface ContractLedgerListReadModel {
   rows: Array<{
     contractRelationshipLabel?: string;
     id: string;
+    contractId?: string;
+    contractVersionId?: string;
+    originalSignedNumber?: string | null;
+    originalSignedNumberState?: "available" | "unavailable";
     contractNo: string;
     name: string;
     project: string;
@@ -3660,8 +3690,8 @@ export async function downloadProjectExpenseApprovalPdf(
   saveBlob(await response.blob(), name ? decodeURIComponent(name) : "项目费用审批单.pdf");
 }
 
-export function fetchContractLedger() {
-  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" });
+export function fetchContractLedger(options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">) {
+  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" }, options);
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
@@ -3870,14 +3900,16 @@ export function fetchArchives() {
 export function uploadPrivateFile(
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  responseIsCurrent?: () => boolean
 ) {
   const form = new FormData();
   form.append("file", file, fileName);
   if (idempotencyKey !== undefined) {
     form.append("idempotencyKey", idempotencyKey);
   }
-  return postForm<PrivateFileReadModel>("/files", form);
+  const options = responseIsCurrent ? { retryUnauthorized: false, responseIsCurrent } : undefined;
+  return postForm<PrivateFileReadModel>("/files", form, options);
 }
 
 function projectDomainPrivateFileForm(

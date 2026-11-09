@@ -503,13 +503,14 @@ async function cloneCurrentWithCapability(versionId: string, revision: number) {
   return cloneLayoutTemplateVersion(versionId);
 }
 
-async function stopCurrentVersionWithCapability(versionId: string) {
-  const capability = await getLayoutVersionMaintenanceCapability(versionId);
-  const matchesRequestedVersion = capability.versionId === versionId;
+async function stopCurrentVersionWithCapability(context: RiskStopContext) {
+  const capability = await getLayoutVersionMaintenanceCapability(context.versionId);
+  if (!riskStopResultCanWrite(context)) return;
+  const matchesRequestedVersion = capability.versionId === context.versionId;
   if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.some(action => action.key === "risk_stop" && action.enabled);
   if (!operationAllowed) throw new Error("当前版式不允许风险停用");
-  return stopLayoutTemplateVersion(versionId);
+  return stopLayoutTemplateVersion(context.versionId);
 }
 
 async function createLayout() {
@@ -656,11 +657,10 @@ function riskStopContextIsCurrent(context: RiskStopContext) {
     context.routeGeneration === layoutRouteGeneration;
 }
 
-function requireCurrentRiskStopVersionId(context: RiskStopContext) {
+function requireCurrentRiskStopContext(context: RiskStopContext) {
   if (!riskStopContextIsCurrent(context)) {
     throw new Error("版式版本操作上下文已失效，请重新打开风险停用确认");
   }
-  return context.versionId;
 }
 
 function riskStopOperationIsCurrent(context: RiskStopContext) {
@@ -694,11 +694,11 @@ function finishRiskStop(context: RiskStopContext) {
 function stopCurrentVersion() {
   if (!riskStopAction.value?.enabled) return;
   const context = captureRiskStopContext();
-  const request = stopCurrentVersionWithCapability(requireCurrentRiskStopVersionId(context));
+  requireCurrentRiskStopContext(context);
   riskStopOperationId = context.operationId;
   riskStopLoading.value = true;
   riskStopError.value = "";
-  return request
+  return stopCurrentVersionWithCapability(context)
     .then(() => completeRiskStop(context))
     .catch((error) => failRiskStop(error, context))
     .finally(() => finishRiskStop(context));

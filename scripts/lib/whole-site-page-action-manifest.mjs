@@ -1,4 +1,21 @@
 import { createRequire } from "node:module";
+import {
+  GENERATED_ARCHIVE_ACTIONS,
+  GENERATED_ARCHIVE_API,
+  GENERATED_ARCHIVE_CONFIRM,
+  GENERATED_ARCHIVE_CONSUMER,
+  GENERATED_ARCHIVE_UPLOAD,
+  GENERATED_ARCHIVE_WRITE,
+  proveGeneratedArchivePageAction
+} from "./contract-generated-archive-page-action-proof.mjs";
+import {
+  proveContractSealPageAction,
+  SEAL_ACTION_IDS,
+  SEAL_API,
+  SEAL_COMPOSABLE,
+  SEAL_WRITE,
+  SEAL_WRITE_ACTION_IDS
+} from "./contract-seal-page-action-proof.mjs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import {
   basename,
@@ -8642,21 +8659,73 @@ function uniqueVariableBinding(ast, name, symbols) {
   return bindings.size === 1 ? [...bindings][0] : null;
 }
 
-function isServerReadAwait(
-  expression,
-  symbols,
-  serverReadBinding
-) {
-  const awaited = unwrapPreflightExpression(expression);
-  const call = awaited?.type === "AwaitExpression"
-    ? unwrapPreflightExpression(awaited.argument)
-    : null;
+function isBoundServerReadCall(call, symbols, serverReadBinding) {
   return call?.type === "CallExpression" &&
     call.callee?.type === "Identifier" &&
     symbols.scopeBindings?.get(call.callee) === serverReadBinding &&
     (call.arguments ?? []).every(
       (argument) => argument?.type !== "SpreadElement"
     );
+}
+
+function isGuardedWorkbenchReadAwait(expression, symbols, serverReadBinding) {
+  const awaited = unwrapPreflightExpression(expression);
+  const branch = awaited?.type === "AwaitExpression"
+    ? unwrapPreflightExpression(awaited.argument)
+    : null;
+  if (branch?.type !== "ConditionalExpression" ||
+      branch.test?.type !== "MemberExpression" ||
+      branch.test.computed || branch.test.optional ||
+      branch.test.object?.type !== "Identifier" ||
+      branch.test.object.name !== "options" ||
+      branch.test.property?.name !== "routePath") return false;
+
+  const guarded = unwrapPreflightExpression(branch.consequent);
+  const regular = unwrapPreflightExpression(branch.alternate);
+  if (!isBoundServerReadCall(guarded, symbols, serverReadBinding) ||
+      !isBoundServerReadCall(regular, symbols, serverReadBinding) ||
+      guarded.optional || regular.optional ||
+      guarded.arguments.length !== 2 || regular.arguments.length !== 1) {
+    return false;
+  }
+  const [guardedId, requestOptions] = guarded.arguments;
+  const [regularId] = regular.arguments;
+  const coordinate = symbols.scopeBindings?.get(regularId);
+  const [definition] = coordinate?.defs ?? [];
+  if (regularId.type !== "Identifier" || regularId.name !== "requestedVersionId" ||
+      guardedId.type !== "Identifier" || guardedId.name !== regularId.name ||
+      symbols.scopeBindings?.get(guardedId) !== coordinate ||
+      coordinate?.defs.length !== 1 || definition?.type !== "Parameter" ||
+      definition.node?.type !== "FunctionDeclaration" || definition.node.id?.name !== "load" ||
+      requestOptions?.type !== "ObjectExpression" || requestOptions.properties.length !== 1) {
+    return false;
+  }
+  const [option] = requestOptions.properties;
+  return option?.type === "Property" && option.kind === "init" &&
+    !option.computed && !option.method && propertyKey(option) === "responseIsCurrent" &&
+    option.value?.type === "Identifier" && option.value.name === "loadingCurrent" &&
+    Boolean(symbols.scopeBindings?.get(option.value));
+}
+
+function isServerReadAwait(expression, symbols, serverReadBinding) {
+  const awaited = unwrapPreflightExpression(expression);
+  const call = awaited?.type === "AwaitExpression"
+    ? unwrapPreflightExpression(awaited.argument)
+    : null;
+  return isBoundServerReadCall(call, symbols, serverReadBinding) ||
+    isGuardedWorkbenchReadAwait(expression, symbols, serverReadBinding);
+}
+
+function hasGuardedWorkbenchLoad(ast, symbols, serverReadBinding) {
+  let matches = 0;
+  walkEstree(ast, (node) => {
+    if (node.type === "AssignmentExpression" && node.operator === "=" &&
+        node.left?.type === "Identifier" && node.left.name === "result" &&
+        isGuardedWorkbenchReadAwait(node.right, symbols, serverReadBinding)) {
+      matches++;
+    }
+  });
+  return matches === 1;
 }
 
 function immutableServerReadBinding(
@@ -8818,9 +8887,11 @@ function contractDraftAuthoritySnapshotProvenance(
     !/return\s+Object\.freeze\s*\(\s*\{[\s\S]*?\bavailableActions\s*,[\s\S]*?\}\s*\)\s*;/.test(
       authoritySnapshotSource
     ) ||
-    !/result\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*requestedVersionId\s*\)\s*;/.test(
+    (!/result\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*requestedVersionId\s*\)\s*;/.test(
       composableSource
-    ) ||
+    ) && !hasGuardedWorkbenchLoad(
+      composableAst, composableSymbols, workbenchImportBinding
+    )) ||
     !/fresh\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*conflictingVersionId\s*\)\s*;/.test(
       composableSource
     )
@@ -8850,10 +8921,13 @@ function contractDraftAuthoritySnapshotProvenance(
 }
 
 function capabilityServerProvenance(capability, context) {
-  const sources = capabilityServerProvenanceSources(
-    capability,
-    context
-  );
+  const verifiedDraftSource = context.draftOperationSource?.capability === capability;
+  if (isContractDraftCreationCapability(capability, context) && !verifiedDraftSource) {
+    return null;
+  }
+  const sources = verifiedDraftSource
+    ? new Set([context.draftOperationSource.sourceIdentity])
+    : capabilityServerProvenanceSources(capability, context);
   if (sources?.size === 1) {
     return {
       sources,
@@ -9917,15 +9991,22 @@ function literalBindingsForCall(definition, callNode, symbols) {
   return bindings;
 }
 
-function leadingAwaitedLocalPreflight(definition, symbols) {
+function leadingAwaitedLocalPreflight(definition, symbols, bindReceipt = false) {
   const statement = (definition?.body?.body ?? []).find(
     (candidate) => candidate.type !== "EmptyStatement"
   );
-  if (statement?.type !== "ExpressionStatement") return null;
+  const declaration = bindReceipt && statement?.type === "VariableDeclaration" &&
+    statement.kind === "const" && statement.declarations.length === 1
+    ? statement.declarations[0]
+    : null;
+  const receipt = declaration?.id?.type === "Identifier"
+    ? symbols.scopeBindings.get(declaration.id)
+    : null;
+  if (statement?.type !== "ExpressionStatement" && !receipt) return null;
   // Preserve the AwaitExpression while unwrapping only TypeScript wrappers.
   // unwrapValueExpression intentionally erases awaits for ordinary data-flow
   // analysis, but a delegated preflight must prove that it completes first.
-  const awaited = unwrapPreflightExpression(statement.expression);
+  const awaited = unwrapPreflightExpression(receipt ? declaration.init : statement.expression);
   const call = awaited?.type === "AwaitExpression"
     ? unwrapValueExpression(awaited.argument)
     : null;
@@ -9940,7 +10021,7 @@ function leadingAwaitedLocalPreflight(definition, symbols) {
     ? uniqueIndexedNode(symbols.definitionsByBinding, binding)
     : null;
   return binding && helperDefinition
-    ? { binding, definition: helperDefinition, call }
+    ? { binding, definition: helperDefinition, call, receipt }
     : null;
 }
 
@@ -10031,17 +10112,444 @@ function delegatedPreflightCapabilityCheck(
   return false;
 }
 
+const CONTRACT_DRAFT_OPERATION_WRITES = new Map([
+  ["acquire_contract_draft_edit_lease", ["acquireContractDraftEditLease", [0]]],
+  ["heartbeat_contract_draft_edit_lease", ["heartbeatContractDraftEditLease", [0, 2]]],
+  ["release_contract_draft_edit_lease", ["releaseContractDraftEditLease", [0, 2]]],
+  ["take_over_contract_draft_edit_lease", ["takeOverContractDraftEditLease", [0, 2]]],
+  ["save_contract_draft", ["saveContractDraftAggregate", [0, 1, 2]]],
+  ["queue_contract_draft_preview", ["queueContractDraftPreview", [0, 1]]],
+  ["submit_contract_draft", ["submitContractDraft", [0, 1, 2]]]
+]);
+
+function draftOperationAuthorityRead(definition, context) {
+  const { symbols } = context;
+  const reference = (node) => resolvedReferenceBinding(node, symbols);
+  const bound = (node) => symbols.scopeBindings.get(node);
+  const [versionId, revision, operation, denial, responseCurrent] =
+    (definition.params ?? []).map(bound);
+  if (
+    definition.id?.name !== "assertCurrentContractDraftOperationCapability" ||
+    !definition.async || definition.generator || definition.params.length !== 5 ||
+    definition.params.some((parameter) => parameter.type !== "Identifier") ||
+    !versionId || !revision || !operation || !denial || !responseCurrent
+  ) return null;
+
+  const statements = definition.body?.body ?? [];
+  if (statements.length !== 5) return null;
+  const [load, versionGuard, operationGuard, revisionGuard, result] = statements;
+  const [declaration] = load.declarations ?? [];
+  const response = bound(declaration?.id);
+  const read = declaration?.init?.argument;
+  if (
+    load.type !== "VariableDeclaration" || load.kind !== "const" ||
+    load.declarations.length !== 1 || !response ||
+    declaration.init?.type !== "AwaitExpression" || read?.type !== "ConditionalExpression" ||
+    reference(read.test) !== responseCurrent
+  ) return null;
+
+  const regular = read.alternate;
+  const guarded = read.consequent;
+  const readBinding = reference(regular?.callee);
+  const imported = symbols.importsByBinding.get(readBinding);
+  if (
+    imported?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    imported.importedName !== "fetchContractDraftOperationCapabilities" ||
+    !isBoundServerReadCall(regular, symbols, readBinding) ||
+    !isBoundServerReadCall(guarded, symbols, readBinding) ||
+    regular.optional || guarded.optional ||
+    regular.arguments.length !== 1 || guarded.arguments.length !== 2 ||
+    reference(regular.arguments[0]) !== versionId ||
+    reference(guarded.arguments[0]) !== versionId
+  ) return null;
+  const options = guarded.arguments[1];
+  if (options?.type !== "ObjectExpression" || options.properties.length !== 2) {
+    return null;
+  }
+  const [retry, callback] = options.properties;
+  const valueProperty = (node, name) =>
+    node?.type === "Property" && node.kind === "init" &&
+    !node.computed && !node.method && propertyKey(node) === name;
+  if (
+    !valueProperty(retry, "retryUnauthorized") ||
+    retry.value?.type !== "Literal" || retry.value.value !== false ||
+    !valueProperty(callback, "responseIsCurrent") ||
+    reference(callback.value) !== responseCurrent
+  ) return null;
+
+  const responseField = (node, field) =>
+    node?.type === "MemberExpression" && !node.optional &&
+    staticMemberProperty(node) === field &&
+    bindingMemberIs(node.object, response, "version", symbols);
+  const mismatch = (node, field, binding) =>
+    node?.type === "BinaryExpression" && node.operator === "!==" &&
+    responseField(node.left, field) && reference(node.right) === binding;
+  const includesOperation = (node) =>
+    node?.type === "CallExpression" && !node.optional &&
+    node.callee?.type === "MemberExpression" && !node.callee.optional &&
+    staticMemberProperty(node.callee) === "includes" &&
+    bindingMemberIs(node.callee.object, response, "draftOperationAvailableActions", symbols) &&
+    node.arguments.length === 1 && reference(node.arguments[0]) === operation;
+  const isGuard = (node) => node?.type === "IfStatement" && !node.alternate;
+  const revisionStatements = revisionGuard.consequent?.type === "BlockStatement"
+    ? revisionGuard.consequent.body
+    : [];
+  const [conflict, revisionThrow] = revisionStatements;
+  const operationTest = operationGuard.test;
+  if (
+    !isGuard(versionGuard) || !mismatch(versionGuard.test, "id", versionId) ||
+    !isGuard(operationGuard) || operationTest?.type !== "UnaryExpression" ||
+    operationTest.operator !== "!" || !includesOperation(operationTest.argument) ||
+    !isGuard(revisionGuard) || !mismatch(revisionGuard.test, "draftRevision", revision) ||
+    revisionGuard.consequent?.type !== "BlockStatement" ||
+    revisionGuard.consequent.body.length !== 2 ||
+    result.type !== "ReturnStatement" || reference(result.argument) !== response
+  ) return null;
+
+  const versionError = authorityRefreshThrow(versionGuard.consequent, symbols);
+  const deniedError = authorityRefreshThrow(operationGuard.consequent, symbols);
+  const revisionError = authorityRefreshThrow(revisionThrow, symbols);
+  if (
+    literalString(versionError) === null || reference(deniedError) !== denial ||
+    literalString(revisionError) === null ||
+    !isGuard(conflict) || !throwOnlyStatement(conflict.consequent)
+  ) return null;
+
+  const terms = flattenedStrictConjunction(conflict.test) ?? [];
+  const [saveTest, integerTest, newerTest, permissionTest] = terms;
+  if (
+    terms.length !== 4 ||
+    saveTest.type !== "BinaryExpression" || saveTest.operator !== "===" ||
+    reference(saveTest.left) !== operation || literalString(saveTest.right) !== "save_contract_draft" ||
+    !draftOperationBuiltinCall(integerTest, "Number", "isInteger", symbols) ||
+    integerTest.arguments.length !== 1 || !responseField(integerTest.arguments[0], "draftRevision") ||
+    newerTest.type !== "BinaryExpression" || newerTest.operator !== ">" ||
+    !responseField(newerTest.left, "draftRevision") || reference(newerTest.right) !== revision ||
+    !includesOperation(permissionTest)
+  ) return null;
+  const conflictThrow = (conflict.consequent.body?.[0] ?? conflict.consequent).argument;
+  if (!draftOperationRevisionConflict(conflictThrow, symbols)) return null;
+  const sourceIdentity = importedReadSource(regular, context.serverReadImports, symbols);
+  return sourceIdentity ? { sourceIdentity, response } : null;
+}
+
+function authorityRefreshThrow(node, symbols) {
+  if (!throwOnlyStatement(node)) return null;
+  const value = (node.body?.[0] ?? node).argument;
+  if (
+    value?.type !== "NewExpression" || value.callee?.type !== "Identifier" ||
+    value.callee.name !== "ContractDraftAuthorityRefreshRequiredError" ||
+    value.arguments.length !== 1
+  ) return null;
+  const definitions = resolvedReferenceBinding(value.callee, symbols)?.defs ?? [];
+  const methods = definitions[0]?.node?.body?.body ?? [];
+  const constructor = methods[0]?.value;
+  const [forward, name] = constructor?.body?.body ?? [];
+  const base = definitions[0]?.node?.superClass;
+  const call = forward?.expression;
+  const assignment = name?.expression;
+  if (
+    definitions.length !== 1 || definitions[0].node.type !== "ClassDeclaration" ||
+    (definitions[0].node.decorators ?? []).length !== 0 ||
+    !unshadowedRuntimeGlobal(base, new Set(["Error"]), symbols.scopeBindings) ||
+    methods.length !== 1 || methods[0].kind !== "constructor" ||
+    constructor.params.length !== 1 || constructor.params[0].type !== "Identifier" ||
+    constructor.body.body.length !== 2 ||
+    forward?.type !== "ExpressionStatement" || call?.type !== "CallExpression" ||
+    call.callee?.type !== "Super" || call.arguments.length !== 1 ||
+    resolvedReferenceBinding(call.arguments[0], symbols) !== symbols.scopeBindings.get(constructor.params[0]) ||
+    name?.type !== "ExpressionStatement" || assignment?.type !== "AssignmentExpression" ||
+    assignment.operator !== "=" || assignment.left?.type !== "MemberExpression" ||
+    assignment.left.object?.type !== "ThisExpression" ||
+    staticMemberProperty(assignment.left) !== "name" ||
+    literalString(assignment.right) !== value.callee.name
+  ) return null;
+  return value.arguments[0];
+}
+
+function draftOperationBuiltinCall(node, object, method, symbols) {
+  return node?.type === "CallExpression" && !node.optional &&
+    node.callee?.type === "MemberExpression" && !node.callee.optional &&
+    staticMemberProperty(node.callee) === method &&
+    unshadowedRuntimeGlobal(node.callee.object, new Set([object]), symbols.scopeBindings);
+}
+
+function draftOperationRevisionConflict(node, symbols) {
+  if (!draftOperationBuiltinCall(node, "Object", "assign", symbols) || node.arguments.length !== 2) {
+    return false;
+  }
+  const [error, payload] = node.arguments;
+  const [code] = payload?.properties ?? [];
+  return error?.type === "NewExpression" &&
+    unshadowedRuntimeGlobal(error.callee, new Set(["Error"]), symbols.scopeBindings) &&
+    error.arguments.length === 1 && literalString(error.arguments[0]) !== null &&
+    payload.type === "ObjectExpression" && payload.properties.length === 1 &&
+    code?.type === "Property" && code.kind === "init" && !code.method && !code.computed &&
+    propertyKey(code) === "code" && literalString(code.value) === "DRAFT_REVISION_CONFLICT";
+}
+
+function draftSubmissionReceiptGuard(node, receipt, payload, symbols) {
+  const test = node?.test;
+  const protocolField = test?.left;
+  if (
+    node?.type !== "IfStatement" || node.alternate || !receipt ||
+    test?.type !== "LogicalExpression" || test.operator !== "&&" ||
+    protocolField?.type !== "BinaryExpression" || protocolField.operator !== "in" ||
+    literalString(protocolField.left) !== "submissionProtocolVersion" ||
+    resolvedReferenceBinding(protocolField.right, symbols) !== payload ||
+    literalString(authorityRefreshThrow(node.consequent, symbols)) === null
+  ) return false;
+
+  const differences = flattenedStrictDisjunction(test.right) ?? [];
+  const fields = ["numericProtocolVersion", "documentContentRevision", "documentContentFingerprint"];
+  return differences.length === fields.length && differences.every((difference, index) => {
+    const field = fields[index];
+    const left = difference.left;
+    return difference.type === "BinaryExpression" && difference.operator === "!==" &&
+      left?.type === "MemberExpression" && !left.optional &&
+      staticMemberProperty(left) === field &&
+      bindingMemberIs(left.object, receipt, "version", symbols) &&
+      (index === 0
+        ? difference.right?.type === "Literal" && difference.right.value === 2
+        : bindingMemberIs(difference.right, payload, field, symbols));
+  });
+}
+
+function draftOperationPreflight(candidate, leading, capability, context) {
+  const { symbols } = context;
+  const [wrapperName, writeCoordinates] = CONTRACT_DRAFT_OPERATION_WRITES.get(capability.key) ?? [];
+  const caller = candidate.expression;
+  const statements = caller.body?.body ?? [];
+  const write = statements.at(-1)?.argument;
+  const submits = capability.key === "submit_contract_draft";
+  const usesPayload = submits || capability.key === "save_contract_draft";
+  if (
+    !wrapperName || !caller.async || caller.generator ||
+    caller.params.some((parameter) => parameter.type !== "Identifier") ||
+    caller.params.length !== (usesPayload ? 4 : Math.max(1, ...writeCoordinates) + 1) ||
+    statements.at(-1)?.type !== "ReturnStatement" ||
+    write?.type !== "CallExpression" || write.optional ||
+    leading.call.optional || leading.call.arguments.length !== 4 ||
+    literalString(leading.call.arguments[2]) !== capability.key ||
+    literalString(leading.call.arguments[3]) === null
+  ) return null;
+
+  const version = symbols.scopeBindings.get(caller.params?.[0]);
+  const reference = (node) => resolvedReferenceBinding(node, symbols);
+  const importedWrite = symbols.importsByBinding.get(reference(write.callee));
+  if (
+    !version || reference(leading.call.arguments[0]) !== version ||
+    reference(write.arguments[0]) !== version ||
+    importedWrite?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    importedWrite.importedName !== wrapperName ||
+    write.arguments.length !== writeCoordinates.length ||
+    !writeCoordinates.every((parameter, index) => {
+      const binding = symbols.scopeBindings.get(caller.params?.[parameter]);
+      return binding && reference(write.arguments[index]) === binding;
+    })
+  ) return null;
+
+  const revisionArgument = leading.call.arguments[1];
+  if (usesPayload) {
+    const payload = symbols.scopeBindings.get(caller.params[2]);
+    const callback = symbols.scopeBindings.get(caller.params[3]);
+    const dispatchStatement = statements.at(-2);
+    const dispatch = dispatchStatement?.expression;
+    if (
+      statements.length !== (submits ? 4 : 3) ||
+      dispatchStatement?.type !== "ExpressionStatement" ||
+      dispatch?.type !== "CallExpression" || dispatch.optional || dispatch.arguments.length !== 0 ||
+      !callback || reference(dispatch.callee) !== callback ||
+      !payload || !bindingMemberIs(revisionArgument, payload, "expectedRevision", symbols) ||
+      (submits && !draftSubmissionReceiptGuard(statements[1], leading.receipt, payload, symbols))
+    ) return null;
+  } else {
+    const revision = symbols.scopeBindings.get(caller.params[1]);
+    if (
+      statements.length !== 2 || !revision || reference(revisionArgument) !== revision
+    ) return null;
+  }
+
+  const read = draftOperationAuthorityRead(leading.definition, context);
+  return read ? {
+    helperBinding: leading.binding,
+    sourceBindings: new Set([read.response]),
+    sourceIdentity: read.sourceIdentity,
+    writeIdentity: wrapperIdentity(CONTRACT_WORKBENCH_API_PATH, wrapperName),
+    writeName: write.callee.name
+  } : null;
+}
+
+function isContractDraftCreationCapability(capability, context) {
+  return context?.sourceFile === CONTRACT_DRAFT_COMPOSABLE_PATH &&
+    capability?.key === "create_contract_draft";
+}
+
+function draftCreationPreflight(definition, context) {
+  const { symbols } = context;
+  const binding = (node) => symbols.scopeBindings.get(node);
+  const reference = (node) => resolvedReferenceBinding(node, symbols);
+  const member = (node, owner, field) =>
+    node?.type === "MemberExpression" && !node.optional &&
+    bindingMemberIs(node, owner, field, symbols);
+  const call = (node) => node?.type === "CallExpression" && !node.optional;
+  const declaration = (node) =>
+    node?.type === "VariableDeclaration" && node.kind === "const" &&
+    node.declarations.length === 1 && node.declarations[0].id.type === "Identifier"
+      ? node.declarations[0]
+      : null;
+  const guardedIf = (node) => node?.type === "IfStatement" && !node.alternate;
+  const isNegation = (node) => node?.type === "UnaryExpression" && node.operator === "!";
+  const rejects = (node) => {
+    if (!throwOnlyStatement(node)) return false;
+    const value = (node.body?.[0] ?? node).argument;
+    return value?.type === "NewExpression" &&
+      unshadowedRuntimeGlobal(value.callee, new Set(["Error"]), symbols.scopeBindings) &&
+      value.arguments.length === 1 && literalString(value.arguments[0]) !== null;
+  };
+
+  const statements = definition?.body?.body ?? [];
+  if (
+    definition?.type !== "FunctionDeclaration" ||
+    definition.id?.name !== "createWorkbenchDraftWithCapability" ||
+    !definition.async || definition.generator ||
+    definition.params.length !== 2 ||
+    definition.params.some((parameter) => parameter.type !== "Identifier") ||
+    statements.length !== 10
+  ) return null;
+  const [payload, direct] = definition.params.map(binding);
+  if (!payload || !direct) return null;
+  const [mode, load, match, projectGuard, allowed, permissionGuard, upwardGuard,
+    regularReturn, dispatch, directReturn] = statements;
+
+  const upward = declaration(mode);
+  const upwardBinding = binding(upward?.id);
+  const upwardTerms = flattenedStrictConjunction(upward?.init) ?? [];
+  const [hasMode, isDirect, isUpward] = upwardTerms;
+  const comparesPayload = (node, field, expected) =>
+    node?.type === "BinaryExpression" && node.operator === "===" &&
+    member(node.left, payload, field) && literalString(node.right) === expected;
+  if (
+    !upwardBinding || upwardTerms.length !== 3 ||
+    hasMode.type !== "BinaryExpression" || hasMode.operator !== "in" ||
+    literalString(hasMode.left) !== "handlingMode" || reference(hasMode.right) !== payload ||
+    !comparesPayload(isDirect, "handlingMode", "direct_signed") ||
+    !comparesPayload(isUpward, "relationship", "upward")
+  ) return null;
+
+  const receipt = declaration(load);
+  const receiptBinding = binding(receipt?.id);
+  const arms = receipt?.init?.argument;
+  if (
+    !receiptBinding || receipt.init?.type !== "AwaitExpression" ||
+    arms?.type !== "ConditionalExpression" || reference(arms.test) !== direct
+  ) return null;
+  const guarded = arms.consequent;
+  const regular = arms.alternate;
+  const readBinding = reference(regular?.callee);
+  const readImport = symbols.importsByBinding.get(readBinding);
+  if (
+    !call(guarded) || !call(regular) || reference(guarded.callee) !== readBinding ||
+    readImport?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    readImport.importedName !== "fetchContractCreateCapabilities" ||
+    guarded.arguments.length !== 3 || regular.arguments.length !== 1 ||
+    !member(guarded.arguments[0], payload, "projectId") ||
+    !member(regular.arguments[0], payload, "projectId")
+  ) return null;
+  const [, options, relationship] = guarded.arguments;
+  const [retry, current] = options?.properties ?? [];
+  const option = (node, key) =>
+    node?.type === "Property" && node.kind === "init" &&
+    !node.computed && !node.method && propertyKey(node) === key;
+  if (
+    options?.type !== "ObjectExpression" || options.properties.length !== 2 ||
+    !option(retry, "retryUnauthorized") ||
+    retry.value?.type !== "Literal" || retry.value.value !== false ||
+    !option(current, "responseIsCurrent") || !member(current.value, direct, "current") ||
+    relationship?.type !== "ConditionalExpression" ||
+    reference(relationship.test) !== upwardBinding ||
+    literalString(relationship.consequent) !== "upward" ||
+    !unshadowedRuntimeGlobal(relationship.alternate, new Set(["undefined"]), symbols.scopeBindings)
+  ) return null;
+
+  const matchingProject = declaration(match);
+  const matches = matchingProject?.init;
+  const containsAction = (node, key) =>
+    call(node) && node.callee?.type === "MemberExpression" && !node.callee.optional &&
+    staticMemberProperty(node.callee) === "includes" &&
+    member(node.callee.object, receiptBinding, "availableActions") &&
+    node.arguments.length === 1 && literalString(node.arguments[0]) === key;
+  const permission = declaration(allowed);
+  const rejectsUnless = (node, condition) =>
+    condition && guardedIf(node) && isNegation(node.test) &&
+    reference(node.test.argument) === condition && rejects(node.consequent);
+  const additional = upwardGuard.test;
+  if (
+    matches?.type !== "BinaryExpression" || matches.operator !== "===" ||
+    !member(matches.left, receiptBinding, "projectId") ||
+    !member(matches.right, payload, "projectId") ||
+    !rejectsUnless(projectGuard, binding(matchingProject.id)) ||
+    !containsAction(permission?.init, "create_contract_draft") ||
+    !rejectsUnless(permissionGuard, binding(permission.id)) ||
+    !guardedIf(upwardGuard) || additional?.type !== "LogicalExpression" ||
+    additional.operator !== "&&" || reference(additional.left) !== upwardBinding ||
+    !isNegation(additional.right) ||
+    !containsAction(additional.right.argument, "create_upward_direct_draft") ||
+    !rejects(upwardGuard.consequent)
+  ) return null;
+
+  const directWrite = directReturn.argument;
+  const writeBinding = reference(directWrite?.callee);
+  const writeImport = symbols.importsByBinding.get(writeBinding);
+  const write = (node, guarded) => node?.type === "ReturnStatement" &&
+    call(node.argument) && reference(node.argument.callee) === writeBinding &&
+    node.argument.arguments.length === (guarded ? 2 : 1) &&
+    reference(node.argument.arguments[0]) === payload &&
+    (!guarded || member(node.argument.arguments[1], direct, "current"));
+  const beforeDispatch = dispatch.expression;
+  if (
+    writeImport?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    writeImport.importedName !== "createWorkbenchDraft" ||
+    !guardedIf(regularReturn) || !isNegation(regularReturn.test) ||
+    reference(regularReturn.test.argument) !== direct || !write(regularReturn.consequent, false) ||
+    dispatch.type !== "ExpressionStatement" || !call(beforeDispatch) ||
+    !member(beforeDispatch.callee, direct, "beforeDispatch") || beforeDispatch.arguments.length !== 0 ||
+    !write(directReturn, true)
+  ) return null;
+
+  const sourceIdentity = importedReadSource(regular, context.serverReadImports, symbols);
+  return sourceIdentity ? {
+    sourceBindings: new Set([receiptBinding]),
+    sourceIdentity,
+    writeIdentity: wrapperIdentity(CONTRACT_WORKBENCH_API_PATH, "createWorkbenchDraft"),
+    writeName: directWrite.callee.name
+  } : null;
+}
+
 function delegatedBackgroundCapabilityPreflight(
   candidate,
   capability,
   context
 ) {
   if (candidate?.kind !== "background_call") return null;
+  if (isContractDraftCreationCapability(capability, context)) {
+    return capability.kind === "available_action_string" &&
+      capability.source === "capability.availableActions"
+      ? draftCreationPreflight(candidate.expression, context)
+      : null;
+  }
+  const draftOperation = context.sourceFile === CONTRACT_DRAFT_COMPOSABLE_PATH &&
+    capability.kind === "available_action_string" &&
+    capability.source === "operationCapabilities.draftOperationAvailableActions";
   const leading = leadingAwaitedLocalPreflight(
     candidate.expression,
-    context.symbols
+    context.symbols,
+    draftOperation && capability.key === "submit_contract_draft"
   );
   if (!leading) return null;
+  if (draftOperation) {
+    return draftOperationPreflight(candidate, leading, capability, context);
+  }
   const sourceBindings = capabilitySourceBindings(
     [leading.definition],
     capability.source,
@@ -10203,6 +10711,7 @@ function backgroundCapabilityDominates(
 
 function capabilityDominates(candidate, capability, context) {
   if (!SERVER_CAPABILITY_KINDS.has(capability.kind)) return false;
+  const draftCreation = isContractDraftCreationCapability(capability, context);
   if (
     capability.kind === "server_definition" &&
     context.handlerLocalCapabilitySource?.valid &&
@@ -10216,6 +10725,7 @@ function capabilityDominates(candidate, capability, context) {
     return true;
   }
   if (
+    !draftCreation &&
     conditionalEvidence(candidate.elementNode).some(({ expression, truthy }) =>
       capabilityRequired(
         expression,
@@ -10228,7 +10738,7 @@ function capabilityDominates(candidate, capability, context) {
     return true;
   }
   if (
-    candidate.kind === "background_call" &&
+    !draftCreation && candidate.kind === "background_call" &&
     backgroundCapabilityDominates(
       candidate,
       capability,
@@ -10243,11 +10753,18 @@ function capabilityDominates(candidate, capability, context) {
     context
   );
   if (delegated) {
+    if (delegated.sourceIdentity) {
+      context.draftOperationSource = {
+        capability,
+        sourceIdentity: delegated.sourceIdentity
+      };
+    }
     for (const binding of delegated.sourceBindings) {
       context.discoveredCapabilitySourceBindings?.add(binding);
     }
     return true;
   }
+  if (draftCreation) return false;
   if (
     candidate.kind === "prop_callback" &&
     candidate.element === "business-draft-action" &&
@@ -10943,7 +11460,12 @@ function inspectVueTemplate(path, source, ast) {
         });
         continue;
       }
-      for (const root of eventHandlerRoots(expression)) {
+      const roots = eventHandlerRoots(expression);
+      const directRegistration = path === CONTRACT_WORKBENCH_PAGE_PATH &&
+        normalizedElementName(node) === "t-button" && event.toLowerCase() === "click" &&
+        directRegistrationEvent(expression);
+      if (directRegistration) roots.push({ handler: "directRegistration", variants: [directRegistration.variant] });
+      for (const root of roots) {
         actions.push({
           kind: "event",
           sourceFile: path,
@@ -16216,6 +16738,27 @@ function frozenServerGrantPipelineProof({ action, wrapper, handler, context }) {
 }
 
 function proveBusinessActionPipeline({ action, wrapper, context }) {
+  const specializedProof = SEAL_ACTION_IDS.has(action.id) ? proveContractSealPageAction :
+    GENERATED_ARCHIVE_ACTIONS.has(action.id) ? proveGeneratedArchivePageAction : null;
+  if (specializedProof) {
+    return specializedProof({ action, wrapper, context, syntax: {
+      astAncestorChain,
+      buildSymbolContext,
+      callExpressionMatchesWrapper,
+      elementDirective,
+      localCallable: directRegistrationCallable,
+      matches: directRegistrationMatches,
+      normalizedMainRequests,
+      referenceRootIdentifier,
+      sameExpression: directRegistrationExpression,
+      topLevelScopeVariables,
+      uniqueIndexedNode,
+      unshadowedRuntimeGlobal,
+      walkEstree,
+      wrapperIdentity
+    } });
+  }
+  if (isContractDraftCreationCapability(action.capability, context)) return null;
   const handler = pipelineHandlerSource(action.trigger.handler, wrapper, context);
   if (!handler) return null;
   const targetCalls = importedWrapperCallCount(
@@ -16263,6 +16806,9 @@ function wrapperCausalProof(
     capabilityContext = null
   } = {}
 ) {
+  if (SEAL_ACTION_IDS.has(capabilityContext?.actionId) || GENERATED_ARCHIVE_ACTIONS.has(capabilityContext?.actionId)) {
+    return { verified: false, localCallChain: [handler] };
+  }
   const handlerBindings = topLevelScopeVariables(
     symbols.scopeManager,
     handler
@@ -16278,6 +16824,25 @@ function wrapperCausalProof(
     symbols.definitionsByBinding,
     handlerBinding
   );
+  // The draft proof binds both the awaited receipt and the sole write.
+  // Reuse it for the exact wrapper without bypassing variant analysis.
+  const draftOperation = !variant && candidate?.kind === "background_call" &&
+    capability && capabilityContext?.sourceFile === CONTRACT_DRAFT_COMPOSABLE_PATH && handlerDefinition
+    ? delegatedBackgroundCapabilityPreflight(
+        { kind: "background_call", expression: handlerDefinition },
+        capability,
+        capabilityContext
+      )
+    : null;
+  if (draftOperation?.writeIdentity === wrapperIdentity(wrapper.apiFile, wrapper.name)) {
+    return {
+      verified: true,
+      localCallChain: [handler, draftOperation.writeName]
+    };
+  }
+  if (isContractDraftCreationCapability(capability, capabilityContext)) {
+    return { verified: false, localCallChain: [handler] };
+  }
   const eventCall = variantEventCall(
     candidate?.expression,
     handler
@@ -17710,6 +18275,1347 @@ function serverReadImportNames(symbols, wrapperIndex, sourceFile) {
   return bindings;
 }
 
+const DIRECT_REGISTRATION_MODULE = `${WEB_SOURCE_ROOT}/pages/contracts/workbench/use-direct-contract-registration.ts`;
+const DIRECT_REGISTRATION_API = `${WEB_SOURCE_ROOT}/api/core-flow-read.api.ts`;
+const DIRECT_REGISTRATION_ACTIONS = new Set([
+  "contract-direct-registration.lookup-original", "contract-direct-registration.resume-original", "contract-direct-registration.confirm"
+]);
+
+function directRegistrationEvent(expression) {
+  const statement = expression?.type === "VOnExpression" && expression.body.length === 1
+    ? expression.body[0]
+    : null;
+  const call = statement?.type === "ExpressionStatement" ? statement.expression : expression;
+  if (call?.type !== "CallExpression" || call.optional ||
+      staticMemberPath(call.callee) !== "directRegistration.query" || call.callee.optional) return null;
+  if (call.arguments.length === 0) return { call, variant: "lookup-original" };
+  if (call.arguments.length === 1 && call.arguments[0]?.type === "Literal" && call.arguments[0].value === true) {
+    return { call, variant: "resume-original" };
+  }
+  return null;
+}
+
+function directRegistrationAstShape(node) {
+  return JSON.stringify(node, (key, value) =>
+    ["parent", "loc", "range", "raw", "comments", "tokens"].includes(key) ? undefined : value);
+}
+
+function directRegistrationMatches(node, statement) {
+  return Boolean(node && directRegistrationAstShape(node) ===
+    directRegistrationAstShape(parseSource("direct-registration-proof.ts", statement).body[0]));
+}
+
+function directRegistrationFactory(symbols) {
+  const bindings = topLevelScopeVariables(symbols.scopeManager, "useDirectContractRegistration");
+  if (bindings.length !== 1 || bindings[0].references.some(reference => reference.isWrite() && !reference.init)) return null;
+  const definition = uniqueIndexedNode(symbols.definitionsByBinding, bindings[0]);
+  return definition?.type === "FunctionDeclaration" && definition.body?.type === "BlockStatement" &&
+    symbols.ast.body.some(node => node.type === "ExportNamedDeclaration" && node.declaration === definition) &&
+    definition.params.length === 1 && definition.params[0]?.type === "Identifier"
+    ? definition
+    : null;
+}
+
+function directRegistrationCallable(factory, name, symbols, returned = false) {
+  const matches = factory.body.body.filter(node => node.type === "FunctionDeclaration" && node.id?.name === name);
+  if (matches.length !== 1) return null;
+  const [definition] = matches;
+  const binding = symbols.scopeBindings.get(definition.id);
+  if (!binding || binding.references.some(reference => reference.isWrite())) return null;
+  if (!returned) return { definition, binding };
+  const result = factory.body.body.at(-1);
+  const reference = result?.type === "ReturnStatement" && objectPropertyValue(result.argument, name);
+  return reference?.type === "Identifier" && symbols.scopeBindings.get(reference) === binding &&
+    result.argument.properties.every(property => property.type === "Property" && !property.computed)
+    ? { definition, binding } : null;
+}
+
+function directRegistrationPageFactory(context) {
+  const { symbols } = context;
+  const bindings = topLevelScopeVariables(symbols.scopeManager, "directRegistration");
+  if (bindings.length !== 1) return null;
+  const [binding] = bindings;
+  const invocation = uniqueIndexedNode(symbols.declarationsByBinding, binding);
+  if (!callExpressionMatchesWrapper(invocation, {
+    apiFile: DIRECT_REGISTRATION_MODULE, name: "useDirectContractRegistration"
+  }, symbols) || invocation.arguments.length !== 1 ||
+    binding.references.some(reference => reference.isWrite() && !reference.init)) return null;
+  return { binding, options: invocation.arguments[0] };
+}
+
+function directRegistrationReadEffects(factory, read, keyBinding, getCall, page, symbols, pageSymbols) {
+  const completed = objectPropertyValue(page.options, "completed");
+  const completedStatement = completed?.body?.body?.[0];
+  if (completed?.type !== "ArrowFunctionExpression" || completed.body?.body?.length !== 1 ||
+      !directRegistrationMatches(completedStatement,
+        'void router.replace({ path: `/contracts/${encodeURIComponent(id)}`, query: { versionId } });')) return false;
+  const router = completedStatement.expression.argument.callee.object;
+  const routerBinding = pageSymbols.scopeBindings.get(router);
+  const routerSource = routerBinding && uniqueIndexedNode(pageSymbols.declarationsByBinding, routerBinding);
+  const routerFactory = routerSource?.type === "CallExpression" && pageSymbols.scopeBindings.get(routerSource.callee);
+  if (!routerFactory || !(routerFactory.defs ?? []).some(definition =>
+    definition.type === "ImportBinding" && definition.parent?.source?.value === "vue-router" &&
+    definition.node?.imported?.name === "useRouter")) return false;
+
+  const allowedLocals = new Set(["cancelledKey", "reconcileCancelledUnderLock", "removeStored", "sameBody",
+    "sameFiles", "sameStoredIntent", "validBody", "wasCancelled"]);
+  const allowedMembers = new Set(["Array.isArray", "JSON.parse", "Number.isSafeInteger", "localStorage.getItem",
+    "localStorage.setItem", "localStorage.removeItem"]);
+  const body = factory.body;
+  const seen = new Set();
+  let valid = true;
+  const bindingOf = node => symbols.scopeBindings.get(node);
+  const check = definition => {
+    if (!definition || seen.has(definition)) return;
+    seen.add(definition);
+    walkEstree(definition.body, node => {
+      if (!valid || node === getCall) return;
+      if (node.type === "TaggedTemplateExpression" || node.type === "ImportExpression") { valid = false; return; }
+      if (node.type === "NewExpression") {
+        if (!unshadowedRuntimeGlobal(node.callee, new Set(["Set"]), symbols.scopeBindings)) valid = false;
+        return;
+      }
+      if (node.type !== "CallExpression") return;
+      const { callee } = node;
+      const path = staticMemberPath(callee);
+      const root = referenceRootIdentifier(callee);
+      if (allowedMembers.has(path) && unshadowedRuntimeGlobal(root, new Set([path.split(".")[0]]), symbols.scopeBindings)) return;
+      if (callee.type === "Identifier") {
+        if (unshadowedRuntimeGlobal(callee, new Set(["encodeURIComponent"]), symbols.scopeBindings)) return;
+        const local = bindingOf(callee);
+        if (!local || !allowedLocals.has(local.name) || local.references.some(ref => ref.isWrite() && !ref.init)) { valid = false; return; }
+        check(uniqueIndexedNode(symbols.definitionsByBinding, local));
+        if (!seen.has(uniqueIndexedNode(symbols.definitionsByBinding, local))) valid = false;
+        return;
+      }
+      if (path === "input.completed" && bindingOf(root) === bindingOf(factory.params[0])) return;
+      if (path === "locks.request") {
+        const locked = bindingOf(root);
+        const value = locked && uniqueIndexedNode(symbols.declarationsByBinding, locked);
+        const expected = parseSource("direct-registration-proof.ts", "const locks = globalThis.navigator?.locks;").body[0].declarations[0].init;
+        if (value && directRegistrationAstShape(value) === directRegistrationAstShape(expected) &&
+            unshadowedRuntimeGlobal(referenceRootIdentifier(value), new Set(["globalThis"]), symbols.scopeBindings) &&
+            !locked.references.some(ref => ref.isWrite() && !ref.init)) return;
+      }
+      if (path === "uuid.test" || path === "sha.test") {
+        const value = uniqueIndexedNode(symbols.declarationsByBinding, bindingOf(root));
+        if (value?.type === "Literal" && value.regex && !bindingOf(root).references.some(ref => ref.isWrite() && !ref.init)) return;
+      }
+      if (["left.every", "body.fileIds.every"].includes(path) &&
+          ["sameFiles", "validBody"].includes(definition.id?.name) &&
+          bindingOf(root) === bindingOf(definition.params[0]?.left ?? definition.params[0])) return;
+      valid = false;
+    });
+  };
+  const keyDefinition = keyBinding && uniqueIndexedNode(symbols.definitionsByBinding, keyBinding);
+  if (!keyDefinition || !body.body.some(statement => statement.type === "VariableDeclaration" &&
+      statement.declarations.some(declaration => declaration.init === keyDefinition))) return false;
+  check(keyDefinition);
+  check(read.definition);
+  return valid;
+}
+
+const DIRECT_REGISTRATION_COORDINATES = `${WEB_SOURCE_ROOT}/pages/contracts/workbench/direct-pending-draft.ts`;
+const DIRECT_REGISTRATION_WORKBENCH_READ = { apiFile: CONTRACT_WORKBENCH_API_PATH, name: "fetchContractDraftWorkbench" };
+const DIRECT_REGISTRATION_POST = { apiFile: DIRECT_REGISTRATION_API, name: "archiveSignedContractV2" };
+const DIRECT_REGISTRATION_GET = { apiFile: DIRECT_REGISTRATION_API, name: "fetchDirectSignedContractResult" };
+
+function directRegistrationBlock(node, statements) {
+  return directRegistrationMatches(node, `{${statements}}`);
+}
+
+function directRegistrationCalls(node, predicate) {
+  const matches = [];
+  walkEstree(node, candidate => {
+    if (candidate.type === "CallExpression" && predicate(candidate)) matches.push(candidate);
+  });
+  return matches;
+}
+
+function directRegistrationLocalCall(node, target, symbols) {
+  return node?.type === "CallExpression" && node.callee.type === "Identifier" &&
+    symbols.scopeBindings.get(node.callee) === target?.binding;
+}
+
+function directRegistrationCoordinateProof(call, symbols, context) {
+  if (!callExpressionMatchesWrapper(call, {
+    apiFile: DIRECT_REGISTRATION_COORDINATES, name: "directRegistrationCoordinates"
+  }, symbols)) return false;
+  const ast = context.asts.get(DIRECT_REGISTRATION_COORDINATES);
+  if (!ast) return false;
+  const target = buildSymbolContext(ast, DIRECT_REGISTRATION_COORDINATES, context.sourceFileSet);
+  const definition = name => {
+    const [binding] = topLevelScopeVariables(target.scopeManager, name);
+    return binding && uniqueIndexedNode(target.definitionsByBinding, binding);
+  };
+  const coordinates = definition("directRegistrationCoordinates");
+  const state = definition("directWorkbenchState");
+  const input = definition("directInputState");
+  const signing = definition("directSigningMarker");
+  if (!coordinates || !state || !input || !signing) return false;
+  const guard = coordinates.body.body[0];
+  const parse = coordinates.body.body[1];
+  if (!directRegistrationMatches(guard,
+    'if (!workbench || !actor || workbench.contract.ownerUserId !== actor || record(workbench.directPendingCapabilities)?.registrationEnabled !== true || !directSigningMarker(workbench.draft?.directSigningInput)) return null;') ||
+    coordinates.body.body.length !== 2 || parse?.type !== "TryStatement" ||
+    !directRegistrationBlock(parse.block, `
+      if (directWorkbenchState(workbench) !== "complete") return null;
+      const source = record(workbench.directPendingInput);
+      const files = record(source?.Q)?.signedFiles;
+      if (typeof source?.inputSha256 !== "string" || !Array.isArray(files) || files.length < 1 || files.length > 20 ||
+        files.length !== workbench.attachments.length) return null;
+      const fileIds: string[] = [];
+      for (const [index, raw] of files.entries()) {
+        const file = record(raw), attachment = workbench.attachments[index];
+        if (typeof file?.fileId !== "string" || !archiveFileUuid.test(file.fileId) || fileIds.includes(file.fileId)
+          || file.mimeType !== "application/pdf" || file.displayOrder !== index || attachment?.slotKey !== directOriginalSlot ||
+          attachment.fileId !== file.fileId || attachment.displayOrder !== index) return null;
+        fileIds.push(file.fileId);
+      }
+      return { contractId: workbench.contract.id, versionId: workbench.version.id, draftRevision: workbench.version.draftRevision,
+        inputSha256: source.inputSha256, fileIds };
+    `) || !directRegistrationBlock(parse.handler?.body, "return null;") || parse.finalizer) return false;
+  const [stateCall] = directRegistrationCalls(parse.block, node => node.callee.name === "directWorkbenchState");
+  const [inputCall] = directRegistrationCalls(state, node => node.callee.name === "directInputState");
+  const [signingCall] = directRegistrationCalls(guard, node => node.callee.name === "directSigningMarker");
+  const callsDefinition = (callNode, declared) =>
+    target.scopeBindings.get(callNode?.callee) === target.scopeBindings.get(declared.id);
+  return callsDefinition(stateCall, state) && callsDefinition(inputCall, input) && callsDefinition(signingCall, signing) &&
+    state.body.body.some(statement => directRegistrationMatches(statement,
+      "const state = directInputState(workbench.directPendingInput, contract.id, version.id, version.draftRevision, contract.projectId);")) &&
+    input.body.body.some(statement => directRegistrationMatches(statement, `
+      if (source.state !== "complete" || typeof source.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(source.inputSha256) ||
+        q?.inputProtocolVersion !== 1 || kind?.kind !== "direct_signed" || kind.relationship !== "outside" ||
+        locator?.contractId !== contractId || locator.contractVersionId !== versionId || locator.projectId !== projectId ||
+        locator.draftRevision !== revision || locator.changeType !== "original" ||
+        !Array.isArray(q.signedFiles) || q.signedFiles.length === 0) return null;
+    `));
+}
+
+function directRegistrationExpression(node, source) {
+  const expected = parseSource("direct-registration-proof.ts", `const witness = ${source};`).body[0].declarations[0].init;
+  return Boolean(node && directRegistrationAstShape(node) === directRegistrationAstShape(expected));
+}
+
+function directRegistrationDeclared(symbols, name, moduleScope = false) {
+  const binding = moduleScope ? topLevelScopeVariables(symbols.scopeManager, name)[0] : uniqueScopeVariable(symbols.scopeManager, name);
+  return binding && !binding.references.some(reference => reference.isWrite() && !reference.init)
+    ? uniqueIndexedNode(symbols.declarationsByBinding, binding)
+    : null;
+}
+
+function directRegistrationInputBindings(page, symbols) {
+  const expressions = {
+    actor: "computed(() => authStore.user?.id)",
+    routeContract: 'computed(() => contractId.value ?? "")',
+    routeVersion: "computed(() => queryText(route.query.versionId).trim())",
+    workbench: "computed(() => (authoritySnapshot.value?.workbench as ContractDraftWorkbenchReadModel | undefined) ?? null)",
+    blocked: 'computed(() => Boolean(isDirty.value || pendingSaveResult.value || pendingLocalRecovery.value || saveState.value === "saving" || authoritySnapshot.value?.refreshRequired))'
+  };
+  if (page.options.type !== "ObjectExpression" || page.options.properties.length !== 7 ||
+      page.options.properties.some(property => property.type !== "Property" || property.computed || property.method) ||
+      !directRegistrationExpression(objectPropertyValue(page.options, "online"), "online")) return false;
+  for (const [name, expression] of Object.entries(expressions)) {
+    const value = objectPropertyValue(page.options, name);
+    if (!directRegistrationExpression(value, expression) || !symbols.vueComputedImportBindings.has(symbols.scopeBindings.get(value.callee))) return false;
+  }
+  const auth = directRegistrationDeclared(symbols, "authStore", true);
+  const route = directRegistrationDeclared(symbols, "route", true);
+  const routeBinding = route?.type === "CallExpression" && symbols.scopeBindings.get(route.callee);
+  const id = directRegistrationDeclared(symbols, "contractId", true);
+  return Boolean(callExpressionMatchesWrapper(auth, {
+    apiFile: `${WEB_SOURCE_ROOT}/auth/auth.store.ts`, name: "useAuthStore"
+  }, symbols) && auth.arguments.length === 0 &&
+    routeBinding?.defs.some(definition => definition.type === "ImportBinding" &&
+      definition.parent?.source?.value === "vue-router" && definition.node?.imported?.name === "useRoute") &&
+    route.arguments.length === 0 &&
+    directRegistrationExpression(id, `computed(() => {
+      const value = route.params.contractId;
+      return typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
+    })`) && symbols.vueComputedImportBindings.has(symbols.scopeBindings.get(id.callee)));
+}
+
+function directRegistrationContextBindings(factory, symbols) {
+  const expressions = {
+    context: "computed(() => directRegistrationCoordinates(input.workbench.value, input.actor.value))",
+    version: 'computed(() => input.routeVersion.value || input.workbench.value?.version.id || "")',
+    scope: "computed(() => JSON.stringify([input.actor.value, input.routeContract.value, version.value]))",
+    available: "computed(() => context.value?.contractId === input.routeContract.value && context.value.versionId === version.value)"
+  };
+  for (const [name, expression] of Object.entries(expressions)) {
+    const declaration = directRegistrationDeclared(symbols, name);
+    if (!directRegistrationExpression(declaration, expression) ||
+        !symbols.vueComputedImportBindings.has(symbols.scopeBindings.get(declaration.callee))) return false;
+  }
+  const ctx = directRegistrationDeclared(symbols, "context");
+  if (!callExpressionMatchesWrapper(ctx.arguments[0].body, {
+    apiFile: DIRECT_REGISTRATION_COORDINATES, name: "directRegistrationCoordinates"
+  }, symbols)) return false;
+  const watches = directRegistrationCalls(factory.body, node => node.callee.name === "watch");
+  const watch = watches[0];
+  const watchBinding = symbols.scopeBindings.get(watch?.callee);
+  return watches.length === 1 && watch.arguments.length === 3 &&
+    watchBinding?.defs.some(definition => definition.type === "ImportBinding" &&
+      definition.parent?.source?.value === "vue" && definition.node?.imported?.name === "watch") &&
+    directRegistrationExpression(watch.arguments[0], "scope") &&
+    directRegistrationExpression(watch.arguments[2], "{ immediate: true, flush: \"sync\" }") &&
+    directRegistrationMatches(watch.arguments[1]?.body?.body?.[0], "const started = ++epoch;");
+}
+
+function directRegistrationTransportProof(context) {
+  const ast = context.asts.get(DIRECT_REGISTRATION_API);
+  if (!ast) return false;
+  const symbols = buildSymbolContext(ast, DIRECT_REGISTRATION_API, context.sourceFileSet);
+  const definitions = ast.body.filter(node =>
+    node.type === "ExportNamedDeclaration" && node.declaration?.type === "FunctionDeclaration" &&
+    node.declaration.id?.name === DIRECT_REGISTRATION_POST.name);
+  const command = definitions.length === 1 ? definitions[0].declaration : null;
+  const post = topLevelScopeVariables(symbols.scopeManager, "postJson");
+  const helper = post.length === 1 && uniqueIndexedNode(symbols.definitionsByBinding, post[0]);
+  if (!directRegistrationBlock(command?.body, `
+    const options = { retryUnauthorized: false, responseIsCurrent };
+    return postJson<ContractSignedArchiveV2Result>(\`/contracts/\${encodeURIComponent(versionId)}/signed-archive\`, body, options);
+  `) ||
+    !directRegistrationBlock(helper?.body, `
+      const response = await apiFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+        ...options
+      });
+      await ensureOk(response, "提交失败");
+      return response.json() as Promise<TResponse>;
+    `)) return false;
+  return symbols.scopeBindings.get(command.body.body[1].argument.callee) === post[0] &&
+    callExpressionMatchesWrapper(helper.body.body[0].declarations[0].init.argument, {
+      apiFile: `${WEB_SOURCE_ROOT}/api/api-fetch.ts`, name: "apiFetch"
+    }, symbols);
+}
+
+function directRegistrationLockProof(factory, symbols) {
+  const same = directRegistrationCallable(factory, "sameStoredIntent", symbols);
+  const reconcile = directRegistrationCallable(factory, "reconcileCancelledUnderLock", symbols);
+  const cancelled = directRegistrationDeclared(symbols, "wasCancelled");
+  return Boolean(same && reconcile && cancelled &&
+    directRegistrationBlock(same.definition.body, `
+      const saved = raw ? JSON.parse(raw) as StoredIntent : null;
+      return saved && saved.actor === intent.actor && saved.contractId === intent.contractId && saved.versionId === intent.versionId &&
+        saved.requestSha256 === intent.requestSha256 && sameBody(saved.body, intent.body) ? saved : null;
+    `) &&
+    directRegistrationBlock(reconcile.definition.body, `
+      const saved = sameStoredIntent(raw, intent);
+      if ((saved && saved.phase !== "preparing") || !wasCancelled(intent, storageKey)) return false;
+      if (saved) localStorage.removeItem(storageKey);
+      return true;
+    `) &&
+    directRegistrationExpression(cancelled, `(intent: Intent, storageKey: string) =>
+      localStorage.getItem(cancelledKey(intent, storageKey)) === intent.body.idempotencyKey`));
+}
+
+function directRegistrationWriteProof({ action, wrapper, candidate, context, page, factory, symbols, query, read, attempt }) {
+  const confirmMode = action.id === "contract-direct-registration.confirm";
+  const readbackMode = action.id === "contract-direct-registration.resume-original";
+  if ((!confirmMode && !readbackMode) || action.capability.kind !== "server_boolean" ||
+      action.capability.source !== "directPendingCapabilities.registrationEnabled" ||
+      wrapper.name !== DIRECT_REGISTRATION_POST.name || wrapper.apiFile !== DIRECT_REGISTRATION_POST.apiFile ||
+      normalizedMainRequests(wrapper).length !== 1 ||
+      normalizedMainRequests(wrapper)[0].normalizedKey !== "POST /contracts/:param/signed-archive") return null;
+
+  const send = directRegistrationCallable(factory, "send", symbols);
+  const refresh = directRegistrationCallable(factory, "refreshCoordinates", symbols);
+  const confirm = directRegistrationCallable(factory, "confirm", symbols, true);
+  if (!directRegistrationInputBindings(page, context.symbols) ||
+      !directRegistrationContextBindings(factory, symbols) ||
+      !directRegistrationLockProof(factory, symbols) || !directRegistrationTransportProof(context)) return null;
+  const sameCoordinates = topLevelScopeVariables(symbols.scopeManager, "sameCoordinates")[0];
+  const sameFiles = topLevelScopeVariables(symbols.scopeManager, "sameFiles")[0];
+  const order = sameFiles && uniqueIndexedNode(symbols.definitionsByBinding, sameFiles);
+  const compare = sameCoordinates && uniqueIndexedNode(symbols.definitionsByBinding, sameCoordinates);
+  const current = uniqueScopeVariable(symbols.scopeManager, "sendCurrent");
+  const currentDefinition = current && uniqueIndexedNode(symbols.definitionsByBinding, current);
+  if (!send || !refresh || !confirm || !compare || !currentDefinition || !order ||
+      !directRegistrationBlock(order.body, "return left.length === right.length && left.every((id, index) => id === right[index]);") ||
+      !directRegistrationCalls(compare, node => directRegistrationLocalCall(node, { binding: sameFiles }, symbols)).length ||
+      !directRegistrationBlock(compare.body, `
+        return !!left && left.contractId === right.contractId && left.versionId === right.versionId &&
+          left.draftRevision === right.draftRevision && left.inputSha256 === right.inputSha256 && sameFiles(left.fileIds, right.fileIds);
+      `) ||
+      !directRegistrationMatches({ type: "ExpressionStatement", expression: currentDefinition.body },
+        "started === epoch && available.value && input.online.value && !input.blocked.value && sameCoordinates(context.value, captured);")) return null;
+
+  if (!directRegistrationBlock(refresh.definition.body, `
+    const fresh = await fetchContractDraftWorkbench(captured.versionId, { retryUnauthorized: false, responseIsCurrent: () => started === epoch });
+    return sendCurrent(captured, started) && sameCoordinates(directRegistrationCoordinates(fresh, input.actor.value), captured);
+  `) || !directRegistrationBlock(send.definition.body, `
+    const locks = globalThis.navigator?.locks;
+    if (!locks) return;
+    const admission = await locks.request(storageKey, () => {
+      const saved = sameStoredIntent(localStorage.getItem(storageKey), intent);
+      if (!saved || (!resume && saved.phase !== "preparing") || wasCancelled(intent, storageKey) || !sendCurrent(captured, started)) return;
+      localStorage.setItem(storageKey, JSON.stringify({ ...intent, phase: "sent" }));
+      const response = archiveSignedContractV2(intent.versionId, intent.body, () => started === epoch).catch(() => {});
+      return { response };
+    });
+    if (!admission) return;
+    await admission.response;
+    if (started === epoch) await read(intent, started, storageKey);
+  `)) return null;
+
+  const [fresh] = directRegistrationCalls(refresh.definition, node => callExpressionMatchesWrapper(node, DIRECT_REGISTRATION_WORKBENCH_READ, symbols));
+  const [coordinateCall] = directRegistrationCalls(refresh.definition, node => node.callee.name === "directRegistrationCoordinates");
+  const postCalls = directRegistrationCalls(factory, node => callExpressionMatchesWrapper(node, DIRECT_REGISTRATION_POST, symbols));
+  if (!fresh || !directRegistrationCoordinateProof(coordinateCall, symbols, context) || postCalls.length !== 1 ||
+      !directRegistrationCalls(send.definition, node => node === postCalls[0]).length ||
+      !directRegistrationCalls(send.definition, node => directRegistrationLocalCall(node, read, symbols)).length ||
+      !directRegistrationCalls(send.definition, node => directRegistrationLocalCall(node, { binding: current }, symbols)).length ||
+      !directRegistrationCalls(refresh.definition, node => directRegistrationLocalCall(node, { binding: sameCoordinates }, symbols)).length ||
+      !directRegistrationCalls(refresh.definition, node => directRegistrationLocalCall(node, { binding: current }, symbols)).length ||
+      !directRegistrationCalls(currentDefinition, node => directRegistrationLocalCall(node, { binding: sameCoordinates }, symbols)).length) return null;
+
+  let caller;
+  if (confirmMode) {
+    const bindings = topLevelScopeVariables(context.symbols.scopeManager, "confirmDirectRegistration");
+    const handler = bindings.length === 1 && uniqueIndexedNode(context.symbols.definitionsByBinding, bindings[0]);
+    const pageCall = handler?.body?.body?.[1]?.expression?.argument;
+    if (candidate.element !== "t-dialog" || candidate.event !== "confirm" || candidate.handler !== "confirmDirectRegistration" ||
+        !directRegistrationBlock(handler?.body, "directRegistrationConfirmVisible.value = false; void directRegistration.confirm();") ||
+        context.symbols.scopeBindings.get(referenceRootIdentifier(pageCall?.callee)) !== page.binding) return null;
+    const body = confirm.definition.body.body;
+    const first = body.at(-1);
+    if (body.length !== 6 ||
+        !directRegistrationMatches(body[0], "const captured = context.value, actor = input.actor.value, locks = globalThis.navigator?.locks;") ||
+        !directRegistrationMatches(body[1], "if (!canConfirm.value || !captured || !actor || !locks) return;") ||
+        !directRegistrationMatches(body[2], "const started = epoch, storageKey = key();") ||
+        !directRegistrationMatches(body[3], "let claimed: Intent | undefined;") ||
+        !directRegistrationMatches(body[4], "busy.value = true;") ||
+        !directRegistrationBlock(first?.handler?.body, `
+          if (started === epoch) message.value = pending.value ? "正式登记结果待核对，请查询原请求。" : "暂时无法核对正式登记资料。";
+        `) ||
+        !directRegistrationBlock(first?.finalizer, `
+          if (claimed && await removeStored(claimed, storageKey, true).catch(() => false) && started === epoch) pending.value = null;
+          if (started === epoch) busy.value = false;
+        `) ||
+        !directRegistrationBlock(first?.block, `
+          const body: ContractDirectRegistrationPayload = { archiveProtocolVersion: 2, archiveSource: "direct_signed",
+            idempotencyKey: crypto.randomUUID(), expectedDraftRevision: captured.draftRevision, expectedInputSha256: captured.inputSha256,
+            fileIds: captured.fileIds, confirmedMatchingSignedDocument: true };
+          const coordinates = { actor, contractId: captured.contractId, versionId: captured.versionId, body };
+          const intent = { ...coordinates, requestSha256: await requestSha(coordinates) };
+          const observedRaw = localStorage.getItem(storageKey);
+          const observed = await validatedIntent(observedRaw);
+          const claim = await locks.request(storageKey, () => {
+            if (!sendCurrent(captured, started)) return;
+            const raw = localStorage.getItem(storageKey);
+            if (raw !== null && (raw !== observedRaw || observed?.phase !== "preparing" ||
+              !reconcileCancelledUnderLock(observed, storageKey, raw))) return { raw };
+            localStorage.setItem(storageKey, JSON.stringify({ ...intent, phase: "preparing" }));
+            claimed = intent;
+            return { raw: null };
+          });
+          if (!claim || started !== epoch) return;
+          if (claim.raw !== null) {
+            const saved = await validatedIntent(claim.raw);
+            if (saved && started === epoch) keepPending(saved);
+            return;
+          }
+          keepPending(intent);
+          if (!await refreshCoordinates(captured, started)) {
+            if (started === epoch) message.value = "合同资料或权限已变化，请刷新并核对保存的原件。";
+            return;
+          }
+          await send(intent, captured, started, storageKey, false);
+        `)) return null;
+    caller = confirm.definition;
+  } else {
+    if (candidate.element !== "t-button" || candidate.event !== "click" ||
+        directRegistrationEvent(candidate.expression)?.variant !== "resume-original") return null;
+    const remaining = { ...attempt.block, body: attempt.block.body.slice(1) };
+    if (!directRegistrationBlock(remaining, `
+      const captured = { contractId: intent.contractId, versionId: intent.versionId,
+        draftRevision: intent.body.expectedDraftRevision, inputSha256: intent.body.expectedInputSha256, fileIds: intent.body.fileIds };
+      if (!sendCurrent(captured, started) || !await refreshCoordinates(captured, started)) {
+        if (started === epoch) message.value = "当前资料或权限已变化，请继续查询原登记结果。";
+        return;
+      }
+      await send(intent, captured, started, storageKey, true);
+    `)) return null;
+    caller = query.definition;
+  }
+  if (directRegistrationCalls(caller, node => directRegistrationLocalCall(node, send, symbols)).length !== 1 ||
+      directRegistrationCalls(caller, node => directRegistrationLocalCall(node, refresh, symbols)).length !== 1) return null;
+  return { verified: true, localCallChain: [action.trigger.handler, confirmMode ? "confirm" : "query(true)",
+    "refreshCoordinates", "send", wrapper.name], capabilityWitness: true,
+    capabilitySources: new Set([wrapperIdentity(DIRECT_REGISTRATION_WORKBENCH_READ.apiFile, DIRECT_REGISTRATION_WORKBENCH_READ.name)]) };
+}
+
+function directRegistrationCausalProof({ action, wrapper, candidate, context }) {
+  if (!candidate || action.sourceFile !== CONTRACT_WORKBENCH_PAGE_PATH ||
+      !DIRECT_REGISTRATION_ACTIONS.has(action.id)) return null;
+  const lookup = action.id === "contract-direct-registration.lookup-original";
+  const confirmed = action.id === "contract-direct-registration.confirm";
+  const variant = lookup ? "lookup-original" : "resume-original";
+  const event = directRegistrationEvent(candidate.expression);
+  const page = directRegistrationPageFactory(context);
+  const composableAst = context.asts.get(DIRECT_REGISTRATION_MODULE);
+  if (!page || !composableAst || candidate.elementNode.variables?.length ||
+      astAncestorChain(context.symbols.ast.templateBody, candidate.elementNode)?.some(node => node.variables?.length)) return null;
+  if (confirmed) {
+    if (candidate.expression?.type !== "Identifier" || candidate.expression.name !== "confirmDirectRegistration") return null;
+  } else if (candidate.element !== "t-button" || candidate.event !== "click" || candidate.handler !== "directRegistration" ||
+      action.trigger.variant !== variant || event?.variant !== variant) return null;
+  if (lookup && (wrapper.apiFile !== DIRECT_REGISTRATION_GET.apiFile || wrapper.name !== DIRECT_REGISTRATION_GET.name ||
+    normalizedMainRequests(wrapper).length !== 1 ||
+    normalizedMainRequests(wrapper)[0].normalizedKey !== "GET /contracts/:param/archive-requests/:param")) return null;
+  const symbols = buildSymbolContext(composableAst, DIRECT_REGISTRATION_MODULE, context.sourceFileSet);
+  const factory = directRegistrationFactory(symbols);
+  const query = factory && directRegistrationCallable(factory, "query", symbols, true);
+  const read = factory && directRegistrationCallable(factory, "read", symbols);
+  if (!query || !read) return null;
+
+  const { definition } = query;
+  const [mode] = definition.params;
+  if (definition.params.length !== 1 || mode?.type !== "AssignmentPattern" ||
+      mode.left.type !== "Identifier" || mode.left.name !== "continueOriginal" ||
+      mode.right.type !== "Literal" || mode.right.value !== false) return null;
+  const modeBinding = symbols.scopeBindings.get(mode.left);
+  if (!modeBinding || modeBinding.references.some(reference => reference.isWrite() && !reference.init)) return null;
+
+  const statements = definition.body.body;
+  const [intent, permission, captured, busy, attempt] = statements;
+  if (statements.length !== 5 ||
+      !directRegistrationMatches(intent, "const intent = pending.value;") ||
+      !directRegistrationMatches(permission, "if (!intent || !(continueOriginal ? canContinue.value : canQuery.value)) return;") ||
+      !directRegistrationMatches(captured, "const started = epoch, storageKey = key();") ||
+      !directRegistrationMatches(busy, "busy.value = true;") || attempt?.type !== "TryStatement") return null;
+  const readGate = attempt.block.body[0];
+  if (!directRegistrationMatches(readGate,
+    'if (await read(intent, started, storageKey) !== "unknown" || !continueOriginal || started !== epoch) return;')) return null;
+  const readCall = readGate.test.left.left.left.argument;
+  if (symbols.scopeBindings.get(readCall?.callee) !== read.binding) return null;
+  const readStatement = read.definition.body.body[0];
+  if (!directRegistrationMatches(readStatement,
+    "const result = await fetchDirectSignedContractResult(intent.versionId, intent.body.idempotencyKey, () => started === epoch);") ||
+    !callExpressionMatchesWrapper(readStatement.declarations[0].init.argument, DIRECT_REGISTRATION_GET, symbols)) return null;
+  if (!directRegistrationBlock(read.definition.body, `
+    const result = await fetchDirectSignedContractResult(intent.versionId, intent.body.idempotencyKey, () => started === epoch);
+    if (started !== epoch) return "stale";
+    if (result?.status === "unknown") {
+      const locks = globalThis.navigator?.locks;
+      const cancelled = locks && await locks.request(storageKey, () =>
+        reconcileCancelledUnderLock(intent, storageKey, localStorage.getItem(storageKey)));
+      if (started !== epoch) return "stale";
+      if (cancelled) {
+        if (pending.value?.requestSha256 === intent.requestSha256) pending.value = null;
+        message.value = "上次登记未发出。请核对已保存原件后重新确认。";
+        return "cancelled";
+      }
+      message.value = "尚未查到正式登记结果。请继续查询，或核对资料后按原请求继续。";
+      return "unknown";
+    }
+    if (result?.status !== "archived" || result.requestSha256 !== intent.requestSha256 || !sameBody(result.intent, intent.body) ||
+      !uuid.test(result.result?.archiveId) || result.result?.contractVersionId !== intent.versionId ||
+      result.result.status !== "effective" || !Array.isArray(result.result.fileIds) || !sameFiles(result.result.fileIds, intent.body.fileIds)) {
+      message.value = "返回结果与原登记请求不一致，请保留原请求并查询。";
+      return "mismatch";
+    }
+    await removeStored(intent, storageKey, false);
+    if (started !== epoch) return "stale";
+    pending.value = null;
+    done.value = true;
+    message.value = "正式登记完成，合同已生效。";
+    input.completed(intent.contractId, intent.versionId);
+    return "archived";
+  `)) return null;
+  const keyBinding = symbols.scopeBindings.get(captured.declarations[1].init.callee);
+  const saved = directRegistrationCallable(factory, "validatedIntent", symbols);
+  const kept = directRegistrationCallable(factory, "keepPending", symbols);
+  const pending = symbols.scopeBindings.get(intent.declarations[0].init.object);
+  if (!saved || !kept || !pending ||
+      !directRegistrationExpression(uniqueIndexedNode(symbols.declarationsByBinding, keyBinding),
+        '() => `jg:direct-contract-registration:v1:${encodeURIComponent(input.actor.value ?? "")}:${encodeURIComponent(version.value)}`') ||
+      !directRegistrationBlock(saved.definition.body, `
+        if (raw === null) return null;
+        if (raw.length > 8192) throw new Error();
+        const saved = JSON.parse(raw) as StoredIntent;
+        if (saved.actor !== input.actor.value || saved.versionId !== version.value || saved.contractId !== input.routeContract.value ||
+          (saved.phase !== undefined && saved.phase !== "preparing" && saved.phase !== "sent") ||
+          !validBody(saved.body) || !sha.test(saved.requestSha256) || await requestSha(saved) !== saved.requestSha256) throw new Error();
+        return saved;
+      `) ||
+      !directRegistrationBlock(kept.definition.body, `
+        pending.value = intent;
+        message.value = "正式登记结果待核对，请保留原请求并查询。";
+      `)) return null;
+  const setPending = kept.definition.body.body[0].expression;
+  let substitutedIntent = false;
+  walkEstree(factory.body, node => {
+    if (node.type === "AssignmentExpression" && staticMemberPath(node.left) === "pending.value" &&
+        symbols.scopeBindings.get(referenceRootIdentifier(node.left)) === pending &&
+        node !== setPending && (node.operator !== "=" || node.right.type !== "Literal" || node.right.value !== null)) substitutedIntent = true;
+  });
+  if (substitutedIntent || !directRegistrationReadEffects(factory, read, keyBinding,
+    readStatement.declarations[0].init.argument, page, symbols, context.symbols)) return null;
+  // The non-continuation returns from the try before the write branch. Its
+  // failure and cleanup code must stay display-only.
+  for (const block of [attempt.handler?.body, attempt.finalizer]) {
+    let callable = false;
+    walkEstree(block, node => { if (["CallExpression", "NewExpression", "TaggedTemplateExpression"].includes(node.type)) callable = true; });
+    if (!block || callable) return null;
+  }
+  if (!lookup) return directRegistrationWriteProof({ action, wrapper, candidate, context, page, factory, symbols, query, read, attempt });
+  return { verified: true, localCallChain: ["directRegistration.query()", "query", "read", wrapper.name] };
+}
+
+const CONTRACT_APPROVAL_PAGE = `${WEB_SOURCE_ROOT}/pages/contracts/ContractDetailPage.vue`;
+const CONTRACT_APPROVAL_API = `${WEB_SOURCE_ROOT}/api/core-flow-read.api.ts`;
+const CONTRACT_APPROVAL_READ = "fetchContractDetail";
+const CONTRACT_APPROVAL_COORDINATES = [
+  "expectedContractUpdatedAt", "expectedApprovalInstanceId", "expectedNodeIndex", "expectedApprovalUpdatedAt"
+];
+const CONTRACT_APPROVAL_ACTIONS = new Map([
+  ["contract-approval.review-approve", { decision: "approve", handler: "confirmContractReviewApprove", dialog: "approvalApprove" }],
+  ["contract-approval.review-reject", { decision: "reject", handler: "confirmContractReviewReject", dialog: "approvalReject" }],
+  ["contract-approval.withdraw", { decision: null, handler: "confirmContractWithdrawal", dialog: "withdrawal" }]
+]);
+
+function approvalAstShape(node) {
+  return JSON.stringify(node, (key, value) =>
+    ["parent", "loc", "range", "raw", "comments", "tokens"].includes(key) ? undefined : value);
+}
+
+function approvalStatements(node, source) {
+  const expected = parseSource("contract-approval-proof.ts", `{${source}}`).body[0];
+  return Boolean(node && approvalAstShape(node) === approvalAstShape(expected));
+}
+
+function approvalStatement(node, source) {
+  return approvalStatements({ type: "BlockStatement", body: [node] }, source);
+}
+
+function approvalExpression(node, source) {
+  return approvalStatement({ type: "ExpressionStatement", expression: node }, `${source};`);
+}
+
+function approvalFunction(symbols, name) {
+  const bindings = topLevelScopeVariables(symbols.scopeManager, name);
+  if (bindings.length !== 1 || bindings[0].references.some(reference => reference.isWrite() && !reference.init)) return null;
+  const definition = uniqueIndexedNode(symbols.definitionsByBinding, bindings[0]);
+  return definition?.type === "FunctionDeclaration" ? { definition, binding: bindings[0] } : null;
+}
+
+function approvalCalls(node, predicate) {
+  const matches = [];
+  walkEstree(node, candidate => {
+    if (candidate.type === "CallExpression" && predicate(candidate)) matches.push(candidate);
+  });
+  return matches;
+}
+
+function approvalBoundCall(node, name, symbols) {
+  const target = approvalFunction(symbols, name);
+  return Boolean(target && approvalCalls(node, candidate => candidate.callee.type === "Identifier" &&
+    symbols.scopeBindings.get(candidate.callee) === target.binding).length === 1);
+}
+
+function approvalParamNames(definition, ...names) {
+  return definition.params.length === names.length && definition.params.every((param, index) =>
+    param.type === "Identifier" && param.name === names[index]);
+}
+
+function approvalFreezeObject(statement, symbols) {
+  const call = statement?.type === "ReturnStatement" && statement.argument;
+  return call?.type === "CallExpression" && staticMemberPath(call.callee) === "Object.freeze" &&
+    unshadowedRuntimeGlobal(referenceRootIdentifier(call.callee), new Set(["Object"]), symbols.scopeBindings) &&
+    call.arguments.length === 1 && call.arguments[0]?.type === "ObjectExpression" ? call.arguments[0] : null;
+}
+
+function approvalFields(object, mapping) {
+  return Object.entries(mapping).every(([key, value]) => approvalExpression(objectPropertyValue(object, key), value));
+}
+
+function approvalNoUnexpectedReturns(definition) {
+  const last = definition.body.body.at(-1);
+  let safe = true;
+  directCallableNodes(definition, node => {
+    if (node.type === "ReturnStatement" && node !== last &&
+        (node.argument?.type !== "Literal" || node.argument.value !== null)) safe = false;
+  });
+  return safe;
+}
+
+function approvalKnownCoordinateMap(fields, source) {
+  return Object.fromEntries(fields.map(field => [field, `${source}.${field}`]));
+}
+
+function contractApprovalCaptureSource(spec, captured, current, owner, returnObject, context) {
+  const { symbols } = context;
+  const review = Boolean(spec.decision);
+  const mode = review ? "Review" : "Withdrawal";
+  const dialogName = review ? "currentContractReviewDialogContext" : "currentContractWithdrawalCoordinates";
+  const dialog = approvalFunction(symbols, dialogName);
+  const route = approvalFunction(symbols, "routeContractId");
+  const ownerScope = approvalFunction(symbols, `contract${mode}OwnerScope`);
+  if (!dialog || !route || !ownerScope ||
+      !approvalStatements(route.definition.body, `
+        const value = route.params.contractId;
+        return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+      `) ||
+      !approvalStatements(ownerScope.definition.body, `
+        return [context.routeContractId, context.contractVersionId, context.expectedApprovalInstanceId].join("\\u0000");
+      `) ||
+      !approvalBoundCall(owner.definition, "routeContractId", symbols) ||
+      !approvalBoundCall(owner.definition, `contract${mode}OwnerScope`, symbols) ||
+      !approvalBoundCall(captured.definition, `contract${mode}OwnerScope`, symbols) ||
+      !approvalBoundCall(dialog.definition, "routeContractId", symbols) ||
+      (!review && !approvalBoundCall(current.definition, dialogName, symbols))) return false;
+  const [routeBinding] = topLevelScopeVariables(symbols.scopeManager, "route");
+  const routeSource = uniqueIndexedNode(symbols.declarationsByBinding, routeBinding);
+  const routeImport = routeSource?.type === "CallExpression" && symbols.scopeBindings.get(routeSource.callee);
+  if (!routeImport || routeSource.arguments.length !== 0 || !routeImport.defs.some(definition =>
+    definition.type === "ImportBinding" && definition.parent?.source?.value === "vue-router" &&
+    definition.node?.imported?.name === "useRoute")) return false;
+
+  const constructed = approvalFreezeObject(dialog.definition.body.body.at(-1), symbols);
+  const [capability, coordinates] = dialog.definition.body.body;
+  const coordinateName = review ? "reviewApprovalContext" : "withdrawApprovalContext";
+  if (!constructed || !approvalNoUnexpectedReturns(dialog.definition) ||
+      !approvalStatement(capability, "const capability = contractReviewCapability.value;") ||
+      !approvalStatement(coordinates, `const coordinates = capability?.${coordinateName};`) ||
+      constructed.properties.some(property => property.type !== "Property" || property.computed) ||
+      !approvalFields(constructed, {
+        routeContractId: review ? "routeId" : "currentRouteContractId",
+        contractId: "capability.id", contractVersionId: "capability.contractVersionId",
+        ...approvalKnownCoordinateMap(CONTRACT_APPROVAL_COORDINATES, "coordinates")
+      })) return false;
+  const dialogBody = dialog.definition.body.body;
+  const routeVariable = review ? "routeId" : "currentRouteContractId";
+  const routeDeclaration = dialogBody[review ? 2 : 3];
+  const gate = dialogBody[review ? 3 : 4];
+  if (dialogBody.length !== (review ? 5 : 6) ||
+      !approvalStatement(routeDeclaration, `const ${routeVariable} = routeContractId();`) ||
+      gate?.type !== "IfStatement" || gate.alternate ||
+      !approvalStatements(gate.consequent, "return null;")) return false;
+  if (review) {
+    if (!approvalExpression(gate.test, `!capability || !coordinates || !routeId || !contractReviewActionEnabled() ||
+      capability.id !== routeId || capability.lifecycleUpdatedAt !== coordinates.expectedContractUpdatedAt`) ||
+      !approvalBoundCall(dialog.definition, "contractReviewActionEnabled", symbols)) return false;
+  } else if (!approvalStatement(dialogBody[2],
+      'const enabledActions = capability?.availableActions.filter((action) => action.key === "withdraw_approval" && action.enabled) ?? [];') ||
+      !approvalExpression(gate.test, `!capability || !coordinates || enabledActions.length !== 1 ||
+        !contractWithdrawalActionEnabled() || !currentRouteContractId || capability.id !== currentRouteContractId ||
+        !capability.contractVersionId || capability.lifecycleUpdatedAt !== coordinates.expectedContractUpdatedAt ||
+        !coordinates.expectedContractUpdatedAt || !coordinates.expectedApprovalInstanceId ||
+        !Number.isInteger(coordinates.expectedNodeIndex) || coordinates.expectedNodeIndex < 0 ||
+        !coordinates.expectedApprovalUpdatedAt`) ||
+      !approvalBoundCall(dialog.definition, "contractWithdrawalActionEnabled", symbols)) return false;
+  const shared = {
+    ownerScope: `contract${mode}OwnerScope(dialog)`, operationId: "operationId",
+    routeGeneration: review ? "detailRequestId" : "dialog.routeGeneration",
+    detailEpoch: review ? "detailRequestId" : "dialog.detailEpoch",
+    dialogGeneration: review ? "contractReviewDialogGeneration" : "dialog.dialogGeneration"
+  };
+  if (!approvalFields(returnObject, {
+    ...shared, ...(review ? { decision: "decision", requiresSelfReviewConfirmation: "requiresContractSelfReviewConfirmation.value" } : { action: '"withdraw"' })
+  }) || returnObject.properties.some(property => property.type === "Property" && property.computed)) return false;
+  const spreads = returnObject.properties.filter(property => property.type === "SpreadElement");
+  if (!review) return spreads.length === 0;
+  if (spreads.length !== 2 ||
+      !approvalExpression(spreads[0].argument, "comment ? { comment } : {}") ||
+      !approvalExpression(spreads[1].argument, "selfReviewPayload")) return false;
+  // The self-review helper may contribute only comment/password fields, never coordinates.
+  const helperPath = `${WEB_SOURCE_ROOT}/components/approval-self-review.config.ts`;
+  const calls = approvalCalls(captured.definition, node => callExpressionMatchesWrapper(node, {
+    apiFile: helperPath, name: "buildApprovalSelfReviewPayload"
+  }, symbols));
+  const ast = context.asts.get(helperPath);
+  if (calls.length !== 1 || !ast || !approvalExpression(calls[0],
+    "buildApprovalSelfReviewPayload(requiresContractSelfReviewConfirmation.value, { selfReviewReason: contractArchiveForm.selfReviewReason, confirmationPassword: password })")) return false;
+  const helperSymbols = buildSymbolContext(ast, helperPath, context.sourceFileSet);
+  const helper = approvalFunction(helperSymbols, "buildApprovalSelfReviewPayload");
+  if (!helper) return false;
+  const returns = [];
+  directCallableNodes(helper.definition, node => { if (node.type === "ReturnStatement") returns.push(node); });
+  return returns.length === 2 && approvalExpression(returns[0].argument, "({})") &&
+    approvalExpression(returns[1].argument, "({ selfReviewReason, confirmationPassword: form.confirmationPassword })");
+}
+
+function contractApprovalPageEvidence(spec, candidate, context) {
+  const { symbols } = context;
+  const mode = spec.decision ? "Review" : "Withdrawal";
+  const captured = approvalFunction(symbols, `captureContract${mode}Context`);
+  const current = approvalFunction(symbols, `contract${mode}SubmissionIsCurrent`);
+  const owner = approvalFunction(symbols, `ownsContract${mode}Submission`);
+  const handler = approvalFunction(symbols, spec.handler);
+  if (!captured || !current || !owner || !handler ||
+      candidate.element !== "sensitive-action-dialog" || candidate.event !== "confirm" ||
+      candidate.expression?.type !== "Identifier" || candidate.expression.name !== spec.handler ||
+      candidate.elementNode.variables?.length ||
+      astAncestorChain(symbols.ast.templateBody, candidate.elementNode)?.some(node => node.variables?.length)) return false;
+  const dialogImports = topLevelScopeVariables(symbols.scopeManager, "SensitiveActionDialog");
+  const dialogImport = dialogImports.length === 1 && symbols.importsByBinding.get(dialogImports[0]);
+  if (dialogImport?.kind !== "default" ||
+      dialogImport.sourceFile !== `${WEB_SOURCE_ROOT}/components/SensitiveActionDialog.vue`) return false;
+  const capture = spec.decision
+    ? `() => captureContractReviewContext("${spec.decision}", values.password)`
+    : "captureContractWithdrawalContext";
+  const modeProperty = spec.decision ? `decision: "${spec.decision}"` : 'action: "withdraw"';
+  const command = `executeContractApproval${mode}Action`;
+  const prepare = `prepareContractApproval${mode}Action`;
+  if (!approvalParamNames(handler.definition, ...(spec.decision ? ["values"] : [])) ||
+      !approvalStatements(handler.definition.body, `
+        if (contract${mode}InFlight) return contract${mode}InFlight;
+        const execution = ${command}({
+          ${modeProperty},
+          capture: ${capture},
+          preflight: (context) => ${prepare}({
+            ...context,
+            isCurrent: contract${mode}SubmissionIsCurrent
+          }),
+          current: contract${mode}SubmissionIsCurrent,
+          stale: staleContract${mode},
+          complete: completeContract${mode},
+          fail: failContract${mode},
+          finish: finishContract${mode}
+        }).then((result) => result.status === "completed");
+        contract${mode}InFlight = execution;
+        void execution.finally(() => {
+          if (contract${mode}InFlight === execution) { contract${mode}InFlight = null; }
+        });
+        return execution;
+      `)) return false;
+  const [execute] = approvalCalls(handler.definition, node => callExpressionMatchesWrapper(node, {
+    apiFile: CONTRACT_APPROVAL_API, name: command
+  }, symbols));
+  const options = execute?.arguments[0];
+  const preflight = objectPropertyValue(options, "preflight");
+  const captureNode = objectPropertyValue(options, "capture");
+  if (!options || !callExpressionMatchesWrapper(preflight?.body, { apiFile: CONTRACT_APPROVAL_API, name: prepare }, symbols) ||
+      symbols.scopeBindings.get(objectPropertyValue(options, "current")) !== current.binding ||
+      symbols.scopeBindings.get(objectPropertyValue(preflight.body.arguments[0], "isCurrent")) !== current.binding ||
+      (spec.decision ? !approvalBoundCall(captureNode, "captureContractReviewContext", symbols)
+        : symbols.scopeBindings.get(captureNode) !== captured.binding)) return false;
+
+  if (!approvalParamNames(current.definition, "context") || !approvalParamNames(owner.definition, "context") ||
+      !approvalStatements(owner.definition.body, `
+        return context.operationId === contract${mode}SubmissionToken &&
+          context.ownerScope === contract${mode}OwnerScope(context) &&
+          routeContractId() === context.routeContractId;
+      `) || !approvalBoundCall(current.definition, `ownsContract${mode}Submission`, symbols)) return false;
+  const currentChecks = `
+    ownsContract${mode}Submission(context) &&
+      context.routeGeneration === detailRequestId &&
+      context.detailEpoch === detailRequestId &&
+      context.dialogGeneration === contract${mode}DialogGeneration &&
+      sensitiveAction.visible &&
+  `;
+  if (spec.decision) {
+    if (!approvalStatements(current.definition.body, `
+      const expectedKind = context.decision === "approve" ? "approvalApprove" : "approvalReject";
+      return (${currentChecks} sensitiveAction.kind === expectedKind);
+    `)) return false;
+  } else if (!approvalStatements(current.definition.body, `
+      const current = currentContractWithdrawalCoordinates();
+      return (${currentChecks} sensitiveAction.kind === "withdrawal" &&
+        Boolean(current) &&
+        current?.contractId === context.contractId &&
+        current.contractVersionId === context.contractVersionId &&
+        ${CONTRACT_APPROVAL_COORDINATES.map(field => `current.${field} === context.${field}`).join(" && ")});
+    `)) return false;
+
+  const fields = ["routeContractId", "contractId", "contractVersionId", ...CONTRACT_APPROVAL_COORDINATES];
+  const result = captured.definition.body.body.at(-1);
+  const returnObject = spec.decision
+    ? result?.type === "ReturnStatement" && result.argument
+    : approvalFreezeObject(result, symbols);
+  if (!approvalNoUnexpectedReturns(captured.definition) || !returnObject ||
+      !approvalFields(returnObject, Object.fromEntries(fields.map(field => [field, `dialog.${field}`])))) return false;
+  const [dialog, fresh, guard] = captured.definition.body.body;
+  if (!approvalStatement(dialog, `const dialog = contract${mode}DialogContext;`) || guard?.type !== "IfStatement" ||
+      !approvalStatements(guard.consequent, "return null;")) return false;
+  if (spec.decision) {
+    if (!approvalStatement(fresh, "const freshDialog = currentContractReviewDialogContext(decision);") ||
+        !approvalExpression(guard.test, `!dialog || !freshDialog || dialog.decision !== decision ||
+          ${fields.slice(1).map(field => `dialog.${field} !== freshDialog.${field}`).join(" || ")} ||
+          !sameContractReviewOwnerRisk(dialog.ownerContractRisk, freshDialog.ownerContractRisk) ||
+          archiveActionBusy.value || contractReviewResultUnknown`) ||
+        !approvalBoundCall(captured.definition, "currentContractReviewDialogContext", symbols)) return false;
+  } else {
+    const compare = approvalFunction(symbols, "sameContractWithdrawalCoordinates");
+    if (!compare || !approvalParamNames(compare.definition, "expected", "actual") ||
+        !approvalStatements(compare.definition.body, `return ${[
+          "routeGeneration", "detailEpoch", "dialogGeneration", ...fields
+        ].map(field => `expected.${field} === actual.${field}`).join(" && ")};`) ||
+        !approvalStatement(fresh, "const fresh = currentContractWithdrawalCoordinates();") ||
+        !approvalExpression(guard.test, `!dialog || !fresh || !sameContractWithdrawalCoordinates(dialog, fresh) ||
+          archiveActionBusy.value || contractWithdrawalResultUnknown || !sensitiveAction.visible ||
+          sensitiveAction.kind !== "withdrawal"`) ||
+        !approvalBoundCall(captured.definition, "sameContractWithdrawalCoordinates", symbols) ||
+        !approvalBoundCall(captured.definition, "currentContractWithdrawalCoordinates", symbols)) return false;
+  }
+  return contractApprovalCaptureSource(spec, captured, current, owner, returnObject, context);
+}
+
+function contractApprovalFrozenCoordinates(normalizer, comparator, review, symbols) {
+  const plainFields = ["ownerScope", "routeContractId", "contractId", "contractVersionId",
+    "expectedContractUpdatedAt", "expectedApprovalInstanceId", "expectedApprovalUpdatedAt"];
+  const numericFields = ["routeGeneration", "detailEpoch", "dialogGeneration", "operationId", "expectedNodeIndex"];
+  const comparisonFields = [...numericFields.slice(0, 4), ...plainFields.slice(1, 6),
+    "expectedNodeIndex", "expectedApprovalUpdatedAt"];
+  const freeze = approvalFreezeObject(normalizer.definition.body.body.at(-1), symbols);
+  if (!approvalParamNames(normalizer.definition, "input") || !freeze || !approvalNoUnexpectedReturns(normalizer.definition) ||
+      !approvalParamNames(comparator.definition, "expected", "actual")) return false;
+  for (const field of plainFields) {
+    if (!normalizer.definition.body.body.some(statement => approvalStatement(statement, `const ${field} = input.${field}.trim();`))) return false;
+  }
+  if (!approvalFields(freeze, {
+    ...Object.fromEntries(plainFields.map(field => [field, field])),
+    ...Object.fromEntries(numericFields.map(field => [field, `input.${field}`])),
+    ...(review ? { decision: "input.decision" } : { action: '"withdraw"' })
+  }) || freeze.properties.some(property => property.type === "Property" && property.computed)) return false;
+  const directProperties = freeze.properties.filter(property => property.type === "Property");
+  if (new Set(directProperties.map(propertyKey)).size !== directProperties.length) return false;
+  const expectedSpreads = review ? [
+    "...(comment ? { comment } : {})",
+    "...(selfReviewReason ? { selfReviewReason } : {})",
+    "...(confirmationPassword ? { confirmationPassword } : {})"
+  ] : [];
+  const spreads = freeze.properties.filter(property => property.type === "SpreadElement");
+  if (spreads.length !== expectedSpreads.length ||
+      spreads.some((property, index) => !approvalExpression({ type: "ObjectExpression", properties: [property] }, `({ ${expectedSpreads[index]} })`))) return false;
+  let hasWrite = false;
+  directCallableNodes(normalizer.definition, node => {
+    if (node.type === "AssignmentExpression" || node.type === "UpdateExpression") hasWrite = true;
+  });
+  if (hasWrite) return false;
+  const fields = [...(review ? [] : ["action"]), "ownerScope", ...comparisonFields,
+    ...(review ? ["decision", "comment", "requiresSelfReviewConfirmation", "selfReviewReason", "confirmationPassword", "ownerContractRiskConfirmed"] : [])];
+  return approvalStatements(comparator.definition.body, `
+    return ${fields.map(field => `expected.${field} === actual.${field}`).join(" && ")}
+      ${review ? "&& sameContractApprovalOwnerRisk(expected.ownerContractRisk, actual.ownerContractRisk)" : ""};
+  `) && (!review || approvalBoundCall(comparator.definition, "sameContractApprovalOwnerRisk", symbols));
+}
+
+function contractApprovalFreshEvidence(prepare, assertion, review, mode, symbols) {
+  const name = `assertContractApproval${mode}Preflight`;
+  const available = `enabled${mode}Actions`;
+  const capability = review ? "review_approval" : "withdraw_approval";
+  const coordinateMember = review ? "reviewApprovalContext" : "withdrawApprovalContext";
+  return approvalParamNames(prepare.definition, "input") &&
+    approvalStatements(prepare.definition.body, `
+      const context = normalizeContractApproval${mode}Action(input);
+      if (!input.isCurrent(context)) { return { status: "stale", context }; }
+      const preflight = await fetchContractDetail(context.routeContractId) as ContractApproval${mode}PreflightReadModel;
+      if (!input.isCurrent(context)) { return { status: "stale", context }; }
+      ${name}(context, preflight);
+      if (!input.isCurrent(context)) { return { status: "stale", context }; }
+      return { status: "ready", context, preflight };
+    `) &&
+    approvalBoundCall(prepare.definition, "fetchContractDetail", symbols) &&
+    approvalBoundCall(prepare.definition, name, symbols) &&
+    approvalBoundCall(prepare.definition, `normalizeContractApproval${mode}Action`, symbols) &&
+    approvalParamNames(assertion.definition, "context", "preflight") &&
+    approvalStatements(assertion.definition.body, `
+      const ${available} = preflight.availableActions.filter((action) => action.key === "${capability}" && action.enabled);
+      const coordinates = preflight.${coordinateMember};
+      if (preflight.id !== context.contractId || preflight.contractVersionId !== context.contractVersionId ||
+          preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt || ${available}.length !== 1 ||
+          ${review ? '(enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !== context.requiresSelfReviewConfirmation ||' : ""}
+          ${CONTRACT_APPROVAL_COORDINATES.map((field, index) =>
+            `coordinates${index === 0 ? "?" : ""}.${field} !== context.${field}`).join(" || ")}
+          ${review ? "|| !sameContractApprovalOwnerRisk(context.ownerContractRisk, preflight.ownerContractRisk ?? null)" : ""}) {
+        throw new Error("${review ? "合同审批资格、风险或审批坐标已变化，请重新读取当前合同" : "合同审批撤回资格或审批坐标已变化，请重新读取当前合同"}");
+      }
+    `) && (!review || approvalBoundCall(assertion.definition, "sameContractApprovalOwnerRisk", symbols));
+}
+
+function contractApprovalCommandEvidence(command, review, mode, symbols) {
+  const payloadName = review ? "contractApprovalReviewActionPayload" : "contractApprovalWithdrawalPayload";
+  const payload = approvalFunction(symbols, payloadName);
+  if (!payload || !approvalParamNames(command.definition, "input") ||
+      !approvalParamNames(payload.definition, "context", ...(review ? ["decision"] : [])) ||
+      !approvalNoUnexpectedReturns(payload.definition)) return false;
+  const suffix = review ? "approval" : "approval-withdrawal";
+  const currentAfter = review ? `
+      await input.stale(activeContext);
+      return { status: "stale", context: activeContext };
+    ` : `
+      throw new ContractApprovalWithdrawalResultUnknownError(new Error("合同审批撤回请求已发出，但提交后的页面归属已变化"));
+    `;
+  const post = review ? "payload" : "contractApprovalWithdrawalPayload(activeContext)";
+  if (!approvalStatements(command.definition.body, `
+    const capturedContext = input.capture(input.${review ? "decision" : "action"});
+    if (!capturedContext) return { status: "not_started" };
+    let activeContext = capturedContext;
+    try {
+      const frozenCapturedContext = normalizeContractApproval${mode}Action(capturedContext);
+      activeContext = frozenCapturedContext;
+      const prepared = await input.preflight(frozenCapturedContext);
+      activeContext = prepared.context;
+      if (prepared.status !== "ready" ||
+          !sameContractApproval${mode}Context(frozenCapturedContext, prepared.context) ||
+          !input.current(frozenCapturedContext, prepared)) {
+        await input.stale(frozenCapturedContext);
+        return { status: "stale", context: frozenCapturedContext };
+      }
+      ${review ? "const payload = contractApprovalReviewActionPayload(activeContext, input.decision);" : ""}
+      let response: unknown;
+      try {
+        response = await postJson<unknown>(\`/contracts/\${encodeURIComponent(activeContext.contractVersionId)}/${suffix}\`, ${post});
+      } catch (error) {
+        if (error instanceof CoreFlowApiError && error.status < 500) { throw error; }
+        throw new ContractApproval${mode}ResultUnknownError(error);
+      }
+      if (!input.current(frozenCapturedContext, prepared)) { ${currentAfter} }
+      await input.complete(activeContext, response);
+      return { status: "completed", context: activeContext, response };
+    } catch (error) {
+      await input.fail(activeContext, error);
+      return { status: "failed", context: activeContext, error };
+    } finally {
+      input.finish(activeContext);
+    }
+  `)) return false;
+  const coords = CONTRACT_APPROVAL_COORDINATES.map(field => `${field}: context.${field}`).join(", ");
+  const reviewFields = `
+    decision,
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation ? {
+      selfReviewReason: context.selfReviewReason, confirmationPassword: context.confirmationPassword
+    } : {}),
+    ...(decision === "approve" && context.ownerContractRisk?.requiresExplicitConfirmation ? {
+      ownerContractRiskConfirmed: true, expectedOwnerContractRisk: context.ownerContractRisk
+    } : {}),
+  `;
+  return approvalStatement(payload.definition.body.body.at(-1), `return { ${review ? reviewFields : ""} ${coords} };`) &&
+    [`normalizeContractApproval${mode}Action`, `sameContractApproval${mode}Context`, payloadName, "postJson"]
+      .every(name => approvalBoundCall(command.definition, name, symbols));
+}
+
+function contractApprovalPageCausalProof({ action, wrapper, candidate, context, nestRouteIndex }) {
+  const spec = CONTRACT_APPROVAL_ACTIONS.get(action.id);
+  if (!spec || !candidate || action.sourceFile !== CONTRACT_APPROVAL_PAGE ||
+      action.trigger.handler !== spec.handler || action.capability.kind !== "available_action_string" ||
+      action.capability.source !== "contractLifecycleAvailableActionKeys" ||
+      action.capability.key !== (spec.decision ? "review_approval" : "withdraw_approval") ||
+      action.wrappers.length !== 1 || action.wrappers[0].variant !== (spec.decision ?? undefined) ||
+      action.routePaths.length !== 1 || action.routePaths[0] !== "/合同管理/:contractId") return null;
+  const mode = spec.decision ? "Review" : "Withdrawal";
+  const commandName = `executeContractApproval${mode}Action`;
+  const prepareName = `prepareContractApproval${mode}Action`;
+  const request = spec.decision ? "POST /contracts/:param/approval" : "POST /contracts/:param/approval-withdrawal";
+  const writeRequests = normalizedMainRequests(wrapper);
+  const sourceIdentity = wrapperIdentity(CONTRACT_APPROVAL_API, CONTRACT_APPROVAL_READ);
+  const read = context.wrapperIndex.get(sourceIdentity);
+  const readRequests = normalizedMainRequests(read);
+  const readRoute = nestRouteIndex.get("GET /contracts/:param");
+  const writeRoute = nestRouteIndex.get(request);
+  if (readRoute?.authentication !== "authenticated" || readRoute.isPublic !== false ||
+      writeRoute?.authentication !== "authenticated" || writeRoute.isPublic !== false ||
+      wrapper.apiFile !== CONTRACT_APPROVAL_API || wrapper.name !== commandName ||
+      writeRequests.length !== 1 || writeRequests[0].normalizedKey !== request ||
+      read?.returnProvenance !== "transparent_main_response" || readRequests.length !== 1 ||
+      readRequests[0].normalizedKey !== "GET /contracts/:param" ||
+      !contractApprovalPageEvidence(spec, candidate, context)) return null;
+  const ast = context.asts.get(CONTRACT_APPROVAL_API);
+  if (!ast) return null;
+  const symbols = buildSymbolContext(ast, CONTRACT_APPROVAL_API, context.sourceFileSet);
+  const command = approvalFunction(symbols, commandName);
+  const prepare = approvalFunction(symbols, prepareName);
+  const assertion = approvalFunction(symbols, `assertContractApproval${mode}Preflight`);
+  const normalizer = approvalFunction(symbols, `normalizeContractApproval${mode}Action`);
+  const comparator = approvalFunction(symbols, `sameContractApproval${mode}Context`);
+  const reader = approvalFunction(symbols, CONTRACT_APPROVAL_READ);
+  const review = Boolean(spec.decision);
+  if (!command || !prepare || !assertion || !normalizer || !comparator || !reader ||
+      !approvalStatements(reader.definition.body, `
+        const query = options?.versionId ? \`?versionId=\${encodeURIComponent(options.versionId)}\` : "";
+        return readJson<ContractDetailReadModel>(\`/contracts/\${encodeURIComponent(contractId)}\${query}\`,
+          { "x-contract-numeric-protocol": "2" });
+      `) || !approvalBoundCall(reader.definition, "readJson", symbols) ||
+      !contractApprovalFrozenCoordinates(normalizer, comparator, review, symbols) ||
+      !contractApprovalFreshEvidence(prepare, assertion, review, mode, symbols) ||
+      !contractApprovalCommandEvidence(command, review, mode, symbols)) return null;
+  return {
+    verified: true,
+    localCallChain: [spec.handler, prepareName, CONTRACT_APPROVAL_READ, commandName],
+    capabilityWitness: true,
+    capabilitySources: new Set([sourceIdentity])
+  };
+}
+
+const SIGNING_MATERIAL_CHANGE_ACTION = "contract.signing-material-change";
+const SIGNING_MATERIAL_CHANGE_COMMAND = "executeContractSigningMaterialChange";
+const SIGNING_MATERIAL_CHANGE_HANDLER = "confirmSigningMaterialChange";
+const SIGNING_MATERIAL_CHANGE_KEY = "report_signing_material_change";
+
+function requiresContractDetailCausalProof(action) {
+  return CONTRACT_APPROVAL_ACTIONS.has(action.id) || action.id === SIGNING_MATERIAL_CHANGE_ACTION;
+}
+
+function signingMaterialChangePageEvidence(candidate, { symbols }) {
+  const handler = approvalFunction(symbols, SIGNING_MATERIAL_CHANGE_HANDLER);
+  const capture = approvalFunction(symbols, "captureSigningMaterialChangeSubmission");
+  const captureDialog = approvalFunction(symbols, "captureSigningMaterialChangeContext");
+  const open = approvalFunction(symbols, "requestSigningMaterialChange");
+  const current = approvalFunction(symbols, "signingMaterialChangeSubmissionIsCurrent");
+  const owner = approvalFunction(symbols, "ownsSigningMaterialChangeSubmission");
+  const route = approvalFunction(symbols, "routeContractId");
+  const enabled = approvalFunction(symbols, "signingMaterialChangeActionEnabled");
+  if (!handler || !capture || !captureDialog || !open || !current || !owner || !route || !enabled ||
+      candidate.expression?.type !== "Identifier" || candidate.expression.name !== SIGNING_MATERIAL_CHANGE_HANDLER ||
+      candidate.elementNode.variables?.length ||
+      astAncestorChain(symbols.ast.templateBody, candidate.elementNode)?.some(node => node.variables?.length)) return false;
+  const dialogImports = topLevelScopeVariables(symbols.scopeManager, "SensitiveActionDialog");
+  const dialogImport = dialogImports.length === 1 && symbols.importsByBinding.get(dialogImports[0]);
+  const guard = directiveExpression(elementDirective(candidate.elementNode, "if"));
+  const model = directiveExpression(elementDirective(candidate.elementNode, "model"));
+  if (dialogImport?.kind !== "default" ||
+      dialogImport.sourceFile !== `${WEB_SOURCE_ROOT}/components/SensitiveActionDialog.vue` ||
+      !approvalExpression(guard, "signingMaterialChangeActionEnabled()") ||
+      !approvalExpression(model, "signingMaterialChangeDialogVisible")) return false;
+  const openButtons = [];
+  walkEstree(symbols.ast.templateBody, node => {
+    if (node.type !== "VElement") return;
+    const click = directiveExpression(elementDirective(node, "on", "click"));
+    if (click?.type === "Identifier" && click.name === "requestSigningMaterialChange") openButtons.push(node);
+  });
+  if (openButtons.length !== 1 || openButtons[0].name !== "t-button" ||
+      !approvalExpression(directiveExpression(elementDirective(openButtons[0], "if")), "signingMaterialChangeActionEnabled()") ||
+      astAncestorChain(symbols.ast.templateBody, openButtons[0])?.some(node => node.variables?.length)) return false;
+
+  if (!approvalParamNames(handler.definition, "values") ||
+      !approvalStatements(handler.definition.body, `
+        return executeContractSigningMaterialChange({
+          capture: () => captureSigningMaterialChangeSubmission(values),
+          current: signingMaterialChangeSubmissionIsCurrent,
+          stale: () => undefined,
+          reason: (context) => context.reason,
+          complete: completeSigningMaterialChange,
+          fail: failSigningMaterialChange,
+          finish: finishSigningMaterialChange
+        });
+      `)) return false;
+  const call = handler.definition.body.body[0].argument;
+  if (!callExpressionMatchesWrapper(call, { apiFile: CONTRACT_APPROVAL_API, name: SIGNING_MATERIAL_CHANGE_COMMAND }, symbols) ||
+      symbols.scopeBindings.get(objectPropertyValue(call.arguments[0], "current")) !== current.binding ||
+      !approvalBoundCall(objectPropertyValue(call.arguments[0], "capture"), "captureSigningMaterialChangeSubmission", symbols) ||
+      !approvalBoundCall(current.definition, "ownsSigningMaterialChangeSubmission", symbols) ||
+      !approvalBoundCall(owner.definition, "routeContractId", symbols) ||
+      !approvalBoundCall(captureDialog.definition, "routeContractId", symbols) ||
+      !approvalBoundCall(captureDialog.definition, "signingMaterialChangeActionEnabled", symbols) ||
+      !approvalBoundCall(open.definition, "captureSigningMaterialChangeContext", symbols)) return false;
+  const [routeBinding] = topLevelScopeVariables(symbols.scopeManager, "route");
+  const routeSource = uniqueIndexedNode(symbols.declarationsByBinding, routeBinding);
+  const routeImport = routeSource?.type === "CallExpression" && symbols.scopeBindings.get(routeSource.callee);
+  return Boolean(routeImport && routeSource.arguments.length === 0 && routeImport.defs.some(definition =>
+    definition.type === "ImportBinding" && definition.parent?.source?.value === "vue-router" &&
+    definition.node?.imported?.name === "useRoute") &&
+    approvalStatements(route.definition.body, `
+      const value = route.params.contractId;
+      return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+    `) &&
+    approvalStatements(enabled.definition.body, `
+      if (contractDetail.value?.v2Lifecycle || v2LifecycleLocked.value) return false;
+      return Boolean(contractLifecycleAvailableActionKeys.value?.includes("report_signing_material_change")) &&
+        Boolean(contractReviewCapability.value?.availableActions.some(
+          (action) => action.key === "report_signing_material_change" && action.enabled
+        ));
+    `) &&
+    approvalStatements(captureDialog.definition.body, `
+      const detail = contractReviewCapability.value;
+      const coordinates = detail?.signingMaterialChangeContext;
+      const sealTask = detail?.sealTask;
+      const routeId = routeContractId();
+      if (!detail || !coordinates || !sealTask || !routeId || !signingMaterialChangeActionEnabled() ||
+          detail.draftRevision !== coordinates.expectedRevision || sealTask.id !== coordinates.expectedSealTaskId) {
+        return null;
+      }
+      return {
+        routeContractId: routeId, contractId: detail.id, contractVersionId: detail.contractVersionId, ...coordinates
+      } satisfies ContractSigningMaterialChangeActionContext;
+    `) &&
+    approvalStatements(open.definition.body, `
+      const context = captureSigningMaterialChangeContext();
+      if (!context) {
+        setActionError(new Error("合同签署状态已变化"), "无法申报签署内容实质变化，请刷新后重试。");
+        return;
+      }
+      signingMaterialChangeSubmissionToken += 1;
+      signingMaterialChangeDialogContext.value = context;
+      signingMaterialChangeDialogError.value = "";
+      signingMaterialChangeDialogVisible.value = true;
+    `) &&
+    approvalParamNames(capture.definition, "values") &&
+    approvalStatements(capture.definition.body, `
+      const owner = signingMaterialChangeDialogContext.value;
+      const capability = contractReviewCapability.value;
+      const coordinates = capability?.signingMaterialChangeContext;
+      const actionCount = capability?.availableActions.filter(
+        (action) => action.key === "report_signing_material_change" && action.enabled
+      ).length ?? 0;
+      if (!owner || !capability || !coordinates || actionCount !== 1 ||
+          capability.id !== owner.contractId || capability.contractVersionId !== owner.contractVersionId ||
+          coordinates.expectedRevision !== owner.expectedRevision || coordinates.expectedSealTaskId !== owner.expectedSealTaskId ||
+          coordinates.expectedStatus !== owner.expectedStatus) {
+        signingMaterialChangeDialogError.value = "合同签署状态已变化，请关闭并刷新详情后重试。";
+        return null;
+      }
+      if (archiveActionBusy.value) {
+        signingMaterialChangeDialogError.value = "当前操作正在提交，请等待本次操作完成。";
+        return null;
+      }
+      const reason = values.reason.trim();
+      if (!reason) {
+        signingMaterialChangeDialogError.value = "实质变化原因不能为空。";
+        return null;
+      }
+      archiveActionBusy.value = "signingMaterialChange";
+      archiveActionMessage.value = "";
+      return { ...owner, submissionToken: signingMaterialChangeSubmissionToken, reason };
+    `) &&
+    approvalParamNames(owner.definition, "context") &&
+    approvalStatements(owner.definition.body, `
+      return context.submissionToken === signingMaterialChangeSubmissionToken &&
+        routeContractId() === context.routeContractId;
+    `) &&
+    approvalParamNames(current.definition, "context") &&
+    approvalStatements(current.definition.body, `
+      return ownsSigningMaterialChangeSubmission(context) &&
+        signingMaterialChangeDialogContext.value?.contractVersionId === context.contractVersionId;
+    `));
+}
+
+function signingMaterialChangeApiEvidence(symbols) {
+  const command = approvalFunction(symbols, SIGNING_MATERIAL_CHANGE_COMMAND);
+  const reader = approvalFunction(symbols, CONTRACT_APPROVAL_READ);
+  const assertion = approvalFunction(symbols, "assertContractSigningMaterialChangePreflight");
+  const path = approvalFunction(symbols, "governedContractPath");
+  const readJson = approvalFunction(symbols, "readJson");
+  const postJson = approvalFunction(symbols, "postJson");
+  const fetchWrapper = { apiFile: `${WEB_SOURCE_ROOT}/api/api-fetch.ts`, name: "apiFetch" };
+  if (!command || !reader || !assertion || !path || !readJson || !postJson ||
+      !approvalStatements(readJson.definition.body, `
+        const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
+        await ensureOk(response, "读取失败");
+        return response.json() as Promise<T>;
+      `) ||
+      !approvalStatements(postJson.definition.body, `
+        const response = await apiFetch(path, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}), ...options
+        });
+        await ensureOk(response, "提交失败");
+        return response.json() as Promise<TResponse>;
+      `) ||
+      [readJson, postJson].some(helper =>
+        approvalCalls(helper.definition, call => callExpressionMatchesWrapper(call, fetchWrapper, symbols)).length !== 1) ||
+      !approvalParamNames(command.definition, "input") ||
+      !approvalParamNames(assertion.definition, "context", "fresh") ||
+      !approvalParamNames(path.definition, "contractVersionId", "suffix") ||
+      !approvalStatements(path.definition.body, 'return `/contracts/${encodeURIComponent(contractVersionId)}/${suffix}`;') ||
+      !approvalStatements(reader.definition.body, `
+        const query = options?.versionId ? \`?versionId=\${encodeURIComponent(options.versionId)}\` : "";
+        return readJson<ContractDetailReadModel>(\`/contracts/\${encodeURIComponent(contractId)}\${query}\`,
+          { "x-contract-numeric-protocol": "2" });
+      `) ||
+      !approvalBoundCall(reader.definition, "readJson", symbols) ||
+      !approvalBoundCall(command.definition, CONTRACT_APPROVAL_READ, symbols) ||
+      !approvalBoundCall(command.definition, "assertContractSigningMaterialChangePreflight", symbols) ||
+      !approvalBoundCall(command.definition, "governedContractPath", symbols) ||
+      !approvalBoundCall(command.definition, "postJson", symbols)) return false;
+  const [map] = topLevelScopeVariables(symbols.scopeManager, "MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS");
+  const statusMap = uniqueIndexedNode(symbols.declarationsByBinding, map);
+  if (!approvalExpression(statusMap, `({
+    approved_pending_seal: "pending_approval",
+    in_seal: "in_seal",
+    seal_approved_pending_archive: "completed",
+    pending_archive_confirm: "completed"
+  })`) || map.references.filter(reference => !reference.init).length !== 1 ||
+      !approvalStatements(assertion.definition.body, `
+        const enabledActions = fresh.availableActions.filter(
+          (action) => action.key === "report_signing_material_change" && action.enabled
+        );
+        const coordinates = fresh.signingMaterialChangeContext;
+        if (fresh.id !== context.contractId || fresh.contractVersionId !== context.contractVersionId ||
+            fresh.draftRevision !== context.expectedRevision || fresh.sealTask?.id !== context.expectedSealTaskId ||
+            fresh.sealTask.status !== MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS[context.expectedStatus] ||
+            enabledActions.length !== 1 || coordinates?.expectedRevision !== context.expectedRevision ||
+            coordinates.expectedSealTaskId !== context.expectedSealTaskId || coordinates.expectedStatus !== context.expectedStatus) {
+          throw new Error("合同签署状态已变化，未执行实质变化申报，请刷新详情后重试");
+        }
+      `)) return false;
+  const statements = command.definition.body.body;
+  const execution = statements[2];
+  const ordered = execution?.type === "TryStatement" && execution.block.body;
+  const send = ordered?.[7];
+  return statements.length === 3 &&
+    approvalStatements({ type: "BlockStatement", body: statements.slice(0, 2) }, `
+      const context = input.capture();
+      if (!context) return { status: "not_started" };
+    `) &&
+    Boolean(ordered && approvalStatements({ type: "BlockStatement", body: ordered.slice(0, 7) }, `
+      if (!input.current(context)) {
+        await input.stale(context);
+        return { status: "stale", context };
+      }
+      const fresh = await fetchContractDetail(context.routeContractId);
+      if (!input.current(context, fresh)) {
+        await input.stale(context);
+        return { status: "stale", context };
+      }
+      assertContractSigningMaterialChangePreflight(context, fresh);
+      const reason = typeof input.reason === "function" ? input.reason(context) : input.reason;
+      const payload: ContractSigningMaterialChangePayload = {
+        expectedRevision: context.expectedRevision,
+        expectedSealTaskId: context.expectedSealTaskId,
+        expectedStatus: context.expectedStatus,
+        reason
+      };
+      let response: ContractSigningMaterialChangeResponse;
+    `) && send?.type === "TryStatement" &&
+    approvalStatement(send.block.body[0], `
+      const rawResponse = await postJson<unknown>(
+        governedContractPath(context.contractVersionId, "signing/material-change"), payload
+      );
+    `));
+}
+
+function signingMaterialChangeCausalProof({ action, wrapper, candidate, context, nestRouteIndex }) {
+  if (!candidate || action.sourceFile !== CONTRACT_APPROVAL_PAGE ||
+      action.trigger.handler !== SIGNING_MATERIAL_CHANGE_HANDLER ||
+      candidate.element !== "sensitive-action-dialog" || candidate.event !== "confirm" ||
+      action.routePaths.length !== 1 || action.routePaths[0] !== "/合同管理/:contractId" ||
+      action.capability.kind !== "available_action_string" ||
+      action.capability.source !== "contractLifecycleAvailableActionKeys" ||
+      action.capability.key !== SIGNING_MATERIAL_CHANGE_KEY || action.wrappers.length !== 1 ||
+      action.wrappers[0].variant !== undefined || wrapper.apiFile !== CONTRACT_APPROVAL_API ||
+      wrapper.name !== SIGNING_MATERIAL_CHANGE_COMMAND) return null;
+  const get = "GET /contracts/:param";
+  const post = "POST /contracts/:param/signing/material-change";
+  const readIdentity = wrapperIdentity(CONTRACT_APPROVAL_API, CONTRACT_APPROVAL_READ);
+  const read = context.wrapperIndex.get(readIdentity);
+  const readRequests = normalizedMainRequests(read);
+  const requests = normalizedMainRequests(wrapper);
+  if ([get, post].some(key => {
+    const route = nestRouteIndex.get(key);
+    return route?.authentication !== "authenticated" || route.isPublic !== false;
+  }) ||
+      read?.returnProvenance !== "transparent_main_response" ||
+      readRequests.length !== 1 || readRequests[0].normalizedKey !== get ||
+      requests.length !== 2 || !requests.some(request => request.normalizedKey === get && request.bodyKind === "none") ||
+      !requests.some(request => request.normalizedKey === post && request.bodyKind === "json") ||
+      !signingMaterialChangePageEvidence(candidate, context)) return null;
+  const ast = context.asts.get(CONTRACT_APPROVAL_API);
+  if (!ast || !signingMaterialChangeApiEvidence(buildSymbolContext(ast, CONTRACT_APPROVAL_API, context.sourceFileSet))) {
+    return null;
+  }
+  return {
+    verified: true,
+    localCallChain: [SIGNING_MATERIAL_CHANGE_HANDLER, SIGNING_MATERIAL_CHANGE_COMMAND, CONTRACT_APPROVAL_READ, "assertContractSigningMaterialChangePreflight"],
+    capabilityWitness: true,
+    capabilitySources: new Set([readIdentity])
+  };
+}
+
 function wrapperReferencedFromAction({
   wrapper,
   action,
@@ -17736,6 +19642,72 @@ function triggerCandidates(action, templateActions) {
         action.capability.key
       )
   );
+}
+
+function layoutRiskStopProof({ action, wrapper, candidate, context }) {
+  const page = `${WEB_SOURCE_ROOT}/pages/contract-templates/LayoutTemplateEditorPage.vue`;
+  const read = {
+    apiFile: `${WEB_SOURCE_ROOT}/api/contract-template-mapping.api.ts`,
+    name: "getLayoutVersionMaintenanceCapability"
+  };
+  if (action.sourceFile !== page || candidate?.kind !== "background_call" ||
+      action.trigger.handler !== "stopCurrentVersionWithCapability" ||
+      action.capability.kind !== "detail_action" || action.capability.source !== "capability.availableActions" ||
+      action.capability.key !== "risk_stop" || wrapper.apiFile !== CONTRACT_WORKBENCH_API_PATH ||
+      wrapper.name !== "stopLayoutTemplateVersion") return null;
+
+  const { symbols } = context;
+  const handler = candidate.expression;
+  if (handler?.type !== "FunctionDeclaration" || !handler.async || handler.generator ||
+      handler.params.length !== 1 || handler.params[0]?.type !== "Identifier" || handler.params[0].name !== "context" ||
+      !directRegistrationBlock(handler.body, `
+        const capability = await getLayoutVersionMaintenanceCapability(context.versionId);
+        if (!riskStopResultCanWrite(context)) return;
+        const matchesRequestedVersion = capability.versionId === context.versionId;
+        if (!matchesRequestedVersion) throw new Error("版式版本已变化，请刷新后重试");
+        const operationAllowed = capability.availableActions.some(action => action.key === "risk_stop" && action.enabled);
+        if (!operationAllowed) throw new Error("当前版式不允许风险停用");
+        return stopLayoutTemplateVersion(context.versionId);
+      `)) return null;
+  const [load, stale, , versionGuard, , operationGuard, submit] = handler.body.body;
+  if ([versionGuard, operationGuard].some(guard => {
+    const ctor = resolvedReferenceBinding(guard.consequent.argument.callee, symbols);
+    return (ctor?.identifiers?.length ?? 0) !== 0;
+  })) return null;
+  const readCall = load.declarations[0].init.argument;
+  const readSource = importedReadSource(readCall, context.serverReadImports, symbols);
+  if (readSource !== wrapperIdentity(read.apiFile, read.name) ||
+      !callExpressionMatchesWrapper(submit.argument, wrapper, symbols)) return null;
+  const reads = normalizedMainRequests(context.wrapperIndex.get(readSource));
+  const writes = normalizedMainRequests(wrapper);
+  if (reads.length !== 1 || reads[0].normalizedKey !== "GET /contract-layout-template-versions/:param/maintenance-capability" ||
+      writes.length !== 1 || writes[0].normalizedKey !== "POST /contract-layout-template-versions/:param/stop") return null;
+
+  const guard = call => {
+    const binding = resolvedReferenceBinding(call.callee, symbols);
+    if (!binding || binding.references.some(ref => ref.isWrite() && !ref.init)) return null;
+    const definition = uniqueIndexedNode(symbols.definitionsByBinding, binding);
+    return definition?.type === "FunctionDeclaration" && !definition.async && !definition.generator &&
+      definition.params.length === 1 && definition.params[0]?.type === "Identifier" &&
+      definition.params[0].name === "context" ? definition : null;
+  };
+  const canWrite = guard(stale.test.argument);
+  if (!directRegistrationBlock(canWrite?.body, `
+      return riskStopContextIsCurrent(context) && riskStopOperationIsCurrent(context);
+    `)) return null;
+  const { left, right } = canWrite.body.body[0].argument;
+  if (!directRegistrationBlock(guard(left)?.body, `
+      return Boolean(context.templateId && context.versionId) &&
+        context.templateId === layoutTemplateRouteId.value &&
+        context.versionId === riskStopVersionId.value &&
+        context.versionId === selectedVersionId.value &&
+        context.routeGeneration === layoutRouteGeneration;
+    `) || !directRegistrationBlock(guard(right)?.body, `
+      return context.templateId === layoutTemplateRouteId.value &&
+        context.routeGeneration === layoutRouteGeneration &&
+        context.operationId === riskStopOperationId;
+    `) || !preflightExpressionIsPure(stale.test.argument, symbols)) return null;
+  return { verified: true, capabilityWitness: true, capabilitySources: new Set([readSource]) };
 }
 
 function actionBindings({
@@ -17776,11 +19748,11 @@ function actionBindings({
       });
       continue;
     }
-    const relatedConsumers = wrapperReferencedFromAction({
-      wrapper,
-      action,
-      graph
-    });
+    const relatedConsumers = wrapperReferencedFromAction({ wrapper, action, graph })
+      .filter(consumer => !DIRECT_REGISTRATION_ACTIONS.has(action.id) || consumer === DIRECT_REGISTRATION_MODULE)
+      .filter(consumer =>
+        !["contract-final.upload-file", "contract-archive.upload-file"].includes(action.id) || consumer === action.sourceFile
+      );
     if (relatedConsumers.length === 0) {
       blockers.unresolvedWrappers.push({
         code: "WRAPPER_NOT_REFERENCED_BY_ACTION_SOURCE",
@@ -17811,11 +19783,13 @@ function actionBindings({
           verified: false,
           localCallChain: [action.trigger.handler]
         };
-    const pipelineProof = proveBusinessActionPipeline({
-      action,
-      wrapper,
-      context: capabilityContext
-    });
+    const layoutStop = action.id === "layout-template.stop";
+    const pipelineProof = layoutStop
+      ? layoutRiskStopProof({ action, wrapper, candidate, context: capabilityContext })
+      : proveBusinessActionPipeline({ action, wrapper, context: capabilityContext });
+    if (layoutStop && !pipelineProof) {
+      causalProof = { verified: false, localCallChain: [action.trigger.handler] };
+    }
     if (pipelineProof?.verified) {
       causalProof = {
         verified: true,
@@ -17826,6 +19800,29 @@ function actionBindings({
         wrapperIdentity(declared.apiFile, declared.name),
         pipelineProof
       );
+    }
+    const directRegistrationProof = directRegistrationCausalProof({ action, wrapper, candidate, context: capabilityContext });
+    if (DIRECT_REGISTRATION_ACTIONS.has(action.id)) {
+      causalProof = directRegistrationProof ?? { verified: false, localCallChain: [action.trigger.handler] };
+      if (directRegistrationProof?.capabilityWitness) {
+        capabilityContext.pipelineProofs ??= new Map();
+        capabilityContext.pipelineProofs.set(identity, directRegistrationProof);
+      } else if (directRegistrationProof) {
+        capabilityContext.directRegistrationLookupVerified = true;
+      }
+    }
+    if (requiresContractDetailCausalProof(action)) {
+      const prove = action.id === SIGNING_MATERIAL_CHANGE_ACTION
+        ? signingMaterialChangeCausalProof
+        : contractApprovalPageCausalProof;
+      const contractDetailProof = prove({ action, wrapper, candidate, context: capabilityContext, nestRouteIndex });
+      causalProof = contractDetailProof ?? { verified: false, localCallChain: [action.trigger.handler] };
+      if (contractDetailProof) {
+        capabilityContext.pipelineProofs ??= new Map();
+        capabilityContext.pipelineProofs.set(identity, contractDetailProof);
+      } else {
+        capabilityContext.pipelineProofs?.delete(identity);
+      }
     }
     const finalContractProof = finalContractWriteCausalProof({
       action,
@@ -18897,6 +20894,14 @@ function capabilitySourceAuthorizationIsCompatible({
   });
 }
 
+// A consumer with multiple intentional write paths is covered only when every
+// required action has independently passed causal, capability and route checks.
+const PAIRED_WRITE_COVERAGE = new Map([
+  [`${wrapperIdentity(SEAL_API, SEAL_WRITE)}\u0000${SEAL_COMPOSABLE}`, SEAL_WRITE_ACTION_IDS],
+  [`${wrapperIdentity(GENERATED_ARCHIVE_API, GENERATED_ARCHIVE_WRITE)}\u0000${GENERATED_ARCHIVE_CONSUMER}`, GENERATED_ARCHIVE_ACTIONS],
+  [`${wrapperIdentity(GENERATED_ARCHIVE_API, GENERATED_ARCHIVE_UPLOAD)}\u0000${GENERATED_ARCHIVE_CONSUMER}`, new Set([GENERATED_ARCHIVE_CONFIRM])]
+]);
+
 function emptyBlockers() {
   return {
     upstreamManifestIssues: [],
@@ -19216,6 +21221,7 @@ export async function inspectWholeSitePageActionManifest({
   const manifestActions = [];
   const candidateConsumerPairs = new Set();
   const coveredConsumerPairs = new Set();
+  const pairedConsumerCoverage = new Map();
   const productionMutationConsumerPairs = new Set();
   const authFacadeMutationPairs = new Map();
   const selfProfileFacadeImplementationTrusted =
@@ -19380,6 +21386,9 @@ export async function inspectWholeSitePageActionManifest({
       });
     }
     const capabilityContext = {
+      actionId: action.id,
+      candidate,
+      nestRouteIndex,
       symbols,
       sourceFile: action.sourceFile,
       source,
@@ -19532,27 +21541,29 @@ export async function inspectWholeSitePageActionManifest({
       });
     const dominatesTrigger =
       Boolean(candidate && source) &&
-      (capabilityDominates(
+      (pipelineDominates || (!requiresContractDetailCausalProof(action) && capabilityDominates(
         candidate,
         action.capability,
         capabilityContext
-      ) || pipelineDominates);
+      )));
     const pipelineProvenanceSources =
       action.capability.kind === "server_definition"
         ? pipelineDefinitionSources
         : pipelineCapabilitySources;
     const capabilityProvenance =
-      capabilityServerProvenance(
+      (requiresContractDetailCausalProof(action) ? null : capabilityServerProvenance(
         action.capability,
         capabilityContext
-      ) ??
+      )) ??
       (pipelineDominates && pipelineProvenanceSources.size === 1
         ? {
             sources: pipelineProvenanceSources,
             sourceFiles: new Map(
               [...pipelineProvenanceSources].map((sourceIdentity) => [
                 sourceIdentity,
-                action.sourceFile
+                [...(capabilityContext.pipelineProofs?.values() ?? [])]
+                  .find(proof => proof.capabilitySources?.has(sourceIdentity))?.capabilitySourceFile ??
+                (DIRECT_REGISTRATION_ACTIONS.has(action.id) ? DIRECT_REGISTRATION_MODULE : action.sourceFile)
               ])
             )
           }
@@ -19656,7 +21667,12 @@ export async function inspectWholeSitePageActionManifest({
         sourceFile: action.sourceFile,
         capabilitySource: action.capability.source
       });
-    } else if (action.capability.kind === "none") {
+    } else if (action.capability.kind === "none" && !(
+      (capabilityContext.directRegistrationLookupVerified ||
+        [...(capabilityContext.pipelineProofs?.values() ?? [])].some(proof => proof.readOnlyWitness === true)) &&
+      action.semantic === "read_only" && !writes && bindings.length === 1 &&
+      bindingUpstreamAssociationIsTrusted({ binding: bindings[0], webManifest, nestManifest })
+    )) {
       capabilityAccepted = false;
       blockers.writeWithoutServerCapability.push({
         code: "WRITE_WITHOUT_SERVER_CAPABILITY",
@@ -19764,12 +21780,15 @@ export async function inspectWholeSitePageActionManifest({
           authFacadeMutation
         ) {
           for (const consumer of binding.productionConsumers) {
-            coveredConsumerPairs.add(
-              `${wrapperIdentity(
-                binding.apiFile,
-                binding.wrapper
-              )}\u0000${consumer}`
-            );
+            const pair = `${wrapperIdentity(binding.apiFile, binding.wrapper)}\u0000${consumer}`;
+            const required = PAIRED_WRITE_COVERAGE.get(pair);
+            if (!required) {
+              coveredConsumerPairs.add(pair);
+            } else if (required.has(action.id)) {
+              const proven = pairedConsumerCoverage.get(pair) ?? new Set();
+              proven.add(action.id);
+              pairedConsumerCoverage.set(pair, proven);
+            }
             accepted.push(consumer);
           }
         }
@@ -19799,6 +21818,10 @@ export async function inspectWholeSitePageActionManifest({
     });
   }
 
+  for (const [pair, required] of PAIRED_WRITE_COVERAGE) {
+    const proven = pairedConsumerCoverage.get(pair);
+    if (proven && [...required].every(id => proven.has(id))) coveredConsumerPairs.add(pair);
+  }
   for (const wrapper of webManifest.wrappers) {
     if (!wrapperIsProductionMutation(wrapper)) continue;
     const identity = wrapperIdentity(

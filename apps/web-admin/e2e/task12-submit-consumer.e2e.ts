@@ -9,7 +9,11 @@ const sourceSha = "2".repeat(64);
 const generatedId = "33333333-3333-4333-8333-333333333333";
 const plan = { protocolVersion: 1, layoutTemplateVersionId: "layout-submit", sourceSha256: sourceSha, edits: [] };
 
-async function openWorkbench(page: Page, options: { code?: string | null; recoveryRevision?: number } = {}) {
+async function openWorkbench(page: Page, options: {
+  code?: string | null;
+  recoveryRevision?: number;
+  relationship?: "outside" | "upward";
+} = {}) {
   if (options.recoveryRevision !== undefined) {
     await page.addInitScript(({ revision, versionId, plan }) => {
       if (sessionStorage.getItem("task12-recovery-seeded")) return;
@@ -44,7 +48,7 @@ async function openWorkbench(page: Page, options: { code?: string | null; recove
       layoutTemplateVersionId: "layout-submit", businessTemplateVersionId: "business-submit",
       amountCents: "0", amountYuan: null, amountLimitType: "unlimited", pricingNature: "unit_price_framework", amountSource: "bill_sum",
       taxFacts: { invoiceType: "pending", taxMode: "single_rate", defaultTaxRatePercent: null, status: "draft", source: "contract_document", revision: 0, frozenAt: null },
-      draftData: { contractName: "当前正文提交合同", documentBody: plan, contractBasics: { relationship: "inside", businessType: "material_purchase" } },
+      draftData: { contractName: "当前正文提交合同", documentBody: plan, contractBasics: { relationship: options.relationship ?? "inside", businessType: "material_purchase" } },
       clauseSnapshot: [], templateSnapshot: { fieldSchema: [], billSchema: [], clauseSchema: [], attachmentSchema: [], validationSchema: [] } },
     parties: [], bills: [], paymentTerms: { originalText: "按实际约定办理", stages: [] }, draft: {}, attachments: [], documents: [document],
     lease: { state: "available", holderDisplayName: null, expiresAt: null, canTakeOver: false },
@@ -222,6 +226,29 @@ test("结果不明刷新后沿原key核旧轮，不拿当前修订重算提交",
   expect(fixture.submissions[0]).toMatchObject({ expectedRevision: 3, documentContentRevision: 7, documentContentFingerprint: fingerprint });
   expect(fixture.outcome.reads).toBe(1);
 });
+
+for (const [relationship, label] of [["outside", "表外"], ["upward", "对上"]] as const) {
+  test(`${label}生成合同提交响应不明时只按原键核对并进入合同详情`, async ({ page }) => {
+    const fixture = await openWorkbench(page, { relationship });
+    fixture.outcome.loseResponse = true;
+    fixture.outcome.lookup = "submitted";
+    await fixture.editor.getByRole("button", { name: "检查正文空位", exact: true }).click();
+    await page.getByRole("button", { name: "已检查，继续", exact: true }).click();
+    await page.getByRole("button", { name: "提交审批", exact: true }).click();
+    await page.getByRole("button", { name: "确认提交审批", exact: true }).click();
+    const check = page.getByRole("button", { name: "核对提交结果", exact: true });
+    await expect(check).toBeVisible();
+    expect(fixture.submissions).toEqual([{
+      expectedRevision: 3, submissionProtocolVersion: 2,
+      idempotencyKey: expect.stringMatching(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u), documentContentRevision: 7,
+      documentContentFingerprint: fingerprint, generatedDocumentId: generatedId, sourceSha256: sourceSha, blanksReviewed: true
+    }]);
+    await check.click();
+    await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/合同管理/contract-submit");
+    expect(fixture.outcome.reads).toBe(1);
+    expect(fixture.submissions).toHaveLength(1);
+  });
+}
 
 test("错intent摘要编号及失权查询均不能清除原提交意图", async ({ page }) => {
   const fixture = await openWorkbench(page);

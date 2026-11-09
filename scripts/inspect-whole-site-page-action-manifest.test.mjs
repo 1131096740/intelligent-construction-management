@@ -360,7 +360,7 @@ function blockerCodes(manifest) {
   return codes;
 }
 
-async function authoritySnapshotFixture(t) {
+async function authoritySnapshotFixture(t, actionId = null) {
   const root = await mkdtemp(join(tmpdir(), "jgzg-authority-snapshot-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await cp(
@@ -377,6 +377,13 @@ async function authoritySnapshotFixture(t) {
     const target = join(root, path);
     await mkdir(dirname(target), { recursive: true });
     await copyFile(join(process.cwd(), path), target);
+  }
+  if (actionId) {
+    const registryPath = join(root, "docs/product/manifests/web-page-actions.registry.json");
+    const registry = JSON.parse(await readFile(registryPath, "utf8"));
+    registry.actions = registry.actions.filter((action) => action.id === actionId);
+    assert.equal(registry.actions.length, 1);
+    await writeFile(registryPath, JSON.stringify(registry));
   }
   return root;
 }
@@ -401,6 +408,11 @@ test("accepts governed contract draft and final-file write chains", async (t) =>
     },
     {
       actionId: "contract-final.upload-file",
+      consumer:
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+    },
+    {
+      actionId: "contract-archive.upload-file",
       consumer:
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
     },
@@ -737,6 +749,155 @@ test("rejects each missing final-contract write guard", async () => {
     );
   }
 });
+
+test("guarded workbench load preserves the exact draft authority snapshot", async (t) => {
+  const root = await authoritySnapshotFixture(t);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  for (const id of ["contract-draft.delete-pristine", "contract-draft.abandon-application"]) {
+    const action = manifest.actions.find(candidate => candidate.id === id);
+    assert.equal(action?.capability.serverDerived, true, id);
+    assert.equal(action.capability.dominatesTrigger, true, id);
+    assert.ok(action.bindings.every(binding => binding.causalVerified), id);
+  }
+});
+
+for (const [name, replacement] of [
+  ["different call", "fetchContractWorkbench(requestedVersionId)"],
+  ["different version", 'fetchContractDraftWorkbench("another-version")']
+]) {
+  test(`guarded workbench load rejects a ${name} in one branch`, async (t) => {
+    const root = await authoritySnapshotFixture(t);
+    const sourcePath = join(root, "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts");
+    const source = await readFile(sourcePath, "utf8");
+    const original = ": fetchContractDraftWorkbench(requestedVersionId));";
+    assert.equal(source.split(original).length, 2);
+    await writeFile(sourcePath, source.replace(original, `: ${replacement});`));
+
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    for (const id of ["contract-draft.delete-pristine", "contract-draft.abandon-application"]) {
+      const action = manifest.actions.find(candidate => candidate.id === id);
+      assert.equal(action?.capability.serverDerived, false, id);
+      assert.ok(manifest.blockers.unresolvedWrappers.some(item => item.actionId === id));
+    }
+  });
+}
+
+test("draft operation preflight preserves fresh server proof for both request arms", async (t) => {
+  const root = await authoritySnapshotFixture(t);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  for (const id of ["contract-draft.lease-acquire", "contract-draft.manual-save", "contract-workbench.submit"]) {
+    const action = manifest.actions.find(candidate => candidate.id === id);
+    assert.equal(action?.capability.serverDerived, true, id);
+    assert.equal(action.capability.dominatesTrigger, true, id);
+    assert.ok(action.bindings.every(binding => binding.causalVerified), id);
+  }
+});
+
+for (const [name, from, replacement] of [
+  ["different GET", ": fetchContractDraftOperationCapabilities(contractVersionId));",
+    ": fetchContractDraftWorkbench(contractVersionId));"],
+  ["different version", "? fetchContractDraftOperationCapabilities(contractVersionId, { retryUnauthorized: false, responseIsCurrent })",
+    '? fetchContractDraftOperationCapabilities("another-version", { retryUnauthorized: false, responseIsCurrent })']
+]) {
+  test(`draft operation preflight rejects a ${name} in one arm`, async (t) => {
+    const root = await authoritySnapshotFixture(t);
+    const sourcePath = join(root, "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts");
+    const source = await readFile(sourcePath, "utf8");
+    assert.equal(source.split(from).length, 2);
+    await writeFile(sourcePath, source.replace(from, replacement));
+
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    for (const id of ["contract-draft.lease-acquire", "contract-draft.manual-save", "contract-workbench.submit"]) {
+      const action = manifest.actions.find(candidate => candidate.id === id);
+      assert.equal(action?.capability.serverDerived, false, id);
+      assert.ok(manifest.blockers.unresolvedWrappers.some(item => item.actionId === id));
+    }
+  });
+}
+
+for (const [name, from, replacement] of [
+  ["wrong revision", "operationCapabilities.version.draftRevision !== expectedRevision",
+    "operationCapabilities.version.draftRevision !== 1"],
+  ["skipped permission guard", "!operationCapabilities.draftOperationAvailableActions.includes(operation)",
+    "false"],
+  ["different write version", "return acquireContractDraftEditLease(contractVersionId);",
+    'return acquireContractDraftEditLease("another-version");']
+]) {
+  test(`draft operation preflight rejects ${name}`, async (t) => {
+    const root = await authoritySnapshotFixture(t);
+    const sourcePath = join(root, "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts");
+    const source = await readFile(sourcePath, "utf8");
+    assert.equal(source.split(from).length, 2);
+    await writeFile(sourcePath, source.replace(from, replacement));
+
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    const id = "contract-draft.lease-acquire";
+    const action = manifest.actions.find(candidate => candidate.id === id);
+    assert.equal(action?.capability.serverDerived, false);
+    assert.ok(manifest.blockers.unresolvedWrappers.some(item => item.actionId === id));
+  });
+}
+
+test("draft operation preflight rejects skipping submission content verification", async (t) => {
+  const root = await authoritySnapshotFixture(t);
+  const sourcePath = join(root, "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts");
+  const source = await readFile(sourcePath, "utf8");
+  const check = "current.version.documentContentFingerprint !== payload.documentContentFingerprint";
+  assert.equal(source.split(check).length, 2);
+  await writeFile(sourcePath, source.replace(check, "false"));
+
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  const id = "contract-workbench.submit";
+  const action = manifest.actions.find(candidate => candidate.id === id);
+  assert.equal(action?.capability.serverDerived, false);
+  assert.ok(manifest.blockers.unresolvedWrappers.some(item => item.actionId === id));
+});
+
+test("draft creation derives authority for both writes from the same project GET", async (t) => {
+  const root = await authoritySnapshotFixture(t, "contract-draft.create");
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  const [action] = manifest.actions;
+  assert.equal(action?.id, "contract-draft.create");
+  assert.equal(action.capability.serverDerived, true);
+  assert.equal(action.capability.dominatesTrigger, true);
+  assert.equal(action.bindings.length, 1);
+  assert.equal(action.bindings[0].causalVerified, true);
+});
+
+for (const [name, original, replacement] of [
+  ["a different guarded GET project",
+    "fetchContractCreateCapabilities(payload.projectId, { retryUnauthorized: false",
+    'fetchContractCreateCapabilities("different-project", { retryUnauthorized: false'],
+  ["a different returned project coordinate",
+    "capability.projectId === payload.projectId",
+    'capability.projectId === "different-project"'],
+  ["a different write project",
+    "return createWorkbenchDraft(payload, direct.current);",
+    'return createWorkbenchDraft({ ...payload, projectId: "different-project" }, direct.current);'],
+  ["a missing upward permission check",
+    'upward && !capability.availableActions.includes("create_upward_direct_draft")',
+    "false"],
+  ["an unguarded generic GET",
+    `await (direct
+    ? fetchContractCreateCapabilities(payload.projectId, { retryUnauthorized: false, responseIsCurrent: direct.current }, upward ? "upward" : undefined)
+    : fetchContractCreateCapabilities(payload.projectId))`,
+    'await fetchContractCreateCapabilities("different-project")']
+]) {
+  test(`draft creation rejects ${name}`, async (t) => {
+    const root = await authoritySnapshotFixture(t, "contract-draft.create");
+    const sourcePath = join(root, "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts");
+    const source = await readFile(sourcePath, "utf8");
+    assert.equal(source.split(original).length, 2);
+    await writeFile(sourcePath, source.replace(original, replacement));
+
+    const manifest = await inspectWholeSitePageActionManifest({ root });
+    const [action] = manifest.actions;
+    assert.equal(action?.id, "contract-draft.create");
+    assert.equal(action.capability.serverDerived, false);
+    assert.equal(action.capability.dominatesTrigger, false);
+    assert.equal(action.bindings[0].causalVerified, false);
+  });
+}
 
 test("rejects a replaced server read before authority snapshot capture", async (t) => {
   const root = await authoritySnapshotFixture(t);

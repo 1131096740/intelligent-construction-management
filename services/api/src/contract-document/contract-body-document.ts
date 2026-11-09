@@ -556,6 +556,26 @@ function direct(element: Element, name: string) {
   return Array.from(element.childNodes).filter((node): node is Element => node.nodeType === 1 && (node as Element).namespaceURI === W && (node as Element).localName === name);
 }
 
+/** A styleless Word paragraph with an empty run has no font for its paragraph mark.
+ * Carry its explicit font roles to the mark so FOP can preserve the empty line with an embedded font.
+ */
+function applyStylelessBlankParagraphMarkFont(body: Element, document: Document) {
+  for (const paragraph of direct(body, "p")) {
+    const [run] = direct(paragraph, "r");
+    if (!run || paragraph.childNodes.length !== 1) continue;
+    const [text] = direct(run, "t");
+    const [runProperties] = direct(run, "rPr");
+    const [fonts] = runProperties ? direct(runProperties, "rFonts") : [];
+    if (!text || text.textContent !== "" || run.childNodes.length !== 2 ||
+      fonts?.getAttributeNS(W, "ascii") !== "Times New Roman") continue;
+    const properties = document.createElementNS(W, "w:pPr");
+    const mark = document.createElementNS(W, "w:rPr");
+    mark.appendChild(fonts.cloneNode(true));
+    properties.appendChild(mark);
+    paragraph.insertBefore(properties, run);
+  }
+}
+
 /** Only visible runs of qualified original source-role paragraphs; no style/global edits. */
 function applyReviewedRoleFont(paragraph: Element, document: Document, family: string, sizePt: number) {
   for (const run of Array.from(paragraph.getElementsByTagNameNS(W, "r"))) {
@@ -1026,6 +1046,7 @@ export function renderContractBody(source: Buffer, mapped: Buffer, input: Contra
       lineBoxScope = { version: 1, typographyVersion: REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION, sourceSha256: model.sourceSha256, paragraphs };
     }
   }
+  if (!styles && !hasTypographyVersion && !hasPageValue) applyStylelessBlankParagraphMarkFont(body, document);
   const flow = bodyFlow(body, ids);
   zip.file("word/document.xml", new XMLSerializer().serializeToString(document));
   return { docx: zip.generate({ type: "nodebuffer" }), sourceSha256: model.sourceSha256, blocks, flow, paragraphGroups, ...(lineBoxScope ? { lineBoxScope } : {}) };

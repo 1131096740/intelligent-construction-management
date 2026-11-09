@@ -1,5 +1,5 @@
 import { ContractV2ArchiveService } from "./contract-v2-archive.service";
-import { ArchiveSignedContractV2Dto } from "./dto/contract-lifecycle-v2.dto";
+import { SignedContractArchiveV2Pipe, type SignedContractArchiveV2Request } from "./dto/contract-lifecycle-v2.dto";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
 import { ContractV2SubmissionService } from "./contract-v2-submission.service";
 import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
@@ -104,11 +104,16 @@ export class ContractController {
 
   @Get("create-capability")
   @RequireProjectRole("contract.create")
-  createCapability(@Query("projectId") projectId: string) {
-    return {
-      projectId,
-      availableActions: ["create_contract_draft"]
-    };
+  async createCapability(
+    @Query("projectId") projectId: string,
+    @Query("relationship") relationship: string | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const availableActions = ["create_contract_draft"];
+    if (relationship === "upward" && await this.contracts.canCreateUpwardPendingDraft(projectId, user.id)) {
+      availableActions.push("create_upward_direct_draft");
+    }
+    return { projectId, availableActions };
   }
 
   @Post(":contractVersionId/change-drafts")
@@ -384,9 +389,11 @@ export class ContractController {
 
   @Post(":contractVersionId/signed-archive")
   @RequireProjectRole("contract.submit")
-  archiveSignedContract(@Param("contractVersionId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ArchiveSignedContractV2Dto) {
+  archiveSignedContract(@Param("contractVersionId") id: string, @CurrentUser() user: AuthenticatedUser, @Body(SignedContractArchiveV2Pipe) body: SignedContractArchiveV2Request) {
     if (!this.signedArchives) throw new InternalServerErrorException("合同归档服务暂不可用");
-    return this.signedArchives.archive(id, user.id, body);
+    return body.archiveSource === "direct_signed"
+      ? this.signedArchives.registerDirect(id, user.id, body)
+      : this.signedArchives.archive(id, user.id, body);
   }
 
   @Post(":contractVersionId/seal-confirmation")

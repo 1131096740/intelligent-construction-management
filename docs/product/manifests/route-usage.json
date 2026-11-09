@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 729,
-    "exactRouteCount": 729,
-    "normalizedRouteCount": 729,
+    "routeCount": 733,
+    "exactRouteCount": 733,
+    "normalizedRouteCount": 733,
     "classificationOverrideCount": 217,
     "consumerSurfaceOverrideCount": 40,
     "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
     "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 512,
-    "pageRouteCount": 530,
+    "derivedProductionPageCount": 516,
+    "pageRouteCount": 534,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 90,
     "internalTaskCount": 39,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 583,
+      "web_api_wrapper": 587,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 583,
+    "productionWrapperRouteCount": 587,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 3
   },
@@ -1136,7 +1136,8 @@
             "normalizedKey": "GET /business-parties",
             "productionConsumers": [
               "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
+              "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
+              "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue"
             ]
           }
         ],
@@ -1177,7 +1178,8 @@
             "normalizedPath": "/business-parties/:param",
             "normalizedKey": "GET /business-parties/:param",
             "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
+              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+              "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue"
             ]
           }
         ],
@@ -2113,6 +2115,57 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchDirectPendingSaveResult",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/save-requests/:param",
+            "normalizedKey": "GET /contract-drafts/:param/save-requests/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-drafts/:contractVersionId/submission-requests/:idempotencyKey",
+      "normalizedKey": "GET /contract-drafts/:param/submission-requests/:param",
+      "controller": "ContractDraftController",
+      "handler": "submissionResult",
+      "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractDraftSubmissionResult",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/submission-requests/:param",
+            "normalizedKey": "GET /contract-drafts/:param/submission-requests/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+            ]
           }
         ],
         "authStore": [],
@@ -2200,7 +2253,8 @@
             "normalizedKey": "GET /contract-drafts/:param/workbench",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
-              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+              "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
             ]
           }
         ],
@@ -3247,6 +3301,7 @@
             "normalizedPath": "/contract-workbench/:param/documents",
             "normalizedKey": "GET /contract-workbench/:param/documents",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
             ]
@@ -3369,6 +3424,7 @@
             "normalizedPath": "/contracts",
             "normalizedKey": "GET /contracts",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue",
               "apps/web-admin/src/pages/search/GlobalSearchPage.vue"
             ]
           }
@@ -3420,7 +3476,8 @@
             "normalizedPath": "/contracts/:param",
             "normalizedKey": "GET /contracts/:param",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
             ]
           },
           {
@@ -3441,6 +3498,57 @@
             "normalizedKey": "GET /contracts/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/archive-requests/:idempotencyKey",
+      "normalizedKey": "GET /contracts/:param/archive-requests/:param",
+      "controller": "ContractController",
+      "handler": "archiveResult",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.submit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchDirectSignedContractResult",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/archive-requests/:param",
+            "normalizedKey": "GET /contracts/:param/archive-requests/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchSignedContractArchiveV2Result",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/archive-requests/:param",
+            "normalizedKey": "GET /contracts/:param/archive-requests/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
             ]
           }
         ],
@@ -4217,7 +4325,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5465,
+            "sourceLine": 5531,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -14508,7 +14616,8 @@
               "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
+              "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
         ],
@@ -16991,6 +17100,47 @@
     },
     {
       "method": "POST",
+      "path": "/contracts/:contractVersionId/seal-confirmation",
+      "normalizedKey": "POST /contracts/:param/seal-confirmation",
+      "controller": "ContractController",
+      "handler": "confirmParallelContractSeal",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.seal",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "confirmContractSealV2",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/seal-confirmation",
+            "normalizedKey": "POST /contracts/:param/seal-confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/contracts/:contractVersionId/seal/approve",
       "normalizedKey": "POST /contracts/:param/seal/approve",
       "controller": "ContractController",
@@ -17061,6 +17211,48 @@
             "normalizedKey": "POST /contracts/:param/seal/complete",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/signed-archive",
+      "normalizedKey": "POST /contracts/:param/signed-archive",
+      "controller": "ContractController",
+      "handler": "archiveSignedContract",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.submit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "archiveSignedContractV2",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/signed-archive",
+            "normalizedKey": "POST /contracts/:param/signed-archive",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts",
+              "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
             ]
           }
         ],
@@ -18218,6 +18410,7 @@
               "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
               "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",

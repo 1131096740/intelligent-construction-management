@@ -65,7 +65,11 @@ describe("JgBusinessGrid editor registry", () => {
     expect(gridSource).toContain('@paste.capture="onPaste"');
     expect(gridSource).not.toContain('addEventListener("paste"');
     expect(procurementSource).toContain("expand-paste-rows");
-    expect(procurementSource.match(/:model-value="line\.(materialName|specification|unit|quantity|note)"/gu)).toHaveLength(5);
-    expect(procurementSource).not.toMatch(/:value="line\.(materialName|specification|unit|quantity|note)"/u);
+    expect(procurementSource).toContain('@update:source="replace"');
+    expect(procurementSource).toContain('emit("update:modelValue", value.map');
+    for (const field of ["materialName", "specification", "unit", "quantity", "note"]) {
+      expect(procurementSource).toContain(`prop: "${field}"`);
+      expect(procurementSource).toContain(`${field}: row.${field} ?? ""`);
+    }
   });
 });

@@ -68,7 +68,17 @@ async function observe(context: RegisteredPgExecutionContext, fixture: PreparedR
 
 /** Never called on import. The future executor owns authorization, installation,
  * application startup, client connection and cleanup. This is one case only. */
-export async function runRegisteredNullCrossCompanyCommit(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity) {
+export function runRegisteredNullCrossCompanyCommit(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity) {
+  return runCrossCompanyCase(context, fixture, continuity, "commit");
+}
+
+/** Separate acceptance case. The executor must explicitly admit it and provide an owned transport. */
+export function runRegisteredNullCrossCompanyResponseLoss(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity) {
+  return runCrossCompanyCase(context, fixture, continuity, "response-loss");
+}
+
+async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
+  continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
@@ -88,8 +98,30 @@ export async function runRegisteredNullCrossCompanyCommit(context: RegisteredPgE
     sourceAllocations: [{ sourceBatchId: fixture.companyBSourceId, amountCents: "4000" }],
     confirmationPassword: context.password
   };
-  const response = await checked(() => registeredPgHttp(context, `/payment-executions/${ids.payment}/registrations`, "POST", command, fixture.accessToken, continuity));
-  check(response.status === 201, "PG_CASE_REGISTRATION_HTTP_STATUS");
+  const registration = `/payment-executions/${ids.payment}/registrations`;
+  const submit = (transport = continuity) => registeredPgHttp(context, registration, "POST", command, fixture.accessToken, transport);
+  if (scenario === "response-loss") {
+    check(continuity?.assertHttpRequest, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
+    const dropped = new Error("PG_CASE_RESPONSE_LOST_AFTER_UPSTREAM_HEADERS");
+    const fetchWithoutDelivery: typeof fetch = async (target, init) => {
+      const upstream = await checked(() => continuity.fetch(target, init));
+      const body = upstream.body;
+      check(upstream.status === 201 && upstream.url === String(target) && !upstream.redirected && body,
+        "PG_CASE_RESPONSE_LOSS_BOUNDARY");
+      // Cancel the first response before delivering a body to the HTTP caller.
+      // Only the independent observer below can establish that a commit exists.
+      await checked(() => body.cancel());
+      throw dropped;
+    };
+    const lost = await submit({ ...continuity, fetch: fetchWithoutDelivery }).then(() => false, error => {
+      if (error !== dropped) throw error;
+      return true;
+    });
+    check(lost, "PG_CASE_RESPONSE_LOSS_BOUNDARY");
+  } else {
+    const response = await checked(() => submit());
+    check(response.status === 201, "PG_CASE_REGISTRATION_HTTP_STATUS");
+  }
   const after = await checked(() => observe(context, fixture, continuity));
   check(after.executions.length === 1 && after.funding.length === 1 && after.allocations.length === 1 && after.events.length === 1 && after.audits.length === 1 && after.roots.length === 1 && after.facts.length === 0 && after.impacts.length === 0, "PG_CASE_COMMITTED_GRAPH_COUNTS");
   const execution = after.executions[0]!;
@@ -103,13 +135,20 @@ export async function runRegisteredNullCrossCompanyCommit(context: RegisteredPgE
   check(audit.actorUserId === ids.actor && metadata !== null && typeof metadata === "object" && !Array.isArray(metadata), "PG_CASE_COMMITTED_AUDIT_ACTOR");
   const actualPayer = metadata.actualPayer;
   check(metadata.voucherFileId === null && metadata.voucherPending === true && actualPayer !== null && typeof actualPayer === "object" && !Array.isArray(actualPayer) && actualPayer.kind === "participating_company" && actualPayer.id === ids.companyB && !JSON.stringify(metadata).includes(context.password), "PG_CASE_COMMITTED_AUDIT_FACTS");
-  const replay = await checked(() => registeredPgHttp(context, `/payment-executions/${ids.payment}/registrations`, "POST", command, fixture.accessToken, continuity));
+  const verifyOriginalResult = async () => {
+    const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`, "GET", undefined, fixture.accessToken, continuity));
+    const resultBody = result.body as { status?: unknown; execution?: { executionId?: unknown; amountCents?: unknown; paidAt?: unknown }; effects?: unknown[]; intercompany?: unknown[] };
+    check(result.status === 200 && resultBody.status === "recorded" && resultBody.execution?.executionId === execution.id && resultBody.execution?.amountCents === "4000" && resultBody.execution?.paidAt === plan.paidAt && resultBody.effects?.length === 0 && resultBody.intercompany?.length === 1, "PG_CASE_PUBLIC_ORIGINAL_RESULT");
+  };
+  if (scenario === "response-loss") await verifyOriginalResult();
+  const replay = await checked(() => submit());
   check(replay.status === 201, "PG_CASE_ORIGINAL_KEY_REPLAY_HTTP");
   const final = await checked(() => observe(context, fixture, continuity));
   check(final.executions.length === 1 && final.executions[0]?.id === execution.id && final.roots.length === 1 && final.roots[0]?.id === root.id && final.events.length === 1 && final.audits.length === 1 && final.allocations.length === 1 && final.request.paidAmountCents === 4000n && final.settlement.paidAmountCents === 4000n && final.balanceA === "100.0000" && final.balanceB === "60.0000", "PG_CASE_REPLAY_NO_SECOND_FINANCIAL_EFFECT");
   check(final.funding.length === 1 && final.funding[0]?.executionId === execution.id && final.funding[0]?.operatingLedgerEffectiveDateAtRegistration === null && final.funding[0]?.actualPayerId === ids.companyB && final.funding[0]?.actualPayerKind === "participating_company" && final.facts.length === 0 && final.impacts.length === 0, "PG_CASE_REPLAY_CANONICAL_SCOPE");
-  const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`, "GET", undefined, fixture.accessToken, continuity));
-  const resultBody = result.body as { status?: unknown; execution?: { executionId?: unknown; amountCents?: unknown; paidAt?: unknown }; effects?: unknown[]; intercompany?: unknown[] };
-  check(result.status === 200 && resultBody.status === "recorded" && resultBody.execution?.executionId === execution.id && resultBody.execution?.amountCents === "4000" && resultBody.execution?.paidAt === plan.paidAt && resultBody.effects?.length === 0 && resultBody.intercompany?.length === 1, "PG_CASE_PUBLIC_ORIGINAL_RESULT");
-  return { caseId: registeredPaymentPostgresCases()[0]!.id, executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true, limits: ["Only the normal NULL-project commit/replay case", "No fault, concurrency, approval-path, TLS or deployment acceptance"] };
+  if (scenario === "commit") await verifyOriginalResult();
+  return { caseId: scenario === "commit" ? registeredPaymentPostgresCases()[0]!.id : "registered.null-cross-company.response-loss",
+    executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true,
+    limits: scenario === "commit" ? ["Only the normal NULL-project commit/replay case", "No fault, concurrency, approval-path, TLS or deployment acceptance"]
+      : ["Only the original-key recovery and replay after one lost HTTP response", "No database disconnect, rollback or concurrency acceptance"] };
 }

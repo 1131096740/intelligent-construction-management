@@ -38,7 +38,11 @@ function fakeTx(options: {
   refs: ResolvedFileBinding[];
   fileObjects: ReturnType<typeof fileObjectLite>[];
 }) {
-  const $queryRaw = jest.fn().mockResolvedValue(options.refs);
+  const $queryRaw = jest.fn(async (query: Prisma.Sql) => {
+    if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
+    if (query.sql.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
+    return options.refs;
+  });
   const findMany = jest.fn().mockResolvedValue(options.fileObjects);
   const tx = {
     $queryRaw,
@@ -394,7 +398,9 @@ describe("buildContractFileBindingManifest", () => {
     const $queryRaw = jest
       .fn()
       .mockResolvedValueOnce(owned) // resolveContractVersionFileBindings
-      .mockResolvedValueOnce(owned); // fileBusinessBindingRefs
+      .mockResolvedValueOnce(owned) // fileBusinessBindingRefs
+      .mockResolvedValueOnce([{ state: "legacy" }])
+      .mockResolvedValueOnce([{ applied: false }]);
     const findMany = jest.fn().mockResolvedValue([fileObjectLite("file-a")]);
     const tx = {
       $queryRaw,
@@ -403,7 +409,7 @@ describe("buildContractFileBindingManifest", () => {
 
     const manifest = await buildContractFileBindingManifest(tx, { contractVersionIds: ["v1"] });
 
-    expect($queryRaw).toHaveBeenCalledTimes(2);
+    expect($queryRaw).toHaveBeenCalledTimes(4);
     expect(manifest.rows).toHaveLength(1);
     expect(manifest.rows[0]).toMatchObject({ fileId: "file-a", bindingType: "exclusive" });
     expect(manifest.rows[0].businessBindings).toEqual([

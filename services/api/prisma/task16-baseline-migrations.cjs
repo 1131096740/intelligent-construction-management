@@ -4,10 +4,14 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomBytes, createHash } = require("node:crypto");
+const { types: { isProxy } } = require("node:util");
 const { readQualifiedTask16File: readFile } = require("./task16-runtime-inputs.cjs");
+const {matchesTrustedTask16History}=require("./task16-migration-history.cjs");
 const ROOT = path.resolve(__dirname, "../../..");
 const OWNER = "jg_task01_owner";
+const SCHEMA205_SHA256 = "68b76ddd1ca8dda27ebb511db2d5fa49285eab5c7b95e83f9cac20b3c26a7286";
 const OUTPUT_LIMIT = 1024 * 1024;
+const RESOURCE_KEYS = ["runId", "sourceSha", "containerId", "networkId", "databaseName", "port", "endpoint", "daemonId", "imageId"];
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const fault = code => Object.assign(new Error(code), { code });
 const need = (condition, code) => { if (!condition) throw fault(code); };
@@ -20,30 +24,49 @@ function qualified(file, maxBytes, executable = false, expectedIdentity) {
   return readFile(file, { maxBytes, executable, expectedIdentity, code: executable ? "TASK16_MIGRATE_TOOL_IDENTITY" : "TASK16_MIGRATE_INPUT_FILE" });
 }
 
+function ownValue(value, key) {
+  return value && !isProxy(value) ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined;
+}
+
 function resourceProof(context, expected) {
-  const { resource, source, runId } = context;
+  const { resource, source, runId, resourceWitness, migrationResourceWitness: owned } = context;
   need(source?.candidateRoot === ROOT && source.runtimeAdmission?.status === "INPUTS_AND_CODE_TREES_MATCHED" && /^[a-f0-9]{40}$/u.test(source.candidateSha), "TASK16_MIGRATE_SOURCE_IDENTITY");
-  need(resource && typeof resource.getReceipt === "function" && typeof resource.execOwnerSql === "function", "TASK16_MIGRATE_RESOURCE_ADAPTER");
-  const receipt = resource.getReceipt(), docker = source.inputs.docker;
+  need(resource && !isProxy(resource) && owned?.handle === resource, "TASK16_MIGRATE_RESOURCE_IDENTITY");
+  need(["getReceipt", "execOwnerSql", "close"].every(key => typeof owned[key] === "function" &&
+    ownValue(resource, key) === owned[key]), "TASK16_MIGRATE_RESOURCE_ADAPTER");
+  const receipt = owned.getReceipt.call(resource), docker = source.inputs.docker;
   need(receipt.runId === runId && receipt.sourceSha === source.candidateSha && receipt.status === "started-awaiting-driver-verification" && receipt.cleanup?.status === "pending" && receipt.databaseName === `jg_task01_${runId.replaceAll("-", "")}`, "TASK16_MIGRATE_RESOURCE_IDENTITY");
-  need(["endpoint", "daemonId", "imageId"].every(key => receipt[key] === docker[key]) && ["containerId", "networkId"].every(key => /^[a-f0-9]{64}$/u.test(receipt[key]) && resource[key] === receipt[key]) && resource.databaseName === receipt.databaseName && resource.port === receipt.port && Number.isInteger(receipt.port) && receipt.port > 1024 && receipt.port <= 65535, "TASK16_MIGRATE_RESOURCE_IDENTITY");
-  if (expected) need(["runId", "sourceSha", "containerId", "networkId", "databaseName", "port", "endpoint", "daemonId", "imageId"].every(key => receipt[key] === expected.receipt[key]), "TASK16_MIGRATE_RESOURCE_IDENTITY");
+  need(["endpoint", "daemonId", "imageId"].every(key => receipt[key] === docker[key]) && ["containerId", "networkId"].every(key => /^[a-f0-9]{64}$/u.test(receipt[key]) && ownValue(resource, key) === receipt[key]) && ownValue(resource, "databaseName") === receipt.databaseName && ownValue(resource, "port") === receipt.port && Number.isInteger(receipt.port) && receipt.port > 1024 && receipt.port <= 65535, "TASK16_MIGRATE_RESOURCE_IDENTITY");
+  need(resourceWitness && Object.isFrozen(resourceWitness) && RESOURCE_KEYS.every(key => receipt[key] === resourceWitness[key]),
+    "TASK16_MIGRATE_RESOURCE_IDENTITY");
+  if (expected) need(RESOURCE_KEYS.every(key => receipt[key] === expected.receipt[key]), "TASK16_MIGRATE_RESOURCE_IDENTITY");
   const transport = context.ownerTransport;
   need(transport?.status === "OWNER_TLS_CONTROLS_VERIFIED" && transport.ownerRole === OWNER && /^[1-9][0-9]*$/u.test(transport.databaseOid) && /^[1-9][0-9]*$/u.test(transport.systemIdentifier), "TASK16_MIGRATE_OWNER_TRANSPORT");
-  const ca = readFile(resource.caPath, { maxBytes: 1024 * 1024, privateFile: true, code: "TASK16_MIGRATE_CA_FILE" });
-  need(ca.sha256 === transport.caSha256 && ca.sha256 === receipt.tls?.caSha256 && ca.sha256 === resource.serverCertHashes?.caSha256, "TASK16_MIGRATE_CA_IDENTITY");
+  need(ownValue(resource, "caPath") === owned.caPath, "TASK16_MIGRATE_CA_IDENTITY");
+  const ca = readFile(owned.caPath, { maxBytes: 1024 * 1024, privateFile: true,
+    expectedIdentity: owned.caIdentity, code: "TASK16_MIGRATE_CA_IDENTITY" });
+  need(ca.sha256 === owned.caSha256 && ca.sha256 === transport.caSha256 && ca.sha256 === receipt.tls?.caSha256 &&
+    ca.sha256 === ownValue(ownValue(resource, "serverCertHashes"), "caSha256"), "TASK16_MIGRATE_CA_IDENTITY");
   if (expected) need(["ownerRole", "databaseOid", "systemIdentifier", "caSha256"].every(key => transport[key] === expected.transport[key]), "TASK16_MIGRATE_OWNER_TRANSPORT");
-  return { receipt: structuredClone(receipt), transport: { ...transport }, caSha256: ca.sha256 };
+  return { receipt: structuredClone(receipt), transport: { ...transport }, caPath: owned.caPath };
 }
 
 function sourceFiles(context) {
   const list = context.source.migrations;
-  need(Array.isArray(list) && list.length === 204 && new Set(list.map(row => row.path)).size === 204, "TASK16_MIGRATE_SOURCE_INVENTORY");
+  need(Array.isArray(list) && list.length === 205 && new Set(list.map(row => row.path)).size === 205, "TASK16_MIGRATE_SOURCE_INVENTORY");
+  const last = list.at(-1);
+  need(last.path === "services/api/prisma/migrations/20261109100000_contract_direct_pending_input_v1/migration.sql"
+    && last.sha256 === "81b419f9a59fb3ab6d38731af0c1591bce5f92d91568aa55a8798d8a05d812c5", "TASK16_MIGRATE_SOURCE_INVENTORY");
+  const history=[];
+  const gitMode=identity=>identity.mode&0o100?"100755":"100644";
   const ledger = list.map((row, index) => {
     const match = /^services\/api\/prisma\/migrations\/([0-9]{14}_[a-z0-9_]+)\/migration\.sql$/u.exec(row.path);
     need(match && /^[a-f0-9]{64}$/u.test(row.sha256) && (index === 0 || list[index - 1].path < row.path), "TASK16_MIGRATE_SOURCE_INVENTORY");
     const actual = qualified(path.join(ROOT, row.path), 64 * 1024 * 1024);
     need(actual.sha256 === row.sha256 && actual.identity.size === row.bytes, "TASK16_MIGRATE_SOURCE_CHANGED");
+    const mode = gitMode(actual.identity);
+    if (index < list.length - 1) history.push([row.path, actual.sha256, mode]);
+    else need(mode === "100644", "TASK16_MIGRATE_SOURCE_CHANGED");
     return { name: match[1], sha256: row.sha256, finished: true, rolledBack: false };
   });
   const directory = path.join(ROOT, "services/api/prisma/migrations");
@@ -51,17 +74,24 @@ function sourceFiles(context) {
   const expected = ledger.map(row => row.name).sort();
   const actualNames = [];
   for (const entry of entries) {
-    if (entry.name === "migration_lock.toml") { need(entry.isFile(), "TASK16_MIGRATE_SOURCE_INVENTORY"); qualified(path.join(directory, entry.name), 1024 * 1024); continue; }
+    if (entry.name === "migration_lock.toml") {
+      need(entry.isFile(), "TASK16_MIGRATE_SOURCE_INVENTORY");
+      const lock=qualified(path.join(directory,entry.name),1024*1024);
+      history.push(["services/api/prisma/migrations/migration_lock.toml",lock.sha256,gitMode(lock.identity)]);
+      continue;
+    }
     need(entry.isDirectory(), "TASK16_MIGRATE_SOURCE_INVENTORY");
     const children = fs.readdirSync(path.join(directory, entry.name), { withFileTypes: true });
     need(children.length === 1 && children[0].name === "migration.sql" && children[0].isFile(), "TASK16_MIGRATE_SOURCE_INVENTORY");
     actualNames.push(entry.name);
   }
   need(JSON.stringify(actualNames.sort()) === JSON.stringify(expected), "TASK16_MIGRATE_SOURCE_INVENTORY");
+  need(matchesTrustedTask16History(history),"TASK16_MIGRATE_TRUSTED_HISTORY");
   const schema = context.source.schema;
   need(schema?.path === "services/api/prisma/schema.prisma", "TASK16_MIGRATE_SCHEMA");
   const actual = qualified(path.join(ROOT, schema.path), 64 * 1024 * 1024);
-  need(actual.sha256 === schema.sha256 && actual.identity.size === schema.bytes, "TASK16_MIGRATE_SCHEMA");
+  need(actual.sha256 === SCHEMA205_SHA256 && actual.sha256 === schema.sha256 &&
+    actual.identity.size === schema.bytes && gitMode(actual.identity) === "100644", "TASK16_MIGRATE_SCHEMA");
   // A fresh controlled tree must not let Prisma load an unsealed dotenv file.
   for (const relative of [".env", "services/api/.env", "services/api/prisma/.env"]) need(!fs.existsSync(path.join(ROOT, relative)), "TASK16_MIGRATE_DOTENV_PRESENT");
   return ledger;
@@ -74,7 +104,9 @@ function identitySql(nonce, withLedger) {
 
 async function ownerRead(context, proof, label, withLedger) {
   const nonce = randomBytes(32).toString("hex");
-  const result = await context.resource.execOwnerSql(identitySql(nonce, withLedger), label);
+  resourceProof(context, proof);
+  const result = await context.migrationResourceWitness.execOwnerSql.call(context.resource, identitySql(nonce, withLedger), label);
+  resourceProof(context, proof);
   need(typeof result?.stdout === "string" && Buffer.byteLength(result.stdout) <= OUTPUT_LIMIT, "TASK16_MIGRATE_OWNER_RESULT");
   const row = JSON.parse(result.stdout.trim());
   need(row.nonce === nonce && row.database === proof.receipt.databaseName && row.databaseOid === proof.transport.databaseOid && row.systemIdentifier === proof.transport.systemIdentifier && row.ownerRole === OWNER && row.loginRole === OWNER && row.ownerIsDatabaseOwner === true && row.tls === true && row.version >= 160000 && row.version < 170000 && row.replication === "origin" && row.readOnly === "off", "TASK16_MIGRATE_OWNER_IDENTITY");
@@ -84,11 +116,13 @@ async function ownerRead(context, proof, label, withLedger) {
 async function migrateTask16Baseline(context, injectedCommand, injectedProcess) {
   let attempted = false;
   try {
-    context = { ...context, source: structuredClone(context.source), ownerTransport: { ...context.ownerTransport }, credentials: { owner: context.credentials.owner } };
+    context = { ...context, migrationResourceWitness: context.migrationResourceWitness,
+      source: structuredClone(context.source), ownerTransport: { ...context.ownerTransport }, credentials: { owner: context.credentials.owner } };
     const proof = resourceProof(context);
     const ledger = sourceFiles(context);
-    // Schema204 requires real application/file-caller OIDs and preinstalled
-    // privileges. This harness has no qualified supply/engine-startup channel.
+    // Schema204 remains the first unsatisfied caller-supply gate. Schema205 also
+    // requires those effective OIDs and exact privileges for its new objects.
+    // This harness has no qualified supply/engine-startup channel for either.
     // No metadata flag may enable migration or substitute the migrator owner.
     need(false, "TASK16_MIGRATE_SCHEMA204_CALLABILITY_NOT_IMPLEMENTED");
     const tools = { pnpm: { ...context.source.inputs.tools.pnpm }, node: { ...context.source.inputs.tools.node } };
@@ -98,7 +132,7 @@ async function migrateTask16Baseline(context, injectedCommand, injectedProcess) 
     need(before.ledgerExists === false && before.publicRelations === 0, "TASK16_MIGRATE_FRESH_DATABASE_REQUIRED");
     need(/^[a-f0-9]{96}$/u.test(context.credentials.owner), "TASK16_MIGRATE_CREDENTIAL");
     const url = new URL(`postgresql://${OWNER}:${context.credentials.owner}@127.0.0.1:${proof.receipt.port}/${proof.receipt.databaseName}`);
-    for (const [key, value] of Object.entries({ schema: "public", connection_limit: "1", sslmode: "require", sslaccept: "strict", sslcert: context.resource.caPath, connect_timeout: "5", pool_timeout: "5", application_name: "jg-task16-baseline-migrate" })) url.searchParams.set(key, value);
+    for (const [key, value] of Object.entries({ schema: "public", connection_limit: "1", sslmode: "require", sslaccept: "strict", sslcert: proof.caPath, connect_timeout: "5", pool_timeout: "5", application_name: "jg-task16-baseline-migrate" })) url.searchParams.set(key, value);
     const env = { PATH: [...new Set([path.dirname(tools.node.path), path.dirname(tools.pnpm.path), "/usr/bin", "/bin"])].join(":"), LANG: "C", LC_ALL: "C", TZ: "Asia/Shanghai", CI: "true", NODE_ENV: "test", CHECKPOINT_DISABLE: "1", PRISMA_HIDE_UPDATE_MESSAGE: "1", DATABASE_URL: url.toString() };
     sourceFiles(context);
     need(qualified(tools.pnpm.path, 512 * 1024 * 1024, true, pnpm.identity).sha256 === tools.pnpm.sha256 && qualified(tools.node.path, 512 * 1024 * 1024, true, node.identity).sha256 === tools.node.sha256, "TASK16_MIGRATE_TOOL_IDENTITY");
@@ -116,7 +150,7 @@ async function migrateTask16Baseline(context, injectedCommand, injectedProcess) 
     const after = await ownerRead(context, proof, "task16-migration-ledger", true);
     need(JSON.stringify(after.ledger) === JSON.stringify(ledger), "TASK16_MIGRATE_LEDGER_MISMATCH");
     resourceProof(context, proof);
-    return { status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", sourceSha: context.source.candidateSha, migrationCount: 204, ledgerSha256: hash(JSON.stringify(ledger)), command: { exitCode: 0, stdoutBytes: stdout.length, stderrBytes: stderr.length, stdoutSha256: hash(stdout), stderrSha256: hash(stderr) }, financialAcceptance: false, tlsAcceptance: false };
+    return { status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", sourceSha: context.source.candidateSha, migrationCount: ledger.length, ledgerSha256: hash(JSON.stringify(ledger)), command: { exitCode: 0, stdoutBytes: stdout.length, stderrBytes: stderr.length, stdoutSha256: hash(stdout), stderrSha256: hash(stderr) }, financialAcceptance: false, tlsAcceptance: false };
   } catch (error) {
     const code = typeof error?.code === "string" && /^(?:TASK16_MIGRATE|TASK01_RESOURCE)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_MIGRATE_FAILED_CLOSED";
     throw Object.assign(new Error(code), { code, migrationOutcome: attempted ? "UNKNOWN_DO_NOT_RETRY" : "NOT_ATTEMPTED" });

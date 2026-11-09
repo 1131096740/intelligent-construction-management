@@ -65,13 +65,19 @@ function destructiveCalls(method: ts.MethodDeclaration, sourceFile: ts.SourceFil
       call.expression.expression.expression.text === "tx" &&
       call.arguments.length === 1 &&
       ts.isObjectLiteralExpression(call.arguments[0]) &&
-      call.arguments[0].properties.some((property) =>
+      call.arguments[0].properties.length === 1 &&
+      call.arguments[0].properties.every((property) =>
         ts.isPropertyAssignment(property) &&
         ts.isIdentifier(property.name) &&
         property.name.text === "where" &&
         ts.isObjectLiteralExpression(property.initializer) &&
-        property.initializer.properties.some((whereProperty) =>
-          ts.isPropertyAssignment(whereProperty) &&
+        property.initializer.properties.length === 1 &&
+        property.initializer.properties.every((whereProperty) =>
+          (ts.isPropertyAssignment(whereProperty) ||
+            (ts.isShorthandPropertyAssignment(whereProperty) &&
+              method.parameters.some((parameter) =>
+                ts.isIdentifier(parameter.name) && parameter.name.text === "contractVersionId"
+              ))) &&
           ts.isIdentifier(whereProperty.name) &&
           whereProperty.name.text === "contractVersionId"
         )

@@ -94,6 +94,12 @@ $XDG_STATE_HOME/jiangkong/local-release-<sha>.json
 PostgreSQL 16 动态门、POL-22 隔离只读预检，以及
 Chromium/WebKit 的 P0 和 RC-06 mocked browser checks。
 
+本地发布的 PostgreSQL 阶段显式使用 `--automatic-only`，按经过校验的动态库存执行
+所有自动组，范围与 CI 自动组一致。该阶段的独立收据报告本次执行数量和
+`deferredManualOnly`。其中的手工组仍列在公开库存，须单独选择并提供独立输入与授权。
+本地发布收据仅证明它列出的 17 个阶段。手工组的实际结果必须由相同候选 SHA 的独立
+执行收据证明，库存中的 `remainingTests=0` 表示无未登记项。
+
 收据中的 `durationsMs` 会按上述 17 个固定阶段记录毫秒耗时，命令行也会在每个
 阶段结束时显示耗时。它既用于部署前的严格收据校验，也用于判断下一轮应优先优化
 哪一个慢阶段；阶段缺失、重复、负数或不是整数时，部署器会拒绝收据。

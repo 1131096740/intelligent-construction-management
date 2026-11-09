@@ -157,6 +157,92 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(report.coveredTests, 541);
 });
 
+test("automatic-only lists the complete CI-eligible denominator and defers the manual operator", () => {
+  const result = spawnSync(process.execPath, [runnerPath, "--list", "--automatic-only"], {
+    encoding: "utf8",
+    env: { PATH: "", NODE_ENV: "test", DATABASE_URL: "postgresql://must-not-use.invalid/db" }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  const manifest = loadManifest();
+  const automatic = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
+  assert.equal(report.executed, false);
+  assert.equal(report.executionScope, "automatic-only");
+  assert.deepEqual(report.coveredGroups.map(group => group.id), automatic.map(group => group.id));
+  assert.deepEqual(report.executionInventory, {
+    ciEligible: manifest.executionInventory.ciEligible,
+    manualOnly: { groups: 0, files: 0, tests: 0 }
+  });
+  assert.deepEqual(report.deferredManualOnly, {
+    groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
+  });
+  assert.doesNotMatch(result.stdout, /must-not-use/u);
+});
+
+test("automatic-only rejects group and operator flags before tools can be called", () => {
+  const execute = ["--execute", "--candidate-sha", "a".repeat(40), "--confirm", "LOCAL_PG16_DYNAMIC_GATE"];
+  for (const args of [
+    [...execute, "--automatic-only", "--group", "payment_execution"],
+    [...execute, "--automatic-only", "--group", "enterprise_task01_entry", ...task01Args],
+    [...execute, "--automatic-only", ...task01Args],
+    ["--list", "--automatic-only", "--group", "payment_execution"]
+  ]) {
+    const result = spawnSync(process.execPath, [runnerPath, ...args], {
+      encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--automatic-only.*不能.*--group.*任务01/u);
+    assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+  }
+  const manifest = loadManifest();
+  assert.doesNotThrow(() =>
+    assertExecutionArguments(parseArguments([...execute, "--automatic-only"]), manifest));
+});
+
+test("automatic-only execution dispatches every automatic group and reports the manual deferral", async () => {
+  // Exercise exact argument validation and dispatch without launching Docker,
+  // PostgreSQL, Prisma, or a real runner.
+  const Module = require("node:module");
+  const fixture = new Module(runnerPath, module);
+  fixture.filename = runnerPath;
+  fixture.paths = Module._nodeModulePaths(path.dirname(runnerPath));
+  const hook = `
+module.exports.executeAutomaticFixture = async argv => {
+  const dispatched = [];
+  createProbeEnvironment = () => ({});
+  assertRepositoryState = async sha => sha;
+  resolveLocalDocker = async () => ({ endpoint: "unix:///fixture", imageId: "fixture-only" });
+  createChildEnvironment = () => ({});
+  runPreflight = async () => {};
+  resolveGroupCommand = group => ({ command: "fixture-only", args: [group.id] });
+  runCommand = async (_command, args) => { dispatched.push(args[0]); };
+  return { receipt: await main(argv), dispatched };
+};
+`;
+  fixture._compile(
+    "const process = { ...require('node:process'), stdout: { write: () => true } };\n" +
+      readFileSync(runnerPath, "utf8").replace(/^#!.*\n/u, "") + hook,
+    runnerPath
+  );
+  const candidateSha = "a".repeat(40);
+  const { receipt, dispatched } = await fixture.exports.executeAutomaticFixture([
+    "--execute", "--automatic-only", "--candidate-sha", candidateSha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"
+  ]);
+  const manifest = loadManifest();
+  const groupIds = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only").map(group => group.id);
+  assert.deepEqual(dispatched, groupIds);
+  assert.deepEqual(receipt.groups.map(group => group.id), groupIds);
+  assert.equal(receipt.status, "passed");
+  assert.equal(receipt.candidateSha, candidateSha);
+  assert.equal(receipt.executionScope, "automatic-only");
+  assert.deepEqual(receipt.executionInventory.ciEligible, manifest.executionInventory.ciEligible);
+  assert.equal(receipt.coveredFiles, 78);
+  assert.equal(receipt.coveredTests, 540);
+  assert.deepEqual(receipt.deferredManualOnly, {
+    groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
+  });
+});
+
 test("manual task01 operator cannot run automatically on GitHub Actions", () => {
   const script = `
     const fs = require('node:fs'); const Module = require('node:module'); const path = require('node:path');

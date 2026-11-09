@@ -1,3 +1,5 @@
+import { assertNotDirectPendingVersion } from "../contract/contract-direct-pending-policy";
+import { hasDirectSigningInput } from "../contract/contract-direct-pending-source";
 import { resolveContractDraftBusinessType } from "./contract-draft-basics";
 import { CONTRACT_BODY_RENDER_PROFILE_KEY, readContractBodyRenderProfile } from "../contract-document/contract-body-document";
 import { assertContractDraftNumericProtocol, assertLegacyContractDraftWriter, CONTRACT_PRECISE_HISTORICAL_REMAINDER_REASON, contractVersionMoneyReadProjection, contractBillMoneyReadProjection } from "./contract-draft-numeric-protocol";
@@ -281,6 +283,7 @@ export class ContractWorkbenchService {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
 
+    const directPending = hasDirectSigningInput(version.draftData);
     const [
       bills,
       checkpoints,
@@ -307,10 +310,12 @@ export class ContractWorkbenchService {
         orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
       }),
       this.loadGeneratedDocumentsForDraft(version),
-      this.prisma.paymentTermsVersion.findFirst({
-        where: { contractVersionId: version.id },
-        select: { id: true, originalText: true }
-      }),
+      directPending
+        ? this.readFixedDirectPaymentTerms(version)
+        : this.prisma.paymentTermsVersion.findFirst({
+            where: { contractVersionId: version.id },
+            select: { id: true, originalText: true }
+          }),
       version.contractGovernanceVersion === 1
         ? this.prisma.contractVersionAuthorizationLink.findMany({
             where: { contractVersionId: version.id },
@@ -472,7 +477,7 @@ export class ContractWorkbenchService {
         confirmedAt: version.settlementModeConfirmedAt?.toISOString() ?? null,
         confirmedByUserId: version.settlementModeConfirmedByUserId,
         confirmationRequired: !version.settlementModeConfirmedAt,
-        canConfirm: await this.hasGlobalContractDirector(this.prisma, actorUserId)
+        canConfirm: !directPending && await this.hasGlobalContractDirector(this.prisma, actorUserId)
       },
       readiness: this.readinessFromSnapshot(version.readinessSnapshot),
       governance: version.contractGovernanceVersion === 1
@@ -547,8 +552,26 @@ export class ContractWorkbenchService {
       documents,
       paymentTerms: paymentTerms
         ? { originalText: paymentTerms.originalText, stages: paymentStages }
-        : { originalText: "", stages: [] }
+        : directPending ? null : { originalText: "", stages: [] }
     });
+  }
+
+  private async readFixedDirectPaymentTerms(version: ContractVersion) {
+    const draft = version.draftData;
+    const marker = this.isPlainObject(draft) ? draft.directSigningInput : undefined;
+    const termsId = this.isPlainObject(marker) ? marker.fixedPaymentTermsVersionId : undefined;
+    if (termsId === null) return null;
+    if (typeof termsId !== "string" || !termsId) {
+      throw new ConflictException("已签合同付款约定来源暂时无法核对");
+    }
+    const terms = await this.prisma.paymentTermsVersion.findUnique({
+      where: { id: termsId },
+      select: { id: true, contractId: true, contractVersionId: true, originalText: true }
+    });
+    if (!terms || terms.id !== termsId || terms.contractId !== version.contractId || terms.contractVersionId !== version.id) {
+      throw new ConflictException("已签合同付款约定来源暂时无法核对");
+    }
+    return terms;
   }
 
   async saveDraft(
@@ -1157,6 +1180,7 @@ export class ContractWorkbenchService {
         contractVersionId,
         "合同草稿当前不可确认结算方式，请刷新后查看最新状态"
       );
+      assertNotDirectPendingVersion(version);
       assertContractDraftNumericProtocol(version, numericProtocol);
       this.assertRevision(version.draftRevision, input.expectedRevision);
       const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
@@ -1512,6 +1536,7 @@ export class ContractWorkbenchService {
         contractVersionId,
         actorUserId
       );
+      assertNotDirectPendingVersion(version);
       assertContractDraftNumericProtocol(version, numericProtocol);
       if (version.changeType === "change" || version.changeType === "supplement") {
         throw new BadRequestException("合同变更不得切换合同类型或业务模板");

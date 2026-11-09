@@ -8,6 +8,9 @@ import {
   readOperatingLedgerEffectiveDate, requiredJsonDate, requiredJsonMoney,
   requiredJsonRecord, requiredJsonText, sourceJson
 } from "../operating-ledger/formal-operating-source.helpers";
+import { readQualifiedGeneratedUpwardReference } from "./contract-generated-upward-operating";
+import { readGeneratedArchiveOperatingPolicy } from "./contract-generated-archive-operating-policy";
+import { assertContractV2ArchivePersistentProof } from "./contract-v2-archive-persistent-proof";
 import type { OperatingSourceAdapter, OperatingSourceSnapshot, OperatingSourceLocator, OperatingSourceFactInput } from "../operating-ledger/operating-source-adapter";
 
 /** 每个已生效版本只投影相对于直接前版的增减；保留 superseded 版本供历史日期回读。 */
@@ -19,7 +22,8 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       where: { contractId: { in: contracts.map((c) => c.id) }, effectiveAt: { not: null } },
       orderBy: [{ effectiveAt: "asc" }, { versionNo: "asc" }]
     });
-    return Promise.all(versions.map((version) => this.snapshot(tx, projectId, version.id)));
+    const sources = await Promise.all(versions.map((version) => this.snapshot(tx, projectId, version.id)));
+    return sources.filter((source): source is OperatingSourceSnapshot => source !== null);
   }
   async readSourceSnapshot(tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0], locator: OperatingSourceLocator) {
     const version = await tx.contractVersion.findUnique({ where: { id: locator.sourceBusinessId } });
@@ -27,10 +31,27 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const contract = await tx.contract.findFirst({ where: { id: version.contractId, projectId: locator.projectId } });
     return contract ? this.snapshot(tx, locator.projectId, version.id) : null;
   }
-  private async snapshot(tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0], projectId: string, versionId: string): Promise<OperatingSourceSnapshot> {
+  private async snapshot(tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0], projectId: string, versionId: string): Promise<OperatingSourceSnapshot | null> {
     const version = await tx.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
     const contract = await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
     if (contract.projectId !== projectId || !version.effectiveAt) throw new BadRequestException("合同尚未正式生效");
+    if (version.numericProtocolVersion === 2 && (version.signingSubjectType === "upward" || version.signingSubjectType === "affiliate")) {
+      const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
+        archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed" } });
+      if (archive?.archiveProtocolVersion === 2 && archive.archiveSource === "generated_approval") {
+        if (version.signingSubjectType === "upward") {
+          await readQualifiedGeneratedUpwardReference(tx, contract, version, archive);
+          return null;
+        }
+        await assertContractV2ArchivePersistentProof(tx, contract, version, archive);
+        const policy = readGeneratedArchiveOperatingPolicy({ archive, contract, version });
+        if (!policy) return null;
+        if (policy.mode !== "outside_downstream_commitment") throw new BadRequestException("表外归档未形成可核对的下游承诺");
+        const source = policy.fact.input;
+        return { projectId, sourceType: this.sourceType, sourceBusinessId: version.id, sourceBusinessCode: source.sourceBusinessCode,
+          sourceVersion: source.sourceVersion, status: "confirmed", sourceSnapshot: source.sourceSnapshot };
+      }
+    }
     const relationship = downstreamContractRelationship(version);
     if (relationship === "unclassified") throw new BadRequestException("生效合同缺少签约主体快照，请先核对，不能默认为表内");
     const predecessor = version.supersedesVersionId
@@ -147,7 +168,10 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const debtor = source.signingSubjectType === "affiliate"
       ? { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId }
       : { kind: "participating_company" as const, id: requiredJsonText(source, source.archiveProtocolVersion === 2 ? "companyEntityIdSnapshot" : "companyEntityVersionId", "合同签约主体") };
-    const creditor = { kind: "downstream_counterparty" as const, id: requiredJsonText(source, "counterpartyVersionId", "合同相对方") };
+    const frozenOutside = source.archiveProtocolVersion === 2 && source.contractRelationship === "outside"
+      && source.signingSubjectType === "affiliate" && typeof source.archiveAuthorityId === "string";
+    const creditor = { kind: "downstream_counterparty" as const,
+      id: requiredJsonText(source, frozenOutside ? "counterpartySubjectId" : "counterpartyVersionId", "合同相对方") };
     return { entryKind: "original", input: {
       projectId: snapshot.projectId, sourceType: snapshot.sourceType, sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode, sourceVersion: snapshot.sourceVersion,
@@ -166,7 +190,8 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:commitment`,
         sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference",
         ...money, direction,
-        subjectRole: "debtor", subject: debtor, description: "生效合同版本净增减，仅影响承诺，不形成成本或应付"
+        subjectRole: "debtor", subject: debtor, description: frozenOutside ? "表外原合同承诺，不形成成本或应付"
+          : "生效合同版本净增减，仅影响承诺，不形成成本或应付"
       }]
     } };
   }

@@ -6,34 +6,34 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 221 条 |
-| Web API 请求 | 已扫描 159 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 695 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| Controller 源码路由 | 已扫描 234 条 |
+| Web API 请求 | 已扫描 166 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 733 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 59 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 52 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 107 |
+| matched | 121 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 55 |
+| backend_without_frontend | 61 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 59 |
+| exit_candidate | 52 |
 
 ## 不存在的页面 API wrapper
 
-- 无。
+- `apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts` 引用了不存在的 API wrapper `CoreFlowApiError`。
 
 ## 能力与决策
 
 | Method | Route | API wrapper | 生产消费者 | 分类 | 决策 | 物理删除授权 | 退出/删除缺失证据 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/business-parties` | listBusinessParties | apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue | matched | 保留 | 否 | — |
+| GET | `/business-parties` | listBusinessParties | apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue | matched | 保留 | 否 | — |
 | POST | `/business-parties` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| GET | `/business-parties/:param` | getBusinessParty | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
+| GET | `/business-parties/:param` | getBusinessParty | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue<br>apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue | matched | 保留 | 否 | — |
 | GET | `/business-parties/:param/maintenance-capability` | getBusinessPartyMaintenanceCapability | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/business-parties/:param/status` | updateBusinessPartyStatus | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/business-parties/:param/versions` | createBusinessPartyVersion | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
@@ -62,22 +62,26 @@
 | POST | `/contract-business-scenarios` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | PATCH | `/contract-business-scenarios/:param` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-business-scenarios/:param/template-mappings` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| GET | `/contract-business-scenarios/available` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| GET | `/contract-business-scenarios/recommendations` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-business-scenarios/available` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| GET | `/contract-business-scenarios/recommendations` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-document-differences/:param/disposition` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-documents/:param/retry` | retryContractDocument | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
 | DELETE | `/contract-drafts/:param` | executeDeletePristineContractDraftAction | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | PUT | `/contract-drafts/:param` | saveContractDraftAggregate | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/bills/:param/export` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-drafts/:param/bills/:param/import-preview` | previewContractDraftBillExcelImport | apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/bills/:param/template` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-drafts/:param/document-body` | fetchContractDraftBody | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue | matched | 保留 | 否 | — |
 | DELETE | `/contract-drafts/:param/edit-lease` | releaseContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease` | acquireContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/heartbeat` | heartbeatContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/takeover` | takeOverContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
-| POST | `/contract-drafts/:param/files` | uploadContractWorkbenchPrivateFile | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue | matched | 保留 | 否 | — |
-| POST | `/contract-drafts/:param/preview-generation` | queueContractDraftPreview | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| POST | `/contract-drafts/:param/files` | uploadContractWorkbenchPrivateFile | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| POST | `/contract-drafts/:param/preview-generation` | queueContractDraftPreview | apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/save-requests/:param` | fetchDirectPendingSaveResult | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/submission` | submitContractDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
-| GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/submission-requests/:param` | fetchContractDraftSubmissionResult | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts<br>apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts | matched | 保留 | 否 | — |
 | GET | `/contract-economic-reviews` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-economic-reviews` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-economic-reviews/:param/decision` | — |  | backend_without_frontend | 补入口 | 否 | — |
@@ -86,19 +90,25 @@
 | POST | `/contract-ended-retention/:param/hold-release` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-ended-retention/:param/holds` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contract-ended-retention/preview` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| PATCH | `/contract-layout-template-versions/:param` | updateLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-layout-template-versions/:param/clone` | cloneLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| PATCH | `/contract-layout-template-versions/:param` | updateLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
+| POST | `/contract-layout-template-versions/:param/clone` | cloneLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-layout-template-versions/:param/discard` | discardLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-layout-template-versions/:param/inspection` | inspectLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| GET | `/contract-layout-template-versions/:param/preview-generation` | getLatestLayoutTemplatePreview |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-layout-template-versions/:param/preview-generation` | queueLayoutTemplatePreview |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-layout-template-versions/:param/publication` | publishLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| POST | `/contract-layout-template-versions/:param/inspection` | inspectLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
+| GET | `/contract-layout-template-versions/:param/maintenance-capability` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-layout-template-versions/:param/preview-generation` | getLatestLayoutTemplatePreview | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
+| POST | `/contract-layout-template-versions/:param/preview-generation` | queueLayoutTemplatePreview | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
+| POST | `/contract-layout-template-versions/:param/publication` | publishLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-layout-template-versions/:param/revoke` | revokeLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-layout-template-versions/:param/stop` | stopLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-layout-template-versions/:param/submission` | submitLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| PATCH | `/contract-layout-template-versions/:param/source-mapping` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-layout-template-versions/:param/source-mapping-confirmation` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-layout-template-versions/:param/source-positions` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-layout-template-versions/:param/stop` | stopLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
+| POST | `/contract-layout-template-versions/:param/submission` | submitLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
 | GET | `/contract-layout-templates` | listPublishedLayoutTemplates | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
-| POST | `/contract-layout-templates` | createLayoutTemplate |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| GET | `/contract-layout-templates/:param` | getLayoutTemplate | apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue | matched | 保留 | 否 | — |
+| POST | `/contract-layout-templates` | createLayoutTemplate | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
+| GET | `/contract-layout-templates/:param` | getLayoutTemplate | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue<br>apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue | matched | 保留 | 否 | — |
+| GET | `/contract-layout-templates/creation-capability` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/contract-layout-templates/maintenance` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-negotiation-rounds/:param/close` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/contract-number-rules` | listContractNumberRules | apps/web-admin/src/pages/contract-templates/ContractNumberRuleReadonlyPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-number-rules` | createContractNumberRule |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
@@ -134,7 +144,7 @@
 | PATCH | `/contract-workbench/:param` | saveContractDraft |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-workbench/:param/checkpoints` | createDraftCheckpoint |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-workbench/:param/checkpoints/:param/restore` | restoreDraftCheckpoint |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| GET | `/contract-workbench/:param/documents` | listContractDocuments | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
+| GET | `/contract-workbench/:param/documents` | listContractDocuments | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
 | POST | `/contract-workbench/:param/documents` | queueContractDocument | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
 | GET | `/contract-workbench/:param/negotiation-rounds` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-workbench/:param/negotiation-rounds` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
@@ -150,9 +160,9 @@
 | POST | `/contract-workbench/:param/type-change` | applyContractTypeChange | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-workbench/:param/type-change-preview` | previewContractTypeChange | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-workbench/:param/void` | voidContractDraft |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| GET | `/contracts` | fetchContractLedger | apps/web-admin/src/pages/search/GlobalSearchPage.vue | matched | 保留 | 否 | — |
+| GET | `/contracts` | fetchContractLedger | apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue<br>apps/web-admin/src/pages/search/GlobalSearchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts` | createWorkbenchDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
-| GET | `/contracts/:param` | fetchContractDetail | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| GET | `/contracts/:param` | fetchContractDetail | apps/web-admin/src/pages/contracts/ContractDetailPage.vue<br>apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/abandonment` | executeAbandonContractDraftAction | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval` | executeContractApprovalReviewAction | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval-delegation` | delegateContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
@@ -162,6 +172,7 @@
 | POST | `/contracts/:param/approval-withdrawal` | executeContractApprovalWithdrawalAction | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/archive-confirmation` | confirmContractArchive | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/archive-files` | uploadContractArchiveFile | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| GET | `/contracts/:param/archive-requests/:param` | fetchSignedContractArchiveV2Result | apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts<br>apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/authorizations` | setContractAuthorization | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue | matched | 保留 | 否 | — |
 | GET | `/contracts/:param/authorizations/readiness` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/change-drafts` | createContractChangeDraft | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
@@ -177,10 +188,12 @@
 | POST | `/contracts/:param/pdf-generation` | generateContractPdfArchive | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/readiness` | checkContractSubmissionReadiness | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/seal-approval` | approveContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/seal-confirmation` | confirmContractSealV2 | apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/seal/approve` | approveGovernedContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/seal/complete` | completeContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/signed-archive` | archiveSignedContractV2 | apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts<br>apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/signing/material-change` | executeContractSigningMaterialChange | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| GET | `/contracts/create-capability` | fetchContractCreateCapabilities | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contracts/create-capability` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contracts/ledger-export` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contracts/lifecycle-ledger` | fetchContractLifecycleLedger | apps/web-admin/src/pages/contracts/ContractListPage.vue | matched | 保留 | 否 | — |
 | GET | `/contracts/payment-create-options` | fetchPaymentContractOptions | apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue | matched | 保留 | 否 | — |

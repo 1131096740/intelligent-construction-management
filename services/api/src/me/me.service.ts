@@ -70,6 +70,11 @@ export interface WorkbenchSummary {
 }
 
 export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
+
+function isNonInsideContractSubject(signingSubjectType: string) {
+  return signingSubjectType === "affiliate" || signingSubjectType === "upward";
+}
+
 export type ApprovalCenterViewKey =
   | "pendingApproval"
   | "startedByMe"
@@ -1216,7 +1221,7 @@ export class MeService {
       ? await this.prisma.contractVersion.findMany({
           where: { contractId: { in: contractIds }, status: "draft" },
           orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+          select: { id: true, contractId: true, amountCents: true, amountYuan: true, numericProtocolVersion: true, changeType: true, draftData: true, updatedAt: true }
         })
       : [];
     const contractTotal = contractIds.length
@@ -1246,25 +1251,30 @@ export class MeService {
     const takeoverContractById = new Map(takeoverContracts.map((row) => [row.id, row]));
     const takeoverVersionById = new Map(takeoverVersions.map((row) => [row.id, row]));
 
+    const directPresentations = await this.directDraftPresentations(contractVersions);
+
     const businessDrafts: Array<WorkItem & { updatedAt: Date }> = [
       ...contractVersions.flatMap((version) => {
         const contract = contractById.get(version.contractId);
         if (!contract) return [];
+        const direct = directPresentations.get(version.id);
         return [{
           id: `contract-draft:${version.id}`,
           type: "draft" as const,
           title: contract.name,
           projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
           projectId: contract.projectId,
-          businessCode: contract.code ?? contract.temporaryCode ?? contract.id,
+          businessCode: direct?.businessCode ?? contract.code ?? contract.temporaryCode ?? contract.id,
           businessType: "contract",
           businessId: contract.id,
-          amountText: this.amountText(version.amountCents),
-          currentNode: "合同草稿",
+          amountText: direct?.amountText ?? this.amountText(version.amountCents),
+          currentNode: direct?.invalid ? "资料待核对" : "合同草稿",
           stayedText: this.stayedText(version.updatedAt),
-          nextAction: "继续填写合同",
-          targetPath: `/contracts/${encodeURIComponent(contract.id)}/workbench`,
-          tone: "default" as const,
+          nextAction: direct?.invalid ? "请核对合同资料" : "继续填写合同",
+          targetPath: direct?.invalid
+            ? `/合同管理/${encodeURIComponent(contract.id)}?versionId=${encodeURIComponent(version.id)}`
+            : direct ? `/合同工作台/${encodeURIComponent(contract.id)}?versionId=${encodeURIComponent(version.id)}` : `/contracts/${encodeURIComponent(contract.id)}/workbench`,
+          tone: direct?.invalid ? "warning" as const : "default" as const,
           updatedAt: version.updatedAt
         }];
       }),
@@ -1789,7 +1799,7 @@ export class MeService {
     for (const version of versions) {
       if (version.numericProtocolVersion !== 2) continue;
       // A missing frozen round cannot restore a legacy signing action for these V2 subjects.
-      if (version.signingSubjectType === "affiliate") excluded.add(version.id);
+      if (isNonInsideContractSubject(version.signingSubjectType)) excluded.add(version.id);
       else versionIds.push(version.id);
     }
     if (!versionIds.length) return excluded;
@@ -1823,7 +1833,7 @@ export class MeService {
       const identity = snapshot.signingIdentity;
       const relationship = identity && typeof identity === "object" && "relationship" in identity ? identity.relationship : null;
       // The current installation has no generated archive authority for these sources.
-      const blocked = version.signingSubjectType === "affiliate" || relationship === "outside";
+      const blocked = isNonInsideContractSubject(version.signingSubjectType) || relationship === "outside" || relationship === "upward";
       const queue = blocked ? result.blocked : result.pending;
       queue.push({ id: `contract-v2-${seal ? "seal" : "archive"}:${version.id}`, type: blocked ? "blocker" : "archive", businessType: "contract_version", businessId: version.id,
         title: contract.name, projectName: names.get(contract.projectId) ?? "所属项目", businessCode: code,
@@ -3023,6 +3033,81 @@ export class MeService {
       remind: "催办"
     };
     return labels[action] ?? action;
+  }
+
+  private async directDraftPresentations(versions: Array<{
+    id: string; contractId: string; numericProtocolVersion: number; changeType: string;
+    draftData: Prisma.JsonValue; amountYuan: Prisma.Decimal | null;
+  }>) {
+    const inputs = versions.map(version => ({ version, input: this.directDraftInput(version) }));
+    const invalid = { businessCode: "编号待核对", amountText: "金额待核对", invalid: true };
+    const result = new Map<string, { businessCode: string; amountText: string; invalid: boolean }>();
+    for (const { version, input } of inputs) if (input) result.set(version.id, invalid);
+    const candidates = inputs.filter(row => row.input?.valid);
+    // Fixed 30-pair/60-parameter chunks, sequential: no unbounded per-version fan-out.
+    for (let offset = 0; offset < candidates.length; offset += 30) {
+      const chunk = candidates.slice(offset, offset + 30);
+      try {
+        const rows = await this.prisma.$queryRaw<unknown>(Prisma.sql`
+          SELECT "id", "contractId", "originalSignedNumber" FROM public."ContractVersion"
+          WHERE "status" = 'draft' AND ("id", "contractId") IN (${Prisma.join(chunk.map(({ version }) => Prisma.sql`(${version.id}, ${version.contractId})`))})
+        `);
+        if (!Array.isArray(rows) || rows.length !== chunk.length) continue;
+        const numbers = new Map<string, string | null>();
+        let valid = true;
+        for (const row of rows as unknown[]) {
+          if (!row || typeof row !== "object" || Array.isArray(row) ||
+            Object.keys(row).sort().join(",") !== "contractId,id,originalSignedNumber" ||
+            !("id" in row) || typeof row.id !== "string" || numbers.has(row.id) ||
+            !("contractId" in row) || !chunk.some(({ version }) => version.id === row.id && version.contractId === row.contractId) ||
+            !("originalSignedNumber" in row) ||
+            (row.originalSignedNumber !== null && (typeof row.originalSignedNumber !== "string" || row.originalSignedNumber === ""))) {
+            valid = false; break;
+          }
+          numbers.set(row.id, row.originalSignedNumber);
+        }
+        if (!valid) continue;
+        for (const { version, input } of chunk) if (input?.valid && numbers.has(version.id)) {
+          result.set(version.id, { businessCode: numbers.get(version.id) ?? "未注明编号", amountText: input.amountText, invalid: false });
+        }
+      } catch {
+        // A missing column/permission or malformed batch leaves this chunk visibly awaiting verification.
+      }
+    }
+    return result;
+  }
+
+  private directDraftInput(version: {
+    numericProtocolVersion: number; changeType: string; draftData: Prisma.JsonValue; amountYuan: Prisma.Decimal | null;
+  }) {
+    const draft = version.draftData;
+    if (!draft || typeof draft !== "object" || Array.isArray(draft) ||
+      !Object.prototype.hasOwnProperty.call(draft, "directSigningInput")) return null;
+    const invalid = { valid: false as const };
+    const marker = draft.directSigningInput;
+    const basics = draft.contractBasics;
+    if (version.numericProtocolVersion !== 2 || version.changeType !== "original" ||
+      !marker || typeof marker !== "object" || Array.isArray(marker) ||
+      marker.protocolVersion !== 1 || marker.source !== "direct_signed" || marker.relationship !== "outside" ||
+      !basics || typeof basics !== "object" || Array.isArray(basics) || basics.relationship !== "outside") return invalid;
+    if (Object.keys(marker).sort().join(",") !== "counterpartyParty,enterpriseParty,fixedPaymentTermsVersionId,protocolVersion,relationship,signedOn,source") return invalid;
+    const partyShape = (value: Prisma.JsonValue | undefined) => value === null ||
+      (value !== undefined && typeof value === "object" && !Array.isArray(value) &&
+        Object.keys(value).sort().join(",") === "displayOrder,roleKey" &&
+        typeof value.roleKey === "string" && value.roleKey.length > 0 &&
+        typeof value.displayOrder === "number" && Number.isSafeInteger(value.displayOrder) && value.displayOrder >= 0);
+    if (!partyShape(marker.enterpriseParty) || !partyShape(marker.counterpartyParty) ||
+      !(marker.fixedPaymentTermsVersionId === null ||
+        (typeof marker.fixedPaymentTermsVersionId === "string" && marker.fixedPaymentTermsVersionId.length > 0))) return invalid;
+    if (marker.signedOn !== null) {
+      if (typeof marker.signedOn !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u.test(marker.signedOn)) return invalid;
+      const [year, month, day] = marker.signedOn.split("-").map(Number);
+      const days = [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return invalid;
+    }
+    const amount = version.amountYuan;
+    if (amount !== null && (!amount.isFinite() || amount.isNegative() || amount.decimalPlaces() > 4)) return invalid;
+    return { valid: true as const, amountText: amount === null ? "金额待确定" : `¥${amount.toFixed(4)}` };
   }
 
   private amountText(amountCents: bigint) {

@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 418,
-    "pageActionCount": 65,
+    "registeredActionCount": 426,
+    "pageActionCount": 73,
     "backgroundActionCount": 353,
-    "reachableVueFileCount": 212,
+    "reachableVueFileCount": 214,
     "routeRootCount": 74,
-    "totalVueFileCount": 225,
-    "parsedVueFileCount": 225,
-    "reachableProductionModuleCount": 363,
-    "templateEventDirectiveCount": 1374,
+    "totalVueFileCount": 227,
+    "parsedVueFileCount": 227,
+    "reachableProductionModuleCount": 368,
+    "templateEventDirectiveCount": 1426,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 409,
-    "candidateProductionMutationConsumerCount": 409,
-    "acceptedProductionMutationConsumerCount": 409,
-    "productionMutationConsumerPairCount": 409,
+    "coveredProductionMutationConsumerCount": 414,
+    "candidateProductionMutationConsumerCount": 414,
+    "acceptedProductionMutationConsumerCount": 414,
+    "productionMutationConsumerPairCount": 414,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 382,
-    "reachableProductionModuleCount": 363,
-    "totalVueFileCount": 225,
-    "parsedVueFileCount": 225
+    "totalProductionModuleCount": 387,
+    "reachableProductionModuleCount": 368,
+    "totalVueFileCount": 227,
+    "parsedVueFileCount": 227
   },
   "actions": [
     {
@@ -1838,7 +1838,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1884,7 +1884,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2043,7 +2043,7 @@
         "event": "call",
         "handler": "delegateContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1370,
+        "sourceLine": 1388,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2108,7 +2108,7 @@
         "event": "call",
         "handler": "downloadContractApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1340,
+        "sourceLine": 1358,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2175,7 +2175,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewApprove",
         "kind": "event",
-        "sourceLine": 993,
+        "sourceLine": 1009,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2218,6 +2218,8 @@
           "causalProof": {
             "localCallChain": [
               "confirmContractReviewApprove",
+              "prepareContractApprovalReviewAction",
+              "fetchContractDetail",
               "executeContractApprovalReviewAction"
             ],
             "variant": "approve"
@@ -2241,7 +2243,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewReject",
         "kind": "event",
-        "sourceLine": 1006,
+        "sourceLine": 1022,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2284,6 +2286,8 @@
           "causalProof": {
             "localCallChain": [
               "confirmContractReviewReject",
+              "prepareContractApprovalReviewAction",
+              "fetchContractDetail",
               "executeContractApprovalReviewAction"
             ],
             "variant": "reject"
@@ -2307,7 +2311,7 @@
         "event": "call",
         "handler": "transferContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1355,
+        "sourceLine": 1373,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2372,7 +2376,7 @@
         "event": "confirm",
         "handler": "confirmContractWithdrawal",
         "kind": "event",
-        "sourceLine": 1018,
+        "sourceLine": 1034,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2415,6 +2419,8 @@
           "causalProof": {
             "localCallChain": [
               "confirmContractWithdrawal",
+              "prepareContractApprovalWithdrawalAction",
+              "fetchContractDetail",
               "executeContractApprovalWithdrawalAction"
             ]
           },
@@ -2437,7 +2443,7 @@
         "event": "call",
         "handler": "associateContractArchiveFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1445,
+        "sourceLine": 1463,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2502,7 +2508,7 @@
         "event": "call",
         "handler": "confirmContractArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1460,
+        "sourceLine": 1478,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2567,7 +2573,7 @@
         "event": "call",
         "handler": "generateContractPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1475,
+        "sourceLine": 1493,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2632,7 +2638,7 @@
         "event": "call",
         "handler": "uploadContractArchivePrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1429,
+        "sourceLine": 1447,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2962,7 +2968,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3006,7 +3012,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3511,7 +3517,7 @@
         "event": "action-handler",
         "handler": "executeFocusedBillRemainderCancellation",
         "kind": "prop_callback",
-        "sourceLine": 310,
+        "sourceLine": 438,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -3612,7 +3618,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1582,
+        "sourceLine": 1600,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3854,6 +3860,209 @@
             "localCallChain": [
               "uploadPrivateFileWithCapability",
               "uploadContractWorkbenchPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-direct-registration.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDirectRegistration",
+        "kind": "event",
+        "sourceLine": 46,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "directPendingCapabilities.registrationEnabled",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "archiveSignedContractV2",
+          "method": "POST",
+          "path": "/contracts/:param/signed-archive",
+          "normalizedKey": "POST /contracts/:param/signed-archive",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/signed-archive",
+            "normalizedKey": "POST /contracts/:param/signed-archive",
+            "controller": "ContractController",
+            "handler": "archiveSignedContract",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmDirectRegistration",
+              "confirm",
+              "refreshCoordinates",
+              "send",
+              "archiveSignedContractV2"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-direct-registration.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "directRegistration",
+        "variant": "lookup-original",
+        "kind": "event",
+        "sourceLine": 29,
+        "sourceColumn": 10
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "localStorage.pending",
+        "serverDerived": false,
+        "dominatesTrigger": false
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchDirectSignedContractResult",
+          "method": "GET",
+          "path": "/contracts/:param/archive-requests/:param",
+          "normalizedKey": "GET /contracts/:param/archive-requests/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/contracts/:contractVersionId/archive-requests/:idempotencyKey",
+            "normalizedKey": "GET /contracts/:param/archive-requests/:param",
+            "controller": "ContractController",
+            "handler": "archiveResult",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "directRegistration.query()",
+              "query",
+              "read",
+              "fetchDirectSignedContractResult"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-direct-registration.resume-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "directRegistration",
+        "variant": "resume-original",
+        "kind": "event",
+        "sourceLine": 37,
+        "sourceColumn": 10
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "directPendingCapabilities.registrationEnabled",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "archiveSignedContractV2",
+          "method": "POST",
+          "path": "/contracts/:param/signed-archive",
+          "normalizedKey": "POST /contracts/:param/signed-archive",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/signed-archive",
+            "normalizedKey": "POST /contracts/:param/signed-archive",
+            "controller": "ContractController",
+            "handler": "archiveSignedContract",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "directRegistration",
+              "query(true)",
+              "refreshCoordinates",
+              "send",
+              "archiveSignedContractV2"
             ]
           },
           "ticketFollowups": []
@@ -4141,7 +4350,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 865,
+        "sourceLine": 1001,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4248,7 +4457,7 @@
         "event": "call",
         "handler": "autoSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 195,
+        "sourceLine": 219,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4431,7 +4640,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -4475,7 +4684,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -4500,7 +4709,7 @@
         "event": "call",
         "handler": "createWorkbenchDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 97,
+        "sourceLine": 108,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4567,7 +4776,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 832,
+        "sourceLine": 968,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -4674,7 +4883,7 @@
         "event": "call",
         "handler": "acquireContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 140,
+        "sourceLine": 164,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4741,7 +4950,7 @@
         "event": "call",
         "handler": "heartbeatContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 153,
+        "sourceLine": 177,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4808,7 +5017,7 @@
         "event": "call",
         "handler": "releaseContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 167,
+        "sourceLine": 191,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -4875,7 +5084,7 @@
         "event": "call",
         "handler": "takeOverContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 181,
+        "sourceLine": 205,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4942,7 +5151,7 @@
         "event": "call",
         "handler": "manualSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 211,
+        "sourceLine": 235,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5009,7 +5218,7 @@
         "event": "call",
         "handler": "queueContractDraftPreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 227,
+        "sourceLine": 251,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -5076,7 +5285,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1060,
+        "sourceLine": 1211,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5486,7 +5695,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1615,
+        "sourceLine": 1633,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5535,7 +5744,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5579,7 +5788,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5603,7 +5812,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1603,
+        "sourceLine": 1621,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5668,7 +5877,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1517,
+        "sourceLine": 1535,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5733,7 +5942,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1566,
+        "sourceLine": 1584,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5798,7 +6007,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1551,
+        "sourceLine": 1569,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5863,7 +6072,7 @@
         "event": "call",
         "handler": "uploadContractFinalPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1489,
+        "sourceLine": 1507,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5912,6 +6121,175 @@
             "localCallChain": [
               "uploadContractFinalPrivateFileWithCapability",
               "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-generated-archive.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitArchive",
+        "kind": "event",
+        "sourceLine": 43,
+        "sourceColumn": 62
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.archiveAction.eligible",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "archiveSignedContractV2",
+          "method": "POST",
+          "path": "/contracts/:param/signed-archive",
+          "normalizedKey": "POST /contracts/:param/signed-archive",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/signed-archive",
+            "normalizedKey": "POST /contracts/:param/signed-archive",
+            "controller": "ContractController",
+            "handler": "archiveSignedContract",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitArchive",
+              "archiveSignedContractV2"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "contract_director",
+              "contract_staff",
+              "finance_director",
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitArchive",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-generated-archive.resume-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitContinue",
+        "kind": "event",
+        "sourceLine": 48,
+        "sourceColumn": 62
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.archiveAction.eligible",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "archiveSignedContractV2",
+          "method": "POST",
+          "path": "/contracts/:param/signed-archive",
+          "normalizedKey": "POST /contracts/:param/signed-archive",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/signed-archive",
+            "normalizedKey": "POST /contracts/:param/signed-archive",
+            "controller": "ContractController",
+            "handler": "archiveSignedContract",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitContinue",
+              "archiveSignedContractV2"
             ]
           },
           "ticketFollowups": []
@@ -5968,10 +6346,12 @@
             "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -6203,6 +6583,196 @@
       ]
     },
     {
+      "id": "contract-seal-v2.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitSeal",
+        "kind": "event",
+        "sourceLine": 35,
+        "sourceColumn": 62
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.sealAction.eligible",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractSealV2",
+          "method": "POST",
+          "path": "/contracts/:param/seal-confirmation",
+          "normalizedKey": "POST /contracts/:param/seal-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/seal-confirmation",
+            "normalizedKey": "POST /contracts/:param/seal-confirmation",
+            "controller": "ContractController",
+            "handler": "confirmParallelContractSeal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.seal"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitSeal",
+              "confirmContractSealV2"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-seal-v2.lookup-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "querySeal",
+        "kind": "event",
+        "sourceLine": 9,
+        "sourceColumn": 66
+      },
+      "semantic": "read_only",
+      "capability": {
+        "kind": "none",
+        "source": "localStorage.sealIntent",
+        "serverDerived": false,
+        "dominatesTrigger": false
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchContractDetail",
+          "method": "GET",
+          "path": "/contracts/:param",
+          "normalizedKey": "GET /contracts/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/contracts/:contractId",
+            "normalizedKey": "GET /contracts/:param",
+            "controller": "ContractController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "querySeal",
+              "fetchContractDetail"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-seal-v2.resume-original",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitSealContinue",
+        "kind": "event",
+        "sourceLine": 39,
+        "sourceColumn": 62
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "v2Lifecycle.sealAction.eligible",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractSealV2",
+          "method": "POST",
+          "path": "/contracts/:param/seal-confirmation",
+          "normalizedKey": "POST /contracts/:param/seal-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/seal-confirmation",
+            "normalizedKey": "POST /contracts/:param/seal-confirmation",
+            "controller": "ContractController",
+            "handler": "confirmParallelContractSeal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.seal"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitSealContinue",
+              "confirmContractSealV2"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-seal.approve-governed",
       "usage": "background",
       "routePaths": [
@@ -6217,7 +6787,7 @@
         "event": "call",
         "handler": "approveGovernedContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1399,
+        "sourceLine": 1417,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6282,7 +6852,7 @@
         "event": "call",
         "handler": "approveLegacyContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1385,
+        "sourceLine": 1403,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6347,7 +6917,7 @@
         "event": "call",
         "handler": "completeContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1414,
+        "sourceLine": 1432,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8625,7 +9195,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1044,
+        "sourceLine": 1195,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8691,7 +9261,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1002,
+        "sourceLine": 1153,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8757,7 +9327,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1015,
+        "sourceLine": 1166,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8823,7 +9393,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1028,
+        "sourceLine": 1179,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8890,7 +9460,7 @@
         "event": "call",
         "handler": "submitContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 240,
+        "sourceLine": 264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8955,7 +9525,7 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1162,
+        "sourceLine": 1178,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -8998,7 +9568,9 @@
           "causalProof": {
             "localCallChain": [
               "confirmSigningMaterialChange",
-              "executeContractSigningMaterialChange"
+              "executeContractSigningMaterialChange",
+              "fetchContractDetail",
+              "assertContractSigningMaterialChangePreflight"
             ]
           },
           "ticketFollowups": []
@@ -9034,7 +9606,9 @@
           "causalProof": {
             "localCallChain": [
               "confirmSigningMaterialChange",
-              "executeContractSigningMaterialChange"
+              "executeContractSigningMaterialChange",
+              "fetchContractDetail",
+              "assertContractSigningMaterialChangePreflight"
             ]
           },
           "ticketFollowups": []
@@ -12763,7 +13337,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -12807,7 +13381,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -14020,7 +14594,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -14064,7 +14638,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5465,
+              "sourceLine": 5531,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"

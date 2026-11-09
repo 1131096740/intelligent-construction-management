@@ -354,7 +354,7 @@ describe("contract workbench API client", () => {
     await takeOverContractDraftEditLease("version/1", {
       currentPassword: "current-password"
     });
-    await saveContractDraftAggregate("version/1", "lease-secret", {
+    const draftPayload: Parameters<typeof saveContractDraftAggregate>[2] = {
       idempotencyKey: "9aeb3ee8-1772-4a79-8d26-684411f91a20",
       saveKind: "manual",
       expectedRevision: 3,
@@ -379,7 +379,8 @@ describe("contract workbench API client", () => {
       negotiationDocuments: {
         referencedGeneratedDocumentIds: []
       }
-    });
+    };
+    await saveContractDraftAggregate("version/1", "lease-secret", draftPayload);
     await queueContractDraftPreview("version/1", 4);
     await submitContractDraft("version/1", "lease-secret", {
       expectedRevision: 4,
@@ -470,6 +471,16 @@ describe("contract workbench API client", () => {
         })
       })
     );
+    const regular = mockApiFetch.mock.calls[5]?.[1];
+    expect(regular).not.toHaveProperty("retryUnauthorized");
+    expect(regular).not.toHaveProperty("responseIsCurrent");
+    const responseIsCurrent = () => false;
+    await saveContractDraftAggregate("version/1", "lease-secret", draftPayload, responseIsCurrent);
+    expect(mockApiFetch).toHaveBeenLastCalledWith("/contract-drafts/version%2F1", {
+      ...regular,
+      retryUnauthorized: false,
+      responseIsCurrent
+    });
   });
 
   it("never includes the raw lease token in a failed write error", async () => {

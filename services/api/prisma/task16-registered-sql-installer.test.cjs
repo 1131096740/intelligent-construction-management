@@ -9,7 +9,10 @@ const { installTask16RegisteredSql } = require("./task16-registered-sql-installe
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const names = ["registered-funding.sql", "registered-history-revision.sql", "registered-write-authority.sql", "registered-canonical-proof.sql", "registered-intercompany.sql", "registered-canonical-adapter.sql", "registered-voucher.sql"];
 
-function fixture(t) {
+const scopeFixture=require("./testdata/task16-schema205-scope-fixture.cjs");
+const { readTask16FixtureSchema, schemaPath } = require("./testdata/task16-schema-fixture.cjs");
+
+function fixture(t, sourceVersion = 205) {
   const temporary = fs.mkdtempSync("/private/tmp/jg-task16-installer-offline-");
   const repo = path.join(temporary, "source");
   fs.mkdirSync(repo);
@@ -25,9 +28,13 @@ function fixture(t) {
   function put(relative, value) { const file = path.join(repo, relative); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); }
   if(fs.existsSync(path.join(__dirname,"task16-prepared-install-stage.cjs")))put("services/api/prisma/task16-prepared-install-stage.cjs",fs.readFileSync(path.join(__dirname,"task16-prepared-install-stage.cjs")));
   put("services/api/prisma/task16-baseline-access.json", fs.readFileSync(path.join(__dirname,"task16-baseline-access.json")));
-  put("services/api/prisma/schema.prisma", "// synthetic only\n");
-  put("services/api/prisma/migrations/migration_lock.toml", 'provider = "postgresql"\n');
-  for (let index = 0; index < 204; index++) put(`services/api/prisma/migrations/${String(index).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${index}\n`);
+  put(schemaPath, readTask16FixtureSchema(path.resolve(__dirname, "../../.."), sourceVersion));
+  const migrationDirectory=path.join(__dirname,"migrations");
+  for(const item of fs.readdirSync(migrationDirectory,{withFileTypes:true})){
+    if (sourceVersion === 205 && item.name === "20261109110000_contract_direct_review_retention_v1") continue;
+    const relative="migrations/"+item.name+(item.isDirectory()?"/migration.sql":"");
+    put("services/api/prisma/"+relative,fs.readFileSync(path.join(__dirname,relative)));
+  }
   put("services/api/src/database/registered-payment-postgres.fixture.ts", "// synthetic, never imported\n");
   put("services/api/src/database/registered-payment-postgres.cases.ts", fs.readFileSync(path.join(__dirname, "../src/database/registered-payment-postgres.cases.ts")));
   const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
@@ -40,18 +47,32 @@ function fixture(t) {
   const packetBytes = fs.readFileSync(packetFile);
   const packet = JSON.parse(packetBytes);
   const resourceReceipt = { runId: "da49e313-e3da-407f-b279-3d09caecfc3e", sourceSha: packet.candidateSha, status: "started-awaiting-driver-verification", databaseName: "jg_task01_da49e313e3da407fb2793d09caecfc3e", containerId: "c".repeat(64), networkId: "d".repeat(64), daemonId: "synthetic-daemon-only", endpoint: "unix:///synthetic/docker.sock", imageId: "sha256:" + "e".repeat(64), port: 15432, cleanup: { status: "pending" } };
-  const identity = { database: resourceReceipt.databaseName, databaseOid: "12345", systemIdentifier: "7234567890123456789", ownerRole: "jg_task01_owner", ownerOid:"10000", installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}, loginRole: "jg_task01_owner", ownerIsDatabaseOwner: true, runtimeRole: "jg_task01_runtime", runtimeSafe: true, strictRuntimeSafe:true, runtimeOid:"20001", observerRole:"jg_task01_observer", observerOid:"20002", observerSafe:true, serverVersion: 160004, tls: true, replication: "origin", migrationLedger: packet.migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })) };
+  const identity = { database: resourceReceipt.databaseName, databaseOid: "12345", systemIdentifier: "7234567890123456789", ownerRole: "jg_task01_owner", ownerOid:"10000", schema205EnforceConfigVerified:true,schema205WitnessSha256:"8".repeat(64), installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}, loginRole: "jg_task01_owner", ownerIsDatabaseOwner: true, runtimeRole: "jg_task01_runtime", runtimeSafe: true, strictRuntimeSafe:true, runtimeOid:"20001", observerRole:"jg_task01_observer", observerOid:"20002", observerSafe:true, serverVersion: 160004, tls: true, replication: "origin", migrationLedger: packet.migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })) };
   const calls = [];
   const resource = {
     getReceipt: () => structuredClone(resourceReceipt),
     execOwnerSql: async (sql, label) => {
       calls.push({ sql, label });
-      return { stdout: JSON.stringify({ ...identity, phase: label === "task16-install-preflight" ? "preflight" : "committed", nonce: /'([a-f0-9]{64})' AS nonce/u.exec(sql)?.[1] }) + "\n" };
+      const preflight=label==="task16-install-preflight";
+      return { stdout: JSON.stringify({ ...identity, schema205ScopeObjects:scopeFixture.scope(preflight?"baseline":"seven"), schema205ScopeDelta:preflight?null:scopeFixture.delta("seven"), schema205Registry:scopeFixture.registry(preflight?"baseline":"seven"), phase:preflight?"preflight":"committed", nonce: /'([a-f0-9]{64})' AS nonce/u.exec(sql)?.[1] }) + "\n" };
     }
   };
   const options = { resource, packetFile, expectedPacketSha256: prepared.packetSha256, ownerRole: "jg_task01_owner", runtimeRole: "jg_task01_runtime", authorizationReference: "synthetic-source-and-adapter-tests-only", expectedResource: { runId: resourceReceipt.runId, sourceSha: packet.candidateSha, containerId: resourceReceipt.containerId, networkId: resourceReceipt.networkId, daemonId: resourceReceipt.daemonId, endpoint: resourceReceipt.endpoint, imageId: resourceReceipt.imageId, databaseName: resourceReceipt.databaseName, port: resourceReceipt.port } };
   return { options, calls, identity, packet, resourceReceipt, repo, git };
 }
+
+test("a verified Schema206 source-only packet cannot reach the installation adapter", async t => {
+  const f = fixture(t, 206);
+  assert.equal(f.packet.sourceProfile, "SCHEMA206_SOURCE_ONLY");
+  f.options.resource.getReceipt = () => {
+    throw Object.assign(new Error("Resource receipt was read"), { code: "TASK16_INSTALL_TEST_RESOURCE_TOUCHED" });
+  };
+  await assert.rejects(installTask16RegisteredSql(f.options), {
+    code: "TASK16_INSTALL_SOURCE_PROFILE_NOT_ADMITTED",
+    installationOutcome: "NOT_ATTEMPTED",
+  });
+  assert.deepEqual(f.calls, []);
+});
 
 test("authorized caller installs the exact seven fragments in one owner transaction after identity preflight", async t => {
   const f = fixture(t);
@@ -186,7 +207,7 @@ test("the actual installation command checks runtime safety and the frozen migra
 });
 
 function baseline(f) {
-  return { status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",schema204PhysicalVerified:true, candidateRoot:f.repo, sourceSha:f.packet.candidateSha,
+  return { status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("baseline"), schema205RegistryFirst:scopeFixture.registry("first"), schema205Registry:scopeFixture.registry("baseline"), candidateRoot:f.repo, sourceSha:f.packet.candidateSha,
     manifestSha256:hash(fs.readFileSync(path.join(f.repo,"services/api/prisma/task16-baseline-access.json"))),
     databaseOid:f.identity.databaseOid, systemIdentifier:f.identity.systemIdentifier,
     ownerOid:"10000",runtimeRole:"jg_task01_runtime", observerRole:"jg_task01_observer", runtimeOid:"20001", observerOid:"20002" };
@@ -195,8 +216,110 @@ test("installer binds the supplied baseline role OIDs and manifest through commi
  const f=fixture(t);f.options.expectedBaseline=baseline(f);
  const result=await installTask16RegisteredSql(f.options);
  assert.equal(result.baselineContinuityVerified,true);assert.equal(result.runtimeOid,"20001");assert.equal(result.observerOid,"20002");
+ assert.deepEqual(result.schema205Registry,scopeFixture.registry("seven"));
+ assert.match(f.calls[0].sql,/SET LOCAL search_path=pg_catalog,public,pg_temp;/u);
+ assert.match(f.calls[1].sql.split("-- synthetic fragment 1")[0],/schema205 registry witness changed/u);
+ const committed=f.calls[1].sql.split("\nCOMMIT;\n").at(-1);
+ assert.ok(committed.includes("SET LOCAL search_path=pg_catalog,public,pg_temp;"));
+ assert.ok(committed.includes("SET LOCAL quote_all_identifiers=off;"));
+ assert.ok(committed.includes("pg_catalog.pg_get_triggerdef(t.oid,false)"));
+ assert.ok(committed.includes("'when',t.tgqual::text"));
+ assert.ok(!/pg_get_expr\(\s*(?:[a-z_]+\.)?tgqual\b/u.test(committed));
  assert.equal(f.calls.length,2);
 });
+test("seven-fragment preflight rejects an unrecorded differently named attachment trigger", async t => {
+ const f=fixture(t);f.options.expectedBaseline={...baseline(f),schema205ScopeObjects:scopeFixture.scope("baseline")};
+ const original=f.options.resource.execOwnerSql;
+ f.options.resource.execOwnerSql=async (sql,label)=>{
+  const reply=await original(sql,label),body=JSON.parse(reply.stdout);
+  body.schema205ScopeObjects=scopeFixture.scope("baseline");
+  body.schema205ScopeObjects.triggers.push(scopeFixture.trigger("ContractDraftAttachment","63999","unrecorded_attachment_trigger"));
+  return {stdout:JSON.stringify(body)};
+ };
+ await assert.rejects(installTask16RegisteredSql(f.options),{
+  code:"TASK16_INSTALL_SCHEMA205_OBJECTS",installationOutcome:"NOT_ATTEMPTED"
+ });
+ assert.deepEqual(f.calls.map(call=>call.label),["task16-install-preflight"]);
+});
+
+const invalidColumnFilters={
+ "nonempty voucher guard columns":["voucherGuard",[1]],
+ "null RESTRICT DELETE columns":["restrictDelete",null],
+ "text RESTRICT UPDATE columns":["restrictUpdate",""]
+};
+for(const variant of ["additional attachment trigger","foreign-key identity",...Object.keys(invalidColumnFilters)]) {
+ test(`seven-fragment commit observation refuses an unproved object delta: ${variant}`,async t=>{
+  const f=fixture(t);f.options.expectedBaseline=baseline(f);
+  const original=f.options.resource.execOwnerSql;
+  f.options.resource.execOwnerSql=async (sql,label)=>{
+   const reply=await original(sql,label);
+   if(label!=="task16-install-transaction")return reply;
+   const body=JSON.parse(reply.stdout), objects=body.schema205ScopeObjects;
+   if(variant==="additional attachment trigger"){
+    objects.triggers.push(scopeFixture.trigger("ContractDraftAttachment","63999","added_during_installation"));
+   }else if(variant==="foreign-key identity"){
+    objects.triggers.find(entry=>entry.id===body.schema205ScopeDelta.restrictDelete).row.tgconstraint="63999";
+   }else{
+    const [trigger,columns]=invalidColumnFilters[variant];
+    objects.triggers.find(entry=>entry.id===body.schema205ScopeDelta[trigger]).row.tgattr=columns;
+   }
+   return {stdout:JSON.stringify(body)};
+  };
+  await assert.rejects(installTask16RegisteredSql(f.options),{
+   code:"TASK16_INSTALL_SCHEMA205_OBJECTS",installationOutcome:"UNKNOWN_DO_NOT_RETRY"
+  });
+  assert.equal(f.calls.length,2);
+ });
+}
+
+test("installer rejects a changed Schema205 witness after the seven-fragment commit reply", async t => {
+ const f=fixture(t); f.options.expectedBaseline=baseline(f);
+ const exec=f.options.resource.execOwnerSql;
+ f.options.resource.execOwnerSql=async (sql,label)=>{
+  const reply=await exec(sql,label);
+  if(label==="task16-install-transaction"){
+   const body=JSON.parse(reply.stdout); body.schema205WitnessSha256="9".repeat(64);
+   return {stdout:JSON.stringify(body)};
+  }
+  return reply;
+ };
+ await assert.rejects(installTask16RegisteredSql(f.options), {
+  code:"TASK16_INSTALL_SCHEMA205_CONTINUITY",installationOutcome:"UNKNOWN_DO_NOT_RETRY"
+ });
+ assert.equal(f.calls.length,2);
+});
+
+for(const [variant, change] of [
+ ["replacement alias OID", witness=>{witness.alias.oid="63207";}],
+ ["original OID reused for new public wrapper", witness=>{witness.publicRoutine.oid=witness.alias.oid;}],
+ ["changed old raw ACL", witness=>{witness.alias.rawAcl.push("unknown=X/jg_task01_owner");}],
+ ["new EXEC inferred from the alias", witness=>{witness.publicRoutine.acl=witness.alias.acl;witness.publicRoutine.rawAcl=witness.alias.rawAcl;}]
+]){
+ test(`seven-fragment registry continuity rejects ${variant}`,async t=>{
+  const f=fixture(t);f.options.expectedBaseline=baseline(f);
+  const original=f.options.resource.execOwnerSql;
+  f.options.resource.execOwnerSql=async (sql,label)=>{
+   const reply=await original(sql,label),body=JSON.parse(reply.stdout);
+   const preflight=label==="task16-install-preflight";
+   if(!preflight)change(body.schema205Registry);
+   return {stdout:JSON.stringify(body)};
+  };
+  await assert.rejects(installTask16RegisteredSql(f.options),{
+   code:"TASK16_INSTALL_SCHEMA205_REGISTRY",installationOutcome:"UNKNOWN_DO_NOT_RETRY"
+  });
+  assert.equal(f.calls.length,2);
+ });
+}
+
+test("seven-fragment entry rejects a replaced first B5 registry witness before the owner call",async t=>{
+ const f=fixture(t);f.options.expectedBaseline=baseline(f);
+ f.options.expectedBaseline.schema205RegistryFirst.publicRoutine.oid="63208";
+ await assert.rejects(installTask16RegisteredSql(f.options),{
+  code:"TASK16_INSTALL_BASELINE_ARGUMENTS",installationOutcome:"NOT_ATTEMPTED"
+ });
+ assert.deepEqual(f.calls,[]);
+});
+
 test("legacy standalone installation explicitly has no baseline continuity proof",async t=>{
  const f=fixture(t);const result=await installTask16RegisteredSql(f.options);assert.equal(result.baselineContinuityVerified,false);
 });

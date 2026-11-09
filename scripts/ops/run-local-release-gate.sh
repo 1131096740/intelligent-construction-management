@@ -187,7 +187,7 @@ run_check api-and-web-production-build run_production_builds
 run_check web-ui-governance "$PNPM_BIN" --filter @jiangkong/web-admin check:ui
 run_check release-manifests "$PNPM_BIN" inspect:release-manifests
 run_check exact-sha-postgresql-16 "$NODE_BIN" services/api/prisma/run-database-dynamic-gate-local.cjs \
-  --execute --candidate-sha "$CANDIDATE_SHA" --confirm LOCAL_PG16_DYNAMIC_GATE
+  --execute --automatic-only --candidate-sha "$CANDIDATE_SHA" --confirm LOCAL_PG16_DYNAMIC_GATE
 run_check pol22-readonly-preflight run_pol22_readonly_preflight
 run_check playwright-p0 run_playwright_p0
 run_check playwright-rc06-mock "$PNPM_BIN" --filter @jiangkong/web-admin test:e2e:rc06:mock

@@ -1,4 +1,7 @@
+import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
+import { hasDirectSigningInput } from "./contract-direct-pending-source";
 import { readContractV2LifecycleContext } from "./contract-v2-lifecycle-context";
+import { readQualifiedGeneratedUpwardReference } from "./contract-generated-upward-operating";
 import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import { Prisma } from "@prisma/client";
@@ -6,10 +9,12 @@ import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON 
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
-  Optional
+  Optional,
+  ServiceUnavailableException
 } from "@nestjs/common";
 import {
   CONTRACT_DRAFT_PRIVATE_READ_ROLES,
@@ -338,15 +343,17 @@ export class ContractReadService {
         : Promise.resolve(new Map<string, RoleKey[]>())
     ]);
     const participantIds = await this.contractParticipantIds(contracts, versions, roleKeysByProject, internalOptions?.actorUserId);
+    const inconsistentDirectEndings = new Set<string>();
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
-      this.contractDraftLifecycleByVersion(versions)
+      this.contractDraftLifecycleByVersion(versions, this.prisma, inconsistentDirectEndings)
     ]);
     const versionByContractId = new Map<string, (typeof versions)[number]>();
     for (const contract of contracts) {
       if (contract.voidedAt) continue;
       const version = versions.find((candidate) =>
         candidate.contractId === contract.id &&
+        !inconsistentDirectEndings.has(candidate.id) &&
         !["deleting", "ended_retained"].includes(
           lifecycleByVersion.get(candidate.id)?.contractLifecycleStage ?? ""
         ) &&
@@ -422,6 +429,7 @@ export class ContractReadService {
       )];
     });
 
+    await this.projectDirectPendingRows(rows, versions, take !== undefined && internalOptions?.actorUserId !== undefined);
     return {
       rows,
       summary: {
@@ -444,10 +452,15 @@ export class ContractReadService {
       abandonedAt?: Date | null;
       abandonedByUserId?: string | null;
       abandonReason?: string | null;
+      draftData?: Prisma.JsonValue;
+      numericProtocolVersion?: number;
+      endedAt?: Date | null;
+      effectiveAt?: Date | null;
     }
   >(
     versions: V[],
-    readClient: PrismaService | Prisma.TransactionClient = this.prisma
+    readClient: PrismaService | Prisma.TransactionClient = this.prisma,
+    inconsistentDirectEndings?: Set<string>
   ): Promise<Map<string, ContractDraftLifecycleClassification>> {
     const versionIds = versions.map((version) => version.id);
     if (!versionIds.length) return new Map();
@@ -626,7 +639,7 @@ export class ContractReadService {
       (row) => row.contractVersionId
     );
 
-    return new Map(versions.map((version) => {
+    return new Map(versions.flatMap<[string, ContractDraftLifecycleClassification]>((version) => {
       const facts: ContractDraftLifecycleFacts = {
         changeType: version.changeType ?? "original",
         versionNo: version.versionNo ?? 1,
@@ -649,7 +662,40 @@ export class ContractReadService {
         abandonedByUserId: version.abandonedByUserId ?? null,
         abandonReason: version.abandonReason ?? null
       };
-      return [version.id, classifyContractDraftLifecycle(facts)];
+      if (inconsistentDirectEndings && facts.status === "abandoned" && hasDirectSigningInput(version.draftData)) {
+        const draft = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : null;
+        const input = draft?.directSigningInput;
+        const marker = input && typeof input === "object" && !Array.isArray(input) ? input : null;
+        const sameTerminalTime = version.abandonedAt instanceof Date && version.endedAt instanceof Date
+          && version.abandonedAt.getTime() === version.endedAt.getTime();
+        const hasOtherWorkflowFacts = facts.approvalInstanceCount || facts.approvalActionCount || facts.formalFileCount
+          || facts.authorizationCount || facts.authorizationLinkCount || facts.sealTaskCount || facts.archiveFileCount
+          || facts.settlementCount || facts.paymentRequestCount;
+        if (version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.versionNo !== 1
+          || marker?.protocolVersion !== 1 || marker.source !== "direct_signed" || marker.relationship !== "outside"
+          || !sameTerminalTime || !facts.abandonedByUserId?.trim() || !facts.abandonReason?.trim()
+          || version.firstSubmittedAt !== null || version.effectiveAt !== null || hasOtherWorkflowFacts) {
+          inconsistentDirectEndings.add(version.id);
+          return [];
+        }
+        const retained: ContractDraftLifecycleClassification = {
+          contractLifecycleStage: "ended_retained",
+          capabilities: {
+            canView: true,
+            canEdit: false,
+            canSubmit: false,
+            canAbandon: false,
+            canPhysicallyDelete: false,
+            canDownload: false,
+            historyRetention: "permanent"
+          },
+          lifecycleKind: "pristine_draft",
+          blockers: [],
+          expectedAction: null
+        };
+        return [[version.id, retained]];
+      }
+      return [[version.id, classifyContractDraftLifecycle(facts)]];
     }));
   }
 
@@ -694,13 +740,15 @@ export class ContractReadService {
       this.contractReadRolesByProject(actorUserId, visibleProjectIds)
     ]);
     const participantIds = await this.contractParticipantIds(contracts, versions, roleKeysByProject, actorUserId);
+    const inconsistentDirectEndings = new Set<string>();
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
-      this.contractDraftLifecycleByVersion(versions)
+      this.contractDraftLifecycleByVersion(versions, this.prisma, inconsistentDirectEndings)
     ]);
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
+      if (inconsistentDirectEndings.has(version.id)) continue;
       versionsByContract.set(version.contractId, [
         ...(versionsByContract.get(version.contractId) ?? []),
         version
@@ -807,8 +855,10 @@ export class ContractReadService {
       )
     };
     const start = (page - 1) * pageSize;
+    const pageRows = classified.slice(start, start + pageSize);
+    await this.projectDirectPendingRows(pageRows, versions);
     return {
-      rows: classified.slice(start, start + pageSize),
+      rows: pageRows,
       meta: { page, pageSize, total: classified.length, totalPages: Math.ceil(classified.length / pageSize) },
       summary
     };
@@ -862,12 +912,14 @@ export class ContractReadService {
         .filter((businessId): businessId is string => Boolean(businessId))
     );
     const participantIds = await this.contractParticipantIds(contracts, versions, roleKeysByProject, actorUserId);
+    const inconsistentDirectEndings = new Set<string>();
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
-      this.contractDraftLifecycleByVersion(versions)
+      this.contractDraftLifecycleByVersion(versions, this.prisma, inconsistentDirectEndings)
     ]);
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
+      if (inconsistentDirectEndings.has(version.id)) continue;
       versionsByContract.set(version.contractId, [...(versionsByContract.get(version.contractId) ?? []), version]);
     }
     const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
@@ -962,8 +1014,10 @@ export class ContractReadService {
       all: count("all")
     };
     const start = (page - 1) * pageSize;
+    const pageRows = classified.slice(start, start + pageSize);
+    await this.projectDirectPendingRows(pageRows, versions);
     return {
-      rows: classified.slice(start, start + pageSize),
+      rows: pageRows,
       meta: { page, pageSize, total: classified.length, totalPages: Math.ceil(classified.length / pageSize) },
       summary
     };
@@ -1114,7 +1168,10 @@ export class ContractReadService {
       settlementsByContractId.set(settlement.contractId, [...rows, settlement]);
     }
 
-    return contracts.filter(contract => effectiveVersionByContractId.has(contract.id) || latestVersionByContractId.get(contract.id)?.signingSubjectType !== "draft_unconfirmed").map((contract) => {
+    return contracts.filter(contract => {
+      const effective = effectiveVersionByContractId.get(contract.id), latest = latestVersionByContractId.get(contract.id);
+      return effective ? !hasDirectSigningInput(effective.draftData) : !hasDirectSigningInput(latest?.draftData) && latest?.signingSubjectType !== "draft_unconfirmed";
+    }).map((contract) => {
       const latestVersion = latestVersionByContractId.get(contract.id);
       const effectiveVersion = effectiveVersionByContractId.get(contract.id);
       const takeover = takeoverByContractId.get(contract.id);
@@ -1199,6 +1256,7 @@ export class ContractReadService {
       }
     });
 
+    const contractInReadScope = Boolean(contract);
     if (!contract && actorUserId) {
       const candidate = await this.prisma.contract.findFirst({
         where: { OR: [{ id: contractId }, { code: contractId }] }
@@ -1241,14 +1299,16 @@ export class ContractReadService {
     ]);
     const roleKeys = actorRoles.roleKeys;
 
+    const inconsistentDirectEndings = new Set<string>();
     const lifecycleByVersion = versions.every((candidate) =>
       typeof candidate.status === "string"
     )
-      ? await this.contractDraftLifecycleByVersion(versions)
+      ? await this.contractDraftLifecycleByVersion(versions, this.prisma, inconsistentDirectEndings)
       : new Map<string, ContractDraftLifecycleClassification>();
     const defaultVersion = versions.find((candidate) => {
       const stage = lifecycleByVersion.get(candidate.id)?.contractLifecycleStage;
-      return stage !== "deleting" &&
+      return !inconsistentDirectEndings.has(candidate.id) &&
+        stage !== "deleting" &&
         stage !== "ended_retained" &&
         this.canReadContractVersionDraft(
           candidate,
@@ -1268,11 +1328,19 @@ export class ContractReadService {
     if (requestedVersionId && !requestedVersion) {
       throw new NotFoundException("未找到请求的合同版本，请刷新合同台账后重试");
     }
+    const inconsistentEnding = requestedVersion ? inconsistentDirectEndings.has(requestedVersion.id) : false;
     if (
-      endedHistoryRead &&
-      this.getContractVisibilityLevel(roleKeys) !== "full"
+      ((endedHistoryRead || inconsistentEnding) && this.getContractVisibilityLevel(roleKeys) !== "full") ||
+      (inconsistentEnding && !contractInReadScope)
     ) {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
+    }
+    if (inconsistentEnding) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION",
+        message: "已签合同资料的结束记录不完整或存在冲突，请核对后重试"
+      });
     }
     // An unapproved precision-v2 draft must not replace an already effective
     // contract's financial view. Its exact draft is reachable explicitly.
@@ -1289,12 +1357,14 @@ export class ContractReadService {
     if (!this.canReadContractVersionDraft(version, contract.ownerUserId, actorUserId, roleKeys)) throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     assertContractDraftNumericProtocol(version, numericProtocol);
 
-    const terms = await this.prisma.paymentTermsVersion.findFirst({
-      where: { contractVersionId: version.id },
-      orderBy: { versionNo: "desc" }
-    });
-
-    if (!terms) {
+    const directPending = hasDirectSigningInput(version.draftData);
+    const sourceDraft = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : null;
+    const sourceMarker = sourceDraft?.directSigningInput && typeof sourceDraft.directSigningInput === "object" && !Array.isArray(sourceDraft.directSigningInput) ? sourceDraft.directSigningInput : null;
+    const terms = directPending
+      ? typeof sourceMarker?.fixedPaymentTermsVersionId === "string" ? await this.prisma.paymentTermsVersion.findUnique({ where: { id: sourceMarker.fixedPaymentTermsVersionId } }) : null
+      : await this.prisma.paymentTermsVersion.findFirst({ where: { contractVersionId: version.id }, orderBy: { versionNo: "desc" } });
+    if (directPending && terms && (terms.contractVersionId !== version.id || terms.contractId !== contract.id)) throw new NotFoundException("付款约定来源与本合同不一致，请核对后重试");
+    if (!terms && !directPending) {
       throw new NotFoundException("未找到合同付款条款版本，请刷新合同台账后重试");
     }
 
@@ -1308,10 +1378,10 @@ export class ContractReadService {
       latestApprovalInstance,
       historicalApprovedInstances
     ] = await Promise.all([
-      this.prisma.paymentTermsStage.findMany({
+      terms ? this.prisma.paymentTermsStage.findMany({
         where: { paymentTermsVersionId: terms.id },
         orderBy: { createdAt: "asc" }
-      }),
+      }) : Promise.resolve([]),
       this.prisma.settlement.findMany({
         where: { contractId: contract.id },
         orderBy: { createdAt: "asc" }
@@ -1369,7 +1439,7 @@ export class ContractReadService {
     ]);
     const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
     const draftLifecycle = lifecycleByVersion.get(version.id) ??
-      (await this.contractDraftLifecycleByVersion([version])).get(version.id);
+      (await this.contractDraftLifecycleByVersion([version], this.prisma, inconsistentDirectEndings)).get(version.id);
     if (!draftLifecycle) {
       throw new NotFoundException("未找到合同版本生命周期，请刷新合同台账后重试");
     }
@@ -1464,8 +1534,21 @@ export class ContractReadService {
         ? await loadContractOwnerRisk(this.prisma, contract.projectId)
         : null;
 
-    const v2Lifecycle = await readContractV2LifecycleContext(this.prisma, contract, version, actorUserId, readOnlyHistory || version.id !== versions[0]?.id);
-    const status = this.statusView(version.status);
+    const lifecycleReadOnly = readOnlyHistory || version.id !== versions[0]?.id;
+    const externalLifecycle = !lifecycleReadOnly && !directPending && version.numericProtocolVersion === 2
+      && (version.signingSubjectType === "affiliate" || version.signingSubjectType === "upward")
+      && ["approved_pending_seal", "seal_approved_pending_archive", "effective"].includes(version.status);
+    const v2Lifecycle = externalLifecycle
+      ? await this.prisma.$transaction(tx => readContractV2LifecycleContext(tx, contract, version, actorUserId, lifecycleReadOnly))
+      : await readContractV2LifecycleContext(this.prisma, contract, version, actorUserId, lifecycleReadOnly);
+    const canReadUpwardReference = actorUserId && this.projectVisibility && contractInReadScope
+      && (contract.ownerUserId === actorUserId || hasSensitiveLedgerReadRole("settlement", roleKeys));
+    const upwardReference = canReadUpwardReference && version.numericProtocolVersion === 2
+      && version.signingSubjectType === "upward" && version.status === "effective"
+      ? await this.readUpwardOperatingReference(contract.id, version.id, contract.projectId, actorUserId)
+      : null;
+    const directDisplay = directPending ? this.directPendingDisplay(version.status) : null;
+    const status = directDisplay ? { label: directDisplay.label, tone: "default" as const } : this.statusView(version.status);
     const availableActions = readOnlyHistory
       ? []
       : this.contractActions(
@@ -1544,7 +1627,8 @@ export class ContractReadService {
         ? candidateReviewApprovalContext
         : null;
 
-    const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
+    const directNumbers = directPending ? await directPendingNumbers(this.prisma, [version]) : null;
+    const contractCode = directNumbers ? directPendingNumberLabel(directNumbers.get(version.id)) : contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
     const currentApproval = historicalApprovedInstances.find(
       (item) => item.businessId === version.id && item.status === "in_progress"
@@ -1610,34 +1694,39 @@ export class ContractReadService {
     });
     const executionVoucherViews = await Promise.all(paymentExecutions.map(async row=>({...row,voucherFileId:await paymentExecutionVoucherFileId(this.prisma,row)})));
     const precisionDraft = version.numericProtocolVersion === 2 && version.status === "draft";
-    const financialReadModel = precisionDraft ? {
+    const directEnded = directPending && draftLifecycle.contractLifecycleStage === "ended_retained";
+    const financialReadModel = precisionDraft || directEnded ? {
       summary: [], settlementRows: [], paymentRows: [],
-      calculationNote: "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
+      calculationNote: directEnded
+        ? "合同资料已结束并保留，财务余额不适用。"
+        : "合同草稿尚未生效，财务余额不适用；请进入合同草稿工作台查看并保存精确金额。"
     } : this.settlementPayment(version.amountCents, settlements, settlementArchiveFiles,
       paymentRequests, executionVoucherViews, projectProxyPayments, historicalBalance);
-    if (!precisionDraft && actorUserId && (!hasSensitiveLedgerReadRole("settlement", roleKeys) || !hasSensitiveLedgerReadRole("payment_request", roleKeys))) {
+    if (!precisionDraft && !directEnded && actorUserId && (!hasSensitiveLedgerReadRole("settlement", roleKeys) || !hasSensitiveLedgerReadRole("payment_request", roleKeys))) {
       financialReadModel.summary = [];
       financialReadModel.calculationNote = "仅展示本人发起或参与的结算及付款记录；因资料权限范围有限，不展示汇总余额，请由有权岗位核对。";
     }
     return {
       businessEntrySubmissions,
-      id: contractCode,
+      id: directPending ? contract.id : contractCode,
       contractVersionId: version.id,
       title: `${contractCode} · ${contract.name}`,
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
         { label: "当前版本", value: `合同 v${version.versionNo}` },
-        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(version)] },
-        { label: "付款条款", value: `v${terms.versionNo} ${this.termsStatusLabel(terms.status)}` },
+        { label: "合同分类", value: CONTRACT_RELATIONSHIP_LABELS[upwardReference ? "upward" : downstreamContractRelationship(version)] },
+        { label: "付款条款", value: terms ? `v${terms.versionNo} ${this.termsStatusLabel(terms.status)}` : "未填写付款约定" },
         { label: "责任部门", value: "合同部" },
         { label: "当前处理人", value: this.currentOwnerLabel(version.status) },
-        { label: "下一步动作", value: this.nextActionLabel(version.status), tone: status.tone }
+        { label: "下一步动作", value: directDisplay?.nextAction ?? this.nextActionLabel(version.status), tone: status.tone }
       ],
       baseInfo: [
         { label: "合同编号", value: contractCode },
         { label: "合同名称", value: contract.name },
         { label: "项目", value: project?.name ?? contract.projectId },
         { label: "相对方", value: contract.counterparty },
+        ...(upwardReference ? [{ label: "对上内部依据",
+          value: `我方公司：${upwardReference.company.name}；施工企业：${upwardReference.enterprise.name}` }] : []),
         { label: "合同金额", value: this.formatContractAmount(version, numericProtocol) },
         {
           label: "发票类型",
@@ -1651,8 +1740,8 @@ export class ContractReadService {
         },
         { label: "创建人", value: "合同部" }
       ],
-      effectivenessSteps: this.effectivenessSteps(version.status),
-      paymentTermStages: stages.map((stage) => ({
+      effectivenessSteps: directDisplay?.steps ?? this.effectivenessSteps(version.status),
+      paymentTermStages: terms ? stages.map((stage) => ({
         id: stage.id,
         version: `v${terms.versionNo}`,
         paymentTermsVersion: `v${terms.versionNo}`,
@@ -1665,7 +1754,7 @@ export class ContractReadService {
         advanceDeductionMode: stage.advanceDeductionMode,
         advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
         advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps
-      })),
+      })) : [],
       settlementBlockMessage: this.settlementBlockMessage(version.status, contract.contractTypeKey),
       settlementPayment: financialReadModel,
       archiveFiles: contractArchiveFiles,
@@ -1677,22 +1766,22 @@ export class ContractReadService {
       sealTask: signingFacts.sealTask,
       signingMaterialChangeContext,
       approvalTimeline,
-      availableActions,
-      availableActionKeys: availableActions
+      availableActions: directPending ? availableActions.map(action => ({ ...action, enabled: false, disabledReason: "已签合同待登记后续办理尚未开放" })) : availableActions,
+      availableActionKeys: (directPending ? [] : availableActions)
         .filter((action) => action.enabled)
         .map((action) => action.key),
       reviewApprovalContext,
       withdrawApprovalContext,
       historyReadOnly: readOnlyHistory,
       contractLifecycleStage: draftLifecycle.contractLifecycleStage,
-      contractLifecycleCapabilities: draftLifecycle.capabilities,
+      contractLifecycleCapabilities: directPending ? { ...draftLifecycle.capabilities, canSubmit: false, canPhysicallyDelete: false, canAbandon: version.status === "draft" } : draftLifecycle.capabilities,
       lifecycleKind: draftLifecycle.lifecycleKind,
       lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
-      documentContentRevision: version.documentContentRevision,
+      documentContentRevision: directPending ? null : version.documentContentRevision,
       documentContentFingerprint: version.documentContentFingerprint,
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
-      primaryAction: primaryActionKey(availableActions),
+      primaryAction: primaryActionKey(directPending ? [] : availableActions),
       disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
@@ -1700,8 +1789,30 @@ export class ContractReadService {
         { label: "归档资料", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ],
-      changeVersions: contractChangeVersionsReadModel(versions, historicalApprovedInstances)
+      changeVersions: contractChangeVersionsReadModel(
+        versions.filter(candidate => !inconsistentDirectEndings.has(candidate.id)),
+        historicalApprovedInstances
+      )
     };
+  }
+
+  private async readUpwardOperatingReference(contractId: string, versionId: string, projectId: string, actorUserId: string) {
+    return this.prisma.$transaction(async tx => {
+      const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+      if (!actor?.isActive || !(await this.projectVisibility?.visibleProjectIdsInTransaction(tx, actorUserId))?.includes(projectId)) return null;
+      const contract = await tx.contract.findUnique({ where: { id: contractId } });
+      const version = await tx.contractVersion.findUnique({ where: { id: versionId } });
+      if (!contract || contract.projectId !== projectId || contract.voidedAt || version?.contractId !== contract.id
+        || version.numericProtocolVersion !== 2 || version.signingSubjectType !== "upward" || version.status !== "effective") return null;
+      const { roleKeys } = await this.actorRoles(actorUserId, projectId, tx);
+      if (contract.ownerUserId !== actorUserId && !hasSensitiveLedgerReadRole("settlement", roleKeys)) return null;
+      const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
+        archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed" } });
+      return archive ? readQualifiedGeneratedUpwardReference(tx, contract, version, archive) : null;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }).catch(error => {
+      if (error instanceof ConflictException || error instanceof ServiceUnavailableException) return null;
+      throw error;
+    });
   }
 
   private sampleDetail(contractId: string): ContractDetailReadModel {
@@ -2766,6 +2877,27 @@ export class ContractReadService {
     return labels[status] ?? "合同部";
   }
 
+  private directPendingDisplay(status: string): {
+    label: string;
+    nextAction: string;
+    steps: ContractDetailReadModel["effectivenessSteps"];
+  } | null {
+    if (status === "abandoned") return {
+      label: "已结束，保留资料",
+      nextAction: "查看保留资料",
+      steps: [{ label: "已签合同资料", status: "已结束，保留资料", tone: "default" }]
+    };
+    if (status === "draft") return {
+      label: "已签合同资料待登记",
+      nextAction: "登记功能尚未开放",
+      steps: [
+        { label: "已签合同资料", status: "待登记", tone: "default" },
+        { label: "登记", status: "尚未开放", tone: "default" }
+      ]
+    };
+    return null;
+  }
+
   private nextActionLabel(status: string): string {
     const labels: Record<string, string> = {
       draft: "提交合同审批",
@@ -3313,6 +3445,32 @@ export class ContractReadService {
    * status. Amounts, payment terms, bills, body text, files, versions and
    * approval history are never projected for this role.
    */
+  private async projectDirectPendingRows(
+    rows: Record<string, unknown>[],
+    versions: Array<{ id: string; contractId: string; draftData?: unknown }>,
+    includeOriginalNumberState = false
+  ) {
+    const rowIds = new Set(rows.map(row => row.contractVersionId));
+    const visible = versions.filter(version => rowIds.has(version.id));
+    const numbers = await directPendingNumbers(this.prisma, visible);
+    for (const row of rows) if (typeof row.contractVersionId === "string" && numbers.has(row.contractVersionId)) {
+      const originalSignedNumber = numbers.get(row.contractVersionId);
+      row.contractNo = directPendingNumberLabel(originalSignedNumber);
+      const directDisplay = typeof row.status === "string" ? this.directPendingDisplay(row.status) : null;
+      if (directDisplay) {
+        row.currentNode = directDisplay.label;
+        row.nextAction = directDisplay.nextAction;
+      }
+      if (includeOriginalNumberState) {
+        row.originalSignedNumber = originalSignedNumber ?? null;
+        row.originalSignedNumberState = originalSignedNumber === undefined ? "unavailable" : "available";
+      }
+      row.copyAvailable = false;
+      const capabilities = row.contractLifecycleCapabilities;
+      if (capabilities && typeof capabilities === "object" && !Array.isArray(capabilities)) row.contractLifecycleCapabilities = { ...capabilities, canSubmit: false, canPhysicallyDelete: false };
+    }
+  }
+
   private contractEmployeeSummaryRow(
     contract: {
       id: string; code: string | null; temporaryCode: string | null; name: string;

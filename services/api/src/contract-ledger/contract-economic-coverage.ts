@@ -1,3 +1,4 @@
+import { hasDirectSigningInput } from "../contract/contract-direct-pending-source";
 import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import { normalizeEconomicScope } from "./contract-economic-scope";
 import { confirmEconomicSettlementCoverage,assertSettledScopesPreserved } from "./contract-economic-settlement";
@@ -82,10 +83,17 @@ export function normalizeCoverage(value: unknown, relation: string, left: Econom
   return rows;
 }
 function normalized(value: string) { return value.normalize("NFKC").replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase(); }
-export function suspectedOverlap(a: EconomicDocument, b: EconomicDocument) {
+export function suspectedOverlap(a: EconomicDocument, b: EconomicDocument, amountPrecision: "legacy-cents" | "business-yuan" = "legacy-cents") {
   if (a.ref === b.ref || !normalized(a.counterparty) || normalized(a.counterparty) !== normalized(b.counterparty)) return false;
   if (normalized(a.reference) && normalized(a.reference) === normalized(b.reference)) return true;
   if (normalized(a.title) && normalized(a.title) === normalized(b.title)) return true;
+  if (amountPrecision === "business-yuan") {
+    const left = economicDocumentYuan(a), right = economicDocumentYuan(b);
+    if (left === null || right === null) return false;
+    const first = new EconomicDecimal(left), second = new EconomicDecimal(right);
+    if (first.isZero() || second.isZero()) return false;
+    return first.minus(second).abs().times(10).lte(EconomicDecimal.max(first, second));
+  }
   if (a.amountCents === null || b.amountCents === null || a.amountCents === 0n || b.amountCents === 0n) return false;
   const delta = a.amountCents > b.amountCents ? a.amountCents-b.amountCents : b.amountCents-a.amountCents;
   return delta * 10n <= (a.amountCents > b.amountCents ? a.amountCents : b.amountCents);
@@ -105,7 +113,8 @@ export async function economicDocuments(tx: Prisma.TransactionClient, projectId:
   const documents: EconomicDocument[] = [];
   for (const c of contracts) {
     const own=versions.filter(v=>v.contractId===c.id);
-    const v = selection ? (selection.targetRef===`contract:${c.id}` && selection.targetVersionId ? own.find(v=>v.id===selection.targetVersionId) : own.find(v=>v.effectiveAt) ?? own[0]) : own[0]; if (!v) continue;
+    const v = selection ? (selection.targetRef===`contract:${c.id}` && selection.targetVersionId ? own.find(v=>v.id===selection.targetVersionId) : own.find(v=>v.effectiveAt) ?? own[0]) : own[0];
+    if (!v || hasDirectSigningInput(v.draftData)) continue;
     documents.push({ ref: `contract:${c.id}`, projectId, reference: c.code ?? c.temporaryCode ?? "", title: c.name, counterparty: c.counterparty,
       ...(v.numericProtocolVersion===2?{numericProtocolVersion:2 as const,amountCents:null,amountYuan:normalizeBusinessAmount(v.amountYuan===null?null:v.amountYuan.toString())}:{amountCents:v.amountLimitType === "uncapped" ? null : v.amountCents}), version: `${v.id}:${v.documentContentRevision}`,targetVersionId:v.id,
       formal: Boolean(v.effectiveAt), hasFormalHistory: own.some(v=>Boolean(v.effectiveAt)), settledCents: settlements.filter(s=>s.contractId===c.id).reduce((a,s)=>a+s.amountCents,0n) });

@@ -250,12 +250,12 @@ BEGIN
     OR NOT COALESCE((x -> 'money') ? 'amountYuan', FALSE)
     OR NOT COALESCE((x -> 'money') ? 'commitmentDeltaYuan', FALSE)
     OR (x #> '{money,predecessor}') IS DISTINCT FROM 'null'::JSONB
-    OR CASE WHEN v."amountYuan" IS NULL THEN
+    OR (CASE WHEN v."amountYuan" IS NULL THEN
       (x #>> '{money,amountState}') IS DISTINCT FROM 'unknown' OR (x #> '{money,amountYuan}') IS DISTINCT FROM 'null'::JSONB
       OR (x #> '{money,commitmentDeltaYuan}') IS DISTINCT FROM 'null'::JSONB
     ELSE (x #>> '{money,amountState}') IS DISTINCT FROM 'known'
       OR CASE WHEN (x #>> '{money,amountYuan}') ~ '^(0|[1-9][0-9]{0,19})(\.[0-9]{1,4})?$'
-        THEN (x #>> '{money,amountYuan}')::NUMERIC IS DISTINCT FROM v."amountYuan" ELSE TRUE END END THEN
+        THEN (x #>> '{money,amountYuan}')::NUMERIC IS DISTINCT FROM v."amountYuan" ELSE TRUE END END) THEN
     RAISE EXCEPTION '独立来源金额必须保真实四位与未知，不得按分或补零' USING ERRCODE='23514';
   END IF;
   -- Original-only authority has no predecessor. Recompute exclusion from real
@@ -315,16 +315,16 @@ BEGIN
   END LOOP;
   IF x #> '{money,economicReviewSources}' IS DISTINCT FROM review_sources
     OR jsonb_typeof(x #> '{money,economicExcludedYuan}') IS DISTINCT FROM 'string'
-    OR CASE WHEN x #>> '{money,economicExcludedYuan}' ~ '^(0|[1-9][0-9]{0,19})(\.[0-9]{1,4})?$'
-      THEN (x #>> '{money,economicExcludedYuan}')::NUMERIC IS DISTINCT FROM excluded_yuan ELSE TRUE END THEN
+    OR (CASE WHEN x #>> '{money,economicExcludedYuan}' ~ '^(0|[1-9][0-9]{0,19})(\.[0-9]{1,4})?$'
+      THEN (x #>> '{money,economicExcludedYuan}')::NUMERIC IS DISTINCT FROM excluded_yuan ELSE TRUE END) THEN
     RAISE EXCEPTION '归档经济排除须与真实已确认适用复核及四位总和一致' USING ERRCODE='23514';
   END IF;
   IF v."amountYuan" IS NOT NULL AND excluded_yuan > v."amountYuan" THEN RAISE EXCEPTION '已确认重叠范围超过合同金额，不能伪造承诺余额' USING ERRCODE='23514'; END IF;
   commitment_delta := CASE WHEN v."amountYuan" IS NULL THEN NULL ELSE v."amountYuan" - excluded_yuan END;
-  IF CASE WHEN commitment_delta IS NULL THEN x #> '{money,commitmentDeltaYuan}' IS DISTINCT FROM 'null'::JSONB
+  IF (CASE WHEN commitment_delta IS NULL THEN x #> '{money,commitmentDeltaYuan}' IS DISTINCT FROM 'null'::JSONB
       ELSE CASE WHEN jsonb_typeof(x #> '{money,commitmentDeltaYuan}') = 'string' AND x #>> '{money,commitmentDeltaYuan}' ~ '^-?(0|[1-9][0-9]{0,19})(\.[0-9]{1,4})?$'
-        THEN (x #>> '{money,commitmentDeltaYuan}')::NUMERIC IS DISTINCT FROM commitment_delta ELSE TRUE END END
-    OR x #>> '{money,direction}' IS DISTINCT FROM CASE WHEN commitment_delta IS NULL THEN 'notice' WHEN commitment_delta < 0 THEN 'decrease' ELSE 'increase' END THEN
+        THEN (x #>> '{money,commitmentDeltaYuan}')::NUMERIC IS DISTINCT FROM commitment_delta ELSE TRUE END END)
+    OR x #>> '{money,direction}' IS DISTINCT FROM (CASE WHEN commitment_delta IS NULL THEN 'notice' WHEN commitment_delta < 0 THEN 'decrease' ELSE 'increase' END) THEN
     RAISE EXCEPTION '承诺净额及影响方向必须保原金额减真实排除，未知不补零' USING ERRCODE='23514';
   END IF;
   -- Joining-version history and current selected CompanyVersion are independent.
@@ -396,14 +396,14 @@ BEGIN
     OR expected ->> 'sourceVersion' IS DISTINCT FROM f."sourceVersion"::TEXT
     OR expected ->> 'numericProtocolVersion' IS DISTINCT FROM '2'
     OR expected ->> 'sourceImpactKey' IS DISTINCT FROM impact."sourceImpactKey" OR expected ->> 'impactKind' IS DISTINCT FROM impact."impactKind"
-    OR expected ->> 'amountState' IS DISTINCT FROM CASE WHEN f."amountYuan" IS NULL THEN 'unknown' ELSE 'known' END
+    OR expected ->> 'amountState' IS DISTINCT FROM (CASE WHEN f."amountYuan" IS NULL THEN 'unknown' ELSE 'known' END)
     OR expected ->> 'direction' IS DISTINCT FROM impact."direction" OR impact."direction" IS DISTINCT FROM e #>> '{sourceBasis,money,direction}'
     OR f."confirmedByUserId" IS DISTINCT FROM a."confirmedByUserId" OR f."confirmedAt" IS DISTINCT FROM a."confirmedAt" OR f."occurredAt" IS DISTINCT FROM a."confirmedAt"
-    OR CASE WHEN e #> '{sourceBasis,money,commitmentDeltaYuan}' = 'null'::JSONB THEN f."amountYuan" IS NOT NULL
+    OR (CASE WHEN e #> '{sourceBasis,money,commitmentDeltaYuan}' = 'null'::JSONB THEN f."amountYuan" IS NOT NULL
       WHEN (e #>> '{sourceBasis,money,commitmentDeltaYuan}') ~ '^-?(0|[1-9][0-9]{0,19})(\.[0-9]{1,4})?$' THEN f."amountYuan" IS DISTINCT FROM abs((e #>> '{sourceBasis,money,commitmentDeltaYuan}')::NUMERIC)
-      ELSE TRUE END
+      ELSE TRUE END)
     OR expected ->> 'sourceBasisSha256' IS DISTINCT FROM e ->> 'sourceBasisSha256'
-    OR (expected -> 'amountYuan') IS DISTINCT FROM CASE WHEN f."amountYuan" IS NULL THEN 'null'::JSONB ELSE to_jsonb(f."amountYuan"::TEXT) END THEN
+    OR (expected -> 'amountYuan') IS DISTINCT FROM (CASE WHEN f."amountYuan" IS NULL THEN 'null'::JSONB ELSE to_jsonb(f."amountYuan"::TEXT) END) THEN
     RAISE EXCEPTION '已启用经营的归档缺少冻结预期的真实Fact/Impact' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
@@ -481,9 +481,9 @@ BEGIN
         OR p_payload."confirmedByUserId" IS DISTINCT FROM v_archive."authoritySnapshot" ->> 'handlerUserId'
         OR p_payload."confirmedAt" IS DISTINCT FROM (v_archive."authoritySnapshot" ->> 'archivedAt')::TIMESTAMPTZ
         OR p_payload."occurredAt" IS DISTINCT FROM (v_archive."authoritySnapshot" ->> 'archivedAt')::TIMESTAMPTZ
-        OR CASE WHEN v_archive."authoritySnapshot" #> '{sourceBasis,money,commitmentDeltaYuan}' = 'null'::JSONB THEN p_payload."amountYuan" IS NOT NULL
+        OR (CASE WHEN v_archive."authoritySnapshot" #> '{sourceBasis,money,commitmentDeltaYuan}' = 'null'::JSONB THEN p_payload."amountYuan" IS NOT NULL
           WHEN (v_archive."authoritySnapshot" #>> '{sourceBasis,money,commitmentDeltaYuan}') ~ '^-?(0|[1-9][0-9]{0,19})(\.[0-9]{1,4})?$' THEN p_payload."amountYuan" IS DISTINCT FROM abs((v_archive."authoritySnapshot" #>> '{sourceBasis,money,commitmentDeltaYuan}')::NUMERIC)
-          ELSE TRUE END
+          ELSE TRUE END)
         OR p_payload."idempotencyKey" IS DISTINCT FROM 'contract_version:' || p_payload."sourceBusinessId"
         OR p_payload."sourceSnapshot" ->> 'archiveAuthorityId' IS DISTINCT FROM v_archive."id"
         OR p_payload."sourceSnapshot" ->> 'archiveAuthoritySha256' IS DISTINCT FROM v_archive."authoritySha256"

@@ -349,6 +349,9 @@ function parseArguments(argv) {
     } else if (argument === "--confirm") {
       options.confirmation = argv[++index];
       if (!options.confirmation) fail("--confirm 缺少值");
+    } else if (argument === "--automatic-only") {
+      if (options.automaticOnly) fail("--automatic-only 不能重复");
+      options.automaticOnly = true;
     } else if (argument === "--group") {
       const group = argv[++index];
       if (!group) fail("--group 缺少数据库组名称");
@@ -363,6 +366,7 @@ function parseArguments(argv) {
   }
   if (modes.size > 1) fail("--list、--validate-manifest 与 --execute 只能选择一个");
   options.mode = [...modes][0] ?? "preview";
+  assertAutomaticSelection(options, Object.keys(task01).length > 0);
   if (Object.keys(task01).length) {
     if (options.mode !== "execute" || !options.groups.includes(TASK01_GROUP)) {
       fail("任务01独立参数只能用于显式单独执行任务01组");
@@ -389,6 +393,33 @@ function selectCoveredGroups(manifest, requestedGroups) {
   return manifest.coveredGroups.filter((group) => uniqueGroups.has(group.id));
 }
 
+function assertAutomaticSelection(options, hasTask01Inputs = Boolean(options.task01)) {
+  if (options.automaticOnly && (options.groups.length > 0 || hasTask01Inputs)) {
+    fail("--automatic-only 不能与 --group 或任务01独立参数同时使用");
+  }
+}
+
+function groupsForInvocation(manifest, options) {
+  if (!options.automaticOnly) return selectCoveredGroups(manifest, options.groups);
+  assertAutomaticSelection(options);
+  const automatic = manifest.coveredGroups.filter(group => ciExecutionFor(group) === "automatic");
+  if (automatic.length === 0) fail("--automatic-only 未找到自动执行组");
+  return automatic;
+}
+
+function automaticScopeEvidence(manifest, options) {
+  if (!options.automaticOnly) return {};
+  const deferred = manifest.coveredGroups.filter(group => ciExecutionFor(group) === "manual-only");
+  return {
+    executionScope: "automatic-only",
+    deferredManualOnly: {
+      ...executionInventory(deferred).manualOnly,
+      groupIds: deferred.map(group => group.id),
+      executionStatus: "NOT_EXECUTED"
+    }
+  };
+}
+
 function selectedCoverage(groups) {
   return {
     pendingFiles: groups.reduce((total, group) => total + group.testFiles.length, 0),
@@ -407,7 +438,7 @@ function assertExecutionArguments(options, manifest) {
       `--execute 必须提供 --confirm ${manifest.executionPolicy.confirmation}`
     );
   }
-  const selected = selectCoveredGroups(manifest, options.groups);
+  const selected = groupsForInvocation(manifest, options);
   if (selected.some(group => group.id === TASK01_GROUP)) {
     if (options.groups.length !== 1 || options.groups[0] !== TASK01_GROUP || selected.length !== 1) {
       fail("任务01必须显式单独选择，不能默认all或与旧组混跑");
@@ -652,7 +683,7 @@ async function runPreflight(environment) {
 async function executeGate({ manifest, options, sourceEnv = process.env }) {
   assertExecutionArguments(options, manifest);
   assertSafeExecutionEnvironment(sourceEnv);
-  const coveredGroups = selectCoveredGroups(manifest, options.groups);
+  const coveredGroups = groupsForInvocation(manifest, options);
   const coverage = selectedCoverage(coveredGroups);
   if (coveredGroups.length === 1 && coveredGroups[0].id === TASK01_GROUP) {
     if (sourceEnv.GITHUB_ACTIONS === "true") fail("任务01仅限本机独立授权，禁止GitHub Actions自动执行");
@@ -741,6 +772,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       coveredTests: coverage.coveredTests,
       coveredFiles: coverage.coveredFiles,
       executionInventory: executionInventory(coveredGroups),
+      ...automaticScopeEvidence(manifest, options),
       remainingTests: manifest.inventory.remainingTests,
       remainingFiles: manifest.inventory.remainingFiles,
       groups: groupReceipts
@@ -760,7 +792,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
 }
 
 function preview(manifest, validation, options) {
-  const coveredGroups = selectCoveredGroups(manifest, options.groups);
+  const coveredGroups = groupsForInvocation(manifest, options);
   const coverage = selectedCoverage(coveredGroups);
   const payload = {
     schemaVersion: 1,
@@ -768,6 +800,7 @@ function preview(manifest, validation, options) {
     mode: options.mode,
     executed: false,
     executionInventory: executionInventory(coveredGroups),
+    ...automaticScopeEvidence(manifest, options),
     manifestValid: true,
     migrationCount: validation.migrationCount,
     terminalMigration: validation.terminalMigration,

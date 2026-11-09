@@ -10,6 +10,7 @@ import { Type } from "class-transformer";
 import {
   Allow,
   ArrayNotEmpty,
+  ArrayMaxSize,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -178,6 +179,10 @@ export class SaveContractClauseDto implements ContractClauseDefinition {
 
 export class SaveContractDraftFieldsDto {
   @IsOptional()
+  @IsString({ message: "原合同编号必须是文字或空值" })
+  originalSignedNumber?: string | null;
+
+  @IsOptional()
   @IsIn([2], { message: "合同数值版本不正确，请刷新工作台" })
   numericProtocolVersion?: 2;
 
@@ -343,6 +348,15 @@ export class SaveContractDraftNegotiationDocumentsDto {
   referencedGeneratedDocumentIds!: string[];
 }
 
+class SaveDirectPendingPaymentTermsDto {
+  @IsString({ message: "付款约定原文必须是文字" })
+  originalText!: string;
+
+  @IsArray({ message: "付款阶段必须是数组" })
+  @ArrayMaxSize(0, { message: "已签合同待登记仅保存实际付款原文" })
+  stages!: CreatePaymentTermsStageDto[];
+}
+
 export class SaveContractDraftAggregateDto {
   static readonly [API_VALIDATION_ERROR_CODE] = "DRAFT_VALIDATION_FAILED";
 
@@ -389,7 +403,17 @@ export class SaveContractDraftAggregateDto {
   @ValidateIf((_object, value) => value !== null)
   @IsObject({ message: "付款条款必须是对象或 null" })
   @ValidateNested({ message: "付款条款必须是对象或 null" })
-  @Type(() => SaveContractDraftPaymentTermsDto)
+  @Type(options => {
+    const parent: unknown = options?.object;
+    if (parent && typeof parent === "object" && "draft" in parent) {
+      const draft = parent.draft;
+      if (draft && typeof draft === "object" && "draftData" in draft) {
+        const data = draft.draftData;
+        if (data && typeof data === "object" && Object.hasOwn(data, "directSigningInput")) return SaveDirectPendingPaymentTermsDto;
+      }
+    }
+    return SaveContractDraftPaymentTermsDto;
+  })
   paymentTerms!: SaveContractDraftPaymentTermsDto | null;
 
   @IsArray({ message: "合同草稿附件必须是数组" })

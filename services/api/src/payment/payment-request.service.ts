@@ -185,6 +185,14 @@ interface PaymentExecutionLockRow {
   paidAmountCents: bigint;
 }
 
+type RegisteredPaymentCoordinates = {
+  idempotencyKey: string;
+  paymentId: string;
+  actorUserId: string;
+  amountCents: bigint;
+  paidAt: Date;
+};
+
 interface PaymentExecutionFactRow {
   id: string;
   idempotencyKey: string;
@@ -3272,29 +3280,7 @@ export class PaymentRequestService {
 
     const files = this.files;
     const projectFunding = this.projectFunding;
-    const unconfirmedRegisteredResult = () => new ConflictException({
-      code: "PAYMENT_RESULT_UNCONFIRMED",
-      resultStatus: "unconfirmed",
-      idempotencyKey,
-      message: "尚未确认实际付款登记结果，请保留原请求并先查询，不要重复登记"
-    });
-    const assertRegisteredReplay = async (
-      tx: Prisma.TransactionClient,
-      execution: PaymentExecutionFactRow,
-      registration: RecordRegisteredPaymentExecutionDto,
-      conflictMessage: string
-    ) => {
-      const receipt = await tx.registeredPaymentFunding.findUnique({ where: { executionId: execution.id } });
-      if (!receipt && execution.voucherFileId === null && execution.paymentRequestId === paymentId
-        && execution.idempotencyKey === idempotencyKey && execution.executedByUserId === actorUserId
-        && execution.amountCents === amountCents && execution.paidAt.getTime() === paidAt.getTime()) {
-        throw unconfirmedRegisteredResult();
-      }
-      if (!receipt || execution.paymentRequestId !== paymentId
-        || receipt.payloadFingerprint !== registeredPaymentFingerprint(execution.paymentRequestId, actorUserId, registration)) {
-        throw new ConflictException(conflictMessage);
-      }
-    };
+    const registeredCoordinates = { idempotencyKey, paymentId, actorUserId, amountCents, paidAt };
 
     try {
       const execution = await this.prisma.$transaction(async (tx) => {
@@ -3319,7 +3305,11 @@ export class PaymentRequestService {
           return existingExecution;
         }
         if (existingExecution && registered) {
-          await assertRegisteredReplay(tx, existingExecution, registered, "原请求已绑定不同的实付登记内容，请查询原结果");
+          const receiptStatus = await this.readRegisteredPaymentReceiptStatus(tx, existingExecution, registeredCoordinates, registered);
+          if (receiptStatus === "missing") throw registeredPaymentResultUnconfirmed(idempotencyKey);
+          if (receiptStatus === "mismatch") {
+            throw new ConflictException("原请求已绑定不同的实付登记内容，请查询原结果");
+          }
           return existingExecution;
         }
         if (existingExecution) {
@@ -3714,9 +3704,14 @@ export class PaymentRequestService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
 
+      const confirmedExecution = registered && !registered.existingSource
+        ? await this.readCommittedRegisteredPayment({
+            executionId: execution.id, ...registeredCoordinates, input: registered
+          })
+        : execution;
       return wagePayableBindings.length > 0
-        ? wagePaymentExecutionResponseToApi(execution)
-        : paymentPostResponseToApi(execution);
+        ? wagePaymentExecutionResponseToApi(confirmedExecution)
+        : paymentPostResponseToApi(confirmedExecution);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = paymentPrismaErrorCode(error);
@@ -3734,14 +3729,18 @@ export class PaymentRequestService {
               if (proof.source.version !== source.expectedVersion || proof.source.fingerprint !== source.expectedFingerprint || !proof.samePaymentRequest || !("originalResultKey" in proof) || proof.originalResultKey !== idempotencyKey || proof.originalExecutionId !== fact.id || fact.paymentRequestId !== paymentId || proof.amountCents !== amountCents.toString() || proof.paidAt !== chinaDateOnly(paidAt)) throw new ConflictException("历史来源或原实付身份已变化，请先查询原结果并重新核验");
               return fact;
             }
-            await assertRegisteredReplay(tx, fact, registered, "原请求已绑定不同实付内容，请查询原结果");
-            return fact;
+            const receiptStatus = await this.readRegisteredPaymentReceiptStatus(tx, fact, registeredCoordinates, registered);
+            if (receiptStatus === "missing") throw registeredPaymentResultUnconfirmed(idempotencyKey);
+            if (receiptStatus === "mismatch") {
+              throw new ConflictException("原请求已绑定不同实付内容，请查询原结果");
+            }
+            return this.matchesRegisteredPaymentExecution(fact, registeredCoordinates) ? fact : null;
           },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable}).catch(recoveryError => {
             if (recoveryError instanceof HttpException) throw recoveryError;
-            return null;
+            throw registeredPaymentResultUnconfirmed(idempotencyKey);
           });
           if (prior) return paymentPostResponseToApi(prior);
-          throw unconfirmedRegisteredResult();
+          throw registeredPaymentResultUnconfirmed(idempotencyKey);
         }
         const concurrentExecution = await this.resolveConcurrentPaymentExecution({
           paymentId,
@@ -3767,6 +3766,54 @@ export class PaymentRequestService {
       }
       throw error;
     }
+  }
+
+  private async readRegisteredPaymentReceiptStatus(
+    tx: Prisma.TransactionClient,
+    execution: PaymentExecutionFactRow,
+    coordinates: RegisteredPaymentCoordinates,
+    input: RecordRegisteredPaymentExecutionDto
+  ): Promise<"matched" | "mismatch" | "missing"> {
+    const { paymentId, actorUserId } = coordinates;
+    const request = await tx.paymentRequest.findFirst({
+      where: { OR: [{ id: paymentId }, { code: paymentId }] },
+      select: { id: true }
+    });
+    if (!request || execution.paymentRequestId !== request.id) return "mismatch";
+    const receipt = await tx.registeredPaymentFunding.findUnique({ where: { executionId: execution.id } });
+    if (!receipt) return execution.voucherFileId === null && this.matchesRegisteredPaymentExecution(execution, coordinates) ? "missing" : "mismatch";
+    return receipt.payloadFingerprint === registeredPaymentFingerprint(request.id, actorUserId, input) ? "matched" : "mismatch";
+  }
+
+  private matchesRegisteredPaymentExecution(
+    execution: PaymentExecutionFactRow,
+    { idempotencyKey, actorUserId, amountCents, paidAt }: RegisteredPaymentCoordinates
+  ) {
+    return execution.idempotencyKey === idempotencyKey &&
+      execution.executedByUserId === actorUserId &&
+      execution.amountCents === amountCents &&
+      execution.paidAt.getTime() === paidAt.getTime();
+  }
+
+  private async readCommittedRegisteredPayment(expected: RegisteredPaymentCoordinates & {
+    executionId: string;
+    input: RecordRegisteredPaymentExecutionDto;
+  }) {
+    const { executionId, idempotencyKey, input } = expected;
+    let committed: PaymentExecutionFactRow | null;
+    try {
+      // A fulfilled interactive callback is insufficient evidence for the HTTP receipt.
+      committed = await this.prisma!.$transaction(async tx => {
+        const current = await tx.paymentExecution.findUnique({ where: { idempotencyKey } });
+        if (!current || current.id !== executionId || !this.matchesRegisteredPaymentExecution(current, expected)) return null;
+        const receiptStatus = await this.readRegisteredPaymentReceiptStatus(tx, current, expected, input);
+        return receiptStatus === "matched" ? current : null;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch {
+      throw registeredPaymentResultUnconfirmed(idempotencyKey);
+    }
+    if (!committed) throw registeredPaymentResultUnconfirmed(idempotencyKey);
+    return committed;
   }
 
   private async appendOperatingPaymentExecution(
@@ -4837,6 +4884,15 @@ export class PaymentRequestService {
       return updated;
     });
   }
+}
+
+function registeredPaymentResultUnconfirmed(idempotencyKey: string) {
+  return new ConflictException({
+    code: "PAYMENT_RESULT_UNCONFIRMED",
+    resultStatus: "unconfirmed",
+    idempotencyKey,
+    message: "尚未确认实际付款登记结果，请保留原请求并先查询，不要重复登记"
+  });
 }
 
 function paymentPrismaErrorCode(error: unknown): string | undefined {

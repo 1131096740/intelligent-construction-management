@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 408,
+    "activeBusinessActionCount": 414,
     "technicalActionCount": 10,
-    "activeBindingCount": 472,
+    "activeBindingCount": 479,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 12,
     "uncoveredRetiredWriteCount": 0,
@@ -882,6 +882,38 @@
       "causalVerified": true
     },
     {
+      "id": "contract-direct-registration.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-direct-registration.resume-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-document.download-ticket",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -1244,6 +1276,39 @@
       "causalVerified": true
     },
     {
+      "id": "contract-generated-archive.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive",
+        "POST /files"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-generated-archive.resume-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/signed-archive"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "contract-party.upload-file",
       "status": "unified_candidate",
       "usage": "background",
@@ -1256,7 +1321,7 @@
         "POST /contract-drafts/:param/files"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -1302,6 +1367,38 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /files"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-seal-v2.confirm",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/seal-confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "contract-seal-v2.resume-original",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractSignedArchiveSection.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /contracts/:param/seal-confirmation"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

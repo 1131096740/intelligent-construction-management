@@ -10,6 +10,14 @@ class PaymentController {
   create() {}
 }
 
+class FundAccountController {
+  mutate() {}
+}
+
+class RegisteredPaymentExecutionController {
+  mutate() {}
+}
+
 class ContractController {
   create() {}
 }
@@ -135,6 +143,19 @@ describe("OperationalWriteFreezeGuard", () => {
         })
       )
     ).toBe(true);
+  });
+
+  it.each([
+    { controller: FundAccountController, module: "finance", otherModule: "payment" },
+    { controller: RegisteredPaymentExecutionController, module: "payment", otherModule: "finance" }
+  ])("classifies $controller.name under the $module write freeze", ({ controller, module, otherModule }) => {
+    const context = contextFor({ controller, handler: controller.prototype.mutate });
+    process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = otherModule;
+    expect(guard.canActivate(context)).toBe(true);
+
+    process.env.OPERATIONAL_WRITE_FREEZE_MODULES = module;
+    expectHttpFailure(() => guard.canActivate(context), 503, "OPERATIONAL_WRITE_FREEZE_ACTIVE");
   });
 
   it("keeps audited exports open without a freeze and blocks them in the finance freeze", () => {

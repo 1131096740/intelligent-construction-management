@@ -22,6 +22,8 @@ export interface AuthBridge {
 
 export interface ApiFetchInit extends RequestInit {
   retryUnauthorized?: boolean;
+  /** Auth and failure side effects belong only to the originating UI context. */
+  responseIsCurrent?: () => boolean;
 }
 
 export function withAuth(init: RequestInit, token: string | null): RequestInit {
@@ -51,20 +53,20 @@ export function createApiFetch(
   };
 
   return async function apiFetch(path: string, init: ApiFetchInit = {}): Promise<Response> {
-    const { retryUnauthorized = true, ...requestInit } = init;
+    const { retryUnauthorized = true, responseIsCurrent = () => true, ...requestInit } = init;
     const accessToken = bridge.getAccessToken();
     const send = async (token: string | null = bridge.getAccessToken()) => {
       try {
         return await (fetchImpl ?? fetch)(`/api${path}`, withAuth(requestInit, token));
       } catch (error) {
         const failure = new Error(formatUnknownApiError(error, "网络请求失败"));
-        bridge.onRequestFailure?.(path, failure);
+        if (responseIsCurrent()) bridge.onRequestFailure?.(path, failure);
         throw failure;
       }
     };
 
     const reportFailedResponse = (response: Response) => {
-      if (response.ok) return;
+      if (response.ok || !responseIsCurrent()) return;
       const failure = new Error(`HTTP ${response.status}`) as Error & { status: number };
       failure.status = response.status;
       bridge.onRequestFailure?.(path, failure);
@@ -77,7 +79,7 @@ export function createApiFetch(
         try {
           return await parseJson();
         } catch (error) {
-          bridge.onRequestFailure?.(path, error);
+          if (responseIsCurrent()) bridge.onRequestFailure?.(path, error);
           throw error;
         }
       };
@@ -86,10 +88,10 @@ export function createApiFetch(
 
     let response = await send(accessToken);
 
-    if (response.status === 401) {
+    if (response.status === 401 && responseIsCurrent()) {
       if (!retryUnauthorized) {
         reportFailedResponse(response);
-        bridge.onUnauthorized();
+        if (responseIsCurrent()) bridge.onUnauthorized();
         return response;
       }
       const currentAccessToken = bridge.getAccessToken();
@@ -98,16 +100,16 @@ export function createApiFetch(
       );
       const refreshed = sessionWasAlreadyRefreshed || (await refreshOnce());
 
-      if (refreshed) {
+      if (refreshed && responseIsCurrent()) {
         response = await send();
       }
 
-      if (response.status === 401) {
+      if (response.status === 401 && responseIsCurrent()) {
         bridge.onUnauthorized();
       }
     }
 
-    if (response.status === 403 && (await isPasswordChangeRequired(response))) {
+    if (response.status === 403 && responseIsCurrent() && (await isPasswordChangeRequired(response)) && responseIsCurrent()) {
       bridge.onPasswordChangeRequired?.();
     }
 

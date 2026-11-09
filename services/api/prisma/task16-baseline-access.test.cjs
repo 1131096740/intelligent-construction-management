@@ -3,6 +3,13 @@ const TYPE_ACL = [
  {type:'public."OperatingLedgerFactWritePayloadV2"',typeOid:'41001',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false},
  {type:'public."OperatingLedgerImpactWritePayloadV2"',typeOid:'41002',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false}
 ];
+const SCHEMA205_RELATIONS = [
+ {table:"ContractDraftAttachment",oid:"63001",kind:"r",rowSecurity:false,forceRowSecurity:false},
+ {table:"ContractVersion",oid:"63002",kind:"r",rowSecurity:false,forceRowSecurity:false},
+ {table:"FileObject",oid:"63003",kind:"r",rowSecurity:false,forceRowSecurity:false},
+ {table:"jg_contract_direct_pending_binding_v1",oid:"63004",kind:"r",rowSecurity:false,forceRowSecurity:false}
+];
+const scopeFixture=require("./testdata/task16-schema205-scope-fixture.cjs");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -31,10 +38,10 @@ function fixture(t) {
                     calls.push(label);
                     const phase = label === "task16-baseline-access-preflight" ? "preflight" : "committed";
                     const nonce = /'([a-f0-9]{64})' AS nonce/u.exec(sql)?.[1];
-                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, schema204PhysicalVerified: true, schema203Verified: true, schema203TypeAclWitness: structuredClone(TYPE_ACL), migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), restrictedAbsent: phase === "preflight", instrumentationAbsent: phase === "preflight", freshScope: phase === "preflight", matrixVerified: phase === "committed", guardVerified: phase === "committed", runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
+                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, schema204PhysicalVerified: true, schema205PhysicalVerified: true, schema205WitnessSha256: "8".repeat(64), schema205Relations: structuredClone(SCHEMA205_RELATIONS), schema205ScopeObjects:scopeFixture.scope(phase==="preflight"?"first":"baseline"), schema205Registry:scopeFixture.registry(phase==="preflight"?"first":"baseline"), schema205ScopeDelta:phase==="preflight"?null:scopeFixture.delta("baseline"), schema203Verified: true, schema203TypeAclWitness: structuredClone(TYPE_ACL), migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), restrictedAbsent: phase === "preflight", instrumentationAbsent: phase === "preflight", freshScope: phase === "preflight", matrixVerified: phase === "committed", guardVerified: phase === "committed", runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
                 }, close: async () => { calls.push("close-resource"); receipt.status = "closed"; receipt.cleanup = { status: "completed", containerAbsent: true, volumesAbsent: true, networkAbsent: true }; } };
             return resource;
-        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 204 }), installBaselineAccess: async (context) => { const { installTask16BaselineAccess } = require("./task16-baseline-access.cjs"); return installTask16BaselineAccess(context); }, installPreparedSql: async (context) => { assert.equal(context.baselineAccess.status, "BASELINE_ROLE_ACL_COMMIT_OBSERVED"); assert.equal(context.baselineAccess.runtimeOid, "20001"); assert.equal(context.baselineAccess.observerOid, "20002"); calls.push("seven-fragments"); }, installRegisteredAccess: async () => { }, connectRestrictedClients: async () => ({ close: async () => { } }), startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
+        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 205 }), installBaselineAccess: async (context) => { const { installTask16BaselineAccess } = require("./task16-baseline-access.cjs"); return installTask16BaselineAccess(context); }, installPreparedSql: async (context) => { assert.equal(context.baselineAccess.status, "BASELINE_ROLE_ACL_COMMIT_OBSERVED"); assert.equal(context.baselineAccess.runtimeOid, "20001"); assert.equal(context.baselineAccess.observerOid, "20002"); calls.push("seven-fragments"); }, installRegisteredAccess: async () => { }, connectRestrictedClients: async () => ({ close: async () => { } }), startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
     return { options, adapters, calls, source, replies, resource: () => resource, receipt: () => receipt, passwords: () => passwords };
 }
 test("baseline role ACL preparation completes before the separate seven-fragment installer", async (t) => {
@@ -46,6 +53,96 @@ test("baseline role ACL preparation completes before the separate seven-fragment
     assert.equal(JSON.stringify(receipt).includes(f.passwords().runtime), false);
     assert.equal(JSON.stringify(receipt).includes(f.passwords().observer), false);
 });
+test("baseline preflight proves the final Schema205 file helper rather than its historical body", async t => {
+    const f = fixture(t), start = f.adapters.startResource;
+    f.adapters.startResource = async context => {
+        const resource = await start(context);
+        const owner = resource.execOwnerSql;
+        resource.execOwnerSql = async (sql, label) => {
+            if (label === "task16-baseline-access-preflight") {
+                assert.match(sql, /34c8b2cc5f110c24d67eba3491d580d0f656b6c7bbf1fced769f929b648a8f90/u);
+                assert.doesNotMatch(sql, /2dd031c00d7774dc6ff29376b6bd3f1b4a23579ac19f2a2c76e40ee788deb6c7/u);
+            }
+            return owner(sql, label);
+        };
+        return resource;
+    };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED", receipt.failureCode);
+});
+test("baseline witnesses the NEW trigger with exact definitions under the same safe deparse settings before and after commit", async t => {
+    const f = fixture(t), start = f.adapters.startResource;
+    const requests = [];
+    f.adapters.startResource = async context => {
+        const resource = await start(context), owner = resource.execOwnerSql;
+        resource.execOwnerSql = async (sql, label) => {
+            requests.push([label, sql]);
+            return owner(sql, label);
+        };
+        return resource;
+    };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.status, "SIMULATED_CASE_PROTOCOL_COMPLETED", receipt.failureCode);
+    const preflight = requests[0][1], committed = requests[1][1].split("\nCOMMIT;\n").at(-1);
+    for (const sql of [preflight, committed]) {
+        assert.ok(sql.includes("SET LOCAL search_path=pg_catalog,public,pg_temp;"), "fixed deparse path");
+        assert.ok(sql.includes("SET LOCAL quote_all_identifiers=off;"), "fixed identifier quoting");
+        assert.ok(sql.includes("pg_catalog.to_regtype('text')::oid=25"), "built-in text resolution");
+        assert.ok(sql.includes("pg_catalog.pg_get_triggerdef(t.oid,false)"), "trigger-aware deparse");
+        assert.ok(!/pg_get_expr\(\s*(?:[a-z_]+\.)?tgqual\b/u.test(sql), "NEW is never passed to the single-relation deparser");
+        assert.ok(sql.includes(" EXECUTE FUNCTION public.jg_enforce_exclusive_file_business_binding("), "exact qualified form");
+        assert.ok(sql.includes(" EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding("), "exact unqualified form");
+    }
+});
+
+test("baseline requires the Schema205 physical proof before its ACL transaction", async t => {
+    const f = fixture(t);
+    f.replies.preflight = { schema205PhysicalVerified: false };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.failureCode, "TASK16_ACCESS_SCHEMA205_PHYSICAL_PROOF");
+    assert.equal(receipt.baselineAccessOutcome, "NOT_ATTEMPTED");
+    assert.deepEqual(f.calls, ["task16-baseline-access-preflight", "close-resource"]);
+});
+
+test("baseline rejects a Schema205 attachment table with RLS already enabled", async t => {
+    const f = fixture(t);
+    f.replies.preflight = { schema205Relations: SCHEMA205_RELATIONS.map(row =>
+        row.table === "ContractDraftAttachment" ? { ...row, rowSecurity: true } : row) };
+    const receipt = await runTask16RegisteredPg(f.options, f.adapters);
+    assert.equal(receipt.failureCode, "TASK16_ACCESS_SCHEMA205_RELATIONS");
+    assert.equal(receipt.baselineAccessOutcome, "NOT_ATTEMPTED");
+    assert.deepEqual(f.calls, ["task16-baseline-access-preflight", "close-resource"]);
+});
+
+test("baseline cannot replace the first column metadata with a different postcommit default", async t => {
+    const f=fixture(t), changed=scopeFixture.scope("baseline");
+    changed.columns.find(entry=>entry.table==="ContractDraftAttachment").row.defaultNode="unexpected";
+    f.replies.committed={schema205ScopeObjects:changed};
+    const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+    assert.equal(receipt.failureCode,"TASK16_ACCESS_SCHEMA205_OBJECTS_CHANGED");
+    assert.equal(receipt.baselineAccessOutcome,"UNKNOWN_DO_NOT_RETRY");
+    assert.deepEqual(f.calls,["task16-baseline-access-preflight","task16-baseline-access-transaction","close-resource"]);
+});
+
+for(const [phase,variant,change] of [
+ ["preflight","target alias already exists",witness=>{witness.alias=scopeFixture.registry("seven").alias;}],
+ ["committed","old public wrapper OID changes",witness=>{witness.publicRoutine.oid="63209";}],
+ ["committed","third-party grant option is lost",witness=>{witness.publicRoutine.acl.at(-1)[3]=false;}],
+ ["committed","schema default raw ACL changes",witness=>{witness.publicDefault.rawAcl=["unknown=X/jg_task01_owner"];}]
+]){
+ test(`B5 registry continuity rejects ${variant}`,async t=>{
+  const f=fixture(t),witness=scopeFixture.registry(phase==="preflight"?"first":"baseline");
+  change(witness);
+  f.replies[phase]={schema205Registry:witness};
+  const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+  assert.equal(receipt.failureCode,"TASK16_ACCESS_SCHEMA205_REGISTRY");
+  assert.equal(receipt.baselineAccessOutcome,phase==="preflight"?"NOT_ATTEMPTED":"UNKNOWN_DO_NOT_RETRY");
+  assert.deepEqual(f.calls,phase==="preflight"
+   ?["task16-baseline-access-preflight","close-resource"]
+   :["task16-baseline-access-preflight","task16-baseline-access-transaction","close-resource"]);
+ });
+}
+
 test("baseline rejects an unproved schema203 caller and type boundary before any ACL DDL", async t => {
     const f = fixture(t);
     f.replies.preflight = { schema203Verified: false };
@@ -177,7 +274,7 @@ test("the baseline transaction adapter receives the paired lock grant and guard 
                 assert.ok(sql.includes('CREATE TRIGGER jg_task16_runtime_version_read_only BEFORE UPDATE ON public."ContractVersion"'));
                 assert.ok(sql.includes('ENABLE ALWAYS TRIGGER jg_task16_runtime_version_read_only'));
                 assert.ok(sql.includes("'task16 runtime cannot update contract version'"));
-                assert.ok(sql.includes("COMMIT;\nSELECT pg_catalog.json_build_object"));
+                assert.ok(sql.includes("COMMIT;\nBEGIN READ ONLY;\nSET LOCAL search_path=pg_catalog,public,pg_temp;\nSET LOCAL quote_all_identifiers=off;\nSELECT pg_catalog.json_build_object"));
                 assert.ok(!sql.includes('CREATE TABLE public."RegisteredPaymentFunding"'));
             }
             return exec(sql, label);

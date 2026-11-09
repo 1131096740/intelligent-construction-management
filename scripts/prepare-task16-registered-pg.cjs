@@ -6,11 +6,18 @@ const { createHash } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const { readFileSync, writeFileSync, realpathSync, lstatSync, readdirSync, mkdirSync, existsSync } = require("node:fs");
 const path = require("node:path");
+const {matchesTrustedTask16History}=require("../services/api/prisma/task16-migration-history.cjs");
 
 const SQL_ROOT = "services/api/prisma/prepared/task16";
 const FRAGMENTS = ["registered-funding.sql", "registered-history-revision.sql", "registered-write-authority.sql", "registered-canonical-proof.sql", "registered-intercompany.sql", "registered-canonical-adapter.sql", "registered-voucher.sql"].map(name => `${SQL_ROOT}/${name}`);
 const SCHEMA = "services/api/prisma/schema.prisma";
 const MIGRATIONS = "services/api/prisma/migrations";
+const SCHEMA205_MIGRATION = MIGRATIONS + "/20261109100000_contract_direct_pending_input_v1/migration.sql";
+const SCHEMA205_MIGRATION_SHA256 = "81b419f9a59fb3ab6d38731af0c1591bce5f92d91568aa55a8798d8a05d812c5";
+const SCHEMA205_SCHEMA_SHA256 = "68b76ddd1ca8dda27ebb511db2d5fa49285eab5c7b95e83f9cac20b3c26a7286";
+const SCHEMA206_MIGRATION = MIGRATIONS + "/20261109110000_contract_direct_review_retention_v1/migration.sql";
+const SCHEMA206_MIGRATION_SHA256 = "df73ffa2861318e571c6c8bba5c4d226808f00f65684d2953a0d5937d6d4bb92";
+const SCHEMA206_SCHEMA_SHA256 = "60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4";
 const CASE_SOURCE = "services/api/src/database/registered-payment-postgres.cases.ts";
 const FIXTURE = "services/api/src/database/registered-payment-postgres.fixture.ts";
 const CASE_ID = "registered.null-cross-company.commit";
@@ -85,11 +92,28 @@ function sourceSnapshot(repo, candidateSha) {
   });
   for (const required of [...FRAGMENTS, CASE_SOURCE, FIXTURE, SCHEMA, `${MIGRATIONS}/migration_lock.toml`]) need(files.some(row => row.path === required), "REQUIRED_INPUT_MISSING");
   const migrations = files.filter(row => row.path.startsWith(`${MIGRATIONS}/`) && row.path.endsWith("/migration.sql"));
-  need(migrations.length === 204, "MIGRATION_COUNT_MISMATCH");
+  const migration206 = migrations[205];
+  const schema206 = migrations.length === 206 && migration206.path === SCHEMA206_MIGRATION;
+  need(migrations.length === 205 || schema206, "MIGRATION_COUNT_MISMATCH");
+  const migration205 = migrations[204];
+  need(migration205.path === SCHEMA205_MIGRATION && migration205.sha256 === SCHEMA205_MIGRATION_SHA256, "SCHEMA205_MIGRATION_MISMATCH");
+  const modes = new Map(tree.map(row => [row.path,row.mode]));
+  const lock = files.find(row => row.path === `${MIGRATIONS}/migration_lock.toml`);
+  const historical = [...migrations.slice(0,204),lock].map(row => [row.path,row.sha256,modes.get(row.path)]);
+  need(matchesTrustedTask16History(historical), "TRUSTED_MIGRATION_HISTORY_MISMATCH");
+  need(modes.get(SCHEMA205_MIGRATION) === "100644", "SCHEMA205_MIGRATION_MISMATCH");
+  const schemaSha256 = files.find(row => row.path === SCHEMA).sha256;
+  if (schema206) {
+    need(migration206.sha256 === SCHEMA206_MIGRATION_SHA256 && modes.get(SCHEMA206_MIGRATION) === "100644", "SCHEMA206_MIGRATION_MISMATCH");
+    need(schemaSha256 === SCHEMA206_SCHEMA_SHA256 && modes.get(SCHEMA) === "100644", "SCHEMA206_SCHEMA_MISMATCH");
+  } else {
+    need(schemaSha256 !== SCHEMA206_SCHEMA_SHA256, "SCHEMA206_MIGRATION_MISMATCH");
+    need(schemaSha256 === SCHEMA205_SCHEMA_SHA256 && modes.get(SCHEMA) === "100644", "SCHEMA205_SCHEMA_MISMATCH");
+  }
   need(JSON.stringify(members(root, MIGRATIONS, name => name.endsWith("/migration.sql"))) === JSON.stringify(migrations.map(row => row.path)), "MIGRATION_MEMBERSHIP_MISMATCH");
   need(JSON.stringify(members(root, SQL_ROOT, name => name.endsWith(".sql"))) === JSON.stringify([...FRAGMENTS].sort()), "FRAGMENT_MEMBERSHIP_MISMATCH");
   need(git(root, "rev-parse", "HEAD").trim() === candidateSha, "SOURCE_CHANGED_DURING_CAPTURE");
-  return { root, files, migrations, contents };
+  return { root, files, migrations, contents, sourceProfile: schema206 ? "SCHEMA206_SOURCE_ONLY" : undefined };
 }
 
 // Use only this tool workspace's pinned compiler; never resolve input-repo modules.
@@ -150,7 +174,7 @@ function payload(repo, candidateSha) {
   const fragments = FRAGMENTS.map(file => { const bytes = source.contents.get(file); composed.update(Buffer.from(`${file}\0${bytes.length}\0`)).update(bytes); return byPath.get(file); });
   const result = {
     schemaVersion: 1, purpose: "task16-registered-pg-source-only-packet", status: STATUS,
-    executionAllowed: false, resourceExecutorImplemented: false, candidateSha,
+    executionAllowed: false, resourceExecutorImplemented: false, candidateSha, sourceProfile: source.sourceProfile,
     preparer: { sourceSha256: hash(readFileSync(__filename)), candidateMembership: "not-asserted", typescriptVersion: "5.9.3", typescriptSha256: TYPESCRIPT_SHA256 },
     source: { repo: source.root, files: source.files, ignoredArtifacts: "not-sealed", installedDependencies: "not-verified" },
     schema: byPath.get(SCHEMA), migrations: source.migrations,
@@ -181,7 +205,7 @@ function main() {
     const packetBytes = Buffer.from(`${JSON.stringify({ ...data, sealSha256 }, null, 2)}\n`);
     mkdirSync(destination, { mode: 0o700 });
     writeFileSync(path.join(destination, "packet.json"), packetBytes, { flag: "wx", mode: 0o600 });
-    return { status: STATUS, executionAllowed: false, resourceExecutorImplemented: false, candidateSha: data.candidateSha, migrationCount: data.migrations.length, fragmentCount: data.installation.fragments.length, caseCount: data.cases.length, sealSha256, packetSha256: hash(packetBytes) };
+    return { status: STATUS, executionAllowed: false, resourceExecutorImplemented: false, candidateSha: data.candidateSha, sourceProfile: data.sourceProfile, migrationCount: data.migrations.length, fragmentCount: data.installation.fragments.length, caseCount: data.cases.length, sealSha256, packetSha256: hash(packetBytes) };
   }
   need(/^[a-f0-9]{64}$/u.test(args.expectedSha256), "EXPECTED_DIGEST_INVALID");
   const file = canonical(args.packet); need(lstatSync(file).size <= 16 * 1024 * 1024, "PACKET_BYTE_BUDGET");
@@ -190,7 +214,7 @@ function main() {
   need(packet && typeof packet === "object" && !Array.isArray(packet), "PACKET_INVALID");
   const data = payload(packet.source?.repo, packet.candidateSha); const expected = { ...data, sealSha256: hash(JSON.stringify(data)) };
   need(JSON.stringify(packet) === JSON.stringify(expected), "PACKET_MISMATCH");
-  return { status: "SOURCE_ONLY_VERIFIED_NOT_EXECUTED", executionAllowed: false, resourceExecutorImplemented: false, candidateSha: data.candidateSha, sealSha256: expected.sealSha256, packetSha256: args.expectedSha256 };
+  return { status: "SOURCE_ONLY_VERIFIED_NOT_EXECUTED", executionAllowed: false, resourceExecutorImplemented: false, candidateSha: data.candidateSha, sourceProfile: data.sourceProfile, sealSha256: expected.sealSha256, packetSha256: args.expectedSha256 };
 }
 try { process.stdout.write(`${JSON.stringify(main())}\n`); }
 catch (error) { process.stdout.write(`${JSON.stringify({ status: "REJECTED", code: error.packetCode || "SOURCE_OR_PACKET_UNAVAILABLE", executionAllowed: false, resourceExecutorImplemented: false })}\n`); process.exitCode = 1; }

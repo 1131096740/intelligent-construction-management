@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { NON_RECEIPT_FILE_BINDINGS } from "./file-business-binding";
 
 describe("non-receipt file binding registry", () => {
-  it("covers every current Prisma business FileId field except receipt photo files", () => {
+  it("covers business FileId fields outside receipt photos and the dedicated review retention guard", () => {
     const schema = readFileSync(
       join(process.cwd(), "prisma/schema.prisma"),
       "utf8"
@@ -19,6 +19,8 @@ describe("non-receipt file binding registry", () => {
       for (const fieldMatch of body.matchAll(fieldPattern)) {
         // This field references the parent ContractArchiveFile identity, not a FileObject.
         if (model === "ContractArchiveEvidenceFile" && fieldMatch[1] === "archiveFileId") continue;
+        // The review keeps the original file's binding and uses a dedicated physical retention guard.
+        if (model === "ContractEconomicReviewFileReference" && fieldMatch[1] === "fileId") continue;
         schemaBindings.push(`${model}.${fieldMatch[1]}`);
       }
     }

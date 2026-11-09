@@ -3,7 +3,8 @@ import { currentRegisteredPaymentApproval } from "./registered-payment-approval"
 import { resolveRegisteredExistingSource } from "./registered-payment-existing-source";
 import { currentRegisteredPaymentDomain } from "./registered-payment-domain";
 import { paymentExecutionVoucherFileId } from "./payment-execution-voucher";
-import { ForbiddenException, Injectable } from "@nestjs/common";
+import { REGISTERED_PAYMENT_IMPACT_READER, type RegisteredPaymentImpact, type RegisteredPaymentImpactReader } from "./registered-payment-impact-reader";
+import { ForbiddenException, Inject, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
@@ -13,7 +14,10 @@ import { PrismaService } from "../database/prisma.service";
 @Injectable()
 export class RegisteredPaymentExecutionService {
   private readonly roles: CompanyRoleResolverService;
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() @Inject(REGISTERED_PAYMENT_IMPACT_READER) private readonly impactReader?: RegisteredPaymentImpactReader
+  ) {
     this.roles = new CompanyRoleResolverService(prisma);
   }
 
@@ -60,7 +64,8 @@ export class RegisteredPaymentExecutionService {
       const unconfirmed = { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" } as const;
       const execution = await tx.paymentExecution.findUnique({ where: { idempotencyKey } });
       if (!execution) return unconfirmed;
-      if (!(await currentRegisteredPaymentDomain(tx,execution.paymentRequestId)).supportedDomain) throw new ForbiddenException("该付款记录不属于此办理入口，请经原业务权限入口核验");
+      const domain = await currentRegisteredPaymentDomain(tx, execution.paymentRequestId);
+      if (!domain.supportedDomain || !domain.payment) throw new ForbiddenException("该付款记录不属于此办理入口，请经原业务权限入口核验");
       const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:execution.id}});
       // New registrations have no original voucher and must carry the committed funding receipt.
       if (execution.voucherFileId === null && !funding) return unconfirmed;
@@ -68,10 +73,17 @@ export class RegisteredPaymentExecutionService {
         where: { sourceType: "payment_execution", sourceBusinessId: execution.id },
         select: { id: true, sourceVersion: true, basisSnapshot: true, actualPayerSubjectKind: true, actualPayerSubjectId: true }
       });
-      const impacts = facts.length ? await tx.operatingImpactEntry.findMany({
-        where: { factId: { in: facts.map(fact => fact.id) } },
-        select: { factId: true, impactKind: true, amountCents: true, numericProtocolVersion: true, subjectKind: true, subjectId: true }
-      }) : [];
+      const factIds = facts.map(fact => fact.id);
+      let impacts: RegisteredPaymentImpact[] = [];
+      if (factIds.length) {
+        impacts = this.impactReader
+          ? await this.impactReader(tx, { requestKey: execution.idempotencyKey, executionId: execution.id,
+              paymentId: domain.payment.id, projectId: domain.payment.projectId }, factIds)
+          : await tx.operatingImpactEntry.findMany({
+              where: { factId: { in: factIds } },
+              select: { factId: true, impactKind: true, amountCents: true, numericProtocolVersion: true, subjectKind: true, subjectId: true }
+            });
+      }
       const relationshipEntries = await tx.interEntityRelationshipEntry.findMany({where:{paymentExecutionId:execution.id,sourceType:"registered_payment_execution"}});
       const voucherFileId = await paymentExecutionVoucherFileId(tx,execution);
       const canSupplementVoucher = Boolean(funding && execution.voucherFileId === null && voucherFileId === null);

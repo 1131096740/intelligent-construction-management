@@ -134,6 +134,10 @@ export class CreatePaymentTermsStageDto {
 /** Minimal payload to seed a workbench draft from a published business template. */
 export class CreateContractDraftDto {
   @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["generated_approval", "direct_signed"], { message: "合同办理方式不正确" })
+  handlingMode?: "generated_approval" | "direct_signed";
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsIn([2], { message: "合同数值版本不正确，请刷新工作台" })
   numericProtocolVersion?: 2;
 

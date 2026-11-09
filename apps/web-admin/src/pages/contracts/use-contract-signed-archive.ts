@@ -39,7 +39,8 @@ function sameArchiveBody(a: unknown, b: ContractSignedArchiveV2Payload) {
 }
 function readyContext(detail: ContractDetailReadModel | null, actor: string | undefined): Ready | null {
   const value = detail?.v2Lifecycle;
-  return value?.status === "ready" && value.protocolVersion === 2 && value.source === "generated_approval" && value.scope === "inside_original" &&
+  return value?.status === "ready" && value.protocolVersion === 2 && value.source === "generated_approval" &&
+    (value.scope === "inside_original" || value.scope === "outside_original" || value.scope === "upward_original") &&
     !detail?.historyReadOnly && !!actor && value.actorUserId === actor && value.contractVersionId === detail?.contractVersionId &&
     uuid.test(value.contractVersionId) && uuid.test(value.approvalInstanceId) && uuid.test(value.sealTaskId) &&
     Number.isInteger(value.documentContentRevision) && value.documentContentRevision > 0 && fingerprint.test(value.documentContentFingerprint) &&
@@ -154,7 +155,7 @@ export function useContractSignedArchive(input: {
       const value = readyContext(fresh, intent.actor);
       if (!sameCoordinates(value, intent.body) || !sealEligible(value)) { message.value = "当前合同办理资料或权限已变化，请刷新后核对"; return; }
       persist("seal", intent); sealIntent.value = intent;
-      try { await confirmContractSealV2(intent.versionId, intent.body); } catch { /* Recovery only reads the original task. */ }
+      try { await confirmContractSealV2(intent.versionId, intent.body, () => current(started)); } catch { /* Recovery only reads the original task. */ }
       if (current(started)) await readSeal(intent, started);
     } catch { if (current(started)) message.value = sealIntent.value ? "盖章结果待核对，请保留本次办理记录后再次查询" : "未能核对当前办理资料，本次未发起新操作"; }
     finally { if (current(started)) busy.value = false; }
@@ -176,7 +177,7 @@ export function useContractSignedArchive(input: {
       if (!current(started)) return;
       const value = readyContext(fresh, intent.actor);
       if (!sameCoordinates(value, intent.body) || !sealEligible(value)) { message.value = "当前盖章资料或权限已变化，请继续查询原办理结果"; return; }
-      try { await confirmContractSealV2(intent.versionId, intent.body); } catch { /* An explicit same-tuple continuation still recovers by reading. */ }
+      try { await confirmContractSealV2(intent.versionId, intent.body, () => current(started)); } catch { /* An explicit same-tuple continuation still recovers by reading. */ }
       if (current(started)) await readSeal(intent, started);
     } catch { if (current(started)) message.value = "暂时无法继续核对盖章结果，请保留本次办理记录"; }
     finally { if (current(started)) busy.value = false; }
@@ -217,7 +218,8 @@ export function useContractSignedArchive(input: {
     message.value = "双方签章原件已归档，合同已生效"; input.refresh({ actor: intent.actor, versionId: intent.versionId, kind: "archive" }); return "archived";
   }
   async function sendArchive(intent: ArchiveIntent, started: OperationScope) {
-    try { await archiveSignedContractV2(intent.versionId, intent.body); } catch { /* Never repeat a write from an automatic recovery path. */ }
+    if (!current(started)) return;
+    try { await archiveSignedContractV2(intent.versionId, intent.body, () => current(started)); } catch { /* Recovery reads the original request. */ }
     if (current(started)) await readArchive(intent, started);
   }
   async function confirmArchive() {
@@ -233,7 +235,7 @@ export function useContractSignedArchive(input: {
         if (item.fileId) continue;
         if (!item.file) { message.value = "请重新选择尚未上传的PDF文件"; return; }
         try {
-          const uploaded = await uploadPrivateFile(item.file, item.name, item.localId);
+          const uploaded = await uploadPrivateFile(item.file, item.name, item.localId, () => current(started));
           if (!current(started)) return;
           if (!uploaded || !uuid.test(uploaded.id)) throw new Error();
           item.fileId = uploaded.id; item.error = "";

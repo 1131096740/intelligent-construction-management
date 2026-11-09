@@ -153,6 +153,7 @@ async function writeFakeLocalGateTools(testRoot) {
   const fakeDocker = join(testRoot, "docker");
   const fakeGit = join(testRoot, "git-gate");
   const fakeBash = join(testRoot, "bash");
+  const dynamicArgs = join(testRoot, "dynamic-args");
   await writeExecutable(
     fakeNode,
     [
@@ -161,6 +162,7 @@ async function writeFakeLocalGateTools(testRoot) {
       "if [[ \"${1:-}\" == \"-p\" && \"${2:-}\" == \"process.versions.node\" ]]; then printf '20.19.0\\n'; exit 0; fi",
       `if [[ "\${1:-}" == "-p" && "\${2:-}" == "Date.now()" ]]; then exec ${JSON.stringify(process.execPath)} "$@"; fi`,
       `if [[ "\${1:-}" == */local-release-receipt.mjs ]]; then exec ${JSON.stringify(process.execPath)} "$@"; fi`,
+      `if [[ "\${1:-}" == */run-database-dynamic-gate-local.cjs ]]; then printf '%s\\n' "$@" > ${JSON.stringify(dynamicArgs)}; fi`,
       "exit 0"
     ].join("\n")
   );
@@ -186,7 +188,7 @@ async function writeFakeLocalGateTools(testRoot) {
     ].join("\n")
   );
   await writeExecutable(fakeBash, "#!/usr/bin/env bash\nexit 0\n");
-  return { fakeNode, fakePnpm, fakeDocker, fakeGit, fakeBash };
+  return { fakeNode, fakePnpm, fakeDocker, fakeGit, fakeBash, dynamicArgs };
 }
 
 test("local release gate refuses a non-Node-20 host before writing a receipt", async () => {
@@ -322,6 +324,10 @@ test("full local gate writes schema v2 with all per-phase durations", async () =
     const parsed = JSON.parse(await readFile(receipt, "utf8"));
     assert.equal(parsed.schemaVersion, 2);
     assert.deepEqual(Object.keys(parsed.durationsMs), requiredChecks);
+    assert.deepEqual((await readFile(tools.dynamicArgs, "utf8")).trim().split("\n"), [
+      "services/api/prisma/run-database-dynamic-gate-local.cjs",
+      "--execute", "--automatic-only", "--candidate-sha", candidateSha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"
+    ]);
     for (const duration of Object.values(parsed.durationsMs)) {
       assert.equal(Number.isInteger(duration) && duration >= 0, true);
     }
