@@ -133,8 +133,10 @@ async function readWriteCatalog(tx: Prisma.TransactionClient) {
       row.archiveReceiptReaderOid, row.operatingAuthorityOid].every(isOid)
     || !Number.isSafeInteger(row.backendPid) || row.backendPid < 1
     || typeof row.transactionId !== "string" || !/^[1-9][0-9]*$/u.test(row.transactionId)) return null;
-  const { qualified: _qualified, ...installation } = row;
-  return installation;
+  const { databaseOid, namespaceOid, currentRoleOid, sessionRoleOid, archiveWriterOid,
+    signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId } = row;
+  return { databaseOid, namespaceOid, currentRoleOid, sessionRoleOid, archiveWriterOid,
+    signedFileAuthorityOid, archiveReceiptReaderOid, operatingAuthorityOid, backendPid, transactionId };
 }
 
 export async function readNativeGeneratedArchiveWriter(
