@@ -1,3 +1,4 @@
+import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -39,6 +40,7 @@ export class ContractGovernanceDenial extends BadRequestException {
 }
 
 type GovernedVersion = {
+  draftData?: Prisma.JsonValue;
   id: string;
   contractId: string;
   status: string;
@@ -242,6 +244,9 @@ export class ContractFormalFileService {
     actorUserId: string,
     input: UploadCounterpartySignedFileDto
   ) {
+    // Check current ownership and the creation-fixed source before any bytes,
+    // conversion or preview storage. The final transaction repeats the check.
+    await this.prisma.$transaction(tx => this.lockEditableVersion(tx, contractVersionId, actorUserId));
     const loaded = await this.loadCounterpartyFiles(input.fileIds, actorUserId);
     const preview = await this.buildCounterpartyPreview(loaded, actorUserId);
     try {
@@ -917,6 +922,7 @@ export class ContractFormalFileService {
     if (contract.ownerUserId !== actorUserId) {
       throw new BadRequestException("只有合同经办人可以维护签前文件");
     }
+    assertNotDirectPendingVersion(version);
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException("当前合同不在可编辑状态，不能维护签前文件");
     }

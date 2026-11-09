@@ -489,7 +489,7 @@
         "update": [],
         "evidence": [
           "services/api/src/payment/registered-payment-funding.ts:148",
-          "services/api/src/payment/registered-payment-execution.service.ts:75"
+          "services/api/src/payment/registered-payment-execution.service.ts:64"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -547,7 +547,7 @@
         "insert": [],
         "update": [],
         "evidence": [
-          "services/api/src/payment/registered-payment-execution.service.ts:67"
+          "services/api/src/payment/registered-payment-execution.service.ts:62"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -599,10 +599,9 @@
         ],
         "update": [],
         "evidence": [
-          "services/api/src/payment/payment-request.service.ts:3310",
-          "services/api/src/payment/payment-request.service.ts:3542",
-          "services/api/src/payment/payment-request.service.ts:3729",
-          "services/api/src/payment/registered-payment-execution.service.ts:61"
+          "services/api/src/payment/payment-request.service.ts:3287",
+          "services/api/src/payment/payment-request.service.ts:3520",
+          "services/api/src/payment/registered-payment-execution.service.ts:59"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -667,7 +666,7 @@
         ],
         "evidence": [
           "services/api/src/payment/payment-request.service.ts:3164",
-          "services/api/src/payment/payment-request.service.ts:3631"
+          "services/api/src/payment/payment-request.service.ts:3609"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -833,8 +832,8 @@
           "updatedAt"
         ],
         "evidence": [
-          "services/api/src/payment/payment-request.service.ts:3461",
-          "services/api/src/payment/payment-request.service.ts:3639"
+          "services/api/src/payment/payment-request.service.ts:3439",
+          "services/api/src/payment/payment-request.service.ts:3617"
         ],
         "readReason": "Prisma query/create/update omits select: frozen current scalar projection and predicates"
       },
@@ -1181,16 +1180,28 @@
       "sha256": "c579ed280ceb552ec73a259d5aff2fafb11dac56e01661d06c4d30dce16e883e"
     },
     {
+      "path": "services/api/prisma/migrations/20261109100000_contract_direct_pending_input_v1/migration.sql",
+      "sha256": "81b419f9a59fb3ab6d38731af0c1591bce5f92d91568aa55a8798d8a05d812c5"
+    },
+    {
       "path": "services/api/prisma/schema.prisma",
-      "sha256": "3f41995f48430e7adfeefb8ec605203d8ce501bb7214c66619a9142bfcf7a3f1"
+      "sha256": "68b76ddd1ca8dda27ebb511db2d5fa49285eab5c7b95e83f9cac20b3c26a7286"
+    },
+    {
+      "path": "services/api/prisma/task16-migration-history.cjs",
+      "sha256": "75169e621497baccfe6df52810dd87669091566e090608c2363d8a76da4ba3fd"
     },
     {
       "path": "services/api/prisma/task16-registered-access-check.cjs",
-      "sha256": "aa2efcb76c8a5dfcae21de27d06ea192b180681e18c66c73d974f760d79be0f2"
+      "sha256": "7bac1e1bbdb525d73f00f4f545ae244b8b7d50f92b6e9711cd713f05038ece1f"
     },
     {
       "path": "services/api/prisma/task16-registered-object-witness.cjs",
-      "sha256": "b19cad2c05ac4168d219954190f32a55b63f9ee380fa15f97f9e859189bf909e"
+      "sha256": "37e399773c8099cb6afd006b7b0c9f7a5a1ad4d61419f31f0d2a677a3cbc97a3"
+    },
+    {
+      "path": "services/api/prisma/task16-schema205-scope.cjs",
+      "sha256": "bd26839aa4153479cc27ba7ff9dcc8d7c39882d84140d4c15aa23581bfc098e4"
     },
     {
       "path": "services/api/prisma/task16-sdk-schema-proof.json",
@@ -1217,6 +1228,10 @@
       "sha256": "02a6c37490e70100dbaa3fa9744e1fcf99e446b798d02106f2165e1e390b6329"
     },
     {
+      "path": "services/api/src/contract/contract-direct-pending-recipe.ts",
+      "sha256": "c710a45922b445a91fa3cebb0e814c6b3a0c4124dca8cfb339bd154b72be04be"
+    },
+    {
       "path": "services/api/src/database/registered-payment-postgres.cases.ts",
       "sha256": "b0a3a237d2b4bdd29e16982279e3ec248c2e344029a6446076f224ff60216a46"
     },
@@ -1234,7 +1249,7 @@
     },
     {
       "path": "services/api/src/payment/payment-request.service.ts",
-      "sha256": "d3a860e5dd80bac2f696f8e55e9249faacb0ee1834038dc276fce42c4070d9d5"
+      "sha256": "9fa1abc584a762d3dbdd5f0b9df1c20d6d52dabf3be268eed8ba07078100be45"
     },
     {
       "path": "services/api/src/payment/registered-payment-approval.ts",
@@ -1250,7 +1265,7 @@
     },
     {
       "path": "services/api/src/payment/registered-payment-execution.service.ts",
-      "sha256": "73255d90030c195b73dc4d220be6f56f1fbefd6601d555d77000ece2c9662608"
+      "sha256": "321eadbc8c8f2231ccffd4b01141187dbb574d5a0cbd7395fe3e86db63c96d31"
     },
     {
       "path": "services/api/src/payment/registered-payment-funding.ts",
@@ -8817,6 +8832,209 @@
         "table": "ContractArchiveFile",
         "name": "ContractArchiveFile_v2_one_seal_task",
         "column": "sealTaskId"
+      }
+    ]
+  },
+  "schema205": {
+    "migrationPath": "services/api/prisma/migrations/20261109100000_contract_direct_pending_input_v1/migration.sql",
+    "migrationSha256": "81b419f9a59fb3ab6d38731af0c1591bce5f92d91568aa55a8798d8a05d812c5",
+    "sourceOnly": true,
+    "callabilitySupply": "NOT_IMPLEMENTED",
+    "actualCallerQualification": "NOT_VERIFIED",
+    "exclusiveFileHelper": {
+      "beforeBodySha256": "2dd031c00d7774dc6ff29376b6bd3f1b4a23579ac19f2a2c76e40ee788deb6c7",
+      "bodySha256": "34c8b2cc5f110c24d67eba3491d580d0f656b6c7bbf1fced769f929b648a8f90",
+      "body": "\nDECLARE\n  binding RECORD;\n  binding_exists BOOLEAN;\nBEGIN\n  FOR binding IN\n    SELECT *\n    FROM jg_file_business_collision_columns()\n    WHERE \"exclusive\"\n  LOOP\n    EXECUTE format(\n      'SELECT EXISTS (SELECT 1 FROM %I WHERE %I = $1)',\n      binding.\"tableName\",\n      binding.\"columnName\"\n    )\n    INTO binding_exists\n    USING candidate_file_id;\n    IF binding_exists THEN\n      RETURN TRUE;\n    END IF;\n  END LOOP;\n\n  BEGIN\n    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.\"ContractDraftAttachment\"') AND c.relnamespace=pg_catalog.to_regnamespace('public') AND c.relkind='r' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity) THEN\n      RAISE EXCEPTION '原件保留资料暂时无法核对，请稍后重试' USING ERRCODE='55000';\n    END IF;\n  EXCEPTION WHEN insufficient_privilege THEN\n    RAISE EXCEPTION '原件保留资料暂时无法核对，请稍后重试' USING ERRCODE='55000';\n  END;\n  RETURN EXISTS (SELECT 1 FROM public.\"ContractDraftAttachment\" WHERE \"fileId\"=candidate_file_id AND \"slotKey\"='direct_signed_originals_v1') OR EXISTS (\n    SELECT 1\n    FROM \"ContractTakeoverCorrection\"\n    WHERE \"attachmentFileId\" = candidate_file_id\n      AND (\n        \"correctionType\" = 'company_entity'\n        OR \"schemaVersion\" = 2\n      )\n  );\nEND;\n"
+    },
+    "recipePath": "services/api/src/contract/contract-direct-pending-recipe.ts",
+    "recipeSha256": "c710a45922b445a91fa3cebb0e814c6b3a0c4124dca8cfb339bd154b72be04be",
+    "routines": [
+      {
+        "signature": "public.jg_contract_direct_pending_binding_guard_v1()",
+        "bodySha256": "5f8c18f1a74e20703d55edc4b2f228972902b8e217c9ba5ce0a07041e4084e8d",
+        "securityDefiner": false,
+        "searchPath": "pg_catalog,public",
+        "language": "plpgsql",
+        "returnType": "trigger",
+        "volatility": "v",
+        "parallel": "u",
+        "strict": false,
+        "returnsSet": false,
+        "body": "\nBEGIN\n  IF TG_OP <> 'INSERT' OR EXISTS (SELECT 1 FROM public.jg_contract_direct_pending_binding_v1) THEN\n    RAISE EXCEPTION '已签合同来源安装记录不可修改或删除' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
+        "owner": "jg_task01_owner",
+        "interface": {
+          "argumentNames": null,
+          "inputArgumentTypes": [],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.jg_contract_direct_pending_version_guard_v1()",
+        "bodySha256": "5226ea72ac28bf9af8f7e8a5acff4eb97d0f4aacd8d879fe1c08d3c9cc20b400",
+        "securityDefiner": false,
+        "searchPath": "pg_catalog,public",
+        "language": "plpgsql",
+        "returnType": "trigger",
+        "volatility": "v",
+        "parallel": "u",
+        "strict": false,
+        "returnsSet": false,
+        "body": "\nDECLARE d JSONB; old_d JSONB; signed_day TEXT; loc JSONB; role_name TEXT; terms_id TEXT;\nBEGIN\n  d := NEW.\"draftData\" -> 'directSigningInput';\n  IF TG_OP = 'UPDATE' THEN\n    old_d := OLD.\"draftData\" -> 'directSigningInput';\n    IF old_d IS NULL AND d IS NOT NULL THEN RAISE EXCEPTION '现有草稿不能通过保存变更办理来源' USING ERRCODE = '23514'; END IF;\n    IF old_d IS NOT NULL AND (d IS NULL OR OLD.\"numericProtocolVersion\" <> 2\n      OR NEW.\"numericProtocolVersion\" <> OLD.\"numericProtocolVersion\"\n      OR NEW.\"contractId\" <> OLD.\"contractId\" OR NEW.\"changeType\" <> OLD.\"changeType\"\n      OR NEW.\"versionNo\" <> OLD.\"versionNo\"\n      OR (d - ARRAY['signedOn','enterpriseParty','counterpartyParty','fixedPaymentTermsVersionId']) IS DISTINCT FROM\n         (old_d - ARRAY['signedOn','enterpriseParty','counterpartyParty','fixedPaymentTermsVersionId'])) THEN\n      RAISE EXCEPTION '已签合同办理来源不可替换' USING ERRCODE = '23514';\n    END IF;\n    IF old_d->'fixedPaymentTermsVersionId' <> 'null'::jsonb AND d->'fixedPaymentTermsVersionId' IS DISTINCT FROM old_d->'fixedPaymentTermsVersionId' THEN\n      RAISE EXCEPTION '本草稿已有固定付款约定来源，不能改指另一版本' USING ERRCODE='23514';\n    END IF;\n    IF OLD.\"status\" <> 'draft' AND (NEW.\"originalSignedNumber\" IS DISTINCT FROM OLD.\"originalSignedNumber\" OR d IS DISTINCT FROM old_d) THEN\n      RAISE EXCEPTION '已结束草稿的原号及签署输入不可改写' USING ERRCODE = '23514';\n    END IF;\n  END IF;\n  IF d IS NULL THEN\n    IF NEW.\"originalSignedNumber\" IS NOT NULL THEN RAISE EXCEPTION '原号只能用于已签合同直接登记来源' USING ERRCODE = '23514'; END IF;\n    RETURN NEW;\n  END IF;\n  IF jsonb_typeof(d) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(d)='object' THEN d ELSE '{}'::jsonb END)) <> 7\n    OR NOT d ?& ARRAY['protocolVersion','source','relationship','signedOn','enterpriseParty','counterpartyParty','fixedPaymentTermsVersionId']\n    OR d->'protocolVersion' IS DISTINCT FROM '1'::jsonb OR d->>'source' IS DISTINCT FROM 'direct_signed'\n    OR d->>'relationship' IS DISTINCT FROM 'outside' OR NEW.\"numericProtocolVersion\" <> 2\n    OR NEW.\"changeType\" IS DISTINCT FROM 'original' OR NEW.\"supersedesVersionId\" IS NOT NULL\n    OR NEW.\"draftData\"#>>'{contractBasics,relationship}' IS DISTINCT FROM 'outside'\n    OR NEW.\"status\" NOT IN ('draft','abandoned') OR NEW.\"firstSubmittedAt\" IS NOT NULL OR NEW.\"effectiveAt\" IS NOT NULL\n    OR NEW.\"documentContentFingerprint\" IS NOT NULL THEN\n    RAISE EXCEPTION '已签合同待登记来源格式不完整或后续能力尚未开放' USING ERRCODE = '23514';\n  END IF;\n  -- Exact empty string alone means no original paper number. Whitespace is data.\n  IF NEW.\"originalSignedNumber\" = '' THEN NEW.\"originalSignedNumber\" := NULL; END IF;\n  IF d->'signedOn' <> 'null'::jsonb THEN\n    signed_day := d->>'signedOn';\n    IF jsonb_typeof(d->'signedOn') <> 'string' OR signed_day !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'\n      OR substring(signed_day,1,4) = '0000' THEN RAISE EXCEPTION '签订日期须为真实年月日或留空' USING ERRCODE = '23514'; END IF;\n    BEGIN\n      IF to_char(make_date(substring(signed_day,1,4)::int,substring(signed_day,6,2)::int,substring(signed_day,9,2)::int),'YYYY-MM-DD') <> signed_day THEN RAISE EXCEPTION 'invalid_date'; END IF;\n    EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION '签订日期不是有效日期' USING ERRCODE = '23514'; END;\n  END IF;\n  FOREACH role_name IN ARRAY ARRAY['enterpriseParty','counterpartyParty'] LOOP\n    loc := d->role_name;\n    IF loc <> 'null'::jsonb AND (jsonb_typeof(loc) IS DISTINCT FROM 'object'\n      OR (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(loc)='object' THEN loc ELSE '{}'::jsonb END)) <> 2 OR NOT loc ?& ARRAY['roleKey','displayOrder']\n      OR jsonb_typeof(loc->'roleKey') IS DISTINCT FROM 'string' OR loc->>'roleKey' NOT IN ('party_a','party_b','party_c','guarantor','consortium_member','other')\n      OR jsonb_typeof(loc->'displayOrder') IS DISTINCT FROM 'number' OR loc->>'displayOrder' !~ '^(0|[1-9][0-9]*)$') THEN\n      RAISE EXCEPTION '签约双方位置不正确' USING ERRCODE = '23514';\n    END IF;\n  END LOOP;\n  IF d->'enterpriseParty' <> 'null'::jsonb AND d->'enterpriseParty' = d->'counterpartyParty' THEN RAISE EXCEPTION '签约双方不能使用同一位置' USING ERRCODE = '23514'; END IF;\n  IF d->'fixedPaymentTermsVersionId' <> 'null'::jsonb THEN\n    terms_id := d->>'fixedPaymentTermsVersionId';\n    IF jsonb_typeof(d->'fixedPaymentTermsVersionId') IS DISTINCT FROM 'string' OR terms_id = ''\n      OR NOT EXISTS (SELECT 1 FROM public.\"PaymentTermsVersion\" p WHERE p.\"id\" = terms_id AND p.\"contractId\" = NEW.\"contractId\" AND p.\"contractVersionId\" = NEW.\"id\") THEN\n      RAISE EXCEPTION '付款约定来源与当前合同不一致' USING ERRCODE = '23514';\n    END IF;\n  END IF;\n  RETURN NEW;\nEND;\n",
+        "owner": "jg_task01_owner",
+        "interface": {
+          "argumentNames": null,
+          "inputArgumentTypes": [],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.jg_contract_direct_pending_input_v1(pg_catalog.text)",
+        "bodySha256": "24e586804f996807e6c0d28bc5e1401551fc1c73e92eca93cec4a06c50b1f6e9",
+        "securityDefiner": false,
+        "searchPath": "pg_catalog,public",
+        "language": "plpgsql",
+        "returnType": "jsonb",
+        "volatility": "s",
+        "parallel": "u",
+        "strict": false,
+        "returnsSet": false,
+        "body": "\nDECLARE v RECORD; d JSONB; a RECORD; p RECORD; part RECORD; parties JSONB := '[]'::jsonb;\n  signed_files JSONB := '[]'::jsonb; payment JSONB := NULL; q JSONB; x RECORD; n INTEGER := 0;\n  enterprise_id TEXT; counterparty_id TEXT; enterprise_version TEXT; counterparty_version TEXT; reason TEXT; invalid_input BOOLEAN := FALSE; signed_day TEXT; role_name TEXT; loc JSONB;\nBEGIN\n  SELECT cv.\"id\", cv.\"contractId\", cv.\"versionNo\", cv.\"changeType\", cv.\"numericProtocolVersion\", cv.\"status\", cv.\"signingSubjectType\", cv.\"draftRevision\",\n    cv.\"originalSignedNumber\", cv.\"draftData\", cv.\"amountYuan\", cv.\"amountLimitType\", cv.\"pricingNature\", cv.\"amountSource\", cv.\"invoiceType\", cv.\"taxMode\", cv.\"defaultTaxRatePercent\",\n    cv.\"affiliateAssignmentId\", cv.\"affiliateBusinessPartyVersionId\", cv.\"affiliateNameSnapshot\", cv.\"affiliateCreditCodeSnapshot\",\n    c.\"projectId\", c.\"name\", c.\"contractTypeKey\"\n  INTO v FROM public.\"ContractVersion\" cv JOIN public.\"Contract\" c ON c.\"id\" = cv.\"contractId\" WHERE cv.\"id\" = p_version_id;\n  IF NOT FOUND OR NOT (v.\"draftData\" ? 'directSigningInput') THEN RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state','not_applicable','sourceRevision',NULL,'Q',NULL,'inputSha256',NULL,'reason',NULL); END IF;\n  d := v.\"draftData\"->'directSigningInput';\n  IF v.\"numericProtocolVersion\" <> 2 OR v.\"changeType\" <> 'original' OR v.\"status\" NOT IN ('draft','abandoned')\n    OR jsonb_typeof(d) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(d)='object' THEN d ELSE '{}'::jsonb END))<>7 OR NOT d ?& ARRAY['protocolVersion','source','relationship','signedOn','enterpriseParty','counterpartyParty','fixedPaymentTermsVersionId'] OR d->'protocolVersion' IS DISTINCT FROM '1'::jsonb\n    OR d->>'source' IS DISTINCT FROM 'direct_signed' OR d->>'relationship' IS DISTINCT FROM 'outside'\n    OR v.\"draftData\"#>>'{contractBasics,relationship}' IS DISTINCT FROM 'outside' THEN\n    RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state','invalid','sourceRevision',v.\"draftRevision\",'Q',NULL,'inputSha256',NULL,'reason','已签合同待登记来源不完整');\n  END IF;\n  IF d->'signedOn' <> 'null'::jsonb THEN\n    signed_day := d->>'signedOn';\n    BEGIN\n      IF jsonb_typeof(d->'signedOn') IS DISTINCT FROM 'string' OR signed_day !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR substring(signed_day,1,4)='0000'\n        OR to_char(make_date(substring(signed_day,1,4)::int,substring(signed_day,6,2)::int,substring(signed_day,9,2)::int),'YYYY-MM-DD') IS DISTINCT FROM signed_day THEN RAISE EXCEPTION 'invalid_date'; END IF;\n    EXCEPTION WHEN OTHERS THEN RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state','invalid','sourceRevision',v.\"draftRevision\",'Q',NULL,'inputSha256',NULL,'reason','签订日期不是有效年月日'); END;\n  END IF;\n  FOREACH role_name IN ARRAY ARRAY['enterpriseParty','counterpartyParty'] LOOP\n    loc := d->role_name;\n    IF loc<>'null'::jsonb AND (jsonb_typeof(loc) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(loc)='object' THEN loc ELSE '{}'::jsonb END))<>2 OR NOT loc ?& ARRAY['roleKey','displayOrder']\n      OR jsonb_typeof(loc->'roleKey') IS DISTINCT FROM 'string' OR loc->>'roleKey' NOT IN ('party_a','party_b','party_c','guarantor','consortium_member','other') OR jsonb_typeof(loc->'displayOrder') IS DISTINCT FROM 'number' OR loc->>'displayOrder' !~ '^(0|[1-9][0-9]*)$') THEN\n      RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state','invalid','sourceRevision',v.\"draftRevision\",'Q',NULL,'inputSha256',NULL,'reason','签约双方位置格式不正确');\n    END IF;\n  END LOOP;\n  reason := CASE WHEN length(btrim(v.\"name\")) = 0 THEN '请填写合同名称' ELSE NULL END;\n  IF d->'enterpriseParty' = 'null'::jsonb OR d->'counterpartyParty' = 'null'::jsonb THEN reason := COALESCE(reason,'请选择真实签约双方位置'); END IF;\n  IF d->'enterpriseParty' = d->'counterpartyParty' AND d->'enterpriseParty' <> 'null'::jsonb THEN\n    RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state','invalid','sourceRevision',v.\"draftRevision\",'Q',NULL,'inputSha256',NULL,'reason','签约双方位置重复');\n  END IF;\n  SELECT count(*) INTO n FROM public.\"ContractPartySnapshot\" cps WHERE cps.\"contractVersionId\"=v.\"id\"\n    AND cps.\"roleKey\"=d#>>'{enterpriseParty,roleKey}' AND cps.\"displayOrder\"::text=d#>>'{enterpriseParty,displayOrder}';\n  IF n > 1 THEN reason := '签约主体位置不唯一'; invalid_input := TRUE; END IF;\n  SELECT cps.\"id\",cps.\"businessPartyVersionId\" INTO part FROM public.\"ContractPartySnapshot\" cps WHERE cps.\"contractVersionId\"=v.\"id\"\n    AND cps.\"roleKey\"=d#>>'{enterpriseParty,roleKey}' AND cps.\"displayOrder\"::text=d#>>'{enterpriseParty,displayOrder}';\n  enterprise_id := part.\"id\"; enterprise_version := part.\"businessPartyVersionId\";\n  SELECT count(*) INTO n FROM public.\"ContractPartySnapshot\" cps WHERE cps.\"contractVersionId\"=v.\"id\"\n    AND cps.\"roleKey\"=d#>>'{counterpartyParty,roleKey}' AND cps.\"displayOrder\"::text=d#>>'{counterpartyParty,displayOrder}';\n  IF n > 1 THEN reason := '相对方位置不唯一'; invalid_input := TRUE; END IF;\n  SELECT cps.\"id\",cps.\"businessPartyVersionId\" INTO part FROM public.\"ContractPartySnapshot\" cps WHERE cps.\"contractVersionId\"=v.\"id\"\n    AND cps.\"roleKey\"=d#>>'{counterpartyParty,roleKey}' AND cps.\"displayOrder\"::text=d#>>'{counterpartyParty,displayOrder}';\n  counterparty_id := part.\"id\"; counterparty_version := part.\"businessPartyVersionId\";\n  IF enterprise_id IS NULL OR enterprise_version IS NULL OR counterparty_id IS NULL OR counterparty_version IS NULL THEN reason := COALESCE(reason,'签约双方尚未绑定受控单位版本'); END IF;\n  SELECT aa.\"id\",aa.\"projectId\",aa.\"businessPartyId\",aa.\"businessPartyVersionId\",aa.\"affiliateNameSnapshot\",aa.\"affiliateCreditCodeSnapshot\",aa.\"effectiveFrom\"\n    INTO a FROM public.\"ProjectAffiliateAssignment\" aa WHERE aa.\"id\"=v.\"affiliateAssignmentId\";\n  IF a.\"id\" IS NULL OR a.\"projectId\" IS DISTINCT FROM v.\"projectId\" OR a.\"businessPartyVersionId\" IS DISTINCT FROM enterprise_version\n    OR v.\"affiliateBusinessPartyVersionId\" IS DISTINCT FROM a.\"businessPartyVersionId\" OR v.\"affiliateNameSnapshot\" IS DISTINCT FROM a.\"affiliateNameSnapshot\"\n    OR v.\"affiliateCreditCodeSnapshot\" IS DISTINCT FROM a.\"affiliateCreditCodeSnapshot\" OR enterprise_version = counterparty_version\n    OR v.\"signingSubjectType\" IS DISTINCT FROM 'affiliate' THEN reason := COALESCE(reason,'施工企业签约来源尚未完整确认'); END IF;\n  FOR x IN SELECT cps.\"id\",cps.\"roleKey\",cps.\"displayOrder\",cps.\"businessPartyVersionId\",bp.\"snapshot\",bp.\"businessPartyId\"\n    FROM public.\"ContractPartySnapshot\" cps LEFT JOIN public.\"BusinessPartyVersion\" bp ON bp.\"id\"=cps.\"businessPartyVersionId\"\n    WHERE cps.\"contractVersionId\"=v.\"id\" ORDER BY cps.\"roleKey\" COLLATE \"C\",cps.\"displayOrder\",cps.\"id\" COLLATE \"C\" LOOP\n    IF x.\"id\"=enterprise_id AND x.\"businessPartyId\" IS DISTINCT FROM a.\"businessPartyId\" THEN reason := COALESCE(reason,'施工企业版本与单位身份不一致'); END IF;\n    IF x.\"id\"=counterparty_id AND x.\"businessPartyId\"=a.\"businessPartyId\" THEN reason := COALESCE(reason,'签约相对方不能与施工企业为同一单位'); invalid_input := TRUE; END IF;\n    IF x.\"id\" IN (enterprise_id,counterparty_id) AND (x.\"snapshot\" IS NULL OR jsonb_typeof(x.\"snapshot\") IS DISTINCT FROM 'object') THEN reason := COALESCE(reason,'签约单位版本资料缺失'); END IF;\n    parties := parties || jsonb_build_array(jsonb_build_object('cpsId',x.\"id\",'roleKey',x.\"roleKey\",'displayOrder',x.\"displayOrder\",'businessPartyVersionId',x.\"businessPartyVersionId\",'identity',jsonb_build_object(\n      'name',x.\"snapshot\"->'name','unifiedSocialCreditCode',x.\"snapshot\"->'unifiedSocialCreditCode','legalRepresentative',x.\"snapshot\"->'legalRepresentative','address',x.\"snapshot\"->'address','contactName',x.\"snapshot\"->'contactName','contactPhone',x.\"snapshot\"->'contactPhone')));\n  END LOOP;\n  IF d->'fixedPaymentTermsVersionId' <> 'null'::jsonb THEN\n    SELECT pt.\"id\",pt.\"contractId\",pt.\"contractVersionId\",pt.\"versionNo\",pt.\"originalText\" INTO p FROM public.\"PaymentTermsVersion\" pt WHERE pt.\"id\"=d->>'fixedPaymentTermsVersionId';\n    IF p.\"id\" IS NULL OR p.\"contractId\" IS DISTINCT FROM v.\"contractId\" OR p.\"contractVersionId\" IS DISTINCT FROM v.\"id\"\n      OR EXISTS (SELECT 1 FROM public.\"PaymentTermsStage\" st WHERE st.\"paymentTermsVersionId\"=p.\"id\") THEN reason := COALESCE(reason,'付款约定固定来源不完整'); invalid_input := TRUE;\n    ELSE payment := jsonb_build_object('id',p.\"id\",'versionNo',p.\"versionNo\",'originalText',p.\"originalText\",'stages','[]'::jsonb); END IF;\n  ELSE\n    SELECT count(*) INTO n FROM public.\"PaymentTermsVersion\" pt WHERE pt.\"contractVersionId\"=v.\"id\";\n    IF n>0 THEN reason := COALESCE(reason,'付款约定来源尚未绑定'); END IF; IF n>1 THEN invalid_input := TRUE; END IF;\n  END IF;\n  n := 0;\n  FOR x IN SELECT da.\"fileId\",da.\"displayOrder\",f.\"mimeType\",f.\"sizeBytes\",f.\"contentSha256\",f.\"storageStatus\",f.\"purgeReceiptId\",f.\"supersedesFileObjectId\"\n    FROM public.\"ContractDraftAttachment\" da LEFT JOIN public.\"FileObject\" f ON f.\"id\"=da.\"fileId\"\n    WHERE da.\"contractVersionId\"=v.\"id\" AND da.\"slotKey\"='direct_signed_originals_v1' ORDER BY da.\"displayOrder\" LOOP\n    IF x.\"displayOrder\" <> n OR x.\"mimeType\" NOT IN ('application/pdf','image/jpeg','image/png') OR x.\"mimeType\" IS NULL\n      OR x.\"storageStatus\" IS DISTINCT FROM 'active' OR x.\"purgeReceiptId\" IS NOT NULL OR x.\"supersedesFileObjectId\" IS NOT NULL\n      OR x.\"sizeBytes\" IS NULL OR x.\"sizeBytes\" <= 0 OR x.\"contentSha256\" IS NULL OR x.\"contentSha256\" !~ '^[a-f0-9]{64}$'\n      OR EXISTS (SELECT 1 FROM public.\"FileObject\" newer WHERE newer.\"supersedesFileObjectId\"=x.\"fileId\") THEN reason := COALESCE(reason,'签章原件顺序或文件元数据不完整'); invalid_input := TRUE; END IF;\n    signed_files := signed_files || jsonb_build_array(jsonb_build_object('fileId',x.\"fileId\",'displayOrder',x.\"displayOrder\",'mimeType',x.\"mimeType\",'sizeBytes',x.\"sizeBytes\",'contentSha256',x.\"contentSha256\")); n := n+1;\n  END LOOP;\n  IF n < 1 OR n > 20 THEN reason := COALESCE(reason,'请保存一至二十份签章PDF或照片原件'); END IF;\n  IF reason IS NOT NULL THEN RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state',CASE WHEN invalid_input THEN 'invalid' ELSE 'incomplete' END,'sourceRevision',v.\"draftRevision\",'Q',NULL,'inputSha256',NULL,'reason',reason); END IF;\n  q := jsonb_build_object('inputProtocolVersion',1,'source',jsonb_build_object('kind','direct_signed','relationship','outside'),\n    'locator',jsonb_build_object('projectId',v.\"projectId\",'contractId',v.\"contractId\",'contractVersionId',v.\"id\",'versionNo',v.\"versionNo\",'changeType','original','draftRevision',v.\"draftRevision\"),\n    'contract',jsonb_build_object('businessType',v.\"contractTypeKey\",'name',v.\"name\",'originalSignedNumber',v.\"originalSignedNumber\",'signedOn',d->'signedOn'),\n    'money',jsonb_build_object('numericProtocolVersion',2,'amountYuan',CASE WHEN v.\"amountYuan\" IS NULL THEN NULL ELSE v.\"amountYuan\"::numeric(24,4)::text END,'amountLimitType',v.\"amountLimitType\",'pricingNature',v.\"pricingNature\",'amountSource',v.\"amountSource\"),\n    'tax',jsonb_build_object('amountBasis',v.\"draftData\"#>>'{contractBasics,amountBasis}','invoiceType',v.\"invoiceType\",'taxMode',v.\"taxMode\",'defaultTaxRatePercent',CASE WHEN v.\"defaultTaxRatePercent\" IS NULL THEN NULL ELSE v.\"defaultTaxRatePercent\"::numeric(9,6)::text END),\n    'subjects',jsonb_build_object('enterprise',jsonb_build_object('assignmentId',a.\"id\",'businessPartyId',a.\"businessPartyId\",'businessPartyVersionId',a.\"businessPartyVersionId\",'name',a.\"affiliateNameSnapshot\",'creditCode',a.\"affiliateCreditCodeSnapshot\",'effectiveFrom',to_char(a.\"effectiveFrom\",'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')),'roles',jsonb_build_object('enterpriseCpsId',enterprise_id,'counterpartyCpsId',counterparty_id),'parties',parties),\n    'terms',jsonb_build_object('settlementText',COALESCE(v.\"draftData\"#>>'{contractBasics,settlementText}',''),'paymentTerms',payment),'signedFiles',signed_files);\n  RETURN jsonb_build_object('protocolVersion',1,'sourceKind','direct_signed_pending','state','complete','sourceRevision',v.\"draftRevision\",'Q',q,'inputSha256',encode(public.digest(convert_to(q::text,'UTF8'),'sha256'),'hex'),'reason',NULL);\nEND;\n",
+        "owner": "jg_task01_owner",
+        "interface": {
+          "argumentNames": [
+            "p_version_id"
+          ],
+          "inputArgumentTypes": [
+            "pg_catalog.text"
+          ],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.jg_contract_direct_pending_attachment_guard_v1()",
+        "bodySha256": "75824d061e5183bc3fb2fd3ec25804e2d471920d1f92b5bdd01ebc9a4cdd95d1",
+        "securityDefiner": false,
+        "searchPath": "pg_catalog,public",
+        "language": "plpgsql",
+        "returnType": "trigger",
+        "volatility": "v",
+        "parallel": "u",
+        "strict": false,
+        "returnsSet": false,
+        "body": "\nDECLARE v RECORD; f RECORD; owner_id TEXT;\nBEGIN\n  IF TG_OP='DELETE' THEN RETURN OLD; END IF;\n  IF NEW.\"slotKey\" <> 'direct_signed_originals_v1' THEN RETURN NEW; END IF;\n  IF TG_OP='UPDATE' AND OLD.\"slotKey\"<>'direct_signed_originals_v1' THEN\n    RAISE EXCEPTION '既有普通资料不能通过变更槽位升格为签章原件' USING ERRCODE='23514';\n  END IF;\n  SELECT cv.\"id\",cv.\"contractId\",cv.\"numericProtocolVersion\",cv.\"changeType\",cv.\"status\",cv.\"draftData\" INTO v\n    FROM public.\"ContractVersion\" cv WHERE cv.\"id\"=NEW.\"contractVersionId\";\n  IF v.\"id\" IS NULL OR v.\"numericProtocolVersion\"<>2 OR v.\"changeType\"<>'original' OR v.\"status\"<>'draft'\n    OR v.\"draftData\"#>>'{directSigningInput,source}' IS DISTINCT FROM 'direct_signed'\n    OR v.\"draftData\"#>>'{directSigningInput,relationship}' IS DISTINCT FROM 'outside'\n    OR v.\"draftData\"#>'{directSigningInput,protocolVersion}' IS DISTINCT FROM '1'::jsonb THEN\n    RAISE EXCEPTION '此原件槽仅支持真实已签合同待登记草稿' USING ERRCODE='23514';\n  END IF;\n  SELECT c.\"ownerUserId\" INTO owner_id FROM public.\"Contract\" c WHERE c.\"id\"=v.\"contractId\";\n  -- This guard is self-sufficient for a direct SQL caller too. Reentrant G\n  -- precedes a nonblocking F; never wait on F while retaining G.\n  PERFORM pg_catalog.pg_advisory_xact_lock(190731,13);\n  BEGIN\n    SELECT fo.\"id\",fo.\"mimeType\",fo.\"sizeBytes\",fo.\"contentSha256\",fo.\"storageStatus\",fo.\"purgeReceiptId\",fo.\"supersedesFileObjectId\",fo.\"uploadedByUserId\" INTO f\n      FROM public.\"FileObject\" fo WHERE fo.\"id\"=NEW.\"fileId\" FOR UPDATE NOWAIT;\n  EXCEPTION WHEN lock_not_available THEN\n    RAISE EXCEPTION '原件正在整理，请保留填写稍后重试' USING ERRCODE='55P03';\n  END;\n  IF owner_id IS NULL OR NEW.\"createdByUserId\" IS DISTINCT FROM owner_id OR f.\"uploadedByUserId\" IS DISTINCT FROM owner_id\n    OR f.\"id\" IS NULL OR f.\"mimeType\" NOT IN ('application/pdf','image/jpeg','image/png') OR f.\"sizeBytes\"<=0\n    OR f.\"storageStatus\" IS DISTINCT FROM 'active' OR f.\"purgeReceiptId\" IS NOT NULL OR f.\"supersedesFileObjectId\" IS NOT NULL\n    OR f.\"contentSha256\" IS NULL OR f.\"contentSha256\" !~ '^[a-f0-9]{64}$'\n    OR EXISTS(SELECT 1 FROM public.\"FileObject\" newer WHERE newer.\"supersedesFileObjectId\"=NEW.\"fileId\") THEN\n    RAISE EXCEPTION '原件身份、归属或保留状态不允许绑定' USING ERRCODE='23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
+        "owner": "jg_task01_owner",
+        "interface": {
+          "argumentNames": null,
+          "inputArgumentTypes": [],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      },
+      {
+        "signature": "public.jg_contract_direct_pending_file_guard_v1()",
+        "bodySha256": "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1",
+        "securityDefiner": false,
+        "searchPath": "pg_catalog,public",
+        "language": "plpgsql",
+        "returnType": "trigger",
+        "volatility": "v",
+        "parallel": "u",
+        "strict": false,
+        "returnsSet": false,
+        "body": "\nBEGIN\n  BEGIN\n    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=pg_catalog.to_regclass('public.\"ContractDraftAttachment\"') AND c.relnamespace=pg_catalog.to_regnamespace('public') AND c.relkind='r' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity) THEN\n      RAISE EXCEPTION '原件保留资料暂时无法核对，请稍后重试' USING ERRCODE='55000';\n    END IF;\n  EXCEPTION WHEN insufficient_privilege THEN\n    RAISE EXCEPTION '原件保留资料暂时无法核对，请稍后重试' USING ERRCODE='55000';\n  END;\n  IF NOT EXISTS (SELECT 1 FROM public.\"ContractDraftAttachment\" da WHERE da.\"fileId\"=OLD.\"id\" AND da.\"slotKey\"='direct_signed_originals_v1') THEN\n    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;\n  END IF;\n  IF TG_OP='DELETE' THEN RAISE EXCEPTION '已选签章原件仍被待登记合同保留，不能删除' USING ERRCODE='23514'; END IF;\n  IF NEW.\"id\" IS DISTINCT FROM OLD.\"id\" OR NEW.\"storageStatus\" IS DISTINCT FROM OLD.\"storageStatus\"\n    OR NEW.\"purgeReceiptId\" IS DISTINCT FROM OLD.\"purgeReceiptId\" OR NEW.\"supersedesFileObjectId\" IS DISTINCT FROM OLD.\"supersedesFileObjectId\"\n    OR NEW.\"bucket\" IS DISTINCT FROM OLD.\"bucket\" OR NEW.\"objectKey\" IS DISTINCT FROM OLD.\"objectKey\"\n    OR NEW.\"mimeType\" IS DISTINCT FROM OLD.\"mimeType\" OR NEW.\"sizeBytes\" IS DISTINCT FROM OLD.\"sizeBytes\"\n    OR NEW.\"contentSha256\" IS DISTINCT FROM OLD.\"contentSha256\" OR NEW.\"uploadedByUserId\" IS DISTINCT FROM OLD.\"uploadedByUserId\" THEN\n    RAISE EXCEPTION '已选签章原件的内容身份和保留状态不可替换' USING ERRCODE='23514';\n  END IF;\n  RETURN NEW;\nEND;\n",
+        "owner": "jg_task01_owner",
+        "interface": {
+          "argumentNames": null,
+          "inputArgumentTypes": [],
+          "allArgumentTypes": null,
+          "argumentModes": null,
+          "defaultArgumentCount": 0,
+          "variadicType": null,
+          "kind": "f",
+          "leakproof": false,
+          "support": null
+        }
+      }
+    ],
+    "triggers": [
+      {
+        "name": "jg_direct_pending_binding_immutable",
+        "table": "jg_contract_direct_pending_binding_v1",
+        "function": "public.jg_contract_direct_pending_binding_guard_v1()",
+        "type": 31,
+        "columns": [],
+        "argumentCount": 0,
+        "arguments": "",
+        "definitions": null
+      },
+      {
+        "name": "jg_direct_pending_version_shape",
+        "table": "ContractVersion",
+        "function": "public.jg_contract_direct_pending_version_guard_v1()",
+        "type": 23,
+        "columns": [],
+        "argumentCount": 0,
+        "arguments": "",
+        "definitions": null
+      },
+      {
+        "name": "jg_direct_pending_attachment_source",
+        "table": "ContractDraftAttachment",
+        "function": "public.jg_contract_direct_pending_attachment_guard_v1()",
+        "type": 23,
+        "columns": [],
+        "argumentCount": 0,
+        "arguments": "",
+        "definitions": null
+      },
+      {
+        "name": "jg_direct_pending_attachment_exclusive",
+        "table": "ContractDraftAttachment",
+        "function": "public.jg_enforce_exclusive_file_business_binding()",
+        "type": 23,
+        "columns": [
+          "fileId",
+          "slotKey"
+        ],
+        "argumentCount": 2,
+        "arguments": "66696c654964007472756500",
+        "definitions": [
+          "CREATE TRIGGER jg_direct_pending_attachment_exclusive BEFORE INSERT OR UPDATE OF \"fileId\", \"slotKey\" ON public.\"ContractDraftAttachment\" FOR EACH ROW WHEN ((new.\"slotKey\" = 'direct_signed_originals_v1'::text)) EXECUTE FUNCTION jg_enforce_exclusive_file_business_binding('fileId', 'true')",
+          "CREATE TRIGGER jg_direct_pending_attachment_exclusive BEFORE INSERT OR UPDATE OF \"fileId\", \"slotKey\" ON public.\"ContractDraftAttachment\" FOR EACH ROW WHEN ((new.\"slotKey\" = 'direct_signed_originals_v1'::text)) EXECUTE FUNCTION public.jg_enforce_exclusive_file_business_binding('fileId', 'true')"
+        ]
+      },
+      {
+        "name": "jg_direct_pending_file_retained",
+        "table": "FileObject",
+        "function": "public.jg_contract_direct_pending_file_guard_v1()",
+        "type": 27,
+        "columns": [],
+        "argumentCount": 0,
+        "arguments": "",
+        "definitions": null
       }
     ]
   }

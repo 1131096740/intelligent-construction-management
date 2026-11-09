@@ -1,3 +1,4 @@
+import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { OperatingSourceReplayService, missingOperatingSourceReplayService, type OperatingSourceAppendPort } from "../operating-ledger/operating-source-replay.service";
 import { ConflictException, Injectable, Inject, Optional } from "@nestjs/common";
@@ -159,8 +160,10 @@ export class ContractVersionActivationService {
     private readonly operatingSources: OperatingSourceAppendPort = missingOperatingSourceReplayService()) {}
 
   async activate(tx: Prisma.TransactionClient, input: ActivateContractVersionInput) {
-    const version = await tx.contractVersion.findUnique({ where: { id: input.contractVersionId } }) as ContractVersion | null;
-    if (!version) throw new ConflictException("合同版本不存在，请刷新后重试");
+    const sourceVersion = await tx.contractVersion.findUnique({ where: { id: input.contractVersionId } });
+    if (!sourceVersion) throw new ConflictException("合同版本不存在，请刷新后重试");
+    assertNotDirectPendingVersion(sourceVersion);
+    const version: ContractVersion = sourceVersion;
     if (version.status !== "pending_archive_confirm") {
       throw new ConflictException("当前合同版本尚不能确认归档，请先完成用印并上传已签署合同归档文件");
     }
@@ -227,6 +230,7 @@ export class ContractVersionActivationService {
   async activateArchivedV2(tx: Prisma.TransactionClient, versionId: string, actorUserId: string, effectiveAt: Date, archiveId: string) {
     const archive = await tx.contractArchiveFile.findUnique({ where: { id: archiveId } });
     const version = await tx.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
+    assertNotDirectPendingVersion(version);
     if (!archive || archive.archiveProtocolVersion !== 2 || archive.contractVersionId !== versionId || archive.uploadedByUserId !== actorUserId || !archive.authoritySha256 || version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.supersedesVersionId || version.status !== "seal_approved_pending_archive") throw new ConflictException("新版合同缺少同一归档权威，不能生效");
     await tx.contractVersion.update({ where: { id: versionId }, data: { status: "effective", effectiveAt, taxFactsFrozenAt: effectiveAt } });
     await tx.paymentTermsVersion.updateMany({ where: { contractVersionId: versionId }, data: { status: "effective" } });

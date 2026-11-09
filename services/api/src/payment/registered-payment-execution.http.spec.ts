@@ -28,6 +28,7 @@ import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-ent
 import { createApiValidationPipe } from "../validation/api-validation";
 import { RegisteredPaymentExecutionController } from "./registered-payment-execution.controller";
 import { RegisteredPaymentExecutionService } from "./registered-payment-execution.service";
+import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts, type RegisteredPaymentImpactReader } from "./registered-payment-impact-reader";
 import { RegisteredPaymentNotificationService } from "./registered-payment-notification.service";
 import { MeController } from "../me/me.controller";
 import { MeService } from "../me/me.service";
@@ -91,9 +92,13 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       status: "approved_pending_payment",
       updatedAt: new Date("2026-11-05T00:00:00Z")
     } });
+    await startApplication();
+  });
+  async function startApplication(impactReader?: RegisteredPaymentImpactReader) {
     const module = await Test.createTestingModule({
       controllers: [PaymentController, FileController, RegisteredPaymentExecutionController, MeController, FundAccountController, AuditController],
-      providers: [{ provide: ApprovalSmsService, useValue: { available: () => notificationSmsEnabled, send: async (phone: string) => { notificationSmsCalls.push(phone); notificationSmsTransactionStates.push(notificationTransactionDepth > 0); if (notificationSmsEnabled) return {status:notificationSmsOutcome,message:"Synthetic SMS outcome; no external gateway"}; return {status:"failed",message:"\u5408\u6210\u77ed\u4fe1\u9002\u914d\u5668\u5173\u95ed"}; } } }, PaymentReadService, ProjectVisibilityService, { provide: OperatingSourceReplayService, inject: [PrismaService], useFactory: (prisma: PrismaService) => new OperatingSourceReplayService(prisma,new OperatingLedgerService(prisma),new OperatingSourceAdapterRegistry([new PaymentExecutionOperatingSourceAdapter()])) }, { provide: PaymentRequestService, inject: [PrismaService, AuthService, AuditService, FileService, OperatingSourceReplayService, RegisteredPaymentNotificationService], useFactory: (prisma: PrismaService, auth: AuthService, audit: AuditService, files: FileService, operating: OperatingSourceReplayService, notifications: RegisteredPaymentNotificationService) => new PaymentRequestService(new PaymentAmountService(), prisma, audit, files, auth, undefined, undefined, undefined, undefined, operating, undefined, notifications) }, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, MeService, AuditService, AuthService, JwtTokenService, FundAccountService, { provide: FileService, inject: [PrismaService, AuditService], useFactory: (prisma: PrismaService, audit: AuditService) => new FileService(prisma,audit,new PrivateFileStorage()) }, { provide: PrismaService, useValue: database.prisma }]
+      providers: [{ provide: ApprovalSmsService, useValue: { available: () => notificationSmsEnabled, send: async (phone: string) => { notificationSmsCalls.push(phone); notificationSmsTransactionStates.push(notificationTransactionDepth > 0); if (notificationSmsEnabled) return {status:notificationSmsOutcome,message:"Synthetic SMS outcome; no external gateway"}; return {status:"failed",message:"\u5408\u6210\u77ed\u4fe1\u9002\u914d\u5668\u5173\u95ed"}; } } }, PaymentReadService, ProjectVisibilityService, { provide: OperatingSourceReplayService, inject: [PrismaService], useFactory: (prisma: PrismaService) => new OperatingSourceReplayService(prisma,new OperatingLedgerService(prisma),new OperatingSourceAdapterRegistry([new PaymentExecutionOperatingSourceAdapter()])) }, { provide: PaymentRequestService, inject: [PrismaService, AuthService, AuditService, FileService, OperatingSourceReplayService, RegisteredPaymentNotificationService], useFactory: (prisma: PrismaService, auth: AuthService, audit: AuditService, files: FileService, operating: OperatingSourceReplayService, notifications: RegisteredPaymentNotificationService) => new PaymentRequestService(new PaymentAmountService(), prisma, audit, files, auth, undefined, undefined, undefined, undefined, operating, undefined, notifications) }, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, MeService, AuditService, AuthService, JwtTokenService, FundAccountService, { provide: FileService, inject: [PrismaService, AuditService], useFactory: (prisma: PrismaService, audit: AuditService) => new FileService(prisma,audit,new PrivateFileStorage()) }, { provide: PrismaService, useValue: database.prisma },
+        ...(impactReader ? [{ provide: REGISTERED_PAYMENT_IMPACT_READER, useValue: impactReader }] : [])]
     }).compile();
     app = module.createNestApplication({ logger: ["error"] });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -102,7 +107,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
       new RetiredWriteEntryGuard(), new PermissionGuard(reflector, database.prisma as never));
     app.useGlobalPipes(createApiValidationPipe());
     await app.listen(0, "127.0.0.1");
-  });
+  }
   afterEach(async () => { await app?.close(); });
   async function get(actor: string, path = "/payment-executions/work-items") {
     const token = tokens.signAccessToken({ id: actor, name: "合成付款人员", phone: null, sessionVersion: 0 });
@@ -191,51 +196,6 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect((await seed.paymentRequest.findUnique({where:{id:"payment-a"}}))?.paidAmountCents).toBe(0n);
     expect((await seed.settlement.findUnique({where:{id:"settlement-a"}}))?.paidAmountCents).toBe(4000n);
     expect((await seed.contractTakeover.findUnique({where:{id:"history-basis-a"}}))?.historicalPaidCents).toBe(4000n);
-  });
-  it.each(["direct replay", "write-conflict recovery"] as const)("keeps a voucherless original result unconfirmed until its funding receipt is visible in %s", async mode => {
-    const opening = await prepareApprovedPayment();
-    const key = "49e1a688-357e-4ca3-8b48-bf4bf4d0ad49";
-    const work = await get("keeper");
-    const paymentPath = "/payment-executions/payment-a/registrations";
-    const resultPath = `/payment-executions/results/${key}`;
-    const input = {
-      idempotencyKey: key, expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
-      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
-      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
-      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
-    };
-    const original = await post("keeper", paymentPath, input);
-    expect(original.status).toBe(201);
-    const funds = await get("finance", "/fund-accounts");
-    const records = await get("finance", "/payment-executions/recorded-items");
-    const pendingWork = await get("keeper");
-    const { registeredPaymentFunding, registeredPaymentEvent } = database.prisma as unknown as Pick<Prisma.TransactionClient, "registeredPaymentFunding" | "registeredPaymentEvent">;
-    const events = await registeredPaymentEvent.findMany({});
-
-    const fundingRead = jest.spyOn(registeredPaymentFunding, "findUnique");
-    fundingRead.mockResolvedValueOnce(null);
-    expect(await get("keeper", resultPath)).toEqual({
-      status: 200, body: { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" }
-    });
-    if (mode === "write-conflict recovery") database.conflictNextTransaction();
-    fundingRead.mockResolvedValueOnce(null);
-    expect(await post("keeper", paymentPath, input)).toMatchObject({
-      status: 409, body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
-    });
-    if (mode === "write-conflict recovery") database.conflictNextTransaction();
-    fundingRead.mockResolvedValueOnce(null);
-    const wrongActor = await post("finance", paymentPath, input);
-    expect(wrongActor).toMatchObject({ status: 409, body: { message: expect.stringContaining("原请求已绑定不同") } });
-    expect(wrongActor.body).not.toHaveProperty("idempotencyKey");
-
-    expect(await get("finance", resultPath)).toMatchObject({
-      status: 200, body: { status: "recorded", execution: { paymentId: "payment-a", amountCents: "4000", voucherPending: true } }
-    });
-    expect(await post("keeper", paymentPath, input)).toEqual(original);
-    expect(await get("finance", "/fund-accounts")).toEqual(funds);
-    expect(await get("finance", "/payment-executions/recorded-items")).toEqual(records);
-    expect(await get("keeper")).toEqual(pendingWork);
-    expect(await registeredPaymentEvent.findMany({})).toEqual(events);
   });
   it("records an independently confirmed new historical-contract payment and replays its original key without rewriting the frozen historical baseline", async () => {
     const {opening,seed}=await prepareConfirmedHistoricalPayment();
@@ -627,6 +587,195 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect(await get("keeper")).toEqual(pending);
     expect(await get("finance", "/payment-executions/recorded-items")).toMatchObject({ status: 200, body: { total: 1 } });
   });
+  it("keeps the original result unconfirmed when the transaction adapter returns a rolled-back callback result", async () => {
+    const opening = await prepareApprovedPayment();
+    const key = "ecc5f728-fde4-4a95-a9d8-147dc4286432";
+    const beforeFunds = await get("finance", "/fund-accounts");
+    const beforeWork = await get("keeper");
+    const transact = database.prisma.$transaction;
+    const rollback = new Error("Synthetic rollback after successful callback");
+    let apparentExecution: unknown;
+    jest.spyOn(database.prisma, "$transaction").mockImplementationOnce(async run => {
+      try {
+        await transact(async client => {
+          apparentExecution = await run(client);
+          throw rollback;
+        });
+      } catch (error) {
+        if (error !== rollback) throw error;
+      }
+      return apparentExecution;
+    });
+    const response = await post("keeper", "/payment-executions/payment-a/registrations", {
+      idempotencyKey: key, expectedPaymentUpdatedAt: beforeWork.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    });
+    expect(apparentExecution).toMatchObject({ idempotencyKey: key, paymentRequestId: "payment-a" });
+    expect((await get("keeper", `/payment-executions/results/${key}`)).body.status).toBe("unconfirmed");
+    expect(await get("finance", "/fund-accounts")).toEqual(beforeFunds);
+    expect(await get("keeper")).toEqual(beforeWork);
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
+    });
+  });
+  it("keeps the original key when a committed registration cannot be read back immediately", async () => {
+    const opening = await prepareApprovedPayment();
+    const key = "77b32f97-f4b4-4427-80bb-80197c654031";
+    const before = await get("keeper");
+    const transact = database.prisma.$transaction;
+    const transaction = jest.spyOn(database.prisma, "$transaction");
+    transaction.mockImplementationOnce(async run => {
+      const committed = await transact(run);
+      transaction.mockRejectedValueOnce(new Error("Synthetic original-result read unavailable"));
+      return committed;
+    });
+    const response = await post("keeper", "/payment-executions/payment-a/registrations", {
+      idempotencyKey: key, expectedPaymentUpdatedAt: before.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    });
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
+    });
+    expect(JSON.stringify(response.body)).not.toContain("Synthetic original-result read unavailable");
+    const result = await get("keeper", `/payment-executions/results/${key}`);
+    expect(result).toMatchObject({ status: 200, body: { status: "recorded", execution: { paymentId: "payment-a", amountCents: "4000", voucherPending: true } } });
+    expect(await get("finance", "/payment-executions/recorded-items")).toMatchObject({ status: 200, body: { total: 1 } });
+    expect((await get("finance", "/fund-accounts")).body.accounts).toContainEqual(expect.objectContaining({
+      scopeKey: "company:company-a", balanceYuan: "60.0000"
+    }));
+    for (const actor of ["finance", "keeper"]) {
+      expect((await get(actor)).body.items[0]).toMatchObject({ paidAmountCents: "4000", remainingAmountCents: "6000" });
+    }
+  });
+  it.each(["direct replay", "write-conflict recovery"] as const)("keeps a voucherless original result unconfirmed until its funding receipt is visible in %s", async mode => {
+    const opening = await prepareApprovedPayment();
+    const key = "49e1a688-357e-4ca3-8b48-bf4bf4d0ad49";
+    const work = await get("keeper");
+    const paymentPath = "/payment-executions/payment-a/registrations";
+    const resultPath = `/payment-executions/results/${key}`;
+    const input = {
+      idempotencyKey: key, expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    };
+    const original = await post("keeper", paymentPath, input);
+    expect(original.status).toBe(201);
+    const funds = await get("finance", "/fund-accounts");
+    const records = await get("finance", "/payment-executions/recorded-items");
+    const pendingWork = await get("keeper");
+    const { registeredPaymentFunding, registeredPaymentEvent } = database.prisma as unknown as Pick<Prisma.TransactionClient, "registeredPaymentFunding" | "registeredPaymentEvent">;
+    const events = await registeredPaymentEvent.findMany({});
+
+    const fundingRead = jest.spyOn(registeredPaymentFunding, "findUnique");
+    fundingRead.mockResolvedValueOnce(null);
+    expect(await get("keeper", resultPath)).toEqual({
+      status: 200, body: { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" }
+    });
+    if (mode === "write-conflict recovery") database.conflictNextTransaction();
+    fundingRead.mockResolvedValueOnce(null);
+    expect(await post("keeper", paymentPath, input)).toMatchObject({
+      status: 409, body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
+    });
+    if (mode === "write-conflict recovery") database.conflictNextTransaction();
+    fundingRead.mockResolvedValueOnce(null);
+    const wrongActor = await post("finance", paymentPath, input);
+    expect(wrongActor).toMatchObject({ status: 409, body: { message: expect.stringContaining("原请求已绑定不同") } });
+    expect(wrongActor.body).not.toHaveProperty("idempotencyKey");
+
+    expect(await get("finance", resultPath)).toMatchObject({
+      status: 200, body: { status: "recorded", execution: { paymentId: "payment-a", amountCents: "4000", voucherPending: true } }
+    });
+    expect(await post("keeper", paymentPath, input)).toEqual(original);
+    expect(await get("finance", "/fund-accounts")).toEqual(funds);
+    expect(await get("finance", "/payment-executions/recorded-items")).toEqual(records);
+    expect(await get("keeper")).toEqual(pendingWork);
+    expect(await registeredPaymentEvent.findMany({})).toEqual(events);
+  });
+  it("refuses a callback result with a real receipt that belongs to another payment request", async () => {
+    const opening = await prepareApprovedPayment();
+    const key = "507f951a-07ee-4c03-88ef-ea3230c64909";
+    const seed = database.prisma as unknown as Record<string, {
+      create(input: { data: Record<string, unknown> }): Promise<unknown>;
+      findUnique(input: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
+    }>;
+    await seed.paymentRequest.create({ data: {
+      id: "payment-b", code: "FK-16-02", projectId: "project-a", sourceType: "settlement", settlementId: "settlement-a",
+      paymentSubjectType: "our_company", contractId: "contract-a", contractVersionId: "version-a", paymentTermsVersionId: "terms-a",
+      requestedAmountCents: 10000n, approvedAmountCents: 10000n, paidAmountCents: 0n,
+      status: "approved_pending_payment", updatedAt: new Date("2026-11-05T00:00:00Z")
+    } });
+    await seed.approvalInstance.create({ data: {
+      id: "approved-round-b", businessType: "payment_request", businessId: "payment-b",
+      flowType: "payment.approve", status: "approved", frozenNodes: [], currentNodeIndex: 1, applicantUserId: "employee",
+      createdAt: new Date("2026-11-01T00:00:00Z")
+    } });
+    const options = await get("keeper", "/payment-executions/payment-b/registration-options");
+    expect(options.status).toBe(200);
+    const input = {
+      idempotencyKey: key, expectedPaymentUpdatedAt: options.body.expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    };
+    const codeRegistration = "/payment-executions/FK-16-02/registrations";
+    const original = await post("keeper", codeRegistration, input);
+    expect(original.status).toBe(201);
+    expect(await post("keeper", codeRegistration, input)).toEqual(original);
+    database.conflictNextTransaction();
+    expect(await post("keeper", codeRegistration, input)).toEqual(original);
+    const wrongExecution = await seed.paymentExecution.findUnique({ where: { idempotencyKey: key } });
+    expect(wrongExecution).toMatchObject({ paymentRequestId: "payment-b", idempotencyKey: key });
+    jest.spyOn(database.prisma, "$transaction").mockResolvedValueOnce(wrongExecution);
+
+    const response = await post("keeper", "/payment-executions/payment-a/registrations", input);
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
+    });
+    expect(response.body).not.toHaveProperty("paymentRequestId");
+    expect(await get("finance", "/payment-executions/recorded-items")).toMatchObject({ status: 200, body: { total: 1 } });
+    expect((await get("finance")).body.items).toContainEqual(expect.objectContaining({
+      paymentId: "payment-a", paidAmountCents: "0", remainingAmountCents: "10000"
+    }));
+  });
+  it("does not confirm an execution with a mismatched stored amount during original-key conflict recovery", async () => {
+    const opening = await prepareApprovedPayment();
+    const key = "b803629c-7ff2-4304-b403-33d228952dc3";
+    const path = "/payment-executions/payment-a/registrations";
+    const work = await get("keeper");
+    const input = {
+      idempotencyKey: key, expectedPaymentUpdatedAt: work.body.items[0].expectedPaymentUpdatedAt, amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "company:company-a", expectedRegistrationId: opening.body.id, openingTreatment: "not_included",
+      openingReason: "核对之后线下实付", openingEvidence: "合成付款核对依据",
+      sourceAllocations: [{ sourceBatchId: opening.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    };
+    expect((await post("keeper", path, input)).status).toBe(201);
+    const funds = await get("finance", "/fund-accounts");
+    const original = await get("keeper", `/payment-executions/results/${key}`);
+    const { paymentExecution } = database.prisma as unknown as {
+      paymentExecution: { findUnique(input: { where: { idempotencyKey: string } }): Promise<Record<string, unknown> | null> };
+    };
+    const stored = await paymentExecution.findUnique({ where: { idempotencyKey: key } });
+    expect(stored).toMatchObject({ amountCents: 4000n });
+    database.conflictNextTransaction();
+    jest.spyOn(paymentExecution, "findUnique").mockResolvedValueOnce({ ...stored, amountCents: 1000n });
+
+    const response = await post("keeper", path, input);
+    expect(response).toMatchObject({
+      status: 409,
+      body: { code: "PAYMENT_RESULT_UNCONFIRMED", resultStatus: "unconfirmed", idempotencyKey: key }
+    });
+    expect(await get("keeper", `/payment-executions/results/${key}`)).toEqual(original);
+    expect(await get("finance", "/fund-accounts")).toEqual(funds);
+    expect(await get("finance", "/payment-executions/recorded-items")).toMatchObject({ status: 200, body: { total: 1 } });
+  });
   it("does not disclose other-project historical sources or distinguish their identity from an unknown source", async () => {
     await prepareApprovedPayment();
     const seed=database.prisma as unknown as Record<string,{create(input:{data:Record<string,unknown>}):Promise<unknown>}>;
@@ -868,6 +1017,110 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     const funds = (await get("finance","/fund-accounts")).body.accounts;
     expect(funds.find((account:{scopeKey:string})=>account.scopeKey==="public_cash")).toMatchObject({balanceYuan:"60.0000",companyEntityId:null});
     expect(funds.find((account:{scopeKey:string})=>account.scopeKey==="company:company-a").balanceYuan).toBe("100.0000");
+  });
+  it("binds the restricted result reader to the verified payment project and fact", async () => {
+    const cash = await prepareCashOperatingPayment();
+    const key = "d6cbd278-d7f1-4b28-a01c-07b1b11860c2";
+    const recorded = await post("keeper", "/payment-executions/payment-a/registrations", {
+      idempotencyKey: key, expectedPaymentUpdatedAt: "2026-11-05T00:00:00.000Z", amountCents: "4000", paidAt: "2026-11-06",
+      scopeKey: "public_cash", expectedRegistrationId: cash.body.id, openingTreatment: "not_included",
+      openingReason: "本次现金实付未含期初", openingEvidence: "纸质现金付款登记",
+      sourceAllocations: [{ sourceBatchId: cash.body.sources[0].id, amountCents: "4000" }], confirmationPassword: "Synthetic15Password!"
+    });
+    expect(recorded.status).toBe(201);
+    const path = `/payment-executions/results/${key}`;
+    const ordinary = await get("finance", path);
+    expect(ordinary.status).toBe(200);
+    const [fact] = ordinary.body.effects;
+    expect(fact).toMatchObject({ actualPayerKind: "public_cash", actualPayerId: "public_cash" });
+    const legacyKey = "c9b84730-c8bd-4d91-b9a2-a9ebea08895e";
+    const legacyPath = `/payment-executions/results/${legacyKey}`;
+    const seed = database.prisma as unknown as Record<string, { create(args: { data: Record<string, unknown> }): Promise<unknown> }>;
+    await seed.paymentExecution.create({ data: {
+      id: "legacy-execution", idempotencyKey: legacyKey, paymentRequestId: "payment-a", paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: "company-a", companyEntityNameSnapshot: "甲公司", companyEntityCreditCodeSnapshot: "SYNTHETIC-COMPANY-A",
+      amountCents: 2500n, paidAt: new Date("2026-11-04T00:00:00Z"), executedByUserId: "finance", voucherFileId: "legacy-voucher"
+    } });
+    await seed.operatingFact.create({ data: {
+      id: "legacy-fact", projectId: "project-a", sourceType: "payment_execution", sourceBusinessId: "legacy-execution",
+      sourceVersion: 1, actualPayerSubjectKind: "participating_company", actualPayerSubjectId: "company-a", basisSnapshot: { voucherPending: false }
+    } });
+    const legacy = await get("finance", legacyPath);
+    expect(legacy).toMatchObject({ status: 200, body: {
+      status: "recorded", canSupplementVoucher: false, execution: { executionId: "legacy-execution", voucherPending: false },
+      effects: [{ factId: "legacy-fact", impacts: [] }]
+    } });
+    const observeReadOnly = () => Promise.all([
+      get("finance", "/fund-accounts"), get("finance", "/payment-executions/recorded-items"), get("keeper"), get("admin", "/audit-logs")
+    ]);
+    const beforeReads = await observeReadOnly();
+    await app.close();
+    await startApplication(readTask16RegisteredPaymentImpacts);
+
+    const databaseAdapter = database.prisma as unknown as {
+      $queryRaw(query: Prisma.Sql | TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+      operatingImpactEntry: { findMany(args: unknown): Promise<unknown> };
+    };
+    const direct = jest.spyOn(databaseAdapter.operatingImpactEntry, "findMany").mockRejectedValue(new Error("Synthetic native fixture forbids direct impact reads"));
+    const raw = databaseAdapter.$queryRaw;
+    const calls: unknown[][] = [];
+    let depth = 0;
+    const transaction = database.prisma.$transaction;
+    database.prisma.$transaction = async <T>(run: (client: unknown) => Promise<T>) => transaction(async client => {
+      depth++;
+      try { return await run(client); } finally { depth--; }
+    });
+    const mockRows = fact.impacts.map((impact: { kind: string; amountCents: string; subjectKind: string | null; subjectId: string | null }) => ({
+      factId: fact.factId, impactKind: impact.kind, amountCents: BigInt(impact.amountCents), numericProtocolVersion: 1,
+      subjectKind: impact.subjectKind, subjectId: impact.subjectId
+    }));
+    expect(mockRows.length).toBeGreaterThan(0);
+    let resultRows: unknown = mockRows;
+    let sqlError: Error | undefined;
+    jest.spyOn(databaseAdapter, "$queryRaw").mockImplementation(async (query, ...values) => {
+      if (Array.isArray(query) || !(query as Prisma.Sql).sql.includes("jg_read_registered_payment_impacts")) return raw.call(databaseAdapter, query, ...values);
+      const sql = query as Prisma.Sql;
+      expect(depth).toBe(1);
+      expect(sql.text.trim().replace(/\s+/gu, " ")).toBe(
+        'SELECT "factId", "impactKind", "amountCents", "numericProtocolVersion", "subjectKind", "subjectId" '
+        + "FROM public.jg_read_registered_payment_impacts($1::text, $2::text, $3::text, $4::text, $5::text)"
+      );
+      calls.push([...sql.values]);
+      if (sqlError) throw sqlError;
+      return resultRows;
+    });
+    expect((await get("employee", path)).status).toBe(403);
+    expect(await get("finance", "/payment-executions/results/17152d83-59b0-4212-b23c-4882642794f6")).toMatchObject({
+      status: 200, body: { status: "unconfirmed" }
+    });
+    expect(calls).toHaveLength(0);
+    expect(await get("finance", path)).toEqual(ordinary);
+    expect(calls).toEqual([[key, ordinary.body.execution.executionId, "payment-a", "project-a", fact.factId]]);
+
+    const unavailable = { status: 503, body: { statusCode: 503, message: "暂时无法核对实付影响，请稍后查询", error: "Service Unavailable" } };
+    sqlError = Object.assign(new Error("Synthetic private database denial"), { code: "42501" });
+    expect(await get("finance", path)).toEqual(unavailable);
+    sqlError = Object.assign(new Error("Synthetic missing routine"), { code: "42883" });
+    expect(await get("finance", path)).toEqual(unavailable);
+    sqlError = undefined;
+    for (const invalid of [
+      [{ ...mockRows[0], factId: "unrelated-fact" }],
+      [{ ...mockRows[0], amountCents: "4000" }],
+      [{ ...mockRows[0], privateMemo: "合成跨项目信息" }],
+      { rows: mockRows }
+    ]) {
+      resultRows = invalid;
+      expect(await get("finance", path)).toEqual(unavailable);
+    }
+    resultRows = [{ ...mockRows[0], amountCents: null, numericProtocolVersion: 2 }];
+    expect(await get("finance", path)).toMatchObject({
+      status: 400, body: { message: "此原分流程不能处理新版经营金额，请使用对应精度入口" }
+    });
+    resultRows = [];
+    expect(await get("finance", legacyPath)).toEqual(legacy);
+    expect(calls.at(-1)).toEqual([legacyKey, "legacy-execution", "payment-a", "project-a", "legacy-fact"]);
+    expect(direct).not.toHaveBeenCalled();
+    expect(await observeReadOnly()).toEqual(beforeReads);
   });
   it("keeps the same formal operating fact and revision when a later voucher is added and the public source service replays it", async () => {
     const cash = await prepareCashOperatingPayment();

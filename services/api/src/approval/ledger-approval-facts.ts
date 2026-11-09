@@ -82,7 +82,15 @@ export async function ledgerApprovalFacts(tx: Prisma.TransactionClient, business
     }
   }
   if ("coverage" in row && Array.isArray(row.coverage)) {
-    const documents = await economicDocuments(tx, row.projectId, row.targetSourceRef ? { targetRef: row.targetSourceRef, targetVersionId: row.targetVersionId ?? undefined } : undefined);
+    const frozen = Array.isArray(row.frozenSources) ? row.frozenSources : [];
+    const direct = frozen.some(side => side && typeof side === "object" && !Array.isArray(side) && Object.hasOwn(side, "directInput"));
+    const documents = direct ? frozen.map(side => {
+      if (!side || typeof side !== "object" || Array.isArray(side) || typeof side.ref !== "string" ||
+        typeof side.reference !== "string" || typeof side.title !== "string" || typeof side.counterparty !== "string") {
+        throw new BadRequestException("复核冻结的原文书依据不完整");
+      }
+      return { ref: side.ref, reference: side.reference, title: side.title, counterparty: side.counterparty };
+    }) : await economicDocuments(tx, row.projectId, row.targetSourceRef ? { targetRef: row.targetSourceRef, targetVersionId: row.targetVersionId ?? undefined } : undefined);
     for (const [ref, label] of [[row.leftSourceRef, "左方文书"], [row.rightSourceRef, "右方文书"]]) {
       const document = documents.find(item => item.ref === ref);
       if (!document) throw new BadRequestException("复核关联文书缺失，不能冻结审批单");

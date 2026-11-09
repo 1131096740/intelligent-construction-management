@@ -1,3 +1,4 @@
+import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
 import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
 import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
@@ -176,16 +177,23 @@ export class ContractDocumentService {
           contractVersionId,
           actorUserId
         );
+        await assertNotDirectPendingSource(tx, contractVersionId);
         const draftData = version.draftData && typeof version.draftData === "object" && !Array.isArray(version.draftData) ? version.draftData : {};
         const basics = draftData.contractBasics && typeof draftData.contractBasics === "object" && !Array.isArray(draftData.contractBasics) ? draftData.contractBasics : {};
         if (version.status === "draft" && draftData.contractBasics !== undefined) {
           const parties = await tx.contractPartySnapshot.findMany({ where: { contractVersionId: version.id } });
           const namedParty = (role: string) => parties.some(party => party.roleKey === role && party.snapshot && typeof party.snapshot === "object" && !Array.isArray(party.snapshot) && typeof party.snapshot.name === "string" && party.snapshot.name.trim());
+          const company = this.isObject(draftData.companyEntitySelection) ? draftData.companyEntitySelection : null;
+          const upwardCompanyIsPartyA = version.numericProtocolVersion === 2 && version.changeType === "original" && basics.relationship === "upward"
+            && typeof company?.id === "string" && company.id === ownedContract.companyEntityId
+            && typeof company.versionId === "string" && Boolean(company.versionId)
+            && typeof company.versionNo === "number" && Number.isInteger(company.versionNo)
+            && typeof company.name === "string" && Boolean(company.name.trim());
           const missing = [
             ...(!ownedContract.projectId ? ["项目"] : []),
             ...(typeof draftData.contractName !== "string" || !draftData.contractName.trim() ? ["合同名称"] : []),
             ...(!["inside", "outside", "upward"].includes(String(basics.relationship ?? "")) ? ["合同关系"] : []),
-            ...(!namedParty("party_a") ? ["甲方"] : []),
+            ...(!namedParty("party_a") && !upwardCompanyIsPartyA ? ["甲方"] : []),
             ...(!namedParty("party_b") ? ["乙方"] : [])
           ];
           if (missing.length) throw new BadRequestException(`生成前请补充：${missing.join("、")}。草稿内容已保留，可继续填写。`);

@@ -2,16 +2,26 @@
 
 const assert = require("node:assert/strict");
 const { execFileSync, spawnSync } = require("node:child_process");
-const { mkdtempSync, mkdirSync, readFileSync, writeFileSync, realpathSync, rmSync, unlinkSync, existsSync, symlinkSync, chmodSync } = require("node:fs");
+const { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, realpathSync, rmSync, unlinkSync, existsSync, symlinkSync, chmodSync } = require("node:fs");
 const { createHash } = require("node:crypto");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
+const { readTask16FixtureSchema, schemaPath } = require("../services/api/prisma/testdata/task16-schema-fixture.cjs");
 
 const cli = path.join(__dirname, "prepare-task16-registered-pg.cjs");
 const source = path.resolve(__dirname, "..");
 const fragments = ["registered-funding.sql", "registered-history-revision.sql", "registered-write-authority.sql", "registered-canonical-proof.sql", "registered-intercompany.sql", "registered-canonical-adapter.sql", "registered-voucher.sql"];
 const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+
+const migration205 = "services/api/prisma/migrations/20261109100000_contract_direct_pending_input_v1/migration.sql";
+const migration206 = "services/api/prisma/migrations/20261109110000_contract_direct_review_retention_v1/migration.sql";
+const migrationsDir = "services/api/prisma/migrations";
+const legacyMigrations = readdirSync(path.join(source,migrationsDir), {withFileTypes:true})
+  .filter(entry=>entry.isDirectory()).map(entry=>migrationsDir+"/"+entry.name+"/migration.sql")
+  .filter(file=>file!==migration205 && file!==migration206).sort();
+const migrationLock = migrationsDir+"/migration_lock.toml";
+
 
 function fixture(t) {
   const temporary = realpathSync(mkdtempSync(path.join(tmpdir(), "jg-task16-packet-test-")));
@@ -21,9 +31,12 @@ function fixture(t) {
   function put(file, contents) {
     const dest = path.join(root, file); mkdirSync(path.dirname(dest), { recursive: true }); writeFileSync(dest, contents);
   }
-  put("services/api/prisma/schema.prisma", "// synthetic source, never applied\n");
-  put("services/api/prisma/migrations/migration_lock.toml", 'provider = "postgresql"\n');
-  for (let i = 0; i < 204; i++) put(`services/api/prisma/migrations/${String(i).padStart(3, "0")}_synthetic/migration.sql`, `-- synthetic migration ${i}, never executed\n`);
+  put(schemaPath, readTask16FixtureSchema(source, 205));
+  assert.equal(legacyMigrations.length,204);
+  for(const file of [...legacyMigrations,migrationLock]){
+    put(file,readFileSync(path.join(source,file)));
+  }
+  put(migration205, readFileSync(path.join(source, migration205)));
   for (const file of fragments) put(`services/api/prisma/prepared/task16/${file}`, `-- synthetic ${file}, never executed\n`);
   put("services/api/src/database/registered-payment-postgres.fixture.ts", "// Synthetic fixture source, never imported.\n");
   put("services/api/src/database/registered-payment-postgres.cases.ts", readFileSync(path.join(source, "services/api/src/database/registered-payment-postgres.cases.ts")));
@@ -50,7 +63,11 @@ test("prepares the exact source-only installation and single-case packet and ver
   const packet = JSON.parse(readFileSync(f.packet, "utf8"));
   assert.equal(packet.candidateSha, f.sha);
   assert.equal(packet.executionAllowed, false); assert.equal(packet.resourceExecutorImplemented, false);
-  assert.equal(packet.migrations.length, 204);
+  assert.equal(packet.migrations.length, 205);
+  assert.equal(Object.hasOwn(packet, "sourceProfile"), false);
+  assert.equal(packet.schema.sha256, "68b76ddd1ca8dda27ebb511db2d5fa49285eab5c7b95e83f9cac20b3c26a7286");
+  assert.equal(packet.migrations.at(-1).path, migration205);
+  assert.equal(packet.migrations.at(-1).sha256, "81b419f9a59fb3ab6d38731af0c1591bce5f92d91568aa55a8798d8a05d812c5");
   assert.deepEqual(packet.installation.fragments.map(row => path.basename(row.path)), fragments);
   assert.deepEqual(packet.cases.map(row => [row.id, row.handlerExport]), [["registered.null-cross-company.commit", "runRegisteredNullCrossCompanyCommit"]]);
   assert.equal(packet.cases[0].executed, false); assert.equal(packet.cases[0].sqlExecuted, false);
@@ -58,6 +75,70 @@ test("prepares the exact source-only installation and single-case packet and ver
   assert.equal(verified.status, 0, verified.stderr);
   assert.equal(verified.body.status, "SOURCE_ONLY_VERIFIED_NOT_EXECUTED");
   assert.equal(verified.body.sealSha256, prepared.body.sealSha256);
+});
+
+function addSchema206(f) {
+  f.put(schemaPath, readTask16FixtureSchema(source, 206));
+  f.put(migration206, readFileSync(path.join(source, migration206)));
+}
+
+test("prepares and verifies the exact Schema206 source-only profile", t => {
+  const f = fixture(t);
+  addSchema206(f);
+  const candidate = f.commit();
+  const prepared = f.prepare([], f.output, candidate);
+  assert.equal(prepared.status, 0, JSON.stringify(prepared.body));
+  assert.equal(prepared.body.sourceProfile, "SCHEMA206_SOURCE_ONLY");
+  const packet = JSON.parse(readFileSync(f.packet, "utf8"));
+  assert.equal(packet.candidateSha, candidate);
+  assert.equal(packet.sourceProfile, "SCHEMA206_SOURCE_ONLY");
+  assert.equal(packet.status, "SOURCE_ONLY_NOT_EXECUTED");
+  assert.equal(packet.executionAllowed, false);
+  assert.equal(packet.resourceExecutorImplemented, false);
+  assert.equal(packet.migrations.length, 206);
+  assert.deepEqual(packet.migrations.slice(-2).map(row => row.path), [migration205, migration206]);
+  assert.equal(packet.migrations.at(-1).sha256, "df73ffa2861318e571c6c8bba5c4d226808f00f65684d2953a0d5937d6d4bb92");
+  assert.equal(packet.schema.sha256, "60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4");
+  const verified = f.run("--verify", "--packet", f.packet, "--expected-sha256", prepared.body.packetSha256);
+  assert.equal(verified.status, 0, JSON.stringify(verified.body));
+  assert.equal(verified.body.sourceProfile, "SCHEMA206_SOURCE_ONLY");
+  assert.equal(verified.body.sealSha256, prepared.body.sealSha256);
+  delete packet.sourceProfile;
+  const tampered = JSON.stringify(packet);
+  writeFileSync(f.packet, tampered);
+  const replay = f.run("--verify", "--packet", f.packet, "--expected-sha256", createHash("sha256").update(tampered).digest("hex"));
+  assert.equal(replay.body.code, "PACKET_MISMATCH");
+});
+
+for (const [file, code] of [
+  [legacyMigrations[0], "TRUSTED_MIGRATION_HISTORY_MISMATCH"],
+  [migrationLock, "TRUSTED_MIGRATION_HISTORY_MISMATCH"],
+  [migration205, "SCHEMA205_MIGRATION_MISMATCH"],
+  [migration206, "SCHEMA206_MIGRATION_MISMATCH"],
+  [schemaPath, "SCHEMA206_SCHEMA_MISMATCH"]
+]) {
+  for (const change of ["bytes", "Git mode"]) {
+    test(`rejects changed ${change} for ${file} in the Schema206 profile`, t => {
+      const f = fixture(t);
+      addSchema206(f);
+      if (change === "bytes") f.put(file, "// substituted bytes, never executed\n");
+      else chmodSync(path.join(f.root, file), 0o755);
+      const prepared = f.prepare([], f.output, f.commit());
+      assert.equal(prepared.status, 1);
+      assert.equal(prepared.body.code, code);
+      assert.equal(existsSync(f.output), false);
+    });
+  }
+}
+
+test("does not classify Schema206 source as a 205 packet when its migration is absent", t => {
+  const f = fixture(t);
+  addSchema206(f);
+  unlinkSync(path.join(f.root, migration206));
+  const prepared = f.prepare([], f.output, f.commit());
+  assert.equal(prepared.status, 1);
+  assert.equal(prepared.body.code, "SCHEMA206_MIGRATION_MISMATCH");
+  assert.equal(existsSync(f.output), false);
 });
 
 test("same committed input produces identical packet bytes without overwriting existing output", (t) => {
@@ -68,16 +149,65 @@ test("same committed input produces identical packet bytes without overwriting e
   assert.equal(f.prepare().body.code, "OUTPUT_EXISTS"); assert.deepEqual(readFileSync(f.packet), first);
 });
 
-for (const count of [203, 205]) {
-  test(`rejects a committed ${count}-migration source instead of the exact 204 inventory`, t => {
+for (const count of [203, 204, 206]) {
+  test(`rejects a committed ${count}-migration source instead of the exact 205 inventory`, t => {
     const f = fixture(t);
-    if (count === 203) unlinkSync(path.join(f.root, "services/api/prisma/migrations/203_synthetic/migration.sql"));
-    else f.put("services/api/prisma/migrations/204_synthetic/migration.sql", "-- extra synthetic source, never executed\n");
+    if (count < 205) unlinkSync(path.join(f.root, migration205));
+    if (count === 203) unlinkSync(path.join(f.root, legacyMigrations.at(-1)));
+    if (count === 206) f.put("services/api/prisma/migrations/20260101000204_synthetic/migration.sql", "-- extra synthetic source, never executed\n");
     const candidate = f.commit();
     const prepared = f.prepare([], f.output, candidate);
     assert.equal(prepared.status, 1);
     assert.equal(prepared.body.code, "MIGRATION_COUNT_MISMATCH");
     assert.equal(existsSync(f.output), false);
+  });
+}
+
+test("rejects a different committed Schema205 migration with the same inventory count", t => {
+  const f = fixture(t);
+  f.put(migration205, "-- different synthetic migration, never executed\n");
+  const prepared = f.prepare([], f.output, f.commit());
+  assert.equal(prepared.status, 1);
+  assert.equal(prepared.body.code, "SCHEMA205_MIGRATION_MISMATCH");
+  assert.equal(existsSync(f.output), false);
+});
+
+for (const [name, file, changedBytes, code] of [
+  ["Schema bytes", schemaPath, true, "SCHEMA205_SCHEMA_MISMATCH"],
+  ["Schema Git mode", schemaPath, false, "SCHEMA205_SCHEMA_MISMATCH"],
+  ["migration Git mode", migration205, false, "SCHEMA205_MIGRATION_MISMATCH"]
+]) {
+  test(`prepare and verify reject a clean 205 source with substituted ${name}`, t => {
+    const f = fixture(t);
+    assert.equal(f.prepare().status, 0);
+    const packet = JSON.parse(readFileSync(f.packet, "utf8"));
+    if (changedBytes) f.put(file, "// unrelated Schema, never applied\n");
+    else chmodSync(path.join(f.root, file), 0o755);
+    const candidate = f.commit();
+    assert.equal(f.git("status", "--porcelain"), "");
+
+    const destination = path.join(f.temporary, "substituted");
+    const prepared = f.prepare([], destination, candidate);
+    const candidateBound = JSON.stringify({ ...packet, candidateSha: candidate });
+    writeFileSync(f.packet, candidateBound);
+    const digest = createHash("sha256").update(candidateBound).digest("hex");
+    const verified = f.run("--verify", "--packet", f.packet, "--expected-sha256", digest);
+    assert.deepEqual([prepared.body.code, verified.body.code], [code, code]);
+    assert.equal(prepared.status, 1);
+    assert.equal(verified.status, 1);
+    assert.equal(existsSync(destination), false);
+  });
+}
+
+for(const variant of ["old content","old Git mode","lock content"]) {
+  test(`rejects a different trusted history with a clean candidate and exact migration205: ${variant}`, t => {
+    const f=fixture(t), file=variant==="lock content"?migrationLock:legacyMigrations[0];
+    if(variant==="old Git mode") chmodSync(path.join(f.root,file),0o755);
+    else f.put(file,Buffer.concat([readFileSync(path.join(source,file)),Buffer.from("\n# altered historical bytes\n")]));
+    const result=f.prepare([],f.output,f.commit());
+    assert.equal(result.status,1);
+    assert.equal(result.body.code,"TRUSTED_MIGRATION_HISTORY_MISMATCH");
+    assert.equal(existsSync(f.output),false);
   });
 }
 
@@ -109,9 +239,9 @@ test("rejects missing or extra prepared SQL sources without creating output", (t
 });
 
 test("rejects missing migration and changed schema bytes hidden from normal Git status", (t) => {
-  const f = fixture(t); unlinkSync(path.join(f.root, "services/api/prisma/migrations/001_synthetic/migration.sql"));
+  const f = fixture(t); unlinkSync(path.join(f.root, legacyMigrations[1]));
   const missing = f.commit(); assert.equal(f.prepare([], f.output, missing).body.code, "MIGRATION_COUNT_MISMATCH");
-  f.put("services/api/prisma/migrations/001_synthetic/migration.sql", "-- restored\n"); const restored = f.commit();
+  f.put(legacyMigrations[1],readFileSync(path.join(source,legacyMigrations[1]))); const restored = f.commit();
   f.git("update-index", "--assume-unchanged", "services/api/prisma/schema.prisma"); f.put("services/api/prisma/schema.prisma", "// hidden changed schema\n");
   assert.equal(f.prepare([], f.output, restored).body.code, "SOURCE_CONTENT_MISMATCH"); assert.equal(existsSync(f.output), false);
 });

@@ -313,7 +313,7 @@ export interface ContractDetailReadModel {
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;
-  documentContentRevision: number;
+  documentContentRevision: number | null;
   documentContentFingerprint: string | null;
   lifecycleUpdatedAt?: string;
   primaryAction: string | null;

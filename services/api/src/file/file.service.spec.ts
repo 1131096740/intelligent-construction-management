@@ -13,12 +13,14 @@ import { join } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { FileService, PrivateFileStorage } from "./file.service";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 
 const STORAGE_ENV_KEYS = [
   "FILE_STORAGE_DRIVER",
   "FILE_STORAGE_ROOT",
+  "FILE_UPLOAD_MAX_BYTES",
   "COS_SECRET_ID",
   "COS_SECRET_KEY",
   "COS_BUCKET",
@@ -95,6 +97,13 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
           ? query as {sql?: unknown; values?: unknown}
           : null;
         const sql = typeof input?.sql === "string" ? input.sql.replace(/\s+/g," ").trim() : null;
+        if (sql?.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
+        if (sql?.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
+        if (sql?.includes("contract_economic_review_legacy_cleanup_key")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length !== 2 ||
+            input.values.some(value => typeof value !== "string" || !value)) throw new Error("Unsupported legacy cleanup key lookup");
+          return [{ exact: true }];
+        }
         if (sql?.includes("registered_payment_voucher_download")) {
           if (sql !== registeredVoucherSql || args.length !== 0 || !Array.isArray(input?.values) || input.values.length !== 1 || typeof input.values[0] !== "string" || !input.values[0].trim()) {
             throw new Error("Unsupported registered-voucher fixture query or file binding");
@@ -403,7 +412,7 @@ describe("FileService", () => {
         .mockResolvedValueOnce([{ referenced: true }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-linked", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-linked", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-linked.pdf"
         }),
         updateMany: jest.fn()
@@ -578,7 +587,7 @@ describe("FileService", () => {
         .mockResolvedValueOnce([{ referenced: false }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-orphan", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-orphan.pdf"
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -603,6 +612,91 @@ describe("FileService", () => {
       action: "file.generated_orphan.discard", businessId: "file-orphan"
     }));
     expect(storage.delete).toHaveBeenCalledWith("uploads/file-orphan.pdf");
+  });
+
+  it.each(["retained-file", "alias-file"])(
+    "keeps historic Review evidence when cleanup is asked to discard %s",
+    async fileId => {
+      const original = { id: "retained-file", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local", objectKey: "uploads/retained.pdf", purgeReceiptId: null };
+      const alias = { ...original, id: "alias-file" };
+      const tx = {
+        $queryRaw: jest.fn(async (query: { sql: string }) => {
+          if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "ready" }];
+          if (query.sql.includes("contract_economic_review_file_reference_completed_206")) return [{ completed: true }];
+          if (query.sql.includes("contract_economic_review_cleanup_retention")) return [{ fileId: original.id, objectKey: original.objectKey }];
+          if (query.sql.includes("contract_economic_review_cleanup_cohort_recheck")) return [{ ids: [original.id] }];
+          if (query.sql.includes("contract_economic_review_cleanup_cohort")) return fileId === original.id ? [original] : [alias, original];
+          if (query.sql.includes("contract_economic_review_cleanup_key")) return [{ locked: true }];
+          if (query.sql.includes("SELECT EXISTS")) return [{ referenced: false }];
+          if (query.sql.includes("FOR UPDATE")) return [{ id: fileId }];
+          throw new Error("Unexpected cleanup query");
+        }),
+        fileObject: {
+          findUnique: jest.fn().mockResolvedValue(fileId === original.id ? original : alias),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 })
+        }
+      };
+      const service = new FileService(
+        { $transaction: (operation: (value: typeof tx) => unknown) => operation(tx) } as unknown as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+
+      await service.discardUnlinkedGeneratedFile(fileId, "actor-1");
+
+      expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(storage.delete).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps a legacy cleanup alias whose object key is also used by a selected direct original", async () => {
+    const file = { id: "legacy-alias", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local", objectKey: "uploads/selected-original.pdf", purgeReceiptId: null };
+    const tx = {
+      $queryRaw: jest.fn(async (query: { sql: string }) => {
+        if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "legacy" }];
+        if (query.sql.includes("contract_economic_review_file_reference_migration")) return [{ applied: false }];
+        if (query.sql.includes("contract_economic_review_legacy_cleanup_key")) return [{ exact: false }];
+        if (query.sql.includes("SELECT EXISTS")) return [{ referenced: false }];
+        if (query.sql.includes("FOR UPDATE")) return [{ id: file.id }];
+        throw new Error("Unexpected legacy cleanup query");
+      }),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(file),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const service = new FileService(
+      { $transaction: (operation: (value: typeof tx) => unknown) => operation(tx) } as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    await service.discardUnlinkedGeneratedFile(file.id, "actor-1");
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps a legacy orphan in a different bucket from the configured storage", async () => {
+    const file = {
+      id: "different-bucket-orphan", uploadedByUserId: "actor-1", storageStatus: "active",
+      bucket: "old-private-bucket", objectKey: "uploads/common.pdf", purgeReceiptId: null
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: file.id }]).mockResolvedValueOnce([{ referenced: false }]),
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file), updateMany: jest.fn().mockResolvedValue({ count: 1 }) }
+    };
+    const service = new FileService(
+      { $transaction: (operation: (value: typeof tx) => unknown) => operation(legacyFileTransaction(tx)) } as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.discardUnlinkedGeneratedFile(file.id, "actor-1");
+
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("deduplicates generated-file cleanup and processes it in a stable order", async () => {
@@ -632,7 +726,7 @@ describe("FileService", () => {
         .mockResolvedValueOnce([{ referenced: false }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-cleanup-failed", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-cleanup-failed", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-cleanup-failed.pdf"
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -665,7 +759,7 @@ describe("FileService", () => {
         .mockResolvedValueOnce([{ referenced: false }]),
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
-          id: "file-raced", uploadedByUserId: "actor-1", storageStatus: "active",
+          id: "file-raced", uploadedByUserId: "actor-1", storageStatus: "active", bucket: "private-local",
           objectKey: "uploads/file-raced.pdf"
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
@@ -2772,6 +2866,145 @@ describe("FileService", () => {
     } finally {
       restoreStorageEnv(previous);
     }
+  });
+
+  it("strictly reads the COS generation and matching bytes from one whole GET", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const file = Buffer.from("verified original");
+    const remote = jest.spyOn(globalThis, "fetch").mockResolvedValue(new Response(file.toString(), {
+      headers: { "x-cos-version-id": "object+generation/1=" }
+    }));
+    try {
+      const storage = new PrivateFileStorage();
+      const result = await storage.readVerifiedVersion({
+        bucket: "private-bucket", objectKey: "uploads/签章.pdf", sizeBytes: file.length,
+        contentSha256: createHash("sha256").update(file).digest("hex")
+      });
+      expect(result).toEqual({ buffer: file, objectGeneration: "object+generation/1=" });
+      expect(remote).toHaveBeenCalledTimes(1);
+      expect(remote).toHaveBeenCalledWith(
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E7%AD%BE%E7%AB%A0.pdf",
+        expect.objectContaining({ method: "GET", redirect: "error" })
+      );
+    } finally {
+      remote.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  describe("strict COS version reads", () => {
+    const file = Buffer.from("verified original");
+    const expected = {
+      bucket: "private-bucket", objectKey: "uploads/签章.pdf", sizeBytes: file.length,
+      contentSha256: createHash("sha256").update(file).digest("hex")
+    };
+    const generation = "A/+==?!";
+    let previous: ReturnType<typeof snapshotStorageEnv>;
+    let remote: jest.SpyInstance;
+
+    beforeEach(() => {
+      previous = snapshotStorageEnv();
+      configureCosStorage();
+      process.env.FILE_UPLOAD_MAX_BYTES = "104857600";
+      remote = jest.spyOn(globalThis, "fetch").mockRejectedValue(new Error("synthetic COS transport failure"));
+    });
+    afterEach(() => {
+      remote.mockRestore();
+      restoreStorageEnv(previous);
+    });
+
+    it("signs and reads the exact generation without treating URL punctuation as a different object", async () => {
+      const clock = jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+      remote.mockResolvedValue(new Response(file.toString(), {
+        headers: { "x-cos-version-id": generation, "content-length": String(file.length) }
+      }));
+      try {
+        const result = await new PrivateFileStorage().readVerifiedVersion({
+          ...expected, objectKey: "uploads/签章?#%! .pdf", expectedGeneration: generation
+        });
+        expect(result).toEqual({ buffer: file, objectGeneration: generation });
+        expect(remote).toHaveBeenCalledTimes(1);
+        expect(remote).toHaveBeenCalledWith(
+          "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E7%AD%BE%E7%AB%A0%3F%23%25%21%20.pdf?versionId=A%2F%2B%3D%3D%3F%21",
+          expect.objectContaining({
+            method: "GET", redirect: "error", signal: expect.any(AbortSignal),
+            headers: expect.objectContaining({
+              "Accept-Encoding": "identity",
+              Authorization: "q-sign-algorithm=sha1&q-ak=secret-id&q-sign-time=1700000000;1700000600" +
+                "&q-key-time=1700000000;1700000600&q-header-list=host&q-url-param-list=versionid" +
+                "&q-signature=b45dbf92e8d2cfc382b9455e9b253c493f4ddb6a"
+            })
+          })
+        );
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it.each([
+      ["missing generation", {}],
+      ["legacy null generation", { "x-cos-version-id": "null" }],
+      ["duplicate generation", { "x-cos-version-id": "old, new" }],
+      ["wrong pinned generation", { "x-cos-version-id": "wrong" }],
+      ["range metadata on a whole response", { "x-cos-version-id": generation, "content-range": "bytes 0-16/17" }],
+      ["declared length mismatch", { "x-cos-version-id": generation, "content-length": "1" }],
+      ["nonidentity transfer encoding", { "x-cos-version-id": generation, "content-encoding": "gzip" }]
+    ])("rejects %s without a fallback read", async (_case, headers) => {
+      remote.mockResolvedValue(new Response(file.toString(), { headers: headers as Record<string, string> }));
+      await expect(new PrivateFileStorage().readVerifiedVersion({ ...expected, expectedGeneration: generation }))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["redirect", 302, "temporary redirect"],
+      ["partial body", 206, file.toString()],
+      ["unavailable version", 404, "private provider diagnostics"],
+      ["short body", 200, file.toString().slice(1)],
+      ["oversized body", 200, file.toString() + "!"],
+      ["wrong hash at same size", 200, "x".repeat(file.length)]
+    ] as const)("rejects %s without a fallback read", async (_case, status, body) => {
+      remote.mockResolvedValue(new Response(body, { status, headers: { "x-cos-version-id": generation } }));
+      await expect(new PrivateFileStorage().readVerifiedVersion(expected))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a transport failure and a previously redirected response without following either", async () => {
+      const storage = new PrivateFileStorage();
+      await expect(storage.readVerifiedVersion(expected)).rejects.toThrow("资料文件版本或完整性暂无法核对");
+      const response = new Response(file.toString(), { headers: { "x-cos-version-id": generation } });
+      Object.defineProperty(response, "redirected", { value: true });
+      remote.mockResolvedValue(response);
+      await expect(storage.readVerifiedVersion(expected)).rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ["wrong bucket", { bucket: "another-bucket" }],
+      ["legacy pinned generation", { expectedGeneration: "null" }],
+      ["generation containing a final newline", { expectedGeneration: "pinned\n" }],
+      ["legacy missing hash", { contentSha256: "" }],
+      ["hash containing a final newline", { contentSha256: expected.contentSha256 + "\n" }],
+      ["invalid size", { sizeBytes: 0 }],
+      ["unsafe key", { objectKey: "uploads/../secret.pdf" }]
+    ])("rejects %s before any transport call", async (_case, patch) => {
+      await expect(new PrivateFileStorage().readVerifiedVersion({ ...expected, ...patch }))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).not.toHaveBeenCalled();
+    });
+
+    it("does not read local storage or an invalid COS origin as versioned evidence", async () => {
+      process.env.FILE_STORAGE_DRIVER = "local";
+      await expect(new PrivateFileStorage().readVerifiedVersion(expected))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      process.env.FILE_STORAGE_DRIVER = "cos";
+      process.env.COS_BUCKET = "private-bucket@another-host";
+      await expect(new PrivateFileStorage().readVerifiedVersion({ ...expected, bucket: process.env.COS_BUCKET }))
+        .rejects.toThrow("资料文件版本或完整性暂无法核对");
+      expect(remote).not.toHaveBeenCalled();
+    });
   });
 
   it("stores and reads private files from COS when enabled", async () => {
@@ -5432,6 +5665,102 @@ describe("FileService", () => {
       })
     });
   });
+
+  it("does not let the original uploader use a historical Review file ticket after losing project access", async () => {
+    const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      fileObject: { findUnique: jest.fn().mockResolvedValue({
+        id: "file-historical-review", bucket: "private-local", objectKey: "uploads/review.pdf",
+        originalName: "旧原件.pdf", mimeType: "application/pdf", sizeBytes: 12, contentSha256: "a".repeat(64),
+        uploadedByUserId: "original-uploader", storageStatus: "active", purgeReceiptId: null, supersedesFileObjectId: null
+      }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const legacy = legacyFileTransaction(tx);
+    const database = new Proxy(legacy, { get(target, key, receiver) {
+      if (key !== "$queryRaw") return Reflect.get(target, key, receiver);
+      return (query: { sql: string }) => {
+        if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "ready" }];
+        if (query.sql.includes("contract_economic_review_file_reference_completed_206")) return [{ completed: true }];
+        if (query.sql.includes("contract_economic_review_ticket_references")) return [{ reviewId: "review-1", projectId: "old-project" }];
+        return Reflect.get(target, key, receiver)(query);
+      };
+    } });
+    const visibility = jest.spyOn(ProjectVisibilityService.prototype, "visibleProjectIdsInTransaction").mockResolvedValue([]);
+    const service = new FileService(
+      { $transaction: (operation: (value: typeof tx) => unknown) => operation(database) } as unknown as PrismaService,
+      audit as unknown as AuditService, storage as unknown as PrivateFileStorage
+    );
+    try {
+      await expect(service.createDownloadTicket("file-historical-review", {
+        actorUserId: "original-uploader", downloadReason: "查看原履约复核"
+      })).rejects.toBeInstanceOf(ForbiddenException);
+      expect(audit.record).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "file.download.ticket" }));
+      expect(storage.read).not.toHaveBeenCalled();
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
+  it.each(["same-key retained peer", "missing reference in confirmed source", "confirmed source with incomplete display summary", "incomplete retention migration", "ordinary unreferenced file"])(
+    "applies the correct uploader ticket policy for %s",
+    async scenario => {
+      const fileId = scenario === "same-key retained peer" ? "alias-file" : "original-file";
+      const tx = {
+        contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+        fileObject: { findUnique: jest.fn().mockResolvedValue({
+          id: fileId, bucket: "private-local", objectKey: "uploads/frozen-original.pdf",
+          originalName: "旧原件.pdf", mimeType: "application/pdf", sizeBytes: 12, contentSha256: "a".repeat(64),
+          uploadedByUserId: "original-uploader", storageStatus: "active", purgeReceiptId: null, supersedesFileObjectId: null
+        }) },
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+        contractArchiveFile: { findFirst: jest.fn() },
+        settlementArchiveFile: { findFirst: jest.fn() },
+        paymentExecution: { findFirst: jest.fn() },
+        auditLog: { create: jest.fn() }
+      };
+      const legacy = legacyFileTransaction(tx);
+      const database = new Proxy(legacy, { get(target, key, receiver) {
+        if (key !== "$queryRaw") return Reflect.get(target, key, receiver);
+        return (query: { sql: string }) => {
+          if (query.sql.includes("contract_economic_review_file_reference_catalog")) return [{ state: "ready" }];
+          if (query.sql.includes("contract_economic_review_file_reference_completed_206")) return [{ completed: scenario !== "incomplete retention migration" }];
+          if (query.sql.includes("contract_economic_review_ticket_references")) return [];
+          if (query.sql.includes("contract_economic_review_ticket_orphaned_proof")) {
+            // The confirmed, nested proof still contains this file. In this
+            // persistence fixture, display-only fields on the outer side are
+            // absent, so a SQL predicate on any of them would filter it out.
+            const filtersDisplayOnlyFields = /side\.value->>?'(?:formal|numericProtocolVersion|projectId)'/u.test(query.sql);
+            return [{
+              retainedAlias: scenario === "same-key retained peer",
+              confirmedWithoutReference: scenario === "missing reference in confirmed source" ||
+                (scenario === "confirmed source with incomplete display summary" && !filtersDisplayOnlyFields)
+            }];
+          }
+          return Reflect.get(target, key, receiver)(query);
+        };
+      } });
+      const service = new FileService(
+        { $transaction: (operation: (value: typeof tx) => unknown) => operation(database) } as unknown as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+      const ticket = service.createDownloadTicket(fileId, {
+        actorUserId: "original-uploader", downloadReason: "查看原履约复核"
+      });
+      if (scenario === "ordinary unreferenced file") {
+        await expect(ticket).resolves.toMatchObject({ fileId, fileName: "旧原件.pdf" });
+      } else {
+        await expect(ticket).rejects.toBeInstanceOf(scenario === "incomplete retention migration" ? ServiceUnavailableException : ForbiddenException);
+        expect(audit.record).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "file.download.ticket" }));
+      }
+      expect(storage.read).not.toHaveBeenCalled();
+    }
+  );
 
   it("creates a short-lived download ticket for a private file", async () => {
     const tx = {

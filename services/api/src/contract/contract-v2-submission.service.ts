@@ -1,4 +1,7 @@
-import { freezeInsideContractSigningIdentity } from "./contract-v2-signing-identity";
+import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
+import { freezeGeneratedContractSigningIdentity } from "./contract-v2-signing-identity";
+import { assertGeneratedArchiveSealContinuity, assertGeneratedArchiveSealSources, generatedArchiveSealScope, qualifyGeneratedArchiveSealAuthority } from "./contract-generated-archive-seal-authority";
+import { assertGeneratedUpwardSealHandoffContinuity, assertGeneratedUpwardSubmissionContinuity, qualifyGeneratedUpwardSealHandoff } from "./contract-upward-pending-save-profile";
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractDraftSubmissionRequest, type ContractVersion } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -56,6 +59,11 @@ export class ContractV2SubmissionService {
       const identity = await contractParallelDutyIdentity(tx, round, contract.projectId, actorUserId, input.expectedNodeIndex);
       if (!identity) throw new ForbiddenException("当前账号无权处理这项合同审批职责");
       if (input.decision !== "approve" && !input.comment?.trim()) throw new BadRequestException("退回合同时请填写审批意见");
+      const nodes = round.frozenNodes.map((node, index) => index === input.expectedNodeIndex && input.decision === "approve" ? { ...node, approvedRoleKeys: [...(node.approvedRoleKeys as string[]), identity.approvedRoleKey] } : node);
+      const pending = activeApprovalNodeIndexes(nodes, 0);
+      const status = input.decision !== "approve" ? "draft" : pending.length ? "in_approval" : "approved_pending_seal";
+      const upwardSealHandoff = version.signingSubjectType === "upward" && status === "approved_pending_seal"
+        ? await qualifyGeneratedUpwardSealHandoff(tx) : null;
       const selfReview = await confirmApprovalSelfReview({ applicantUserId: round.applicantUserId,
         originatorUserIds: await resolveContractOriginators(tx, version.id, round.frozenNodes), actorUserId,
         actorRoleKeys: identity.representedUserId === actorUserId ? [identity.approvedRoleKey] : [], ...identity,
@@ -68,9 +76,6 @@ export class ContractV2SubmissionService {
         signatureFileIdSnapshot: signature?.fileId, signatureSha256Snapshot: signature?.sha256, signatureVersionIdSnapshot: signature?.versionId,
         metadata: json({ nodeIndex: input.expectedNodeIndex, delegationId: identity.delegationId, ...selfReview.metadata })
       }, signature) });
-      const nodes = round.frozenNodes.map((node, index) => index === input.expectedNodeIndex && input.decision === "approve" ? { ...node, approvedRoleKeys: [...(node.approvedRoleKeys as string[]), identity.approvedRoleKey] } : node);
-      const pending = activeApprovalNodeIndexes(nodes, 0);
-      const status = input.decision !== "approve" ? "draft" : pending.length ? "in_approval" : "approved_pending_seal";
       await tx.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: json(nodes), currentNodeIndex: pending[0] ?? nodes.length, status: input.decision !== "approve" ? "rejected" : pending.length ? "in_progress" : "approved" } });
       await tx.contractVersion.update({ where: { id: version.id }, data: { status } });
       if (status === "approved_pending_seal") {
@@ -83,6 +88,7 @@ export class ContractV2SubmissionService {
           metadata: json({ submissionProtocolVersion: 2, sealTaskId: task.id, approvalInstanceId: round.id, handlerUserId: round.applicantUserId, pendingRoleKey: "comprehensive_director", handoffKind: "parallel_approval_released_for_offline_seal", internalApprovalActionId: approvalAction.id, internalApproverUserId: approvalAction.actorUserId }) });
       }
       await this.audit.record(tx, { actorUserId, action: `contract.approval.${input.decision}`, businessType: "contract_version", businessId: version.id, metadata: json({ approvalInstanceId: round.id, nodeIndex: input.expectedNodeIndex, approvedRoleKey: identity.approvedRoleKey, representedUserId: identity.representedUserId }) });
+      if (upwardSealHandoff) await assertGeneratedUpwardSealHandoffContinuity(tx, upwardSealHandoff);
       return { contractVersionId, approvalInstanceId: round.id, status };
     });
   }
@@ -104,11 +110,10 @@ export class ContractV2SubmissionService {
       const result = { contractVersionId, approvalInstanceId: round.id, sealTaskId: task.id, status: "seal_approved_pending_archive" };
       if (task.status === "completed" && task.completedByUserId === actorUserId && ["seal_approved_pending_archive", "effective"].includes(version.status)) return result;
       if (version.status !== "approved_pending_seal" || task.status !== "in_seal" || !task.approvedByUserId || !task.approvedAt) conflict("当前盖章任务已处理，请刷新后重试");
-      const identity = snapshot.signingIdentity;
-      const relationship = identity && typeof identity === "object" && "relationship" in identity ? identity.relationship : null;
-      if (version.signingSubjectType === "affiliate" || relationship === "outside") {
-        throw new ServiceUnavailableException("表外生成合同归档资格尚未就绪，请保留当前合同资料");
-      }
+      const scope = generatedArchiveSealScope(contract, version, round, task, snapshot, actorUserId, input.documentContentFingerprint);
+      if (scope && (task.completedAt || task.completedByUserId)) conflict("当前盖章任务已有完成记录，请刷新后核对");
+      const authority = scope && await qualifyGeneratedArchiveSealAuthority(tx, scope);
+      if (scope) await assertGeneratedArchiveSealSources(tx, scope, snapshot);
       const completedAt = new Date();
       await tx.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: actorUserId, completedAt } });
       await tx.contractVersion.update({ where: { id: version.id }, data: { status: "seal_approved_pending_archive" } });
@@ -116,6 +121,11 @@ export class ContractV2SubmissionService {
         metadata: json({ ...result, documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint, confirmed: true, confirmationRoleKey: "comprehensive_director", handlerUserId: task.handlerUserId }) });
       await this.audit.record(tx, { actorUserId, action: "contract.archive_task.create", businessType: "contract_version", businessId: version.id,
         metadata: json({ approvalInstanceId: round.id, sealTaskId: task.id, handlerUserId: task.handlerUserId }) });
+      if (scope && authority) {
+        await assertGeneratedArchiveSealSources(tx, scope, snapshot);
+        if (!(await hasActiveContractGlobalRole(tx, actorUserId, "comprehensive_director"))) throw new ForbiddenException("当前账号已无权确认线下盖章完成");
+        await assertGeneratedArchiveSealContinuity(tx, scope, authority);
+      }
       return result;
     });
   }
@@ -185,6 +195,7 @@ export class ContractV2SubmissionService {
       if (receipt) return this.replaySubmission(tx, receipt, expected, contract, version);
       if (!contract || contract.voidedAt || version.numericProtocolVersion !== 2 || version.changeType !== "original" || version.status !== "draft" || boundary.formalBlockers.length) conflict("当前合同不能从新版草稿入口提交");
       if (contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以提交审批");
+      assertNotDirectPendingVersion(version);
       await tx.$queryRaw(Prisma.sql`SELECT "contractVersionId" FROM "ContractDraftEditLease" WHERE "contractVersionId" = ${contractVersionId} FOR UPDATE`);
       const lease = await tx.contractDraftEditLease.findUnique({ where: { contractVersionId } });
       if (!leaseToken || !lease || lease.holderUserId !== actorUserId || lease.expiresAt.getTime() <= Date.now() || lease.tokenHash !== hash(leaseToken)) conflict("编辑权已变化，请重新取得编辑权后提交");
@@ -210,12 +221,15 @@ export class ContractV2SubmissionService {
         tx.contractPartySnapshot.findMany({ where: { contractVersionId } }), tx.contractBill.findMany({ where: { contractVersionId } }),
         tx.paymentTermsVersion.findFirst({ where: { contractVersionId }, orderBy: { createdAt: "desc" } }), tx.contractDraftAttachment.findMany({ where: { contractVersionId } })
       ]);
+      // Freeze the route's project lock before taking either signing-party lock.
+      const route = await this.routes.freezeNewContractRoute(tx, contract, actorUserId, true);
       const submissionTime = new Date();
-      const { formalVersion, identity } = await freezeInsideContractSigningIdentity(tx, version, contract, submissionTime);
+      const signing = await freezeGeneratedContractSigningIdentity(tx, version, contract, parties, document.inputSnapshot, submissionTime);
+      const { formalVersion, identity, upward: upwardSigning } = signing;
       const rows = await tx.contractBillRow.findMany({ where: { contractBillId: { in: bills.map(bill => bill.id) } } });
       const stages = paymentTerms ? await tx.paymentTermsStage.findMany({ where: { paymentTermsVersionId: paymentTerms.id } }) : [];
       const originatorUserIds = [...new Set([...(await resolveContractOriginators(tx, version.id)), actorUserId])].sort();
-      const frozenNodes = (await this.routes.freezeNewContractRoute(tx, contract, actorUserId, true)).map(node => ({ ...node, originatorUserIds }));
+      const frozenNodes = route.map(node => ({ ...node, originatorUserIds }));
       const formalCode = contract.code ?? await this.numbers.allocateDaily(tx, "HT");
       await assertFormalContractCodeNotTombstoned(tx, formalCode);
       // A mutable current-version projection must never be the only copy of a
@@ -230,7 +244,7 @@ export class ContractV2SubmissionService {
         taxFacts: { invoiceType: version.invoiceType, taxMode: version.taxMode, defaultTaxRatePercent: version.defaultTaxRatePercent }, parties, bills, rows, paymentTerms: paymentTerms ? { ...paymentTerms, stages } : null,
         attachments, generatedDocumentId: document.id, files: frozenFiles, blanksReviewed: true });
       const round = await tx.approvalInstance.create({ data: { businessType: "contract_version", businessId: contractVersionId, flowType: "contract.approve", applicantUserId: actorUserId, status: "in_progress", currentNodeIndex: 0, frozenNodes: json(frozenNodes.map((node, index) => index === 0 ? { ...node, submissionSnapshot: snapshot } : node)) } });
-      await tx.contractVersion.update({ where: { id: contractVersionId }, data: { status: "in_approval", firstSubmittedAt: version.firstSubmittedAt ?? submissionTime, readinessSnapshot: snapshot } });
+      await tx.contractVersion.update({ where: { id: contractVersionId }, data: { ...upwardSigning?.subjectUpdate, status: "in_approval", firstSubmittedAt: version.firstSubmittedAt ?? submissionTime, readinessSnapshot: snapshot } });
       await tx.contract.update({ where: { id: contract.id }, data: { code: formalCode } });
       const response = { contractVersionId, approvalInstanceId: round.id, formalCode, status: "in_approval" };
       try {
@@ -246,6 +260,7 @@ export class ContractV2SubmissionService {
         throw error;
       }
       await this.audit.record(tx, { actorUserId, action: "contract.approval.submit", businessType: "contract_version", businessId: contractVersionId, metadata: json(response) });
+      if (upwardSigning) await assertGeneratedUpwardSubmissionContinuity(tx, upwardSigning.qualification);
       return response;
     }).catch(error => {
       if (!(error instanceof SubmissionKeyCollision)) throw error;

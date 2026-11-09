@@ -3,6 +3,7 @@ const TYPE_ACL = [
  {type:'public."OperatingLedgerFactWritePayloadV2"',typeOid:'41001',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false},
  {type:'public."OperatingLedgerImpactWritePayloadV2"',typeOid:'41002',ownerOid:'10000',grantor:'10000',grantee:'10000',privilege:'USAGE',grantable:false}
 ];
+const scopeFixture=require("./testdata/task16-schema205-scope-fixture.cjs");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -32,10 +33,10 @@ function fixture(t) {
                     if(hooks[label]) await hooks[label](sql);
                     const phase = label === "task16-registered-access-preflight" ? "preflight" : "committed";
                     const nonce = /'([a-f0-9]{64})' AS nonce/u.exec(sql)?.[1];
-                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), schema204PhysicalVerified:true,schema203Verified:true,schema203TypeAclWitness:structuredClone(TYPE_ACL),functionsVerified:true,otherGranteeAclWitness:[],baselineGuardsVerified:true,newGuardsAbsent:phase==="preflight",matrixVerified:phase==="committed",guardVerified:phase==="committed",installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}, runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
+                    return { stdout: JSON.stringify({ ...identity, database: receipt.databaseName, nonce, phase, migrationLedger: migrations.map(row => ({ name: row.path.split("/").at(-2), sha256: row.sha256, finished: true, rolledBack: false })), schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("seven"),schema205Registry:scopeFixture.registry("seven"),schema203Verified:true,schema203TypeAclWitness:structuredClone(TYPE_ACL),functionsVerified:true,otherGranteeAclWitness:[],baselineGuardsVerified:true,newGuardsAbsent:phase==="preflight",matrixVerified:phase==="committed",guardVerified:phase==="committed",installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}, runtimeRole: "jg_task01_runtime", observerRole: "jg_task01_observer", runtimeOid: "20001", observerOid: "20002", ...replies[phase] }) };
                 }, close: async () => { calls.push("close-resource"); receipt.status = "closed"; receipt.cleanup = { status: "completed", containerAbsent: true, volumesAbsent: true, networkAbsent: true }; } };
             return resource;
-        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 204 }), installBaselineAccess: async context=>({schema203TypeAclWitness:structuredClone(TYPE_ACL),status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",schema204PhysicalVerified:true,ownerOid:"10000",sourceSha:source.candidateSha,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,runtimeRole:"jg_task01_runtime",observerRole:"jg_task01_observer",runtimeOid:"20001",observerOid:"20002",manifestSha256:hash(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"))),expectedMatrixSha256:hash(JSON.stringify([JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).runtime,JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).observer])),resourceWitness:structuredClone(context.resourceWitness)}),installPreparedSql:async context=>({status:"SQL_INSTALLATION_COMMIT_OBSERVED",candidateSha:source.candidateSha,packetSha256:options.expectedPacketSha256,sourceSealSha256:source.sealSha256,fragmentCount:7,databaseName:receipt.databaseName,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerRole:"jg_task01_owner",ownerOid:"10000",runtimeRole:"jg_task01_runtime",runtimeOid:"20001",observerRole:"jg_task01_observer",observerOid:"20002",baselineManifestSha256:context.baselineAccess.manifestSha256,baselineContinuityVerified:true,installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}}),installRegisteredAccess:async context=>require("./task16-registered-access.cjs").installTask16RegisteredAccess(context), connectRestrictedClients: async context => {calls.push("clients"); assert.equal(context.registeredAccess.status,"REGISTERED_ACL_COMMIT_OBSERVED");return {close:async()=>{}};}, startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
+        }, verifyOwnerTransport: async () => ({ status: "OWNER_TLS_CONTROLS_VERIFIED", ...identity, caSha256: hash(fs.readFileSync(ca)) }), migrateBaseline: async () => ({ status: "BASELINE_MIGRATIONS_LEDGER_VERIFIED", migrationCount: 205 }), installBaselineAccess: async context=>({schema203TypeAclWitness:structuredClone(TYPE_ACL),status:"BASELINE_ROLE_ACL_COMMIT_OBSERVED",schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("baseline"),schema205Registry:scopeFixture.registry("baseline"),ownerOid:"10000",sourceSha:source.candidateSha,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,runtimeRole:"jg_task01_runtime",observerRole:"jg_task01_observer",runtimeOid:"20001",observerOid:"20002",manifestSha256:hash(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"))),expectedMatrixSha256:hash(JSON.stringify([JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).runtime,JSON.parse(fs.readFileSync(path.join(ROOT,"services/api/prisma/task16-baseline-access.json"),"utf8")).observer])),resourceWitness:structuredClone(context.resourceWitness)}),installPreparedSql:async context=>({status:"SQL_INSTALLATION_COMMIT_OBSERVED",candidateSha:source.candidateSha,packetSha256:options.expectedPacketSha256,sourceSealSha256:source.sealSha256,fragmentCount:7,databaseName:receipt.databaseName,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerRole:"jg_task01_owner",ownerOid:"10000",runtimeRole:"jg_task01_runtime",runtimeOid:"20001",observerRole:"jg_task01_observer",observerOid:"20002",baselineManifestSha256:context.baselineAccess.manifestSha256,baselineContinuityVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("seven"),schema205Registry:scopeFixture.registry("seven"),schema205ScopeDelta:scopeFixture.delta("seven"),installedObjectWitness:{relations:[],indexes:[],columns:[],constraints:[],triggers:[]}}),installRegisteredAccess:async context=>require("./task16-registered-access.cjs").installTask16RegisteredAccess(context), connectRestrictedClients: async context => {calls.push("clients"); assert.equal(context.registeredAccess.status,"REGISTERED_ACL_COMMIT_OBSERVED");return {close:async()=>{}};}, startApplication: async () => ({ close: async () => { } }), seedFixture: async () => ({}), runNormalCase: async () => ({ caseId: "registered.null-cross-company.commit", passed: true }) };
     return { options, adapters, calls, source, replies, hooks, resource: () => resource, receipt: () => receipt, passwords: () => passwords };
 }
 
@@ -45,10 +46,32 @@ test("registered ACL completes after the seven-fragment proof and before restric
  assert.deepEqual(f.calls,["task16-registered-access-preflight","task16-registered-access-transaction","clients","close-resource"]);
  assert.equal(JSON.stringify(receipt).includes(f.passwords().runtime),false);
 });
+test("registered ACL rejects a replacement of the first Schema205 witness before DDL", async t => {
+ const f=fixture(t);
+ f.replies.preflight={schema205PhysicalVerified:true,schema205WitnessSha256:"9".repeat(64)};
+ const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+ assert.equal(receipt.failureCode,"TASK16_REGISTERED_SCHEMA205_CONTINUITY");
+ assert.equal(receipt.registeredAccessOutcome,"NOT_ATTEMPTED");
+ assert.deepEqual(f.calls,["task16-registered-access-preflight","close-resource"]);
+});
+for(const phase of ["preflight","committed"]){
+ test(`B6 registry continuity rejects raw public ACL drift at ${phase}`,async t=>{
+  const f=fixture(t),witness=scopeFixture.registry("seven");
+  witness.publicRoutine.rawAcl.reverse();
+  f.replies[phase]={schema205Registry:witness};
+  const receipt=await runTask16RegisteredPg(f.options,f.adapters);
+  assert.equal(receipt.failureCode,"TASK16_REGISTERED_SCHEMA205_REGISTRY");
+  assert.equal(receipt.registeredAccessOutcome,phase==="preflight"?"NOT_ATTEMPTED":"UNKNOWN_DO_NOT_RETRY");
+  assert.deepEqual(f.calls,phase==="preflight"
+   ?["task16-registered-access-preflight","close-resource"]
+   :["task16-registered-access-preflight","task16-registered-access-transaction","close-resource"]);
+ });
+}
+
 test("registered ACL rejects a new type ACL that no longer matches the first B5 witness",async t=>{
  const f=fixture(t),prior=f.adapters.installBaselineAccess;
  f.adapters.installBaselineAccess=async c=>({...await prior(c),schema203TypeAclWitness:structuredClone(TYPE_ACL)});
- f.replies.preflight={schema204PhysicalVerified:true,schema203Verified:true,schema203TypeAclWitness:[{type:'synthetic-changed',grantee:'30000',grantable:true}]};
+ f.replies.preflight={schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("seven"),schema205Registry:scopeFixture.registry("seven"),schema203Verified:true,schema203TypeAclWitness:[{type:'synthetic-changed',grantee:'30000',grantable:true}]};
  const receipt=await runTask16RegisteredPg(f.options,f.adapters);
  assert.equal(receipt.failureCode,'TASK16_REGISTERED_SCHEMA203_TYPE_ACL_CONTINUITY');
  assert.equal(receipt.registeredAccessOutcome,'NOT_ATTEMPTED');

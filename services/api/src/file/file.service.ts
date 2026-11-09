@@ -41,6 +41,10 @@ import {
   hasNonReceiptBusinessFileBinding,
   nonReceiptBusinessFileBindingIds
 } from "./file-business-binding";
+import { hasExactLegacyCleanupKey, lockContractReviewCleanupCohort, reviewReferenceCatalog } from "./contract-review-file-retention";
+import { contractReviewTicketAccess, type ContractReviewFileAccess } from "./contract-review-file-access";
+import { readDirectArchiveGeneration } from "./contract-archive-generation-read";
+import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -260,6 +264,25 @@ function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
+interface VerifiedVersionRead {
+  bucket: string;
+  objectKey: string;
+  sizeBytes: number;
+  contentSha256: string;
+  expectedGeneration?: string;
+}
+
+function isCosGeneration(value: string | null): value is string {
+  return typeof value === "string" && value.length <= 1024 && /^[\x21-\x7e]+$/u.test(value) &&
+    value.toLowerCase() !== "null" && !value.includes(",");
+}
+
+function encodeCosUriPart(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/gu, character =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
 @Injectable()
 export class PrivateFileStorage implements OnModuleInit {
   private readonly logger = new Logger(PrivateFileStorage.name);
@@ -396,6 +419,57 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error("本地文件读取失败");
     } finally {
       await handle?.close().catch(() => undefined);
+    }
+  }
+
+  /** Strict backend evidence read. A version and its verified bytes come from the same COS response. */
+  async readVerifiedVersion(input: VerifiedVersionRead): Promise<{ buffer: Buffer; objectGeneration: string }> {
+    const unavailable = () => new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+    try {
+      const limit = Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600);
+      if (!this.useCos() || input.bucket !== this.bucketName() ||
+        !Number.isSafeInteger(limit) || !Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 1 || input.sizeBytes > limit ||
+        !/^[0-9a-f]{64}$/u.test(input.contentSha256) ||
+        (input.expectedGeneration !== undefined && !isCosGeneration(input.expectedGeneration)) ||
+        Array.from(input.objectKey).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
+        throw unavailable();
+      }
+      this.resolveObjectKey(input.objectKey);
+
+      const response = await this.cosResponse("GET", input.objectKey, undefined, { generation: input.expectedGeneration });
+      const generation = response.headers.get("x-cos-version-id");
+      const length = response.headers.get("content-length");
+      const encoding = response.headers.get("content-encoding");
+      if (!isCosGeneration(generation) || (input.expectedGeneration !== undefined && generation !== input.expectedGeneration)
+        || response.headers.has("content-range") || (length !== null && length !== String(input.sizeBytes))
+        || (encoding !== null && encoding.toLowerCase() !== "identity") || !response.body) {
+        await response.body?.cancel().catch(() => undefined);
+        throw unavailable();
+      }
+
+      const reader = response.body.getReader();
+      let offset = 0;
+      let complete = false;
+      try {
+        const buffer = Buffer.allocUnsafe(input.sizeBytes);
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value.length > input.sizeBytes - offset) throw unavailable();
+          buffer.set(value, offset);
+          offset += value.length;
+        }
+        complete = true;
+        if (offset !== input.sizeBytes || createHash("sha256").update(buffer).digest("hex") !== input.contentSha256) {
+          throw unavailable();
+        }
+        return { buffer, objectGeneration: generation };
+      } finally {
+        if (!complete) await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+    } catch {
+      throw unavailable();
     }
   }
 
@@ -556,21 +630,34 @@ export class PrivateFileStorage implements OnModuleInit {
   }
 
   private async cosRequest(method: "DELETE" | "GET" | "PUT", objectKey: string, body?: Buffer) {
+    const response = await this.cosResponse(method, objectKey, body);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  private async cosResponse(method: "DELETE" | "GET" | "PUT", objectKey: string, body?: Buffer,
+    versioned?: { generation?: string }) {
     // ponytail: direct COS XML operations; switch to SDK when multipart/resumable upload matters.
     const bucket = this.requiredEnv("COS_BUCKET");
     const region = this.requiredEnv("COS_REGION");
+    if (versioned && [bucket, region].some(label => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(label))) {
+      throw new Error(this.cosFailureMessage("GET"));
+    }
     const host = `${bucket}.cos.${region}.myqcloud.com`;
     const canonicalPath = `/${objectKey}`;
-    const requestPath = encodeURI(canonicalPath);
+    const requestPath = versioned ? canonicalPath.split("/").map(encodeCosUriPart).join("/") : encodeURI(canonicalPath);
+    const encodedGeneration = versioned?.generation === undefined ? undefined : encodeCosUriPart(versioned.generation);
+    const query = encodedGeneration === undefined ? "" : `?versionId=${encodedGeneration}`;
     let response: Response;
     try {
-      response = await fetch(`https://${host}${requestPath}`, {
+      response = await fetch(`https://${host}${requestPath}${query}`, {
         method,
         headers: {
-          Authorization: this.cosAuthorization(method, canonicalPath, host),
-          Host: host
+          Authorization: this.cosAuthorization(method, canonicalPath, host, encodedGeneration),
+          Host: host,
+          ...(versioned ? { "Accept-Encoding": "identity" } : {})
         },
-        body: body ? new Uint8Array(body) : undefined
+        body: body ? new Uint8Array(body) : undefined,
+        ...(versioned ? { redirect: "error" as const, signal: AbortSignal.timeout(60_000) } : {})
       });
     } catch {
       this.logger.error({
@@ -582,6 +669,10 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error(this.cosFailureMessage(method));
     }
 
+    if (versioned && (!response.ok || response.status !== 200 || response.redirected !== false)) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(this.cosFailureMessage("GET"));
+    }
     if (!response.ok && !(method === "DELETE" && response.status === 404)) {
       const diagnostics = await this.cosResponseDiagnostics(response);
       this.logger.error({
@@ -601,7 +692,7 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error(this.cosFailureMessage(method));
     }
 
-    return Buffer.from(await response.arrayBuffer());
+    return response;
   }
 
   private cosFailureMessage(method: "DELETE" | "GET" | "PUT") {
@@ -653,7 +744,7 @@ export class PrivateFileStorage implements OnModuleInit {
     return normalized;
   }
 
-  private cosAuthorization(method: "DELETE" | "GET" | "PUT", pathname: string, host: string) {
+  private cosAuthorization(method: "DELETE" | "GET" | "PUT", pathname: string, host: string, encodedGeneration?: string) {
     const secretId = this.requiredEnv("COS_SECRET_ID");
     const secretKey = this.requiredEnv("COS_SECRET_KEY");
     const now = Math.floor(Date.now() / 1000);
@@ -662,7 +753,7 @@ export class PrivateFileStorage implements OnModuleInit {
     const httpString = [
       method.toLowerCase(),
       pathname,
-      "",
+      encodedGeneration === undefined ? "" : `versionid=${encodedGeneration}`,
       `host=${encodeURIComponent(host)}`,
       ""
     ].join("\n");
@@ -681,7 +772,7 @@ export class PrivateFileStorage implements OnModuleInit {
       `q-sign-time=${keyTime}`,
       `q-key-time=${keyTime}`,
       `q-header-list=${headerList}`,
-      "q-url-param-list=",
+      `q-url-param-list=${encodedGeneration === undefined ? "" : "versionid"}`,
       `q-signature=${signature}`
     ].join("&");
   }
@@ -1149,7 +1240,8 @@ export class FileService {
         tx,
         file,
         input.actorUserId,
-        delegatorUserId
+        delegatorUserId,
+        "ticket"
       );
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
@@ -1183,7 +1275,7 @@ export class FileService {
 
       return {
         fileId: file.id,
-        fileName: file.originalName,
+        fileName: access?.businessType === "contract_economic_review" ? access.fileName : file.originalName,
         mimeType: file.mimeType,
         sizeBytes: file.sizeBytes,
         expiresAt,
@@ -1216,7 +1308,7 @@ export class FileService {
       if (!file) {
         throw new Error("资料文件不存在或已被移除");
       }
-      await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId);
+      await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId, "ticket");
       return {
         availableActions: ["create_private_file_download_ticket" as const],
         action: {
@@ -1279,16 +1371,25 @@ export class FileService {
         tx,
         found,
         input.actorUserId,
-        delegatorUserId
+        delegatorUserId,
+        "ticket"
       );
       if (accessMode === "preview" && found.mimeType !== "application/pdf") {
         throw new BadRequestException("仅 PDF 文件支持在线预览，请下载原文件查看");
       }
-      return { file: found, access };
+      const generation = await this.directArchiveDownloadGeneration(
+        tx, found, input.actorUserId, access?.businessType === "contract_economic_review"
+      );
+      return { file: found, access, generation };
     }), downloadReason);
-    const { file, access } = authorized;
+    const { file, access, generation } = authorized;
 
-    const buffer = await this.readVerifiedFileBuffer(file);
+    const buffer = generation === null
+      ? await this.readVerifiedFileBuffer(file)
+      : (await this.storage.readVerifiedVersion({
+        bucket: file.bucket, objectKey: file.objectKey, sizeBytes: file.sizeBytes,
+        contentSha256: file.contentSha256 ?? "", expectedGeneration: generation
+      })).buffer;
     const wageEvidence = await this.isWageEvidenceFile(file.id);
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, wageEvidence ? {
@@ -1307,7 +1408,7 @@ export class FileService {
         businessType: "file_object",
         businessId: file.id,
         metadata: {
-          originalName: file.originalName,
+          originalName: access?.businessType === "contract_economic_review" ? access.fileName : file.originalName,
           sizeBytes: file.sizeBytes,
           downloadReason,
           ...(access?.businessType === "global_invoice" ? {
@@ -1323,10 +1424,27 @@ export class FileService {
     );
 
     return {
-      file,
+      file: access?.businessType === "contract_economic_review" ? { ...file, originalName: access.fileName } : file,
       buffer,
       accessMode
     };
+  }
+
+  private async directArchiveDownloadGeneration(
+    tx: Prisma.TransactionClient, file: FileObject, actorUserId: string, authorizedReviewHistory: boolean
+  ) {
+    // The unique evidence file ID also reaches this gate from the existing uploader shortcut.
+    const evidence = await tx.contractArchiveEvidenceFile.findFirst({ where: { fileId: file.id } });
+    if (!evidence) return null;
+    const parent = await tx.contractArchiveFile.findUnique({ where: { id: evidence.archiveFileId } });
+    if (!parent) throw new BadRequestException("合同归档原件的绑定信息不完整，暂不能下载");
+    if (parent.archiveSource !== "direct_signed") return null;
+    const version = await tx.contractVersion.findUnique({ where: { id: evidence.contractVersionId } });
+    const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
+    if (!contract || (!authorizedReviewHistory && !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))) {
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
+    }
+    return readDirectArchiveGeneration(tx, parent, evidence, file);
   }
 
   // 内部服务读取，不走用户下载权限与审计。
@@ -1340,12 +1458,22 @@ export class FileService {
 
   async discardUnlinkedGeneratedFile(fileId: string, actorUserId: string): Promise<void> {
     const discarded = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
-      `);
+      const catalog = await reviewReferenceCatalog(tx);
+      if (catalog === "legacy") {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "FileObject" WHERE "id" = ${fileId} FOR UPDATE
+        `);
+      }
       const file = await tx.fileObject.findUnique({ where: { id: fileId } });
-      if (!file || file.uploadedByUserId !== actorUserId || file.storageStatus !== "active") {
+      if (!file || file.uploadedByUserId !== actorUserId || file.storageStatus !== "active" || file.purgeReceiptId) {
         return null;
+      }
+      if (!file.bucket || file.bucket !== this.storage.bucketName()) return null;
+      if (catalog === "legacy" && !(await hasExactLegacyCleanupKey(tx, file))) return null;
+      if (catalog === "ready") {
+        const locked = await lockContractReviewCleanupCohort(tx, [file], catalog);
+        if (!locked || locked[0]?.storageStatus !== "active" || locked[0]?.purgeReceiptId) return null;
+        await assertDirectReviewQualification(tx, "read");
       }
       if (await this.isFileReferenced(tx, fileId)) return null;
       const updated = await tx.fileObject.updateMany({
@@ -1360,7 +1488,7 @@ export class FileService {
         businessId: fileId
       });
       return { objectKey: file.objectKey };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     if (!discarded) return;
     try {
       await this.storage.delete(discarded.objectKey);
@@ -1395,6 +1523,7 @@ export class FileService {
       SELECT EXISTS (
         SELECT 1 FROM "User" WHERE "signatureFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "HandwrittenSignatureVersion" WHERE "fileId" = ${fileId}
+        UNION ALL SELECT 1 FROM "ContractDraftAttachment" WHERE "fileId" = ${fileId} AND "slotKey" = 'direct_signed_originals_v1'
         UNION ALL SELECT 1 FROM "ContractVersion" WHERE "taxFactEvidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTaxFactRevision" WHERE "evidenceFileId" = ${fileId}
         UNION ALL SELECT 1 FROM "ContractTakeoverCorrection" WHERE "attachmentFileId" = ${fileId}
@@ -1951,8 +2080,9 @@ export class FileService {
     tx: Prisma.TransactionClient,
     file: FileObject,
     actorUserId: string,
-    delegatorUserId?: string
-  ): Promise<GlobalInvoiceFileAccessContext | undefined> {
+    delegatorUserId?: string,
+    purpose?: "ticket"
+  ): Promise<GlobalInvoiceFileAccessContext | ContractReviewFileAccess | undefined> {
     const registeredVoucher = await tx.$queryRaw<Array<{executionId:string;verifiedExecutionId:string|null;paymentRequestId:string|null;contentSha256:string}>>(Prisma.sql`
       /* registered_payment_voucher_download */
       SELECT voucher."executionId", funding."executionId" AS "verifiedExecutionId", execution."paymentRequestId", voucher."contentSha256"
@@ -2516,6 +2646,12 @@ export class FileService {
         return;
       }
       throw new ForbiddenException("当前账号无权下载该一般争议资金依据");
+    }
+
+    if (purpose === "ticket") {
+      const history = await contractReviewTicketAccess(tx, file, actorUserId,
+        new ProjectVisibilityService(this.prisma), () => this.storage.bucketName(), delegatorUserId);
+      if (history) return history;
     }
 
     const layoutAccess = await resolveLayoutTemplateFileAccess(tx, file.id, actorUserId, file.mimeType);

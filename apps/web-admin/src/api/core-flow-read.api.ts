@@ -30,6 +30,7 @@ import {
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 import { SettlementApprovalWithdrawalResultUnknownError } from "../lib/settlement-approval-result";
 import { apiFetch } from "./api-fetch";
+import type { ApiFetchInit } from "./http";
 import { formatApiErrorMessage } from "./error-message";
 
 export class CoreFlowApiError extends Error {
@@ -75,8 +76,8 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   );
 }
 
-async function readJson<T>(path: string, headers?: Record<string, string>): Promise<T> {
-  const response = await apiFetch(path, headers ? { headers } : undefined);
+async function readJson<T>(path: string, headers?: Record<string, string>, options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">): Promise<T> {
+  const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
   await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
@@ -1533,6 +1534,10 @@ export interface ContractLedgerListReadModel {
   rows: Array<{
     contractRelationshipLabel?: string;
     id: string;
+    contractId?: string;
+    contractVersionId?: string;
+    originalSignedNumber?: string | null;
+    originalSignedNumberState?: "available" | "unavailable";
     contractNo: string;
     name: string;
     project: string;
@@ -3660,8 +3665,8 @@ export async function downloadProjectExpenseApprovalPdf(
   saveBlob(await response.blob(), name ? decodeURIComponent(name) : "项目费用审批单.pdf");
 }
 
-export function fetchContractLedger() {
-  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" });
+export function fetchContractLedger(options?: Pick<ApiFetchInit, "retryUnauthorized" | "responseIsCurrent">) {
+  return readJson<ContractLedgerListReadModel>("/contracts", { "x-contract-numeric-protocol": "2" }, options);
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {

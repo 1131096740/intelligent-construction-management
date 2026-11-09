@@ -3,144 +3,517 @@ import { Prisma } from "@prisma/client";
 import { ContractEconomicReviewService } from "../contract-ledger/contract-economic-review.service";
 import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
 import { PDFDocument } from "pdf-lib";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createTemplateTestServer } from "./template-management.test-support";
 import { createTask09Draft } from "./task09-draft-template.test-support";
 import { confirmedBodyLayout, saveBody, type Body } from "./task10-body.test-support";
 import { loginTemplateActor } from "./template-selection.test-support";
+import { openDirectPendingDraft } from "./task12-direct-pending.test-support";
+import * as generatedArchiveInstallation from "../contract/contract-generated-archive-installation";
+import { PrivateFileStorage } from "../file/file.service";
 
 describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私有文件）", () => {
-  it("缺少表外归档资格时拒绝新的盖章确认，原已完成结果仍可同坐标查回", async () => {
-    const server = await createTemplateTestServer({ draftWorkbench: true });
+  it("对上生成审批核对真实纸面双方和安装资格，撤回重提后仅当前轮次单次交接", async () => {
+    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: true });
     try {
-      const { prisma } = server.store;
-      const projectId = randomUUID(), enterpriseId = randomUUID(), enterpriseVersionId = randomUUID();
-      const enterpriseName = "合成施工企业";
-      const approvedAt = new Date("2026-11-08T08:00:00Z");
-      await prisma.project.create({ data: { id: projectId, code: "T12-AFFILIATE-SEAL", name: "合成盖章项目", isActive: true } });
-      await prisma.projectMember.create({ data: { projectId, userId: "staff", positionKey: "contract_staff" } });
-      await prisma.businessParty.create({ data: { id: enterpriseId, name: enterpriseName, status: "active" } });
-      await prisma.businessPartyVersion.create({ data: { id: enterpriseVersionId, businessPartyId: enterpriseId, versionNo: 1, snapshot: { name: enterpriseName } } });
-      const assignment = await prisma.projectAffiliateAssignment.create({ data: {
-        projectId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: enterpriseName,
-        effectiveFrom: new Date("2026-01-01T00:00:00Z"), changeReason: "合成历史派驻", assignedByUserId: "director"
-      } });
-      const contract = await prisma.contract.create({ data: {
-        projectId, ownerUserId: "staff", name: "合成表外历史合同", contractTypeKey: "material_purchase", counterparty: "合成下游单位",
-        code: "HT-SYNTHETIC-AFFILIATE", temporaryCode: "SYNTHETIC-AFFILIATE"
-      } });
-      const documentContentRevision = 1, documentContentFingerprint = "a".repeat(64);
-      const version = await prisma.contractVersion.create({ data: {
-        contractId: contract.id, numericProtocolVersion: 2, versionNo: 1, changeType: "original", contractGovernanceVersion: 1,
-        status: "approved_pending_seal", signingSubjectType: "affiliate", affiliateAssignmentId: assignment.id,
-        affiliateBusinessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: enterpriseName,
-        amountCents: 0n, amountYuan: null, firstSubmittedAt: approvedAt, documentContentRevision, documentContentFingerprint
-      } });
-      await prisma.paymentTermsVersion.create({ data: { contractId: contract.id, contractVersionId: version.id,
-        versionNo: 1, status: "active", originalText: "合成历史付款条款" } });
-      const submissionSnapshot = { submissionProtocolVersion: 2, contractVersionId: version.id, documentContentRevision,
-        documentContentFingerprint, signingIdentity: { relationship: "outside" } };
-      const duties = ["material_director", "contract_director", "project_manager", "finance_director", "general_manager"];
-      const round = await prisma.approvalInstance.create({ data: {
-        businessType: "contract_version", businessId: version.id, flowType: "contract.approve", applicantUserId: "staff",
-        status: "approved", currentNodeIndex: duties.length, frozenNodes: duties.map((role, index) => ({
-          protocolVersion: 1, executionMode: "parallel", mode: "any", roleKeys: [role], approvedRoleKeys: [role],
-          ...(index === 0 ? { submissionSnapshot } : {})
-        }))
-      } });
-      const task = await prisma.contractSealTask.create({ data: {
-        contractVersionId: version.id, approvalInstanceId: round.id, handlerUserId: "staff", status: "in_seal",
-        approvedAt, approvedByUserId: "director"
-      } });
-      await prisma.position.upsert({ where: { id: "comprehensive_director" }, create: { id: "comprehensive_director", key: "comprehensive_director" }, update: {} });
-      await prisma.userPosition.create({ data: { userId: "director", positionId: "comprehensive_director", projectId: null } });
-      await prisma.userPosition.create({ data: { userId: "technical", positionId: "comprehensive_director", projectId: null } });
-      const director = await loginTemplateActor(server, "director");
-      const handler = await loginTemplateActor(server, "staff");
-      const technical = await loginTemplateActor(server, "technical");
-      const base = await server.app.getUrl();
-      const confirm = () => fetch(`${base}/contracts/${version.id}/seal-confirmation`, {
-        method: "POST", headers: { authorization: `Bearer ${director}`, "content-type": "application/json" },
-        body: JSON.stringify({ expectedApprovalInstanceId: round.id, expectedSealTaskId: task.id, documentContentRevision, documentContentFingerprint, confirmed: true })
-      });
-      const readState = () => Promise.all([
-        prisma.contractVersion.findUnique({ where: { id: version.id } }),
-        prisma.contractSealTask.findUnique({ where: { id: task.id } }),
-        prisma.auditLog.count({ where: { businessId: version.id } })
-      ]);
-      const workItems = async (token: string) => {
-        const response = await fetch(`${base}/me/work-items`, { headers: { authorization: `Bearer ${token}` } });
-        const { queues } = await response.json() as { queues: Record<"pending" | "blocked", Array<{ businessId: string }>> };
-        return { status: response.status, pending: queues?.pending.filter(item => item.businessId === version.id),
-          blocked: queues?.blocked.filter(item => item.businessId === version.id) };
-      };
-      const headers = (token: string) => ({ authorization: `Bearer ${token}`, "x-contract-numeric-protocol": "2" });
-      const workbench = async (view: string, token: string) => {
-        const response = await fetch(`${base}/contracts/workbench?view=${view}`, { headers: headers(token) });
-        const body = await response.json() as { rows?: Array<{ contractVersionId: string }> };
-        return { status: response.status, versions: body.rows?.filter(row => row.contractVersionId === version.id).map(row => row.contractVersionId) };
-      };
-      const assertBlocked = async (token: string, phase: "seal" | "archive") => {
-        const before = await readState();
-        expect(await workItems(token)).toEqual({ status: 200, pending: [], blocked: [expect.objectContaining({
-          id: `contract-v2-${phase}:${version.id}`, type: "blocker", targetPath: "/合同管理/HT-SYNTHETIC-AFFILIATE",
-          currentNode: phase === "seal" ? "盖章办理暂不可用" : "归档办理暂不可用", nextAction: "查看合同详情并保留当前资料"
-        })] });
-        expect(await workbench("pending_action", token)).toEqual({ status: 200, versions: [] });
-        for (const view of ["all", phase === "seal" ? "pending_seal" : "pending_archive"]) {
-          expect(await workbench(view, token)).toEqual({ status: 200, versions: [version.id] });
+      const layout = await confirmedBodyLayout(server);
+      const draft = await createTask09Draft(server, "capped", "material_purchase", "upward");
+      await server.store.prisma.projectMember.create({ data: { projectId: draft.projectId, userId: "staff", positionKey: "contract_staff" } });
+      const duties = [
+        { index: 0, actor: "employee", role: "material_director", projectId: null },
+        { index: 1, actor: "director", role: "contract_director", projectId: null },
+        { index: 2, actor: "manager", role: "project_manager", projectId: draft.projectId },
+        { index: 3, actor: "finance", role: "finance_director", projectId: null },
+        { index: 4, actor: "employee", role: "general_manager", projectId: null }
+      ];
+      const signatureBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9e0AAAAASUVORK5CYII=", "base64");
+      const tokens = new Map<string, string>();
+      for (const duty of duties) {
+        await server.store.prisma.position.upsert({ where: { id: duty.role }, create: { id: duty.role, key: duty.role }, update: {} });
+        if (duty.role !== "contract_director") {
+          await server.store.prisma.userPosition.create({ data: { userId: duty.actor, positionId: duty.role, projectId: duty.projectId } });
         }
-        const detail = await fetch(`${base}/contracts/HT-SYNTHETIC-AFFILIATE?versionId=${version.id}`, { headers: headers(token) });
-        const body = await detail.json();
-        expect({ status: detail.status, body }).toMatchObject({ status: 200, body: { contractVersionId: version.id,
-          v2Lifecycle: { status: "unavailable", webWriteReleased: false, sealAction: { enabled: false }, archiveAction: { enabled: false } } } });
-        expect(body.availableActionKeys.filter((key: string) => ["approve_seal", "complete_seal", "confirm_seal_v2", "archive_signed_v2", "upload_archive", "upload_final_contract"].includes(key))).toEqual([]);
-        expect(await readState()).toEqual(before);
+        if (!tokens.has(duty.actor)) {
+          const signature = await server.files.uploadPrivateFile({ originalName: "合成审批签字.png", mimeType: "image/png", sizeBytes: signatureBytes.length, buffer: signatureBytes, uploadedByUserId: duty.actor });
+          await server.store.prisma.handwrittenSignatureVersion.create({ data: { userId: duty.actor, source: "canvas", fileId: signature.id, contentSha256: createHash("sha256").update(signatureBytes).digest("hex") } });
+          tokens.set(duty.actor, await loginTemplateActor(server, duty.actor));
+        }
+      }
+      const companyId = randomUUID(), companyVersionId = randomUUID(), joinedVersionId = randomUUID();
+      const companyName = "本项目我方参与公司", companyCreditCode = "91310000123456789X", companyAddress = "当前注册地址";
+      await server.store.prisma.companyEntity.create({ data: { id: companyId, isActive: true, dataStatus: "complete", currentVersionNo: 2 } });
+      for (const [id, versionNo, name] of [[companyVersionId, 2, companyName], [joinedVersionId, 1, "加入时我方公司"]] as const) {
+        await server.store.prisma.companyEntityVersion.create({ data: { id, companyEntityId: companyId, versionNo, name, unifiedSocialCreditCode: companyCreditCode, registeredAddress: companyAddress, isActive: true } });
+      }
+      const participation = await server.store.prisma.projectParticipatingCompany.create({ data: { projectId: draft.projectId, companyEntityId: companyId, companyEntityVersionId: joinedVersionId, companyNameSnapshot: "加入时我方公司", companyCreditCodeSnapshot: companyCreditCode, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), endedAt: null } });
+      const enterpriseId = randomUUID(), enterpriseVersionId = randomUUID();
+      const enterpriseName = "本项目实际施工企业", enterpriseCreditCode = "91310000123456789A";
+      await server.store.prisma.businessParty.create({ data: { id: enterpriseId, name: enterpriseName, status: "active" } });
+      await server.store.prisma.businessPartyVersion.create({ data: { id: enterpriseVersionId, businessPartyId: enterpriseId, versionNo: 1, snapshot: { name: enterpriseName, unifiedSocialCreditCode: enterpriseCreditCode } } });
+      const assignment = await server.store.prisma.projectAffiliateAssignment.create({ data: { projectId: draft.projectId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: enterpriseName, affiliateCreditCodeSnapshot: enterpriseCreditCode, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), endedAt: null } });
+
+      const workbench = () => fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json());
+      const save = async (documentBody?: object) => {
+        const { version, bills } = await workbench();
+        const response = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
+          idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: version.draftRevision, changedSections: ["draft", "parties"],
+          draft: { numericProtocolVersion: 2, companyEntityId: companyId, draftData: { contractName: "对上生成合成材料合同", contractBasics: { businessType: "material_purchase", relationship: "upward", amountBasis: "tax_inclusive", invoiceStatus: "pending" }, ...(documentBody ? { documentBody } : {}) }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layout.id, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } },
+          parties: [{ roleKey: "party_b", displayOrder: 0, businessPartyVersionId: enterpriseVersionId, snapshot: {} }],
+          bills: bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2, rows: [] })),
+          paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
+        }) });
+        expect({ status: response.status, body: response.status === 200 ? null : await response.json() }).toEqual({ status: 200, body: null });
       };
-      const pending = await readState();
-      await assertBlocked(director, "seal");
-      expect(await workItems(technical)).toEqual({ status: 200, pending: [], blocked: [] });
-      const denied = await confirm();
-      expect({ status: denied.status, body: await denied.json() })
-        .toMatchObject({ status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") } });
-      expect(await readState()).toEqual(pending);
+      await save();
+      const body = await fetch(`${draft.base}/document-body`, { headers: draft.headers }).then(response => response.json()) as Body;
+      expect(body.blocks.map(block => block.text)).toEqual(expect.arrayContaining([`甲方：${companyName}`, `乙方：${enterpriseName}`]));
+      await save({ protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: layout.sha256, edits: [], additions: [] });
+      const { version } = await workbench();
+      expect(version.draftData.directSigningInput).toBeUndefined();
+      expect(version.draftData.companyEntitySelection).toMatchObject({ id: companyId, versionId: companyVersionId });
+      const queuePreview = () => fetch(`${draft.base}/preview-generation`, { method: "POST", headers: draft.headers, body: JSON.stringify({ sourceRevision: version.draftRevision }) });
+      await server.store.prisma.companyEntity.update({ where: { id: companyId }, data: { currentVersionNo: 3 } });
+      const stalePreview = await queuePreview();
+      expect({ status: stalePreview.status, body: await stalePreview.json() }).toMatchObject({ status: 400, body: { message: expect.stringContaining("我方公司主体资料已更新或不再可用") } });
+      expect(await server.store.prisma.contractGeneratedDocument.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      await server.store.prisma.companyEntity.update({ where: { id: companyId }, data: { currentVersionNo: 2 } });
+      const queue = await queuePreview();
+      const queued = await queue.json();
+      expect({ status: queue.status, queued }).toMatchObject({ status: 201, queued: { generationId: expect.any(String) } });
+      const doc = await server.store.prisma.contractGeneratedDocument.findUnique({ where: { id: queued.generationId } });
+      expect(doc?.inputSnapshot).toMatchObject({ renderInput: { values: {
+        "party.party_a": [expect.objectContaining({ id: companyId, versionId: companyVersionId, name: companyName })],
+        "party.party_b": [expect.objectContaining({ name: enterpriseName, unifiedSocialCreditCode: enterpriseCreditCode })]
+      } } });
+      // Use the real queued input snapshot. The generated bytes are mock-only.
+      const docxBytes = Buffer.from("synthetic upward current Word"), pdfBytes = Buffer.from("synthetic upward current PDF");
+      const docx = await server.files.uploadPrivateFile({ originalName: "合成正文.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: docxBytes, sizeBytes: docxBytes.length, uploadedByUserId: "staff" });
+      const pdf = await server.files.uploadPrivateFile({ originalName: "合成正文.pdf", mimeType: "application/pdf", buffer: pdfBytes, sizeBytes: pdfBytes.length, uploadedByUserId: "staff" });
+      await server.store.prisma.contractGeneratedDocument.update({ where: { id: doc!.id }, data: { status: "success", docxFileId: docx.id, pdfFileId: pdf.id } });
+      const input = { expectedRevision: version.draftRevision, idempotencyKey: randomUUID(), submissionProtocolVersion: 2, documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint, generatedDocumentId: doc!.id, sourceSha256: layout.sha256, blanksReviewed: true };
+      const submit = (body = input) => fetch(`${draft.base}/submission`, { method: "POST", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify(body) });
+      const readReceipt = (key = input.idempotencyKey) => fetch(`${draft.base}/submission-requests/${key}`, { headers: draft.headers });
+      const assertNoSubmission = async () => {
+        expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(0);
+        expect(await server.store.prisma.contractDraftSubmissionRequest.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+        expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.approval.submit" } })).toBe(0);
+        expect(await (await readReceipt()).json()).toEqual({ status: "unknown" });
+        const current = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+        expect(current).toMatchObject({ status: "draft", signingSubjectType: "draft_unconfirmed", documentContentFingerprint: version.documentContentFingerprint });
+        expect((current?.draftData as Prisma.JsonObject).directSigningInput).toBeUndefined();
+      };
 
-      await prisma.contractVersion.update({ where: { id: version.id }, data: {
-        signingSubjectType: "our_company", affiliateAssignmentId: null, affiliateBusinessPartyVersionId: null,
-        affiliateNameSnapshot: null, affiliateCreditCodeSnapshot: null
-      } });
-      await assertBlocked(director, "seal");
-      const mismatched = await readState();
-      const mismatchedConfirmation = await confirm();
-      expect({ status: mismatchedConfirmation.status, body: await mismatchedConfirmation.json() })
-        .toMatchObject({ status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") } });
-      expect(await readState()).toEqual(mismatched);
-      await prisma.contractVersion.update({ where: { id: version.id }, data: {
-        signingSubjectType: "affiliate", affiliateAssignmentId: assignment.id, affiliateBusinessPartyVersionId: enterpriseVersionId,
-        affiliateNameSnapshot: enterpriseName
-      } });
+      const oldProfile = {
+        databaseOid: "13000", namespaceOid: "2200", anchorOwnerOid: "9001", currentRoleOid: "7001", sessionRoleOid: "7001",
+        bindingOid: "42001", createBindingOid: "42002", versionRoutineOid: "42003", attachmentRoutineOid: "42004",
+        slotRoutineOid: "42005", createBindingSha256: "1".repeat(64), backendPid: 71201, transactionId: "500003",
+        restrictedRole: true, privateTechnicalAcl: true,
+        routineBodies: {
+          version: "bbf5b477e867355798c5b99f4c7919baccfbfe7888811eaefccb9ab88a737e9f",
+          attachment: "0a0b17642f39c96064f1184fcd03e4151569136c385b2ea0d94ff67dbc5963cf",
+          slot: "86dddd478fb66809deaae6875e46e2ed29436824497114d7c7a66e46403fe999",
+          save: "ee7b3ccc522fa5b18f5212a54718729dd33e9a1713b3768747368a7b331efa50",
+          binding: "637c42531d6e58ba08d3d5ec497ccd82874cbe0d713d0e249d794a3694755028",
+          after: "1541911b049f700fbba33ee1d973fa43aab1577fa8490a7eea1c10e57cde6059",
+          file: "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1",
+          exclusive: "e33a10adaef82631e34bc46708c1e91295ff75cc578c36592d59bd60959f2999"
+        },
+        triggerOids: { jg_direct_pending_version_shape: "30001", jg_direct_pending_attachment_source: "30002",
+          ContractDraftAttachment_direct_archive_transfer_v1: "30003", jg_upward_pending_save_binding_immutable: "30004",
+          jg_upward_pending_save_binding_no_truncate: "30005", jg_upward_pending_save_persistent_proof: "30006",
+          jg_direct_pending_file_retained: "30007", jg_direct_pending_attachment_exclusive: "30008" }
+      };
+      let installed = false;
+      let sealHandoffEnabled: boolean | undefined = undefined;
+      let sealHandoffDrifts = false;
+      let driftOnContinuity = false;
+      let successorReads = 0;
+      const native = server.store.prisma.$queryRaw;
+      server.store.prisma.$queryRaw = async (raw, ...parameters) => {
+        const query = "strings" in raw ? raw : Prisma.sql(raw, ...parameters);
+        const sql = query.strings.join("?").replace(/\s+/gu, " ").trim();
+        if (sql.startsWith("/* contract_upward_pending_save_catalog_v1 */")) {
+          return [{ ...oldProfile, dualIdentityCheck: !installed, successorOid: installed ? "42007" : null, successorReadable: installed }];
+        }
+        if (sql.startsWith("/* contract_generated_upward_submission_catalog_v1 */")) {
+          successorReads++;
+          const { databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId } = oldProfile;
+          return installed ? [{ databaseOid, namespaceOid, anchorOwnerOid, currentRoleOid, sessionRoleOid, bindingOid, backendPid, transactionId,
+            successorOid: "42007", constraintOid: "42008", predecessorSha256: "2".repeat(64),
+            constraintSha256: (driftOnContinuity && successorReads === 2 ? "4" : "3").repeat(64), exactSuccessor: true,
+            sealHandoffEnabled: sealHandoffDrifts && successorReads === 2 ? false : sealHandoffEnabled }] : [];
+        }
+        return native(raw, ...parameters);
+      };
 
-      // Existing completed rows were written under the prior application behavior.
-      await prisma.contractSealTask.update({ where: { id: task.id }, data: { status: "completed", completedByUserId: "director", completedAt: approvedAt } });
-      await prisma.contractVersion.update({ where: { id: version.id }, data: { status: "seal_approved_pending_archive" } });
-      const completed = await readState();
-      const replay = await confirm();
-      expect({ status: replay.status, body: await replay.json() }).toEqual({
-        status: 201, body: { contractVersionId: version.id, approvalInstanceId: round.id, sealTaskId: task.id, status: "seal_approved_pending_archive" }
+      const unavailable = await submit();
+      expect({ status: unavailable.status, body: await unavailable.json() }).toMatchObject({ status: 503, body: { message: expect.stringContaining("对上生成提交资格尚未核对") } });
+      await assertNoSubmission();
+
+      installed = true;
+      await server.store.prisma.projectAffiliateAssignment.update({ where: { id: assignment.id }, data: { endedAt: new Date("2026-01-02T00:00:00.000Z") } });
+      expect((await submit()).status).toBe(409);
+      await assertNoSubmission();
+      await server.store.prisma.projectAffiliateAssignment.update({ where: { id: assignment.id }, data: { endedAt: null } });
+
+      const trace = doc!.inputSnapshot as Prisma.JsonObject;
+      const renderInput = trace.renderInput as Prisma.JsonObject;
+      const values = renderInput.values as Prisma.JsonObject;
+      await server.store.prisma.contractGeneratedDocument.update({ where: { id: doc!.id },
+        data: { inputSnapshot: { ...trace, renderInput: { ...renderInput, values: { ...values, "party.party_b": values["party.party_a"] } } } } });
+      expect((await submit()).status).toBe(409);
+      await assertNoSubmission();
+      await server.store.prisma.contractGeneratedDocument.update({ where: { id: doc!.id }, data: { inputSnapshot: trace } });
+
+      successorReads = 0;
+      driftOnContinuity = true;
+      expect((await submit()).status).toBe(503);
+      expect(successorReads).toBe(2);
+      await assertNoSubmission();
+
+      successorReads = 0;
+      driftOnContinuity = false;
+      const versionWrites = jest.spyOn(server.store.prisma.contractVersion, "update");
+      const response = await submit();
+      const result = await response.json();
+      expect({ status: response.status, result }).toMatchObject({ status: 201, result: { contractVersionId: draft.version.id, status: "in_approval" } });
+      const matchingWrites = versionWrites.mock.calls.filter(([args]) => args.where.id === draft.version.id);
+      expect(matchingWrites).toEqual([[expect.objectContaining({ data: expect.objectContaining({
+        status: "in_approval", signingSubjectType: "upward", firstSubmittedAt: expect.any(Date),
+        companyEntityVersionId: companyVersionId, affiliateBusinessPartyVersionId: enterpriseVersionId,
+        readinessSnapshot: expect.any(Object)
+      }) })]]);
+      versionWrites.mockRestore();
+      const submitted = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+      expect(submitted).toMatchObject({ status: "in_approval", signingSubjectType: "upward", firstSubmittedAt: expect.any(Date),
+        companyEntityIdSnapshot: companyId, companyEntityVersionId: companyVersionId, affiliateAssignmentId: assignment.id,
+        affiliateBusinessPartyVersionId: enterpriseVersionId, readinessSnapshot: { signingIdentity: {
+          relationship: "upward",
+          company: { roleKey: "party_a", id: companyVersionId, projectParticipatingCompanyId: participation.id, joinedCompanyEntityVersionId: joinedVersionId },
+          enterprise: { roleKey: "party_b", assignmentId: assignment.id, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId }
+        }, versionFacts: { signingSubjectType: "upward" }, generatedDocumentId: doc!.id, documentContentFingerprint: input.documentContentFingerprint } });
+      const round = await server.store.prisma.approvalInstance.findMany({ where: { businessId: draft.version.id } });
+      expect(round).toHaveLength(1);
+      expect(round[0].frozenNodes).toEqual([
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["material_director"], submissionSnapshot: submitted?.readinessSnapshot }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["contract_director"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["project_manager"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["finance_director"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["chairman", "general_manager"] })
+      ]);
+      installed = false;
+      await server.store.prisma.projectParticipatingCompany.update({ where: { id: participation.id }, data: { endedAt: new Date("2026-01-02T00:00:00.000Z") } });
+      expect(await (await readReceipt()).json()).toMatchObject({ status: "submitted", result });
+      expect(await (await submit()).json()).toEqual(result);
+      expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(1);
+      expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.approval.submit" } })).toBe(1);
+      expect(await server.store.prisma.contractSealTask.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      installed = true;
+      await server.store.prisma.projectParticipatingCompany.update({ where: { id: participation.id }, data: { endedAt: null } });
+      const contractUrl = `${await server.app.getUrl()}/contracts/${draft.version.id}`;
+      const coordinate = async (roundId: string, index: number) => {
+        const current = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+        const approval = await server.store.prisma.approvalInstance.findUnique({ where: { id: roundId } });
+        return { expectedContractUpdatedAt: current!.updatedAt, expectedApprovalInstanceId: roundId, expectedNodeIndex: index, expectedApprovalUpdatedAt: approval!.updatedAt };
+      };
+      const review = (coordinates: Awaited<ReturnType<typeof coordinate>>, actor: string) => fetch(`${contractUrl}/approval`, {
+        method: "POST", headers: { ...draft.headers, authorization: `Bearer ${tokens.get(actor)}` },
+        body: JSON.stringify({ decision: "approve", ...coordinates })
       });
-      expect(await readState()).toEqual(completed);
-      await assertBlocked(handler, "archive");
-      expect(await workItems(director)).toEqual({ status: 200, pending: [], blocked: [] });
+      const withdraw = (coordinates: Awaited<ReturnType<typeof coordinate>>) => fetch(`${contractUrl}/approval-withdrawal`, {
+        method: "POST", headers: draft.headers, body: JSON.stringify(coordinates)
+      });
+      const firstReviewed = await review(await coordinate(result.approvalInstanceId, 1), "director");
+      expect({ status: firstReviewed.status, body: await firstReviewed.json() }).toMatchObject({ status: 201, body: { status: "in_approval" } });
+      const firstReviewAfter = await coordinate(result.approvalInstanceId, 1);
+      const withdrawal = await withdraw(await coordinate(result.approvalInstanceId, 0));
+      expect({ status: withdrawal.status, body: await withdrawal.json() }).toMatchObject({ status: 201, body: { status: "draft" } });
+      const withdrawnVersion = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+      expect(withdrawnVersion).toMatchObject({
+        status: "draft", firstSubmittedAt: submitted!.firstSubmittedAt, signingSubjectType: "upward",
+        companyEntityVersionId: companyVersionId, affiliateBusinessPartyVersionId: enterpriseVersionId
+      });
+      const withdrawnRound = await server.store.prisma.approvalInstance.findUnique({ where: { id: result.approvalInstanceId } });
+      expect(withdrawnRound).toMatchObject({ status: "withdrawn", frozenNodes: [
+        expect.objectContaining({ submissionSnapshot: submitted!.readinessSnapshot, approvedRoleKeys: [] }),
+        expect.objectContaining({ approvedRoleKeys: ["contract_director"] }),
+        expect.objectContaining({ approvedRoleKeys: [] }), expect.objectContaining({ approvedRoleKeys: [] }), expect.objectContaining({ approvedRoleKeys: [] })
+      ] });
+      expect([403, 409]).toContain((await review(firstReviewAfter, "director")).status);
+      expect(await (await readReceipt()).json()).toMatchObject({ status: "submitted", result });
 
-      const originalRound = await prisma.approvalInstance.findUnique({ where: { id: round.id } });
-      const nodes = originalRound!.frozenNodes as Prisma.JsonArray;
-      const first = { ...nodes[0] as Prisma.JsonObject };
-      delete first.submissionSnapshot;
-      await prisma.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: [first, ...nodes.slice(1)] } });
-      expect(await workItems(handler)).toEqual({ status: 200, pending: [], blocked: [] });
-      expect(await workbench("pending_action", handler)).toEqual({ status: 200, versions: [] });
-      await prisma.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: nodes } });
-      expect(await readState()).toEqual(completed);
+      const editable = await fetch(`${draft.base}/document-body`, { headers: draft.headers }).then(response => response.json()) as Body;
+      const clause = editable.blocks.find(block => block.text.startsWith("手工条款："))!;
+      await save({ protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: layout.sha256,
+        edits: [{ positionId: clause.id, text: "手工条款：对上合同撤回后修改，原轮签字不转移。" }], additions: [] });
+      const revised = (await workbench()).version;
+      expect(revised.documentContentFingerprint).not.toBe(input.documentContentFingerprint);
+      expect((await submit({ ...input, idempotencyKey: randomUUID() })).status).toBe(409);
+      const revisedQueue = await fetch(`${draft.base}/preview-generation`, { method: "POST", headers: draft.headers, body: JSON.stringify({ sourceRevision: revised.draftRevision }) });
+      const revisedQueued = await revisedQueue.json();
+      expect({ status: revisedQueue.status, revisedQueued }).toMatchObject({ status: 201, revisedQueued: { generationId: expect.any(String) } });
+      const revisedWord = Buffer.from("synthetic revised upward Word"), revisedPdf = Buffer.from("synthetic revised upward PDF");
+      const revisedWordFile = await server.files.uploadPrivateFile({ originalName: "合成修订正文.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: revisedWord, sizeBytes: revisedWord.length, uploadedByUserId: "staff" });
+      const revisedPdfFile = await server.files.uploadPrivateFile({ originalName: "合成修订正文.pdf", mimeType: "application/pdf", buffer: revisedPdf, sizeBytes: revisedPdf.length, uploadedByUserId: "staff" });
+      await server.store.prisma.contractGeneratedDocument.update({ where: { id: revisedQueued.generationId }, data: { status: "success", docxFileId: revisedWordFile.id, pdfFileId: revisedPdfFile.id } });
+      const secondInput = { ...input, idempotencyKey: randomUUID(), expectedRevision: revised.draftRevision, documentContentRevision: revised.documentContentRevision,
+        documentContentFingerprint: revised.documentContentFingerprint, generatedDocumentId: revisedQueued.generationId };
+      const second = await submit(secondInput);
+      const secondResult = await second.json();
+      expect({ status: second.status, body: secondResult }).toMatchObject({ status: 201, body: { status: "in_approval", formalCode: result.formalCode } });
+      const secondRoundId = secondResult.approvalInstanceId as string;
+      expect(secondRoundId).not.toBe(result.approvalInstanceId);
+      expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.firstSubmittedAt).toEqual(submitted!.firstSubmittedAt);
+      const secondRound = await server.store.prisma.approvalInstance.findUnique({ where: { id: secondRoundId } });
+      expect(secondRound).toMatchObject({ status: "in_progress" });
+      expect((secondRound!.frozenNodes as Array<Prisma.JsonObject>).map(node => node.approvedRoleKeys)).toEqual([[], [], [], [], []]);
+      expect([403, 409]).toContain((await review(firstReviewAfter, "director")).status);
+      expect(await server.store.prisma.approvalActionLog.count({ where: { approvalInstanceId: secondRoundId, action: "approve" } })).toBe(0);
+
+      for (const duty of duties.slice(0, 4)) {
+        const reviewed = await review(await coordinate(secondRoundId, duty.index), duty.actor);
+        expect({ status: reviewed.status, body: await reviewed.json() }).toMatchObject({ status: 201, body: { status: "in_approval" } });
+        expect(await server.store.prisma.contractSealTask.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      }
+      const fifth = duties[4];
+      const fifthCoordinates = await coordinate(secondRoundId, fifth.index);
+      const assertNoHandoff = async () => {
+        expect(await coordinate(secondRoundId, fifth.index)).toEqual(fifthCoordinates);
+        expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status).toBe("in_approval");
+        expect((await server.store.prisma.approvalInstance.findUnique({ where: { id: secondRoundId } }))!.status).toBe("in_progress");
+        expect(await server.store.prisma.approvalActionLog.count({ where: { approvalInstanceId: secondRoundId, action: "approve" } })).toBe(4);
+        expect(await server.store.prisma.contractSealTask.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+        expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal_task.create" } })).toBe(0);
+      };
+
+      successorReads = 0;
+      expect((await review(fifthCoordinates, fifth.actor)).status).toBe(503);
+      expect(successorReads).toBe(1);
+      await assertNoHandoff();
+
+      sealHandoffEnabled = true;
+      sealHandoffDrifts = true;
+      successorReads = 0;
+      expect((await review(fifthCoordinates, fifth.actor)).status).toBe(503);
+      expect(successorReads).toBe(2);
+      await assertNoHandoff();
+
+      sealHandoffDrifts = false;
+      const completed = await review(fifthCoordinates, fifth.actor);
+      expect({ status: completed.status, body: await completed.json() }).toMatchObject({ status: 201, body: { status: "approved_pending_seal", approvalInstanceId: secondRoundId } });
+      expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status).toBe("approved_pending_seal");
+      expect((await server.store.prisma.approvalInstance.findUnique({ where: { id: secondRoundId } }))!.status).toBe("approved");
+      const [handoff] = await server.store.prisma.contractSealTask.findMany({ where: { contractVersionId: draft.version.id } });
+      const lastApproval = await server.store.prisma.approvalActionLog.findFirst({ where: { approvalInstanceId: secondRoundId, action: "approve", approvedRoleKey: "general_manager" } });
+      expect(lastApproval).toMatchObject({ actorUserId: fifth.actor, createdAt: expect.any(Date) });
+      expect(handoff).toMatchObject({ approvalInstanceId: secondRoundId, handlerUserId: "staff", status: "in_seal",
+        approvedByUserId: fifth.actor, approvedAt: lastApproval!.createdAt });
+      expect((await server.store.prisma.auditLog.findFirst({ where: { businessId: draft.version.id, action: "contract.seal_task.create" } }))!.metadata)
+        .toMatchObject({ approvalInstanceId: secondRoundId, sealTaskId: handoff.id, handlerUserId: "staff",
+          internalApprovalActionId: lastApproval!.id, internalApproverUserId: fifth.actor });
+
+      expect([403, 409]).toContain((await review(fifthCoordinates, fifth.actor)).status);
+      expect([403, 409]).toContain((await review(firstReviewAfter, "director")).status);
+      expect((await withdraw(await coordinate(secondRoundId, 5))).status).toBe(409);
+      expect(await server.store.prisma.contractSealTask.count({ where: { contractVersionId: draft.version.id } })).toBe(1);
+      expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal_task.create" } })).toBe(1);
+      expect(await server.store.prisma.approvalActionLog.count({ where: { approvalInstanceId: secondRoundId, action: "approve" } })).toBe(5);
+      expect(await (await readReceipt()).json()).toMatchObject({ status: "submitted", result, intent: { documentContentFingerprint: input.documentContentFingerprint } });
+      expect(await (await readReceipt(secondInput.idempotencyKey)).json()).toMatchObject({ status: "submitted", result: secondResult, intent: { documentContentFingerprint: secondInput.documentContentFingerprint } });
+      expect(await (await submit()).json()).toEqual(result);
+      expect(await (await submit(secondInput)).json()).toEqual(secondResult);
+      expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(2);
+
+      await server.store.prisma.position.upsert({ where: { id: "comprehensive_director" }, create: { id: "comprehensive_director", key: "comprehensive_director" }, update: {} });
+      await server.store.prisma.userPosition.create({ data: { userId: "director", positionId: "comprehensive_director", projectId: null } });
+      const director = await loginTemplateActor(server, "director");
+      const technical = await loginTemplateActor(server, "technical");
+      const sealInput = { expectedApprovalInstanceId: secondRoundId, expectedSealTaskId: String(handoff.id),
+        documentContentRevision: revised.documentContentRevision, documentContentFingerprint: revised.documentContentFingerprint, confirmed: true };
+      const confirmSeal = (token: string, patch: object = {}) => fetch(`${contractUrl}/seal-confirmation`, {
+        method: "POST", headers: { ...draft.headers, authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...sealInput, ...patch })
+      });
+      await assertGeneratedSealWorkItemBlocked(server, draft, director, "seal");
+      await assertGeneratedSealWorkItemHidden(server, draft, tokens.get("finance")!);
+      expect((await confirmSeal(director, { expectedApprovalInstanceId: result.approvalInstanceId })).status).toBe(409);
+      expect((await confirmSeal(tokens.get("finance")!)).status).toBe(403);
+      expect((await confirmSeal(technical)).status).toBe(403);
+      const sealDenied = await confirmSeal(director);
+      expect({ status: sealDenied.status, body: await sealDenied.json() }).toMatchObject({ status: 503, body: { message: expect.stringContaining("盖章交接资格尚未就绪") } });
+      expect((await server.store.prisma.contractSealTask.findUnique({ where: { id: handoff.id } }))!.status).toBe("in_seal");
+      expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status).toBe("approved_pending_seal");
+      expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal.complete" } })).toBe(0);
+      expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      expect(await server.store.prisma.operatingFact.count({ where: { projectId: draft.projectId } })).toBe(0);
+      expect(await server.store.prisma.operatingImpactEntry.count({ where: { projectId: draft.projectId } })).toBe(0);
+      const detail = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, {
+        headers: { ...draft.headers, authorization: `Bearer ${director}` }
+      });
+      expect({ status: detail.status, body: await detail.json() }).toMatchObject({ status: 200, body: { v2Lifecycle: {
+        status: "unavailable", webWriteReleased: false, sealAction: { eligible: false, enabled: false }, archiveAction: { eligible: false, enabled: false }
+      } } });
+      await exerciseGeneratedSealConfirmation({ server, draft, director, confirmSeal, sealInput,
+        archiveSource: { relationship: "upward", generatedDocumentId: secondInput.generatedDocumentId, signingIdentity: {
+          relationship: "upward", company: { id: companyVersionId, roleKey: "party_a" },
+          enterprise: { assignmentId: assignment.id, businessPartyVersionId: enterpriseVersionId, roleKey: "party_b" }
+        } }, expectedRoundCount: 2, preparationEnabled: true });
+    } finally { await server.app.close(); }
+  });
+
+  it.each([
+    ["party_a", "party_b", false],
+    ["party_b", "party_a", true]
+  ] as const)("表外生成审批冻结当前项目施工企业 %s 和下游 %s，当单录入=%s", async (enterpriseRole, downstreamRole, inlineDownstream) => {
+    const server = await createTemplateTestServer({ draftWorkbench: true, generatedArchivePreparation: !inlineDownstream });
+    try {
+      const layout = await confirmedBodyLayout(server);
+      const draft = await createTask09Draft(server, "capped", "material_purchase", "outside");
+      await server.store.prisma.projectMember.create({ data: { projectId: draft.projectId, userId: "staff", positionKey: "contract_staff" } });
+      const enterpriseId = randomUUID(), enterpriseVersionId = randomUUID(), replacementVersionId = randomUUID(), assignmentId = randomUUID();
+      const downstreamId = randomUUID(), downstreamVersionId = randomUUID();
+      for (const [id, versionId, name] of [[enterpriseId, enterpriseVersionId, "本项目施工企业"], [downstreamId, downstreamVersionId, "本合同下游单位"]]) {
+        await server.store.prisma.businessParty.create({ data: { id, name, status: "active" } });
+        await server.store.prisma.businessPartyVersion.create({ data: { id: versionId, businessPartyId: id, versionNo: 1, snapshot: { name } } });
+      }
+      await server.store.prisma.businessPartyVersion.create({ data: { id: replacementVersionId, businessPartyId: enterpriseId, versionNo: 2, snapshot: { name: "本项目施工企业" } } });
+      const otherProjectId = randomUUID();
+      await server.store.prisma.project.create({ data: { id: otherProjectId, code: "T12-OTHER", name: "不同项目", isActive: true } });
+      await server.store.prisma.projectAffiliateAssignment.create({ data: {
+        id: assignmentId, projectId: draft.projectId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId,
+        affiliateNameSnapshot: "本项目施工企业", affiliateCreditCodeSnapshot: null, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), endedAt: null
+      } });
+      const parties = [
+        { roleKey: enterpriseRole, displayOrder: 0, businessPartyVersionId: enterpriseVersionId, snapshot: {} },
+        { roleKey: downstreamRole, displayOrder: 0, ...(inlineDownstream ? { snapshot: { name: "本合同下游单位" } } : { businessPartyVersionId: downstreamVersionId, snapshot: {} }) }
+      ];
+      const workbench = () => fetch(`${draft.base}/workbench`, { headers: draft.headers }).then(response => response.json());
+      const save = async (documentBody?: object) => {
+        const current = await workbench();
+        const response = await fetch(draft.base, { method: "PUT", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify({
+          idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision, changedSections: ["draft", "parties"],
+          draft: { numericProtocolVersion: 2, draftData: { contractName: "表外生成合成材料合同", contractBasics: { businessType: "material_purchase", relationship: "outside", amountBasis: "tax_inclusive", invoiceStatus: "pending" }, ...(documentBody ? { documentBody } : {}) }, clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: layout.id, taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } },
+          parties, bills: current.bills.map((bill: { billKey: string; revision: number }) => ({ billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2, rows: [] })),
+          paymentTerms: null, attachments: [], negotiationDocuments: { referencedGeneratedDocumentIds: [] }
+        }) });
+        expect({ status: response.status, body: response.status === 200 ? null : await response.json() }).toEqual({ status: 200, body: null });
+      };
+      await save();
+      const body = await fetch(`${draft.base}/document-body`, { headers: draft.headers }).then(response => response.json()) as Body;
+      const shownSlots = enterpriseRole === "party_a"
+        ? ["甲方：本项目施工企业", "乙方：本合同下游单位"]
+        : ["甲方：本合同下游单位", "乙方：本项目施工企业"];
+      expect(body.blocks.map(block => block.text)).toEqual(expect.arrayContaining(shownSlots));
+      await save({ protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: layout.sha256, edits: [], additions: [] });
+      const { version } = await workbench();
+      // Synthetic persisted ready output, just as in the inside generated submission cases.
+      const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      const docxBytes = Buffer.from("synthetic outside current Word"), pdfBytes = Buffer.from("synthetic outside current PDF");
+      const docx = await server.files.uploadPrivateFile({ originalName: "合成正文.docx", mimeType: docxMime, buffer: docxBytes, sizeBytes: docxBytes.length, uploadedByUserId: "staff" });
+      const pdf = await server.files.uploadPrivateFile({ originalName: "合成正文.pdf", mimeType: "application/pdf", buffer: pdfBytes, sizeBytes: pdfBytes.length, uploadedByUserId: "staff" });
+      const template = await server.store.prisma.contractLayoutTemplateVersion.findUnique({ where: { id: layout.id } });
+      const document = await server.store.prisma.contractGeneratedDocument.create({ data: { contractVersionId: draft.version.id, layoutTemplateVersionId: layout.id, purpose: "draft", status: "success", sourceRevision: version.draftRevision, inputSnapshot: { documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint, templateFileId: template!.docxFileId, layoutSourceMapping: { sourceSha256: layout.sha256 } }, idempotencyKey: randomUUID(), docxFileId: docx.id, pdfFileId: pdf.id, engineVersion: "synthetic-task10-output", createdByUserId: "staff" } });
+      const input = { expectedRevision: version.draftRevision, idempotencyKey: randomUUID(), submissionProtocolVersion: 2, documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint, generatedDocumentId: document.id, sourceSha256: layout.sha256, blanksReviewed: true };
+      const submit = () => fetch(`${draft.base}/submission`, { method: "POST", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify(input) });
+      const readReceipt = () => fetch(`${draft.base}/submission-requests/${input.idempotencyKey}`, { headers: draft.headers });
+      for (const patch of [
+        { projectId: otherProjectId }, { endedAt: new Date() }, { effectiveFrom: new Date("2030-01-01T00:00:00.000Z") },
+        { businessPartyVersionId: replacementVersionId }, { affiliateNameSnapshot: "派驻快照已变化" }
+      ]) {
+        await server.store.prisma.projectAffiliateAssignment.update({ where: { id: assignmentId }, data: patch });
+        expect((await submit()).status).toBe(409);
+        expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(0);
+        expect(await (await readReceipt()).json()).toEqual({ status: "unknown" });
+        await server.store.prisma.projectAffiliateAssignment.update({ where: { id: assignmentId }, data: {
+          projectId: draft.projectId, endedAt: null, effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), businessPartyVersionId: enterpriseVersionId, affiliateNameSnapshot: "本项目施工企业"
+        } });
+      }
+      const response = await submit();
+      const result = await response.json();
+      expect({ status: response.status, result }).toMatchObject({ status: 201, result: { contractVersionId: draft.version.id, status: "in_approval" } });
+      const frozen = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+      expect(frozen).toMatchObject({
+        signingSubjectType: "affiliate", affiliateAssignmentId: assignmentId, affiliateBusinessPartyVersionId: enterpriseVersionId,
+        affiliateNameSnapshot: "本项目施工企业", companyEntityVersionId: null,
+        readinessSnapshot: { signingIdentity: { relationship: "outside",
+          enterprise: { assignmentId, businessPartyId: enterpriseId, businessPartyVersionId: enterpriseVersionId, roleKey: enterpriseRole, displayOrder: 0 },
+          downstream: { businessPartyId: inlineDownstream ? null : downstreamId, businessPartyVersionId: inlineDownstream ? null : downstreamVersionId, roleKey: downstreamRole, displayOrder: 0 }
+        }, generatedDocumentId: document.id, documentContentFingerprint: input.documentContentFingerprint }
+      });
+      const rounds = await server.store.prisma.approvalInstance.findMany({ where: { businessId: draft.version.id } });
+      expect(rounds).toHaveLength(1);
+      expect(rounds[0].frozenNodes).toEqual([
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["material_director"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["contract_director"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["project_manager"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["finance_director"] }),
+        expect.objectContaining({ executionMode: "parallel", roleKeys: ["chairman", "general_manager"] })
+      ]);
+      const receipt = await readReceipt();
+      expect({ status: receipt.status, body: await receipt.json() }).toMatchObject({ status: 200, body: { status: "submitted", result } });
+      expect(await (await submit()).json()).toEqual(result);
+      expect(await server.store.prisma.approvalInstance.count({ where: { businessId: draft.version.id } })).toBe(1);
+      expect(await server.store.prisma.contractSealTask.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+      expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+
+      const contractUrl = `${await server.app.getUrl()}/contracts/${draft.version.id}`;
+      const duties = [
+        { actor: "employee", role: "material_director", projectId: null },
+        { actor: "director", role: "contract_director", projectId: null },
+        { actor: "manager", role: "project_manager", projectId: draft.projectId },
+        { actor: "finance", role: "finance_director", projectId: null },
+        { actor: "employee", role: "general_manager", projectId: null }
+      ];
+      const signatureBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9e0AAAAASUVORK5CYII=", "base64");
+      const tokens = new Map<string, string>();
+      for (const [index, duty] of duties.entries()) {
+        await server.store.prisma.position.upsert({ where: { id: duty.role }, create: { id: duty.role, key: duty.role }, update: {} });
+        if (duty.role !== "contract_director") {
+          await server.store.prisma.userPosition.create({ data: { userId: duty.actor, positionId: duty.role, projectId: duty.projectId } });
+        }
+        if (!tokens.has(duty.actor)) {
+          const signature = await server.files.uploadPrivateFile({ originalName: "合成审批签字.png", mimeType: "image/png", sizeBytes: signatureBytes.length, buffer: signatureBytes, uploadedByUserId: duty.actor });
+          await server.store.prisma.handwrittenSignatureVersion.create({ data: { userId: duty.actor, source: "canvas", fileId: signature.id, contentSha256: createHash("sha256").update(signatureBytes).digest("hex") } });
+          tokens.set(duty.actor, await loginTemplateActor(server, duty.actor));
+        }
+        const current = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
+        const round = await server.store.prisma.approvalInstance.findUnique({ where: { id: result.approvalInstanceId } });
+        const approval = await fetch(`${contractUrl}/approval`, {
+          method: "POST", headers: { ...draft.headers, authorization: `Bearer ${tokens.get(duty.actor)}` },
+          body: JSON.stringify({ decision: "approve", expectedContractUpdatedAt: current!.updatedAt,
+            expectedApprovalInstanceId: round!.id, expectedApprovalUpdatedAt: round!.updatedAt, expectedNodeIndex: index })
+        });
+        expect({ status: approval.status, body: await approval.json() }).toMatchObject({ status: 201, body: { status: index === 4 ? "approved_pending_seal" : "in_approval" } });
+      }
+      const tasks = await server.store.prisma.contractSealTask.findMany({ where: { contractVersionId: draft.version.id } });
+      expect(tasks).toEqual([expect.objectContaining({ status: "in_seal", handlerUserId: "staff", approvalInstanceId: result.approvalInstanceId })]);
+      await server.store.prisma.position.upsert({ where: { id: "comprehensive_director" }, create: { id: "comprehensive_director", key: "comprehensive_director" }, update: {} });
+      await server.store.prisma.userPosition.create({ data: { userId: "director", positionId: "comprehensive_director", projectId: null } });
+      const director = await loginTemplateActor(server, "director");
+      const sealInput = { expectedApprovalInstanceId: result.approvalInstanceId, expectedSealTaskId: String(tasks[0].id),
+        documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint, confirmed: true };
+      const confirmSeal = (token: string, patch: object = {}) => fetch(`${contractUrl}/seal-confirmation`, {
+        method: "POST", headers: { ...draft.headers, authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...sealInput, ...patch })
+      });
+      await assertGeneratedSealWorkItemBlocked(server, draft, director, "seal");
+      await assertGeneratedSealWorkItemHidden(server, draft, tokens.get("finance")!);
+      if (!inlineDownstream) {
+        await server.store.prisma.contractVersion.update({ where: { id: draft.version.id }, data: { signingSubjectType: "our_company" } });
+        await assertGeneratedSealWorkItemBlocked(server, draft, director, "seal");
+        await server.store.prisma.contractVersion.update({ where: { id: draft.version.id }, data: { signingSubjectType: "affiliate" } });
+      }
+      const sealDenied = await confirmSeal(director);
+      expect({ status: sealDenied.status, body: await sealDenied.json() }).toMatchObject({ status: 503, body: { message: expect.stringContaining("盖章交接资格尚未就绪") } });
+      expect((await server.store.prisma.contractSealTask.findUnique({ where: { id: tasks[0].id } }))!.status).toBe("in_seal");
+      expect((await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } }))!.status).toBe("approved_pending_seal");
+      expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal.complete" } })).toBe(0);
+      await exerciseGeneratedSealConfirmation({ server, draft, director, confirmSeal, sealInput,
+        archiveSource: { relationship: "outside", generatedDocumentId: document.id, signingIdentity: {
+          relationship: "outside", enterprise: { assignmentId, businessPartyVersionId: enterpriseVersionId, roleKey: enterpriseRole },
+          downstream: { roleKey: downstreamRole, businessPartyVersionId: inlineDownstream ? null : downstreamVersionId }
+        } }, expectedRoundCount: 1, preparationEnabled: !inlineDownstream });
     } finally { await server.app.close(); }
   });
 
@@ -265,7 +638,6 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       expect((await rawSubmit(input, { ...draft.headers, authorization: `Bearer ${director}` })).status).toBe(403);
       await server.store.prisma.fileObject.update({ where: { id: pdf.id }, data: { contentSha256: "f".repeat(64) } });
       expect((await rawSubmit(input)).status).toBe(409);
-      const { createHash } = await import("node:crypto");
       await server.store.prisma.fileObject.update({ where: { id: pdf.id }, data: { contentSha256: createHash("sha256").update("synthetic current PDF").digest("hex") } });
       const submit = () => fetch(`${draft.base}/submission`, { method: "POST", headers: { ...draft.headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify(input) });
       let response: Response;
@@ -836,6 +1208,26 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         if (!operatingEnabled && handlerRole === "project_staff") {
           const authority = await server.store.prisma.contractArchiveFile.findUnique({ where: { id: archiveResult.archiveId } });
           const frozen = authority!.authoritySnapshot as Prisma.JsonObject;
+          const direct = await openDirectPendingDraft(server);
+          await server.store.prisma.projectMember.create({ data: { projectId: direct.projectId, userId: "staff", positionKey: "contract_staff" } });
+          const reservedKey = archiveInput.idempotencyKey;
+          const directUrl = `${direct.base}/contracts/${direct.created.version.id}`;
+          const collision = await fetch(`${directUrl}/signed-archive`, { method: "POST", headers: direct.headers, body: JSON.stringify({
+            archiveProtocolVersion: 2, archiveSource: "direct_signed", idempotencyKey: reservedKey,
+            expectedDraftRevision: 1, expectedInputSha256: "d".repeat(64), fileIds: [randomUUID()],
+            confirmedMatchingSignedDocument: true
+          }) });
+          expect({ status: collision.status, body: await collision.json() })
+            .toMatchObject({ status: 409, body: { message: expect.stringContaining("归档标识已用于不同内容") } });
+          expect((await fetch(`${directUrl}/archive-requests/${reservedKey}`, { headers: direct.headers })).status).toBe(403);
+          expect(await server.store.prisma.contractArchiveFile.count({ where: { contractVersionId: direct.created.version.id } })).toBe(0);
+          expect(await server.store.prisma.contractVersion.findUnique({ where: { id: direct.created.version.id } }))
+            .toMatchObject({ status: "draft" });
+          // A durable source discriminator cannot borrow the other source's proof.
+          await server.store.prisma.contractArchiveFile.update({ where: { id: authority!.id }, data: { archiveSource: "direct_signed" } });
+          expect((await readArchiveResult()).status).toBe(503);
+          await server.store.prisma.contractArchiveFile.update({ where: { id: authority!.id }, data: { archiveSource: "generated_approval" } });
+          expect((await readArchiveResult()).status).toBe(200);
           const originalEvidence = await server.store.prisma.contractArchiveEvidenceFile.findFirst({ where: { archiveFileId: authority!.id }, orderBy: { displayOrder: "asc" } });
           await server.store.prisma.contractArchiveEvidenceFile.delete({ where: { id: originalEvidence!.id } });
           await assertIncompleteDetail(400);
@@ -942,6 +1334,373 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
     }
   });
 });
+
+type GeneratedSealInput = {
+  expectedApprovalInstanceId: string;
+  expectedSealTaskId: string;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
+  confirmed: boolean;
+};
+
+async function generatedSealWorkItems(
+  server: Awaited<ReturnType<typeof createTemplateTestServer>>,
+  draft: Awaited<ReturnType<typeof createTask09Draft>>,
+  token: string
+) {
+  const response = await fetch(`${await server.app.getUrl()}/me/work-items`, { headers: { ...draft.headers, authorization: `Bearer ${token}` } });
+  const { queues } = await response.json() as { queues: Record<"pending" | "blocked", Array<{ businessId: string }>> };
+  const forVersion = (item: { businessId: string }) => item.businessId === draft.version.id;
+  return { status: response.status, pending: queues?.pending?.filter(forVersion), blocked: queues?.blocked?.filter(forVersion) };
+}
+
+async function assertGeneratedSealWorkItemHidden(
+  server: Awaited<ReturnType<typeof createTemplateTestServer>>,
+  draft: Awaited<ReturnType<typeof createTask09Draft>>,
+  token: string
+) {
+  expect(await generatedSealWorkItems(server, draft, token)).toEqual({ status: 200, pending: [], blocked: [] });
+}
+
+async function assertGeneratedSealWorkItemBlocked(
+  server: Awaited<ReturnType<typeof createTemplateTestServer>>,
+  draft: Awaited<ReturnType<typeof createTask09Draft>>,
+  token: string,
+  phase: "seal" | "archive"
+) {
+  const headers = { ...draft.headers, authorization: `Bearer ${token}` };
+  const base = await server.app.getUrl();
+  const store = server.store.prisma;
+  const contract = await store.contract.findUnique({ where: { id: draft.contract.id } });
+  const versionWhere = { contractVersionId: draft.version.id };
+  const auditsWhere = { businessId: draft.version.id };
+  const taskBefore = await store.contractSealTask.findMany({ where: versionWhere });
+  const auditsBefore = await store.auditLog.findMany({ where: auditsWhere });
+  expect(await generatedSealWorkItems(server, draft, token)).toEqual({
+    status: 200, pending: [], blocked: [expect.objectContaining({
+      id: `contract-v2-${phase}:${draft.version.id}`, type: "blocker", targetPath: `/合同管理/${contract!.code}`,
+      currentNode: phase === "seal" ? "盖章办理暂不可用" : "归档办理暂不可用", nextAction: "查看合同详情并保留当前资料"
+    })]
+  });
+  const stage = phase === "seal" ? "pending_seal" : "pending_archive";
+  for (const [view, expectedVersions] of [["pending_action", []], [stage, [draft.version.id]], ["all", [draft.version.id]]] as const) {
+    const response = await fetch(`${base}/contracts/workbench?view=${view}`, { headers });
+    const body = await response.json() as { rows?: Array<{ contractVersionId: string }> };
+    expect({ view, status: response.status, versions: body.rows?.map(row => row.contractVersionId) }).toEqual({ view, status: 200, versions: expectedVersions });
+  }
+  const detail = await fetch(`${base}/contracts/${encodeURIComponent(String(contract!.code))}?versionId=${draft.version.id}`, { headers });
+  const body = await detail.json();
+  expect({ status: detail.status, body }).toMatchObject({ status: 200, body: { contractVersionId: draft.version.id,
+    v2Lifecycle: { status: "unavailable", webWriteReleased: false,
+      sealAction: { enabled: false }, archiveAction: { enabled: false } } } });
+  expect(body.availableActionKeys.filter((key: string) => ["approve_seal", "complete_seal", "confirm_seal_v2", "archive_signed_v2", "upload_archive", "upload_final_contract"].includes(key))).toEqual([]);
+  expect(await store.contractSealTask.findMany({ where: versionWhere })).toEqual(taskBefore);
+  expect(await store.auditLog.findMany({ where: auditsWhere })).toEqual(auditsBefore);
+}
+
+async function exerciseGeneratedSealConfirmation({ server, draft, director, confirmSeal, sealInput, archiveSource, expectedRoundCount, preparationEnabled }: {
+  server: Awaited<ReturnType<typeof createTemplateTestServer>>;
+  draft: Awaited<ReturnType<typeof createTask09Draft>>;
+  director: string;
+  confirmSeal: (token: string, patch?: object) => Promise<Response>;
+  sealInput: GeneratedSealInput;
+  archiveSource: { relationship: "outside" | "upward"; generatedDocumentId: string; signingIdentity: object };
+  expectedRoundCount: number;
+  preparationEnabled: boolean;
+}) {
+  const store = server.store.prisma;
+  const contractVersionId = draft.version.id;
+  const { expectedApprovalInstanceId: approvalInstanceId, expectedSealTaskId: sealTaskId } = sealInput;
+  const generated = await store.contractGeneratedDocument.findUnique({ where: { id: archiveSource.generatedDocumentId } });
+  const fileIds = [generated!.docxFileId, generated!.pdfFileId];
+  const auditCount = (action: string) => store.auditLog.count({ where: { businessId: contractVersionId, action } });
+  const installation = { databaseOid: "13000", namespaceOid: "2200", currentRoleOid: "7001", sessionRoleOid: "7001",
+    archiveWriterOid: "43001", signedFileAuthorityOid: "43002", archiveReceiptReaderOid: "43003", operatingAuthorityOid: "43004",
+    backendPid: 71301, transactionId: "500004" };
+  const assertPending = async () => {
+    expect(await store.contractSealTask.findUnique({ where: { id: sealTaskId } })).toMatchObject({ status: "in_seal", completedAt: null, completedByUserId: null });
+    expect(await store.contractVersion.findUnique({ where: { id: contractVersionId } })).toMatchObject({ status: "approved_pending_seal" });
+    expect(await auditCount("contract.seal.complete")).toBe(0);
+    expect(await auditCount("contract.archive_task.create")).toBe(0);
+  };
+  const prove = async (transaction: Prisma.TransactionClient, scope: generatedArchiveInstallation.GeneratedArchiveSealScope) =>
+    ({ transaction, scope, installation });
+  const witness = jest.spyOn(generatedArchiveInstallation, "readGeneratedArchiveSealAuthority").mockImplementation(prove);
+  try {
+    const technicalAssignment = await store.userPosition.create({ data: { userId: "technical", positionId: "comprehensive_director", projectId: null } });
+    const technical = await loginTemplateActor(server, "technical");
+    expect((await confirmSeal(technical)).status).toBe(403);
+    await store.userPosition.delete({ where: { id: technicalAssignment.id } });
+    expect((await confirmSeal(director, { expectedSealTaskId: randomUUID() })).status).toBe(409);
+    expect((await confirmSeal(director, { documentContentRevision: sealInput.documentContentRevision + 1 })).status).toBe(409);
+    expect((await confirmSeal(director, { documentContentFingerprint: "a".repeat(64) })).status).toBe(409);
+    expect(witness).not.toHaveBeenCalled();
+
+    const version = await store.contractVersion.findUnique({ where: { id: contractVersionId } });
+    await store.contractVersion.update({ where: { id: contractVersionId }, data: { signingSubjectType: "our_company" } });
+    expect((await confirmSeal(director)).status).toBe(409);
+    await store.contractVersion.update({ where: { id: contractVersionId }, data: { signingSubjectType: version!.signingSubjectType } });
+    await store.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: "employee" } });
+    expect((await confirmSeal(director)).status).toBe(409);
+    await store.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: "staff" } });
+    expect(witness).not.toHaveBeenCalled();
+
+    const expectProjectConflict = async () => {
+      const denied = await confirmSeal(director);
+      expect({ status: denied.status, body: await denied.json() }).toMatchObject({
+        status: 409, body: { message: expect.stringContaining("当前项目不可办理归档") }
+      });
+      await assertPending();
+    };
+    const projectWhere = { id: draft.projectId };
+    await store.project.update({ where: projectWhere, data: { isActive: false } });
+    try { await expectProjectConflict(); }
+    finally { await store.project.update({ where: projectWhere, data: { isActive: true } }); }
+
+    const readProject = store.project.findUnique;
+    const wrongProjectId = randomUUID();
+    const wrongProject = jest.spyOn(store.project, "findUnique").mockImplementation(async args => {
+      const project = await readProject(args);
+      const select = (args as typeof args & Pick<Prisma.ProjectFindUniqueArgs, "select">).select;
+      return project && args?.where?.id === draft.projectId && select?.id && select?.isActive
+        ? { ...project, id: wrongProjectId } : project;
+    });
+    try { await expectProjectConflict(); }
+    finally { wrongProject.mockRestore(); }
+
+    witness.mockImplementationOnce(async (transaction, scope) => ({ transaction, scope: { ...scope, sealTaskId: randomUUID() }, installation }));
+    expect((await confirmSeal(director)).status).toBe(503);
+    await assertPending();
+
+    witness.mockClear().mockImplementationOnce(prove).mockImplementationOnce(async (transaction, scope) => {
+      expect(await transaction.contractSealTask.findUnique({ where: { id: sealTaskId } })).toMatchObject({ status: "completed" });
+      expect(await auditCount("contract.seal.complete")).toBe(1);
+      expect(await auditCount("contract.archive_task.create")).toBe(1);
+      return { transaction, scope, installation: { ...installation, transactionId: "500005" } };
+    });
+    expect((await confirmSeal(director)).status).toBe(503);
+    expect(witness).toHaveBeenCalledTimes(2);
+    await assertPending();
+
+    let sourceReads = 0;
+    const readFiles = store.fileObject.findMany;
+    const fileDrift = jest.spyOn(store.fileObject, "findMany").mockImplementation(async (args) => {
+      const files = await readFiles(args);
+      if (++sourceReads !== 2) return files;
+      return files.map(file => file.id === fileIds[1] ? { ...file, contentSha256: "b".repeat(64) } : file);
+    });
+    try {
+      const denied = await confirmSeal(director);
+      expect(sourceReads).toBe(2);
+      expect({ status: denied.status, body: await denied.json() }).toMatchObject({ status: 409, body: { message: expect.stringContaining("Word及PDF生成来源已变化") } });
+      await assertPending();
+    } finally { fileDrift.mockRestore(); }
+
+    let grantReads = 0;
+    const readMembership = store.projectMember.findFirst;
+    const grantDrift = jest.spyOn(store.projectMember, "findFirst").mockImplementation(async (args) => {
+      if (args?.where?.positionKey === "contract_staff" && args.where.userId === "staff" && ++grantReads === 2) {
+        await store.projectMember.deleteMany({ where: args.where });
+      }
+      return readMembership(args);
+    });
+    try {
+      expect((await confirmSeal(director)).status).toBe(409);
+      expect(grantReads).toBe(2);
+      await assertPending();
+    } finally { grantDrift.mockRestore(); }
+
+    const recordAudit = store.auditLog.create;
+    const projectDrift = jest.spyOn(store.auditLog, "create").mockImplementation(async args => {
+      const record = await recordAudit(args);
+      if (args.data.action === "contract.archive_task.create") {
+        expect(await store.contractSealTask.findUnique({ where: { id: sealTaskId } })).toMatchObject({ status: "completed" });
+        expect(await auditCount("contract.seal.complete")).toBe(1);
+        expect(await auditCount("contract.archive_task.create")).toBe(1);
+        await store.project.update({ where: projectWhere, data: { isActive: false } });
+      }
+      return record;
+    });
+    try {
+      await expectProjectConflict();
+      expect(await store.project.findUnique({ where: projectWhere })).toMatchObject({ isActive: true });
+    } finally { projectDrift.mockRestore(); }
+
+    const failure = jest.spyOn(store.auditLog, "create").mockImplementation(async args => {
+      if (args.data.action === "contract.archive_task.create") throw new Error("合成归档待办审计写入失败");
+      return recordAudit(args);
+    });
+    try {
+      expect((await confirmSeal(director)).status).toBe(500);
+      await assertPending();
+    } finally { failure.mockRestore(); }
+
+    const actorDrift = jest.spyOn(store.auditLog, "create").mockImplementation(async args => {
+      const record = await recordAudit(args);
+      if (args.data.action === "contract.archive_task.create") {
+        await store.userPosition.deleteMany({ where: { userId: "director", positionId: "comprehensive_director", projectId: null } });
+      }
+      return record;
+    });
+    try {
+      expect((await confirmSeal(director)).status).toBe(403);
+      await assertPending();
+    } finally { actorDrift.mockRestore(); }
+
+    witness.mockClear();
+    const result = { contractVersionId, approvalInstanceId, sealTaskId, status: "seal_approved_pending_archive" };
+    const sealed = await confirmSeal(director);
+    expect({ status: sealed.status, body: await sealed.json() }).toEqual({ status: 201, body: result });
+    expect(witness).toHaveBeenCalledTimes(2);
+    for (const [transaction, scope] of witness.mock.calls) {
+      expect(transaction).toBe(store);
+      expect(scope).toMatchObject({ ...archiveSource, projectId: draft.projectId, contractId: draft.contract.id,
+        contractVersionId, approvalInstanceId, sealTaskId, handlerUserId: "staff", actorUserId: "director",
+        documentContentRevision: sealInput.documentContentRevision, documentContentFingerprint: sealInput.documentContentFingerprint,
+        files: [expect.objectContaining({ fileId: fileIds[0] }), expect.objectContaining({ fileId: fileIds[1] })] });
+    }
+    const completedTask = await store.contractSealTask.findUnique({ where: { id: sealTaskId } });
+    expect(completedTask).toMatchObject({ status: "completed", completedAt: expect.any(Date), completedByUserId: "director" });
+    expect(await store.contractVersion.findUnique({ where: { id: contractVersionId } })).toMatchObject({ status: result.status });
+    const transfer = await store.auditLog.findFirst({ where: { businessId: contractVersionId, action: "contract.archive_task.create" } });
+    expect(transfer).toMatchObject({ metadata: { approvalInstanceId, sealTaskId, handlerUserId: "staff" } });
+
+    witness.mockClear().mockResolvedValue(null);
+    await store.project.update({ where: projectWhere, data: { isActive: false } });
+    try {
+      const repeated = await confirmSeal(director);
+      expect({ status: repeated.status, body: await repeated.json() }).toEqual({ status: 201, body: result });
+    } finally { await store.project.update({ where: projectWhere, data: { isActive: true } }); }
+    expect(witness).not.toHaveBeenCalled();
+    expect(await store.contractSealTask.findUnique({ where: { id: sealTaskId } })).toEqual(completedTask);
+    expect(await auditCount("contract.seal.complete")).toBe(1);
+    expect(await auditCount("contract.archive_task.create")).toBe(1);
+    expect(await store.approvalInstance.count({ where: { businessId: contractVersionId } })).toBe(expectedRoundCount);
+    expect(await store.contractSealTask.count({ where: { contractVersionId } })).toBe(1);
+    expect(await store.contractArchiveFile.count({ where: { contractVersionId } })).toBe(0);
+    await exerciseGeneratedArchivePreparation(server, draft, sealInput, fileIds[1], preparationEnabled);
+
+    if (archiveSource.relationship === "outside") {
+      const handler = await loginTemplateActor(server, "staff");
+      await assertGeneratedSealWorkItemBlocked(server, draft, handler, "archive");
+      await assertGeneratedSealWorkItemHidden(server, draft, director);
+      const round = await store.approvalInstance.findUnique({ where: { id: approvalInstanceId } });
+      const nodes = round!.frozenNodes as Prisma.JsonArray;
+      const first = { ...nodes[0] as Prisma.JsonObject };
+      delete first.submissionSnapshot;
+      await store.approvalInstance.update({ where: { id: approvalInstanceId }, data: { frozenNodes: [first, ...nodes.slice(1)] } });
+      await assertGeneratedSealWorkItemHidden(server, draft, handler);
+      await store.approvalInstance.update({ where: { id: approvalInstanceId }, data: { frozenNodes: nodes } });
+    }
+
+    const assignment = await store.userPosition.create({ data: { userId: "employee", positionId: "comprehensive_director", projectId: null } });
+    const other = await loginTemplateActor(server, "employee");
+    expect((await confirmSeal(other)).status).toBe(409);
+    await store.userPosition.delete({ where: { id: assignment.id } });
+    await store.userPosition.deleteMany({ where: { userId: "director", positionId: "comprehensive_director", projectId: null } });
+    expect((await confirmSeal(director)).status).toBe(403);
+    expect(await auditCount("contract.seal.complete")).toBe(1);
+    expect(await auditCount("contract.archive_task.create")).toBe(1);
+  } finally { witness.mockRestore(); }
+}
+
+async function exerciseGeneratedArchivePreparation(server: Awaited<ReturnType<typeof createTemplateTestServer>>,
+  draft: Awaited<ReturnType<typeof createTask09Draft>>, seal: GeneratedSealInput, generatedPdfId: unknown, preparationEnabled: boolean) {
+  const store = server.store.prisma;
+  const storage = server.app.get(PrivateFileStorage);
+  const bucket = storage.bucketName();
+  const seedOriginal = async (label: string) => {
+    const fileId = randomUUID(), objectKey = `uploads/${fileId}.pdf`;
+    const signedPdf = await PDFDocument.create();
+    signedPdf.addPage().drawText(label);
+    const buffer = Buffer.from(await signedPdf.save());
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+    const coordinates = { bucket, objectKey, sizeBytes: buffer.length, contentSha256 };
+    await store.fileObject.create({ data: { id: fileId, ...coordinates, mimeType: "application/pdf",
+      originalName: "双方签章原件.pdf", uploadedByUserId: "staff", storageStatus: "active" } });
+    return { fileId, buffer, coordinates };
+  };
+  const first = await seedOriginal("SYNTHETIC SIGNED ORIGINAL ONE");
+  const second = await seedOriginal("SYNTHETIC SIGNED ORIGINAL TWO");
+  const url = `${await server.app.getUrl()}/contracts/${draft.version.id}`;
+  const body = { archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: randomUUID(),
+    expectedApprovalInstanceId: seal.expectedApprovalInstanceId, expectedSealTaskId: seal.expectedSealTaskId,
+    documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint,
+    fileIds: [second.fileId, first.fileId], confirmedMatchingSignedDocument: true };
+  const archive = (patch: object = {}) => fetch(url + "/signed-archive", { method: "POST", headers: draft.headers,
+    body: JSON.stringify({ ...body, ...patch }) });
+  const readArchiveState = () => Promise.all([
+    store.contractVersion.findUnique({ where: { id: draft.version.id } }),
+    store.contractSealTask.findUnique({ where: { id: seal.expectedSealTaskId } }),
+    store.contractArchiveFile.count({ where: { contractVersionId: draft.version.id } }),
+    store.contractArchiveEvidenceFile.count({ where: { contractVersionId: draft.version.id } }),
+    store.auditLog.count({ where: { businessId: draft.version.id } }),
+    store.operatingFact.count({ where: { projectId: draft.projectId } }),
+    store.operatingImpactEntry.count({ where: { projectId: draft.projectId } })
+  ]);
+  const before = await readArchiveState();
+  const ordinaryReads = server.store.privateStorageReads;
+  const writes = server.store.privateStorageWrites;
+  const deletes = server.store.privateStorageDeletes;
+  const readVersion = jest.spyOn(storage, "readVerifiedVersion");
+  try {
+    if (!preparationEnabled) {
+      const denied = await archive();
+      expect({ status: denied.status, body: await denied.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("归档资格尚未就绪") }
+      });
+      expect(readVersion).not.toHaveBeenCalled();
+    } else {
+      expect((await archive({ expectedSealTaskId: randomUUID() })).status).toBe(409);
+      expect((await archive({ fileIds: [generatedPdfId] })).status).toBe(409);
+      expect((await archive({ fileIds: [second.fileId, second.fileId] })).status).toBe(400);
+      const generated = await store.fileObject.findUnique({ where: { id: String(generatedPdfId) } });
+      const where = { id: second.fileId };
+      await store.fileObject.update({ where, data: { contentSha256: generated!.contentSha256 } });
+      expect((await archive()).status).toBe(409);
+      await store.fileObject.update({ where, data: { contentSha256: second.coordinates.contentSha256, uploadedByUserId: "employee" } });
+      expect((await archive()).status).toBe(403);
+      await store.fileObject.update({ where, data: { uploadedByUserId: "staff" } });
+      const assignment = await store.projectAffiliateAssignment.findFirst({ where: { projectId: draft.projectId } });
+      await store.projectAffiliateAssignment.update({ where: { id: assignment!.id }, data: { projectId: randomUUID() } });
+      expect((await archive()).status).toBe(409);
+      await store.projectAffiliateAssignment.update({ where: { id: assignment!.id }, data: { projectId: draft.projectId } });
+      expect(readVersion).not.toHaveBeenCalled();
+
+      const missing = await archive();
+      expect({ status: missing.status, body: await missing.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("资料文件版本或完整性") }
+      });
+      const versioned = server.store.table("syntheticPrivateFileVersion");
+      const seedVersion = (original: typeof first, objectGeneration: string, buffer = original.buffer) => versioned.create({ data: {
+        bucket, objectKey: original.coordinates.objectKey, objectGeneration, base64: buffer.toString("base64")
+      } });
+      const broken = await seedVersion(second, "signed-original-v2", first.buffer);
+      expect((await archive()).status).toBe(503);
+      await versioned.delete({ where: { id: broken.id } });
+      const unversioned = await seedVersion(second, "null");
+      expect((await archive()).status).toBe(503);
+      await versioned.delete({ where: { id: unversioned.id } });
+      await seedVersion(first, "signed-original-v1");
+      await seedVersion(second, "signed-original-v2");
+      readVersion.mockClear();
+      const prepared = await archive();
+      expect({ status: prepared.status, body: await prepared.json() }).toMatchObject({
+        status: 503, body: { message: expect.stringContaining("签章原件已核对") }
+      });
+      expect(readVersion.mock.calls).toEqual([[second.coordinates], [first.coordinates]]);
+      readVersion.mockClear();
+      expect((await archive()).status).toBe(503);
+      expect(readVersion.mock.calls).toEqual([[second.coordinates], [first.coordinates]]);
+    }
+    const receipt = await fetch(url + "/archive-requests/" + body.idempotencyKey, { headers: draft.headers });
+    expect({ status: receipt.status, body: await receipt.json() }).toEqual({ status: 200, body: { status: "unknown" } });
+    expect(await readArchiveState()).toEqual(before);
+    expect(server.store.privateStorageReads).toBe(ordinaryReads);
+    expect(server.store.privateStorageWrites).toBe(writes);
+    expect(server.store.privateStorageDeletes).toBe(deletes);
+  } finally { readVersion.mockRestore(); }
+}
 
 /** Existing lifecycle cases now use valid inside subject facts, not unfinished upward provenance. */
 async function saveInsideTask12Draft(server: Awaited<ReturnType<typeof createTemplateTestServer>>, draft: Awaited<ReturnType<typeof createTask09Draft>>, contractType: string, layoutId: string, controlledCounterparty = false) {

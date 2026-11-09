@@ -9,7 +9,8 @@ const path = require("node:path");
 const { createHash, randomBytes } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const { readQualifiedTask16File: qualifiedFile } = require("./task16-runtime-inputs.cjs");
-const {registeredObjectWitnessSql}=require("./task16-registered-object-witness.cjs");
+const {registeredObjectWitnessSql,schema205DeparseReadOnly,schema205DeparsePremisesSql,schema205WitnessSql,schema205EnforceConfigSql,schema205RegistrySql,schema205RegistryBaselineMatches,schema205RegistryMatches,schema205RegistrySevenMatches}=require("./task16-registered-object-witness.cjs");
+const {schema205ScopeSql,schema205SevenDeltaSql,schema205ScopeValid,schema205ScopesMatch,schema205ScopeTransitionMatches}=require("./task16-schema205-scope.cjs");
 const BASELINE_PATH = "services/api/prisma/task16-baseline-access.json";
 const FRAGMENTS = ["registered-funding.sql", "registered-history-revision.sql", "registered-write-authority.sql", "registered-canonical-proof.sql", "registered-intercompany.sql", "registered-canonical-adapter.sql", "registered-voucher.sql"].map(name => `services/api/prisma/prepared/task16/${name}`);
 const RESOURCE_KEYS = ["runId", "sourceSha", "containerId", "networkId", "daemonId", "endpoint", "imageId", "databaseName", "port"];
@@ -38,6 +39,7 @@ function readPacket(options) {
   need(/^[a-f0-9]{64}$/u.test(options.expectedPacketSha256) && sha(bytes) === options.expectedPacketSha256, "TASK16_INSTALL_PACKET_HASH");
   const packet = JSON.parse(bytes.toString("utf8"));
   need(packet && packet.schemaVersion === 1 && packet.purpose === "task16-registered-pg-source-only-packet" && packet.status === "SOURCE_ONLY_NOT_EXECUTED" && packet.executionAllowed === false && packet.resourceExecutorImplemented === false, "TASK16_INSTALL_PACKET_KIND");
+  need(packet.sourceProfile === undefined && verified.sourceProfile === undefined, "TASK16_INSTALL_SOURCE_PROFILE_NOT_ADMITTED");
   const { sealSha256, ...payload } = packet;
   need(/^[a-f0-9]{64}$/u.test(sealSha256) && sha(JSON.stringify(payload)) === sealSha256, "TASK16_INSTALL_PACKET_SEAL");
   need(/^[a-f0-9]{40}$/u.test(packet.candidateSha), "TASK16_INSTALL_SOURCE_SHA");
@@ -98,6 +100,7 @@ function identitySql(ownerRole, runtimeRole, phase, nonce,baseline) {
  'tls',coalesce((SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()),false),
  'replication',pg_catalog.current_setting('session_replication_role'),
  'migrationLedger',(SELECT coalesce(pg_catalog.json_agg(pg_catalog.json_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name),'[]'::json) FROM public._prisma_migrations),
+ ${baseline?`'schema205EnforceConfigVerified',(${schema205EnforceConfigSql(phase==='committed')}${phase==='committed'?' AND '+schema205DeparsePremisesSql():''}),'schema205WitnessSha256',${schema205WitnessSql()},'schema205ScopeObjects',${schema205ScopeSql()},'schema205ScopeDelta',${phase==='committed'?schema205SevenDeltaSql():'NULL'},'schema205Registry',${schema205RegistrySql()},`:''}
  ${phase==='committed'&&baseline?`'installedObjectWitness',${registeredObjectWitnessSql()},`:''}
  'phase',${quote(phase)},'nonce',n.nonce)
  FROM (SELECT ${quote(nonce)} AS nonce) n;`;
@@ -118,6 +121,15 @@ function parseIdentity(result, options, snapshot, migrations, phase, nonce) {
   need(JSON.stringify(row.migrationLedger) === JSON.stringify(migrations), "TASK16_INSTALL_MIGRATION_LEDGER");
   if(options.expectedBaseline){
     const b=options.expectedBaseline;
+    const objectsMatch=phase==="committed"
+      ?schema205ScopeTransitionMatches(b.schema205ScopeObjects,row.schema205ScopeObjects,row.schema205ScopeDelta,"seven")
+      :row.schema205ScopeDelta===null&&schema205ScopesMatch(b.schema205ScopeObjects,row.schema205ScopeObjects);
+    need(objectsMatch,"TASK16_INSTALL_SCHEMA205_OBJECTS");
+    const registryMatches=phase==="committed"
+      ?schema205RegistrySevenMatches(b.schema205Registry,row.schema205Registry,b.ownerOid,b.runtimeOid,b.observerOid)
+      :schema205RegistryMatches(b.schema205Registry,row.schema205Registry);
+    need(registryMatches,"TASK16_INSTALL_SCHEMA205_REGISTRY");
+    need(row.schema205EnforceConfigVerified===true&&row.schema205WitnessSha256===b.schema205WitnessSha256,"TASK16_INSTALL_SCHEMA205_CONTINUITY");
     need(row.ownerOid===b.ownerOid&&row.loginRole===options.ownerRole&&row.databaseOid===b.databaseOid&&row.systemIdentifier===b.systemIdentifier&&row.runtimeOid===b.runtimeOid&&row.observerRole===b.observerRole&&row.observerOid===b.observerOid&&row.strictRuntimeSafe===true&&row.observerSafe===true,"TASK16_INSTALL_BASELINE_ROLE_IDENTITY");
   }
   return row;
@@ -131,6 +143,10 @@ async function installTask16RegisteredSql(options) {
     if(options.expectedBaseline!==undefined){
       const b=options.expectedBaseline;
       need(b!==null&&typeof b==="object"&&!Array.isArray(b),"TASK16_INSTALL_BASELINE_ARGUMENTS");
+      need(schema205ScopeValid(b.schema205ScopeObjects),"TASK16_INSTALL_BASELINE_ARGUMENTS");
+      need(schema205RegistryBaselineMatches(b.schema205RegistryFirst,b.schema205Registry,b.ownerOid,b.runtimeOid,b.observerOid),"TASK16_INSTALL_BASELINE_ARGUMENTS");
+      need(b.schema205PhysicalVerified===true&&typeof b.schema205WitnessSha256==="string"
+        &&/^[a-f0-9]{64}$/u.test(b.schema205WitnessSha256),"TASK16_INSTALL_BASELINE_ARGUMENTS");
       need(b.runtimeRole===options.runtimeRole&&b.observerRole!==options.runtimeRole&&b.observerRole!==options.ownerRole&&/^[a-z][a-z0-9_]{0,62}$/u.test(b.observerRole)&&[b.ownerOid,b.runtimeOid,b.observerOid,b.databaseOid,b.systemIdentifier].every(oid=>typeof oid==="string"&&/^[1-9][0-9]*$/u.test(oid))&&new Set([b.ownerOid,b.runtimeOid,b.observerOid]).size===3&&/^[a-f0-9]{64}$/u.test(b.manifestSha256),"TASK16_INSTALL_BASELINE_ARGUMENTS");
     }
     need(options && typeof options.authorizationReference === "string" && options.authorizationReference.trim().length > 0 && options.authorizationReference.length <= 1024, "TASK16_INSTALL_AUTHORIZATION_REFERENCE");
@@ -142,7 +158,9 @@ async function installTask16RegisteredSql(options) {
     const recheck=()=>{need(options.resource.execOwnerSql===methods.execOwnerSql&&options.resource.getReceipt===methods.getReceipt,"TASK16_INSTALL_RESOURCE_METHOD_CHANGED");for(const row of captures)need(qualifiedFile(row.path,{maxBytes:row.maxBytes,expectedIdentity:row.identity,code:"TASK16_INSTALL_SOURCE_CAPTURE_CHANGED"}).sha256===row.sha256,"TASK16_INSTALL_SOURCE_CAPTURE_CHANGED");};
     const snapshot = resourceIdentity(options, packet.candidateSha);
     const preflightNonce = randomBytes(32).toString("hex");
-    const before = parseIdentity(await methods.execOwnerSql.call(options.resource,`BEGIN READ ONLY;\n${identitySql(options.ownerRole, options.runtimeRole, "preflight", preflightNonce,options.expectedBaseline)}\nROLLBACK;`, "task16-install-preflight"), options, snapshot, migrations, "preflight", preflightNonce);
+    const preflightIdentity=identitySql(options.ownerRole,options.runtimeRole,"preflight",preflightNonce,options.expectedBaseline);
+    const preflightWitness=options.expectedBaseline?schema205DeparseReadOnly(preflightIdentity):`BEGIN READ ONLY;\n${preflightIdentity}\nROLLBACK;`;
+    const before = parseIdentity(await methods.execOwnerSql.call(options.resource,preflightWitness, "task16-install-preflight"), options, snapshot, migrations, "preflight", preflightNonce);
     resourceIdentity(options, packet.candidateSha); recheck();
     const nonce = randomBytes(32).toString("hex");
     // Re-check identity in the installation transaction itself, before any DDL.
@@ -162,14 +180,17 @@ async function installTask16RegisteredSql(options) {
  IS DISTINCT FROM ${quote(JSON.stringify(migrations))}::jsonb
  THEN RAISE EXCEPTION 'task16 installation migration ledger changed'; END IF;
 ${options.expectedBaseline?` IF (SELECT oid::text FROM pg_catalog.pg_roles WHERE rolname=current_user) IS DISTINCT FROM ${quote(options.expectedBaseline.ownerOid)} OR (SELECT oid::text FROM pg_catalog.pg_roles WHERE rolname=${quote(options.runtimeRole)}) IS DISTINCT FROM ${quote(options.expectedBaseline.runtimeOid)} OR (SELECT oid::text FROM pg_catalog.pg_roles WHERE rolname=${quote(options.expectedBaseline.observerRole)}) IS DISTINCT FROM ${quote(options.expectedBaseline.observerOid)} OR NOT ${strictRoleSql(options.runtimeRole,options.ownerRole)} OR NOT ${strictRoleSql(options.expectedBaseline.observerRole,options.ownerRole,true)} THEN RAISE EXCEPTION 'task16 installation baseline restricted identity changed'; END IF;`:''}
+${options.expectedBaseline?` IF ${schema205ScopeSql()} IS DISTINCT FROM ${quote(JSON.stringify(options.expectedBaseline.schema205ScopeObjects))}::jsonb OR NOT ${schema205EnforceConfigSql(false)} OR ${schema205WitnessSql()} IS DISTINCT FROM ${quote(options.expectedBaseline.schema205WitnessSha256)} THEN RAISE EXCEPTION 'task16 schema205 physical witness changed'; END IF; IF ${schema205RegistrySql()} IS DISTINCT FROM ${quote(JSON.stringify(options.expectedBaseline.schema205Registry))}::jsonb THEN RAISE EXCEPTION 'task16 schema205 registry witness changed'; END IF;`:''}
 END $jg_task16_install_guard$;`;
-    const sql = `BEGIN;\nSET LOCAL search_path=pg_catalog,public,pg_temp;\nSET LOCAL lock_timeout='5s';\nLOCK TABLE public._prisma_migrations IN SHARE MODE;\n${guard}\nDO $jg_task16_role$ BEGIN PERFORM pg_catalog.set_config('jg.task16_runtime_role',${quote(options.runtimeRole)},true); END $jg_task16_role$;\n${fragments.join("\n")}\nCOMMIT;\nSET search_path=pg_catalog,public,pg_temp;\n${identitySql(options.ownerRole, options.runtimeRole, "committed", nonce,options.expectedBaseline)}\n`;
+    const committedIdentity=identitySql(options.ownerRole,options.runtimeRole,"committed",nonce,options.expectedBaseline);
+    const committedWitness=options.expectedBaseline?schema205DeparseReadOnly(committedIdentity):committedIdentity;
+    const sql = `BEGIN;\nSET LOCAL search_path=pg_catalog,public,pg_temp;\n${options.expectedBaseline?"SET LOCAL quote_all_identifiers=off;\n":""}SET LOCAL lock_timeout='5s';\nLOCK TABLE public._prisma_migrations IN SHARE MODE;\n${guard}\nDO $jg_task16_role$ BEGIN PERFORM pg_catalog.set_config('jg.task16_runtime_role',${quote(options.runtimeRole)},true); END $jg_task16_role$;\n${fragments.join("\n")}\nCOMMIT;\nSET search_path=pg_catalog,public,pg_temp;\n${committedWitness}\n`;
     attempted = true;
     const after = parseIdentity(await methods.execOwnerSql.call(options.resource,sql, "task16-install-transaction"), options, snapshot, migrations, "committed", nonce);
     need(after.databaseOid === before.databaseOid && after.systemIdentifier === before.systemIdentifier, "TASK16_INSTALL_DATABASE_CHANGED");
     resourceIdentity(options, packet.candidateSha); recheck();
     if(options.expectedBaseline!==undefined) baselineContinuityVerified=true;
-    return { installedObjectWitness:after.installedObjectWitness,ownerOid:after.ownerOid, baselineContinuityVerified, runtimeOid:after.runtimeOid, observerRole:after.observerRole, observerOid:after.observerOid, baselineManifestSha256:options.expectedBaseline?.manifestSha256, status: "SQL_INSTALLATION_COMMIT_OBSERVED", candidateSha: packet.candidateSha, packetSha256: options.expectedPacketSha256, sourceSealSha256: packet.sealSha256, sqlSha256: sha(sql), databaseName: after.database, databaseOid: after.databaseOid, systemIdentifier: after.systemIdentifier, ownerRole: options.ownerRole, runtimeRole: options.runtimeRole, fragmentCount: 7, financialAcceptance: false, aclAcceptance: false, tlsAcceptance: false, resourceLifecycleOwnedByCaller: true };
+    return { installedObjectWitness:after.installedObjectWitness,schema205WitnessSha256:after.schema205WitnessSha256,schema205ScopeObjects:after.schema205ScopeObjects,schema205ScopeDelta:after.schema205ScopeDelta,schema205Registry:after.schema205Registry,ownerOid:after.ownerOid, baselineContinuityVerified, runtimeOid:after.runtimeOid, observerRole:after.observerRole, observerOid:after.observerOid, baselineManifestSha256:options.expectedBaseline?.manifestSha256, status: "SQL_INSTALLATION_COMMIT_OBSERVED", candidateSha: packet.candidateSha, packetSha256: options.expectedPacketSha256, sourceSealSha256: packet.sealSha256, sqlSha256: sha(sql), databaseName: after.database, databaseOid: after.databaseOid, systemIdentifier: after.systemIdentifier, ownerRole: options.ownerRole, runtimeRole: options.runtimeRole, fragmentCount: 7, financialAcceptance: false, aclAcceptance: false, tlsAcceptance: false, resourceLifecycleOwnedByCaller: true };
   } catch (error) {
     const code = typeof error?.code === "string" && /^TASK16_INSTALL_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_INSTALL_FAILED_CLOSED";
     const failure = Object.assign(new Error(code), { code, installationOutcome: attempted ? "UNKNOWN_DO_NOT_RETRY" : "NOT_ATTEMPTED" });

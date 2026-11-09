@@ -20,6 +20,7 @@ export async function assertContractV2ArchivePersistentProof(tx: Prisma.Transact
   owner: Contract, version: ContractVersion | null, durable: ContractArchiveFile) {
   const versionId = durable.contractVersionId, actor = durable.uploadedByUserId, key = durable.idempotencyKey;
   if (!key) throw new ServiceUnavailableException("归档请求标识尚未完整核对，请保留原标识");
+  if (durable.archiveSource !== "generated_approval") throw new ServiceUnavailableException("归档来源的持久结果尚未核对，请保留原标识");
   const files = await tx.contractArchiveEvidenceFile.findMany({ where: { archiveFileId: durable.id }, orderBy: { displayOrder: "asc" } });
   const frozen = object(durable.authoritySnapshot), consequence = object(frozen.operatingConsequence);
   if (version?.status !== "effective" || !version.effectiveAt || durable.archiveProtocolVersion !== 2 || !durable.authoritySha256 || !durable.fileManifestSha256 || !same(files.map(f => ({ fileId: f.fileId, displayOrder: f.displayOrder, mimeType: f.mimeType, sizeBytes: f.sizeBytes, contentSha256: f.contentSha256 })), frozen.fileManifest)) throw new ServiceUnavailableException("归档持久结果尚未完整核对，请查询原标识，不要重发");

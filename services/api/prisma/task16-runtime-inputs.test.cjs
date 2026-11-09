@@ -32,16 +32,20 @@ test("an incomplete injected map never inherits the real startResource adapter",
 
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const project = path.resolve(__dirname, "../../..");
+const { readTask16FixtureSchema, schemaPath } = require("./testdata/task16-schema-fixture.cjs");
 
-function preparedRuntime(t) {
+function preparedRuntime(t, sourceVersion = 204) {
   const temporary = fs.mkdtempSync("/private/tmp/jg-task16-runtime-protocol-");
   t.after(() => fs.rmSync(temporary, { recursive: true }));
   const root = path.join(temporary, "candidate"); fs.mkdirSync(root);
   function put(relative, data, mode = 0o600) { const file = path.join(root, relative); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, data, { mode }); return file; }
-  const files = ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/task16-baseline-migrations.cjs", "services/api/prisma/task16-baseline-access.cjs", "services/api/prisma/task16-baseline-access.json", "services/api/prisma/task16-baseline-access.sql", "services/api/prisma/task16-bounded-command.cjs", "services/api/prisma/task16-owner-tls.cjs", "services/api/prisma/task16-owner-probe.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "services/api/prisma/task16-prepared-install-stage.cjs", "services/api/prisma/task16-registered-object-witness.cjs", "services/api/prisma/task16-registered-access.cjs", "services/api/prisma/task16-registered-access.json", "services/api/prisma/task16-registered-access.sql", "services/api/prisma/task16-registered-access-check.cjs", "services/api/prisma/task16-registered-access-check.sql", "services/api/prisma/task16-restricted-clients.cjs", "services/api/prisma/task16-client-loader.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"];
+  const files = ["services/api/prisma/run-task16-registered-pg-local.cjs", "services/api/prisma/task16-runtime-inputs.cjs", "services/api/prisma/task16-baseline-migrations.cjs", "services/api/prisma/task16-migration-history.cjs", "services/api/prisma/task16-schema205-scope.cjs", "services/api/prisma/task16-baseline-access.cjs", "services/api/prisma/task16-baseline-access.json", "services/api/prisma/task16-baseline-access.sql", "services/api/prisma/task16-bounded-command.cjs", "services/api/prisma/task16-owner-tls.cjs", "services/api/prisma/task16-owner-probe.cjs", "services/api/prisma/enterprise-task01-resources.cjs", "services/api/prisma/task16-registered-sql-installer.cjs", "services/api/prisma/task16-prepared-install-stage.cjs", "services/api/prisma/task16-registered-object-witness.cjs", "services/api/prisma/task16-registered-access.cjs", "services/api/prisma/task16-registered-access.json", "services/api/prisma/task16-registered-access.sql", "services/api/prisma/task16-registered-access-check.cjs", "services/api/prisma/task16-registered-access-check.sql", "services/api/prisma/task16-restricted-clients.cjs", "services/api/prisma/task16-client-loader.cjs", "scripts/prepare-task16-registered-pg.cjs", "scripts/ops/runtime-manifest.py"];
   for (const extra of ["services/api/prisma/task16-sdk-schema-proof.json", "services/api/prisma/task16-sdk-schema.cjs"]) if (fs.existsSync(path.join(project, extra))) files.push(extra);
-  files.push("services/api/prisma/schema.prisma");
-  for (const file of files) put(file, fs.readFileSync(path.join(project, file)));
+  files.push(schemaPath);
+  for (const file of files) {
+    const bytes = file === schemaPath ? readTask16FixtureSchema(project, sourceVersion) : fs.readFileSync(path.join(project, file));
+    put(file, bytes);
+  }
   const gitDir = path.join(temporary, "owner-git/worktrees/candidate"); fs.mkdirSync(gitDir, { recursive: true });
   const gitFile = put(".git", `gitdir: ${gitDir}\n`);
   fs.writeFileSync(path.join(gitDir, "gitdir"), `${gitFile}\n`);
@@ -57,6 +61,7 @@ function preparedRuntime(t) {
   fs.cpSync(path.join(project,"services/api/node_modules/typescript"),path.join(root,"services/api/node_modules/typescript"),{recursive:true,dereference:true});
   const sourceSha = "a".repeat(40);
   const packet = { schemaVersion: 1, purpose: "task16-registered-pg-source-only-packet", status: "SOURCE_ONLY_NOT_EXECUTED", executionAllowed: false, resourceExecutorImplemented: false, candidateSha: sourceSha, schema:{path:"services/api/prisma/schema.prisma",sha256:hash(fs.readFileSync(path.join(root,"services/api/prisma/schema.prisma")))}, source: { repo: root, files: files.map(relative => ({ path: relative, sha256: hash(fs.readFileSync(path.join(root, relative))) })) }, sealSha256: "b".repeat(64) };
+  if (sourceVersion === 206) packet.sourceProfile = "SCHEMA206_SOURCE_ONLY";
   const packetFile = path.join(temporary, "packet.json"); fs.writeFileSync(packetFile, JSON.stringify(packet), { mode: 0o600 });
   const expectedPacketSha256 = hash(fs.readFileSync(packetFile));
   const toolDir = path.join(temporary, "tools"); fs.mkdirSync(toolDir);
@@ -83,10 +88,13 @@ function preparedRuntime(t) {
     tree.sha256 = hash(fs.readFileSync(tree.manifest)); sealInputs();
   }
   sealInputs();
+  const scopeFixtureFile=path.join(temporary,"scope-fixture.cjs");
+  fs.copyFileSync(path.join(project,"services/api/prisma/testdata/task16-schema205-scope-fixture.cjs"),scopeFixtureFile);
   const harness = path.join(temporary, "harness.cjs");
   fs.writeFileSync(harness, `
     const fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process');
     const {runTask16RegisteredPg}=require(${JSON.stringify(path.join(root, "services/api/prisma/run-task16-registered-pg-local.cjs"))});
+    const scopeFixture=require(${JSON.stringify(scopeFixtureFile)});
     const specification=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
     let options=specification.options;
     const packet=JSON.parse(fs.readFileSync(options.packetFile,'utf8'));
@@ -94,7 +102,7 @@ function preparedRuntime(t) {
     const adapters={
       readOnlyCommand(exe,args,control){
         commands.push({exe,args,env:control.env});
-        if(args[0].endsWith('/prepare-task16-registered-pg.cjs'))return JSON.stringify({status:'SOURCE_ONLY_VERIFIED_NOT_EXECUTED',candidateSha:packet.candidateSha,sealSha256:packet.sealSha256,packetSha256:options.expectedPacketSha256,executionAllowed:false});
+        if(args[0].endsWith('/prepare-task16-registered-pg.cjs'))return JSON.stringify({status:'SOURCE_ONLY_VERIFIED_NOT_EXECUTED',candidateSha:packet.candidateSha,sealSha256:packet.sealSha256,packetSha256:options.expectedPacketSha256,executionAllowed:false,sourceProfile:packet.sourceProfile});
         const output=execFileSync(exe,args,control);
         if(specification.metadataMutation&&args[0]==='--eval'&&args[1].includes('inspectTask16SdkSource')){
           const mutation=specification.metadataMutation;
@@ -117,12 +125,12 @@ function preparedRuntime(t) {
       const codeHash=n=>hash(fs.readFileSync(path.join(root,'services/api/prisma/'+n))),ca=path.join(path.dirname(options.inputsFile),'owned-ca.crt');fs.writeFileSync(ca,'synthetic CA only',{mode:0o600});
       const tls={caSha256:hash(fs.readFileSync(ca)),correctCertificateDerSha256:'1'.repeat(64)};let source,resourceReceipt,pendingSdkDrift=false;
       adapters.startResource=async c=>{source=c.source;calls.push('resource');resourceReceipt={...source.inputs.docker,runId:c.runId,sourceSha:source.candidateSha,containerId:'d'.repeat(64),networkId:'e'.repeat(64),databaseName:'jg_task01_'+c.runId.replaceAll('-',''),port:15432,status:'started-awaiting-driver-verification',cleanup:{status:'pending'},requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:tls.correctCertificateDerSha256},tls};
-        return{containerId:resourceReceipt.containerId,networkId:resourceReceipt.networkId,databaseName:resourceReceipt.databaseName,port:resourceReceipt.port,caPath:ca,serverCertHashes:tls,getReceipt:()=>structuredClone(resourceReceipt),close:async()=>{calls.push('close-resource');resourceReceipt.status='closed';resourceReceipt.cleanup={status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true};},execOwnerSql:async sql=>({stdout:JSON.stringify({...identity,phase:'clients-check',nonce:/'([a-f0-9]{64})' AS nonce/u.exec(sql)[1],database:resourceReceipt.databaseName,ownerRole:roles[0],loginRole:roles[0],ownerIsDatabaseOwner:true,runtimeRole:roles[1],observerRole:roles[2],tls:true,version:160004,replication:'origin',readOnly:'off',schema204PhysicalVerified:true,schema203Verified:true,schema203TypeAclWitness:typeAcl,functionsVerified:true,baselineGuardsVerified:true,matrixVerified:true,guardVerified:true,installedObjectWitness:objects,otherGranteeAclWitness:[],migrationLedger:source.migrations.map(row=>({name:row.path.split('/').at(-2),sha256:row.sha256,finished:true,rolledBack:false}))})})};};
+        return{containerId:resourceReceipt.containerId,networkId:resourceReceipt.networkId,databaseName:resourceReceipt.databaseName,port:resourceReceipt.port,caPath:ca,serverCertHashes:tls,getReceipt:()=>structuredClone(resourceReceipt),close:async()=>{calls.push('close-resource');resourceReceipt.status='closed';resourceReceipt.cleanup={status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true};},execOwnerSql:async sql=>({stdout:JSON.stringify({...identity,phase:'clients-check',nonce:/'([a-f0-9]{64})' AS nonce/u.exec(sql)[1],database:resourceReceipt.databaseName,ownerRole:roles[0],loginRole:roles[0],ownerIsDatabaseOwner:true,runtimeRole:roles[1],observerRole:roles[2],tls:true,version:160004,replication:'origin',readOnly:'off',schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("seven"),schema205Registry:scopeFixture.registry("seven"),schema203Verified:true,schema203TypeAclWitness:typeAcl,functionsVerified:true,baselineGuardsVerified:true,matrixVerified:true,guardVerified:true,installedObjectWitness:objects,otherGranteeAclWitness:[],migrationLedger:source.migrations.map(row=>({name:row.path.split('/').at(-2),sha256:row.sha256,finished:true,rolledBack:false}))})})};};
       adapters.verifyOwnerTransport=async()=>({status:'OWNER_TLS_CONTROLS_VERIFIED',...identity,caSha256:tls.caSha256,tlsWitness:tls});
-      adapters.migrateBaseline=async()=>({migrationCount:204});
-      adapters.installBaselineAccess=async c=>({status:'BASELINE_ROLE_ACL_COMMIT_OBSERVED',schema204PhysicalVerified:true,...identity,runtimeRole:roles[1],observerRole:roles[2],sourceSha:source.candidateSha,manifestSha256:codeHash('task16-baseline-access.json'),expectedMatrixSha256:hash(JSON.stringify([basePlan.runtime,basePlan.observer])),resourceWitness:structuredClone(c.resourceWitness),schema203TypeAclWitness:typeAcl});
-      adapters.installPreparedSql=async c=>({status:'SQL_INSTALLATION_COMMIT_OBSERVED',...identity,candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256,packetSha256:options.expectedPacketSha256,baselineContinuityVerified:true,baselineManifestSha256:c.baselineAccess.manifestSha256,fragmentCount:7,installedObjectWitness:objects});
-      adapters.installRegisteredAccess=async c=>{if(specification.clientsProtocol==='model-drift')source.runtimeAdmission.sdkSchema.runtimeDataModelTextSha256='0'.repeat(64);if(specification.clientsProtocol==='lost-proof')delete source.runtimeAdmission.sdkSchema;if(specification.clientsProtocol==='fd-drift')pendingSdkDrift=true;return{status:'REGISTERED_ACL_COMMIT_OBSERVED',schema204PhysicalVerified:true,...identity,sourceSha:source.candidateSha,sourceSealSha256:source.sealSha256,manifestSha256:codeHash('task16-registered-access.json'),baselineManifestSha256:c.baselineAccess.manifestSha256,expectedMatrixSha256:hash(JSON.stringify([plan.runtime,plan.observer])),installedObjectWitness:objects,otherGranteeAclWitness:[],schema203TypeAclWitness:typeAcl};};
+      adapters.migrateBaseline=async()=>({migrationCount:205});
+      adapters.installBaselineAccess=async c=>({status:'BASELINE_ROLE_ACL_COMMIT_OBSERVED',schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("baseline"),schema205Registry:scopeFixture.registry("baseline"),...identity,runtimeRole:roles[1],observerRole:roles[2],sourceSha:source.candidateSha,manifestSha256:codeHash('task16-baseline-access.json'),expectedMatrixSha256:hash(JSON.stringify([basePlan.runtime,basePlan.observer])),resourceWitness:structuredClone(c.resourceWitness),schema203TypeAclWitness:typeAcl});
+      adapters.installPreparedSql=async c=>({status:'SQL_INSTALLATION_COMMIT_OBSERVED',...identity,candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256,packetSha256:options.expectedPacketSha256,baselineContinuityVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("seven"),schema205Registry:scopeFixture.registry("seven"),schema205ScopeDelta:scopeFixture.delta("seven"),baselineManifestSha256:c.baselineAccess.manifestSha256,fragmentCount:7,installedObjectWitness:objects});
+      adapters.installRegisteredAccess=async c=>{if(specification.clientsProtocol==='model-drift')source.runtimeAdmission.sdkSchema.runtimeDataModelTextSha256='0'.repeat(64);if(specification.clientsProtocol==='lost-proof')delete source.runtimeAdmission.sdkSchema;if(specification.clientsProtocol==='fd-drift')pendingSdkDrift=true;return{status:'REGISTERED_ACL_COMMIT_OBSERVED',schema204PhysicalVerified:true,schema205PhysicalVerified:true,schema205WitnessSha256:"8".repeat(64),schema205ScopeObjects:scopeFixture.scope("seven"),schema205Registry:scopeFixture.registry("seven"),...identity,sourceSha:source.candidateSha,sourceSealSha256:source.sealSha256,manifestSha256:codeHash('task16-registered-access.json'),baselineManifestSha256:c.baselineAccess.manifestSha256,expectedMatrixSha256:hash(JSON.stringify([plan.runtime,plan.observer])),installedObjectWitness:objects,otherGranteeAclWitness:[],schema203TypeAclWitness:typeAcl};};
       adapters.connectRestrictedClients={command:async(exe,args,control)=>{const stdout=adapters.readOnlyCommand(exe,args,control).toString();if(pendingSdkDrift&&args.includes('compare')&&args[args.indexOf('--root')+1]===path.join(root,'packages/shared-domain/dist')){pendingSdkDrift=false;fs.appendFileSync(path.join(root,'services/api/node_modules/.prisma/client/index.js'),'\\n// changed after B2\\n');}return{actualSettled:true,code:0,timedOut:false,stdout,stderr:''};},createClient:(configuration,Class)=>{const client=new Class();calls.push('construct-'+configuration.role);const i=roles.indexOf(configuration.role);client.$connect=async()=>{calls.push('connect-'+configuration.role);if(specification.clientsProtocol==='connect-fd-drift'&&i===0)fs.appendFileSync(path.join(root,'services/api/node_modules/.prisma/client/index.js'),'\\n// changed after connect await\\n');};client.$disconnect=async()=>calls.push('disconnect-'+configuration.role);client.$transaction=async action=>action(client);client.$queryRawUnsafe=async(sql,nonce)=>[{nonce,database:resourceReceipt.databaseName,...identity,effectiveRole:roles[i],loginRole:roles[i],effectiveOid:oids[i],loginOid:oids[i],pid:12001+i,version:160004,tls:true,replication:'origin',readOnly:i===2?'on':'off',defaultReadOnly:i===2?'on':'off'}];return client;}};
       adapters.startApplication=async()=>{calls.push('app');return{close:async()=>calls.push('close-app')};};
     }
@@ -155,6 +163,16 @@ function preparedRuntime(t) {
   }
   return { hooks, temporary, root, put, packet, packetFile, inputs, inputsFile, options, preparation, preparationFile, run, sealInputs, sealPacket, sealPreparation, recapture };
 }
+
+test("a verified Schema206 source-only packet cannot enter runtime admission", t => {
+  const f = preparedRuntime(t, 206);
+  const result = f.run();
+  assert.equal(result.receipt.failureCode, "TASK16_RUNTIME_SOURCE_PROFILE_NOT_ADMITTED");
+  assert.equal(result.receipt.nativeExecution, false);
+  assert.deepEqual(result.calls, []);
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0].args[1], "--verify");
+});
 
 test("the public driver admits its own source/tools/worktree and compares all five actual code trees before simulated resources", t => {
   const f = preparedRuntime(t); const result = f.run();
@@ -357,11 +375,30 @@ test('static SDK metadata refuses later compound mutation without evaluating SDK
  assert.equal(result.commands.filter(row=>row.args.includes('compare')).length,5);
 });
 
-for(const mode of ['normal','model-drift','fd-drift','lost-proof','connect-fd-drift'])test(`B2 full static SDK source witness reaches actual B7 loader: ${mode}`,t=>{
+test("the actual Schema205 source refuses the historical SDK204 pair before simulated resource acquisition", t => {
+ const f=preparedRuntime(t,205);
+ const result=f.run();
+ assert.equal(result.receipt.failureCode,"TASK16_RUNTIME_SDK_SCHEMA");
+ assert.deepEqual(result.calls,[]);
+});
+
+for(const mode of ['normal','model-drift','fd-drift','lost-proof','connect-fd-drift'])test(`historical inert SDK204 source witness exercises the B2/B7 protocol: ${mode}`,t=>{
  const f=preparedRuntime(t);f.hooks.clientsProtocol=mode;
- const plan=JSON.parse(fs.readFileSync(path.join(project,'services/api/prisma/task16-registered-access.json'),'utf8'));for(const row of plan.sources)if(!f.packet.source.files.some(file=>file.path===row.path)){f.put(row.path,fs.readFileSync(path.join(project,row.path)));f.packet.source.files.push({path:row.path,sha256:row.sha256});}
+ const profilePath='services/api/prisma/task16-registered-access.json';
+ const plan=JSON.parse(fs.readFileSync(path.join(project,profilePath),'utf8'));
+ // This private mock tree keeps the historical source/SDK pair. B5/B6 are fake
+ // adapters, so this case tests the loader's FD continuity without qualifying 205.
+ const historicalSchema=f.packet.source.files.find(row=>row.path===f.packet.schema.path);
+ plan.sources.find(row=>row.path===historicalSchema.path).sha256=historicalSchema.sha256;
+ const profileBytes=Buffer.from(JSON.stringify(plan));
+ f.put(profilePath,profileBytes);
+ f.packet.source.files.find(row=>row.path===profilePath).sha256=hash(profileBytes);
+ for(const row of plan.sources)if(!f.packet.source.files.some(file=>file.path===row.path)){
+  f.put(row.path,fs.readFileSync(path.join(project,row.path)));
+  f.packet.source.files.push({path:row.path,sha256:row.sha256});
+ }
  f.put('services/api/node_modules/@prisma/client/index.js',"module.exports={PrismaClient:class OwnedFakeClient{},Prisma:{prismaVersion:{client:'5.22.0',engine:'605197351a3c8bdd595af2d2a9bc3025bca48ea2'}}};\n");
- f.packet.migrations=Array.from({length:204},(_,i)=>({path:`services/api/prisma/migrations/${String(20260101000000+i)}_synthetic/migration.sql`,sha256:'c'.repeat(64)}));f.sealPacket();f.recapture('services/api/node_modules');
+ f.packet.migrations=Array.from({length:205},(_,i)=>({path:`services/api/prisma/migrations/${String(20260101000000+i)}_synthetic/migration.sql`,sha256:'c'.repeat(64)}));f.sealPacket();f.recapture('services/api/node_modules');
  const result=f.run();assert.equal(result.receipt.nativeExecution,false);
  if(mode==='normal'){assert.equal(result.receipt.status,'SIMULATED_CASE_PROTOCOL_COMPLETED',JSON.stringify(result.receipt));assert.equal(result.calls.filter(x=>x.startsWith('construct-')).length,3);assert.equal(result.calls.filter(x=>x.startsWith('disconnect-')).length,3);}
  else{assert.equal(result.receipt.failureCode,'TASK16_CLIENT_SDK_SCHEMA',JSON.stringify(result.receipt));assert.equal(result.calls.filter(x=>x.startsWith('construct-')).length,mode==='connect-fd-drift'?1:0);assert.equal(result.calls.filter(x=>x.startsWith('disconnect-')).length,mode==='connect-fd-drift'?1:0);assert.equal(result.calls.includes('app'),false);}

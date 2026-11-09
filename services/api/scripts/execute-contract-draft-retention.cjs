@@ -917,6 +917,7 @@ function createSqlStore(prisma, context) {
 
   async function markFileDeleting(id) {
     return prisma.$transaction(async (tx) => {
+      await assertLegacyPhysicalCleanup(tx);
       const file = await tx.fileObject.findUnique({
         where: { id },
         select: { id: true, storageStatus: true }
@@ -1006,6 +1007,7 @@ function createSqlStore(prisma, context) {
 
   async function deleteTechnicalFileRecord(candidate, storage) {
     const reserved = await prisma.$transaction(async (tx) => {
+      await assertLegacyPhysicalCleanup(tx);
       const state = await technicalFileRecordState(tx, candidate);
       if (!state.safe) return state;
       for (const file of state.files) {
@@ -1057,6 +1059,7 @@ function createSqlStore(prisma, context) {
   async function purgeBusinessDraft(candidate) {
     return prisma.$transaction(
       async (tx) => {
+        await assertLegacyPhysicalCleanup(tx);
         const current = await createSqlStore(tx, context).rescan(candidate);
         invariant(current.safe, "业务草稿锁后不再纯净");
         const versions = await tx.contractVersion.findMany({
@@ -1198,6 +1201,12 @@ async function createStorage() {
   return storage;
 }
 
+async function assertLegacyPhysicalCleanup(tx) {
+  const { reviewReferenceCatalog } = require("../dist/file/contract-review-file-retention");
+  invariant(await reviewReferenceCatalog(tx) === "legacy",
+    "当前清理流程无法确认履约复核原件保留，已停止物理清理");
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     const databaseUrl = readDatabaseUrl(path.resolve(__dirname, "../.env"));
@@ -1214,6 +1223,9 @@ async function main() {
   if (args.apply || args.timerApprovedTemporary) assertOperationalMaintenanceWriteAllowed();
   const prisma = new PrismaClient();
   try {
+    if (args.apply || args.timerApprovedTemporary) {
+      await prisma.$transaction(assertLegacyPhysicalCleanup);
+    }
     if (args.timerApprovedTemporary) {
       invariant(
         process.env.CONTRACT_DRAFT_TEMP_RETENTION_ENABLED === "true",

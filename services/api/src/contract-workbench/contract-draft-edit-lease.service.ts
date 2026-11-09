@@ -1,3 +1,5 @@
+import { qualifyUpwardPendingSave } from "../contract/contract-upward-pending-save-profile";
+import { assertUpwardDirectPendingWriteClosed, isUpwardDirectPendingDraft } from "../contract/contract-upward-pending-read";
 import {
   BadRequestException,
   ConflictException,
@@ -34,10 +36,11 @@ export class ContractDraftEditLeaseService {
   async acquire(contractVersionId: string, actorUserId: string) {
     const issued = this.issueToken();
     return this.prisma.$transaction(async (tx) => {
-      const { contract } = await this.lockEditableDraft(tx, contractVersionId);
+      const { contract, version } = await this.lockEditableDraft(tx, contractVersionId);
       if (contract.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只有当前合同经办人可以取得编辑权");
       }
+      if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
       const now = this.currentTime();
       const existing = await tx.contractDraftEditLease.findUnique({
         where: { contractVersionId }
@@ -85,7 +88,8 @@ export class ContractDraftEditLeaseService {
     const expiresAt = new Date(now.getTime() + CONTRACT_DRAFT_LEASE_TTL_MS);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await this.lockEditableDraft(tx, contractVersionId);
+        const { version } = await this.lockEditableDraft(tx, contractVersionId);
+        if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
         const result = await tx.contractDraftEditLease.updateMany({
           where: {
             contractVersionId,
@@ -124,8 +128,9 @@ export class ContractDraftEditLeaseService {
     await this.auth.confirmPassword(actorUserId, input.currentPassword);
     const issued = this.issueToken();
     return this.prisma.$transaction(async (tx) => {
-      await this.lockEditableDraft(tx, contractVersionId);
+      const { version } = await this.lockEditableDraft(tx, contractVersionId);
       await this.assertContractDirector(tx, actorUserId);
+      assertUpwardDirectPendingWriteClosed(version.draftData);
       const existing = await tx.contractDraftEditLease.findUnique({
         where: { contractVersionId }
       });

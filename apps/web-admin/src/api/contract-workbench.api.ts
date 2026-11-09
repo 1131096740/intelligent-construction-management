@@ -14,6 +14,7 @@ import type { PrivateFileReadModel } from "./core-flow-read.api";
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
 // ---------------------------------------------------------------------------
+type GuardedRequestOptions = { retryUnauthorized?: boolean; responseIsCurrent?: () => boolean };
 
 async function ensureOk(
   response: Response,
@@ -125,26 +126,28 @@ async function ensureOk(
   throw error;
 }
 
-async function readJson<T>(path: string, preserveErrorCode = false, headers?: Record<string, string>): Promise<T> {
-  const response = await apiFetch(path, headers ? { headers } : undefined);
+async function readJson<T>(path: string, preserveErrorCode = false, headers?: Record<string, string>, options?: GuardedRequestOptions): Promise<T> {
+  const response = await apiFetch(path, headers || options ? { headers, ...options } : undefined);
   await ensureOk(response, "读取失败", preserveErrorCode);
   return response.json() as Promise<T>;
 }
 
-async function postJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+async function postJson<TResponse>(path: string, body?: unknown, options?: GuardedRequestOptions): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {})
+    body: JSON.stringify(body ?? {}),
+    ...options
   });
   await ensureOk(response, "提交失败");
   return response.json() as Promise<TResponse>;
 }
 
-async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
+async function postForm<TResponse>(path: string, body: FormData, options?: GuardedRequestOptions): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
-    body
+    body,
+    ...options
   });
   await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
@@ -153,12 +156,14 @@ async function postForm<TResponse>(path: string, body: FormData): Promise<TRespo
 async function postJsonWithHeaders<TResponse>(
   path: string,
   body: unknown,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: GuardedRequestOptions
 ): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...options
   });
   await ensureOk(response, "提交失败", true);
   return response.json() as Promise<TResponse>;
@@ -211,12 +216,14 @@ async function deleteJson<TResponse>(path: string, body?: unknown): Promise<TRes
 async function deleteJsonWithHeaders<TResponse>(
   path: string,
   body: unknown,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  options?: GuardedRequestOptions
 ): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "DELETE",
     headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    ...options
   });
   await ensureOk(response, "删除失败", true);
   return response.json() as Promise<TResponse>;
@@ -253,12 +260,14 @@ export type CreateWorkbenchDraftPayload = (CreateWorkbenchDraftBasePayload & (
   projectId: string;
   contractTypeKey: string;
   amountLimitType: "capped" | "unlimited";
-  relationship?: "inside" | "outside" | "upward";
-};
+} & (
+  | { relationship?: "inside" | "outside" | "upward"; handlingMode?: never }
+  | { relationship: "outside" | "upward"; handlingMode: "direct_signed" }
+);
 
 export interface CreateWorkbenchDraftReadModel {
-  contract: { id: string };
-  version: { id: string };
+  contract: { id: string; projectId?: string };
+  version: { id: string; contractId?: string; draftData?: Record<string, unknown> };
   [key: string]: unknown;
 }
 
@@ -267,14 +276,14 @@ export interface ContractCreateCapabilityReadModel {
   availableActions: string[];
 }
 
-export function fetchContractCreateCapabilities(projectId: string) {
-  return readJson<ContractCreateCapabilityReadModel>(
-    `/contracts/create-capability?projectId=${encodeURIComponent(projectId)}`
-  );
+export function fetchContractCreateCapabilities(projectId: string, options?: GuardedRequestOptions, relationship?: "upward") {
+  const path = `/contracts/create-capability?projectId=${encodeURIComponent(projectId)}`;
+  return readJson<ContractCreateCapabilityReadModel>(relationship ? `${path}&relationship=${relationship}` : path, false, undefined, options);
 }
 
-export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload) {
-  return postJson<CreateWorkbenchDraftReadModel>("/contracts", body);
+export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload, responseIsCurrent?: () => boolean) {
+  return postJson<CreateWorkbenchDraftReadModel>("/contracts", body,
+    "handlingMode" in body && body.handlingMode === "direct_signed" ? { retryUnauthorized: false, responseIsCurrent } : undefined);
 }
 
 export interface ContractWorkbenchReadModel extends SharedContractWorkbenchReadModel {
@@ -282,12 +291,20 @@ export interface ContractWorkbenchReadModel extends SharedContractWorkbenchReadM
 }
 
 export type ContractDraftWorkbenchReadModel =
-  Omit<ContractWorkbenchReadModel, "checkpoints"> & {
+  Omit<ContractWorkbenchReadModel, "checkpoints" | "paymentTerms"> & {
+    paymentTerms: ContractWorkbenchReadModel["paymentTerms"] | null;
+    directPendingInput?: unknown;
+    directPendingCapabilities?: unknown;
+    upwardDraftSubjects?: unknown;
     draft: Record<string, unknown>;
     attachments: ContractDraftAttachmentModel[];
     draftOperationAvailableActions: string[];
     lease: ContractDraftLeaseState;
-    version: ContractWorkbenchReadModel["version"] & {
+    version: Omit<ContractWorkbenchReadModel["version"], "documentContentRevision"> & {
+      contractId?: string;
+      documentContentRevision: number | null;
+      originalSignedNumber?: string | null;
+      originalSignedNumberState?: "available" | "unavailable";
       draftLifecycleKind?: "pristine_draft" | "approval_draft";
     };
   };
@@ -322,6 +339,7 @@ export interface ContractDraftLeaseHeartbeat {
 export interface ContractDraftFieldsPayload {
   numericProtocolVersion?: 2;
   manualAmountYuan?: string | null;
+  originalSignedNumber?: string | null;
   companyEntityId?: string;
   draftData: Record<string, unknown>;
   clauses: ContractClauseDefinition[];
@@ -341,6 +359,8 @@ export interface ContractDraftFieldsPayload {
 
 export interface ContractDraftPartyModel {
   roleKey: string;
+  /** Verified editor-only identity from the controlled party detail. */
+  businessPartyId?: string;
   businessPartyVersionId?: string;
   displayOrder: number;
   snapshot: Record<string, unknown>;
@@ -429,6 +449,44 @@ export interface SaveContractDraftAggregateResult {
   };
 }
 
+export interface SaveDirectPendingDraftResult {
+  contractVersionId: string;
+  draftRevision: number;
+  serverRevision: number;
+  originalSignedNumber: string | null;
+  requestFingerprint: string;
+  directSigningInput: unknown;
+  documentContentRevision: null;
+  documentContentFingerprint: null;
+  documentsOutdated: false;
+  savedAt: string;
+  availableActions: [];
+}
+
+export function fetchDirectPendingSaveResult(contractVersionId: string, idempotencyKey: string, responseIsCurrent: () => boolean) {
+  return readJson<{ status: "unknown" } | { status: "saved"; result: SaveDirectPendingDraftResult; latestRevision: number }>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/save-requests/${encodeURIComponent(idempotencyKey)}`, false,
+    { "x-contract-numeric-protocol": "2" }, { retryUnauthorized: false, responseIsCurrent }
+  );
+}
+
+export async function saveDirectPendingDraft(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: SaveContractDraftAggregatePayload,
+  responseIsCurrent: () => boolean
+) {
+  const response = await apiFetch(`/contract-drafts/${encodeURIComponent(contractVersionId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Contract-Draft-Lease": leaseToken },
+    body: JSON.stringify(payload),
+    retryUnauthorized: false,
+    responseIsCurrent
+  });
+  await ensureOk(response, "保存失败", true);
+  return response.json() as Promise<SaveDirectPendingDraftResult>;
+}
+
 export function fetchContractWorkbench(contractId: string) {
   return readJson<ContractWorkbenchReadModel>(
     `/contract-workbench/${encodeURIComponent(contractId)}`, false, { "x-contract-numeric-protocol": "2" }
@@ -442,11 +500,11 @@ export function fetchContractDraftSaveResult(contractVersionId: string, idempote
   );
 }
 
-export function fetchContractDraftWorkbench(contractVersionId: string) {
+export function fetchContractDraftWorkbench(contractVersionId: string, options?: GuardedRequestOptions) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
     true,
-    { "x-contract-numeric-protocol": "2" }
+    { "x-contract-numeric-protocol": "2" }, options
   );
 }
 
@@ -525,40 +583,43 @@ export async function fetchContractDraftBody(contractVersionId: string) {
 }
 
 export function fetchContractDraftOperationCapabilities(
-  contractVersionId: string
+  contractVersionId: string,
+  options?: GuardedRequestOptions
 ) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
     true,
-    { "x-contract-numeric-protocol": "2" }
+    { "x-contract-numeric-protocol": "2" }, options
   );
 }
 
-export function acquireContractDraftEditLease(contractVersionId: string) {
+export function acquireContractDraftEditLease(contractVersionId: string, options?: GuardedRequestOptions) {
   return postJson<ContractDraftLeaseGrant>(
-    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`, undefined, options
   );
 }
 
 export function heartbeatContractDraftEditLease(
   contractVersionId: string,
-  leaseToken: string
+  leaseToken: string,
+  options?: GuardedRequestOptions
 ) {
   return postJsonWithHeaders<ContractDraftLeaseHeartbeat>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease/heartbeat`,
     {},
-    { "X-Contract-Draft-Lease": leaseToken }
+    { "X-Contract-Draft-Lease": leaseToken }, options
   );
 }
 
 export function releaseContractDraftEditLease(
   contractVersionId: string,
-  leaseToken: string
+  leaseToken: string,
+  options?: GuardedRequestOptions
 ) {
   return deleteJsonWithHeaders<{ released: boolean }>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/edit-lease`,
     {},
-    { "X-Contract-Draft-Lease": leaseToken }
+    { "X-Contract-Draft-Lease": leaseToken }, options
   );
 }
 
@@ -1243,7 +1304,8 @@ export function uploadContractWorkbenchPrivateFile(
   contractVersionId: string,
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  options?: GuardedRequestOptions
 ) {
   const form = new FormData();
   form.append("file", file, fileName);
@@ -1252,7 +1314,8 @@ export function uploadContractWorkbenchPrivateFile(
   }
   return postForm<PrivateFileReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/files`,
-    form
+    form,
+    options
   );
 }
 
@@ -1436,9 +1499,9 @@ export function restoreContractDraft(contractId: string) {
 // Business parties (GET/POST /business-parties)
 // ---------------------------------------------------------------------------
 
-export function listBusinessParties(query?: string) {
+export function listBusinessParties(query?: string, options?: GuardedRequestOptions) {
   const qs = query ? `?query=${encodeURIComponent(query)}` : "";
-  return readJson<unknown[]>(`/business-parties${qs}`);
+  return readJson<unknown[]>(`/business-parties${qs}`, false, undefined, options);
 }
 
 export async function getBusinessPartyCreateCapability() {
@@ -1456,8 +1519,8 @@ export interface CreateBusinessPartyPayload {
   [key: string]: unknown;
 }
 
-export function getBusinessParty(partyId: string) {
-  return readJson<unknown>(`/business-parties/${partyId}`);
+export function getBusinessParty(partyId: string, options?: GuardedRequestOptions) {
+  return readJson<unknown>(`/business-parties/${encodeURIComponent(partyId)}`, false, undefined, options);
 }
 
 export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload & { expectedVersionNo: number }) {

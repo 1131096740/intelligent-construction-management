@@ -1,3 +1,5 @@
+import type { PipeTransform } from "@nestjs/common";
+import { createApiValidationPipe } from "../../validation/api-validation";
 import { ArrayMaxSize, ArrayMinSize, ArrayUnique, Equals, IsArray, IsBoolean, IsInt, IsUUID, Matches, Min } from "class-validator";
 
 export class ConfirmContractSealV2Dto {
@@ -47,6 +49,47 @@ export class ArchiveSignedContractV2Dto {
 
   @Equals(true, { message: "请核对原件与本轮合同内容一致" })
   confirmedMatchingSignedDocument!: true;
+}
+
+export class RegisterDirectSignedContractV2Dto {
+  @Equals(2, { message: "请使用当前合同归档协议" })
+  archiveProtocolVersion!: 2;
+
+  @Equals("direct_signed")
+  archiveSource!: "direct_signed";
+
+  @IsUUID("4", { message: "本次归档标识不正确，请刷新后重试" })
+  idempotencyKey!: string;
+
+  @IsInt()
+  @Min(1, { message: "待登记资料修订不正确，请刷新后重试" })
+  expectedDraftRevision!: number;
+
+  @Matches(/^[a-f0-9]{64}$/u, { message: "待登记资料校验信息不正确，请刷新后重试" })
+  expectedInputSha256!: string;
+
+  @IsArray()
+  @ArrayMinSize(1, { message: "请保留至少一份签章原件" })
+  @ArrayMaxSize(20, { message: "每次最多登记20件签章原件" })
+  @ArrayUnique({ message: "签章原件不能重复" })
+  @IsUUID("4", { each: true, message: "签章原件标识不正确" })
+  fileIds!: string[];
+
+  @Equals(true, { message: "请核对签章原件与待登记资料一致" })
+  confirmedMatchingSignedDocument!: true;
+}
+
+export type SignedContractArchiveV2Request = ArchiveSignedContractV2Dto | RegisterDirectSignedContractV2Dto;
+
+export class SignedContractArchiveV2Pipe implements PipeTransform<unknown, Promise<SignedContractArchiveV2Request>> {
+  private readonly validation = createApiValidationPipe();
+
+  transform(value: unknown): Promise<SignedContractArchiveV2Request> {
+    const source = value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>).archiveSource : undefined;
+    const metatype = source === "direct_signed" ? RegisterDirectSignedContractV2Dto : ArchiveSignedContractV2Dto;
+    return this.validation.transform(value, { type: "body", metatype });
+  }
 }
 
 /** Only the exact pre-DML busy branch, after TX exit and a fresh unknown key. */

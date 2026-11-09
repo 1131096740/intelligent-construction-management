@@ -1,4 +1,11 @@
+import { assertUpwardPendingSaveContinuity, discoverUpwardPendingSave, qualifyUpwardPendingSave } from "../contract/contract-upward-pending-save-profile";
+import { saveUpwardPendingAggregate, UPWARD_PENDING_SAVE_ACTIONS } from "../contract/contract-upward-pending-save";
+import { readUpwardPendingSubjects } from "../contract/contract-upward-pending-subjects";
+import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
+import { isUpwardDirectPendingDraft, readUpwardDirectPending } from "../contract/contract-upward-pending-read";
+import { saveDirectPendingAggregate, readDirectPendingInput } from "../contract/contract-direct-pending-save";
 import { resolveContractDraftBusinessType } from "./contract-draft-basics";
+import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, hasDirectSigningInput } from "../contract/contract-direct-pending-source";
 import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
 import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
 import {
@@ -66,11 +73,14 @@ export class ContractDraftAggregateService {
       const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
       if (!contract || contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对该草稿的保存结果");
       assertContractDraftNumericProtocol(version, numericProtocol);
+      const upwardPending = isUpwardDirectPendingDraft(version.draftData);
+      if (upwardPending) await qualifyUpwardPendingSave(tx);
       const receipt = await tx.contractDraftSaveRequest.findUnique({ where: { idempotencyKey } });
       if (!receipt || receipt.contractVersionId !== contractVersionId || receipt.createdByUserId !== actorUserId) {
         // Absence cannot prove that a disconnected write is not still in flight.
         return { status: "unknown" as const };
       }
+      if (upwardPending) await this.assertUpwardSaveReceiptAccess(tx, actorUserId, contract.projectId);
       return { status: "saved" as const, result: publicSaveSnapshot(receipt.responseSnapshot), latestRevision: version.draftRevision };
     });
   }
@@ -126,24 +136,69 @@ export class ContractDraftAggregateService {
         ? "held_by_me"
         : "held_by_other";
     const isDirector = await this.isContractDirector(actorUserId);
-    const canTakeOver = leaseState === "held_by_other" && isDirector;
+    const upwardDirectPending = isUpwardDirectPendingDraft(version.draftData);
+    const canTakeOver = !upwardDirectPending && leaseState === "held_by_other" && isDirector;
     const isOwner = legacyReadModel.contract.ownerUserId === actorUserId;
-    const draftOperationAvailableActions = this.projectDraftOperationCapabilities(
+    let upwardSaveReady = false;
+    let upwardDraftSubjects: Awaited<ReturnType<typeof readUpwardPendingSubjects>>;
+    const draftOperationAvailableActions = upwardDirectPending ? [] : this.projectDraftOperationCapabilities(
       version,
       isOwner,
       isDirector,
       canTakeOver
     );
+    const directRead = upwardDirectPending
+      ? await this.prisma.$transaction(async tx => {
+        const saveQualification = isOwner ? await discoverUpwardPendingSave(tx) : undefined;
+        const read = await readUpwardDirectPending(tx, { ...version, projectId: legacyReadModel.contract.projectId },
+          actorUserId, isOwner, saveQualification);
+        upwardSaveReady = !!saveQualification && read.source.state !== "unavailable";
+        if (saveQualification && upwardSaveReady) {
+          const [fresh, contract] = await Promise.all([
+            tx.contractVersion.findUnique({ where: { id: version.id } }),
+            tx.contract.findUnique({ where: { id: version.contractId } })
+          ]);
+          if (contract?.ownerUserId === actorUserId && contract.projectId === legacyReadModel.contract.projectId && !contract.voidedAt &&
+            fresh?.contractId === contract.id && fresh.draftRevision === version.draftRevision && fresh.status === "draft" &&
+            fresh.versionNo === 1 && fresh.changeType === "original" && !fresh.firstSubmittedAt && !fresh.effectiveAt && !fresh.endedAt &&
+            isUpwardDirectPendingDraft(fresh.draftData)) {
+            upwardDraftSubjects = await readUpwardPendingSubjects(tx, contract.projectId, fresh.id, fresh.draftRevision, now);
+            await assertUpwardPendingSaveContinuity(tx, saveQualification);
+          }
+        }
+        return read;
+      })
+      : hasDirectSigningInput(version.draftData) ? await this.prisma.$transaction(async tx => {
+      try {
+        const qualification = await assertDirectPendingSourceQualification(tx);
+        const fresh = await tx.contractVersion.findUnique({ where: { id: version.id } });
+        if (!fresh || fresh.draftRevision !== version.draftRevision) throw new ConflictException("已签资料已变化，请刷新后核对");
+        const rows = await tx.$queryRaw<Array<{ id: string; originalSignedNumber: string | null }>>(Prisma.sql`SELECT "id", "originalSignedNumber" FROM public."ContractVersion" WHERE "id" = ${version.id} AND "contractId" = ${version.contractId}`);
+        const row = rows.length === 1 ? rows[0] : null;
+        if (!row || Object.keys(row).length !== 2 || row.id !== version.id || !("originalSignedNumber" in row) || (row.originalSignedNumber !== null && (typeof row.originalSignedNumber !== "string" || row.originalSignedNumber === ""))) throw new ConflictException("原合同编号暂时无法核对");
+        const source = await readDirectPendingInput(tx, version.id);
+        if (source.sourceRevision !== version.draftRevision) throw new ConflictException("已签资料修订暂时无法核对");
+        await assertDirectPendingSourceContinuity(tx, qualification);
+        return { originalSignedNumber: row.originalSignedNumber, originalSignedNumberState: "available", source };
+      } catch {
+        // Read availability is not a successful source proof; no repair or write.
+        return { originalSignedNumber: null, originalSignedNumberState: "unavailable", source: { protocolVersion: 1, sourceKind: "direct_signed_pending", state: "unavailable", sourceRevision: null, Q: null, inputSha256: null, reason: "已签合同来源暂时无法核对，请保留资料稍后办理" } };
+      }
+    }) : null;
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {
       ...legacyWithoutCheckpoints,
+      ...(upwardDirectPending ? { availableActions: [], availableLifecycleActions: [] } : {}),
       version: {
         ...legacyReadModel.version,
+        ...(directRead ? { originalSignedNumber: directRead.originalSignedNumber, originalSignedNumberState: directRead.originalSignedNumberState, documentContentRevision: null, documentContentFingerprint: null } : {}),
         layoutTemplateSelection,
         ...(version.numericProtocolVersion === 2 && legacyReadModel.version.amountYuan == null ? { amountCents: null } : {}),
         draftLifecycleKind: legacyReadModel.lifecycleKind
       },
+      ...(directRead ? { directPendingInput: directRead.source, directPendingCapabilities: { registrationEnabled: false, copyEnabled: false, purgeEnabled: false } } : {}),
+      ...(upwardDraftSubjects ? { upwardDraftSubjects } : {}),
       draft: version.draftData,
       templateEntry,
       billEntries,
@@ -179,7 +234,9 @@ export class ContractDraftAggregateService {
         values: contractBasicEntryValues(version.draftData)
       },
       attachments,
-      draftOperationAvailableActions,
+      draftOperationAvailableActions: upwardSaveReady
+        ? [...UPWARD_PENDING_SAVE_ACTIONS]
+        : draftOperationAvailableActions,
       ...(version.numericProtocolVersion === 2 ? { draftSubmissionUnavailableReason: CONTRACT_PRECISE_SUBMISSION_REASON } : {}),
       lease: {
         state: leaseState,
@@ -224,6 +281,8 @@ export class ContractDraftAggregateService {
           message: "合同草稿当前不可编辑，请刷新后重试"
         });
       }
+      if (isUpwardDirectPendingDraft(version.draftData)) await qualifyUpwardPendingSave(tx);
+      else if (hasDirectSigningInput(version.draftData)) await assertDirectPendingSourceQualification(tx);
     });
 
     return this.files.uploadPrivateFile({
@@ -269,6 +328,8 @@ export class ContractDraftAggregateService {
         if (!contract || !version) {
           throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
         }
+        const upwardPending = isUpwardDirectPendingDraft(version.draftData);
+        if (upwardPending && contract.ownerUserId === actorUserId) await qualifyUpwardPendingSave(tx);
         const receipt = await tx.contractDraftSaveRequest.findUnique({
           where: { idempotencyKey: input.idempotencyKey }
         });
@@ -283,6 +344,11 @@ export class ContractDraftAggregateService {
               code: "IDEMPOTENCY_KEY_REUSED",
               message: "保存幂等键已用于另一份合同草稿请求，请重新保存"
             });
+          }
+          if (hasDirectSigningInput(version.draftData)) {
+            if (contract.ownerUserId !== actorUserId) throw new ForbiddenException("只有当前合同经办人可以核对已签草稿保存");
+            if (upwardPending) await this.assertUpwardSaveReceiptAccess(tx, actorUserId, contract.projectId);
+            else await assertDirectPendingSourceQualification(tx);
           }
           return this.completeIdempotentSaveReceipt(
             receipt.responseSnapshot,
@@ -358,6 +424,10 @@ export class ContractDraftAggregateService {
           });
         }
 
+        if (upwardPending) return saveUpwardPendingAggregate(tx, contract, version, actorUserId, input, requestSha256,
+          this.audit, this.parties, this.files, transportFingerprint);
+        if (hasDirectSigningInput(version.draftData)) return saveDirectPendingAggregate(tx, contract, version, actorUserId, input, requestSha256, this.audit, this.parties, this.files, transportFingerprint);
+        if (Object.hasOwn(input.draft.draftData, "directSigningInput") || input.draft.originalSignedNumber !== undefined) throw new BadRequestException("已有合同不能通过保存切换为已签合同登记");
         const currentDraftBusinessType = version.status === "draft"
           ? resolveContractDraftBusinessType(input.draft.draftData, contract.contractTypeKey, version.signingSubjectType)
           : contract.contractTypeKey;
@@ -1096,6 +1166,21 @@ export class ContractDraftAggregateService {
     return !lease || lease.expiresAt.getTime() <= now.getTime();
   }
 
+  private async assertUpwardSaveReceiptAccess(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ) {
+    const access = await resolveGovernedFinalArchiveAccess(tx, {
+      actorUserId,
+      handlerUserId: actorUserId,
+      projectId
+    });
+    if (!access.canUpload) {
+      throw new ForbiddenException("当前账号无权核对该对上签章草稿的保存结果");
+    }
+  }
+
   private completeIdempotentSaveReceipt(
     responseSnapshot: unknown,
     resultRevision: number,
@@ -1180,6 +1265,7 @@ export class ContractDraftAggregateService {
       baseVersionId: string | null;
       contractGovernanceVersion: number | null;
       numericProtocolVersion?: number;
+      draftData?: unknown;
     },
     isOwner: boolean,
     isDirector: boolean,
@@ -1188,7 +1274,7 @@ export class ContractDraftAggregateService {
     const isOriginalDraft = version.changeType !== "change" &&
       version.changeType !== "supplement";
     const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
-    return projectContractDraftOperationCapabilities([
+    const actions = projectContractDraftOperationCapabilities([
       ...(isOwner && isEditableDraft ? [
         "acquire_contract_draft_edit_lease",
         ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
@@ -1229,6 +1315,7 @@ export class ContractDraftAggregateService {
       ] : []),
       ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
     ]);
+    return hasDirectSigningInput(version.draftData) ? actions.filter(action => ["acquire_contract_draft_edit_lease", "heartbeat_contract_draft_edit_lease", "release_contract_draft_edit_lease", "take_over_contract_draft_edit_lease", "save_contract_draft", "upload_contract_workbench_private_file"].includes(action)) : actions;
   }
 
   private async loadConflictSnapshot(

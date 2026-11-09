@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { NON_RECEIPT_FILE_BINDINGS } from "./file-business-binding";
+import { contractReviewRetainedObjectKeys } from "./contract-review-file-retention";
 import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-object-storage";
 
 /**
@@ -392,6 +393,7 @@ export async function buildFileBindingManifest(
       fileObject as FileObjectLite
     ])
   );
+  const retainedObjectKeys = await contractReviewRetainedObjectKeys(tx, fileObjects);
   const physicalObjectRows = fileObjects.length
     ? await tx.fileObject.findMany({
         where: {
@@ -420,11 +422,13 @@ export async function buildFileBindingManifest(
           (physicalFileId) => !candidates.has(physicalFileId)
         )
       : [];
-    const classification: FileBindingClassification = physicalObjectSharedIds.length
+    const retained = fileObject && retainedObjectKeys.has(fileObject.objectKey);
+    const classification: FileBindingClassification = retained || physicalObjectSharedIds.length
       ? {
           bindingType: "shared",
           sharedReason: [
             baseClassification.sharedReason,
+            retained ? "履约复核或待登记签章原件需保留" : undefined,
             ...physicalObjectSharedIds.map(
               (physicalFileId) => `FileObject:physicalObject:${physicalFileId}`
             )

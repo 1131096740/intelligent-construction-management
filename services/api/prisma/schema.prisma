@@ -2368,6 +2368,8 @@ model ContractVersion {
   changeType                             String
   status                                 String
   amountCents                            BigInt
+  /// Original paper number; nonempty source text is preserved, including whitespace.
+  originalSignedNumber                   String?
   numericProtocolVersion                 Int       @default(1)
   amountYuan                             Decimal?  @db.Decimal(24, 4)
   estimatedAmountCents                   BigInt?
@@ -5808,6 +5810,7 @@ model ApprovalDelegation {
 }
 
 model FileObject {
+  economicReviewFileReferences            ContractEconomicReviewFileReference[]
   registeredPaymentVouchers RegisteredPaymentVoucher[]
   id                                     String                                @id @default(uuid())
   bucket                                 String
@@ -5831,6 +5834,7 @@ model FileObject {
   @@index([supersedesFileObjectId])
   @@index([purgeReceiptId])
   @@index([storageStatus])
+  @@index([objectKey], map: "FileObject_objectKey_direct_retention_idx")
 }
 
 model ArchiveRecord {
@@ -6981,12 +6985,37 @@ model ContractEconomicReview {
   targetSourceRef       String?
   targetVersionId       String?
   frozenSources         Json?
+  directSourcePins      Json?
+  directFileReferences  ContractEconomicReviewFileReference[]
   createdAt             DateTime @default(now())
   confirmedAt           DateTime?
   returnedAt            DateTime?
   returnReason          String?
 
   @@index([projectId, leftSourceRef, rightSourceRef, status])
+}
+
+model ContractEconomicReviewFileReference {
+  reviewId                    String
+  sourceRef                   String
+  displayOrder                Int
+  sourceContractVersionId     String
+  directInputProtocolVersion  Int
+  sourceRevision              Int
+  inputSha256                 String
+  fileId                      String
+  mimeType                    String
+  sizeBytes                   Int
+  contentSha256               String
+  bucket                      String
+  objectKey                   String
+  review                      ContractEconomicReview @relation(fields: [reviewId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  file                        FileObject @relation(fields: [fileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([reviewId, sourceRef, displayOrder])
+  @@unique([reviewId, sourceRef, fileId])
+  @@index([fileId])
+  @@index([objectKey])
 }
 
 model ContractEconomicSettlementCoverage {
