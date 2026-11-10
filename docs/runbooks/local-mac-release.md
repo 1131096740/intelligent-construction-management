@@ -89,9 +89,10 @@ $XDG_STATE_HOME/jiangkong/local-release-<sha>.json
 # 如果未设置 XDG_STATE_HOME：$HOME/.local/state/jiangkong/local-release-<sha>.json
 ```
 
-完整门禁包含：冻结依赖安装、Prisma Client 生成、依赖审计、typecheck、lint、业务
-错误与运维安全自测、全量测试、API/Web build、UI 规则、release manifests、精确 SHA
-PostgreSQL 16 动态门、POL-22 隔离只读预检，以及
+完整门禁从冻结依赖安装和 Prisma Client 生成开始，然后运行 CI 编排测试，支持从
+未安装工作区依赖的干净候选启动。随后核对迁移基线、依赖审计、typecheck、E2E
+typecheck、lint、业务错误与运维安全自测、全量测试、API/Web build、UI 规则、
+release manifests、精确 SHA PostgreSQL 16 动态门、POL-22 隔离只读预检，以及
 Chromium/WebKit 的 P0 和 RC-06 mocked browser checks。
 
 本地发布的 PostgreSQL 阶段显式使用 `--automatic-only`，按经过校验的动态库存执行
