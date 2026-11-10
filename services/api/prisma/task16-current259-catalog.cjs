@@ -6,7 +6,7 @@ const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='97261ec3490dc777588f2318ede3bba248c65da520794a1730506be0266e12a9';
+const MANIFEST_SHA='1072511e18622ebbf852a9e98f171d7fa7fd7308543b8f453f19cf41400eb8ea';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');

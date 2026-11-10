@@ -118,6 +118,13 @@
     ],
     [
       "ContractVersion",
+      "originalSignedNumber",
+      "pg_catalog",
+      "text",
+      false
+    ],
+    [
+      "ContractVersion",
       "signingSubjectType",
       "pg_catalog",
       "text",

@@ -77,6 +77,11 @@ test('current259 accepts the contract scalar read needed by registered execution
  const result=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
  assert.equal(result.status,'CURRENT259_B7_CATALOG_MATCHED_NOT_ADMISSION');
 });
+test('current259 requires the physical type of the added original-number read',()=>{
+ const row=observed();
+ row.readerColumns=row.readerColumns.filter(column=>!(column[0]==='ContractVersion'&&column[1]==='originalSignedNumber'));
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
+});
 test('actual catalog-shaped259 rows yield material validation, never native session approval',()=>{
  const result=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
  assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);
