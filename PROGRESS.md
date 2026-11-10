@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #398 固定259安装目录/B7材料已集成 `6605b07e`：绑定全259及原256前缀、B7原函数体、9依赖表34列类型及既定33/11最小能力/PUBLIC禁权，分阶段同轮身份与独立COMMIT/xmin校读；仅渲染SQL/严格解析，结果不是native准入。跨轮prior与sequence默认ACL大小写两项独审问题已修闭，标准CI514、API类型/lint及PG16语法检查通过。真实角色/七片写helper资格安装、CA/session issuer及实际业务尚待；不继承旧205/256/VM权威或停止包授权。 [准确交接](/private/tmp/jg-398-current259-catalog-2xquctdy/HANDOFF.md) · [独审/合并](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-6605.md)
+
 - [ ] 准确 `749cadf9` 已获单次259授权并执行一次，退出1：越过205阶段，首库在第214条 `20261109190000_contract_direct_archive_dispatch_install_v1` 捕获实际 `P0002`；具体函数行号未留。其余六库/13项并发未开始，容器独立确认不存在，授权消耗不重试。源码定位205后直走tail，缺206/207/209受信绑定安装，214首个prepared绑定STRICT查必空；不改迁移绕过，后继先清点全259阶段生产/消费图并补真实安装/读回。独立460/55等仅源码证据，新loader候选未混入。 [停止回执](/private/tmp/jg-382-c6e4-independent.3wsyndgn/STOP-RECEIPT.md) · [只读因果](/private/tmp/jg-382-m214-readonly-cause-4uxwn406/HANDOFF.md)
 
 - [~] #398 本机259构建观察/固定加载器及真实Nest代理归属桥已集成 `02899d30`。实际SDK/原生engine version纯加载、五树/2160模块及空Nest组件串行1/1，CI470、API类型/lint通过；不new客户端、不init/listen/DB。三项独审缺陷（链式泄出target、动态getter、失败品牌可恢复）已真实反例修闭；旧authority/Schema/迁移不改。当前安装目录/三角色session issuer仍缺，不能用于真实A16，#398开放。较早52e的mock结果不覆盖后来发现的框架形状，现已补真实组件检查。 [新准确交接](/private/tmp/jg-398-current259-build.tre4q9h4/HANDOFF.md) · [独审/合并](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-0289.md)
