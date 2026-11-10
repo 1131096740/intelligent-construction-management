@@ -522,7 +522,7 @@ for(const [name,alter] of [
 
 // The only replaced boundaries here are the original owned-resource claim and
 // bounded Prisma CLI process. No alternative issuer is registered in product.
-async function current259Model(temporaryRoot, mutate) {
+async function current259Model(temporaryRoot, mutate, technical = true) {
   const model = await fakeFixture(temporaryRoot, mutate, [], false, true);
   const vm = require("node:vm"), nativeRequire = require("node:module").createRequire(__filename);
   const handle = Object.freeze({ simulation: "owned-current259-test" });
@@ -530,7 +530,7 @@ async function current259Model(temporaryRoot, mutate) {
   const rows = await canonicalRows();
   const receipt = { runId: container.runId, containerId: container.id, networkId: "b".repeat(64),
     databaseName: "jg_task01_0123456789abcdef0123456789abcdef", port: 55432,
-    containerName: "jg-task01-" + container.runId };
+    containerName: "jg-task01-" + container.runId, purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",limits:{totalDeadlineMs:3600000} };
   const resource = { containerId: receipt.containerId, networkId: receipt.networkId, port: receipt.port,
     caPath: "/synthetic-immutable-ca.crt", getReceipt: () => ({ ...receipt }),
     captureLogCursor: async () => { observations++; if(observation === "fail") throw Error("synthetic physical inspect failed");
@@ -544,7 +544,7 @@ async function current259Model(temporaryRoot, mutate) {
       }
       return model.ports.executeSql({ database:receipt.databaseName,phase:phase.replace(/^current259-/u,""),sql });
     } };
-  const view = { source: { candidateSha: "c".repeat(40), profile: { ledgerSha256: "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952", ledger: rows } },
+  const view = { purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",deadlineMs:3600000,source: { candidateSha: "c".repeat(40), profile: { ledgerSha256: "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952", ledger: rows } },
     build: { node: { path: process.execPath, sha256: crypto.createHash("sha256").update(require("node:fs").readFileSync(process.execPath)).digest("hex") } }, runId: container.runId, resource,
     credentials: () => ({ owner: "synthetic-non-secret" }),
     check: () => { checks++; assert.equal(closed, false, "synthetic resource closed"); },
@@ -567,6 +567,9 @@ async function current259Model(temporaryRoot, mutate) {
       } };
       if (request === "./task16-current259-owned-resource.cjs") return { claimCurrent259OwnedResource(value) {
         assert.equal(value, handle, "synthetic genuine handle required"); view.check(); return view;
+      }, claimCurrent259TechnicalResource(value) {
+        assert.equal(value,handle,"synthetic genuine handle required");
+        if(!technical)throw Error('CURRENT259_TECHNICAL_RESOURCE_REQUIRED');view.check();return view;
       }, closeCurrent259OwnedResource(value) {
         assert.equal(value,handle);closes++;closed=true;
         if(pendingReject)pendingReject(Error("synthetic owned SQL stopped"));
@@ -604,7 +607,7 @@ async function current259Model(temporaryRoot, mutate) {
   const api = load("local-staged-current259-profile.cjs");
   return { ...model, api, handle, receipt, close: () => { closed = true; },
     installGetter: field => {
-      const map={core:["./local-staged-migrations.cjs","createLocalMigrationFixture"],owned:["./task16-current259-owned-resource.cjs","claimCurrent259OwnedResource"],input:["./task16-runtime-inputs.cjs","readQualifiedTask16File"],command:["./task16-bounded-command.cjs","runTask16BoundedCommand"]};
+      const map={core:["./local-staged-migrations.cjs","createLocalMigrationFixture"],owned:["./task16-current259-owned-resource.cjs","claimCurrent259TechnicalResource"],input:["./task16-runtime-inputs.cjs","readQualifiedTask16File"],command:["./task16-bounded-command.cjs","runTask16BoundedCommand"]};
       const [file,key]=map[field],owner=moduleCache[nativeRequire.resolve(file)].exports,value=owner[key];let reads=0;
       Object.defineProperty(owner,key,{get(){reads++;return value;},enumerable:true,configurable:true});return ()=>reads;
     }, driftCli: () => { cliHash = "0".repeat(64); }, tamperCommand: () => { moduleCache[nativeRequire.resolve("./task16-bounded-command.cjs")].exports = {}; }, physicalFailure: value => { observation=value; }, pauseNextSql: () => { pauseSql=true; return new Promise(resolve=>{notifySql=resolve;}); }, releaseSql: () => pendingReject?.(Error("synthetic test release")), failClose:()=>{closeFails=true;}, counts: () => ({ checks, commands, closes, observations }) };
@@ -621,7 +624,7 @@ test("owned current259 technical recipe reuses all four atomic windows and indep
   assert.deepEqual(model.deploymentRequests.map(row => row.count), [203,205,213,215,218,221,259]);
   for (const stage of [213,215,218,221]) assert.deepEqual(model.calls.filter(value => value.startsWith("tail" + stage)),
     ["tail" + stage + "-before", "tail" + stage + "-supply", "tail" + stage + "-readback"]);
-  assert.ok(model.counts().checks > 70); assert.equal(model.counts().commands, 7);
+  assert.ok(model.counts().checks >= 544,"all former per-stage source checks remain"); assert.equal(model.counts().commands, 7);
   await assert.rejects(run.migrate());
 });
 
@@ -743,4 +746,13 @@ test("owned current259 retains primary semantic failure when owned cleanup is UN
   assert.equal(error.resourceCleanup?.status,"UNKNOWN");assert.match(error.cause?.message??"",/LOCAL_MIGRATION_DATABASE_IDENTITY/u);return true;
  });
  assert.equal(model.counts().closes,1);assert.equal(model.counts().commands,0);
+});
+
+
+test("owned current259 technical migration rejects genuine900s owner-only handle despite forged purpose",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-requires-technical-"));
+ const model=await current259Model(root,undefined,false);
+ assert.throws(()=>model.api.createCurrent259TechnicalMigration(model.handle),/CURRENT259_TECHNICAL_RESOURCE_REQUIRED/);
+ assert.equal(model.counts().checks,0);assert.equal(model.counts().commands,0);assert.equal(model.counts().observations,0);
+ assert.deepEqual(model.calls,[]);
 });

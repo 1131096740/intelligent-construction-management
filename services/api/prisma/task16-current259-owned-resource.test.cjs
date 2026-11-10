@@ -22,7 +22,7 @@ function fixture(){
  const mockCrypto={randomUUID:()=>id,randomBytes:()=>Buffer.alloc(48,9),createHash:()=>({update(bytes){this.bytes=String(bytes);return this;},digest(){return state.toolChanged?'0'.repeat(64):tools.get(this.bytes)||crypto.createHash('sha256').update(this.bytes).digest('hex');}})};
  const entries={},fixed={
   './task16-current259-client-loader.cjs':Object.freeze({loadCurrent259Client(handle){calls.push('load');if(handle!==build)throw new Error('CURRENT259_BUILD_HANDLE');return loader;}}),
-  './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;}}
+  './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},async startCurrent259TechnicalPostgres(options){calls.push('technical-start');state.options=options;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;}}
  };
  function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
  privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
@@ -168,4 +168,54 @@ test('an explicit close revokes before awaiting original cleanup and cannot issu
  assert.equal(f.state.closeCount,1);
  await f.api.closeCurrent259OwnedResource(retained);assert.equal(f.state.closeCount,1);
  assert.throws(()=>f.api.claimCurrent259OwnedResource(retained),/CURRENT259_RESOURCE_HANDLE/u);
+});
+
+
+test('named technical owned resource uses only the fixed1h producer and binds its purpose',async()=>{
+ const f=fixture();let retained;
+ const result=await f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,handle=>{
+  retained=handle;const view=f.api.claimCurrent259TechnicalResource(handle);
+  assert.equal(view.purpose,'CURRENT259_TECHNICAL_MIGRATIONS_V1');assert.equal(view.deadlineMs,3600000);
+  assert.equal(view,f.api.claimCurrent259OwnedResource(handle));
+  assert.equal(view.resource.getReceipt().purpose,view.purpose);assert.equal(view.resource.getReceipt().limits.totalDeadlineMs,3600000);
+  return 'technical';
+ });
+ assert.equal(result,'technical');assert.ok(f.calls.includes('technical-start'));assert.equal(f.calls.includes('start'),false);
+ assert.equal(Object.hasOwn(f.state.options,'deadlineMs'),false);assert.equal(f.state.closeCount,1);
+ assert.throws(()=>f.api.claimCurrent259TechnicalResource(retained),/CURRENT259_RESOURCE_HANDLE/);
+});
+
+test('old900s resource cannot be promoted by copied purpose or receipt fields',async()=>{
+ const f=fixture();
+ await f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,handle=>{
+  f.receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';f.receipt.limits={totalDeadlineMs:3600000};
+  assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_TECHNICAL_RESOURCE_REQUIRED/);
+  assert.throws(()=>f.api.claimCurrent259TechnicalResource({...handle,purpose:f.receipt.purpose}),/CURRENT259_RESOURCE_HANDLE/);
+  assert.equal(f.api.claimCurrent259OwnedResource(handle).purpose,undefined);
+ });
+ assert.equal(f.state.options.deadlineMs,900000);assert.equal(f.state.closeCount,1);
+});
+
+test('technical receipt purpose or deadline drift revokes the original handle permanently',async()=>{
+ for(const drift of ['purpose','deadline']) {
+  const f=fixture();
+  await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,handle=>{
+   if(drift==='purpose')f.receipt.purpose='OWNED_RESOURCE_ONLY';else f.receipt.limits.totalDeadlineMs=900000;
+   assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_RESOURCE_PURPOSE/);
+   f.receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';f.receipt.limits.totalDeadlineMs=3600000;
+   assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_RESOURCE_HANDLE/);
+  }));
+  assert.equal(f.state.closeCount,1);
+ }
+});
+
+test('technical resource cancellation retains original once-only cleanup and revocation',async()=>{
+ const f=fixture(),signal=new AbortController();let handle;
+ await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,signal.signal,async value=>{
+  handle=value;const view=f.api.claimCurrent259TechnicalResource(value);signal.abort();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.closeCount,1);
+  assert.throws(()=>f.api.claimCurrent259TechnicalResource(handle),/CURRENT259_RESOURCE_HANDLE/);
+  assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/);
+ }));
+ assert.equal(f.state.closeCount,1);
 });
