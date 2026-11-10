@@ -459,7 +459,12 @@ function firstPostgresFailure(logs, applicationName) {
     const reasons = {
       "真实归档应用角色或函数资格未提供，拒绝安装": "ARCHIVE_APPLICATION_QUALIFICATION_REQUIRED",
       "旧文件链实际caller闭包未提供，拒绝假定": "ARCHIVE_FILE_CALLERS_REQUIRED",
-      "真实待登记应用与文件调用者尚未供应，拒绝安装": "DIRECT_PENDING_CALLERS_REQUIRED"
+      "真实待登记应用与文件调用者尚未供应，拒绝安装": "DIRECT_PENDING_CALLERS_REQUIRED",
+      "local fixture base identity changed": "FIXTURE_BASE_IDENTITY_CHANGED",
+      "local fixture old trigger changed": "FIXTURE_OLD_TRIGGER_CHANGED",
+      "local fixture old routine changed": "FIXTURE_OLD_ROUTINE_CHANGED",
+      "local fixture role catalog changed": "FIXTURE_ROLE_CATALOG_CHANGED",
+      "local fixture file callers changed": "FIXTURE_FILE_CALLERS_CHANGED"
     };
     return {
       status: "captured",
@@ -1245,6 +1250,7 @@ async function main() {
       const createdContainerId = created.stdout.trim();
       await waitForPostgres(containerName, dockerCommand);
 
+      const firstApplicationName = `jg-pfq-first-${randomUUID()}`;
       migrationFixture = createLocalMigrationFixture({
         container: { id: createdContainerId, name: containerName, runId: fixtureRunId },
         databaseNames: Object.freeze([...ALLOWED_DATABASE_NAMES]),
@@ -1271,7 +1277,8 @@ async function main() {
             throw new Error("项目垫资额度迁移夹具拒绝非专用数据库");
           }
           return dockerCommand([
-            "exec", createdContainerId, "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1",
+            "exec", "--env", `PGAPPNAME=${firstApplicationName}`, createdContainerId,
+            "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1",
             "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-c", sql
           ], { timeoutMs: 60_000, maxOutputBytes: 512 * 1024 });
         },
@@ -1279,8 +1286,7 @@ async function main() {
       });
 
       const firstDatabaseUrl = new URL(databaseUrl);
-      const applicationName = `jg-pfq-first-${randomUUID()}`;
-      firstDatabaseUrl.searchParams.set("application_name", applicationName);
+      firstDatabaseUrl.searchParams.set("application_name", firstApplicationName);
       let firstDeploy;
       try {
         firstDeploy = await runPrismaMigrate({
@@ -1288,7 +1294,7 @@ async function main() {
           runtimeEnv
         });
       } catch (error) {
-        await retainFirstDeployFailure(dockerCommand, applicationName);
+        await retainFirstDeployFailure(dockerCommand, firstApplicationName);
         throw error;
       }
       const secondDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv });
