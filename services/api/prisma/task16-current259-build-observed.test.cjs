@@ -19,7 +19,7 @@ test('actual generated259 SDK/native engine/eight exports share one observed phy
  assert.throws(()=>claimCurrent259Build(handle),/CURRENT259_BUILD_HANDLE/u);
  assert.throws(()=>loadCurrent259Client({...handle}),/CURRENT259_BUILD_HANDLE/u);
  loader.verifyFull();const witness=loader.witness();assert.equal(witness.executionAllowed,false);assert.ok(witness.modules>100);assert.equal(witness.engineCommit,'605197351a3c8bdd595af2d2a9bc3025bca48ea2');
- process.stdout.write(JSON.stringify({status:'ACTUAL_HOST_BUILD_CLOSURE_OBSERVED_NOT_DB_AUTHORITY',source:witness.source,modules:witness.modules,engineCommit:witness.engineCommit})+'\n');
+ process.stdout.write(JSON.stringify({status:'ACTUAL_HOST_BUILD_CLOSURE_OBSERVED_NOT_DB_AUTHORITY',source:{candidateSha:witness.source.candidateSha,tree:witness.source.tree,sourceSealSha256:witness.source.sourceSealSha256},build:witness.build,modules:witness.modules,engineCommit:witness.engineCommit})+'\n');
  const prior=process.env.PRISMA_QUERY_ENGINE_LIBRARY;
  try{process.env.PRISMA_QUERY_ENGINE_LIBRARY='synthetic-engine-override-not-used';assert.throws(()=>loader.check(),error=>error.code==='CURRENT259_LOADER_CHANGED'&&!JSON.stringify(error).includes('synthetic-engine-override'));}
  finally{if(prior===undefined)delete process.env.PRISMA_QUERY_ENGINE_LIBRARY;else process.env.PRISMA_QUERY_ENGINE_LIBRARY=prior;}

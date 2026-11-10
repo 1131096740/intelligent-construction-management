@@ -111,7 +111,7 @@ function loadCurrent259Client(handle){
  const createTestingModule=metadata=>{check();return testMethod.call(Test,metadata);};
  check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,verifyFull:()=>{check();material.check();},loadApplicationModules,createTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
-  witness:()=>{check();return Object.freeze({source:material.source,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
+  witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
 module.exports=Object.freeze({loadCurrent259Client});
