@@ -26,7 +26,7 @@
 
 两名独立源码复核确认生命周期顺序缺陷：observer在匹配四个DDL锚点之前调用完整verify_control/file_callers，而M204$registry$在ALTERFUNCTION重命名与替代CREATE之间暂时缺canonical函数名。历史受控方案先返回非匹配DDL，再对准确锚点做完整校验。此缺陷与42883相符，实际错误目标函数仍未捕获，不冒充真实因果/修复通过。后继仅调整此时序，完整锚点/身份/源码/ACL/读回检查保留；实际新迁移须准确新候选另获授权。
 
-## 后继068ecef8：仅生命周期顺序，实际未执行
+## 后继068ecef8：仅生命周期顺序，实际读回停止
 
 准确 `068ecef8a36e687641161e5bccc74efdc1a5722b` / tree `77933894f56d2e4d7832eb0f578411bb4fb35bef` 已通过merger快进集成。相对2e995411停止文档仅一份SQL模板16增/2删；四个锚点、完整查询哈希、身份/启动参数、对象/函数源码、ACL、提交后读回和拆除检查保留，只在非匹配DDL事件上先返回，匹配锚点仍在trace/grants之前完整verify_control。没有捕获并吞掉函数不存在错误，也没有新拼写镜像测试。
 
@@ -35,3 +35,11 @@
 用户随后授权准确068ecef8单次验证，原命令已执行一次并退出1。首库迁移命令走到205，随后独立stage205-readback SQL失败，固定外层错误LOCAL_MIGRATION_SQL_STAGE205_READBACK；原psql会话未带迁移应用窗口标签，回执明确primary-not-retained，没有原SQLSTATE/具体谓词。组duration18982ms，未见超时/输出界限标识。独立提交/ACL读回未通过，不宣称204/205资格通过。
 
 其余六库和原13项并发未开始，容器宿主精确名称只读查询为空。停止/校验见 `/private/tmp/jg-382-068e-independent.FGpJCi/STOP-RECEIPT.md`、STOP-SHA256SUMS，原件0600；授权已消耗且不重试。后继先为控制psql补齐已拥有的应用/数据库/PID窗口及固定原因，不在缺少实际原因时猜测修改ACL/调用闭包。259归档候选586b未混入本包，不包括其它动态组/GitHub/部署/生产；其源码/模拟通过也不是实际资源通过。
+
+## 后继9d05bdfb：实际捕获文件调用者集合变化
+
+准确 `9d05bdfb8ec29da540f68f647e05b8ff5576134e` / tree `d558d7f07a8344a82feeb9fe5fd5d69fa00f8888` 仅补控制psql的首库唯一应用标签和五组固定脱敏原因。原14拒绝谓词、ACL、迁移、期限及恢复规则保持。独立冷副本421项编排、50项CLI、API类型/lint/构建、五份PG16.1语法解析及只读preflight通过；这些不是实际PG通过。单次准确方案为 `/private/tmp/jg-382-9d05-diagnostic.bJwyy0/RUN-PLAN.json`。
+
+用户明确回复“授权9d05bdfb单次诊断验证”后，原封存命令执行一次并退出1。迁移命令走到205，stage205独立SQL读回失败；清理前0600脱敏JSON成功留存第一条实际 PostgreSQL `P0001 / FIXTURE_FILE_CALLERS_CHANGED`。这确认文件调用者集合与冻结前像不同，尚不能断言具体新增/移除OID、哪个主体或合法阶段原因；后继先核源码集合转换与历史四锚点方案，不直接放宽检查。
+
+203前缀及资格准备完成，205提交/ACL独立读回未通过。其余六库及原13项并发未开始；准确容器 `jiangkong-pfq-concurrency-1794329822435-11777-bb3c44a9` 的宿主 `docker ps -a` 精确名称查询为空。停止回执、脱敏原件路径及校验见包内 `STOP-RECEIPT.md` / `STOP-SHA256SUMS`。授权已消耗，不重试本次或旧包，没有其它组、259候选、GitHub、部署或生产操作。本地集成后续已有259源码，独立诊断包仍固定原256，二者证据分开。
