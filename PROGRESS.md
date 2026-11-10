@@ -1,3 +1,14 @@
+## #382 集成接续（2026-11-10）
+
+- [~] GitHub 实际 14/45 项按各自阶段关闭，31 项开放。前置已齐的只有 #394（12 合同并联审批与签章归档）和 #398（16 实付安全）。草稿 #428 仍为 `4ca0965bd752e086a9229eebd2891d9a99c2e8ad`，该提交的 CI 失败。[远端结果](https://github.com/1131096740/intelligent-construction-management/actions/runs/42613286508)
+- [~] 本地集成基线 `b59798e4` 的 f0 树保留草稿祖先。全部 256 个迁移 SQL 及迁移锁与已完成的隔离运行 `0f4bc771` 逐字一致，复算迁移账与真实回执相同。该运行已完成管理、锚点事务独立读回和退出。基线新验 Web 2,271 项、编排 372 项、迁移与清理工具 154 项、Web 类型和 lint、UI 检查及发布清单均通过。[本地核验](/private/tmp/jg-382-integration-baseline.poJGPxWz/HANDOFF.md) · [隔离实跑](/private/tmp/jg-398-shared256-management-temp.gRmaF1je/RESULT.md)
+- [~] #394 的 A04 已本地合入 `403f8e4598b9f0700020ab262daa4a1273b931c3`。当前审批轮 PDF 展示已签岗位和未签空位，按冻结岗位的全局或项目职责授权，撤权拒绝，撤回和驳回清除旧签名引用。独审发现项目岗位误认全局权限，修复后 4 套 473 项通过、9 项既有跳过，API 类型和 lint 通过。真实签章归档、私有版本化存储、浏览器与并发验收仍待。[A04 回执](/private/tmp/jg-394-a04-scoped-current-and-ended.xTI06cpY/HANDOFF.md)
+- [~] #398 A16 固定 4,000 分回滚模拟完成一次实付请求、原键查询、独立核账、应用关闭和 HBA 恢复，80 项通过。B7 审批绑定同轮 B6 和准确 SQL，拒绝或签名错误时在写入前停止，提交回执不明不重发，94 项组合、17 项前台、6 项来宾通过。源码封存于独立目录，真实目录与实付仍须在获批隔离环境验收。[A16 回执](/private/tmp/jg-398-a16-stage-result.fhfrlFIZ/HANDOFF.md) · [B7 回执](/private/tmp/jg-398-b7-signed-stage.Nj7ja0tT/HANDOFF.md)
+
+- [~] `403f8e45` 新跑迁移基线及全部发布静态清单通过，733 路由、426 页面动作均零阻断。#398 另完成同轮原管理连接与独立 TLS owner 的只读目录端口源码，135 项回归通过。实际 B7 签名写入、真实同轮双读回和实付仍待。[发布清单](/private/tmp/jg-382-integration-baseline.poJGPxWz/release-manifests-403f.log) · [目录端口](/private/tmp/jg-398-b7-native-catalog.rdLxMdvW/HANDOFF.md)
+
+- [~] #394 A08 另封来宾专用配置文件端口，复用同轮锚点与凭据，20 项离线通过，覆盖实际文件替换、身份漂移拒绝与恢复。须接 A08 专用数据库配置重载与独立读回，再完成签章归档、存储及浏览器验收。[A08 入口](/private/tmp/jg-394-a08-hba-physical.j2HXYvuR/HANDOFF.md)
+
 ## 当前落地：CON10与FaceA签章归档Web源码整合（2026-11-09）
 
 - [~] 原integration已仅FF并正常推送准确W `09570c896be0a84547b940bdea9e873fa39cee9c` / tree `d9028df151f1e073e90b76f6826be3182a5256de`；原CON10 `84cb33ea`通过真实merge `fc2f2d92`进入祖先，再承接A3十四输入、十三实际Web变更。shared763496与中央同字节；PROGRESS保中央/CON10/Web前缀及完整base。[本轮收据](docs/progress/2026-11-09-task12-facea-signing-archive-web-consumer.md)。
