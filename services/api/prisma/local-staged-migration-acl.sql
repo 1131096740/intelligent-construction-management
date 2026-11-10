@@ -34,7 +34,7 @@ CREATE TABLE __SCHEMA__.control (
   actor_oid oid NOT NULL, installer_oid oid NOT NULL, namespace_oid oid NOT NULL,
   application_oid oid NOT NULL, file_caller_setting text NOT NULL DEFAULT '[]',
   archive_oid oid NOT NULL, version_oid oid NOT NULL, anchor_oid oid NOT NULL,
-  role_binding jsonb, object_binding jsonb, file_trigger_binding jsonb NOT NULL, file_routine_binding jsonb
+  role_binding jsonb, object_binding jsonb, file_dml_binding jsonb, file_trigger_binding jsonb NOT NULL, file_routine_binding jsonb
 );
 CREATE TABLE __SCHEMA__.events (
   ordinal integer PRIMARY KEY CHECK(ordinal BETWEEN 1 AND 4), payload jsonb NOT NULL
@@ -92,6 +92,91 @@ SET search_path=pg_catalog,pg_temp AS $callers$
 $callers$;
 REVOKE ALL ON FUNCTION __SCHEMA__.file_callers() FROM PUBLIC;
 
+-- Tuple: role,trigger,relation,type,reachable,usage,registry,definer,
+-- INSERT-any,DELETE,UPDATE-any-or-null,UPDATE-OF columns,table INSERT/DELETE/UPDATE.
+-- All roles and every frozen trigger participate, including currently denied routes.
+CREATE FUNCTION __SCHEMA__.file_dml_vector() RETURNS jsonb LANGUAGE sql STABLE
+SET search_path=pg_catalog,pg_temp AS $dml$
+ WITH RECURSIVE roots(oid) AS (
+  SELECT oid FROM pg_roles WHERE rolcanlogin UNION
+  SELECT proowner FROM pg_proc WHERE prosecdef AND pronamespace=to_regnamespace('public')),
+ reachable(oid) AS (SELECT oid FROM roots UNION
+  SELECT m.roleid FROM reachable r JOIN pg_auth_members m ON m.member=r.oid WHERE m.set_option)
+ SELECT jsonb_agg(jsonb_build_array(r.oid::text,t.oid::text,t.tgrelid::text,t.tgtype,
+  EXISTS(SELECT FROM reachable x WHERE x.oid=r.oid),has_schema_privilege(r.oid,'public','USAGE'),
+  has_function_privilege(r.oid,'public.jg_file_business_binding_columns()','EXECUTE'),
+  EXISTS(SELECT FROM pg_proc p WHERE p.prosecdef AND p.proowner=r.oid AND p.oid IN (
+   'public.jg_enforce_exclusive_file_business_binding()'::regprocedure,
+   'public.jg_enforce_file_replacement_exclusive_binding()'::regprocedure)),
+  has_any_column_privilege(r.oid,t.tgrelid,'INSERT'),has_table_privilege(r.oid,t.tgrelid,'DELETE'),
+  CASE WHEN cardinality(t.tgattr::smallint[])=0 THEN has_any_column_privilege(r.oid,t.tgrelid,'UPDATE') END,
+  (SELECT coalesce(jsonb_agg(jsonb_build_array(c.attnum,has_column_privilege(r.oid,t.tgrelid,c.attnum,'UPDATE'))
+    ORDER BY c.attnum),'[]'::jsonb) FROM unnest(t.tgattr::smallint[]) c(attnum)),
+  has_table_privilege(r.oid,t.tgrelid,'INSERT'),has_table_privilege(r.oid,t.tgrelid,'DELETE'),
+  has_table_privilege(r.oid,t.tgrelid,'UPDATE')) ORDER BY r.oid,t.oid)
+ FROM pg_roles r CROSS JOIN pg_trigger t
+ WHERE t.oid IN (SELECT (x->>'oid')::oid FROM __SCHEMA__.control ctl
+  CROSS JOIN LATERAL jsonb_array_elements(ctl.file_trigger_binding) x)
+$dml$;
+REVOKE ALL ON FUNCTION __SCHEMA__.file_dml_vector() FROM PUBLIC;
+
+CREATE FUNCTION __SCHEMA__.verify_file_callers() RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $transition$
+DECLARE ctl __SCHEMA__.control%ROWTYPE; before_vector jsonb; actual_vector jsonb; expected_vector jsonb;
+ actual_callers oid[]; expected_callers oid[]; acl jsonb; final_stage boolean;
+BEGIN
+ SELECT * INTO STRICT ctl FROM __SCHEMA__.control;
+ before_vector:=ctl.file_dml_binding;
+ actual_vector:=__SCHEMA__.file_dml_vector();
+ expected_vector:=before_vector;
+ expected_callers:=ARRAY(SELECT x::text::oid FROM jsonb_array_elements(ctl.file_caller_setting::jsonb) x);
+ final_stage:=(SELECT count(*)=4 FROM __SCHEMA__.events);
+ IF final_stage THEN
+  IF NOT EXISTS(SELECT FROM public._prisma_migrations WHERE
+    migration_name=ctl.plan->'migrations'->204->>'name'
+    AND checksum=ctl.plan->'migrations'->204->>'sha256' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
+   OR EXISTS(SELECT FROM __SCHEMA__.events WHERE (payload->>'querySha256') IS DISTINCT FROM
+     ctl.plan->'migrations'->((payload->>'stage')::integer-1)->>'sha256')
+  THEN RAISE EXCEPTION 'local fixture file caller stage changed'; END IF;
+  SELECT jsonb_agg(jsonb_build_array(a.grantor::text,a.grantee::text,a.privilege_type,a.is_grantable)
+    ORDER BY a.privilege_type) INTO acl
+  FROM pg_attribute c CROSS JOIN LATERAL aclexplode(c.attacl) a
+  WHERE c.attrelid=ctl.version_oid AND c.attname='originalSignedNumber' AND c.attnum>0 AND NOT c.attisdropped;
+  IF acl IS DISTINCT FROM (SELECT jsonb_agg(jsonb_build_array(ctl.actor_oid::text,
+    ctl.application_oid::text,p,false) ORDER BY p) FROM unnest(ARRAY['INSERT','SELECT','UPDATE']) p)
+  THEN RAISE EXCEPTION 'local fixture file caller column ACL changed'; END IF;
+  IF NOT EXISTS(SELECT FROM jsonb_array_elements(before_vector) v
+    WHERE v->>0=ctl.application_oid::text AND v->>2=ctl.version_oid::text
+      AND ((v->>3)::integer & 4)=4 AND v->8='false'::jsonb AND v->12='false'::jsonb)
+   OR ctl.application_oid=ANY(expected_callers)
+  THEN RAISE EXCEPTION 'local fixture file caller DML changed'; END IF;
+  SELECT jsonb_agg(CASE WHEN v->>0=ctl.application_oid::text AND v->>2=ctl.version_oid::text
+    THEN jsonb_set(v,'{8}','true'::jsonb) ELSE v END ORDER BY n)
+    INTO expected_vector FROM jsonb_array_elements(before_vector) WITH ORDINALITY x(v,n);
+  expected_callers:=ARRAY(SELECT x FROM unnest(expected_callers||ctl.application_oid) x ORDER BY x);
+ END IF;
+ IF before_vector IS NULL OR jsonb_array_length(before_vector)>4096
+  OR octet_length(before_vector::text)>262144 OR octet_length(actual_vector::text)>262144
+  OR actual_vector IS DISTINCT FROM expected_vector
+ THEN RAISE EXCEPTION 'local fixture file caller DML changed'; END IF;
+ actual_callers:=__SCHEMA__.file_callers();
+ IF actual_callers IS DISTINCT FROM expected_callers
+ THEN RAISE EXCEPTION 'local fixture file callers changed'; END IF;
+ RETURN jsonb_build_object('versionOid',ctl.version_oid::text,'before',before_vector,
+  'after',actual_vector,'callers',ARRAY(SELECT x::bigint FROM unnest(actual_callers) x),'acl',acl);
+END $transition$;
+REVOKE ALL ON FUNCTION __SCHEMA__.verify_file_callers() FROM PUBLIC;
+
+-- Preserve the existing whole control-port stdout budget, including metadata.
+CREATE FUNCTION __SCHEMA__.bound_readback(payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $bound$
+BEGIN
+ IF payload IS NULL OR octet_length(payload::text)>520192
+ THEN RAISE EXCEPTION 'local fixture readback too large'; END IF;
+ RETURN payload;
+END $bound$;
+REVOKE ALL ON FUNCTION __SCHEMA__.bound_readback(jsonb) FROM PUBLIC;
+
 DO $old_acl$
 DECLARE matrix jsonb := __MATRIX__::jsonb; ctl __SCHEMA__.control%ROWTYPE;
  item record; sig text; names text; f record; caller oid; callers oid[]; preserved oid[];
@@ -146,7 +231,7 @@ BEGIN
   EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC RESTRICT',f.oid::regprocedure);
  END LOOP;
  UPDATE __SCHEMA__.control SET file_caller_setting='['||array_to_string(callers,',')||']',
-  role_binding=__SCHEMA__.role_catalog(), file_routine_binding=(SELECT jsonb_agg(jsonb_build_object(
+  role_binding=__SCHEMA__.role_catalog(), file_dml_binding=__SCHEMA__.file_dml_vector(), file_routine_binding=(SELECT jsonb_agg(jsonb_build_object(
    'oid',oid::text,'owner',proowner::text,'body',encode(sha256(convert_to(prosrc,'UTF8')),'hex'),
    'definer',prosecdef,'config',proconfig,'acl',proacl) ORDER BY oid) FROM pg_proc WHERE oid IN (
     'public.jg_enforce_exclusive_file_business_binding()'::regprocedure,
@@ -393,8 +478,7 @@ BEGIN
  THEN RAISE EXCEPTION 'local fixture old routine changed'; END IF;
  IF __SCHEMA__.role_catalog() IS DISTINCT FROM ctl.role_binding
  THEN RAISE EXCEPTION 'local fixture role catalog changed'; END IF;
- IF __SCHEMA__.file_callers() IS DISTINCT FROM ARRAY(SELECT x::text::oid FROM jsonb_array_elements(ctl.file_caller_setting::jsonb) x)
- THEN RAISE EXCEPTION 'local fixture file callers changed'; END IF;
+ PERFORM __SCHEMA__.verify_file_callers();
  SELECT * INTO STRICT r FROM pg_roles WHERE oid=ctl.application_oid AND rolname=ctl.plan->>'appName';
  IF r.rolsuper OR r.rolinherit OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
    OR NOT r.rolcanlogin OR r.rolconnlimit<>0

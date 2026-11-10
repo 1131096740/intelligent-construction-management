@@ -94,9 +94,17 @@ else if (args.includes("psql")) {
       [205, "ALTER TABLE", "pg_class", "ContractVersion", null],
       [205, "ALTER FUNCTION", "pg_proc", "jg_contract_direct_pending_file_guard_v1", "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1"]
     ];
-    stdout = JSON.stringify({ ...inspectDatabase(name, db), ...db.setup, readerPid: 202,
+    const beforeRoutes = [...db.setup.fileCallerOids, Number(db.setup.appOid)].sort((a,b)=>a-b)
+      .map(role => [String(role), "51", "52", 23, true, true, true, false,
+        role !== Number(db.setup.appOid), false, null, [[8, false]], role !== Number(db.setup.appOid), false, false]);
+    const afterRoutes = JSON.parse(JSON.stringify(beforeRoutes));
+    afterRoutes.find(row => row[0] === db.setup.appOid)[8] = true;
+    const transition = { versionOid: "52", before: beforeRoutes, after: afterRoutes,
+      callers: [...db.setup.fileCallerOids, Number(db.setup.appOid)].sort((a,b)=>a-b),
+      acl: ["INSERT", "SELECT", "UPDATE"].map(p => ["10", db.setup.appOid, p, false]) };
+    stdout = JSON.stringify({ ...inspectDatabase(name, db), ...db.setup, readerPid: 202, fileCallerTransition: transition,
       events: anchors.map(([stage, tag, catalog, anchorName, bodySha256], index) => ({ ordinal: index + 1,
-        stage, tag, catalog, name: anchorName, bodySha256, objectOid: String(40001 + index),
+        stage, tag, catalog, name: anchorName, bodySha256, objectOid: index === 2 ? "52" : String(40001 + index),
         querySha256: row(stage - 1).sha256, runId: db.plan.runId, nonce: db.plan.nonce,
         databaseOid: db.plan.databaseOid, systemIdentifier: db.plan.systemIdentifier, actorOid: "10",
         appOid: db.setup.appOid, fileCallerOids: db.setup.fileCallerOids, backendPid: 101,

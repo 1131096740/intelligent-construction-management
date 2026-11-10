@@ -105,9 +105,17 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
           [205, "ALTER TABLE", "pg_class", "ContractVersion", null],
           [205, "ALTER FUNCTION", "pg_proc", "jg_contract_direct_pending_file_guard_v1", "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1"]
         ];
-        result = { ...result, ...setup, readerPid: 202,
+        const beforeRoutes = [10, ...setup.fileCallerOids.filter(x => x !== 10), Number(setup.appOid)].sort((a,b) => a-b)
+          .map(role => [String(role), "51", "52", 23, true, true, true, false,
+            role !== Number(setup.appOid), false, null, [[8, false]], role !== Number(setup.appOid), false, false]);
+        const afterRoutes = JSON.parse(JSON.stringify(beforeRoutes));
+        afterRoutes.find(row => row[0] === setup.appOid)[8] = true;
+        const transition = { versionOid: "52", before: beforeRoutes, after: afterRoutes,
+          callers: [...setup.fileCallerOids, Number(setup.appOid)].sort((a,b) => a-b),
+          acl: ["INSERT", "SELECT", "UPDATE"].map(p => ["10", setup.appOid, p, false]) };
+        result = { ...result, ...setup, readerPid: 202, fileCallerTransition: transition,
           events: anchors.map(([stage, tag, catalog, name, bodySha256], index) => ({
-            ordinal: index + 1, stage, tag, catalog, name, bodySha256, objectOid: String(40001 + index),
+            ordinal: index + 1, stage, tag, catalog, name, bodySha256, objectOid: index === 2 ? "52" : String(40001 + index),
             querySha256: rows[Number(stage) - 1].sha256, runId: plan.runId, nonce: plan.nonce,
             databaseOid: plan.databaseOid, systemIdentifier: plan.systemIdentifier, actorOid: plan.actorOid,
             appOid: setup.appOid, fileCallerOids: setup.fileCallerOids, backendPid: 101,
@@ -401,5 +409,21 @@ test("an Error reused by a later deployment cannot reopen the previous expected 
     const commands = harness.calls.length;
     await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString() }), /LOCAL_MIGRATION_STOPPED/u);
     assert.equal(harness.calls.length, commands);
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+test("independent205 caller proof rejects an unexplained route before cleanup or259 suffix", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-caller-delta-"));
+  try {
+    const harness = await fakeFixture(temporaryRoot, (phase, row) => {
+      if (phase === "stage205-readback") {
+        const appRoute = row.fileCallerTransition.after.find(r => r[0] === row.appOid);
+        appRoute[12] = true; // Table-wide INSERT is not the sealed single-column delta.
+      }
+      return row;
+    });
+    await assert.rejects(harness.fixture.migrate({ databaseUrl }), /LOCAL_MIGRATION_CONTROL/u);
+    assert.deepEqual(harness.calls.filter(x => x.startsWith("deploy-")), ["deploy-203", "deploy-205"]);
+    assert.equal(harness.calls.includes("qualification-cleanup"), false);
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
 });

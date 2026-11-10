@@ -90,6 +90,26 @@ describe("project financing quota PostgreSQL runner", () => {
       postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_FILE_CALLERS_CHANGED" }
     },
     {
+      name: "the bounded caller DML failure",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture file caller DML changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_FILE_CALLER_DML_CHANGED" }
+    },
+    {
+      name: "the bounded caller stage failure",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture file caller stage changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_FILE_CALLER_STAGE_CHANGED" }
+    },
+    {
+      name: "the bounded caller column ACL failure",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture file caller column ACL changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_FILE_CALLER_COLUMN_ACL_CHANGED" }
+    },
+    {
+      name: "the bounded complete readback overflow",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture readback too large\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_READBACK_TOO_LARGE" }
+    },
+    {
       name: "the earlier unknown cause ahead of a known prerequisite",
       logs: scopedPrefix + "42501|ERROR:  unknown-secret\n" +
         scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
