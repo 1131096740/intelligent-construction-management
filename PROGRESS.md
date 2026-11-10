@@ -1,5 +1,8 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [ ] 用户授权的准确 `2b270691` 完整本地发布验证已执行一次，前 13 步通过，第 14 步首个垫资并发组在隔离库应用 `20261108220000_contract_archive_v2_authority` 时事务中止，退出 1。该组测试未开始，临时容器已独立确认不存在，第 15–17 步未运行，无通过回执。相同 SQL 曾在受控 Prisma 入口通过，当前普通入口缺 203 后的归档角色、启动参数及 204/205 事务内最小 ACL 接入。原始数据库错误未保留；下一步统一隔离入口和脱敏首错捕获，不重跑本次。 [单次停止回执](/private/tmp/jg-382-release-2b27.2S0AT9B0/STOP-RECEIPT.md) · [只读根因对照](/private/tmp/jg-382-m204-stage14-readonly.6y68YJLw/HANDOFF.md)
+- [~] #394 同进程发射器接真实 403f 存储源码，并经独审修复部分 Prisma 装配仍可发帧，25 项离线通过。#398 严格宿主提议规则和同一预留 seed 接线已复核，修复校验后替换 HTTP 应用对象，15 项定向通过。两票的真实 Linux/PG 业务和授权仍待。 [合同装配](/private/tmp/jg-394-a08-emitter-di.RacJZjol/HANDOFF.md) · [实付 HTTP 绑定](/private/tmp/jg-398-a16-reserved-http.pjakLhv0/HANDOFF.md)
+
 - [~] 冷检出入口修复经独立复核合入准确 `2b2706917f979e4d4c41b64f2a83725a475669d6`，先冻结安装、生成 Prisma，再跑 CI 编排。17 项命令及首错停止保留，旧有效收据仍兼容。空依赖副本实测前三步通过、编排 373/373；同一 SHA 的非迁移独立预查全部通过，API 9,403 通过/570 跳过、Web 2,273、共享 256、RC-06 28/28，P0 3 通过/2 需账号跳过。审计高等级阈值通过、报告两项中等级。正式入口尚未尝试，两个本机隔离迁移阶段另待授权。 [准确独立预查](/private/tmp/jg-382-cold-prefix.GcVAeE6p/HANDOFF.md) · [新单次方案](/private/tmp/jg-382-release-2b27.2S0AT9B0/RUN-HANDOFF.md) · [#383 手动组源码封存](/private/tmp/jg-382-task01-source-2b27.TD6RPlec/HANDOFF.md)
 - [~] #394 Linux 只读材料已接到现有同轮签名短租约，15 项定向、10 项包装器、18 条镜像材料读回通过，待准确新引导入口、真实 API 观察和独立接收。#398 固定拆除材料与缺失的 AArch64 TLS 身份库已补，签名 A16 提议离线联测通过，独立复审发现宿主投影自匹配可接受非法字段，后继严格校验进行中，原生入口仍关闭。GitHub 核实 14 项阶段关闭、31 项开放，#428 草稿。 [合同签名接线](/private/tmp/jg-394-a08-signed-storage.QTpUd9Cv/HANDOFF.md) · [实付镜像材料](/private/tmp/jg-398-a16-overlay-disarm.Yvp9F9tm/HANDOFF.md) · [实付提议](/private/tmp/jg-398-a16-signed-proposal.qM0VypeD/HANDOFF.md)
 
