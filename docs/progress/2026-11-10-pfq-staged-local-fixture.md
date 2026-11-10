@@ -13,3 +13,15 @@
 用户随后授权准确 `54e8b60d` 单次验证，原封存命令已执行一次并退出 1。首库完成 203 条前缀迁移、精确 ledger 独立读回及受限应用/控制资格准备；M204 开始后捕获首条 SQLSTATE `42702`，reason=`POSTGRES_ERROR`。其余六库和原 13 项并发测试未开始，M204/205 没有通过。临时容器已独立确认不存在，原始脱敏 JSON 为 0600；停止回执及校验文件见 `/private/tmp/jg-382-staged-independent.gytDHH/STOP-RECEIPT.md` 和 `STOP-SHA256SUMS`。
 
 本次授权已消耗，没有重试或后继动态组。源码定位 observer 的局部 `pid` 与 `pg_stat_activity.pid` 未限定右值重名，另发现 ACL 检查的局部 `sig` 与 SQL unnest 别名同名；本次脱敏首错没有列名，这些属于源码原因推断。后继仅继续窄源码修复，实际修复仍须准确新候选另获授权。此前 `33e9320a` 仅诊断授权也已消耗；本方案没有重启旧 17 步或旧诊断包。其它 21 个自动组、POL-22、真实归档/资金/恢复门及 #382 全部验收尚未取得本候选的通过证据。本次只读回查 main 未变、#428 仍 OPEN/DRAFT 且远端 head `4ca0965bd752e086a9229eebd2891d9a99c2e8ad`。
+
+## 后继 c65277ea：源码检查通过，实际M204停止
+
+准确代码 `c65277ea16cd0c18c4e213ca81fb112f9b2a215f` / tree `0a8a77e2a8e0f8f419f04fe82ed48d730567c20a` 已通过 merger 快进到本地集成分支。相对 3ceb 停止文档提交仅五个源码/测试路径：窄 SQL 名称修复、历史恢复核心、两类公开模拟回归及专用假进程端口。没有更改旧迁移 SQL、Schema、权限矩阵或真实业务 actor。
+
+额外修正原恢复兼容性：Prisma 可能只返回事务中止，原 CLI 会从失败 ledger/server 日志识别业务原因。新夹具只暂存原错误，不自动重试；待原校验、业务回滚核对、修复及显式 resolve 完成后，必须由相同完整目标以准确114前缀、新增一条已回滚M115及未变其它ledger继续。换库/前缀/URL/环境/新场景均先拒绝。公开 CLI 的旧核心在独立假端口沙箱 RED，新核心正控及未知原因停止负控 GREEN；都不是真实PG。
+
+独立副本 `/private/tmp/jg-382-c652-independent.Dyc1Q4/repo` 从空依赖冻结安装，最终421/421 CI、44/44 CLI、API类型/lint/构建、动态清单及5份PG16 SQL/PLpgSQL解析通过，源状态干净。源Git对象自包含，移除remote，main只读刷新仍为2f474055。只读preflight通过；汇总/日志摘要见该目录上级 `PRECHECK-RESULT.json`、`PRECHECK-SHA256SUMS`，新唯一命令见 `RUN-PLAN.json`。
+
+用户随后授权此准确候选单次验证，已按原命令执行一次并退出1。首库203前缀、独立ledger及资格准备完成，M204首条 `42883`，reason=`POSTGRES_ERROR`；原件没有函数名。其余六库和原13项并发未开始，容器已独立确认不存在。实际状态 `FAILED`，授权已消耗；未复用54授权、重跑旧包、执行其它组/GitHub/部署/生产。停止回执与校验见 `/private/tmp/jg-382-c652-independent.Dyc1Q4/STOP-RECEIPT.md`、`STOP-SHA256SUMS`。
+
+两名独立源码复核确认生命周期顺序缺陷：observer在匹配四个DDL锚点之前调用完整verify_control/file_callers，而M204$registry$在ALTERFUNCTION重命名与替代CREATE之间暂时缺canonical函数名。历史受控方案先返回非匹配DDL，再对准确锚点做完整校验。此缺陷与42883相符，实际错误目标函数仍未捕获，不冒充真实因果/修复通过。后继仅调整此时序，完整锚点/身份/源码/ACL/读回检查保留；实际新迁移须准确新候选另获授权。

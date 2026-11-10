@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [ ] 准确 `c65277ea` 单组授权已执行一次并退出 1：首库203前缀及资格准备完成，M204首错 `42883`（函数不存在），其余六库和13项并发未开始；容器独立确认不存在，授权消耗且不重试。独立源码421/44等通过不等于实际PG。两份源审定位 observer 在非锚点的 registry 临时改名事件上过早执行完整校验，后继仅修复生命周期顺序，尚无真实修复通过证据。 [停止回执](/private/tmp/jg-382-c652-independent.Dyc1Q4/STOP-RECEIPT.md) · [源码预查](/private/tmp/jg-382-c652-independent.Dyc1Q4/PRECHECK-RESULT.json)
+
 - [ ] 准确 `54e8b60d` 分阶段夹具的单组授权已执行一次并退出 1：首库 203 前缀及资格准备完成，M204 捕获首条 `42702`（列引用歧义），其余六库和原 13 项并发未开始；临时容器独立确认不存在，授权已消耗且不重试。原 256 条 SQL/Schema/锁保持；此前独立 CI 413/413、CLI 42/42、API 类型/lint/构建和五份语法解析仅属源码范围。后继源码定位 observer `pid` 与 ACL 投影 `sig` 重名，尚非真实修复通过。 [准确回执](docs/progress/2026-11-10-pfq-staged-local-fixture.md) · [单次停止](/private/tmp/jg-382-staged-independent.gytDHH/STOP-RECEIPT.md)
 
 - [ ] 用户授权准确 `33e9320a` 单组诊断已执行一次并退出 1。迁移清理前捕获本次应用/数据库窗口首条 `P0001 / ARCHIVE_APPLICATION_QUALIFICATION_REQUIRED`，确认实际停于 M204 归档应用资格门。0600 脱敏 JSON 已留存，容器独立确认不存在，原 13 项组内测试未开始。未重试或执行其它组，后继需接入迁移前角色、事务内最小权限及独立读回并另获授权。 [真实诊断回执](/private/tmp/jg-382-pfq-diagnostic.zppnQ59S/DIAGNOSTIC-RECEIPT.md)
