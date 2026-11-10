@@ -5,6 +5,7 @@ const { cp, lstat, mkdir, mkdtemp, readFile, readdir, writeFile } = require("nod
 const path = require("node:path");
 const { types, isDeepStrictEqual } = require("node:util");
 const controls = require("./local-staged-migration-controls.cjs");
+const { createLocalTailQualification } = require("./local-staged-tail-qualification.cjs");
 
 const canonicalRoot = path.join(__dirname, "migrations");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -104,16 +105,32 @@ function createLocalMigrationFixture(input) {
     publishedPort = observed.publishedPort;
   }
 
-  async function read(database, phase, sql) {
+  async function read(database, phase, sql, stdin = false) {
     await assertContainer();
     let result;
-    try { result = snapshot(await executeSql({ database, phase, sql })); }
-    catch { throw new Error("LOCAL_MIGRATION_SQL_" + phase.toUpperCase().replaceAll("-", "_")); }
+    try {
+      const execute = stdin ? options.executeSqlStdin : executeSql;
+      need(typeof execute === "function" && !types.isProxy(execute), "TAIL_STDIN_PORT");
+      result = snapshot(await execute({ database, phase, sql }));
+    }
+    catch {
+      const failure = new Error("LOCAL_MIGRATION_SQL_" + phase.toUpperCase().replaceAll("-", "_"));
+      if (/^tail(213|215|218|221)-(before|supply|readback)$/u.test(phase)) failure.localMigrationFailureKind = "RESOURCE_PORT";
+      throw failure;
+    }
     await assertContainer();
-    need(typeof result?.stdout === "string" && Buffer.byteLength(result.stdout) <= 512 * 1024, "READBACK");
-    let row;
-    try { row = JSON.parse(result.stdout.trim()); } catch { need(false, "READBACK"); }
-    return row;
+    try {
+      need(typeof result?.stdout === "string" && Buffer.byteLength(result.stdout) <= 512 * 1024, "READBACK");
+      return JSON.parse(result.stdout.trim());
+    } catch (error) {
+      if (/^tail(213|215|218|221)-(before|supply|readback)$/u.test(phase)) {
+        const failure = new Error("LOCAL_MIGRATION_TAIL_READBACK");
+        failure.localMigrationFailureKind = "NODE_PROOF";
+        throw failure;
+      }
+      if (error instanceof SyntaxError) need(false, "READBACK");
+      throw error;
+    }
   }
 
   function checkRoles(row, allowedNewNames = []) {
@@ -201,12 +218,13 @@ function createLocalMigrationFixture(input) {
             recovery.ledger.filter(row => row.name !== expected[114].name)), "RECOVERY_NOT_RESOLVED");
         pendingRecovery.delete(database);
       }
-      if (count >= 205) return await deploy(request);
+      if (count >= target.length) return await deploy(request);
+      need(count < 205, "PARTIAL_TAIL_QUALIFICATION");
       need(count <= 203, "PARTIAL_QUALIFICATION");
 
       const phaseRoot = await mkdtemp(path.join(options.temporaryRoot, "staged-migrations-"));
       const roots = new Map();
-      for (const size of [203, 205]) {
+      for (const size of [203, 205, ...[213, 215, 218, 221].filter(size => size < target.length)]) {
         const dir = path.join(phaseRoot, String(size));
         await mkdir(path.join(dir, "migrations"), { recursive: true });
         await writeFile(path.join(dir, "schema.prisma"), schema);
@@ -268,6 +286,21 @@ function createLocalMigrationFixture(input) {
       const after = await read(database, "post-qualification", controls.inspectSql());
       need(isDeepStrictEqual(identity(after, database), bound), "DATABASE_IDENTITY");
       checkRoles(after, declaredRoles);
+      if (target.length > 213) {
+        const tail = createLocalTailQualification({ plan, setup, migrations: expected }, {
+          read: (phase, sql) => read(database, phase, sql),
+          write: (phase, sql) => read(database, phase, sql, true)
+        });
+        for (const size of [213, 215, 218, 221].filter(size => size < target.length)) {
+          const prefix = await deploy({ ...request, schemaPath: path.join(roots.get(size), "schema.prisma") });
+          phaseOutput.push(prefix.stdout ?? "");
+          const observed = await read(database, `stage${size}-readback`, controls.inspectSql());
+          need(isDeepStrictEqual(identity(observed, database), bound) &&
+            checkLedger(observed.ledger, target, rolledBack) === size, "TAIL_PREFIX");
+          checkRoles(observed, declaredRoles);
+          await tail.qualify(size);
+        }
+      }
       const result = await deploy(request);
       const final = await read(database, "complete-readback", controls.inspectSql());
       need(isDeepStrictEqual(identity(final, database), bound) &&

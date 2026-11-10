@@ -24,6 +24,8 @@ const {
 } = require("./money-bigint-runner-runtime.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
 const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+const { localTailFailureDiagnostic } = require("./local-staged-tail-qualification.cjs");
+const TAIL_LOG_OPTIONS = "PGOPTIONS=-c log_min_error_statement=panic -c log_error_verbosity=terse";
 
 const DATABASE_NAME = "jiangkong_project_financing_quota_concurrency";
 const LEGACY_DATABASE_NAME =
@@ -481,7 +483,7 @@ function firstPostgresFailure(logs, applicationName) {
   return { status: "primary-not-retained" };
 }
 
-async function retainFirstDeployFailure(dockerCommand, applicationName) {
+async function retainFirstDeployFailure(dockerCommand, applicationName, error) {
   let postgres;
   try {
     postgres = firstPostgresFailure(await capturePostgresLogs(dockerCommand, {
@@ -497,7 +499,8 @@ async function retainFirstDeployFailure(dockerCommand, applicationName) {
     status: "failed",
     phase: "first-migrate-deploy",
     candidateSha: /^[0-9a-f]{40}$/u.test(candidateSha ?? "") ? candidateSha : null,
-    postgres
+    postgres,
+    ...(localTailFailureDiagnostic(error) ? { localMigration: localTailFailureDiagnostic(error) } : {})
   };
   // Only fixed fields, a SQLSTATE and allowlisted reason codes leave this function.
   console.error("\n[project-financing-quota-failure] " + JSON.stringify(receipt));
@@ -1276,15 +1279,27 @@ async function main() {
             publishedPort: bindings[0].HostPort
           };
         },
-        executeSql: async ({ database, sql }) => {
+        executeSql: async ({ database, sql, phase }) => {
+          if (!ALLOWED_DATABASE_NAMES.includes(database)) {
+            throw new Error("项目垫资额度迁移夹具拒绝非专用数据库");
+          }
+          const tail = /^tail(213|215|218|221)-(before|readback)$/u.test(phase ?? "");
+          return dockerCommand([
+            "exec", "--env", `PGAPPNAME=${firstApplicationName}`,
+            ...(tail ? ["--env", TAIL_LOG_OPTIONS] : []), createdContainerId,
+            "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1", ...(tail ? ["-v", "VERBOSITY=terse"] : []),
+            "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-c", sql
+          ], { timeoutMs: 60_000, maxOutputBytes: 512 * 1024 });
+        },
+        executeSqlStdin: async ({ database, sql }) => {
           if (!ALLOWED_DATABASE_NAMES.includes(database)) {
             throw new Error("项目垫资额度迁移夹具拒绝非专用数据库");
           }
           return dockerCommand([
-            "exec", "--env", `PGAPPNAME=${firstApplicationName}`, createdContainerId,
-            "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1",
-            "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-c", sql
-          ], { timeoutMs: 60_000, maxOutputBytes: 512 * 1024 });
+            "exec", "--interactive", "--env", `PGAPPNAME=${firstApplicationName}`, "--env", TAIL_LOG_OPTIONS, createdContainerId,
+            "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=terse",
+            "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-f", "-"
+          ], { stdinText: sql, timeoutMs: 60_000, maxOutputBytes: 512 * 1024 });
         },
         deploy: runPrismaMigrateRaw
       });
@@ -1298,7 +1313,7 @@ async function main() {
           runtimeEnv
         });
       } catch (error) {
-        await retainFirstDeployFailure(dockerCommand, firstApplicationName);
+        await retainFirstDeployFailure(dockerCommand, firstApplicationName, error);
         throw error;
       }
       const secondDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv });

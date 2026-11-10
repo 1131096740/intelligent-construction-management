@@ -37,6 +37,7 @@ function createCommandRuntime(options = {}) {
   const setTimer = options.setTimer ?? setTimeout;
   const clearTimer = options.clearTimer ?? clearTimeout;
   const activeChildren = new Set();
+  const inputClosers = new WeakMap();
 
   function track(child) {
     activeChildren.add(child);
@@ -48,11 +49,22 @@ function createCommandRuntime(options = {}) {
 
   function command(commandName, args, commandOptions = {}) {
     return new Promise((resolve, reject) => {
+      const hasInput = Object.hasOwn(commandOptions, "stdinText");
+      let input;
+      if (hasInput) {
+        const value = commandOptions.stdinText;
+        if (typeof value !== "string" || value.includes("\0") ||
+          Buffer.byteLength(value, "utf8") > 16 * 1024 * 1024 ||
+          Buffer.from(value, "utf8").toString("utf8") !== value || commandOptions.stdio !== undefined) {
+          reject(new Error("LOCAL_TAIL_STDIN_INPUT")); return;
+        }
+        input = Buffer.from(value, "utf8");
+      }
       const child = track(
         spawnCommand(commandName, args, {
           cwd: commandOptions.cwd ?? defaultCwd,
           env: commandOptions.env,
-          stdio: commandOptions.stdio ?? ["ignore", "pipe", "pipe"]
+          stdio: commandOptions.stdio ?? [hasInput ? "pipe" : "ignore", "pipe", "pipe"]
         })
       );
       const timeoutMs = commandOptions.timeoutMs ?? defaultTimeoutMs;
@@ -66,6 +78,26 @@ function createCommandRuntime(options = {}) {
       let timeoutTimer;
       let forceKillTimer;
       let hardTimeoutTimer;
+      let inputOffset = 0, inputStopped = false, inputError = false, inputStopping = false;
+      const stopInput = () => {
+        if (!hasInput || inputStopped) return;
+        inputStopped = true;
+        child.stdin?.removeListener("drain", writeInput);
+        child.stdin?.destroy();
+      };
+      function writeInput() {
+        if (inputStopped || settled) return;
+        try {
+          while (inputOffset < input.length) {
+            const chunk = input.subarray(inputOffset, Math.min(inputOffset + 64 * 1024, input.length));
+            inputOffset += chunk.length;
+            if (!child.stdin.write(chunk)) { child.stdin.once("drain", writeInput); return; }
+          }
+          child.stdin.end();
+        } catch { inputError = true; stopInput(); stopCommand(); }
+      }
+
+      if (hasInput) inputClosers.set(child, stopInput);
 
       const timeoutError = () =>
         new Error(`${commandName} 执行超时（${timeoutMs}ms）`);
@@ -82,11 +114,14 @@ function createCommandRuntime(options = {}) {
       const settle = (callback) => {
         if (settled) return;
         settled = true;
+        stopInput();
         clearTimers();
         callback();
       };
 
       const stopCommand = () => {
+        if (hasInput) { if (inputStopping || settled) return; inputStopping = true; }
+        stopInput();
         if (child.exitCode === null) child.kill("SIGTERM");
         forceKillTimer = setTimer(() => {
           if (child.exitCode === null) child.kill("SIGKILL");
@@ -125,6 +160,9 @@ function createCommandRuntime(options = {}) {
             reject(stoppedError());
             return;
           }
+          if (hasInput && (inputError || inputOffset !== input.length || !child.stdin.writableFinished)) {
+            reject(new Error("LOCAL_TAIL_STDIN_INCOMPLETE")); return;
+          }
           if (code === 0) {
             resolve({ stdout, stderr });
             return;
@@ -138,6 +176,14 @@ function createCommandRuntime(options = {}) {
           );
         });
       });
+
+      if (hasInput) {
+        if (!child.stdin) { inputError = true; stopCommand(); }
+        else {
+          child.stdin.on("error", () => { inputError = true; stopInput(); if (!settled) stopCommand(); });
+          writeInput();
+        }
+      }
 
       if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
         timeoutTimer = setTimer(() => {
@@ -171,6 +217,7 @@ function createCommandRuntime(options = {}) {
   }
 
   async function stopChild(child) {
+    inputClosers.get(child)?.();
     if (child.exitCode !== null) return;
     child.kill("SIGTERM");
     if (await waitForEnd(child, terminationGraceMs)) return;

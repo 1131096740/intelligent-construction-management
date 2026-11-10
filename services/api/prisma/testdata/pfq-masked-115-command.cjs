@@ -8,6 +8,8 @@ const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
 const args = process.argv.slice(2);
 const tool = path.basename(process.argv[1]);
 const event = { tool, args: args.includes("-c") ? [...args.slice(0, args.indexOf("-c") + 1), "<SQL>"] : args };
+event.applicationName = tool === "pnpm" ? new URL(process.env.DATABASE_URL).searchParams.get("application_name") :
+  args.find(value => value.startsWith("PGAPPNAME="))?.slice("PGAPPNAME=".length) ?? "psql";
 let stdout = "";
 let stderr = "";
 let exitCode = 0;
@@ -77,9 +79,34 @@ else if (args.includes("createdb")) database(args.at(-1));
 else if (args.includes("psql")) {
   const name = args[args.indexOf("-d") + 1];
   const db = database(name);
-  const sql = args[args.indexOf("-c") + 1];
+  const stdin = args.includes("-f") && args.at(-1) === "-";
+  const sql = stdin ? fs.readFileSync(0, "utf8") : args[args.indexOf("-c") + 1];
+  if (stdin) {
+    if (!args.includes("--interactive") || Buffer.byteLength(sql) > 16 * 1024 * 1024 || sql.includes("\0")) throw new Error("synthetic stdin transport rejected");
+    event.stdinBytes = Buffer.byteLength(sql);
+  }
   event.database = name;
-  if (sql.startsWith("-- local-fixture inspect")) stdout = JSON.stringify(inspectDatabase(name, db));
+  if (sql.startsWith("-- local-tail ")) {
+    const match = /^-- local-tail (213|215|218|221) (before|supply|committed)/u.exec(sql);
+    if (!match || stdin !== (match[2] === "supply")) throw new Error("synthetic tail transport mismatch");
+    event.action = "tail-" + match[2]; event.stage = Number(match[1]);
+    const phase = "tail" + match[1] + (match[2] === "committed" ? "-readback" : "-" + match[2]);
+    const observed = require(path.join(state.prismaRoot, "testdata/local-staged-tail-model.cjs")).observe(sql, phase);
+    observed.ledger = ledger(db);
+    if (state.tailFailureKind === "RESOURCE_PORT" && match[2] === "supply" ||
+      state.tailFailureKind === "NODE_PROOF" && match[2] === "committed") {
+      event.syntheticFailure = state.tailFailureKind;
+      if (state.tailFailureKind === "NODE_PROOF") observed.protectedAclSha256 = "e".repeat(64);
+      else {
+        const appName = args.find(value => value.startsWith("PGAPPNAME="))?.slice("PGAPPNAME=".length);
+        state.serverLog = "JG-PFQ|" + appName + "|" + name + "|202|P0001|ERROR:  synthetic tail failure\n";
+        if (!args.includes("PGOPTIONS=-c log_min_error_statement=panic -c log_error_verbosity=terse"))
+          state.serverLog += "STATEMENT: " + sql + "\n";
+        stderr = "synthetic client SELECT secret-role"; exitCode = 23;
+      }
+    }
+    stdout = JSON.stringify(observed);
+  } else if (sql.startsWith("-- local-fixture inspect")) stdout = JSON.stringify(inspectDatabase(name, db));
   else if (sql.includes("CREATE SCHEMA jg_fixture_")) {
     const match = /'(\{"database":[^\n]+?\})'/u.exec(sql);
     db.plan = JSON.parse(match[1]);

@@ -83,12 +83,19 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
     roles, ledger: [...rows.slice(0, currentState().applied).map(row => ({ ...row, finished: true, rolledBack: false })),
       ...(currentState().rolledBack ? [{ ...rows[114], finished: false, rolledBack: true }] : [])]
       .sort((left, right) => left.name.localeCompare(right.name)) });
-  const fixture = createLocalMigrationFixture({ container, databaseNames, temporaryRoot,
+  const ports = { container, databaseNames, temporaryRoot,
     inspectContainer: async () => observedContainer(),
+    executeSqlStdin: async request => ports.executeSql(request),
     executeSql: async ({ database: targetDatabase, phase, sql }) => {
       currentDatabase = targetDatabase;
       calls.push(phase);
       let result = readback();
+      if (phase.startsWith("tail")) {
+        result = require("./testdata/local-staged-tail-model.cjs").observe(sql, phase);
+        result.ledger = readback().ledger;
+        if (mutate) result = mutate(phase, result);
+        return { stdout: JSON.stringify(result), stderr: "" };
+      }
       if (phase === "qualification-setup") {
         const match = /'(\{"database":[^\n]+?\})'/u.exec(sql);
         assert.ok(match, "setup must bind its actual plan");
@@ -167,7 +174,8 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       return { stdout: before === state.applied ? "No pending migrations to apply." :
         "Applying migration " + rows.slice(before, state.applied).map(row => row.name).join("\n"), stderr: "" };
     }
-  });
+  };
+  const fixture = createLocalMigrationFixture(ports);
   return { fixture, calls, deploymentRequests, databaseNames,
     resolveHistorical(name) {
       const state = databaseStates.get(name);
@@ -191,6 +199,8 @@ test("full fixture deploys exact203 then qualified205, cleans independently and 
     assert.match(result.stdout, /20260802020000_project_financing_quota_termination_idempotency/u);
     assert.deepEqual(calls, ["preflight", "deploy-203", "stage203-readback", "qualification-setup",
       "deploy-205", "stage205-readback", "qualification-cleanup", "cleanup-readback", "post-qualification",
+      ...[213, 215, 218, 221].flatMap(stage => [`deploy-${stage}`, `stage${stage}-readback`,
+        `tail${stage}-before`, `tail${stage}-supply`, `tail${stage}-readback`]),
       `deploy-${canonicalBaseline.expectedDirectoryCount}`, "complete-readback"]);
     const repeated = await fixture.migrate({ databaseUrl, runtimeEnv: {} });
     assert.equal(repeated.stdout, "No pending migrations to apply.");
@@ -426,4 +436,65 @@ test("independent205 caller proof rejects an unexplained route before cleanup or
     assert.deepEqual(harness.calls.filter(x => x.startsWith("deploy-")), ["deploy-203", "deploy-205"]);
     assert.equal(harness.calls.includes("qualification-cleanup"), false);
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+test("full259 deployment stops at every mandatory technical supply window before its consumer", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "local-tail259-frontier-"));
+  try {
+    const fake = await fakeFixture(dir);
+    await fake.fixture.migrate({ databaseUrl });
+    assert.deepEqual(fake.deploymentRequests.filter(row => row.database === database).map(row => row.count),
+      [203, 205, 213, 215, 218, 221, canonicalBaseline.expectedDirectoryCount]);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+for (const [phase, change, forbidden] of [
+  ['tail213-before', row => { row.scope.nonce='f'.repeat(64); }, 'tail213-supply'],
+  ['tail213-supply', row => { row.bindings.find(b=>b.name==='jg_contract_direct_archive_binding_v1').rows[0].xmin='7'; }, 'tail213-readback'],
+  ['tail213-readback', row => { row.protectedAclSha256='e'.repeat(64); }, 'deploy-215'],
+  ['tail215-before', row => { row.appTablePrivileges.push({kind:'table',object:'ContractVersion',objectOid:'40000',privilege:'UPDATE',grantable:false}); }, 'tail215-supply'],
+  ['tail215-readback', row => { row.pending.sha256='e'.repeat(64); }, 'deploy-218'],
+  ['tail218-before', row => { row.required.find(r=>r.key==='Contract/id/SELECT').effective=false; }, 'tail218-supply'],
+  ['tail218-supply', row => { row.targets[0].direct[0][3]=true; }, 'tail218-readback'],
+  ['tail218-readback', row => { row.identity.backendPid=20218; row.identity.backendStart='2026-11-11T01:02:00.000001Z'; }, 'deploy-221'],
+  ['tail221-readback', row => { row.commitStatus='in progress'; }, `deploy-${canonicalBaseline.expectedDirectoryCount}`]
+]) test(`tail ${phase} rejects changed proof before advancing or retrying`,async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail259-negative-'));
+  try {
+    const fake=await fakeFixture(dir,(current,row)=>{if(current===phase)change(row);return row;});
+    await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+      assert.deepEqual(require("./local-staged-tail-qualification.cjs").localTailFailureDiagnostic(error),
+        {stage:phase.toUpperCase().replaceAll("-","_"),kind:"NODE_PROOF"});
+      assert.equal(error.message.includes("e".repeat(64)),false);
+      return true;
+    });
+    assert.equal(fake.calls.includes(forbidden),false);
+    const length=fake.calls.length;
+    await assert.rejects(fake.fixture.migrate({databaseUrl}),/LOCAL_MIGRATION_STOPPED/u);
+    assert.equal(fake.calls.length,length);
+  }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("tail SQL resource errors carry a fixed safe phase without exposing their exception",async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail259-resource-'));
+ try{
+  const fake=await fakeFixture(dir,(phase,row)=>{if(phase==='tail215-supply')throw new Error('SELECT synthetic-secret-role');return row;});
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),{stage:'TAIL215_SUPPLY',kind:'RESOURCE_PORT'});
+   assert.equal(error.message.includes('SELECT'),false);assert.equal(error.message.includes('synthetic-secret'),false);return true;
+  });
+  assert.equal(fake.calls.includes('tail215-readback'),false);assert.equal(fake.calls.includes('deploy-218'),false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("tail ACL proof must bind the actual changed catalog tuple to its writer XID",async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail259-acl-xmin-'));
+ try{
+  const fake=await fakeFixture(dir,(phase,row)=>{
+   if(phase==='tail215-supply'&&Object.hasOwn(row.targets[0],'catalogXmin'))row.targets[0].catalogXmin='7';
+   return row;
+  });
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),/LOCAL_MIGRATION_TAIL215_SUPPLY_NODE_PROOF/u);
+  assert.equal(fake.calls.includes('tail215-readback'),false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
