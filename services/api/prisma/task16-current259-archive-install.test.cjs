@@ -35,11 +35,15 @@ function model(alter = row => row, alterClaim = () => {}) {
     ['jg_c259_outside_issuer_login', true], ['jg_c259_outside_issuer_owner', false],
     ['jg_c259_upward_issuer_login', true], ['jg_c259_upward_issuer_owner', false],
     ['jg_c259_upward_runtime_login', true], ['jg_task01_observer', true], ['jg_task01_runtime', true],
-  ].map(([name, login], index) => ({ name, login, oid: String(17001 + index) }));
+  ].map(([name, login], index) => ({ name, login, oid: String(17001 + index), xmin: '701', unlimitedValidity: true }));
   const completion = {
+    status: 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION', executionAllowed: false, nativeAdmission: false,
     sourceSha: 'a'.repeat(40), runId, containerId: 'b'.repeat(64), databaseIdentity,
     ordinary: { name: 'jg_fixture_app_' + 'c'.repeat(24), oid: '16390', login: true },
-    roles, commitXid: '701',
+    roles, commitXid: '701', databaseAcl: { before: [], after: [{
+      name: databaseIdentity.database, oid: databaseIdentity.databaseOid, owner: '10',
+      acl: [['10', '0', 'CONNECT', false], ['10', '0', 'TEMPORARY', false]],
+    }], effective: {} },
   };
   const fs = require('node:fs');
   const root = join(__dirname, 'migrations');
@@ -50,6 +54,13 @@ function model(alter = row => row, alterClaim = () => {}) {
     profile: { ledger, ledgerSha256: 'd3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952' },
   };
   alterClaim({ source, completion });
+  function freeze(value) {
+    if (value && typeof value === 'object') {
+      for (const child of Object.values(value)) freeze(child);
+      Object.freeze(value);
+    }
+  }
+  freeze(completion);
   const calls = [];
   let closed = 0, expired = false, used = false;
   const check = () => { if (expired) throw Error('expired'); };
@@ -63,7 +74,7 @@ function model(alter = row => row, alterClaim = () => {}) {
       return { stdout: JSON.stringify(alter({
         challenge: nonce, phase, backendPid: pre ? 700 : write ? 701 : 702,
         backendStart: pre ? '2026-11-11T00:00:00.000001Z' : write ? '2026-11-11T00:00:00.000002Z' : '2026-11-11T00:00:00.000003Z',
-        catalogSha256: (pre ? '1' : '2').repeat(64), registrySha256: '3'.repeat(64),
+        catalogSha256: (pre ? '1' : '2').repeat(64), registrySha256: '3'.repeat(64), pendingSha256: '6'.repeat(64),
         installXid: pre ? null : '702', commitStatus: write || pre ? null : 'committed',
         closureSha256: pre ? null : '4'.repeat(64), bindingSha256: pre ? null : '5'.repeat(64),
       }, phase)) };
@@ -87,10 +98,11 @@ function model(alter = row => row, alterClaim = () => {}) {
   };
   const file = join(__dirname, 'task16-current259-archive-install.cjs');
   const module = { exports: {} };
-  runInThisContext(`(function(require,module){${readFileSync(file, 'utf8')}\n})`, { filename: file })(
-    name => Object.hasOwn(ports, name) ? ports[name] : require(name), module,
+  runInThisContext(`(function(require,module,__dirname){${readFileSync(file, 'utf8')}\n})`, { filename: file })(
+    name => Object.hasOwn(ports, name) ? ports[name] : require(name), module, __dirname,
   );
-  return { ...module.exports, calls, handle, provisionResult, expire: () => { expired = true; }, closed: () => closed };
+  return { ...module.exports, calls, handle, provisionResult, suppliedRoles: completion,
+    expire: () => { expired = true; }, closed: () => closed };
 }
 
 test('qualified owned roles install the fixed archive chain and require a new backend commit readback', async () => {
@@ -118,6 +130,7 @@ for (const [title, change] of [
   ['an uncommitted XID', row => { row.commitStatus = 'in progress'; }],
   ['a reused write backend', row => { row.backendPid = 701; row.backendStart = '2026-11-11T00:00:00.000002Z'; }],
   ['different binding rows', row => { row.bindingSha256 = '7'.repeat(64); }],
+  ['a changed pending source binding', row => { row.pendingSha256 = '7'.repeat(64); }],
   ['different installed catalog', row => { row.catalogSha256 = '8'.repeat(64); }],
 ]) {
   test(`commit readback rejects ${title} and retires the original owned resource`, async () => {
@@ -190,4 +203,48 @@ test('upward channel nonce is generated inside the installer transaction', async
   await f.installCurrent259ArchiveAuthorities(f.provisionResult, f.handle);
   assert.match(f.calls[1].sql, /install_nonce := pg_catalog\.gen_random_uuid\(\);/u);
   for (const { sql } of f.calls) assert.doesNotMatch(sql, /'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'/u);
+});
+
+for (const [title, change] of [
+  ['a role xmin from another transaction', role => { role.xmin = '702'; }],
+  ['a role with an expiration', role => { role.unlimitedValidity = false; }],
+]) {
+  test(`qualification rejects ${title}`, async () => {
+    const f = model(undefined, ({ completion }) => change(completion.roles[0]));
+    await assert.rejects(f.installCurrent259ArchiveAuthorities(f.provisionResult, f.handle), /PRESTATE_REJECTED/u);
+    assert.equal(f.calls.length, 0);
+  });
+}
+
+test('all three owner scripts recheck role tuple identity and the exact observer setting', async () => {
+  const f = model();
+  await f.installCurrent259ArchiveAuthorities(f.provisionResult, f.handle);
+  for (const { sql } of f.calls) {
+    assert.ok(sql.includes('r.xmin::text=expected.xmin'));
+    assert.ok(sql.includes('r.rolvaliduntil IS NULL'));
+    assert.ok(sql.includes('pg_catalog.pg_db_role_setting'));
+    assert.ok(sql.includes('default_transaction_read_only=on'));
+  }
+});
+
+test('archive install verifies the historical collision set and grants its fixed overlay before M234', async () => {
+  const f = model();
+  await f.installCurrent259ArchiveAuthorities(f.provisionResult, f.handle);
+  const [before, write, committed] = f.calls.map(call => call.sql);
+  const grant = 'GRANT EXECUTE ON FUNCTION %s TO %I';
+  assert.ok(write.includes(grant) && write.indexOf(grant) < write.indexOf('PERFORM public.jg_install_contract_direct_archive_outside_v1'));
+  assert.ok(!before.includes(grant) && !committed.includes(grant));
+  assert.ok(write.includes('CURRENT259_ARCHIVE_INSTALL_COLLISION_PREIMAGE'));
+  assert.ok(committed.includes('CURRENT259_ARCHIVE_INSTALL_COLLISION_POSTIMAGE'));
+});
+
+test('database ACL provenance crosses only the same-handle archive continuation', async () => {
+  const f = model();
+  const receipt = await f.installCurrent259ArchiveAuthorities(f.provisionResult, f.handle);
+  assert.equal(Object.hasOwn(receipt, 'databaseAcl'), false);
+  assert.equal(Object.hasOwn(receipt, 'roleCompletion'), false);
+  const continuation = f.claimCurrent259ArchiveInstallation(receipt, f.handle);
+  assert.equal(continuation.roleCompletion, f.suppliedRoles);
+  assert.equal(continuation.roleCompletion.databaseAcl.after[0].oid, '16384');
+  assert.ok(Object.isFrozen(continuation.roleCompletion.databaseAcl.after[0].acl));
 });
