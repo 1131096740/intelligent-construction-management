@@ -1,5 +1,8 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [~] 首组错误留存候选 `33e9320aa01e88b99ea44b2b19da685d3cd55c48` 经独立复核合入。清理前保留限定窗口的脱敏 SQLSTATE/原因码，两个流合计行数与 128 KiB 实际输出界限均有反例，迁移 SQL/Schema/锁及业务逻辑保持。准确独立预查编排 373/373、两后端套件 42/42、构建/类型/lint/清单通过。已封单组诊断方案，仅选现有垫资组 13 项，须另获隔离迁移单次授权，正式动态/发布仍停在旧回执。 [准确方案与预查](/private/tmp/jg-382-pfq-diagnostic.zppnQ59S/HANDOFF.md) · [作者回执](/private/tmp/jg-382-pfq-first-error.wlQNfTMn/HANDOFF.md)
+- [~] 动态接入盘点核实 22 组由 20 直接及 2 嵌套入口组成，并含 v7 原始 SQL、多库、两类非连续迁移子集，需逐入口保留原历史演练。POL-22 预检也实际迁移、写合成夹具和执行备份恢复。分阶段 SQL/锁与当前候选相同，但旧 schema 和 205 安装辅助不等于当前256入口。 [接入盘点](/private/tmp/jg-382-dynamic-inventory.qYeyxa5A/HANDOFF.md) · [分阶段材料](/private/tmp/jg-382-migration-stage-material.10U3XfxH/HANDOFF.md)
+
 - [ ] 用户授权的准确 `2b270691` 完整本地发布验证已执行一次，前 13 步通过，第 14 步首个垫资并发组在隔离库应用 `20261108220000_contract_archive_v2_authority` 时事务中止，退出 1。该组测试未开始，临时容器已独立确认不存在，第 15–17 步未运行，无通过回执。相同 SQL 曾在受控 Prisma 入口通过，当前普通入口缺 203 后的归档角色、启动参数及 204/205 事务内最小 ACL 接入。原始数据库错误未保留；下一步统一隔离入口和脱敏首错捕获，不重跑本次。 [单次停止回执](/private/tmp/jg-382-release-2b27.2S0AT9B0/STOP-RECEIPT.md) · [只读根因对照](/private/tmp/jg-382-m204-stage14-readonly.6y68YJLw/HANDOFF.md)
 - [~] #394 同进程发射器接真实 403f 存储源码，并经独审修复部分 Prisma 装配仍可发帧，25 项离线通过。#398 严格宿主提议规则和同一预留 seed 接线已复核，修复校验后替换 HTTP 应用对象，15 项定向通过。两票的真实 Linux/PG 业务和授权仍待。 [合同装配](/private/tmp/jg-394-a08-emitter-di.RacJZjol/HANDOFF.md) · [实付 HTTP 绑定](/private/tmp/jg-398-a16-reserved-http.pjakLhv0/HANDOFF.md)
 
