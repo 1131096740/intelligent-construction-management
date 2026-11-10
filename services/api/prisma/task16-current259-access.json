@@ -3,6 +3,12 @@
   "profile": "TASK16_DOCKER259_B7_MATERIAL_V1",
   "fullLedgerSha256": "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952",
   "prefix256Sha256": "85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24",
+  "runtimeSelectAdditions": [
+    {
+      "table": "ContractVersion",
+      "select": ["originalSignedNumber"]
+    }
+  ],
   "readerSignature": "public.jg_read_registered_payment_impacts(text,text,text,text,text)",
   "readerBodySha256": "f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20",
   "files": [
@@ -109,6 +115,13 @@
       "pg_catalog",
       "text",
       true
+    ],
+    [
+      "ContractVersion",
+      "originalSignedNumber",
+      "pg_catalog",
+      "text",
+      false
     ],
     [
       "ContractVersion",

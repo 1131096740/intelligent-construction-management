@@ -15,6 +15,23 @@ test('fixed259 material includes exact B7 bytes and no session authority or exec
  assert.equal(p.sevenFragments.length,7);assert.equal(p.ledger.length,259);
  assert.equal(typeof p.execOwnerSql,'undefined');
 });
+test('current259 supplies the same effective read plan to future role installers',()=>{
+ const effective=api.loadCurrent259CatalogMaterial(source).accessPlan;
+ assert.ok(effective,'the installer needs the qualified effective plan');
+ const historical=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-access.json'),'utf8'));
+ const permissions=role=>role.tables.flatMap(table=>['select','insert','update','references'].flatMap(op=>
+  (table[op]??[]).map(column=>[table.table,column,op.toUpperCase()])));
+ const before=new Set(permissions(historical.runtime).map(row=>JSON.stringify(row)));
+ const after=new Set(permissions(effective.runtime).map(row=>JSON.stringify(row)));
+ assert.deepEqual([...after].filter(row=>!before.has(row)).map(row=>JSON.parse(row)),[
+  ['ContractVersion','originalSignedNumber','SELECT']
+ ]);
+ assert.deepEqual([...before].filter(row=>!after.has(row)),[]);
+ assert.deepEqual(effective.observer,historical.observer);
+ assert.deepEqual(effective.runtime.functions,historical.runtime.functions);
+ assert.equal(historical.runtime.tables.find(table=>table.table==='ContractVersion').select.includes('originalSignedNumber'),false);
+ assert.equal(Object.isFrozen(effective.runtime.tables),true);
+});
 test('fixed readback SQL and installation material are distinct from execution',()=>{
  const sql=api.renderCurrent259CatalogRead(request);
  assert.match(sql,/BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY/u);
@@ -23,6 +40,9 @@ test('fixed readback SQL and installation material are distinct from execution',
 });
 
 const plan=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-access.json'),'utf8'));
+// Current SDK default scalar reads include the original signed number. This
+// observation is independent of the historical permission matrix on disk.
+plan.runtime.tables.find(table=>table.table==='ContractVersion').select.push('originalSignedNumber');
 const sort=rows=>rows.sort((a,b)=>JSON.stringify(a)<JSON.stringify(b)?-1:JSON.stringify(a)>JSON.stringify(b)?1:0);
 function observed(phase='before'){
  const roles=[['owner','jg_task01_owner'],['runtime','jg_task01_runtime'],['observer','jg_task01_observer']].map(([key,name])=>{
@@ -53,6 +73,15 @@ function observed(phase='before'){
   config:['search_path=pg_catalog'],bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20',xmin:'1000',acl:[['10','10','EXECUTE',false],['10','17000','EXECUTE',false]]};
  return row;
 }
+test('current259 accepts the contract scalar read needed by registered execution options',()=>{
+ const result=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
+ assert.equal(result.status,'CURRENT259_B7_CATALOG_MATCHED_NOT_ADMISSION');
+});
+test('current259 requires the physical type of the added original-number read',()=>{
+ const row=observed();
+ row.readerColumns=row.readerColumns.filter(column=>!(column[0]==='ContractVersion'&&column[1]==='originalSignedNumber'));
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
+});
 test('actual catalog-shaped259 rows yield material validation, never native session approval',()=>{
  const result=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
  assert.equal(result.executionAllowed,false);assert.equal(result.nativeAdmission,false);
@@ -63,6 +92,8 @@ for(const [name,change] of [
  ['runtime elevated',r=>{r.roles[2].superuser=true;}],
  ['extra table privilege',r=>{r.capabilities.push(['jg_task01_runtime','table','OperatingFact','','SELECT',false]);}],
  ['missing permitted column',r=>{r.capabilities.pop();}],
+ ['missing signed-original scalar read',r=>{r.capabilities=r.capabilities.filter(row=>!(row[2]==='ContractVersion'&&row[3]==='originalSignedNumber'));}],
+ ['signed-original write permission',r=>{r.capabilities.push(['jg_task01_runtime','column','ContractVersion','originalSignedNumber','UPDATE',false]);}],
  ['unexpected function execution',r=>{r.extraFunctions.push(['jg_task01_observer','9999']);}],
  ['wrong table owner',r=>{r.relations[0].owner='jg_task01_runtime';}],
  ['forced RLS',r=>{r.relations[0].forceRls=true;}],
