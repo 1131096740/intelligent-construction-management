@@ -103,12 +103,27 @@ for(const [name,change] of [
  ['raw additional key',r=>{r.secret='not-allowed';}]
 ])test(`catalog readback rejects ${name}`,()=>{const row=observed();change(row);assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);});
 
-test('fixed B7 installation rechecks the exact observed preimage before one transaction commit',()=>{
+test('fixed B7 installation qualifies one captured staged row before output and commit',()=>{
  const before=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
  const script=api.renderCurrent259B7Install({source,identity,nonce:request.nonce,before});
  assert.equal((script.match(/^COMMIT;$/gmu)??[]).length,1);
  assert.match(script,/BEGIN ISOLATION LEVEL SERIALIZABLE/u);
  assert.equal(script.includes('/private/tmp'),false);
+ const capture=script.indexOf('CREATE TEMP TABLE pg_temp.jg_current259_b7_staged ON COMMIT DROP AS');
+ const guard=script.indexOf('DO $current259_staged$');
+ const emit=script.indexOf('SELECT result FROM pg_temp.jg_current259_b7_staged;');
+ assert.ok(capture>script.indexOf('$witness$;')&&guard>capture&&emit>guard&&script.indexOf('COMMIT;')>emit);
+ const block=script.slice(guard,emit);
+ assert.match(block,/SELECT result INTO STRICT observed FROM pg_temp\.jg_current259_b7_staged;/u);
+ assert.match(block,/IF observed IS DISTINCT FROM expected\s+THEN RAISE EXCEPTION/u);
+ const template=JSON.parse(block.match(/expected jsonb := '((?:[^']|'')+)'::jsonb;/u)[1].replaceAll("''","'"));
+ const projected=observed('staged');
+ delete projected.identity.backendPid;delete projected.identity.backendStart;
+ projected.reader.oid=null;projected.reader.xmin=null;projected.writeXid=null;
+ projected.functions.find(row=>row[1]==='public.jg_read_registered_payment_impacts(text,text,text,text,text)')[2]=null;
+ assert.deepEqual(template,projected);
+ assert.match(block,/pg_catalog\.pg_current_xact_id_if_assigned\(\)/u);
+ assert.match(block,/pg_catalog\.to_regprocedure\('public\.jg_read_registered_payment_impacts\(text,text,text,text,text\)'\)/u);
  const staged=api.parseCurrent259CatalogRead(JSON.stringify(observed('staged')),{...request,phase:'staged'},before);
  assert.equal(staged.nativeAdmission,false);
  const committed=api.parseCurrent259CatalogRead(JSON.stringify(observed('committed')),{...request,phase:'committed',installXid:'1000'},staged);

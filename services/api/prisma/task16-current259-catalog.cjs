@@ -86,6 +86,15 @@ function capabilities(plan){
 }
 const names=['p_request_key','p_execution_id','p_payment_id','p_project_id','p_fact_id',
  'factId','impactKind','amountCents','numericProtocolVersion','subjectKind','subjectId'];
+const readerExpected=(identity,oid,xmin)=>({oid,ownerOid:identity.ownerOid,namespaceOid:identity.namespaceOid,
+ kind:'f',language:'plpgsql',definer:true,volatility:'s',parallel:'u',leakproof:false,strict:false,
+ returnsSet:true,resultType:'record',inputCount:5,defaults:0,variadic:'0',support:'0',names,
+ modes:['i','i','i','i','i','t','t','t','t','t','t'],
+ types:['text','text','text','text','text','text','text','bigint','integer','text','text'],
+ config:['search_path=pg_catalog'],bodySha256:BODY,xmin,
+ acl:[[identity.ownerOid,identity.ownerOid,'EXECUTE',false],[identity.ownerOid,identity.runtimeOid,'EXECUTE',false]]
+  .sort((a,b)=>Number(a[1])-Number(b[1]))});
+const stableIdentity=value=>Object.fromEntries(Object.entries(value).filter(([key])=>!['backendPid','backendStart','readOnly'].includes(key)));
 const keys=(value,expected)=>need(equal(Object.keys(value).sort(),expected.sort()));
 function validate(row,r,m,prior,checkLink=true){
  keys(row,['phase','nonce','sourceSha','sealSha256','schemaSha256','identity','ledger','roles','relations',
@@ -140,15 +149,7 @@ function validate(row,r,m,prior,checkLink=true){
  if(r.phase==='before')need(row.reader===null&&row.writeXid===null&&row.commitStatus===null&&prior===undefined);
  else{
   const v=row.reader;need(v&&oid(v.oid));
-  const expected={oid:v.oid,ownerOid:r.identity.ownerOid,namespaceOid:r.identity.namespaceOid,
-   kind:'f',language:'plpgsql',definer:true,volatility:'s',parallel:'u',leakproof:false,strict:false,
-   returnsSet:true,resultType:'record',inputCount:5,defaults:0,variadic:'0',support:'0',names,
-   modes:['i','i','i','i','i','t','t','t','t','t','t'],
-   types:['text','text','text','text','text','text','text','bigint','integer','text','text'],
-   config:['search_path=pg_catalog'],bodySha256:BODY,xmin:v.xmin,
-   acl:[[r.identity.ownerOid,r.identity.ownerOid,'EXECUTE',false],[r.identity.ownerOid,r.identity.runtimeOid,'EXECUTE',false]]
-    .sort((a,b)=>Number(a[1])-Number(b[1]))};
-  need(equal(v,expected)&&routineIds.get(SIGNATURE)===v.oid);
+  need(equal(v,readerExpected(r.identity,v.oid,v.xmin))&&routineIds.get(SIGNATURE)===v.oid);
   if(r.phase==='staged')need(wide(row.writeXid)&&row.commitStatus===null&&
     v.xmin===(BigInt(row.writeXid)&0xffffffffn).toString());
   else need(row.writeXid===null&&row.commitStatus==='committed'&&
@@ -158,8 +159,6 @@ function validate(row,r,m,prior,checkLink=true){
     phase:r.phase==='staged'?'before':'staged'};
    // Revalidate every prior fact against this exact run, not its self-declared status.
    const checked=validate(before.raw,previousRequest,m,undefined,false);need(equal(before,checked));
-   const stableIdentity=x=>Object.fromEntries(Object.entries(x).filter(([k])=>
-    !['backendPid','backendStart','readOnly'].includes(k)));
    need(equal(stableIdentity(before.raw.identity),stableIdentity(id))&&
     equal(before.raw.roles,row.roles)&&equal(before.raw.ledger,row.ledger)&&equal(before.raw.relations,row.relations)&&
     equal(before.raw.capabilities,row.capabilities)&&before.raw.otherAclSha256===row.otherAclSha256);
@@ -181,6 +180,38 @@ function parseCurrent259CatalogRead(stdout,input,prior){
 }
 
 
+// Keep the original staged row for output. Fill only the server-generated
+// coordinates in the expectation, then compare the entire projection.
+function stagedGuardSql(before,identity){
+ const readerExecute=['jg_task01_runtime',SIGNATURE,null,true,false];
+ const functions=[...before.functions,readerExecute].sort(lexical);
+ const index=functions.indexOf(readerExecute);
+ const expected={...before,phase:'staged',identity:{...stableIdentity(before.identity),readOnly:false},
+  functions,reader:readerExpected(identity,null,null),writeXid:null};
+ return `DO $current259_staged$
+DECLARE
+ observed jsonb;
+ expected jsonb := ${quote(JSON.stringify(expected))}::jsonb;
+ writer_xid text := pg_catalog.pg_current_xact_id_if_assigned()::text;
+ reader_oid text := pg_catalog.to_regprocedure(${quote(SIGNATURE)})::oid::text;
+ writer_start text;
+BEGIN
+ SELECT result INTO STRICT observed FROM pg_temp.jg_current259_b7_staged;
+ SELECT pg_catalog.to_char(a.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+ INTO STRICT writer_start FROM pg_catalog.pg_stat_activity a WHERE a.pid=pg_catalog.pg_backend_pid();
+ IF writer_xid IS NULL OR reader_oid IS NULL OR writer_start IS NULL OR EXISTS (
+  SELECT 1 FROM pg_catalog.jsonb_array_elements(expected->'functions') f WHERE f->>2=reader_oid
+ ) THEN RAISE EXCEPTION 'current259 B7 staged identity changed'; END IF;
+ expected := pg_catalog.jsonb_set(expected,'{identity}',expected->'identity'||pg_catalog.jsonb_build_object(
+  'backendPid',pg_catalog.pg_backend_pid(),'backendStart',writer_start));
+ expected := pg_catalog.jsonb_set(expected,'{reader}',expected->'reader'||pg_catalog.jsonb_build_object(
+  'oid',reader_oid,'xmin',pg_catalog.mod(writer_xid::numeric,4294967296)::text));
+ expected := pg_catalog.jsonb_set(expected,'{functions,${index},2}',pg_catalog.to_jsonb(reader_oid));
+ expected := pg_catalog.jsonb_set(expected,'{writeXid}',pg_catalog.to_jsonb(writer_xid));
+ IF observed IS DISTINCT FROM expected
+ THEN RAISE EXCEPTION 'current259 B7 staged postimage changed'; END IF;
+END $current259_staged$;`;
+}
 function renderCurrent259B7Install(input){
  try{
   const args=snapshot(input);keys(args,['source','identity','nonce','before']);
@@ -189,9 +220,7 @@ function renderCurrent259B7Install(input){
   const before=validate(args.before.raw,r,m);
   need(equal(before,args.before));
   const projection=query(r,m).trim().replace(/;$/u,'');
-  const stable=value=>({...value,identity:Object.fromEntries(Object.entries(value.identity)
-   .filter(([key])=>!['backendPid','backendStart','readOnly'].includes(key)))});
-  const expected=stable(before.raw);delete expected.writeXid;
+  const expected={...before.raw,identity:stableIdentity(before.raw.identity)};delete expected.writeXid;
   const staged={...r,phase:'staged'};
   const script=`BEGIN ISOLATION LEVEL SERIALIZABLE;
 SET LOCAL search_path=pg_catalog,pg_temp;
@@ -204,7 +233,10 @@ DO $current259_before$ DECLARE observed jsonb; BEGIN
  THEN RAISE EXCEPTION 'current259 B7 preimage changed'; END IF;
 END $current259_before$;
 ${m.sql}
+CREATE TEMP TABLE pg_temp.jg_current259_b7_staged ON COMMIT DROP AS
 ${query(staged,m)}
+${stagedGuardSql(before.raw,r.identity)}
+SELECT result FROM pg_temp.jg_current259_b7_staged;
 COMMIT;
 `;
   need(Buffer.byteLength(script)<=2*1024*1024);
