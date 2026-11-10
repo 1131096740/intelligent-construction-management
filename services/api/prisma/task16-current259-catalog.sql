@@ -29,7 +29,7 @@ other_acl AS (
  SELECT 'relation' AS kind,c.oid::text AS object,'0' AS member,a.*
  FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
  CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(c.relacl,pg_catalog.acldefault(
-  (CASE WHEN c.relkind='S' THEN 'S' ELSE 'r' END)::"char",c.relowner))) a
+  (CASE WHEN c.relkind='S' THEN 's' ELSE 'r' END)::"char",c.relowner))) a
  WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f','S')
  UNION ALL
  SELECT 'column',c.oid::text,t.attnum::text,a.* FROM pg_catalog.pg_class c
