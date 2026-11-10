@@ -1458,6 +1458,20 @@ async function assertGeneratedSealWorkItemHidden(
   expect(await generatedSealWorkItems(server, draft, token)).toEqual({ status: 200, pending: [], blocked: [] });
 }
 
+async function assertGeneratedLifecycleWorkItemPending(
+  server: Awaited<ReturnType<typeof createTemplateTestServer>>,
+  draft: Awaited<ReturnType<typeof createTask09Draft>>,
+  token: string,
+  phase: "seal" | "archive"
+) {
+  expect(await generatedSealWorkItems(server, draft, token)).toEqual({
+    status: 200, blocked: [], pending: [expect.objectContaining({
+      id: `contract-v2-${phase}:${draft.version.id}`, type: "archive",
+      currentNode: phase === "seal" ? "确认已盖章" : "归档双方签章原件"
+    })]
+  });
+}
+
 async function assertGeneratedSealWorkItemBlocked(
   server: Awaited<ReturnType<typeof createTemplateTestServer>>,
   draft: Awaited<ReturnType<typeof createTask09Draft>>,
@@ -1689,6 +1703,13 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
       if (nativeOutsideInstalled) process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "task12-synthetic-write-port";
       await store.project.update({ where: projectWhere, data: { operatingLedgerEffectiveDate: new Date("2026-01-01") } });
     }
+    await assertGeneratedLifecycleWorkItemPending(server, draft, director, "seal");
+    const staff = await loginTemplateActor(server, "staff");
+    const scopedDirector = await store.userPosition.create({
+      data: { userId: "staff", positionId: "comprehensive_director", projectId: draft.projectId }
+    });
+    try { await assertGeneratedSealWorkItemHidden(server, draft, staff); }
+    finally { await store.userPosition.delete({ where: { id: scopedDirector.id } }); }
     witness.mockClear();
     const result = { contractVersionId, approvalInstanceId, sealTaskId, status: "seal_approved_pending_archive" };
     const sealed = await confirmSeal(director);
@@ -1711,12 +1732,23 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
         actorUserId: "staff", contractVersionId, approvalInstanceId, sealTaskId,
         archiveAction: { key: "archive_signed_v2", eligible: true, enabled: true } }
     } });
+    const archiveHandler = await loginTemplateActor(server, "staff");
+    await assertGeneratedLifecycleWorkItemPending(server, draft, archiveHandler, "archive");
+    await assertGeneratedSealWorkItemHidden(server, draft, director);
+    await store.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: "employee" } });
+    try { await assertGeneratedSealWorkItemHidden(server, draft, archiveHandler); }
+    finally { await store.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: "staff" } }); }
     nativeInstallationQualified = false;
     try {
       const closed = await fetch(lifecycleUrl, { headers: draft.headers });
       expect({ status: closed.status, body: await closed.json() }).toMatchObject({ status: 200, body: {
         v2Lifecycle: { status: "unavailable", webWriteReleased: false, archiveAction: { enabled: false } }
       } });
+      expect(await generatedSealWorkItems(server, draft, archiveHandler)).toEqual({
+        status: 200, pending: [], blocked: [expect.objectContaining({
+          id: `contract-v2-archive:${draft.version.id}`, type: "blocker"
+        })]
+      });
     } finally { nativeInstallationQualified = true; }
     if (nativeUpwardInstalled || nativeOutsideInstalled) {
       nativeUpwardInstalled = false;

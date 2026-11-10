@@ -1,5 +1,6 @@
 import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "../contract/contract-parallel-duty-access";
 import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
+import { readContractV2LifecycleContext } from "../contract/contract-v2-lifecycle-context";
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
 import { spotPurchaseWorkItems } from "../spot-procurement/spot-purchase-work-items";
 import { fundReviewWorkItems } from "../fund-account/fund-account-work-items";
@@ -1827,13 +1828,33 @@ export class MeService {
       if (!round || round.status !== "approved" || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || round.businessId !== version.id || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint || round.applicantUserId !== contract.ownerUserId || task.handlerUserId !== contract.ownerUserId) continue;
       const seal = version.status === "approved_pending_seal" && task.status === "in_seal";
       const archive = version.status === "seal_approved_pending_archive" && task.status === "completed" && task.completedAt && task.completedByUserId;
-      if (seal ? !await hasActiveContractGlobalRole(this.prisma, userId, "comprehensive_director") : !archive || task.handlerUserId !== userId || !(await resolveGovernedFinalArchiveAccess(this.prisma, { actorUserId: userId, projectId: contract.projectId, handlerUserId: task.handlerUserId })).canUpload) continue;
+      if (!seal && (!archive || task.handlerUserId !== userId)) continue;
       const code = contract.code ?? contract.temporaryCode;
       if (!code) continue;
+      const hasCurrentRole = async (tx: Prisma.TransactionClient) => seal
+        ? hasActiveContractGlobalRole(tx, userId, "comprehensive_director")
+        : (await resolveGovernedFinalArchiveAccess(tx, {
+          actorUserId: userId, projectId: contract.projectId, handlerUserId: task.handlerUserId
+        })).canUpload;
       const identity = snapshot.signingIdentity;
       const relationship = identity && typeof identity === "object" && "relationship" in identity ? identity.relationship : null;
-      // The current installation has no generated archive authority for these sources.
-      const blocked = isNonInsideContractSubject(version.signingSubjectType) || relationship === "outside" || relationship === "upward";
+      const external = isNonInsideContractSubject(version.signingSubjectType) || relationship === "outside" || relationship === "upward";
+      const blocked = external ? await this.prisma.$transaction(async tx => {
+        if (!await hasCurrentRole(tx)) return null;
+        const currentContract = await tx.contract.findUnique({ where: { id: contract.id } });
+        if (!currentContract || currentContract.voidedAt || currentContract.projectId !== contract.projectId ||
+          currentContract.ownerUserId !== contract.ownerUserId) return null;
+        const latest = await tx.contractVersion.findFirst({
+          where: { contractId: contract.id, status: { not: "deleting" } }, orderBy: { versionNo: "desc" }
+        });
+        if (latest?.id !== version.id || latest.status !== version.status) return null;
+        const lifecycle = await readContractV2LifecycleContext(tx, currentContract, latest, userId, false);
+        return lifecycle?.status !== "ready" || !lifecycle.webWriteReleased ||
+          lifecycle.approvalInstanceId !== round.id || lifecycle.sealTaskId !== task.id ||
+          (seal ? lifecycle.state !== "pending_seal" || !lifecycle.sealAction.enabled
+            : lifecycle.state !== "pending_archive" || !lifecycle.archiveAction.enabled);
+      }) : await hasCurrentRole(this.prisma) ? false : null;
+      if (blocked === null) continue;
       const queue = blocked ? result.blocked : result.pending;
       queue.push({ id: `contract-v2-${seal ? "seal" : "archive"}:${version.id}`, type: blocked ? "blocker" : "archive", businessType: "contract_version", businessId: version.id,
         title: contract.name, projectName: names.get(contract.projectId) ?? "所属项目", businessCode: code,
