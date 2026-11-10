@@ -30,6 +30,7 @@ module.exports = { checkSetup };
 
 const fs = require("node:fs");
 const path = require("node:path");
+const technicalProfiles = require("./local-staged-technical-profile-policy.cjs");
 const matrix = require("./local-staged-migration-qualification.json");
 const hash = /^[a-f0-9]{64}$/u;
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u;
@@ -37,7 +38,7 @@ const literal = value => "'" + JSON.stringify(value).replaceAll("'", "''") + "'"
 function checkPlan(input) {
   let plan = dataRecord(input);
   const keys = ["database", "databaseOid", "namespaceOid", "actorOid", "ownerOid", "systemIdentifier",
-    "runId", "nonce", "appName", "schemaName", "migrations"];
+    "runId", "nonce", "appName", "schemaName", "migrations", "technicalProfile", "resourceRunId"];
   need(Object.keys(plan).every(key => keys.includes(key)));
   if (Object.hasOwn(plan, "migrations")) {
     const migrations = dataArray(plan.migrations).map(dataRecord);
@@ -47,10 +48,11 @@ function checkPlan(input) {
       typeof row.sha256 === "string" && hash.test(row.sha256)));
     plan = Object.freeze({ ...plan, migrations: Object.freeze(migrations) });
   }
+  const technical = technicalProfiles.planProfile(plan);
   need(plan && !types.isProxy(plan) && uuid.test(plan.runId) && hash.test(plan.nonce) &&
     /^jg_fixture_app_[a-f0-9]{24}$/u.test(plan.appName) &&
     /^jg_fixture_[a-f0-9]{24}$/u.test(plan.schemaName) &&
-    /^jiangkong_project_financing_quota_[a-z0-9_]+$/u.test(plan.database) &&
+    (technical ? plan.database === "jg_task01_" + plan.resourceRunId.replaceAll("-", "") : /^jiangkong_project_financing_quota_[a-z0-9_]+$/u.test(plan.database)) &&
     [plan.databaseOid, plan.namespaceOid, plan.actorOid, plan.ownerOid].every(oid) &&
     plan.ownerOid === plan.actorOid && typeof plan.systemIdentifier === "string" &&
     /^[1-9][0-9]{0,19}$/u.test(plan.systemIdentifier) &&
@@ -63,7 +65,7 @@ function setupSql(plan) {
     plan.migrations.every(row => row && /^[0-9]{14}_[a-z0-9_]+$/u.test(row.name) && hash.test(row.sha256)) &&
     plan.migrations[203].sha256 === "296c6e2f502bc782bd83ab59190505e27b80623d1da1a3b6dddb72c414eb686f" &&
     plan.migrations[204].sha256 === "2ca118b29e8e75745a1ac7d6f8de3fbfa70fa5774b3d95c48c6119caff8b316a");
-  return fs.readFileSync(path.join(__dirname, "local-staged-migration-acl.sql"), "utf8")
+  return technicalProfiles.projectTechnicalSql(plan, fs.readFileSync(path.join(__dirname, "local-staged-migration-acl.sql"), "utf8"), "setup").sql
     .replaceAll("__SCHEMA__", plan.schemaName).replaceAll("__APP__", plan.appName)
     .replaceAll("__PLAN__", literal(plan)).replaceAll("__MATRIX__", literal(matrix));
 }
@@ -236,7 +238,7 @@ function cleanReadSql(plan, setup) {
       'applicationQualified',current_database()='${plan.database}' AND
        (SELECT oid::text FROM pg_database WHERE datname=current_database())='${plan.databaseOid}' AND
        (SELECT system_identifier::text FROM pg_control_system())='${plan.systemIdentifier}' AND
-       current_user=session_user AND current_user='jiangkong' AND current_user::regrole::oid::text='${plan.actorOid}' AND
+       current_user=session_user AND current_user='${technicalProfiles.planProfile(plan)?.owner ?? "jiangkong"}' AND current_user::regrole::oid::text='${plan.actorOid}' AND
        to_regnamespace('public')::oid::text='${plan.namespaceOid}' AND
        (SELECT datdba::text FROM pg_database WHERE datname=current_database())='${plan.ownerOid}' AND
        EXISTS(SELECT FROM pg_roles WHERE oid='${setup.appOid}'::oid AND rolname='${plan.appName}'

@@ -3,6 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 const controls=require('./local-staged-migration-controls.cjs');
+const technicalProfiles=require('./local-staged-technical-profile-policy.cjs');
 const WINDOWS=[213,215,218,221],FULL='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
 const hash=x=>createHash('sha256').update(x).digest('hex'),quote=x=>"'"+x.replaceAll("'","''")+"'";
 const need=x=>{if(!x)throw new Error('LOCAL_MIGRATION_TAIL_QUALIFICATION');};
@@ -126,7 +127,7 @@ function validateRow(input,c,stage,phase,prior){
  need(equal(row.scope,{stage,phase,nonce:c.plan.nonce,runId:c.plan.runId,sourceSha256:FULL}));
  const id=row.identity;keys(id,['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier','actor','sessionActor','version','encoding','replication','backendPid','backendStart','readOnly']);
  for(const key of ['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'])need(id[key]===c.plan[key]);
- need(id.actor==='jiangkong'&&id.sessionActor===id.actor&&id.version>=160000&&id.version<170000&&Number.isInteger(id.version)&&id.encoding==='UTF8'&&id.replication==='origin'&&id.readOnly===(phase!=='staged')&&Number.isInteger(id.backendPid)&&id.backendPid>0&&id.backendPid<=2147483647&&typeof id.backendStart==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(id.backendStart)&&Number.isFinite(Date.parse(id.backendStart))&&new Date(Date.parse(id.backendStart)).toISOString().slice(0,19)===id.backendStart.slice(0,19));
+ need(id.actor===(technicalProfiles.planProfile(c.plan)?.owner??'jiangkong')&&id.sessionActor===id.actor&&id.version>=160000&&id.version<170000&&Number.isInteger(id.version)&&id.encoding==='UTF8'&&id.replication==='origin'&&id.readOnly===(phase!=='staged')&&Number.isInteger(id.backendPid)&&id.backendPid>0&&id.backendPid<=2147483647&&typeof id.backendStart==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(id.backendStart)&&Number.isFinite(Date.parse(id.backendStart))&&new Date(Date.parse(id.backendStart)).toISOString().slice(0,19)===id.backendStart.slice(0,19));
  need(Array.isArray(row.ledger));const completed=[];
  for(const item of row.ledger){keys(item,['name','sha256','finished','rolledBack']);if(item.finished===true&&item.rolledBack===false)completed.push(item);else need(item.name===c.ledger[114].name&&item.sha256===c.ledger[114].sha256&&item.finished===false&&item.rolledBack===true);}
  need(equal(completed,c.ledger.slice(0,stage)));
@@ -191,10 +192,11 @@ function renderSupply(c,stage,before){
  verifyMaterials();validateRow(before,c,stage,'before');const observed=projection(c,stage,'before');
  let body;
  if(stage===213){
-  body=fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql'),'utf8');
+  const material=technicalProfiles.projectTechnicalSql(c.plan,fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql'),'utf8'),'post213');
+  body=material.sql;
   const prefix=c.migrations.slice(0,213).map(r=>`(${quote(r.name)},${quote(r.sha256)})`).join(',\n');
   need(body.split('__PREFIX213__').length===3);body=body.replaceAll('__PREFIX213__',prefix).replaceAll('__APP_LITERAL__',quote(c.plan.appName));
-  const settings={database_name:c.plan.database,database_oid:c.plan.databaseOid,owner_role:'jiangkong',application_role:c.plan.appName};
+  const settings={database_name:c.plan.database,database_oid:c.plan.databaseOid,owner_role:technicalProfiles.planProfile(c.plan)?.owner??'jiangkong',application_role:c.plan.appName};
   const setup=Object.entries(settings).map(([key,value])=>`PERFORM set_config('jg.post213_${key}',${quote(value)},true);`).join('\n');
   body=`DO $tail_settings$ BEGIN ${setup}\nPERFORM set_config('jg.post213_pending_sha256',${quote(before.pending.sha256)},true); END $tail_settings$;\n`+body;
  }else{
@@ -229,7 +231,7 @@ const failures=new WeakMap();
 function localTailFailureDiagnostic(error){return failures.get(error)??null;}
 function createLocalTailQualification(input,ports){
  const c=context(input);need(ports&&!types.isProxy(ports)&&Object.getPrototypeOf(ports)===Object.prototype);
- const ds=Object.getOwnPropertyDescriptors(ports);need(equal(Reflect.ownKeys(ds).sort(),['read','write'])&&Object.values(ds).every(d=>Object.hasOwn(d,'value')&&typeof d.value==='function'&&!types.isProxy(d.value)));
+ const ds=Object.getOwnPropertyDescriptors(ports);need(equal(Reflect.ownKeys(ds).sort(),technicalProfiles.planProfile(c.plan)?['read','recordMaterial','write']:['read','write'])&&Object.values(ds).every(d=>Object.hasOwn(d,'value')&&typeof d.value==='function'&&!types.isProxy(d.value)));
  const read=ds.read.value,write=ds.write.value;let next=0,stopped=false,busy=false;
  return Object.freeze({async qualify(stage){
   if(stopped||busy||WINDOWS[next]!==stage){stopped=true;throw new Error('LOCAL_MIGRATION_TAIL_QUALIFICATION');}busy=true;
@@ -237,6 +239,7 @@ function createLocalTailQualification(input,ports){
   try{
    const beforeSql=readSql(c,stage,'before');kind='RESOURCE_PORT';const beforeData=await read(`tail${stage}-before`,beforeSql);kind='NODE_PROOF';need(!stopped);
    const before=validateRow(beforeData,c,stage,'before');
+   if(stage===213&&ds.recordMaterial)ds.recordMaterial.value({...technicalProfiles.projectTechnicalSql(c.plan,fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql'),'utf8'),'post213'),kind:'post213'});
    phase='SUPPLY';const supplySql=renderSupply(c,stage,before);kind='RESOURCE_PORT';const stagedData=await write(`tail${stage}-supply`,supplySql);kind='NODE_PROOF';need(!stopped);
    const staged=validateRow(stagedData,c,stage,'staged',before);
    phase='READBACK';const afterSql=readSql(c,stage,'committed',staged.writeXid);kind='RESOURCE_PORT';const afterData=await read(`tail${stage}-readback`,afterSql);kind='NODE_PROOF';need(!stopped);

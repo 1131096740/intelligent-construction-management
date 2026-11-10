@@ -57,7 +57,11 @@ async function canonicalRows() {
     .update(await fs.readFile(path.join(dir, name, "migration.sql"))).digest("hex") })));
 }
 
-async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false) {
+async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false, named = false) {
+  const database = named ? "jg_task01_0123456789abcdef0123456789abcdef" : "jiangkong_project_financing_quota_concurrency";
+  const container = { id: "a".repeat(64), name: named ? "jg-task01-01234567-89ab-cdef-0123-456789abcdef" : "jiangkong-pfq-concurrency-fixture", runId: "01234567-89ab-cdef-0123-456789abcdef" };
+  const actor = { oid: "10", name: named ? "jg_task01_owner" : "jiangkong", superuser: true, createRole: false, createDb: true, replication: true, bypassRls: true, memberships: [] };
+  const observedContainer = () => ({ ...container, running: true, publishedHost: "127.0.0.1", publishedPort: "55432" });
   const rows = await canonicalRows();
   const calls = [];
   const databaseNames = [database, "jiangkong_project_financing_quota_pre115_clean",
@@ -78,7 +82,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
   let setup;
   let roles = [actor];
   const readback = () => ({ database: currentDatabase, databaseOid: currentState().oid, namespaceOid: "2200",
-    actorOid: "10", ownerOid: "10", actor: "jiangkong", sessionActor: "jiangkong",
+    actorOid: "10", ownerOid: "10", actor: actor.name, sessionActor: actor.name,
     systemIdentifier: "1234567890123456789", version: 160015, encoding: "UTF8", replication: "origin",
     roles, ledger: [...rows.slice(0, currentState().applied).map(row => ({ ...row, finished: true, rolledBack: false })),
       ...(currentState().rolledBack ? [{ ...rows[114], finished: false, rolledBack: true }] : [])]
@@ -93,6 +97,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase.startsWith("tail")) {
         result = require("./testdata/local-staged-tail-model.cjs").observe(sql, phase);
         result.ledger = readback().ledger;
+        result.identity.actor = actor.name; result.identity.sessionActor = actor.name;
         if (mutate) result = mutate(phase, result);
         return { stdout: JSON.stringify(result), stderr: "" };
       }
@@ -175,8 +180,8 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
         "Applying migration " + rows.slice(before, state.applied).map(row => row.name).join("\n"), stderr: "" };
     }
   };
-  const fixture = createLocalMigrationFixture(ports);
-  return { fixture, calls, deploymentRequests, databaseNames,
+  const fixture = named ? null : createLocalMigrationFixture(ports);
+  return { fixture, ports, calls, deploymentRequests, databaseNames,
     resolveHistorical(name) {
       const state = databaseStates.get(name);
       assert.ok(state?.failed);
@@ -512,4 +517,176 @@ for(const [name,alter] of [
   await assert.rejects(fake.fixture.migrate({databaseUrl}),/LOCAL_MIGRATION_TAIL213_BEFORE_NODE_PROOF/u);
   assert.equal(fake.calls.includes('tail213-supply'),false);assert.equal(fake.calls.includes('deploy-215'),false);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+
+// The only replaced boundaries here are the original owned-resource claim and
+// bounded Prisma CLI process. No alternative issuer is registered in product.
+async function current259Model(temporaryRoot, mutate) {
+  const model = await fakeFixture(temporaryRoot, mutate, [], false, true);
+  const vm = require("node:vm"), nativeRequire = require("node:module").createRequire(__filename);
+  const handle = Object.freeze({ simulation: "owned-current259-test" });
+  let closed = false, checks = 0, commands = 0, cliHash = "ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388";
+  const rows = await canonicalRows();
+  const receipt = { runId: container.runId, containerId: container.id, networkId: "b".repeat(64),
+    databaseName: "jg_task01_0123456789abcdef0123456789abcdef", port: 55432,
+    containerName: "jg-task01-" + container.runId };
+  const resource = { containerId: receipt.containerId, networkId: receipt.networkId, port: receipt.port,
+    caPath: "/synthetic-immutable-ca.crt", getReceipt: () => ({ ...receipt }),
+    execOwnerSql: (sql, phase) => model.ports.executeSql({ database: receipt.databaseName,
+      phase: phase.replace(/^current259-/u, ""), sql }) };
+  const view = { source: { candidateSha: "c".repeat(40), profile: { ledgerSha256: "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952", ledger: rows } },
+    build: { node: { path: process.execPath, sha256: crypto.createHash("sha256").update(require("node:fs").readFileSync(process.execPath)).digest("hex") } }, runId: container.runId, resource,
+    credentials: () => ({ owner: "synthetic-non-secret" }),
+    check: () => { checks++; assert.equal(closed, false, "synthetic resource closed"); },
+    verifyFull: () => { checks++; assert.equal(closed, false, "synthetic source closed"); } };
+  const cache = new Map(), moduleCache = {};
+  const replaced = new Set(["local-staged-current259-profile.cjs", "local-staged-migrations.cjs",
+    "local-staged-migration-controls.cjs", "local-staged-tail-qualification.cjs"]);
+  function load(name) {
+    if (cache.has(name)) return cache.get(name).exports;
+    const file = path.join(__dirname, name), module = { exports: {} }; cache.set(name, module); moduleCache[file] = module;
+    const uncachedRequire = request => {
+      if (request === "node:fs") return { ...require("node:fs"), realpathSync(file) {
+        if(file.endsWith("services/api/node_modules/prisma/build/index.js") || file.endsWith("schema-engine-darwin-arm64")) return file;
+        return require("node:fs").realpathSync(file);
+      } };
+      if (request === "./task16-runtime-inputs.cjs") return { readQualifiedTask16File(file) {
+        if(file.endsWith("schema-engine-darwin-arm64")) return { sha256:"57b090d47b947dc9284379d9480d11ffe14fe63155e3da515b359f3aa7fa408a",identity:{simulation:"fixed-schema-engine"} };
+        if(file.endsWith("services/api/node_modules/prisma/build/index.js")) return { sha256:cliHash,identity:{simulation:"fixed-cli"} };
+        return { sha256:crypto.createHash("sha256").update(require("node:fs").readFileSync(file)).digest("hex"),identity:{simulation:"fixed-node"} };
+      } };
+      if (request === "./task16-current259-owned-resource.cjs") return { claimCurrent259OwnedResource(value) {
+        assert.equal(value, handle, "synthetic genuine handle required"); return view;
+      } };
+      if (request === "./task16-bounded-command.cjs") return { async runTask16BoundedCommand(executable, args, control) {
+        commands++;
+        assert.equal(executable, process.execPath);
+        assert.equal(args[0], path.join(__dirname, "../node_modules/prisma/build/index.js"));
+        assert.equal(control.env.PRISMA_QUERY_ENGINE_LIBRARY, undefined);
+        const url = new URL(control.env.DATABASE_URL);
+        assert.equal(url.username, "jg_task01_owner"); assert.equal(url.searchParams.get("sslmode"), "require");
+        assert.equal(url.searchParams.get("sslaccept"), "strict"); assert.equal(url.searchParams.get("sslcert"), resource.caPath);
+        for (const key of ["schema", "connection_limit", "sslmode", "sslaccept", "sslcert", "connect_timeout", "pool_timeout"]) url.searchParams.delete(key);
+        const result = await model.ports.deploy({ databaseUrl: url.toString(), schemaPath: args.at(-1), runtimeEnv: {} });
+        return { ...result, code: 0, timedOut: false, actualSettled: true };
+      } };
+      return request.startsWith("./") && replaced.has(request.slice(2)) ? load(request.slice(2)) : nativeRequire(request);
+    };
+    const localRequire = request => {
+      const resolved = nativeRequire.resolve(request);
+      if(["./task16-current259-owned-resource.cjs","./task16-runtime-inputs.cjs","./task16-bounded-command.cjs"].includes(request)) {
+        if(!moduleCache[resolved]) moduleCache[resolved] = { exports:uncachedRequire(request) };
+        return moduleCache[resolved].exports;
+      }
+      return uncachedRequire(request);
+    };
+    localRequire.resolve = nativeRequire.resolve; localRequire.cache = moduleCache;
+    const source = awaitRead(file);
+    vm.runInThisContext("(function(require,module,exports,__dirname,__filename){\n" + source + "\n})", { filename: file })(localRequire, module, module.exports, __dirname, file);
+    return module.exports;
+  }
+  function awaitRead(file) { return require("node:fs").readFileSync(file, "utf8"); }
+  const api = load("local-staged-current259-profile.cjs");
+  return { ...model, api, handle, receipt, close: () => { closed = true; },
+    driftCli: () => { cliHash = "0".repeat(64); }, tamperCommand: () => { moduleCache[nativeRequire.resolve("./task16-bounded-command.cjs")].exports = {}; }, counts: () => ({ checks, commands }) };
+}
+
+test("owned current259 technical recipe reuses all four atomic windows and independent readbacks", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-"));
+  const model = await current259Model(temporaryRoot);
+  const run = model.api.createCurrent259TechnicalMigration(model.handle);
+  const result = await run.migrate();
+  assert.equal(result.status, "CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION");
+  assert.equal(result.executionAllowed, false); assert.equal(result.nativeAdmission, false);
+  assert.match(result.application.name, /^jg_fixture_app_[a-f0-9]{24}$/u);
+  assert.deepEqual(model.deploymentRequests.map(row => row.count), [203,205,213,215,218,221,259]);
+  for (const stage of [213,215,218,221]) assert.deepEqual(model.calls.filter(value => value.startsWith("tail" + stage)),
+    ["tail" + stage + "-before", "tail" + stage + "-supply", "tail" + stage + "-readback"]);
+  assert.ok(model.counts().checks > 70); assert.equal(model.counts().commands, 7);
+  await assert.rejects(run.migrate());
+});
+
+
+for (const stage of [213,215,218,221]) {
+  test("owned current259 stops after unproved " + stage + " commit without later deployment", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-negative-"));
+    const model = await current259Model(root, (phase,row) => {
+      if (phase === "tail" + stage + "-readback") row.commitStatus = "in progress";
+      return row;
+    });
+    const run = model.api.createCurrent259TechnicalMigration(model.handle);
+    await assert.rejects(run.migrate(), /LOCAL_MIGRATION_TAIL[0-9]+_/u);
+    assert.equal(model.deploymentRequests.at(-1).count, stage);
+    assert.equal(model.calls.at(-1), "tail" + stage + "-readback");
+    await assert.rejects(run.migrate());
+    assert.throws(() => model.api.createCurrent259TechnicalMigration(model.handle));
+  });
+}
+
+test("owned current259 rejects258 suffix and changed owner before Prisma deployment", async () => {
+  for (const mutation of ["prefix258","wrongOwner"]) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-fresh-"));
+    const rows = await canonicalRows();
+    const model = await current259Model(root, (phase,row) => {
+      if (phase === "preflight") {
+        if (mutation === "prefix258") row.ledger = rows.slice(0,258).map(value => ({...value,finished:true,rolledBack:false}));
+        else row.actor = "jiangkong";
+      }
+      return row;
+    });
+    await assert.rejects(model.api.createCurrent259TechnicalMigration(model.handle).migrate(), /LOCAL_MIGRATION_(CURRENT259_FRESH_FULL_ONLY|DATABASE_IDENTITY)/u);
+    assert.equal(model.counts().commands, 0);
+  }
+});
+
+test("owned current259 rechecks resource identity after awaited SQL and permanently stops", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-drift-"));
+  let model;
+  model = await current259Model(root, (phase,row) => {
+    if (phase === "preflight") model.receipt.networkId = "d".repeat(64);
+    return row;
+  });
+  const run = model.api.createCurrent259TechnicalMigration(model.handle);
+  await assert.rejects(run.migrate(), /LOCAL_MIGRATION_SQL_PREFLIGHT/u);
+  model.receipt.networkId = "b".repeat(64);
+  await assert.rejects(run.migrate());
+  assert.equal(model.counts().commands,0);
+});
+
+
+test("owned current259 rejects changed fixed CLI before deployment and rejects aborted scope", async () => {
+  for (const choice of ["cli","abort"]) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-tools-"));
+    const model = await current259Model(root), signal = new AbortController();
+    const run = model.api.createCurrent259TechnicalMigration(model.handle,signal.signal);
+    if(choice === "cli") model.driftCli(); else signal.abort();
+    await assert.rejects(run.migrate(), /CURRENT259_TECHNICAL_PROFILE/u);
+    assert.equal(model.counts().commands,0);
+    await assert.rejects(run.migrate());
+  }
+});
+
+test("owned current259 caught reentrant call revokes the first operation before deployment", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-reentrant-"));
+  let run;
+  const model = await current259Model(root,(phase,row) => {
+    if(phase === "preflight") void run.migrate().catch(() => {});
+    return row;
+  });
+  run = model.api.createCurrent259TechnicalMigration(model.handle);
+  await assert.rejects(run.migrate(), /LOCAL_MIGRATION_SQL_PREFLIGHT/u);
+  assert.equal(model.counts().commands,0);
+});
+
+
+test("owned current259 rejects original transport replacement and copied technical tokens", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-transport-"));
+  const model = await current259Model(root);
+  assert.throws(() => model.api.resolveTechnicalProfile({kind:"CURRENT259_OWNED_TECHNICAL_V1"}));
+  const run = model.api.createCurrent259TechnicalMigration(model.handle);
+  model.tamperCommand();
+  await assert.rejects(run.migrate(), /CURRENT259_TECHNICAL_PROFILE/u);
+  assert.equal(model.counts().commands,0);
+  assert.deepEqual(model.calls,[]);
 });

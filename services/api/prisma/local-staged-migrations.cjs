@@ -7,6 +7,8 @@ const { types, isDeepStrictEqual } = require("node:util");
 const controls = require("./local-staged-migration-controls.cjs");
 const { createLocalTailQualification } = require("./local-staged-tail-qualification.cjs");
 
+const technicalProfiles = require("./local-staged-technical-profile-policy.cjs");
+
 const canonicalRoot = path.join(__dirname, "migrations");
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 const need = (ok, code) => { if (!ok) throw new Error("LOCAL_MIGRATION_" + code); };
@@ -54,9 +56,9 @@ function checkLedger(rows, expected, rolledBack) {
   return completed.length;
 }
 
-function identity(row, database) {
+function identity(row, database, owner = "jiangkong") {
   need(row && row.database === database && oid(row.databaseOid) && oid(row.namespaceOid) &&
-    oid(row.actorOid) && row.ownerOid === row.actorOid && row.actor === "jiangkong" &&
+    oid(row.actorOid) && row.ownerOid === row.actorOid && row.actor === owner &&
     row.sessionActor === row.actor && row.version >= 160000 && row.version < 170000 &&
     row.encoding === "UTF8" && row.replication === "origin" &&
     typeof row.systemIdentifier === "string" && /^[1-9][0-9]{0,19}$/u.test(row.systemIdentifier) &&
@@ -68,11 +70,15 @@ function identity(row, database) {
 }
 
 function createLocalMigrationFixture(input) {
-  const options = snapshot(input);
+  const supplied = snapshot(input);
+  const technical = Object.hasOwn(supplied, "technicalProfile") ? require("./local-staged-current259-profile.cjs").resolveTechnicalProfile(supplied.technicalProfile) : null;
+  if (technical) need(Object.keys(supplied).length === 2 && typeof supplied.temporaryRoot === "string", "INPUT");
+  const options = technical ? snapshot({ ...supplied, ...technical.options }) : supplied;
+  const owner = technical?.owner ?? "jiangkong";
   const container = snapshot(options.container);
   need([container.id, container.name, container.runId].every(value => typeof value === "string") &&
     /^[a-f0-9]{64}$/u.test(container.id) &&
-    /^jiangkong-[a-z0-9-]+$/u.test(container.name) &&
+    (technical ? /^jg-task01-[a-f0-9-]+$/u : /^jiangkong-[a-z0-9-]+$/u).test(container.name) &&
     /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(container.runId), "INPUT");
   for (const key of ["inspectContainer", "executeSql", "deploy"]) {
     need(typeof options[key] === "function" && !types.isProxy(options[key]), "INPUT");
@@ -83,7 +89,7 @@ function createLocalMigrationFixture(input) {
       .every(field => Object.hasOwn(field, "value")), "INPUT");
   const databaseNames = Object.freeze([...options.databaseNames]);
   need(databaseNames.length > 0 && new Set(databaseNames).size === databaseNames.length &&
-    databaseNames.every(name => typeof name === "string" && /^jiangkong_[a-z0-9_]+$/u.test(name)), "INPUT");
+    databaseNames.every(name => typeof name === "string" && (technical ? name === technical.database : /^jiangkong_[a-z0-9_]+$/u.test(name))), "INPUT");
   const states = new Map();
   let busy = false;
   let stopped = false;
@@ -95,6 +101,7 @@ function createLocalMigrationFixture(input) {
 
   async function assertContainer() {
     need(!stopped, "STOPPED");
+    if (technical) technical.check();
     const observed = snapshot(await inspectContainer(container.id));
     need(observed.id === container.id && observed.name === container.name &&
       observed.runId === container.runId && observed.running === true, "CONTAINER_IDENTITY");
@@ -137,7 +144,7 @@ function createLocalMigrationFixture(input) {
     need(Array.isArray(row.roles) && row.roles.every(role => oid(role.oid) &&
       /^[a-z_][a-z0-9_]{0,62}$/u.test(role.name)), "ROLE_PROVENANCE");
     if (!clusterRoles) {
-      need(row.roles.every(role => role.oid === "10" && role.name === "jiangkong" ||
+      need(row.roles.every(role => role.oid === "10" && role.name === owner ||
         Number(role.oid) < 16384 && role.name.startsWith("pg_")), "ROLE_PROVENANCE");
     } else {
       need(clusterRoles.every(role => row.roles.some(current => isDeepStrictEqual(current, role))),
@@ -163,7 +170,7 @@ function createLocalMigrationFixture(input) {
         Object.values(request.runtimeEnv).every(value => typeof value === "string"), "INPUT");
       const parsed = new URL(request.databaseUrl);
       need(parsed.protocol === "postgresql:" && parsed.hostname === "127.0.0.1" &&
-        parsed.username === "jiangkong" && parsed.port === publishedPort &&
+        parsed.username === owner && parsed.port === publishedPort &&
         [...parsed.searchParams.keys()].every(key => key === "application_name") &&
         parsed.searchParams.getAll("application_name").length <= 1 &&
         (!parsed.searchParams.has("application_name") ||
@@ -204,12 +211,13 @@ function createLocalMigrationFixture(input) {
       "SOURCE_204_205");
       const rolledBack = ["20260802010000_project_financing_quota_request_idempotency"];
       const before = await read(database, "preflight", controls.inspectSql());
-      const bound = identity(before, database);
+      const bound = identity(before, database, owner);
       const prior = states.get(database);
       if (prior) need(isDeepStrictEqual(prior.identity, bound), "DATABASE_IDENTITY");
       else states.set(database, { identity: bound });
       checkRoles(before);
       const count = checkLedger(before.ledger, target, rolledBack);
+      if (technical) need(count === 0 && target.length === 259 && request.expectedFailure === undefined, "CURRENT259_FRESH_FULL_ONLY");
       if (recovery) {
         need(count === 114 && before.ledger.filter(row => row.name === expected[114].name &&
           row.sha256 === expected[114].sha256 && row.finished === false && row.rolledBack === true)
@@ -256,7 +264,7 @@ function createLocalMigrationFixture(input) {
         throw error;
       }
       const stage203 = await read(database, "stage203-readback", controls.inspectSql());
-      need(isDeepStrictEqual(identity(stage203, database), bound) &&
+      need(isDeepStrictEqual(identity(stage203, database, owner), bound) &&
         checkLedger(stage203.ledger, target, rolledBack) === 203, "STAGE203");
       checkRoles(stage203, declaredRoles);
 
@@ -264,8 +272,10 @@ function createLocalMigrationFixture(input) {
         ...bound, runId: randomUUID(), nonce: randomBytes(32).toString("hex"),
         appName: "jg_fixture_app_" + randomBytes(12).toString("hex"),
         schemaName: "jg_fixture_" + randomBytes(12).toString("hex"),
+        ...(technical ? { technicalProfile: technical.id, resourceRunId: technical.runId } : {}),
         migrations: expected.slice(0, 205)
       };
+      if (technical) technical.recordMaterial(technicalProfiles.projectTechnicalSql(plan, await readFile(path.join(__dirname, "local-staged-migration-acl.sql"), "utf8"), "setup"));
       const setup = await read(database, "qualification-setup", controls.setupSql(plan));
       controls.checkSetup(setup, plan);
       applicationNames.add(plan.appName);
@@ -276,7 +286,7 @@ function createLocalMigrationFixture(input) {
       const middle = await deploy({ ...request, databaseUrl: qualified.toString(), schemaPath: path.join(roots.get(205), "schema.prisma") });
       phaseOutput.push(middle.stdout ?? "");
       const complete = await read(database, "stage205-readback", controls.readbackSql(plan, setup));
-      need(isDeepStrictEqual(identity(complete, database), bound) &&
+      need(isDeepStrictEqual(identity(complete, database, owner), bound) &&
         checkLedger(complete.ledger, target, rolledBack) === 205, "STAGE205");
       controls.checkCompletion(complete, plan, setup);
       await read(database, "qualification-cleanup", controls.cleanupSql(plan, setup));
@@ -284,18 +294,19 @@ function createLocalMigrationFixture(input) {
       need(clean.schemaAbsent === true && clean.eventAbsent === true && clean.appOid === setup.appOid &&
         clean.applicationQualified === true, "CLEANUP");
       const after = await read(database, "post-qualification", controls.inspectSql());
-      need(isDeepStrictEqual(identity(after, database), bound), "DATABASE_IDENTITY");
+      need(isDeepStrictEqual(identity(after, database, owner), bound), "DATABASE_IDENTITY");
       checkRoles(after, declaredRoles);
       if (target.length > 213) {
         const tail = createLocalTailQualification({ plan, setup, migrations: expected }, {
           read: (phase, sql) => read(database, phase, sql),
-          write: (phase, sql) => read(database, phase, sql, true)
+          write: (phase, sql) => read(database, phase, sql, true),
+          ...(technical ? { recordMaterial: technical.recordMaterial } : {})
         });
         for (const size of [213, 215, 218, 221].filter(size => size < target.length)) {
           const prefix = await deploy({ ...request, schemaPath: path.join(roots.get(size), "schema.prisma") });
           phaseOutput.push(prefix.stdout ?? "");
           const observed = await read(database, `stage${size}-readback`, controls.inspectSql());
-          need(isDeepStrictEqual(identity(observed, database), bound) &&
+          need(isDeepStrictEqual(identity(observed, database, owner), bound) &&
             checkLedger(observed.ledger, target, rolledBack) === size, "TAIL_PREFIX");
           checkRoles(observed, declaredRoles);
           await tail.qualify(size);
@@ -303,10 +314,10 @@ function createLocalMigrationFixture(input) {
       }
       const result = await deploy(request);
       const final = await read(database, "complete-readback", controls.inspectSql());
-      need(isDeepStrictEqual(identity(final, database), bound) &&
+      need(isDeepStrictEqual(identity(final, database, owner), bound) &&
         checkLedger(final.ledger, target, rolledBack) === target.length, "COMPLETION");
       checkRoles(final, declaredRoles);
-      return { ...result, stdout: [...phaseOutput, result.stdout ?? ""].join("\n") };
+      return { ...result, ...(technical ? { technicalApplication: Object.freeze({ name: plan.appName, oid: setup.appOid, nonce: plan.nonce }) } : {}), stdout: [...phaseOutput, result.stdout ?? ""].join("\n") };
     } finally {
       busy = false;
     }
