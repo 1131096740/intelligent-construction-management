@@ -1,10 +1,12 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #398 一次本机owner连接入口已本地集成准确 `4abf14e8`：保留900秒资源/600秒owner/30秒操作/10秒断开，修正PG16 inet显式text带掩码导致的裸地址读回拒绝；旧843/be60包HOLD且未尝试。中央独立656编排、39与17定向、API类型/lint及语法通过；准确Plan `419c0805…` 经源审/范围审和真实SDK纯prepare/verify/default、根独立只读verify，运行目录为空。仅一个临时PG16、七探针及14条身份SELECT，非预期首错即停清理；待本次准确执行授权，不含迁移/业务/角色激活/生产。3c55迁移单次计划仍独立待授权。 [封存方案](/private/tmp/jg-398-owner-tls-once-IqfTupDD/packet-4abf/RUN-PLAN.json) · [合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-4ABF.md)
+
 - [~] #398 当前259读资格修复已本地集成 `44228fb7`：默认合同版本标量查询需要originalSignedNumber，新矩阵仅补这一列SELECT，并通过同源effective accessPlan供后续installer使用；既有typed目录同时核TEXT/允许NULL。独审typed缺口已RED→GREEN修闭，中央独立636编排、49目录、API类型/lint与CJS检查通过。两旧矩阵、SQL/Schema/259迁移字节不变；没有实际GRANT、SQL或native准入。 [准确源码交接](/private/tmp/jg-runtime-scalar-source-check-ise55yn_/HANDOFF.md) · [独审/合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-44228.md)
 
-- [~] 固定技术资源时限已集成 `e51c889b`：专用入口内部固定3600秒，旧Task01/owner-only入口900秒限制和原函数体保持；私有mode绑定真实receipt，技术profile早拒900秒句柄，全部1333R/272F核验计数保持。中央独立631编排、定向模型、3项无资源装配及API类型/lint通过。仅为后续准确技术执行计划提供可行预算，未创建一小时资源；owner600秒及单次入口仍在独立树最终合并/封存中。 [合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-e51.md)
+- [~] 固定技术资源时限已集成 `e51c889b`：专用入口内部固定3600秒，旧Task01/owner-only入口900秒限制和原函数体保持；私有mode绑定真实receipt，技术profile早拒900秒句柄，全部1333R/272F核验计数保持。中央独立631编排、定向模型、3项无资源装配及API类型/lint通过。仅为后续准确技术执行计划提供可行预算，未创建一小时资源；owner-only入口的后续集成见上。 [合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-e51.md)
 
-- [~] 新current259技术profile较早集成 `c0cb896d`，四项独审问题修闭。纯加载实测结合正常模型计数显示：技术供应仅材料核验估算约1361秒，超过原900秒资源限额；owner闭探针原180秒也低于其约251秒核验估算。两者均非实测SQL/TLS耗时。后继e51已保留全部检查并提供独立技术时限，owner600秒及单次入口仍待集成；真实执行须新准确计划/授权。 [较早合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-c0cb.md) · [纯加载计时](/private/tmp/jg-382-owner-tls-source-overhead-20261111.json) · [技术模型计数](/private/tmp/jg-current259-technical-profile.fpq99b1W/SOURCE-OVERHEAD-C0CB.json)
+- [~] 新current259技术profile较早集成 `c0cb896d`，四项独审问题修闭。纯加载实测结合正常模型计数显示：技术供应仅材料核验估算约1361秒，超过原900秒资源限额；owner闭探针原180秒也低于其约251秒核验估算。两者均非实测SQL/TLS耗时。后继e51/4abf已保留全部检查并分别提供技术与owner时限，真实执行须准确计划/授权。 [较早合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-c0cb.md) · [纯加载计时](/private/tmp/jg-382-owner-tls-source-overhead-20261111.json) · [技术模型计数](/private/tmp/jg-current259-technical-profile.fpq99b1W/SOURCE-OVERHEAD-C0CB.json)
 
 - [~] 新current259技术profile较早 `8f3ecd9d` 独审确认四项问题：缓存代替物理inspect、取消/失败未撤销原资源、固定导出getter可通过引用校验、Prisma checkpoint未禁用。后继c0cb已修闭并集成，未运行实际CLI/SQL/资源。原259迁移无固定jiangkong/PFQ owner或DB字面依赖的只读核查不等于实际迁移通过；3c55封存验证仍待授权。 [运输源码复核](/private/tmp/jg-382-current259-transport-review-20261111.md) · [最终候选交接](/private/tmp/jg-current259-technical-profile.fpq99b1W/HANDOFF-C0CB.md)
 
