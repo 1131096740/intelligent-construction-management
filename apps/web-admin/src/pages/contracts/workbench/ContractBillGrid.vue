@@ -25,6 +25,7 @@ export function advanceContractBillErrorCursor<T extends {
 </script>
 
 <script setup lang="ts">
+import { formatApiErrorMessage } from "../../../api/error-message";
 import { VGridVueTemplate, type ColumnRegular } from "@revolist/vue3-datagrid";
 import {
   isContractBillCustomColumn,
@@ -136,9 +137,9 @@ const editableColumns = computed(() => [...resolvedCoreColumns.value.filter(colu
 const displayErrors = computed(() =>
   Array.from(
     new Map(
-      [...props.errors, ...editorErrors.value].map((error) => [
-        cellKey(error.clientRowKey, error.field),
-        error
+      [...props.errors, ...editorErrors.value].map((issue) => [
+        cellKey(issue.clientRowKey, issue.field),
+        { ...issue, message: formatApiErrorMessage(issue.message, 0, "请核对清单明细") }
       ])
     ).values()
   )
@@ -168,15 +169,15 @@ const columns = computed<ColumnRegular[]>(() =>
     readonly: ({ model }: { model: unknown }) => isReadonlyCell(column.key, model as JgBusinessGridRow),
     cellProperties: ({ model }: { model: unknown }) => {
       const clientRowKey = String((model as JgBusinessGridRow).clientRowKey ?? "");
-      const error = errorLookup.value.get(cellKey(clientRowKey, column.key));
+      const cellIssue = errorLookup.value.get(cellKey(clientRowKey, column.key));
       const classes = [props.selectedKeys?.includes(clientRowKey) ? "contract-bill-grid__cell--selected" : ""];
       if (["quantity", "unitPrice", "taxRatePercent", "taxExclusiveUnitPrice"].includes(column.key)) classes.push("contract-bill-grid__cell--number");
       if (column.key === "taxExclusiveUnitPrice") classes.push("contract-bill-grid__cell--authoritative");
-      if (error) classes.push("contract-bill-grid__cell--error");
+      if (cellIssue) classes.push("contract-bill-grid__cell--error");
       if (!classes.some(Boolean)) return undefined;
       return {
         className: classes.filter(Boolean).join(" "),
-        ...(error ? { "aria-invalid": "true", "data-cell-error": cellKey(clientRowKey, column.key), title: error.message } :
+        ...(cellIssue ? { "aria-invalid": "true", "data-cell-error": cellKey(clientRowKey, column.key), title: cellIssue.message } :
           column.key === "taxExclusiveUnitPrice" ? { "data-authoritative-field": "taxExclusiveUnitPrice", title: netUnitPriceDetail(props.rows.find(row => row.clientRowKey === clientRowKey)?.taxExclusiveUnitPrice) } : {})
       };
     }
@@ -610,17 +611,17 @@ function cellKey(clientRowKey: string, field: string) {
       </div>
       <ul class="contract-bill-grid__error-list">
         <li
-          v-for="error in displayErrors"
-          :key="cellKey(error.clientRowKey, error.field)"
+          v-for="cellIssue in displayErrors"
+          :key="cellKey(cellIssue.clientRowKey, cellIssue.field)"
         >
           <t-button
             size="small"
             variant="text"
             class="contract-bill-grid__error-link"
-            :data-cell-error="cellKey(error.clientRowKey, error.field)"
-            @click="selectError(error)"
+            :data-cell-error="cellKey(cellIssue.clientRowKey, cellIssue.field)"
+            @click="selectError(cellIssue)"
           >
-            第 {{ errorRowNumber(error.clientRowKey) }} 行 · {{ error.message }}
+            第 {{ errorRowNumber(cellIssue.clientRowKey) }} 行 · {{ cellIssue.message }}
           </t-button>
         </li>
       </ul>

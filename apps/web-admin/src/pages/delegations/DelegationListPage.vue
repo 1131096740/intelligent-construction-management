@@ -137,6 +137,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { computed, onMounted, reactive, ref } from "vue";
 import {
   listApprovalDelegations,
@@ -173,7 +174,7 @@ function openCreate() {recipientGeneration.value++;Object.assign(draft, {resourc
 async function loadRecipients() {
   const own = ++recipientGeneration.value; const dutyId = draft.resourceId; draft.toUserId=""; recipients.value=[];
   try {const rows = await fetchApprovalDelegationUserOptions(dutyId); if (own === recipientGeneration.value && dutyId === draft.resourceId) recipients.value=rows.map(row=>({value:row.id,label:row.name}));}
-  catch(error) {if(own===recipientGeneration.value) createError.value=error instanceof Error?error.message:"受托人读取失败，请重试";}
+  catch(error) {if(own===recipientGeneration.value) createError.value=formatUnknownApiError(error, "受托人读取失败，请重试");}
 }
 async function createDelegationWithCapability(input: Parameters<typeof createApprovalDelegation>[0] & {resourceId: string}) {
   const selectionGeneration = recipientGeneration.value;
@@ -232,12 +233,12 @@ async function saveDelegation() {
     saving.value=true;
     await createDelegationWithCapability(input);
     createVisible.value=false;messageTheme.value="success";message.value="委托已保存，本人与受托人均可办理当前职责。";await loadDelegations();
-  } catch(error){createError.value=error instanceof Error?error.message:"委托保存失败，请重试";}finally{saving.value=false;}
+  } catch(error){createError.value=formatUnknownApiError(error, "委托保存失败，请重试");}finally{saving.value=false;}
 }
 async function revoke(id:string) {
   if(saving.value)return;saving.value=true;
   try{await revokeDelegationWithCapability(id);messageTheme.value="success";message.value="委托已撤销，受托人不能再办理该职责。";await loadDelegations();}
-  catch(error){messageTheme.value="error";message.value=error instanceof Error?error.message:"撤销失败，请重试";}finally{saving.value=false;}
+  catch(error){messageTheme.value="error";message.value=formatUnknownApiError(error, "撤销失败，请重试");}finally{saving.value=false;}
 }
 
 async function loadDelegations() {
@@ -246,7 +247,7 @@ async function loadDelegations() {
     const [records, options] = await Promise.all([listApprovalDelegations(), fetchApprovalDelegationDutyOptions()]);
     rawRows.value = records; duties.value = options;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载委托失败";
+    message.value = formatUnknownApiError(error, "加载委托失败");
   } finally {
     loading.value = false;
   }

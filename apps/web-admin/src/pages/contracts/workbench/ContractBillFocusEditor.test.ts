@@ -204,6 +204,30 @@ describe("ContractBillFocusEditor aggregate editing", () => {
     expect(emit).toHaveBeenCalledWith("edited");
   });
 
+  it("keeps the exact precision remedy and rejects similar raw precheck errors", async () => {
+    const precisionIssue = "Excel数值单元格超过15位有效数字，无法确认原输入精度；请将该格改为文本格式后重新填写并上传";
+    const { options, emit } = controllerOptions({
+      previewImport: vi.fn().mockResolvedValue(preview({
+        errors: [
+          { message: precisionIssue, sheet: "材料清单", row: 6, column: "D" },
+          { message: `${precisionIssue} P2025`, sheet: "材料清单", row: 7, column: "D" }
+        ]
+      }))
+    });
+    const controller = createContractBillFocusController(options);
+    const before = plain(controller.rows.value);
+
+    await controller.previewExcel(new File(["xlsx"], "材料清单.xlsx"));
+
+    expect(controller.message.value).toContain("材料清单 第 6 行 D 列：该数字超过15位有效数字");
+    expect(controller.message.value).toContain("请将该单元格改为文本格式后重新填写并上传");
+    expect(controller.message.value).toContain("材料清单 第 7 行 D 列：请核对清单中的填写内容");
+    expect(controller.message.value).not.toContain("P2025");
+    expect(controller.rows.value).toEqual(before);
+    expect(controller.replaceConfirmVisible.value).toBe(false);
+    expect(emit).not.toHaveBeenCalled();
+  });
+
   it("accepts a valid empty preview so the aggregate can clear a bill", async () => {
     const { options } = controllerOptions({
       previewImport: vi.fn().mockResolvedValue(preview({

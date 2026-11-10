@@ -3,7 +3,7 @@
     <header class="page-head">
       <div>
         <h1>版式模板治理</h1>
-        <p>草稿采用修订号并发保护；源文件变化后，旧检查和旧预览自动失效。</p>
+        <p>多人编辑时，系统会阻止覆盖他人保存的内容；更换源文件后，旧检查和旧预览自动失效。</p>
       </div>
       <t-space
         v-if="currentVersion"
@@ -237,7 +237,7 @@
       v-if="riskStopAction?.enabled"
       v-model="riskStopDialogVisible"
       :title="riskStopAction?.label ?? '风险停用'"
-      description="风险停用后，该版式不再用于新合同文件；既有合同和生成文件仍按冻结版本读取。"
+      description="风险停用后，该版式不再用于新合同文件；既有合同和已生成的文件仍保留原版式。"
       confirm-text="确认风险停用"
       confirm-theme="danger"
       :loading="riskStopLoading"
@@ -258,6 +258,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import LayoutSourceMappingPanel from "./LayoutSourceMappingPanel.vue";
 import PrivatePdfActions from "../../components/files/PrivatePdfActions.vue";
 import type { UploadFile } from "tdesign-vue-next";
@@ -532,7 +533,7 @@ async function createLayout() {
     syncEditorBaseline();
     showSuccess("版式草稿已创建");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "创建失败");
+    showError(formatUnknownApiError(error, "创建失败"));
   } finally {
     allowNavigation.value = false;
     saving.value = false;
@@ -551,7 +552,7 @@ async function saveDraftSource() {
     await refreshDetail(version.id);
     showSuccess("新修订已保存，旧检查和旧预览已失效");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "保存失败");
+    showError(formatUnknownApiError(error, "保存失败"));
   } finally {
     saving.value = false;
   }
@@ -567,7 +568,7 @@ async function inspect() {
     version.inspectionRevision = report.sourceRevision;
     showSuccess("检查完成");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "检查失败");
+    showError(formatUnknownApiError(error, "检查失败"));
   }
 }
 
@@ -582,7 +583,7 @@ async function queuePreview() {
     showSuccess("当前修订样张已进入队列");
     startPolling();
   } catch (error) {
-    showError(error instanceof Error ? error.message : "生成预览失败");
+    showError(formatUnknownApiError(error, "生成预览失败"));
   }
 }
 
@@ -595,7 +596,7 @@ async function loadPreview() {
       window.clearInterval(timer.value);
     }
   } catch (error) {
-    showError(error instanceof Error ? error.message : "读取预览失败");
+    showError(formatUnknownApiError(error, "读取预览失败"));
   }
 }
 
@@ -628,7 +629,7 @@ async function cloneCurrent() {
     await refreshDetail(cloned.id);
     showSuccess("已复制为新草稿，请在新草稿中修订");
   } catch (error) {
-    showError(error instanceof Error ? error.message : "复制失败");
+    showError(formatUnknownApiError(error, "复制失败"));
   }
 }
 
@@ -683,7 +684,7 @@ function completeRiskStop(context: RiskStopContext) {
 
 function failRiskStop(error: unknown, context: RiskStopContext) {
   if (!riskStopResultCanWrite(context)) return;
-  riskStopError.value = error instanceof Error ? error.message : "风险停用失败";
+  riskStopError.value = formatUnknownApiError(error, "风险停用失败");
 }
 
 function finishRiskStop(context: RiskStopContext) {
@@ -710,7 +711,7 @@ async function runVersionAction(action: () => Promise<unknown>, success: string,
     await refreshDetail(versionId);
     showSuccess(success);
   } catch (error) {
-    showError(error instanceof Error ? error.message : "操作失败");
+    showError(formatUnknownApiError(error, "操作失败"));
   }
 }
 
@@ -775,7 +776,7 @@ async function loadLayoutRoute() {
   if (!expectedTemplateId || expectedTemplateId === "new") {
     creationCapability.value = null;
     try { creationCapability.value = await getLayoutCreationCapability(); }
-    catch (error) { showError(error instanceof Error ? error.message : "无法新增模板"); }
+    catch (error) { showError(formatUnknownApiError(error, "无法新增模板")); }
     syncEditorBaseline();
     return;
   }
@@ -783,7 +784,7 @@ async function loadLayoutRoute() {
     await refreshDetail(typeof route.query.versionId === "string" ? route.query.versionId : undefined);
   } catch (error) {
     if (layoutTemplateRouteId.value === expectedTemplateId) {
-      showError(error instanceof Error ? error.message : "读取版式失败");
+      showError(formatUnknownApiError(error, "读取版式失败"));
     }
   }
 }

@@ -1035,7 +1035,7 @@ function captureReviewContext(
   }
   let selfReview: {selfReviewReason?: string; confirmationPassword?: string};
   try {selfReview = buildApprovalSelfReviewPayload(reviewRequiresSelfConfirmation.value, {selfReviewReason: reviewSelfReviewReason.value, confirmationPassword: reviewConfirmationPassword.value});}
-  catch (error) {confirmation.error = error instanceof Error ? error.message : "请完成本人自审确认"; return null;}
+  catch (error) {confirmation.error = formatUnknownApiError(error, "请完成本人自审确认"); return null;}
   const context = Object.freeze({
     ...(reviewRequiresSelfConfirmation.value ? {requiresSelfReviewConfirmation: true, ...selfReview} : {}),
     ownerScope: reviewOwnerScope,

@@ -100,6 +100,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed, ref } from "vue";
 import { downloadBillExcelTemplate, exportContractDraftBill } from "../../../api/contract-workbench.api";
@@ -131,7 +132,7 @@ async function downloadTemplate(bill: WorkbenchBill) {
     await downloadBillExcelTemplate(bill.id);
     message.value = "标准模板已下载";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "下载标准模板失败";
+    message.value = formatUnknownApiError(error, "下载标准模板失败");
     messageDanger.value = true;
   } finally {
     busyBillKey.value = "";
