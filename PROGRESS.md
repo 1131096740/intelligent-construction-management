@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [ ] 用户授权准确 `33e9320a` 单组诊断已执行一次并退出 1。迁移清理前捕获本次应用/数据库窗口首条 `P0001 / ARCHIVE_APPLICATION_QUALIFICATION_REQUIRED`，确认实际停于 M204 归档应用资格门。0600 脱敏 JSON 已留存，容器独立确认不存在，原 13 项组内测试未开始。未重试或执行其它组，后继需接入迁移前角色、事务内最小权限及独立读回并另获授权。 [真实诊断回执](/private/tmp/jg-382-pfq-diagnostic.zppnQ59S/DIAGNOSTIC-RECEIPT.md)
+
 - [~] 首组错误留存候选 `33e9320aa01e88b99ea44b2b19da685d3cd55c48` 经独立复核合入。清理前保留限定窗口的脱敏 SQLSTATE/原因码，两个流合计行数与 128 KiB 实际输出界限均有反例，迁移 SQL/Schema/锁及业务逻辑保持。准确独立预查编排 373/373、两后端套件 42/42、构建/类型/lint/清单通过。已封单组诊断方案，仅选现有垫资组 13 项，须另获隔离迁移单次授权，正式动态/发布仍停在旧回执。 [准确方案与预查](/private/tmp/jg-382-pfq-diagnostic.zppnQ59S/HANDOFF.md) · [作者回执](/private/tmp/jg-382-pfq-first-error.wlQNfTMn/HANDOFF.md)
 - [~] 动态接入盘点核实 22 组由 20 直接及 2 嵌套入口组成，并含 v7 原始 SQL、多库、两类非连续迁移子集，需逐入口保留原历史演练。POL-22 预检也实际迁移、写合成夹具和执行备份恢复。分阶段 SQL/锁与当前候选相同，但旧 schema 和 205 安装辅助不等于当前256入口。 [接入盘点](/private/tmp/jg-382-dynamic-inventory.qYeyxa5A/HANDOFF.md) · [分阶段材料](/private/tmp/jg-382-migration-stage-material.10U3XfxH/HANDOFF.md)
 
