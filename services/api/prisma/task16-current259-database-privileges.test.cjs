@@ -72,3 +72,17 @@ for (const [name, mutate] of [
   mutate(proof);
   assert.throws(() => renderCurrent259DatabasePrivileges(proof), /TASK16_CURRENT259_DATABASE_PRIVILEGES/);
 });
+
+test('validates the same input values used to generate SQL', () => {
+  const proof = provision();
+  let reads = 0;
+  proof.ordinary = {
+    name: ordinary.name,
+    get oid() {
+      return ++reads === 1 ? ordinary.oid : '25000 /* changed after validation */';
+    }
+  };
+  const { sql } = renderCurrent259DatabasePrivileges(proof);
+  assert.equal(reads, 1);
+  assert.doesNotMatch(sql, /changed after validation/);
+});

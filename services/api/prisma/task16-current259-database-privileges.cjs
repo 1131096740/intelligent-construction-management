@@ -24,16 +24,19 @@ function databaseSnapshotSql() {
 }
 
 function renderCurrent259DatabasePrivileges(provisioned) {
-  const identity = provisioned?.databaseIdentity;
-  const ordinary = provisioned?.ordinary;
-  const observed = provisioned?.databaseAcl?.after;
-  requireScope(identity && /^jg_task01_[a-f0-9]{32}$/u.test(identity.database) &&
+  const { identity, ordinary, observed, roles } = structuredClone({
+    identity: provisioned?.databaseIdentity,
+    ordinary: provisioned?.ordinary,
+    observed: provisioned?.databaseAcl?.after,
+    roles: provisioned?.roles
+  });
+  requireScope(identity && typeof identity.database === 'string' && /^jg_task01_[a-f0-9]{32}$/u.test(identity.database) &&
     oid(identity.databaseOid) && identity.ownerOid === OWNER &&
     typeof identity.systemIdentifier === 'string' && /^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier));
-  requireScope(ordinary && oid(ordinary.oid) && /^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name));
-  requireScope(Array.isArray(provisioned.roles));
+  requireScope(ordinary && oid(ordinary.oid) && typeof ordinary.name === 'string' && /^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name));
+  requireScope(Array.isArray(roles));
   const restricted = RESTRICTED.map(name => {
-    const matches = provisioned.roles.filter(role => role?.name === name);
+    const matches = roles.filter(role => role?.name === name);
     requireScope(matches.length === 1 && oid(matches[0].oid));
     return { name, oid: matches[0].oid };
   });
