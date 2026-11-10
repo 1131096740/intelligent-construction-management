@@ -1,5 +1,8 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [ ] 目标模式已开启。用户授权后，准确 `057ba65e` 完整本地发布验证尝试一次。前 9 阶段通过，第 10 阶段 API 全量测试以 5 项任务10合同文书用例的 5 秒超时退出。9,396 通过、570 跳过，超时根因未确定。已按约定停止，无通过回执、未到达动态 PostgreSQL 或执行迁移，无调整或重跑。[单次停止回执](/private/tmp/jg-382-release-057b.n5XQuIdL/STOP-RECEIPT.md)
+- [~] #394 同轮短租约的固定角色写入及独立回读已封存，220 项离线通过，提交或回读不明时终止控制。#398 增加原管理连接的同轮一次性 arm 回查，217 项离线通过，独立 owner 仍为夹具。两票真实认证、业务和资源验收均未到达。[合同角色端口](/private/tmp/jg-394-a08-native-role.K6YNlTEr/HANDOFF.md) · [实付回查](/private/tmp/jg-398-a16-retained-oid10.pQtSvKRv/HANDOFF.md)
+
 - [~] GitHub 45 项中 14 按阶段关闭，31 开放。可接续前置仍为 #394、#398，草稿 #428 为 `4ca0965b`。本地产品候选 `057ba65e7887d8a443f989b0026b7ab05c499e7f` 已合入 14 条受控路径，保留两条作者分支。
 - [~] #394 表外/对上生成合同待办重用详情资格，具资格可办、缺实际安装资格阻塞、撤权和归属变化隐藏。读取期间撤权的 4 个反例已红绿验证，API 160 项及类型/lint 通过。Web 去除 10 个页面的原始错误显示，保留 Excel 超 15 位改用文本的指引和行列坐标，227 项定向、类型/lint/UI 通过。[待办复审](/private/tmp/jg-394-me-lifecycle-7003.R38hDIum/REVIEWED-HANDOFF.md) · [Web 复审](/private/tmp/jg-382-web-safe-errors.PyIwLfkw/PRECISION-REVIEW.md)
 - [~] 准确 `057ba65e` 新隔离副本固定只读 `origin/main` 比较引用，上一轮第 9 步的完整业务安全预查已通过。新候选 177 项 API/文书、两份真实 PDF 物理检查、全量 Web 2,273 项及 UI 通过。正式 17 步含独立测试库迁移，已封准确方案等待单次授权，原 `403f8e45` 的失败副本与回执保留。[准确单次方案](/private/tmp/jg-382-release-057b.n5XQuIdL/RUN-HANDOFF.md)
