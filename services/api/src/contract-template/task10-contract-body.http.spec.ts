@@ -17,15 +17,44 @@ describe("task10 complete contract body through authenticated public draft HTTP"
     const draft = await createTask09Draft(server);
     const saved = await saveTask09Draft(server, draft, "material_purchase", layout.id);
     expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
-    const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
-    expect(response.status).toBe(200);
-    const body = await response.json() as Body;
-    expect(body.sourceSha256).toBe(layout.sha256);
-    expect(body.blocks.map(block => block.text)).toEqual([
-      "合同名称：上游新建当前合同名称", "甲方：当前单甲方", "乙方：当前单乙方", expect.stringMatching(/^编号：/u), expect.any(String), "交货地点：合成工地", "手工条款：本项普通约定按原文保留。", "甲方签章：当前单甲方", "乙方签章：当前单乙方"
-    ]);
-    expect(body.blocks.find(block => block.text === "手工条款：本项普通约定按原文保留。")).toMatchObject({ kind: "paragraph", editable: true });
-    expect(body.blocks.find(block => block.text === "甲方：当前单甲方")).toMatchObject({ editable: false });
+    const fileReads = jest.spyOn(server.files, "getFileBuffer");
+    try {
+      const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
+      expect(response.status).toBe(200);
+      const body = await response.json() as Body;
+      expect(body.sourceSha256).toBe(layout.sha256);
+      expect(body.blocks.map(block => block.text)).toEqual([
+        "合同名称：上游新建当前合同名称", "甲方：当前单甲方", "乙方：当前单乙方", expect.stringMatching(/^编号：/u), expect.any(String), "交货地点：合成工地", "手工条款：本项普通约定按原文保留。", "甲方签章：当前单甲方", "乙方签章：当前单乙方"
+      ]);
+      expect(body.blocks.find(block => block.text === "手工条款：本项普通约定按原文保留。")).toMatchObject({ kind: "paragraph", editable: true });
+      expect(body.blocks.find(block => block.text === "甲方：当前单甲方")).toMatchObject({ editable: false });
+      expect(fileReads).toHaveBeenCalledTimes(1);
+    } finally {
+      fileReads.mockRestore();
+    }
+  });
+
+  it.each([
+    { change: "source deactivation", metadata: { storageStatus: "purged" }, status: 500 },
+    { change: "source replacement", metadata: { objectKey: "replaced-template.docx" }, status: 400 }
+  ])("refuses to render if the private file changes after download: $change", async ({ metadata, status }) => {
+    const layout = await confirmedBodyLayout(server);
+    const draft = await createTask09Draft(server);
+    expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
+    const download = server.files.getFileBuffer.bind(server.files);
+    const fileReads = jest.spyOn(server.files, "getFileBuffer").mockImplementationOnce(async fileId => {
+      const verified = await download(fileId);
+      await server.store.prisma.fileObject.update({ where: { id: fileId }, data: metadata });
+      return verified;
+    });
+    try {
+      const response = await fetch(`${draft.base}/document-body`, { headers: draft.headers });
+      expect(response.status).toBe(status);
+      expect(await response.json()).not.toHaveProperty("blocks");
+      expect(fileReads).toHaveBeenCalledTimes(1);
+    } finally {
+      fileReads.mockRestore();
+    }
   });
 
   it("saves an ordinary clause through the aggregate and rereads the same literal text", async () => {

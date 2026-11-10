@@ -1,7 +1,7 @@
 import { assertNotDirectPendingSource } from "../contract/contract-direct-pending-policy";
 import { CONTRACT_COMMERCIAL_ENTRY_DEFINITION } from "../contract-workbench/contract-business-entry-definition";
 import { resolveContractDraftBusinessType } from "../contract-workbench/contract-draft-basics";
-import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
+import { assertSelectableLayoutVersion, readSelectableLayoutSource } from "../contract-template/layout-selection-policy";
 import { confirmedLayoutSourceMapping, mappedLayoutSourceForVersion, type LayoutSourceMapping } from "../contract-template/layout-field-mapping";
 import { REVIEWED_ORIGINAL_MECHANICAL_PAGE_NUMBER_VERSION, assertReviewedOriginalMechanicalPageSource, REVIEWED_MATERIAL_SIGNATURE_DATE_VERSION, REVIEWED_LABOR_SOURCE_SHA256, assertReviewedTypographySource, readContractBodyRenderProfile, CONTRACT_BODY_TABLE_LAYOUT_VERSION, CONTRACT_BODY_MONEY_SEMANTICS_VERSION, normalizeContractBodyPlan, renderContractBody, type ContractBodyEditPlan, type ContractBodyTableLayoutVersion, type ReviewedTypographyVersion } from "./contract-body-document";
 import { contractBodyPdfRuntimeLockFingerprint } from "./contract-body-pdf-converter";
@@ -121,15 +121,23 @@ export class ContractDocumentService {
       assertContractDraftNumericProtocol(version, numericProtocol);
       if (version.status !== "draft") throw new BadRequestException("当前合同正文已冻结，请从合同详情查看原文");
       if (!version.layoutTemplateVersionId) throw new BadRequestException("请先选择并保存合同模板，再查看完整正文");
-      const layout = await assertSelectableLayoutVersion(tx, this.files, version.layoutTemplateVersionId,
+      const { layout, source, mapped } = await readSelectableLayoutSource(tx, this.files, version.layoutTemplateVersionId,
         resolveContractDraftBusinessType(version.draftData, contract.contractTypeKey, version.signingSubjectType));
       const [parties, bills] = await Promise.all([
         tx.contractPartySnapshot.findMany({ where: { contractVersionId }, orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }] }),
         tx.contractBill.findMany({ where: { contractVersionId }, orderBy: { billKey: "asc" } })
       ]);
       const rows = bills.length ? await tx.contractBillRow.findMany({ where: { contractBillId: { in: bills.map(bill => bill.id) } }, orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }] }) : [];
-      const source = await this.files.getFileBuffer(layout.docxFileId);
-      const mapped = mappedLayoutSourceForVersion(source.buffer, layout);
+      // Check current file metadata outside the repeatable-read snapshot before rendering the verified bytes.
+      const currentSource = await this.prisma.fileObject.findUnique({
+        where: { id: layout.docxFileId },
+        select: { storageStatus: true, contentSha256: true, objectKey: true }
+      });
+      if (!currentSource) throw new Error("资料文件不存在或已被移除");
+      if (currentSource.storageStatus !== "active") throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
+      if (currentSource.contentSha256 !== source.file.contentSha256 || currentSource.objectKey !== source.file.objectKey) {
+        throw new BadRequestException("版式原文件已变化，请由合同主管重新检查确认");
+      }
       const draftData = this.isObject(version.draftData) ? version.draftData : {};
       const bodyRenderProfile = readContractBodyRenderProfile(draftData);
       const typographyVersion = bodyRenderProfile?.typographyVersion;

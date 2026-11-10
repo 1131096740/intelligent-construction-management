@@ -17,6 +17,16 @@ export async function assertSelectableLayoutVersion(
   versionId: string,
   contractTypeKey: string | null
 ) {
+  const { layout } = await readSelectableLayoutSource(tx, files, versionId, contractTypeKey);
+  return layout;
+}
+
+export async function readSelectableLayoutSource(
+  tx: SelectionClient,
+  files: Pick<FileService, "getFileBuffer">,
+  versionId: string,
+  contractTypeKey: string | null
+) {
   const layout = await tx.contractLayoutTemplateVersion.findUnique({ where: { id: versionId } });
   if (!layout || layout.status !== "published") throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
   const template = await tx.contractLayoutTemplate.findUnique({ where: { id: layout.layoutTemplateId } });
@@ -48,7 +58,7 @@ export async function assertSelectableLayoutVersion(
   }
   // Validates the canonical mapping fingerprint, ranges, XML and actual bytes;
   // the explicit legacy branch validates the bounded source without inventing a mapping.
-  mappedLayoutSourceForVersion(source.buffer, layout);
+  const mapped = mappedLayoutSourceForVersion(source.buffer, layout);
   if (!mapping) {
     const positions = readLayoutSourcePositions(source.buffer).positions;
     const tags = new Set(positions.flatMap(position =>
@@ -65,5 +75,5 @@ export async function assertSelectableLayoutVersion(
       if (declarations.filter(text => text === `${label}：{${key}}`).length !== 1) throw new BadRequestException(CONFIRM_REQUIRED);
     }
   }
-  return layout;
+  return { layout, source, mapped };
 }
