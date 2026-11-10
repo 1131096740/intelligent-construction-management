@@ -420,8 +420,21 @@ DECLARE ctl __SCHEMA__.control%ROWTYPE; stage integer; next_order integer; q tex
  wanted record; actual record; first_row jsonb; stage_row jsonb; observed_backend_pid integer:=pg_backend_pid();
  started text; xid text:=pg_current_xact_id()::text; command text; source_row jsonb;
 BEGIN
- SELECT * INTO STRICT ctl FROM __SCHEMA__.verify_control();
- IF current_setting('app.local_migration_nonce',true) IS DISTINCT FROM ctl.plan->>'nonce'
+ -- Intermediate DDL may temporarily rename registry routines. Bind the unchanged
+ -- run first, and inspect complete callability only at the four exact anchors.
+ SELECT * INTO STRICT ctl FROM __SCHEMA__.control WHERE singleton;
+ IF current_user<>'jiangkong' OR current_user<>session_user
+  OR current_user::regrole::oid IS DISTINCT FROM ctl.actor_oid
+  OR ctl.actor_oid::text IS DISTINCT FROM ctl.plan->>'actorOid'
+  OR ctl.actor_oid::text IS DISTINCT FROM ctl.plan->>'ownerOid'
+  OR current_database() IS DISTINCT FROM ctl.plan->>'database'
+  OR (SELECT oid::text FROM pg_database WHERE datname=current_database()) IS DISTINCT FROM ctl.plan->>'databaseOid'
+  OR (SELECT datdba FROM pg_database WHERE datname=current_database()) IS DISTINCT FROM ctl.actor_oid
+  OR to_regnamespace('public') IS DISTINCT FROM ctl.namespace_oid
+  OR ctl.namespace_oid::text IS DISTINCT FROM ctl.plan->>'namespaceOid'
+  OR (SELECT system_identifier::text FROM pg_control_system()) IS DISTINCT FROM ctl.plan->>'systemIdentifier'
+  OR current_setting('session_replication_role')<>'origin' OR getdatabaseencoding()<>'UTF8'
+  OR current_setting('app.local_migration_nonce',true) IS DISTINCT FROM ctl.plan->>'nonce'
   OR current_setting('app.contract_archive_v2_application_role_oid',true) IS DISTINCT FROM ctl.application_oid::text
   OR current_setting('app.contract_archive_v2_file_caller_oids',true) IS DISTINCT FROM ctl.file_caller_setting
  THEN RAISE EXCEPTION 'local fixture migration startup rejected'; END IF;
@@ -452,6 +465,7 @@ BEGIN
   AND ((c.relname=wanted.name AND c.relnamespace=ctl.namespace_oid) OR
     (p.proname=wanted.name AND p.pronamespace=ctl.namespace_oid AND p.pronargs=0));
  IF NOT FOUND THEN RETURN; END IF;
+ PERFORM __SCHEMA__.verify_control();
  IF (wanted.expected_oid IS NOT NULL AND wanted.expected_oid<>actual.objid)
   OR (wanted.body IS NOT NULL AND (actual.proowner<>ctl.actor_oid OR
    encode(sha256(convert_to(actual.prosrc,'UTF8')),'hex') IS DISTINCT FROM wanted.body))
