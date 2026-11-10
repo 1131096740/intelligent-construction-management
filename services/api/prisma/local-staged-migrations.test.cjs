@@ -56,7 +56,7 @@ async function canonicalRows() {
     .update(await fs.readFile(path.join(dir, name, "migration.sql"))).digest("hex") })));
 }
 
-async function fakeFixture(temporaryRoot, mutate, failDatabases = []) {
+async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = false) {
   const rows = await canonicalRows();
   const calls = [];
   const databaseNames = [database, "jiangkong_project_financing_quota_pre115_clean",
@@ -66,6 +66,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = []) {
   const databaseStates = new Map();
   const deploymentRequests = [];
   let currentDatabase = database;
+  let nextDeploymentError;
   function currentState() {
     if (!databaseStates.has(currentDatabase)) databaseStates.set(currentDatabase, {
       applied: 0, oid: String(16384 + databaseStates.size), failed: false, rolledBack: false
@@ -127,6 +128,11 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = []) {
       const files = (await fs.readdir(path.join(target, "migrations"), { withFileTypes: true }))
         .filter(row => row.isDirectory());
       calls.push("deploy-" + files.length);
+      if (nextDeploymentError) {
+        const error = nextDeploymentError;
+        nextDeploymentError = undefined;
+        throw error;
+      }
       deploymentRequests.push({ database: currentDatabase, count: files.length, url: request.databaseUrl });
       if (files.length === 205) {
         const initial = deploymentRequests.filter(row => row.database === currentDatabase && row.count === 203).at(-1);
@@ -136,7 +142,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = []) {
       } else assert.equal(url.searchParams.has("options"), false);
       if (files.length === 203 && state.applied === 114 && failDatabases.includes(currentDatabase) && !state.failed) {
         state.failed = true;
-        state.failure = new Error(currentDatabase.includes("duplicate") ?
+        state.failure = new Error(masked ? "current transaction is aborted" : currentDatabase.includes("duplicate") ?
           "project_financing_quota_duplicate_attachment" : "project_financing_quota_cross_business_attachment");
         throw state.failure;
       }
@@ -159,7 +165,8 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = []) {
       assert.ok(state?.failed);
       state.rolledBack = true;
     },
-    failure(name) { return databaseStates.get(name)?.failure; }
+    failure(name) { return databaseStates.get(name)?.failure; },
+    failNextDeploy(error) { nextDeploymentError = error; }
   };
 }
 
@@ -323,5 +330,72 @@ test("an expected115 error cannot resume without the original explicit resolved 
     const deploys = harness.deploymentRequests.length;
     await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString() }), /LOCAL_MIGRATION_RECOVERY_NOT_RESOLVED/u);
     assert.equal(harness.deploymentRequests.length, deploys);
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+
+test("a masked115 engine failure can continue only after the explicit original rollback resolution", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-masked-"));
+  try {
+    const name = "jiangkong_project_financing_quota_pre115_duplicate";
+    const harness = await fakeFixture(temporaryRoot, undefined, [name], true);
+    await harness.fixture.migrate({ databaseUrl });
+    const url = new URL(databaseUrl);
+    url.pathname = "/" + name;
+    await harness.fixture.migrate({ databaseUrl: url.toString(), schemaPath: await prefix(temporaryRoot, 114) });
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString(),
+      expectedFailure: "project_financing_quota_duplicate_attachment" }), error => error === harness.failure(name));
+    assert.equal(harness.failure(name).message, "current transaction is aborted");
+    harness.resolveHistorical(name);
+    const result = await harness.fixture.migrate({ databaseUrl: url.toString() });
+    assert.match(result.stdout, /20261111096000_contract_direct_outside_operating_basis_bridge_v2/u);
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+for (const changed of ["database", "prefix", "telemetry", "environment", "scenario", "password"]) {
+  test("a pending masked115 failure blocks changed " + changed + " before SQL or deployment", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-pending-"));
+    try {
+      const name = "jiangkong_project_financing_quota_pre115_duplicate";
+      const harness = await fakeFixture(temporaryRoot, undefined, [name], true);
+      await harness.fixture.migrate({ databaseUrl });
+      const url = new URL(databaseUrl);
+      url.pathname = "/" + name;
+      const schemaPath = await prefix(temporaryRoot, 114);
+      await harness.fixture.migrate({ databaseUrl: url.toString(), schemaPath });
+      await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString(),
+        expectedFailure: "project_financing_quota_duplicate_attachment" }));
+      const request = { databaseUrl: url.toString() };
+      if (changed === "database") { url.pathname = "/" + database; request.databaseUrl = url.toString(); }
+      if (changed === "prefix") request.schemaPath = schemaPath;
+      if (changed === "telemetry") { url.searchParams.set("application_name", "other"); request.databaseUrl = url.toString(); }
+      if (changed === "environment") request.runtimeEnv = { NODE_ENV: "test" };
+      if (changed === "scenario") request.expectedFailure = "project_financing_quota_duplicate_attachment";
+      if (changed === "password") { url.password = "other"; request.databaseUrl = url.toString(); }
+      const commands = harness.calls.length;
+      await assert.rejects(harness.fixture.migrate(request), /LOCAL_MIGRATION_RECOVERY_CONTEXT/u);
+      assert.equal(harness.calls.length, commands);
+    } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+  });
+}
+
+test("an Error reused by a later deployment cannot reopen the previous expected failure window", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-error-reuse-"));
+  try {
+    const name = "jiangkong_project_financing_quota_pre115_duplicate";
+    const harness = await fakeFixture(temporaryRoot, undefined, [name], true);
+    await harness.fixture.migrate({ databaseUrl });
+    const url = new URL(databaseUrl);
+    url.pathname = "/" + name;
+    await harness.fixture.migrate({ databaseUrl: url.toString(), schemaPath: await prefix(temporaryRoot, 114) });
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString(),
+      expectedFailure: "project_financing_quota_duplicate_attachment" }));
+    harness.resolveHistorical(name);
+    const original = harness.failure(name);
+    harness.failNextDeploy(original);
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString() }), error => error === original);
+    const commands = harness.calls.length;
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString() }), /LOCAL_MIGRATION_STOPPED/u);
+    assert.equal(harness.calls.length, commands);
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
 });

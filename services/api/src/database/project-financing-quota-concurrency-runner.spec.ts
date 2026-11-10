@@ -259,6 +259,77 @@ describe("project financing quota PostgreSQL runner", () => {
     }
   });
 
+  it.each([true, false])("preserves the original CLI masked115 evidence and resolve boundary when expected evidence is retained=%s", (retainExpectedReason) => {
+    const fixture = mkdtempSync(join(tmpdir(), "pfq-masked115-cli-"));
+    try {
+      const prismaRoot = join(fixture, "services/api/prisma");
+      const dist = join(fixture, "services/api/dist/database");
+      const bin = join(fixture, "bin");
+      const artifacts = join(fixture, "artifacts");
+      for (const directory of [prismaRoot, dist, bin, artifacts]) mkdirSync(directory, { recursive: true });
+      for (const filename of ["run-project-financing-quota-concurrency-local.cjs", "money-bigint-runner-runtime.cjs",
+        "local-staged-migrations.cjs", "local-staged-migration-controls.cjs", "local-staged-migration-acl.sql",
+        "local-staged-migration-qualification.json", "migration-baseline.cjs", "schema.prisma",
+        "database-dynamic-gate-manifest.json", "migrations"]) {
+        cpSync(join(process.cwd(), "prisma", filename), join(prismaRoot, filename), { recursive: true });
+      }
+      writeFileSync(join(dist, "money-bigint-live-verification.js"),
+        "exports.withGuaranteedCleanup = " + withGuaranteedCleanup.toString());
+      const migrations = readdirSync(join(prismaRoot, "migrations")).filter(name => /^\d{14}_/u.test(name)).sort()
+        .map(name => ({ name, sha256: createHash("sha256")
+          .update(readFileSync(join(prismaRoot, "migrations", name, "migration.sql"))).digest("hex") }));
+      const statePath = join(fixture, "state.json");
+      writeFileSync(statePath, JSON.stringify({ prismaRoot, migrations, databases: {}, events: [], appCount: 0, serverLog: "", retainExpectedReason,
+        legacyNames: ["jg_payment_execution_payer_issuer", "jg_pol275_owner", "jg_pol275_runtime", "jg_pol279_runtime", "jg_pol280_runtime"],
+        roles: [{ oid: "10", name: "jiangkong", superuser: true, createRole: false, createDb: true,
+          replication: true, bypassRls: true, memberships: [] }] }));
+      const fake = "#!" + process.execPath + "\n" + readFileSync(
+        join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8");
+      for (const name of ["docker", "pnpm"]) writeFileSync(join(bin, name), fake, { mode: 0o700 });
+      const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
+        env: { PATH: bin, HOME: fixture, TMPDIR: artifacts, NODE_ENV: "test", PNPM_BIN: join(bin, "pnpm") },
+        encoding: "utf8", timeout: 30_000
+      });
+      const state = JSON.parse(readFileSync(statePath, "utf8")) as {
+        databases: Record<string, { applied: number; failed: boolean; resolved: boolean; remediated: boolean }>;
+        events: { action?: string; database?: string; count?: number; args: string[] }[];
+      };
+      if (!retainExpectedReason) {
+        expect({ status: run.status, error: run.error }).toEqual({ status: 1, error: undefined });
+        expect(run.stderr).toContain("场景未以预期错误停止迁移");
+        expect(state.events.filter(event => ["resolve", "remediate", "business-tests"].includes(event.action ?? "")))
+          .toHaveLength(0);
+        expect(state.events.filter(event => event.action === "masked-failure")).toHaveLength(1);
+        expect(state.events.at(-1)?.args.slice(0, 3)).toEqual(["rm", "--force", "--volumes"]);
+        return;
+      }
+      expect({ status: run.status, error: run.error }).toEqual({ status: 0, error: undefined });
+      expect(run.stderr.match(/current transaction is aborted/gu)).toHaveLength(4);
+      expect(run.stderr).not.toContain("project_financing_quota_duplicate_attachment");
+      expect(run.stderr).not.toContain("project_financing_quota_cross_business_attachment");
+      expect(Object.keys(state.databases)).toHaveLength(7);
+      expect(Object.values(state.databases).every(database => database.applied === 256)).toBe(true);
+      const failures = state.events.filter(event => event.action === "masked-failure");
+      expect(failures).toHaveLength(4);
+      for (const failure of failures) {
+        const events = state.events.filter(event => event.database === failure.database);
+        const failed = events.indexOf(failure);
+        const retained = events.findIndex(event => event.action === "retained-failure-log");
+        const rollback = events.findIndex(event => event.action === "rollback-proof");
+        const remediate = events.findIndex(event => event.action === "remediate");
+        const resolve = events.findIndex(event => event.action === "resolve");
+        expect(failed).toBeLessThan(retained);
+        expect(retained).toBeLessThan(rollback);
+        expect(rollback).toBeLessThan(remediate);
+        expect(remediate).toBeLessThan(resolve);
+        expect(events.slice(resolve + 1).filter(event => event.action === "deploy").map(event => event.count))
+          .toEqual([203, 205, 256]);
+      }
+      expect(state.events.filter(event => event.action === "business-tests")).toHaveLength(1);
+      expect(state.events.at(-1)?.args.slice(0, 3)).toEqual(["rm", "--force", "--volumes"]);
+    } finally { rmSync(fixture, { recursive: true, force: true }); }
+  }, 30_000);
+
   it("pins the exact local database, migration count, terminal migration and checksum", () => {
     const baseline = localRequire(
       join(process.cwd(), "prisma/migration-baseline.cjs")

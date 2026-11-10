@@ -165,6 +165,17 @@ function createLocalMigrationFixture(input) {
         target.length > 0, "SOURCE_PREFIX");
       const lock = await readFile(path.join(canonicalRoot, "migration_lock.toml"));
       need((await readFile(path.join(targetRoot, "migrations/migration_lock.toml"))).equals(lock), "SOURCE");
+      const recovery = pendingRecovery.values().next().value;
+      const recoveryContext = {
+        databaseUrl: request.databaseUrl,
+        schemaPath: request.schemaPath ?? null,
+        runtimeEnv: request.runtimeEnv
+      };
+      if (recovery) {
+        need(database === recovery.database && request.expectedFailure === undefined &&
+          target.length === expected.length && isDeepStrictEqual(recoveryContext, recovery.context),
+        "RECOVERY_CONTEXT");
+      }
       if (target.length <= 203) return await deploy(request);
       const declaredRoles = [];
       for (const row of target) {
@@ -182,11 +193,12 @@ function createLocalMigrationFixture(input) {
       else states.set(database, { identity: bound });
       checkRoles(before);
       const count = checkLedger(before.ledger, target, rolledBack);
-      const recovery = pendingRecovery.get(database);
       if (recovery) {
         need(count === 114 && before.ledger.filter(row => row.name === expected[114].name &&
           row.sha256 === expected[114].sha256 && row.finished === false && row.rolledBack === true)
-          .length === recovery.rolledBackCount + 1, "RECOVERY_NOT_RESOLVED");
+          .length === recovery.rolledBackCount + 1 &&
+          isDeepStrictEqual(before.ledger.filter(row => row.name !== expected[114].name),
+            recovery.ledger.filter(row => row.name !== expected[114].name)), "RECOVERY_NOT_RESOLVED");
         pendingRecovery.delete(database);
       }
       if (count >= 205) return await deploy(request);
@@ -211,12 +223,17 @@ function createLocalMigrationFixture(input) {
         phaseOutput.push(initial.stdout ?? "");
       } catch (error) {
         const expectedFailure = request.expectedFailure;
-        if (count === 114 && error instanceof Error && ["project_financing_quota_duplicate_attachment",
-          "project_financing_quota_cross_business_attachment"].includes(expectedFailure) &&
-          error.message.includes(expectedFailure)) {
+        if (count === 114 && target.length === expected.length && error instanceof Error &&
+          ["project_financing_quota_duplicate_attachment", "project_financing_quota_cross_business_attachment"].includes(expectedFailure)) {
+          // This records an unverified original deployment failure only. The existing
+          // runner must validate its retained evidence, remediate and explicitly resolve it.
           recoverableFailures.add(error);
-          pendingRecovery.set(database, { rolledBackCount: before.ledger.filter(row =>
-            row.name === expected[114].name && row.rolledBack === true).length });
+          pendingRecovery.set(database, {
+            database, context: recoveryContext,
+            ledger: structuredClone(before.ledger),
+            rolledBackCount: before.ledger.filter(row => row.name === expected[114].name &&
+              row.finished === false && row.rolledBack === true).length
+          });
         }
         throw error;
       }
@@ -268,7 +285,8 @@ function createLocalMigrationFixture(input) {
       catch (error) {
         // Original expected pre115 failure remains recoverable only by the runner's
         // explicit rollback/remediation path. Unknown outcomes stop this fixture.
-        if (!recoverableFailures.has(error)) stopped = true;
+        if (recoverableFailures.has(error)) recoverableFailures.delete(error);
+        else stopped = true;
         throw error;
       }
     }
