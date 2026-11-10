@@ -1,16 +1,16 @@
 'use strict';
 
-// Fixed SQL for the current259 owned ACL transaction, after the runtime grants.
+// Fixed SQL for the independent current259 payment ACL transaction.
 const CODE = 'TASK16_CURRENT259_PUBLIC_ACCESS';
-const ROLE_NAMES = [
-  'jg_c259_outside_issuer_owner',
-  'jg_c259_outside_executor_owner',
-  'jg_c259_upward_issuer_owner',
-  'jg_task01_runtime',
-  'jg_task01_observer'
+const ROLE_NAMES = ['jg_task01_runtime', 'jg_task01_observer'];
+const ARCHIVE_BINDINGS = [
+  'jg_contract_direct_archive_intent_binding_v1',
+  'jg_contract_direct_archive_native_nonce_v1',
+  'jg_contract_direct_upward_issuer_binding_v2',
+  'jg_contract_direct_upward_execution_binding_v2',
+  'jg_contract_direct_upward_closure_v2'
 ];
 const DIGEST = 'public.digest(bytea,text)';
-const OUTSIDE_UUID = 'public.gen_random_uuid()';
 const oid = x => typeof x === 'string' && /^[1-9][0-9]{0,9}$/u.test(x) && Number(x) <= 0xffffffff;
 const xid = x => typeof x === 'string' && /^[1-9][0-9]{0,19}$/u.test(x) && BigInt(x) <= 0xffffffffffffffffn;
 const literal = x => "'" + x.replaceAll("'", "''") + "'";
@@ -39,9 +39,9 @@ const aclRows = `SELECT 'routine'::text AS kind,p.oid AS object_oid,0 AS column_
   FROM pg_catalog.pg_type t CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(t.typacl,pg_catalog.acldefault('T',t.typowner))) a
   WHERE t.oid IN ('public."OperatingLedgerFactWritePayloadV2"'::regtype,'public."OperatingLedgerImpactWritePayloadV2"'::regtype)`;
 
-function renderCurrent259PublicAccess(archiveCompletion) {
-  const { status, installXid, databaseIdentity: id, ordinary, roles } = structuredClone(archiveCompletion ?? {});
-  need(status === 'CURRENT259_ARCHIVE_AUTHORITIES_INSTALLED' && xid(installXid) &&
+function renderCurrent259PublicAccess(roleCompletion) {
+  const { status, commitXid, databaseIdentity: id, ordinary, roles } = structuredClone(roleCompletion ?? {});
+  need(status === 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION' && xid(commitXid) &&
     id && typeof id.database === 'string' && /^jg_task01_[a-f0-9]{32}$/u.test(id.database) &&
     oid(id.databaseOid) && oid(id.namespaceOid) && id.ownerOid === '10' && xid(id.systemIdentifier));
   need(ordinary && oid(ordinary.oid) && typeof ordinary.name === 'string' &&
@@ -52,9 +52,10 @@ function renderCurrent259PublicAccess(archiveCompletion) {
     return { name, oid: found[0].oid };
   });
   need(new Set(['10', ordinary.oid, ...bound.map(role => role.oid)]).size === bound.length + 2);
-  const [outsideIssuer, outsideExecutor, upwardIssuer, runtime, observer] = bound;
-  const roleRows = [ordinary, ...bound].map(role => `(${literal(role.name)},${role.oid}::oid)`).join(',');
-  const archiveXid = `(mod(${literal(installXid)}::numeric,4294967296))::text`;
+  const [runtime, observer] = bound;
+  const roleRows = bound.map(role => `(${literal(role.name)},${role.oid}::oid)`).join(',');
+  const roleXmin = `(mod(${literal(commitXid)}::numeric,4294967296))::text`;
+  const archiveInactive = ARCHIVE_BINDINGS.map(name => `EXISTS (SELECT FROM public.${name})`).join('\n    OR ');
   return `SET LOCAL search_path=pg_catalog,pg_temp;
 DO $current259_public_access_preimage$
 DECLARE
@@ -65,7 +66,7 @@ BEGIN
     OR NOT EXISTS (SELECT FROM pg_catalog.pg_database WHERE oid=${id.databaseOid}::oid AND datname=current_database() AND datdba=10)
     OR pg_catalog.to_regnamespace('public')::oid IS DISTINCT FROM ${id.namespaceOid}::oid
     OR (SELECT system_identifier::text FROM pg_catalog.pg_control_system()) IS DISTINCT FROM ${literal(id.systemIdentifier)}
-    OR pg_catalog.pg_xact_status(${literal(installXid)}::xid8) IS DISTINCT FROM 'committed'
+    OR pg_catalog.pg_xact_status(${literal(commitXid)}::xid8) IS DISTINCT FROM 'committed'
     OR current_setting('server_version_num')::integer NOT BETWEEN 160000 AND 169999
     OR current_setting('transaction_isolation') IS DISTINCT FROM 'serializable'
     OR current_setting('transaction_read_only') IS DISTINCT FROM 'off'
@@ -74,31 +75,20 @@ BEGIN
     OR pg_catalog.host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1'
     OR inet_server_port() IS DISTINCT FROM 5432
     OR NOT EXISTS (SELECT FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
+    OR NOT EXISTS (SELECT FROM pg_catalog.pg_roles r WHERE r.oid=${ordinary.oid}::oid AND r.rolname=${literal(ordinary.name)})
     OR EXISTS (SELECT FROM (VALUES ${roleRows}) e(name,oid)
-      WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_roles r WHERE r.oid=e.oid AND r.rolname::text=e.name))
-    OR NOT EXISTS (SELECT FROM public.jg_contract_direct_archive_intent_binding_v1 o
-      JOIN public.jg_contract_direct_upward_issuer_binding_v2 u ON u."protocolVersion"=2
-        AND u."outsideBindingSha256"=encode(sha256(convert_to(to_jsonb(o)::text,'UTF8')),'hex')
-      WHERE o."protocolVersion"=1 AND o."ordinaryApplicationRoleOid"=${ordinary.oid}::oid
-        AND o."databaseOid"=${id.databaseOid}::oid AND o."namespaceOid"=${id.namespaceOid}::oid AND o."anchorOwnerOid"=10
-        AND o."issuerOwnerOid"=${outsideIssuer.oid}::oid AND o."executorOwnerOid"=${outsideExecutor.oid}::oid
-        AND u."issuerOwnerOid"=${upwardIssuer.oid}::oid AND u."anchorOwnerOid"=10
-        AND u."databaseOid"=o."databaseOid" AND u."namespaceOid"=o."namespaceOid"
-        AND o.xmin::text=${archiveXid} AND u.xmin::text=${archiveXid})
-    OR NOT EXISTS (SELECT FROM pg_roles r WHERE r.oid=${outsideExecutor.oid}::oid AND NOT r.rolcanlogin)
-    OR 2<>(SELECT count(*) FROM pg_catalog.pg_proc p
+      WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_authid r WHERE r.oid=e.oid AND r.rolname::text=e.name
+        AND r.xmin::text=${roleXmin} AND r.rolcanlogin AND r.rolconnlimit=1 AND r.rolvaliduntil IS NULL))
+    OR ${archiveInactive}
+    OR NOT EXISTS (SELECT FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_language l ON l.oid=p.prolang
       JOIN pg_catalog.pg_depend d ON d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.objsubid=0
         AND d.refclassid='pg_extension'::regclass AND d.refobjsubid=0 AND d.deptype='e'
       JOIN pg_catalog.pg_extension e ON e.oid=d.refobjid
-      WHERE p.pronamespace=${id.namespaceOid}::oid AND p.proowner=10
-        AND p.prokind='f' AND l.lanname='c' AND p.probin='$libdir/pgcrypto'
-        AND NOT (p.prosecdef OR p.proretset OR p.proleakproof) AND p.proparallel='s'
-        AND e.extname='pgcrypto' AND e.extnamespace=p.pronamespace AND (
-          (p.oid='${DIGEST}'::regprocedure AND p.prosrc='pg_digest' AND p.prorettype='bytea'::regtype
-            AND p.provolatile='i' AND p.proisstrict)
-          OR (p.oid='${OUTSIDE_UUID}'::regprocedure AND p.prosrc='pg_random_uuid' AND p.prorettype='uuid'::regtype
-            AND p.provolatile='v' AND NOT p.proisstrict))) THEN
+      WHERE p.oid='${DIGEST}'::regprocedure AND p.pronamespace=${id.namespaceOid}::oid AND p.proowner=10
+        AND p.prokind='f' AND l.lanname='c' AND p.prosrc='pg_digest' AND p.probin='$libdir/pgcrypto'
+        AND p.prorettype='bytea'::regtype AND p.proisstrict AND NOT (p.prosecdef OR p.proretset OR p.proleakproof)
+        AND p.provolatile='i' AND p.proparallel='s' AND e.extname='pgcrypto' AND e.extnamespace=p.pronamespace) THEN
     RAISE EXCEPTION '${CODE}_PREIMAGE';
   END IF;
   SELECT "fileCallerOids" INTO STRICT prior_callers FROM public.jg_contract_direct_pending_binding_v1
@@ -112,7 +102,7 @@ BEGIN
   END IF;
   CREATE TEMP TABLE jg_c259_acl_callers ON COMMIT DROP AS
     SELECT DISTINCT r.oid,r.rolname FROM pg_roles r
-    WHERE r.oid=ANY(prior_callers||ARRAY[${ordinary.oid}::oid,${outsideIssuer.oid}::oid,${outsideExecutor.oid}::oid,${upwardIssuer.oid}::oid]);
+    WHERE r.oid=ANY(prior_callers||ARRAY[${ordinary.oid}::oid]);
 END $current259_public_access_preimage$;
 CREATE TEMP VIEW jg_c259_public_acl_live AS ${aclRows};
 CREATE TEMP TABLE jg_c259_public_acl_expected ON COMMIT DROP AS
@@ -123,7 +113,6 @@ DECLARE
   schema_oid oid := pg_catalog.to_regnamespace('public');
   schema_owner oid := (SELECT nspowner FROM pg_namespace WHERE oid=schema_oid);
   digest_oid oid := '${DIGEST}'::regprocedure;
-  uuid_oid oid := '${OUTSIDE_UUID}'::regprocedure;
 BEGIN
   IF EXISTS (SELECT FROM pg_temp.jg_c259_public_acl_live
     WHERE grantee=0 AND (grantor<>object_owner OR is_grantable OR NOT
@@ -148,11 +137,6 @@ BEGIN
         ('routine',digest_oid,0,10,10,target.oid,'EXECUTE',false);
     END IF;
   END LOOP;
-  IF NOT has_function_privilege(${outsideExecutor.oid}::oid,uuid_oid,'EXECUTE') THEN
-    EXECUTE format('GRANT EXECUTE ON FUNCTION ${OUTSIDE_UUID} TO %I',${literal(outsideExecutor.name)});
-    INSERT INTO pg_temp.jg_c259_public_acl_expected VALUES
-      ('routine',uuid_oid,0,10,10,${outsideExecutor.oid}::oid,'EXECUTE',false);
-  END IF;
   IF EXISTS (
     (SELECT * FROM pg_temp.jg_c259_public_acl_live EXCEPT ALL SELECT * FROM pg_temp.jg_c259_public_acl_expected)
     UNION ALL
@@ -161,7 +145,6 @@ BEGIN
     WHERE NOT has_schema_privilege(oid,schema_oid,'USAGE') OR NOT has_function_privilege(oid,digest_oid,'EXECUTE'))
     OR NOT has_schema_privilege(${runtime.oid}::oid,schema_oid,'USAGE')
     OR NOT has_schema_privilege(${observer.oid}::oid,schema_oid,'USAGE')
-    OR NOT has_function_privilege(${outsideExecutor.oid}::oid,uuid_oid,'EXECUTE')
     OR NOT has_function_privilege(${runtime.oid}::oid,digest_oid,'EXECUTE')
     OR has_function_privilege(${observer.oid}::oid,digest_oid,'EXECUTE') THEN
     RAISE EXCEPTION '${CODE}_POSTIMAGE';
