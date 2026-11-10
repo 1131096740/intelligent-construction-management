@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #398 当前259固定源材料、同一Prisma事务的固定影响读取和独立Nest接线源码已集成 `52e1bb9a`。准确441项编排、79项付款/接线检查及类型/lint通过，独立源审无确认缺陷；普通runtime不读迁移账，不新增权限。实际安装校读/三角色session issuer与本机SDK/engine加载闭包仍缺，factory尚不能用于真实A16，#398保持开放。选用仓库已有Docker/TLS基础的明确259后继，不借旧VM/205/256权威；新实际入口待完整封存及单独授权。 [源码交接](/private/tmp/jg-398-current259.3tmxgpsh/HANDOFF.md) · [独审](/private/tmp/jg-398-current259-review-tmwvhx2c/REVIEW.md)
+
 - [~] #394 对上直签完整源码已在本地集成至 `00ecfaf3`：沿用既有 Q2 意向与票据，补齐五类合同的登记、归档后继、原键恢复及原件授权读取，并追加三条迁移源码（共259）。两轴源码复审无确认缺陷；准确586b的130项后端及16项模拟浏览器通过，合入诊断后的00ec准确421项编排、50项CLI及API类型/lint通过。未运行259迁移、真实角色/TLS/触发器/MVCC/私有存储验收，#394保持开放；旧256迁移及历史B7权威不变。 [源码交接](/private/tmp/jg-394-upward-registration.iXWgH36l/HANDOFF-00ec.md) · [双轴复审](/var/folders/w1/24df0jys7sb9zs4lfcsq0p_c0000gn/T/jg-394-dual-review-1v621sq4/REVIEW.md)
 
 - [ ] 准确 `9d05bdfb` 已获单次授权并执行一次，退出1：迁移命令走到205后独立读回拒绝，实际首条已捕获 `P0001 / FIXTURE_FILE_CALLERS_CHANGED`。文件调用者集合与冻结记录不同，但具体OID差量/合法阶段原因仍待源码复核；不能放宽集合凑通过。其余六库及13项并发未开始，容器已独立确认不存在，授权消耗且不重试。独立421/50等预查仍仅源码证据；此包固定256，259未混入。 [停止回执](/private/tmp/jg-382-9d05-diagnostic.bJwyy0/STOP-RECEIPT.md) · [独立预查](/private/tmp/jg-382-9d05-diagnostic.bJwyy0/PRECHECK-RESULT.json)
