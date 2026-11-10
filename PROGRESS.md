@@ -1,5 +1,8 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [~] 冷检出入口修复经独立复核合入准确 `2b2706917f979e4d4c41b64f2a83725a475669d6`，先冻结安装、生成 Prisma，再跑 CI 编排。17 项命令及首错停止保留，旧有效收据仍兼容。空依赖副本实测前三步通过、编排 373/373；同一 SHA 的非迁移独立预查全部通过，API 9,403 通过/570 跳过、Web 2,273、共享 256、RC-06 28/28，P0 3 通过/2 需账号跳过。审计高等级阈值通过、报告两项中等级。正式入口尚未尝试，两个本机隔离迁移阶段另待授权。 [准确独立预查](/private/tmp/jg-382-cold-prefix.GcVAeE6p/HANDOFF.md) · [新单次方案](/private/tmp/jg-382-release-2b27.2S0AT9B0/RUN-HANDOFF.md) · [#383 手动组源码封存](/private/tmp/jg-382-task01-source-2b27.TD6RPlec/HANDOFF.md)
+- [~] #394 Linux 只读材料已接到现有同轮签名短租约，15 项定向、10 项包装器、18 条镜像材料读回通过，待准确新引导入口、真实 API 观察和独立接收。#398 固定拆除材料与缺失的 AArch64 TLS 身份库已补，签名 A16 提议离线联测通过，独立复审发现宿主投影自匹配可接受非法字段，后继严格校验进行中，原生入口仍关闭。GitHub 核实 14 项阶段关闭、31 项开放，#428 草稿。 [合同签名接线](/private/tmp/jg-394-a08-signed-storage.QTpUd9Cv/HANDOFF.md) · [实付镜像材料](/private/tmp/jg-398-a16-overlay-disarm.Yvp9F9tm/HANDOFF.md) · [实付提议](/private/tmp/jg-398-a16-signed-proposal.qM0VypeD/HANDOFF.md)
+
 - [ ] 用户授权的准确 `1374e8c7` 完整本地发布入口已执行一次，在第 1 步 `ci-orchestration` 退出 1，280 项通过、10 项失败。执行副本漏带首步所需工作区依赖，冻结安装和 Prisma 生成排在第 2、3 步。无通过阶段、正式回执、迁移或动态 PostgreSQL。原入口停止并保留，后继先核验空依赖副本的入口排序或封存前置依赖，不重跑本次命令。 [准确停止回执](/private/tmp/jg-382-release-1374.t3cXhS1Q/STOP-RECEIPT.md)
 - [~] #398 独立复核补齐合成拆除失败证据，外层区分未提交、提交未知与已提交但回查未证，等待写者确认退出后回查，超时保留未确认并保护性恢复 HBA。128 项合成测试通过，真实业务、镜像和授权仍待。 [复核回执](/private/tmp/jg-398-a16-disarm-exit-proof.sbK86hpF/HANDOFF.md)
 
