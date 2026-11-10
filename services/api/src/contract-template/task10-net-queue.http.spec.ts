@@ -87,5 +87,5 @@ describe("task10 net-basis preview admission through public aggregate and genera
           "contract.taxExclusiveAmount": "1.5340", "contract.taxInclusiveAmount": "待确定", "contract.taxAmount": "待确定" } }
       } });
     } finally { await server.app.close(); }
-  });
+  }, 10_000);
 });

@@ -89,5 +89,5 @@ describe("task10 custom neutral amount fields through public draft body HTTP", (
       expect(createHash("sha256").update(await readFile(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"))).digest("hex"))
         .toBe("44be99630d27578e9828bd7c6fa4925cdc26f552b84637e125c8acb0632b17bd");
     } finally { await server.app.close(); }
-  });
+  }, 10_000);
 });

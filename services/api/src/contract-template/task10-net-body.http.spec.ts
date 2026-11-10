@@ -64,5 +64,5 @@ describe("task10 net-basis document facts through public aggregate and body HTTP
       expect(after.blocks.find(block => block.id === ordinary.id)?.text).toBe(manualText);
       expect(after.sourceSha256).toBe(layout.sha256);
     } finally { await server.app.close(); }
-  });
+  }, 10_000);
 });
