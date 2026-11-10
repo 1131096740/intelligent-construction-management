@@ -308,7 +308,7 @@ describe("project financing quota PostgreSQL runner", () => {
       expect(run.stderr).not.toContain("project_financing_quota_duplicate_attachment");
       expect(run.stderr).not.toContain("project_financing_quota_cross_business_attachment");
       expect(Object.keys(state.databases)).toHaveLength(7);
-      expect(Object.values(state.databases).every(database => database.applied === 256)).toBe(true);
+      expect(Object.values(state.databases).every(database => database.applied === migrations.length)).toBe(true);
       const failures = state.events.filter(event => event.action === "masked-failure");
       expect(failures).toHaveLength(4);
       for (const failure of failures) {
@@ -323,7 +323,7 @@ describe("project financing quota PostgreSQL runner", () => {
         expect(rollback).toBeLessThan(remediate);
         expect(remediate).toBeLessThan(resolve);
         expect(events.slice(resolve + 1).filter(event => event.action === "deploy").map(event => event.count))
-          .toEqual([203, 205, 256]);
+          .toEqual([203, 205, migrations.length]);
       }
       expect(state.events.filter(event => event.action === "business-tests")).toHaveLength(1);
       expect(state.events.at(-1)?.args.slice(0, 3)).toEqual(["rm", "--force", "--volumes"]);

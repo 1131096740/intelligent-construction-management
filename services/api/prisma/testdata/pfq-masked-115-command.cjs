@@ -120,8 +120,8 @@ else if (args.includes("psql")) {
   else if (sql.includes("被篡改")) fail("project financing quota termination facts are immutable");
   else if (sql.includes('FROM "_prisma_migrations"')) {
     if (sql.includes(row(113).name)) stdout = "114|1|0";
-    else if (sql.includes(row(114).name)) stdout = "256|1|1|1|" + row(114).sha256 + "|" + row(115).sha256;
-    else stdout = "256|1|0|" + row(115).sha256;
+    else if (sql.includes(row(114).name)) stdout = state.migrations.length + "|1|1|1|" + row(114).sha256 + "|" + row(115).sha256;
+    else stdout = state.migrations.length + "|1|0|" + row(115).sha256;
   } else if (db.failed && !db.resolved && (/SET "signatureFileId" = NULL/u.test(sql) ||
     /SET "supersedesFileObjectId" = NULL/u.test(sql) || /DELETE FROM "ProjectFinancingQuota"/u.test(sql))) {
     event.action = "remediate";

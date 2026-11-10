@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+const { migrationBaseline: canonicalBaseline } = require("./database-dynamic-gate-manifest.json");
 
 test("an owned container ID mismatch stops before SQL or deployment", async () => {
   let commands = 0;
@@ -178,13 +179,14 @@ test("full fixture deploys exact203 then qualified205, cleans independently and 
     assert.match(result.stdout, /20261108160000_operating_amount_protocol_v2/u);
     assert.match(result.stdout, /20261108220000_contract_archive_v2_authority|20261109100000_contract_direct_pending_input_v1/u);
     assert.match(result.stdout, /20261111096000_contract_direct_outside_operating_basis_bridge_v2/u);
+    assert.ok(result.stdout.includes(canonicalBaseline.terminalMigration));
     assert.match(result.stdout, /20260802020000_project_financing_quota_termination_idempotency/u);
     assert.deepEqual(calls, ["preflight", "deploy-203", "stage203-readback", "qualification-setup",
       "deploy-205", "stage205-readback", "qualification-cleanup", "cleanup-readback", "post-qualification",
-      "deploy-256", "complete-readback"]);
+      `deploy-${canonicalBaseline.expectedDirectoryCount}`, "complete-readback"]);
     const repeated = await fixture.migrate({ databaseUrl, runtimeEnv: {} });
     assert.equal(repeated.stdout, "No pending migrations to apply.");
-    assert.deepEqual(calls.slice(-2), ["preflight", "deploy-256"]);
+    assert.deepEqual(calls.slice(-2), ["preflight", `deploy-${canonicalBaseline.expectedDirectoryCount}`]);
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
 });
 
@@ -247,7 +249,7 @@ for (const [name, phase, mutate, error] of [
     try {
       const { fixture, calls } = await fakeFixture(temporaryRoot, (current, row) => current === phase ? mutate(row) : row);
       await assert.rejects(fixture.migrate({ databaseUrl }), error);
-      assert.equal(calls.includes("deploy-256"), false);
+      assert.equal(calls.includes(`deploy-${canonicalBaseline.expectedDirectoryCount}`), false);
       const completedCalls = calls.length;
       await assert.rejects(fixture.migrate({ databaseUrl }), /LOCAL_MIGRATION_STOPPED/u);
       assert.equal(calls.length, completedCalls);
@@ -308,6 +310,7 @@ test("one owned cluster preserves all seven original databases and explicit115 f
       }
       const result = await harness.fixture.migrate({ databaseUrl: url.toString() });
       assert.match(result.stdout, /20261111096000_contract_direct_outside_operating_basis_bridge_v2/u);
+    assert.ok(result.stdout.includes(canonicalBaseline.terminalMigration));
       apps.push(harness.deploymentRequests.filter(row => row.database === name && row.count === 205).length);
     }
     assert.deepEqual(apps, [1, 1, 1, 1, 1, 1]);
@@ -349,6 +352,7 @@ test("a masked115 engine failure can continue only after the explicit original r
     harness.resolveHistorical(name);
     const result = await harness.fixture.migrate({ databaseUrl: url.toString() });
     assert.match(result.stdout, /20261111096000_contract_direct_outside_operating_basis_bridge_v2/u);
+    assert.ok(result.stdout.includes(canonicalBaseline.terminalMigration));
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
 });
 
