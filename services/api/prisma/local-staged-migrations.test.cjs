@@ -526,15 +526,24 @@ async function current259Model(temporaryRoot, mutate) {
   const model = await fakeFixture(temporaryRoot, mutate, [], false, true);
   const vm = require("node:vm"), nativeRequire = require("node:module").createRequire(__filename);
   const handle = Object.freeze({ simulation: "owned-current259-test" });
-  let closed = false, checks = 0, commands = 0, cliHash = "ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388";
+  let closed = false, checks = 0, commands = 0, closes = 0, observations = 0, observation = "valid", pauseSql = false, pendingReject, notifySql, closeFails = false, cliHash = "ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388";
   const rows = await canonicalRows();
   const receipt = { runId: container.runId, containerId: container.id, networkId: "b".repeat(64),
     databaseName: "jg_task01_0123456789abcdef0123456789abcdef", port: 55432,
     containerName: "jg-task01-" + container.runId };
   const resource = { containerId: receipt.containerId, networkId: receipt.networkId, port: receipt.port,
     caPath: "/synthetic-immutable-ca.crt", getReceipt: () => ({ ...receipt }),
-    execOwnerSql: (sql, phase) => model.ports.executeSql({ database: receipt.databaseName,
-      phase: phase.replace(/^current259-/u, ""), sql }) };
+    captureLogCursor: async () => { observations++; if(observation === "fail") throw Error("synthetic physical inspect failed");
+      return {runId:receipt.runId,containerId:observation === "wrong-id" ? "e".repeat(64) : receipt.containerId}; },
+    execOwnerSql: (sql, phase) => {
+      if(pauseSql) { pauseSql=false; return new Promise((resolve,reject) => { pendingReject=reject; notifySql(); }); }
+      if(phase === "current259-live-inspect") {
+        if(observation === "stopped") throw Error("synthetic stopped container cannot exec");
+        const nonce=/'nonce','([a-f0-9]{64})'/u.exec(sql)?.[1];assert.ok(nonce);
+        return Promise.resolve({stdout:JSON.stringify({nonce,database:observation === "wrong-live-db" ? "foreign" : receipt.databaseName,databaseOid:"16384",namespaceOid:"2200",ownerOid:"10",actorOid:"10",actor:"jg_task01_owner",sessionActor:"jg_task01_owner",systemIdentifier:"1234567890123456789",tls:true,clientAddress:"127.0.0.1",serverAddress:"127.0.0.1",serverPort:5432,backendPid:700+observations})});
+      }
+      return model.ports.executeSql({ database:receipt.databaseName,phase:phase.replace(/^current259-/u,""),sql });
+    } };
   const view = { source: { candidateSha: "c".repeat(40), profile: { ledgerSha256: "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952", ledger: rows } },
     build: { node: { path: process.execPath, sha256: crypto.createHash("sha256").update(require("node:fs").readFileSync(process.execPath)).digest("hex") } }, runId: container.runId, resource,
     credentials: () => ({ owner: "synthetic-non-secret" }),
@@ -557,13 +566,18 @@ async function current259Model(temporaryRoot, mutate) {
         return { sha256:crypto.createHash("sha256").update(require("node:fs").readFileSync(file)).digest("hex"),identity:{simulation:"fixed-node"} };
       } };
       if (request === "./task16-current259-owned-resource.cjs") return { claimCurrent259OwnedResource(value) {
-        assert.equal(value, handle, "synthetic genuine handle required"); return view;
+        assert.equal(value, handle, "synthetic genuine handle required"); view.check(); return view;
+      }, closeCurrent259OwnedResource(value) {
+        assert.equal(value,handle);closes++;closed=true;
+        if(pendingReject)pendingReject(Error("synthetic owned SQL stopped"));
+        return closeFails ? Promise.reject(Error("synthetic cleanup unknown")) : Promise.resolve();
       } };
       if (request === "./task16-bounded-command.cjs") return { async runTask16BoundedCommand(executable, args, control) {
         commands++;
         assert.equal(executable, process.execPath);
         assert.equal(args[0], path.join(__dirname, "../node_modules/prisma/build/index.js"));
         assert.equal(control.env.PRISMA_QUERY_ENGINE_LIBRARY, undefined);
+        assert.equal(control.env.CHECKPOINT_DISABLE,"1");
         const url = new URL(control.env.DATABASE_URL);
         assert.equal(url.username, "jg_task01_owner"); assert.equal(url.searchParams.get("sslmode"), "require");
         assert.equal(url.searchParams.get("sslaccept"), "strict"); assert.equal(url.searchParams.get("sslcert"), resource.caPath);
@@ -589,7 +603,11 @@ async function current259Model(temporaryRoot, mutate) {
   function awaitRead(file) { return require("node:fs").readFileSync(file, "utf8"); }
   const api = load("local-staged-current259-profile.cjs");
   return { ...model, api, handle, receipt, close: () => { closed = true; },
-    driftCli: () => { cliHash = "0".repeat(64); }, tamperCommand: () => { moduleCache[nativeRequire.resolve("./task16-bounded-command.cjs")].exports = {}; }, counts: () => ({ checks, commands }) };
+    installGetter: field => {
+      const map={core:["./local-staged-migrations.cjs","createLocalMigrationFixture"],owned:["./task16-current259-owned-resource.cjs","claimCurrent259OwnedResource"],input:["./task16-runtime-inputs.cjs","readQualifiedTask16File"],command:["./task16-bounded-command.cjs","runTask16BoundedCommand"]};
+      const [file,key]=map[field],owner=moduleCache[nativeRequire.resolve(file)].exports,value=owner[key];let reads=0;
+      Object.defineProperty(owner,key,{get(){reads++;return value;},enumerable:true,configurable:true});return ()=>reads;
+    }, driftCli: () => { cliHash = "0".repeat(64); }, tamperCommand: () => { moduleCache[nativeRequire.resolve("./task16-bounded-command.cjs")].exports = {}; }, physicalFailure: value => { observation=value; }, pauseNextSql: () => { pauseSql=true; return new Promise(resolve=>{notifySql=resolve;}); }, releaseSql: () => pendingReject?.(Error("synthetic test release")), failClose:()=>{closeFails=true;}, counts: () => ({ checks, commands, closes, observations }) };
 }
 
 test("owned current259 technical recipe reuses all four atomic windows and independent readbacks", async () => {
@@ -689,4 +707,40 @@ test("owned current259 rejects original transport replacement and copied technic
   await assert.rejects(run.migrate(), /CURRENT259_TECHNICAL_PROFILE/u);
   assert.equal(model.counts().commands,0);
   assert.deepEqual(model.calls,[]);
+});
+
+
+for(const physical of ["fail","wrong-id","stopped","wrong-live-db"]) test("owned current259 physical inspection " + physical + " rejects before SQL and deployment",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-inspect-")),model=await current259Model(root);
+ const run=model.api.createCurrent259TechnicalMigration(model.handle);model.physicalFailure(physical);
+ await assert.rejects(run.migrate());assert.equal(model.counts().commands,0);assert.deepEqual(model.calls,[]);
+ await assert.rejects(run.migrate());
+});
+
+test("owned current259 independent cancellation immediately closes a pending SQL transport",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-sql-abort-")),model=await current259Model(root),signal=new AbortController();
+ const run=model.api.createCurrent259TechnicalMigration(model.handle,signal.signal),started=model.pauseNextSql();
+ const work=run.migrate();
+ try {await started;signal.abort();assert.equal(model.counts().closes,1);}
+ finally {model.releaseSql();await assert.rejects(work);}
+ assert.equal(model.counts().commands,0);assert.throws(()=>model.api.createCurrent259TechnicalMigration(model.handle));
+});
+
+
+for(const field of ["core","owned","input","command"]) test("owned current259 refuses fixed " + field + " accessor without evaluating it",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-descriptor-")),model=await current259Model(root);
+ const run=model.api.createCurrent259TechnicalMigration(model.handle),reads=model.installGetter(field);
+ await assert.rejects(run.migrate(),/CURRENT259_TECHNICAL_PROFILE/u);
+ assert.equal(reads(),0);assert.equal(model.counts().commands,0);assert.deepEqual(model.calls,[]);
+});
+
+test("owned current259 retains primary semantic failure when owned cleanup is UNKNOWN",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-cleanup-")),model=await current259Model(root,(phase,row)=>{
+  if(phase === "preflight")row.actor="jiangkong";return row;
+ });
+ model.failClose();
+ await assert.rejects(model.api.createCurrent259TechnicalMigration(model.handle).migrate(),error=>{
+  assert.equal(error.resourceCleanup?.status,"UNKNOWN");assert.match(error.cause?.message??"",/LOCAL_MIGRATION_DATABASE_IDENTITY/u);return true;
+ });
+ assert.equal(model.counts().closes,1);assert.equal(model.counts().commands,0);
 });
