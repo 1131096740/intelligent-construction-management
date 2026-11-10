@@ -44,7 +44,7 @@
 
 203前缀及资格准备完成，205提交/ACL独立读回未通过。其余六库及原13项并发未开始；准确容器 `jiangkong-pfq-concurrency-1794329822435-11777-bb3c44a9` 的宿主 `docker ps -a` 精确名称查询为空。停止回执、脱敏原件路径及校验见包内 `STOP-RECEIPT.md` / `STOP-SHA256SUMS`。授权已消耗，不重试本次或旧包，没有其它组、259候选、GitHub、部署或生产操作。本地集成后续已有259源码，独立诊断包仍固定原256，二者证据分开。
 
-## 后继749cadf9：严格DML阶段变换，259单次待授权
+## 后继749cadf9：严格DML阶段变换，实际进入214后停止
 
 源码提交c6e4ab41及其测试隔离后继 `749cadf9caae840f062144a0a22d52ca415ab35d` / tree `00c4ef982d0c5d4be48e3538f1d130ae821cc6ca` 已经merger集成。冻结全角色×旧触发器的DML可达向量，所有旧root/schema/registry/DELETE/UPDATE及表级权限保持；仅205完整提交、四事件和原CV新列三项actor授予/无grantoption的ACL均证实后，预测原app旧CV的INSERT可达变化。实际向量须精确相等，live调用者须恰为C0∪app；C0、启动参数、原四锚点及原迁移SQL保持。具体实际OID差量和修复通过尚未观察。
 
@@ -52,4 +52,10 @@
 
 独立副本 `/private/tmp/jg-382-c6e4-independent.3wsyndgn/repo` 在准确749上通过460项编排、CLI/runtime54及单独准确provider1（共三套55）、API类型/lint/构建、五份PG16.1语法解析和只读preflight。依赖独立冻结安装/生成，test-only successor与安装时的lock/Schema一致；日志及完整范围见上级PRECHECK-RESULT.json和RUN-HANDOFF.md，不把语法/mock当实际PG。
 
-新准确方案RUN-PLAN.json明确应用当前259条迁移，包含对上直签新增三条。完整账d3538d5a…、原256前缀85d1a225…及259逐条SHA已封；保留原七库、明确历史115冲突恢复和原13项并发，仅一个新本机PG16容器，非预期首错停止清理。当前未创建attempt或run.log，未执行实际SQL/资源；须准确新单次授权，不借旧许可。不包括其它组、#394实际归档/COS、native259应用issuer/loader、GitHub写入、部署或生产。
+新准确方案RUN-PLAN.json明确应用当前259条迁移，包含对上直签新增三条。完整账d3538d5a…、原256前缀85d1a225…及259逐条SHA已封；保留原七库、明确历史115冲突恢复和原13项并发，仅一个新本机PG16容器，非预期首错停止清理。封存时未创建attempt或run.log，不借旧许可。不包括其它组、#394实际归档/COS、native259应用issuer/loader、GitHub写入、部署或生产。
+
+用户随后明确授权749cadf9单次259本地验证，原封存命令执行一次并退出1。首库日志走过205、进入后继迁移，最后Applying为清单第214条 `20261109190000_contract_direct_archive_dispatch_install_v1`；清理前0600首错为 `P0002 / POSTGRES_ERROR`。未出现stage205读回外层错误，说明原205停止点已越过，但完整259/业务组仍未通过。日志没有PLpgSQL上下文，不能把具体函数/行号称为实际捕获事实。
+
+独立源码复核证明：M207和M209只建准备/留存绑定表并明确由受信installer供应行，M206复核绑定也刻意empty；当前helper在205清理后直接deploy wholetail，缺213断点的真实206/207/209资格安装。M214顺序中pending已有205行，随后prepared的首个SELECT INTO STRICT必空，可解释本次P0002；b597历史两行别名调整与此无关。后继先清点全259的安装前置与最小角色/ACL/源/nonce/读回，不直接INSERT假行或修改M214绕过。
+
+其余六库及13项并发未开始；容器 `jiangkong-pfq-concurrency-1794334107853-86424-9c6e6115` 已精确宿主查询确认不存在。回执、SAFE-PROGRESS.json和STOP-SHA256SUMS在同包，授权消耗不重试，不执行其它组/新loader/COS/GitHub/部署/生产。只读因果报告 `/private/tmp/jg-382-m214-readonly-cause-4uxwn406/HANDOFF.md` 区分实际错误与源码推导。
