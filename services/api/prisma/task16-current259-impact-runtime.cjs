@@ -30,8 +30,8 @@ function runtimeScope(database,cluster,pid,roleOid,start,clientAddress,clientPor
     WHERE a.pid=pg_catalog.pg_backend_pid() AND ${timestamp("a.backend_start")}=${start}::pg_catalog.text)`;
 }
 const beginSql=`SELECT ${timestamp("pg_catalog.transaction_timestamp()")} AS "startedAt",
- pg_catalog.inet_client_addr()::text AS "clientAddress",pg_catalog.inet_client_port() AS "clientPort",
- pg_catalog.inet_server_addr()::text AS "serverAddress",pg_catalog.inet_server_port() AS "serverPort"
+ pg_catalog.host(pg_catalog.inet_client_addr()) AS "clientAddress",pg_catalog.inet_client_port() AS "clientPort",
+ pg_catalog.host(pg_catalog.inet_server_addr()) AS "serverAddress",pg_catalog.inet_server_port() AS "serverPort"
  ${runtimeScope("$1","$2","$3","$4","$5","$6","$7","$8","$9")}`;
 const readSql=`WITH admitted AS MATERIALIZED (
  SELECT $1::pg_catalog.text AS request_key,$2::pg_catalog.text AS execution_id,$3::pg_catalog.text AS payment_id,

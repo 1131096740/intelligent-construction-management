@@ -5,10 +5,23 @@ function source(){
  const base='services/api/prisma/migrations';
  return {candidateSha:'0'.repeat(40),sealSha256:'a'.repeat(64),schemaSha256:createHash('sha256').update(fs.readFileSync(path.join(ROOT,'services/api/prisma/schema.prisma'))).digest('hex'),migrations:fs.readdirSync(path.join(ROOT,base),{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name).sort().map(name=>({path:`${base}/${name}/migration.sql`,sha256:createHash('sha256').update(fs.readFileSync(path.join(ROOT,base,name,'migration.sql'))).digest('hex')}))};
 }
+function projectedAddress(sql,side,address){
+ // PostgreSQL 16 renders a full-mask inet cast with /32; host(inet) returns
+ // only the address. Model the database boundary rather than returning an
+ // already-normalized endpoint regardless of the selected expression.
+ const socket=`pg_catalog.inet_${side}_addr()`,alias=`AS "${side}Address"`;
+ if(sql.includes(`pg_catalog.host(${socket}) ${alias}`))return address;
+ if(sql.includes(`${socket}::text ${alias}`))return `${address}/32`;
+ throw new Error('Unsupported test address projection');
+}
 function fixture(){
  const calls=[],startedAt='2026-11-10T04:03:11.000002Z';
  const endpoint={publishedHost:'127.0.0.1',publishedPort:15432,clientAddress:'172.19.0.1',clientPort:49152,serverAddress:'172.19.0.2',serverPort:5432};
- const tx={$queryRawUnsafe:async(sql,...args)=>{calls.push({sql,args});return sql.includes('jg_read_registered_payment_impacts')?[{factId:args[4],impactKind:'payment',amountCents:23n,numericProtocolVersion:1,subjectKind:null,subjectId:null}]:[{startedAt,...endpoint}];}};
+ const tx={$queryRawUnsafe:async(sql,...args)=>{
+  calls.push({sql,args});
+  if(sql.includes('jg_read_registered_payment_impacts'))return [{factId:args[4],impactKind:'payment',amountCents:23n,numericProtocolVersion:1,subjectKind:null,subjectId:null}];
+  return [{startedAt,...endpoint,clientAddress:projectedAddress(sql,'client',endpoint.clientAddress),serverAddress:projectedAddress(sql,'server',endpoint.serverAddress)}];
+ }};
  const runtime={$transaction:async(action,options)=>{assert.deepEqual(options,{isolationLevel:'Serializable'});return action(tx);}};
  const owner={},observer={};
  const identity=['owner','runtime','observer'].map((role,i)=>({database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16910',systemIdentifier:'7245753496126091540',effectiveRole:'jg_task01_'+role,loginRole:'jg_task01_'+role,effectiveOid:String(16911+i),loginOid:String(16911+i),pid:411+i,start:`2026-11-10T04:03:01.00000${i+1}Z`,tls:true}));
@@ -24,6 +37,16 @@ test('current259 transport binds the real transaction and fixed five-coordinate 
  assert.equal(f.calls.length,3); // fixed begin, fixed read, fixed final session/catalog read
  assert.ok(f.calls[1].sql.includes('jg_read_registered_payment_impacts'));
  assert.equal(runtime.executionAllowed,undefined);
+});
+test('current259 rejects a subnet-shaped identity row before the transaction operation',async()=>{
+ const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtime.cjs');
+ const f=fixture(),query=f.tx.$queryRawUnsafe;
+ f.tx.$queryRawUnsafe=async(sql,...args)=>(await query(sql,...args)).map(row=>({...row,clientAddress:`${row.clientAddress}/32`}));
+ let operationCalls=0;
+ const runtime=createCurrent259ImpactRuntime(f.session,()=>{});
+ await assert.rejects(runtime.withTransaction(()=>{operationCalls++;}),/TASK16_CLIENT_IMPACT_READER_TRANSACTION/u);
+ assert.equal(f.calls.length,1);
+ assert.equal(operationCalls,0);
 });
 module.exports={fixture,source};
 test('an accessor-backed session identity is rejected without invoking it or issuing SQL',()=>{
