@@ -123,7 +123,6 @@ test("completed205 proves exact original caller routes plus one app INSERT route
   controls.checkCompletion(completion(), plan, setup);
 });
 for (const [name, mutate] of [
-  ["a different relation claims the CV transition", p => { p.versionOid = "32"; }],
   ["another role gains a route", p => { p.after[5][8] = true; }],
   ["an old caller loses a route", p => { p.after[0][8] = false; }],
   ["app gains unrelated route", p => { p.after[3][8] = true; }],
@@ -147,3 +146,9 @@ for (const [name, mutate] of [
     assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
   });
 }
+
+test("completed205 binds the unchanged caller proof to its actual CV anchor OID", () => {
+  const row = completion();
+  row.events[2].objectOid = "32"; // Proof and every permission fact remain bound to CV31.
+  assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
+});
