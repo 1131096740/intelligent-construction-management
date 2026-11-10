@@ -13,6 +13,8 @@ const loaderExports=require('./task16-current259-client-loader.cjs');
 const resourceExports=require('./enterprise-task01-resources.cjs');
 const loaderModule=require.cache[loaderPath],resourceModule=require.cache[resourcePath];
 const {loadCurrent259Client}=loaderExports,{startTask01Postgres}=resourceExports;
+const startCurrent259TechnicalPostgres=Object.getOwnPropertyDescriptor(resourceExports,'startCurrent259TechnicalPostgres')?.value;
+const TECHNICAL_PURPOSE='CURRENT259_TECHNICAL_MIGRATIONS_V1';
 const builtinLoader=process.binding('natives')['internal/modules/cjs/loader'];
 const ROOT=path.resolve(__dirname,'../../..');
 const ENDPOINT='unix:///Users/leoyang/.docker/run/docker.sock';
@@ -31,7 +33,7 @@ function hooksClean(){
  const checks=[[Module._load,'Module._load = function'],[Module._resolveFilename,'Module._resolveFilename = function'],[Module._findPath,'Module._findPath = function'],[Module.prototype.require,'Module.prototype.require = function'],...['.js','.json','.node'].map(ext=>[Module._extensions[ext],`Module._extensions['${ext}'] = function`])];
  return typeof builtinLoader==='string'&&checks.every(([fn,marker])=>{const assignment=builtinLoader.indexOf(marker),begin=builtinLoader.indexOf('function',assignment),end=builtinLoader.indexOf('\n};',begin);return assignment>=0&&end>begin&&typeof fn==='function'&&Function.prototype.toString.call(fn)===builtinLoader.slice(begin,end+2);});
 }
-function importsCheck(){need(!preloaded&&hooksClean()&&require.cache[loaderPath]===loaderModule&&require.cache[resourcePath]===resourceModule&&loaderModule.exports===loaderExports&&resourceModule.exports===resourceExports&&own(loaderExports,'loadCurrent259Client')===loadCurrent259Client&&own(resourceExports,'startTask01Postgres')===startTask01Postgres,'CURRENT259_RESOURCE_PRODUCER_CHANGED');}
+function importsCheck(technical=false){need(!preloaded&&hooksClean()&&require.cache[loaderPath]===loaderModule&&require.cache[resourcePath]===resourceModule&&loaderModule.exports===loaderExports&&resourceModule.exports===resourceExports&&own(loaderExports,'loadCurrent259Client')===loadCurrent259Client&&own(resourceExports,'startTask01Postgres')===startTask01Postgres&&(!technical||typeof startCurrent259TechnicalPostgres==='function'&&own(resourceExports,'startCurrent259TechnicalPostgres')===startCurrent259TechnicalPostgres),'CURRENT259_RESOURCE_PRODUCER_CHANGED');}
 function toolsCheck(){for(const key of ['docker','openssl']){const file=TOOLS[key];need(fs.realpathSync(file)===file,'CURRENT259_RESOURCE_TOOL_CHANGED');const before=fs.statSync(file);need(before.isFile()&&(before.mode&0o022)===0,'CURRENT259_RESOURCE_TOOL_CHANGED');fs.accessSync(file,fs.constants.X_OK);const hash=createHash('sha256').update(fs.readFileSync(file)).digest('hex'),after=fs.statSync(file);need(hash===HASHES[key]&&['uid','mode','dev','ino','size','mtimeMs','ctimeMs'].every(k=>before[k]===after[k]),'CURRENT259_RESOURCE_TOOL_CHANGED');}}
 function planSnapshot(value){
  const plan=record(value,['artifactsDir','daemonId']);
@@ -49,13 +51,13 @@ function closeCurrent259OwnedResource(handle){
  const owner=handles.get(handle)||closedHandles.get(handle);need(owner,'CURRENT259_RESOURCE_HANDLE');
  closedHandles.set(handle,owner);return owner.close();
 }
-async function withCurrent259OwnedResource(build,planInput,signal,consume){
- need(arguments.length===4&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
+async function withCurrent259Resource(build,planInput,signal,consume,technical){
+ need(arguments.length===5&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
  // The original loader consumes the genuine build brand exactly once and caches
  // its result. Future fixed stages retain this same loader, not a second claim.
- importsCheck();const loader=loadCurrent259Client(build);
+ importsCheck(technical);const loader=loadCurrent259Client(build);
  need(build&&!types.isProxy(build)&&!usedBuilds.has(build),'CURRENT259_RESOURCE_BUILD_REUSED');usedBuilds.add(build);
- importsCheck();loader.verifyFull();const witness=loader.witness(),plan=planSnapshot(planInput);
+ importsCheck(technical);loader.verifyFull();const witness=loader.witness(),plan=planSnapshot(planInput);
  need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');toolsCheck();
  const runId=randomUUID(),databaseName='jg_task01_'+runId.replaceAll('-','');
  let credentials=Object.freeze({owner:randomBytes(48).toString('hex'),runtime:randomBytes(48).toString('hex'),observer:randomBytes(48).toString('hex')});
@@ -66,22 +68,23 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
   if(!resource)return;
   // Capture the original close immediately when start returns. A mutated method
   // is never used as cleanup authority; original start handles pre-return errors.
-  closing=(async()=>{need(typeof methods?.close==='function','CURRENT259_RESOURCE_CLEANUP_UNKNOWN');await methods.close.call(resource);const final=methods.getReceipt.call(resource);need(final.runId===runId&&final.sourceSha===witness.source.candidateSha&&final.containerId===own(resource,'containerId')&&final.networkId===own(resource,'networkId')&&final.status==='closed'&&final.cleanup?.status==='completed'&&final.cleanup.containerAbsent===true&&final.cleanup.volumesAbsent===true&&final.cleanup.networkAbsent===true,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');})();return closing;
+  closing=(async()=>{need(typeof methods?.close==='function','CURRENT259_RESOURCE_CLEANUP_UNKNOWN');await methods.close.call(resource);const final=methods.getReceipt.call(resource);need(final.runId===runId&&final.sourceSha===witness.source.candidateSha&&final.containerId===own(resource,'containerId')&&final.networkId===own(resource,'networkId')&&final.status==='closed'&&final.cleanup?.status==='completed'&&final.cleanup.containerAbsent===true&&final.cleanup.volumesAbsent===true&&final.cleanup.networkAbsent===true&&(!technical||final.purpose===TECHNICAL_PURPOSE&&final.limits?.totalDeadlineMs===3600000),'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');})();return closing;
  }
  const onAbort=()=>{invalidate();void close().catch(()=>{});};
  function check(){
   try{
-   need(active&&!broken,'CURRENT259_RESOURCE_CLOSED');need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');importsCheck();loader.check();toolsCheck();
+   need(active&&!broken,'CURRENT259_RESOURCE_CLOSED');need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');importsCheck(technical);loader.check();toolsCheck();
    for(const key of METHODS)need(own(resource,key)===methods[key],'CURRENT259_RESOURCE_CHANGED');
    for(const key of FIELDS)need(isDeepStrictEqual(own(resource,key),fields[key]),'CURRENT259_RESOURCE_CHANGED');
    const receipt=methods.getReceipt.call(resource);
    need(receipt.runId===runId&&receipt.sourceSha===witness.source.candidateSha&&receipt.endpoint===ENDPOINT&&receipt.daemonId===plan.daemonId&&receipt.imageId===IMAGE&&receipt.databaseName===databaseName&&receipt.containerId===fields.containerId&&receipt.networkId===fields.networkId&&receipt.port===fields.port&&receipt.status==='started-awaiting-driver-verification'&&receipt.cleanup?.status==='pending','CURRENT259_RESOURCE_IDENTITY');
+   if(technical)need(receipt.purpose===TECHNICAL_PURPOSE&&receipt.limits?.totalDeadlineMs===3600000,'CURRENT259_RESOURCE_PURPOSE');
    need(receipt.hostOwnerCredentialFilesErased===true&&receipt.hostPrivateKeyFilesErased===true&&receipt.hostPrivateMaterialsErased===true&&receipt.topology==='UNVERIFIED_HOST_PUBLISHED_TLS','CURRENT259_RESOURCE_TLS');
    need(TLS_KEYS.every(key=>receipt.tls?.[key]===fields.serverCertHashes[key])&&['correctChainVerified','correctSanVerified','wrongCaChainRejected','wrongSanChainVerified','wrongSanMismatchVerified'].every(key=>receipt.tls?.[key]===true),'CURRENT259_RESOURCE_TLS');
   }catch(error){invalidate();void close().catch(()=>{});throw error;}
  }
  try{
-  resource=await startTask01Postgres({runId,sourceSha:witness.source.candidateSha,artifactsDir:plan.artifactsDir,endpoint:ENDPOINT,daemonId:plan.daemonId,imageId:IMAGE,tools:TOOLS,ownerPassword:credentials.owner,deadlineMs:900000,signal});
+  resource=await (technical?startCurrent259TechnicalPostgres:startTask01Postgres)({runId,sourceSha:witness.source.candidateSha,artifactsDir:plan.artifactsDir,endpoint:ENDPOINT,daemonId:plan.daemonId,imageId:IMAGE,tools:TOOLS,ownerPassword:credentials.owner,...(technical?{}:{deadlineMs:900000}),signal});
   // These are actual original producer return values, never caller projections.
   methods={close:own(resource,'close')};
   methods.getReceipt=own(resource,'getReceipt');
@@ -98,8 +101,8 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
   const resourceView={...fields,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
   for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{check();try{const result=await methods[key].apply(resource,args);check();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
   resourceView.getReceipt=()=>{check();return methods.getReceipt.call(resource);};
-  const view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
-  handles.set(handle,{check,view,close});
+  const view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
+  handles.set(handle,{check,view,close,technical});
   if(signal)EventTarget.prototype.addEventListener.call(signal,'abort',onAbort,{once:true});
   check();value=await consume(handle);check();loader.verifyFull();check();
  }catch(error){primary=error;hasPrimary=true;}
@@ -118,4 +121,16 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
  }
  if(hasPrimary)throw primary;return value;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,claimCurrent259OwnedResource,closeCurrent259OwnedResource});
+async function withCurrent259OwnedResource(build,plan,signal,consume){
+ need(arguments.length===4&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,false);
+}
+async function withCurrent259TechnicalResource(build,plan,signal,consume){
+ need(arguments.length===4&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,true);
+}
+function claimCurrent259TechnicalResource(handle){
+ need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
+ const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.check();return owner.view;
+}
+module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,closeCurrent259OwnedResource});

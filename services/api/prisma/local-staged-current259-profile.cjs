@@ -12,8 +12,8 @@ function sameDescriptor(owner,key,expected){need(isDeepStrictEqual(dataDescripto
 const ownedPath=require.resolve('./task16-current259-owned-resource.cjs');
 const ownedPreloaded=Boolean(require.cache[ownedPath]);
 const ownedExports=require('./task16-current259-owned-resource.cjs'),ownedModule=require.cache[ownedPath];
-const claimSlot=dataDescriptor(ownedExports,'claimCurrent259OwnedResource'),closeSlot=dataDescriptor(ownedExports,'closeCurrent259OwnedResource');
-const claimCurrent259OwnedResource=claimSlot.value,closeCurrent259OwnedResource=closeSlot.value;
+const claimSlot=dataDescriptor(ownedExports,'claimCurrent259TechnicalResource'),closeSlot=dataDescriptor(ownedExports,'closeCurrent259OwnedResource');
+const claimCurrent259TechnicalResource=claimSlot.value,closeCurrent259OwnedResource=closeSlot.value;
 const inputsPath=require.resolve('./task16-runtime-inputs.cjs');
 const inputsExports=require('./task16-runtime-inputs.cjs'),inputsModule=require.cache[inputsPath];
 const inputSlot=dataDescriptor(inputsExports,'readQualifiedTask16File'),readQualifiedTask16File=inputSlot.value;
@@ -28,7 +28,7 @@ const modules=[[ownedPath,ownedModule,ownedExports],[inputsPath,inputsModule,inp
 function bindings(){
  need(!ownedPreloaded&&!corePreloaded&&dataDescriptor(require.cache,__filename).value===module&&dataDescriptor(module,'exports').value===moduleApi);
  for(const {file,loaded,exports,slot} of modules){need(dataDescriptor(require.cache,file).value===loaded&&slot.value===exports);sameDescriptor(loaded,'exports',slot);}
- for(const [owner,key,slot] of [[ownedExports,'claimCurrent259OwnedResource',claimSlot],[ownedExports,'closeCurrent259OwnedResource',closeSlot],[inputsExports,'readQualifiedTask16File',inputSlot],[commandExports,'runTask16BoundedCommand',commandSlot],[coreExports,'createLocalMigrationFixture',coreSlot]])sameDescriptor(owner,key,slot);
+ for(const [owner,key,slot] of [[ownedExports,'claimCurrent259TechnicalResource',claimSlot],[ownedExports,'closeCurrent259OwnedResource',closeSlot],[inputsExports,'readQualifiedTask16File',inputSlot],[commandExports,'runTask16BoundedCommand',commandSlot],[coreExports,'createLocalMigrationFixture',coreSlot]])sameDescriptor(owner,key,slot);
 }
 const SCHEMA_ENGINE_SHA='57b090d47b947dc9284379d9480d11ffe14fe63155e3da515b359f3aa7fa408a';
 const CLI_SHA='ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388';
@@ -45,7 +45,8 @@ function createCurrent259TechnicalMigration(handle,signal){
 
  // Fixed entry imports this module before the physical resource producer.
  bindings();
- const view=claimCurrent259OwnedResource(handle);need(!usedHandles.has(handle));usedHandles.add(handle);view.verifyFull();
+ const view=claimCurrent259TechnicalResource(handle);need(!usedHandles.has(handle));usedHandles.add(handle);view.verifyFull();
+ need(view.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&view.deadlineMs===3600000);
  const source=view.source,build=view.build,resource=view.resource;
  need(source.profile.ledgerSha256===FULL&&source.profile.ledger.length===259&&build.node.path===process.execPath);
  const receipt=resource.getReceipt(),runId=view.runId,database='jg_task01_'+runId.replaceAll('-','');
@@ -75,7 +76,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  }
  function check(){try{
   need(!failed&&!aborted()&&!cancellation.signal.aborted);bindings();view.check();view.verifyFull();need(view.source===source&&view.build===build&&view.resource===resource);
-  const r=resource.getReceipt();need(isDeepStrictEqual({runId:r.runId,containerId:r.containerId,networkId:r.networkId,database:r.databaseName,port:r.port,name:r.containerName},frozenIdentity));
+  const r=resource.getReceipt();need(r.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&r.limits?.totalDeadlineMs===3600000);need(isDeepStrictEqual({runId:r.runId,containerId:r.containerId,networkId:r.networkId,database:r.databaseName,port:r.port,name:r.containerName},frozenIdentity));
  }catch(error){void stop().catch(()=>{});throw error;}}
  const token=Object.freeze({kind:ID});
  const profile={id:ID,owner:OWNER,database,runId,check,

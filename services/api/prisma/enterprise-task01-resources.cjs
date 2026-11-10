@@ -7,6 +7,9 @@ const { spawn } = require("node:child_process");
 const { createHash, X509Certificate } = require("node:crypto");
 const net = require("node:net");
 const tls = require("node:tls");
+const { types } = require("node:util");
+const TECHNICAL_LIFETIME = Symbol("current259 technical lifetime");
+const TECHNICAL_PURPOSE = "CURRENT259_TECHNICAL_MIGRATIONS_V1";
 
 const ENDPOINT = "unix:///Users/leoyang/.docker/run/docker.sock";
 const IMAGE = "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d";
@@ -38,14 +41,15 @@ function literalDirectory(target, allowMissing = false) {
   }
 }
 
-async function prepareTask01Postgres(options = {}) {
+async function prepareTask01Postgres(options = {}, lifetime) {
+  const technical = lifetime === TECHNICAL_LIFETIME;
   const { runId, sourceSha, artifactsDir, endpoint, daemonId, imageId, tools, deadlineMs = 900000, signal } = options;
   let ownerPassword = options.ownerPassword;
   requireThat(typeof runId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(runId), "TASK01_RESOURCE_INPUT_INVALID");
   requireThat(typeof sourceSha === "string" && /^[0-9a-f]{40}$/u.test(sourceSha), "TASK01_RESOURCE_INPUT_INVALID");
   requireThat(endpoint === ENDPOINT && imageId === IMAGE && typeof daemonId === "string" && /^[A-Za-z0-9:-]{16,128}$/u.test(daemonId), "TASK01_RESOURCE_INPUT_INVALID");
   requireThat(typeof ownerPassword === "string" && /^[0-9a-f]{96}$/u.test(ownerPassword), "TASK01_RESOURCE_INPUT_INVALID");
-  requireThat(Number.isSafeInteger(deadlineMs) && deadlineMs >= 1000 && deadlineMs <= 900000, "TASK01_RESOURCE_INPUT_INVALID");
+  requireThat(Number.isSafeInteger(deadlineMs) && deadlineMs >= 1000 && (technical ? deadlineMs === 3600000 : deadlineMs <= 900000), "TASK01_RESOURCE_INPUT_INVALID");
   requireThat(tools && Object.keys(tools).sort().join(",") === "docker,openssl", "TASK01_RESOURCE_TOOL_INVALID");
   for (const name of ["docker", "openssl"]) {
     const executable = tools[name];
@@ -79,6 +83,7 @@ async function prepareTask01Postgres(options = {}) {
   const name = `jg-task01-${runId}`;
   const receipt = {
     runId, sourceSha, endpoint, daemonId, imageId, databaseName,
+    ...(technical ? { purpose: TECHNICAL_PURPOSE } : {}),
     phase: "preparing", status: "preparing", containerName: name, containerId: null, networkId: null, port: null, attempts: { network: false, container: false },
     volumes: [], limits: { cpu: 2, memoryBytes: 1073741824, pids: 256, pgdataBytes: 536870912, totalDeadlineMs: deadlineMs },
     tls: null, requestedCertificateMode: "correct", reloadState: "not-requested", presentedCertificate: null,
@@ -476,4 +481,17 @@ async function startTask01Postgres(options) {
     throw fault("TASK01_RESOURCE_INPUT_OR_PREPARATION_FAILED");
   }
 }
-module.exports = { startTask01Postgres };
+async function startCurrent259TechnicalPostgres(options) {
+  // This second named route never accepts a caller-selected deadline or cap.
+  requireThat(arguments.length===1 && options && !types.isProxy(options) && Object.getPrototypeOf(options)===Object.prototype,"TASK01_RESOURCE_INPUT_INVALID");
+  const descriptors=Object.getOwnPropertyDescriptors(options);
+  const keys=["runId","sourceSha","artifactsDir","endpoint","daemonId","imageId","tools","ownerPassword","signal"];
+  requireThat(Reflect.ownKeys(descriptors).every(key=>typeof key==="string"&&keys.includes(key)&&Object.hasOwn(descriptors[key],"value")),"TASK01_RESOURCE_INPUT_INVALID");
+  const supplied=Object.fromEntries(Object.entries(descriptors).map(([key,value])=>[key,value.value]));
+  try { return await prepareTask01Postgres({...supplied,deadlineMs:3600000},TECHNICAL_LIFETIME); }
+  catch(error) {
+    if(typeof error.code==="string"&&error.code.startsWith("TASK01_RESOURCE_"))throw error;
+    throw fault("TASK01_RESOURCE_INPUT_OR_PREPARATION_FAILED");
+  }
+}
+module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres };
