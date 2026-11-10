@@ -1,3 +1,10 @@
+## #382 单次本地发布验证与业务接续（2026-11-10）
+
+- [ ] 经用户授权对准确 `403f8e4598b9f0700020ab262daa4a1273b931c3` 执行完整本地发布验证一次。前 8 阶段通过，第 9 阶段业务用语扫描找不到隔离副本缺失的 `origin/main`，退出 1 并停止。预检已通过、同轮独立文书回归 17/17 且两份实际 PDF 物理检查通过；这不替代完整门禁。无通过回执、未进入动态 PostgreSQL 或执行迁移、未重试或修复原入口。后续新方案须固定比较基线并预检三点 diff。[单次停止](/private/tmp/jg-382-release-403f.jWb4Rn6J/STOP-RECEIPT.md) · [文书回执](/private/tmp/jg-382-release-403f.jWb4Rn6J/RUN-HANDOFF.md)
+- [~] #394 A08 已将同一管理员连接的数据库配置重载/独立读回及单独签名准入接入离线流程，分别通过 93 项、112 项。准确 `403f8e45` ARM64 应用已重封，应用身份与历史 f0 迁移证据分开绑定，包络 35 项、解包复验 22 项通过。下一步是同轮实际短租约、角色权限、认证及业务端口，真实启动仍关闭。[签名入口](/private/tmp/jg-394-a08-signed-profile.hPcsDxsZ/HANDOFF.md) · [准确应用](/private/tmp/jg-394-a08-envelope-403f.D04BtMRB/HANDOFF.md)
+- [~] #398 同轮 B6 票据已接 B7 签名写入、提交、独立双读回与 owner 退出，204 项通过；另封独立 arm 只读投影，210 项组合通过，两条查询均经 PG16.1 静态解析。旧 B6 五段 SQL 去除随机 nonce 后逐段一致。实际 arm 写入、只读端口接线、HBA、5432 种子和真实实付仍待。[B7 回执](/private/tmp/jg-398-b7-native-staged.QIF7j8yq/HANDOFF.md) · [arm 回执](/private/tmp/jg-398-a16-arm-read.JFaGU3yr/HANDOFF.md)
+- [~] 45 项仍为 14 阶段关闭、31 开放。可接续工单为 #394、#398。草稿 #428 未更新。本轮新提交仅为本地进度账。
+
 ## #382 集成接续（2026-11-10）
 
 - [~] GitHub 实际 14/45 项按各自阶段关闭，31 项开放。前置已齐的只有 #394（12 合同并联审批与签章归档）和 #398（16 实付安全）。草稿 #428 仍为 `4ca0965bd752e086a9229eebd2891d9a99c2e8ad`，该提交的 CI 失败。[远端结果](https://github.com/1131096740/intelligent-construction-management/actions/runs/42613286508)
