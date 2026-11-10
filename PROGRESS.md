@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 准确 `3c5557d7` 已集成四处tail技术窗口：213/215/218/221按当前目录/固定源生成206/207/209绑定及实际缺失列权限，独立COMMIT/xmin校读；16例程/18触发器独立元数据资格补齐。原259 SQL/Schema、203/205/C0/四锚点、七库115恢复/13项入口及预算保持。独审两项已修闭，根独立564项编排、三套57项后端、类型/lint/构建及17SQL语法/只读预查通过。新单次259命令已封，尚未执行或创建资源，等待准确新授权，不借已停止749许可；不含Q2业务installer/真实归档/COS/native session门/GitHub/部署/生产。 [源码交接](/private/tmp/jg-382-tail259-qualify.Hl7dS0Xk/HANDOFF.md) · [新单次方案](/private/tmp/jg-382-tail259-independent.86sn3zgr/RUN-PLAN.json)
+
 - [~] #398 当前259物理资源生命周期producer已集成 `b71c5673`：固定真实构建/loader与原资源工厂，私有句柄仅在实际创建及连续核验后生效，失败/结束撤销并保留首错及清理UNKNOWN。异步核验后mint缺口与既有错误字段覆盖两项独审问题已修闭；27定向、标准CI541、API类型/lint通过，全部source/model，未运行真实start/工具/DB。该句柄不是PG owner认证、NAT、三角色session或业务准入，实际迁移/角色/七SQL及A16仍待独立门。 [准确交接](/private/tmp/jg-398-current259-owned-resource-dj9J1kBd/HANDOFF-b71c.md) · [合并核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-b71c.md)
 
 - [~] #398 固定259安装目录/B7材料已集成 `6605b07e`：绑定全259及原256前缀、B7原函数体、9依赖表34列类型及既定33/11最小能力/PUBLIC禁权，分阶段同轮身份与独立COMMIT/xmin校读；仅渲染SQL/严格解析，结果不是native准入。跨轮prior与sequence默认ACL大小写两项独审问题已修闭，标准CI514、API类型/lint及PG16语法检查通过。真实角色/七片写helper资格安装、CA/session issuer及实际业务尚待；不继承旧205/256/VM权威或停止包授权。 [准确交接](/private/tmp/jg-398-current259-catalog-2xquctdy/HANDOFF.md) · [独审/合并](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-6605.md)
