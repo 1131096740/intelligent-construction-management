@@ -1,5 +1,8 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [ ] 用户授权的准确 `1374e8c7` 完整本地发布入口已执行一次，在第 1 步 `ci-orchestration` 退出 1，280 项通过、10 项失败。执行副本漏带首步所需工作区依赖，冻结安装和 Prisma 生成排在第 2、3 步。无通过阶段、正式回执、迁移或动态 PostgreSQL。原入口停止并保留，后继先核验空依赖副本的入口排序或封存前置依赖，不重跑本次命令。 [准确停止回执](/private/tmp/jg-382-release-1374.t3cXhS1Q/STOP-RECEIPT.md)
+- [~] #398 独立复核补齐合成拆除失败证据，外层区分未提交、提交未知与已提交但回查未证，等待写者确认退出后回查，超时保留未确认并保护性恢复 HBA。128 项合成测试通过，真实业务、镜像和授权仍待。 [复核回执](/private/tmp/jg-398-a16-disarm-exit-proof.sbK86hpF/HANDOFF.md)
+
 - [~] 新准确候选 `1374e8c79bd47c994293327b0584ce268d97a448` 经独立复核合入本地。前序 `4f4afc86` 后段发现生成清单漂移与 RC-06 14/28 失败，用户对旧 SHA 的单次授权已记录，旧入口暂挂且未尝试。中间组合 `1039fda9` 清单通过、RC-06 26/28，保留两项焦点失败。现候选仅校正生成清单与两份浏览器测试，相对旧 SHA 的运行时与锁逐字一致。准确构建、UI、清单、E2E 类型通过，P0 3 通过/2 需账号跳过，正式 RC-06 模拟 28/28。17 步新准确方案等待授权，第 14 与 15 步各自有本机隔离库迁移。 [准确预查](/private/tmp/jg-382-manifest-p0-1374.dIEFHw2F/HANDOFF.md) · [旧授权记录](/private/tmp/jg-382-release-4f4a.9WJmRSIV/AUTHORIZATION-RECEIPT.md) · [新单次方案](/private/tmp/jg-382-release-1374.t3cXhS1Q/RUN-HANDOFF.md)
 - [~] #383 手动组按准确 `1374e8c7` 封存并核验 3,662 个文件、256 条迁移，专用运行时树与执行授权仍待。GitHub 回读仍为 14 阶段关闭、31 开放，前置已齐 #394/#398，#428 草稿。 [手动组源码](/private/tmp/jg-382-task01-source-1374.Px886Wuj/HANDOFF.md)
 - [~] #394 存储观察包装器经独立复核修正伪管道、异常退出与回执泄露，15 项离线测试通过，待 Linux 不可替换材料和真实 API/观察端绑定。#398 模拟回滚拆除绑定同轮提交证明，独立 OID10 回查拆除 XID 和 B7，91 项定向通过，外层状态与子进程退出复核继续。两票实际业务仍待。 [合同观察](/private/tmp/jg-394-a08-storage-wrapper-reviewed.jksClPgs/REVIEWED-HANDOFF.md) · [实付拆除](/private/tmp/jg-398-a16-disarm-transport.jy7Y3E2N/HANDOFF.md)
