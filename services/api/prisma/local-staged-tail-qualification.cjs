@@ -17,7 +17,7 @@ function frozen(value){
  need(Object.getPrototypeOf(value)===Object.prototype);return Object.freeze(Object.fromEntries(Object.keys(ds).map(k=>[k,frozen(ds[k].value)])));
 }
 const keys=(x,wanted)=>need(equal(Object.keys(x).sort(),wanted.slice().sort()));
-const MATRIX_SHA='5333116bf8fa1dc45fb9e1a5b57e12b8d646e1159c33c4e55fed6a04328ecb3f',POST213_SHA='0080a3d2f5321b9a89772bad7ecff244b6653c612a406ab4538f27372725937c';
+const MATRIX_SHA='ac144a3c6a1dbaef2cb41ce0815dfd7afd30f0d7d8d9a29eaaf0580532d7888e',POST213_SHA='0080a3d2f5321b9a89772bad7ecff244b6653c612a406ab4538f27372725937c';
 function verifyMaterials(){
  need(hash(fs.readFileSync(path.join(__dirname,'local-staged-tail-qualification.json')))===MATRIX_SHA&&
   hash(fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql')))===POST213_SHA);
@@ -54,7 +54,7 @@ function config(c,stage,phase,xid=null){
  need(['before','staged','committed'].includes(phase)&&WINDOWS.includes(stage));
  return {stage,phase,nonce:c.plan.nonce,runId:c.plan.runId,sourceSha256:FULL,identity:Object.fromEntries(['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'].map(k=>[k,c.plan[k]])),
   appOid:c.setup.appOid,appName:c.plan.appName,fileCallerOids:c.setup.fileCallerOids.map(String),ledger:c.ledger.slice(0,stage),
-  targets:targets(stage),required:stage===213?[]:matrix.windows[stage].required,
+  targets:targets(stage),routines:stage===213?matrix.routines213:[],triggers:stage===213?matrix.triggers213:[],required:stage===213?[]:matrix.windows[stage].required,
   locks:stage===213?[]:matrix.windows[stage].lockUpdateRequired,
   bindings:BINDINGS.filter(([created])=>created<=stage).map(([created,name,produced])=>({name,count:produced!==null&&(produced<stage||produced===stage&&(stage!==213||phase!=='before'))?1:0})),
   installXid:xid};
@@ -90,6 +90,12 @@ function projection(c,stage,phase,xid=null){
  'appTablePrivileges',(SELECT coalesce(jsonb_agg(jsonb_build_object('kind',x.kind,'object',x.object,'objectOid',x.oid::text,'privilege',x.privilege,'grantable',x.grantable) ORDER BY x.kind COLLATE "C",x.object COLLATE "C",x.privilege COLLATE "C"),'[]'::jsonb) FROM (
  SELECT 'table' AS kind,c.relname::text AS object,c.oid,v.privilege,has_table_privilege((p->>'appOid')::oid,c.oid,v.privilege||' WITH GRANT OPTION') AS grantable FROM pg_class c CROSS JOIN (VALUES('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER')) v(privilege) WHERE c.relnamespace=to_regnamespace('public') AND c.relkind IN ('r','p','v','m','f') AND has_table_privilege((p->>'appOid')::oid,c.oid,v.privilege)
  UNION ALL SELECT 'sequence',c.relname::text,c.oid,v.privilege,has_sequence_privilege((p->>'appOid')::oid,c.oid,v.privilege||' WITH GRANT OPTION') FROM pg_class c CROSS JOIN (VALUES('SELECT'),('USAGE'),('UPDATE')) v(privilege) WHERE c.relnamespace=to_regnamespace('public') AND c.relkind='S' AND has_sequence_privilege((p->>'appOid')::oid,c.oid,v.privilege)) x),
+ 'routines',(SELECT coalesce(jsonb_agg(jsonb_build_object('name',f.proname::text,'signature',x.r->>'signature','oid',f.oid::text,'ownerOid',f.proowner::text,'namespaceOid',f.pronamespace::text,
+ 'bodySha256',encode(sha256(convert_to(f.prosrc,'UTF8')),'hex'),'kind',f.prokind,'language',l.lanname,'returnTypeOid',f.prorettype::text,'securityDefiner',f.prosecdef,'volatility',f.provolatile,'parallel',f.proparallel,'strict',f.proisstrict,'returnsSet',f.proretset,'leakproof',f.proleakproof,
+ 'inputTypes',ARRAY(SELECT t::text FROM unnest(f.proargtypes::oid[]) WITH ORDINALITY q(t,n) ORDER BY n),'inputNames',f.proargnames,'inputModes',f.proargmodes::text[],'allTypes',CASE WHEN f.proallargtypes IS NULL THEN NULL ELSE ARRAY(SELECT t::text FROM unnest(f.proallargtypes) WITH ORDINALITY q(t,n) ORDER BY n) END,'defaults',f.pronargdefaults,'variadicOid',f.provariadic::text,'supportOid',f.prosupport::oid::text,'config',f.proconfig)
+ ORDER BY (x.r->>'signature') COLLATE "C"),'[]'::jsonb) FROM jsonb_array_elements(p->'routines') x(r) LEFT JOIN pg_proc f ON f.oid=to_regprocedure(x.r->>'signature') LEFT JOIN pg_language l ON l.oid=f.prolang),
+ 'triggers',(SELECT coalesce(jsonb_agg(jsonb_build_object('table',x.r->>'table','name',t.tgname::text,'signature',x.r->>'signature','oid',t.oid::text,'relationOid',t.tgrelid::text,'routineOid',t.tgfoid::text,'type',t.tgtype,'enabled',t.tgenabled,'deferrable',t.tgdeferrable,'initiallyDeferred',t.tginitdeferred,'internal',t.tgisinternal,'condition',t.tgqual IS NOT NULL,'args',encode(t.tgargs,'hex'),'columns',ARRAY(SELECT a.attname::text FROM unnest(t.tgattr) WITH ORDINALITY q(num,n) JOIN pg_attribute a ON a.attrelid=t.tgrelid AND a.attnum=q.num ORDER BY n))
+ ORDER BY (x.r->>'table') COLLATE "C",(x.r->>'name') COLLATE "C"),'[]'::jsonb) FROM jsonb_array_elements(p->'triggers') x(r) LEFT JOIN pg_trigger t ON t.tgrelid=to_regclass(format('public.%I',x.r->>'table')) AND t.tgname=x.r->>'name'),
  'app',(SELECT jsonb_build_object('oid',r.oid::text,'name',r.rolname,'login',r.rolcanlogin,'limit',r.rolconnlimit,'passwordAbsent',r.rolpassword IS NULL,'superuser',r.rolsuper,'inherit',r.rolinherit,'createRole',r.rolcreaterole,'createDb',r.rolcreatedb,'replication',r.rolreplication,'bypassRls',r.rolbypassrls,'memberships',(SELECT count(*) FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid),'createSchema',has_schema_privilege(r.oid,'public','CREATE')) FROM pg_authid r WHERE r.oid=(p->>'appOid')::oid),
  'roleSha256',(SELECT encode(sha256(convert_to(jsonb_build_object('roles',(SELECT jsonb_agg(to_jsonb(r) ORDER BY r.oid) FROM pg_authid r),'memberships',(SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.roleid,m.member,m.grantor),'[]'::jsonb) FROM pg_auth_members m))::text,'UTF8')),'hex')),
  'catalogSha256',__CATALOG__,
@@ -116,7 +122,7 @@ function catalogSql(){
 }
 function readSql(c,stage,phase,xid=null){return `-- local-tail ${stage} ${phase}\nBEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL search_path=pg_catalog,pg_temp;\n${projection(c,stage,phase,xid)};\nROLLBACK;\n`;}
 function validateRow(input,c,stage,phase,prior){
- const row=frozen(input),cfg=config(c,stage,phase);keys(row,['scope','identity','ledger','pending','app','appTablePrivileges','roleSha256','catalogSha256','protectedAclSha256','bindings','targets','required','locks','writeXid','commitStatus']);
+ const row=frozen(input),cfg=config(c,stage,phase);keys(row,['scope','identity','ledger','pending','app','routines','triggers','appTablePrivileges','roleSha256','catalogSha256','protectedAclSha256','bindings','targets','required','locks','writeXid','commitStatus']);
  need(equal(row.scope,{stage,phase,nonce:c.plan.nonce,runId:c.plan.runId,sourceSha256:FULL}));
  const id=row.identity;keys(id,['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier','actor','sessionActor','version','encoding','replication','backendPid','backendStart','readOnly']);
  for(const key of ['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'])need(id[key]===c.plan[key]);
@@ -127,6 +133,16 @@ function validateRow(input,c,stage,phase,prior){
  const p=row.pending;keys(p,['appOid','fileCallerOids','databaseOid','namespaceOid','ownerOid','relationOid','sha256']);
  need(p.appOid===c.setup.appOid&&equal(p.fileCallerOids,c.setup.fileCallerOids.map(String))&&p.databaseOid===c.plan.databaseOid&&p.namespaceOid===c.plan.namespaceOid&&p.ownerOid===c.plan.actorOid&&oid(p.relationOid)&&digest(p.sha256));
  need(equal(row.app,{oid:c.setup.appOid,name:c.plan.appName,login:true,limit:0,passwordAbsent:true,superuser:false,inherit:false,createRole:false,createDb:false,replication:false,bypassRls:false,memberships:0,createSchema:false}));
+ need(Array.isArray(row.routines)&&row.routines.length===cfg.routines.length&&Array.isArray(row.triggers)&&row.triggers.length===cfg.triggers.length);
+ const routineOids=new Map();
+ row.routines.forEach((r,i)=>{
+  const expected={...cfg.routines[i],oid:r.oid,ownerOid:c.plan.actorOid,namespaceOid:c.plan.namespaceOid};
+  need(oid(r.oid)&&equal(r,expected));routineOids.set(r.signature,r.oid);
+ });
+ row.triggers.forEach((t,i)=>{
+  const expected={...cfg.triggers[i],oid:t.oid,relationOid:t.relationOid,routineOid:routineOids.get(cfg.triggers[i].signature)};
+  need(oid(t.oid)&&oid(t.relationOid)&&oid(t.routineOid)&&equal(t,expected));
+ });
  for(const key of ['roleSha256','catalogSha256','protectedAclSha256'])need(digest(row[key]));
  const sortedBindings=cfg.bindings.slice().sort((a,b)=>a.name<b.name?-1:1);need(Array.isArray(row.bindings)&&row.bindings.length===sortedBindings.length);
  row.bindings.forEach((b,i)=>{keys(b,['name','oid','owner','kind','persistence','rls','forceRls','rows']);need(b.name===sortedBindings[i].name&&oid(b.oid)&&b.owner===c.plan.actorOid&&b.kind==='r'&&b.persistence==='p'&&b.rls===false&&b.forceRls===false&&Array.isArray(b.rows)&&b.rows.length===sortedBindings[i].count);for(const r of b.rows){keys(r,['sha256','xmin']);need(digest(r.sha256)&&txid(r.xmin)&&BigInt(r.xmin)<=0xffffffffn);}});
@@ -145,7 +161,17 @@ function validateRow(input,c,stage,phase,prior){
  if(phase==='before')need(row.writeXid===null&&row.commitStatus===null&&prior===undefined);
  else{
   need(prior&&equal(prior.scope,{...row.scope,phase:phase==='staged'?'before':'staged'}));
-  for(const key of ['roleSha256','catalogSha256','protectedAclSha256','ledger','pending','app'])need(equal(prior[key],row[key]));
+  need(Array.isArray(row.routines)&&row.routines.length===cfg.routines.length&&Array.isArray(row.triggers)&&row.triggers.length===cfg.triggers.length);
+ const routineOids=new Map();
+ row.routines.forEach((r,i)=>{
+  const expected={...cfg.routines[i],oid:r.oid,ownerOid:c.plan.actorOid,namespaceOid:c.plan.namespaceOid};
+  need(oid(r.oid)&&equal(r,expected));routineOids.set(r.signature,r.oid);
+ });
+ row.triggers.forEach((t,i)=>{
+  const expected={...cfg.triggers[i],oid:t.oid,relationOid:t.relationOid,routineOid:routineOids.get(cfg.triggers[i].signature)};
+  need(oid(t.oid)&&oid(t.relationOid)&&oid(t.routineOid)&&equal(t,expected));
+ });
+ for(const key of ['roleSha256','catalogSha256','protectedAclSha256','ledger','pending','app','routines','triggers'])need(equal(prior[key],row[key]));
   need(equal(Object.fromEntries(Object.entries(prior.identity).filter(([k])=>!['backendPid','backendStart','readOnly'].includes(k))),Object.fromEntries(Object.entries(id).filter(([k])=>!['backendPid','backendStart','readOnly'].includes(k)))));
   need(equal(prior.required.map(({effective,...r})=>r),row.required.map(({effective,...r})=>r))&&equal(prior.locks,row.locks));
   if(phase==='staged'){

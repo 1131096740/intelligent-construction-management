@@ -93,7 +93,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase.startsWith("tail")) {
         result = require("./testdata/local-staged-tail-model.cjs").observe(sql, phase);
         result.ledger = readback().ledger;
-        if (mutate) result = mutate(phase, result, sql);
+        if (mutate) result = mutate(phase, result);
         return { stdout: JSON.stringify(result), stderr: "" };
       }
       if (phase === "qualification-setup") {
@@ -133,7 +133,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase === "qualification-cleanup") result = {};
       if (phase === "cleanup-readback") result = { schemaAbsent: true, eventAbsent: true,
         appOid: setup.appOid, applicationQualified: true };
-      if (mutate) result = mutate(phase, result, sql);
+      if (mutate) result = mutate(phase, result);
       return { stdout: JSON.stringify(result), stderr: "" };
     },
     deploy: async request => {
@@ -499,13 +499,17 @@ test("tail ACL proof must bind the actual changed catalog tuple to its writer XI
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
 
-test("tail catalog renders sequence default ACL with PostgreSQL sequence object kind",async()=>{
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail259-sequence-kind-'));let checked=false;
+for(const [name,alter] of [
+ ['same-body review definer',row=>{const f=row.routines?.find(r=>r.name==='jg_guard_contract_direct_review_v1');if(f)f.securityDefiner=true;}],
+ ['same-body review configuration',row=>{const f=row.routines?.find(r=>r.name==='jg_guard_contract_direct_review_v1');if(f)f.config=['search_path=pg_catalog, public'];}],
+ ['same-body legacy null configuration',row=>{const f=row.routines?.find(r=>r.name==='protectContractEconomicReview');if(f)f.config=['search_path=pg_catalog'];}],
+ ['named input type',row=>{const f=row.routines?.find(r=>r.name==='jg_contract_direct_archive_proof_v1');if(f)f.inputTypes=['23'];}],
+ ['trigger deferrability',row=>{if(row.triggers)row.triggers[0].deferrable=!row.triggers[0].deferrable;}]
+])test(`tail213 refuses ${name} independently of unchanged body and catalog digest`,async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail259-source-meta-'));
  try{
-  const fake=await fakeFixture(dir,(phase,row,sql)=>{
-   if(phase==='tail213-before'){assert.match(sql,/CASE WHEN c\.relkind='S' THEN 's'::"char"/u);checked=true;}
-   return row;
-  });
-  await fake.fixture.migrate({databaseUrl});assert.equal(checked,true);
+  const fake=await fakeFixture(dir,(phase,row)=>{if(phase==='tail213-before')alter(row);return row;});
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),/LOCAL_MIGRATION_TAIL213_BEFORE_NODE_PROOF/u);
+  assert.equal(fake.calls.includes('tail213-supply'),false);assert.equal(fake.calls.includes('deploy-215'),false);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
