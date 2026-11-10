@@ -43,3 +43,13 @@
 用户明确回复“授权9d05bdfb单次诊断验证”后，原封存命令执行一次并退出1。迁移命令走到205，stage205独立SQL读回失败；清理前0600脱敏JSON成功留存第一条实际 PostgreSQL `P0001 / FIXTURE_FILE_CALLERS_CHANGED`。这确认文件调用者集合与冻结前像不同，尚不能断言具体新增/移除OID、哪个主体或合法阶段原因；后继先核源码集合转换与历史四锚点方案，不直接放宽检查。
 
 203前缀及资格准备完成，205提交/ACL独立读回未通过。其余六库及原13项并发未开始；准确容器 `jiangkong-pfq-concurrency-1794329822435-11777-bb3c44a9` 的宿主 `docker ps -a` 精确名称查询为空。停止回执、脱敏原件路径及校验见包内 `STOP-RECEIPT.md` / `STOP-SHA256SUMS`。授权已消耗，不重试本次或旧包，没有其它组、259候选、GitHub、部署或生产操作。本地集成后续已有259源码，独立诊断包仍固定原256，二者证据分开。
+
+## 后继749cadf9：严格DML阶段变换，259单次待授权
+
+源码提交c6e4ab41及其测试隔离后继 `749cadf9caae840f062144a0a22d52ca415ab35d` / tree `00c4ef982d0c5d4be48e3538f1d130ae821cc6ca` 已经merger集成。冻结全角色×旧触发器的DML可达向量，所有旧root/schema/registry/DELETE/UPDATE及表级权限保持；仅205完整提交、四事件和原CV新列三项actor授予/无grantoption的ACL均证实后，预测原app旧CV的INSERT可达变化。实际向量须精确相等，live调用者须恰为C0∪app；C0、启动参数、原四锚点及原迁移SQL保持。具体实际OID差量和修复通过尚未观察。
+
+独立源审提前发现并修正PG16 oid[] JSON为字符串的问题，SQL显式转bigint[]而JS维持严格数字；完整读回JSON硬限520192bytes，为原512KiB命令包络预留4KiB。实际setup115759bytes，未放大原120000预算。最后测试仅改变事件3对象OID而不改proof/向量，移除关联门RED、恢复39模型GREEN，避免被另一门提前拒绝而误称新门有效。
+
+独立副本 `/private/tmp/jg-382-c6e4-independent.3wsyndgn/repo` 在准确749上通过460项编排、CLI/runtime54及单独准确provider1（共三套55）、API类型/lint/构建、五份PG16.1语法解析和只读preflight。依赖独立冻结安装/生成，test-only successor与安装时的lock/Schema一致；日志及完整范围见上级PRECHECK-RESULT.json和RUN-HANDOFF.md，不把语法/mock当实际PG。
+
+新准确方案RUN-PLAN.json明确应用当前259条迁移，包含对上直签新增三条。完整账d3538d5a…、原256前缀85d1a225…及259逐条SHA已封；保留原七库、明确历史115冲突恢复和原13项并发，仅一个新本机PG16容器，非预期首错停止清理。当前未创建attempt或run.log，未执行实际SQL/资源；须准确新单次授权，不借旧许可。不包括其它组、#394实际归档/COS、native259应用issuer/loader、GitHub写入、部署或生产。
