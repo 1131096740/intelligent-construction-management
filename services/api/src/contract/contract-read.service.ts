@@ -1,3 +1,4 @@
+import { contractApprovalFormHasReaderRole, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "./contract-parallel-duty-access";
 import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
 import { hasDirectSigningInput } from "./contract-direct-pending-source";
 import { readContractV2LifecycleContext } from "./contract-v2-lifecycle-context";
@@ -1397,7 +1398,9 @@ export class ContractReadService {
         : Promise.resolve({ sealTask: null, formalFiles: [] }),
       this.prisma.approvalInstance?.findFirst({
         where: { businessType: "contract_version", businessId: version.id },
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        orderBy: version.status === "in_approval"
+          ? [{ createdAt: "desc" }, { id: "desc" }]
+          : [{ updatedAt: "desc" }, { id: "desc" }]
       }) ?? Promise.resolve(null),
       this.prisma.approvalInstance?.findMany({
         where: {
@@ -1549,6 +1552,18 @@ export class ContractReadService {
       : null;
     const directDisplay = directPending ? this.directPendingDisplay(version.status) : null;
     const status = directDisplay ? { label: directDisplay.label, tone: "default" as const } : this.statusView(version.status);
+    const pendingApprovalForm = contractPendingApprovalSnapshot(version, latestApprovalInstance);
+    const approvedApprovalForm = latestApprovalInstance?.status === "approved" &&
+      canUseCurrentContractApprovalForm(version.status);
+    const approvalParticipant = !readOnlyHistory && actorUserId && latestApprovalInstance &&
+      (pendingApprovalForm
+        ? latestApprovalInstance.applicantUserId === actorUserId ||
+          pendingContractApprovalFormHasReaderRole(latestApprovalInstance.frozenNodes, actorRoles.roleScopes)
+        : approvedApprovalForm && (latestApprovalInstance.applicantUserId === actorUserId ||
+          await this.prisma.approvalActionLog?.findFirst({
+            where: { approvalInstanceId: latestApprovalInstance.id, actorUserId, action: "approve" },
+            select: { id: true }
+          })));
     const availableActions = readOnlyHistory
       ? []
       : this.contractActions(
@@ -1563,24 +1578,9 @@ export class ContractReadService {
         governed: version.contractGovernanceVersion === 1,
         sealTask: signingFacts.sealTask,
         activeFinal,
-        approvalFormAvailable: Boolean(
-          latestApprovalInstance?.status === "approved" &&
-          canUseCurrentContractApprovalForm(version.status)
-        ),
-        approvalParticipant: Boolean(
-          actorUserId &&
-          latestApprovalInstance?.status === "approved" &&
-          canUseCurrentContractApprovalForm(version.status) && (
-          latestApprovalInstance.applicantUserId === actorUserId ||
-          await this.prisma.approvalActionLog?.findFirst({
-            where: {
-              approvalInstanceId: latestApprovalInstance.id,
-              actorUserId,
-              action: "approve"
-            },
-            select: { id: true }
-          })
-        )),
+        approvalFormAvailable: Boolean(pendingApprovalForm || approvedApprovalForm),
+        pendingApprovalForm: Boolean(pendingApprovalForm),
+        approvalParticipant: Boolean(approvalParticipant),
         canUploadGovernedFinal: governedFinalAccess.canUpload,
         canConfirmGovernedFinal: governedFinalAccess.canConfirm,
         canSelfConfirmGovernedFinal: governedFinalAccess.canSelfConfirm,
@@ -2491,6 +2491,7 @@ export class ContractReadService {
       sealTask: ContractDetailReadModel["sealTask"];
       activeFinal: NonNullable<ContractDetailReadModel["formalFiles"]>[number] | null;
       approvalFormAvailable: boolean;
+      pendingApprovalForm?: boolean;
       approvalParticipant: boolean;
       canUploadGovernedFinal: boolean;
       canConfirmGovernedFinal: boolean;
@@ -2527,10 +2528,7 @@ export class ContractReadService {
         enabled: Boolean(context?.approvalFormAvailable && (
           context.approvalParticipant ||
           context.actorUserId === context.ownerUserId ||
-          roleKeys.some((role) => [
-            "contract_staff", "contract_director", "project_manager", "finance_staff",
-            "finance_director", "comprehensive_director", "chairman", "general_manager"
-          ].includes(role))
+          !context.pendingApprovalForm && contractApprovalFormHasReaderRole(roleKeys)
         )),
         disabledReason: "审批单尚未生成或当前账号无下载权限"
       }),

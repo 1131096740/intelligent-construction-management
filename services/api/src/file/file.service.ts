@@ -1,3 +1,4 @@
+import { contractApprovalFormHasReaderRole, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "../contract/contract-parallel-duty-access";
 import { generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
 import { ModuleRef } from "@nestjs/core";
 import { assertGeneratedContractFileAccess } from "../contract-document/contract-generated-file-access";
@@ -1907,7 +1908,8 @@ export class FileService {
     await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId },
-        select: { id: true, contractId: true, status: true }
+        select: { id: true, contractId: true, status: true, numericProtocolVersion: true,
+          draftRevision: true, documentContentRevision: true, documentContentFingerprint: true }
       });
       const contract = version ? await tx.contract.findUnique({
         where: { id: version.contractId },
@@ -1921,26 +1923,32 @@ export class FileService {
           businessType: "contract_version",
           businessId: version.id
         },
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        orderBy: version.status === "in_approval"
+          ? [{ createdAt: "desc" }, { id: "desc" }]
+          : [{ updatedAt: "desc" }, { id: "desc" }]
       });
+      const pending = contractPendingApprovalSnapshot(version, instance);
       if (
         !instance ||
-        instance.status !== "approved" ||
-        !canUseCurrentContractApprovalForm(version.status)
+        (!pending && (instance.status !== "approved" || !canUseCurrentContractApprovalForm(version.status)))
       ) {
         throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
       }
+      if (pending && !(await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } }))?.isActive) {
+        throw new ForbiddenException("当前账号无权下载该合同审批单");
+      }
       if (contract.ownerUserId === actorUserId || instance.applicantUserId === actorUserId) return;
-      if (await tx.approvalActionLog.findFirst({
+      if (!pending && await tx.approvalActionLog.findFirst({
         where: { approvalInstanceId: instance.id, actorUserId, action: "approve" },
         select: { id: true }
       })) return;
-      const roles = await this.loadActorRoleKeys(tx, actorUserId, contract.projectId);
-      const exactReaders = new Set<RoleKey>([
-        "contract_staff", "contract_director", "project_manager", "finance_staff",
-        "finance_director", "comprehensive_director", "chairman", "general_manager"
-      ]);
-      if (roles.some((role) => exactReaders.has(role))) return;
+      if (pending) {
+        const scopes = await new ProjectVisibilityService(this.prisma)
+          .effectiveRoleScopesInTransaction(tx, actorUserId, contract.projectId);
+        if (pendingContractApprovalFormHasReaderRole(instance.frozenNodes, scopes)) return;
+      } else if (contractApprovalFormHasReaderRole(await this.loadActorRoleKeys(tx, actorUserId, contract.projectId))) {
+        return;
+      }
       throw new ForbiddenException("当前账号无权下载该合同审批单");
     });
   }
@@ -3647,32 +3655,8 @@ export class FileService {
     actorUserId: string,
     projectId: string
   ): Promise<RoleKey[]> {
-    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
-      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
-      tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
-      tx.projectMember.findMany({ where: { userId: actorUserId, projectId } })
-    ]);
-    const positionIds = Array.from(
-      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
-    );
-    const positions = positionIds.length
-      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
-      : [];
-    const keyByPositionId = new Map(
-      positions.map((position) => [position.id, position.key as RoleKey])
-    );
-    const globalRoleKeys = globalPositions.flatMap((position) => {
-      const key = keyByPositionId.get(position.positionId);
-      return key ? [key] : [];
-    });
-    const projectRoleKeys = [
-      ...projectPositions.flatMap((position) => {
-        const key = keyByPositionId.get(position.positionId);
-        return key ? [key] : [];
-      }),
-      ...projectMembers.map((member) => member.positionKey as RoleKey)
-    ];
-
+    const { globalRoleKeys, projectRoleKeys } = await new ProjectVisibilityService(this.prisma)
+      .effectiveRoleScopesInTransaction(tx, actorUserId, projectId);
     return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
   }
 

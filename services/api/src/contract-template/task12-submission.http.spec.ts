@@ -842,12 +842,44 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       expect(await server.store.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: rounds[0].id } })).toEqual([expect.objectContaining({ actorUserId: "director", approvedRoleKey: "contract_director", signatureFileIdSnapshot: signature.id, signatureSha256Snapshot: createHash("sha256").update(signatureBytes).digest("hex") })]);
       expect((await reviewRequest()).status).toBe(403);
       const currentVersion = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
-      const withdrawal = await fetch(`${await server.app.getUrl()}/contracts/${draft.version.id}/approval-withdrawal`, { method: "POST", headers: draft.headers, body: JSON.stringify({ expectedContractUpdatedAt: currentVersion!.updatedAt, expectedApprovalInstanceId: rounds[0].id, expectedNodeIndex: 0, expectedApprovalUpdatedAt: afterReview!.updatedAt }) });
-      expect({ status: withdrawal.status, body: await withdrawal.json() }).toMatchObject({ status: 201, body: { status: "draft" } });
-      expect((await server.store.prisma.approvalInstance.findUnique({ where: { id: rounds[0].id } }))!.status).toBe("withdrawn");
+      const endCoordinates = {
+        expectedContractUpdatedAt: currentVersion!.updatedAt, expectedApprovalInstanceId: rounds[0].id,
+        expectedApprovalUpdatedAt: afterReview!.updatedAt
+      };
+      const reject = contractType === "other";
+      if (reject) {
+        await server.store.prisma.position.upsert({
+          where: { id: "finance_director" }, create: { id: "finance_director", key: "finance_director" }, update: {}
+        });
+        const rejectionDuty = await server.store.prisma.userPosition.create({
+          data: { userId: "finance", positionId: "finance_director", projectId: null }
+        });
+        const reason = "请复核当前合同内容";
+        const response = await reviewRequest({
+          ...endCoordinates, decision: "reject", expectedNodeIndex: 3, comment: reason
+        }, await loginTemplateActor(server, "finance"));
+        expect({ status: response.status, body: await response.json() }).toMatchObject({ status: 201, body: { status: "draft" } });
+        const rejection = await server.store.prisma.approvalActionLog.findFirst({ where: { approvalInstanceId: rounds[0].id, action: "reject" } });
+        expect(rejection).toMatchObject({ actorUserId: "finance", comment: reason });
+        expect(rejection?.signatureFileIdSnapshot).toBeFalsy();
+        expect(rejection?.signatureSha256Snapshot).toBeFalsy();
+        expect(rejection?.signatureVersionIdSnapshot).toBeFalsy();
+        await server.store.prisma.userPosition.deleteMany({ where: { id: rejectionDuty.id } });
+      } else {
+        const response = await fetch(`${await server.app.getUrl()}/contracts/${draft.version.id}/approval-withdrawal`, {
+          method: "POST", headers: draft.headers, body: JSON.stringify({ ...endCoordinates, expectedNodeIndex: 0 })
+        });
+        expect({ status: response.status, body: await response.json() }).toMatchObject({ status: 201, body: { status: "draft" } });
+      }
+      expect((await server.store.prisma.approvalInstance.findUnique({ where: { id: rounds[0].id } }))!.status)
+        .toBe(reject ? "rejected" : "withdrawn");
       expect(await (await getReceipt()).json()).toMatchObject({ status: "submitted", result, intent: { documentContentRevision: input.documentContentRevision, documentContentFingerprint: input.documentContentFingerprint } });
       expect(await (await submit()).json()).toEqual(result);
-      expect(await server.store.prisma.approvalActionLog.count({ where: { approvalInstanceId: rounds[0].id, action: "approve" } })).toBe(1);
+      expect(await server.store.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: rounds[0].id, action: "approve" } })).toEqual([
+        expect.objectContaining({ actorUserId: "director", approvedRoleKey: "contract_director",
+          signatureFileIdSnapshot: null, signatureSha256Snapshot: null, signatureVersionIdSnapshot: null })
+      ]);
+      expect(await server.store.prisma.handwrittenSignatureVersion.findFirst({ where: { userId: "director", fileId: signature.id } })).not.toBeNull();
       expect((await reviewRequest()).status).toBe(409);
       const editable = await fetch(`${draft.base}/document-body`, { headers: draft.headers }).then(r => r.json()) as Body;
       const ordinary = editable.blocks.find(block => block.text.startsWith("手工条款："))!;

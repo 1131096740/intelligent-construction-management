@@ -1,8 +1,9 @@
 import { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { activeScopedApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import type { ApprovalActorRoleScopes } from "../approval/approval-review-identity";
 
 export const CONTRACT_PARALLEL_DUTY_RESOURCE = "contract_approval_duty";
 export const contractParallelDutyId = (instanceId: string, nodeIndex: number) => `${instanceId}:${nodeIndex}`;
@@ -29,6 +30,60 @@ export function contractRoundSubmissionSnapshot(nodes: unknown): Record<string, 
   return value.submissionProtocolVersion === 2 && typeof value.contractVersionId === "string" && typeof value.documentContentFingerprint === "string" && /^[a-f0-9]{64}$/u.test(value.documentContentFingerprint) && Number.isInteger(value.documentContentRevision) ? value : null;
 }
 
+export function contractPendingApprovalSnapshot(
+  version: {
+    id: string; status: string; numericProtocolVersion: number;
+    draftRevision: number; documentContentRevision: number;
+    documentContentFingerprint: string | null;
+  } | null,
+  round: {
+    businessType: string; businessId: string; flowType: string; status: string;
+    applicantUserId: string; frozenNodes: unknown;
+  } | null
+) {
+  if (version?.numericProtocolVersion !== 2 || version.status !== "in_approval" ||
+      round?.businessType !== "contract_version" || round.businessId !== version.id ||
+      round.flowType !== "contract.approve" || round.status !== "in_progress") return null;
+  const snapshot = contractRoundSubmissionSnapshot(round.frozenNodes);
+  return snapshot && snapshot.contractVersionId === version.id &&
+    snapshot.applicantUserId === round.applicantUserId &&
+    snapshot.draftRevision === version.draftRevision &&
+    snapshot.documentContentRevision === version.documentContentRevision &&
+    snapshot.documentContentFingerprint === version.documentContentFingerprint
+    ? snapshot : null;
+}
+
+const CONTRACT_APPROVAL_FORM_READER_ROLES = new Set<RoleKey>([
+  "contract_staff", "contract_director", "project_manager", "finance_staff",
+  "finance_director", "comprehensive_director", "chairman", "general_manager"
+]);
+
+export function contractApprovalFormHasReaderRole(roles: readonly RoleKey[]) {
+  return roles.some(role => CONTRACT_APPROVAL_FORM_READER_ROLES.has(role));
+}
+
+function frozenContractDutyRoleScope(node: Record<string, unknown>, role: RoleKey) {
+  const scopes = node.roleScopesByRole;
+  if (!scopes || typeof scopes !== "object" || Array.isArray(scopes)) return null;
+  const scope = (scopes as Record<string, unknown>)[role];
+  return scope === "global" || scope === "project" ? scope : null;
+}
+
+export function pendingContractApprovalFormHasReaderRole(nodes: unknown, scopes?: ApprovalActorRoleScopes) {
+  if (!scopes || !isParallelApprovalRound(nodes)) return false;
+  const dutyRoles = new Set(nodes.flatMap(node => node.roleKeys as RoleKey[]));
+  const independentRoles = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys)
+    .filter(role => !dutyRoles.has(role));
+  if (contractApprovalFormHasReaderRole(independentRoles)) return true;
+
+  if (scopes.globalRoleKeys.includes("super_admin")) return false;
+  return nodes.some(node => (node.roleKeys as RoleKey[]).some(role => {
+    const scope = frozenContractDutyRoleScope(node, role);
+    if (scope === "global") return scopes.globalRoleKeys.includes(role);
+    return scope === "project" && scopes.projectRoleKeys.includes(role);
+  }));
+}
+
 /** Frozen duties define scope; current active assignments define who may discharge them. */
 export async function contractParallelDutyIdentity(tx: Prisma.TransactionClient, round: {
   id: string; status: string; currentNodeIndex: number; frozenNodes: unknown;
@@ -37,13 +92,12 @@ export async function contractParallelDutyIdentity(tx: Prisma.TransactionClient,
   const node = round.frozenNodes[nodeIndex];
   const approved = Array.isArray(node.approvedRoleKeys) ? node.approvedRoleKeys : [];
   const pending = (node.roleKeys as RoleKey[]).filter(role => !approved.includes(role));
-  const scopes = node.roleScopesByRole as Record<string, unknown> | undefined;
-  if (!scopes || pending.some(role => !["global", "project"].includes(String(scopes[role])))) return null;
+  if (pending.some(role => !frozenContractDutyRoleScope(node, role))) return null;
   const [actor] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`SELECT "id", "isActive" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE`);
   if (!actor?.isActive) return null;
   const currentRole = async (userId: string) => {
-    const projectRoles = pending.filter(role => scopes[role] === "project");
-    const globalRoles = [...pending.filter(role => scopes[role] === "global"), "super_admin"];
+    const projectRoles = pending.filter(role => frozenContractDutyRoleScope(node, role) === "project");
+    const globalRoles = [...pending.filter(role => frozenContractDutyRoleScope(node, role) === "global"), "super_admin"];
     const projectAssignments = projectRoles.length ? await loadProjectApprovalAssignments(tx, projectId, projectRoles, userId) : [];
     const globalAssignments = globalRoles.length ? await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"

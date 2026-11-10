@@ -23,7 +23,7 @@ import { contractParallelDutyIdentity, contractRoundSubmissionSnapshot, hasActiv
 import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
-import { snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { clearApprovalRoundSignatureSnapshots, snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuthService } from "../auth/auth.service";
 
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
@@ -80,6 +80,7 @@ export class ContractV2SubmissionService {
       }, signature) });
       await tx.approvalInstance.update({ where: { id: round.id }, data: { frozenNodes: json(nodes), currentNodeIndex: pending[0] ?? nodes.length, status: input.decision !== "approve" ? "rejected" : pending.length ? "in_progress" : "approved" } });
       await tx.contractVersion.update({ where: { id: version.id }, data: { status } });
+      if (status === "draft") await clearApprovalRoundSignatureSnapshots(tx, round.id);
       if (status === "approved_pending_seal") {
         // This is a confirmation handoff, never another seal-approval round.
         const existing = await tx.contractSealTask.findUnique({ where: { approvalInstanceId: round.id } });

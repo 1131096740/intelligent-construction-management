@@ -38,7 +38,7 @@ describe("ContractReadService", () => {
 
   it("negotiates v2 draft list/detail HTTP amounts and never presents the draft's placeholder as financial capacity", async () => {
     const now = new Date("2026-11-05T02:00:00.000Z");
-    const contract = { id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", code: null, temporaryCode: "草稿一", name: "精确金额草稿", counterparty: "合成单位", updatedAt: now };
+    const contract = { id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", contractTypeKey: "material_purchase", code: null, temporaryCode: "草稿一", name: "精确金额草稿", counterparty: "合成单位", updatedAt: now };
     const draft = { id: "version-2", contractId: contract.id, versionNo: 1, changeType: "original", status: "draft", numericProtocolVersion: 2, amountYuan: null as Prisma.Decimal | null, amountCents: 0n, updatedAt: now, firstSubmittedAt: null, draftRevision: 4 };
     const versions: Record<string, unknown>[] = [draft];
     const prisma = {
@@ -51,14 +51,21 @@ describe("ContractReadService", () => {
       settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) }, paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }, approvalInstance: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) }
     };
-    const visibility = { visibleProjectIds: async () => ["project-1"], effectiveRoleKeys: async () => ["contract_director", "finance_staff"], effectiveRoleKeysByProject: async () => new Map([["project-1", ["contract_director", "finance_staff"]]]) };
+    let actingUserId = "owner-1";
+    let actorRoleScopes = { globalRoleKeys: ["contract_director", "finance_staff"], projectRoleKeys: [] as string[] };
+    const visibility = {
+      visibleProjectIds: async () => ["project-1"],
+      effectiveRoleKeys: async () => ["contract_director", "finance_staff"],
+      effectiveRoleScopes: async () => actorRoleScopes,
+      effectiveRoleKeysByProject: async () => new Map([["project-1", ["contract_director", "finance_staff"]]])
+    };
     const service = new ContractReadService(prisma as never, visibility as never);
     const module = await Test.createTestingModule({ controllers: [ContractController], providers: [
       { provide: ContractReadService, useValue: service }, { provide: ContractService, useValue: {} },
       { provide: ContractWorkbenchService, useValue: {} }, { provide: ProjectVisibilityService, useValue: visibility }
     ] }).compile();
     const app = module.createNestApplication({ logger: false });
-    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: "owner-1" }; next(); });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => { request.user = { id: actingUserId }; next(); });
     try {
       await app.listen(0, "127.0.0.1"); const root = await app.getUrl();
       const paths = ["/contracts", "/contracts/lifecycle-ledger?view=my_drafts", "/contracts/workbench?view=my_drafts"];
@@ -89,6 +96,41 @@ describe("ContractReadService", () => {
         expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥123.45" });
         expect(detail.settlementPayment.summary).toContainEqual(expect.objectContaining({ label: "最新合同剩余额度", value: "¥123.45" }));
       }
+      const fingerprint = "a".repeat(64);
+      versions[0] = { ...draft, status: "in_approval", firstSubmittedAt: now,
+        documentContentRevision: 2, documentContentFingerprint: fingerprint };
+      const submissionSnapshot = { submissionProtocolVersion: 2, contractVersionId: draft.id,
+        applicantUserId: "owner-1", draftRevision: draft.draftRevision, documentContentRevision: 2,
+        documentContentFingerprint: fingerprint };
+      prisma.approvalInstance.findFirst.mockResolvedValue({
+        id: "current-round", businessType: "contract_version", businessId: draft.id,
+        status: "in_progress", flowType: "contract.approve", applicantUserId: "owner-1",
+        frozenNodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"],
+          roleScopesByRole: { contract_director: "global" },
+          protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [], submissionSnapshot },
+        { name: "物资部主管", mode: "any", roleKeys: ["material_director"],
+          roleScopesByRole: { material_director: "global" },
+          protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] }]
+      });
+      const currentDetail = async () => {
+        const response = await fetch(`${root}/contracts/contract-1?versionId=version-2`,
+          { headers: { "x-contract-numeric-protocol": "2" } });
+        const payload = await response.json();
+        expect({ status: response.status, ...(response.ok ? {} : { payload }) }).toEqual({ status: 200 });
+        return payload;
+      };
+      const downloadAction = { key: "download_approval_form", enabled: true };
+      expect((await currentDetail()).availableActions).toContainEqual(expect.objectContaining(downloadAction));
+      submissionSnapshot.documentContentRevision++;
+      expect((await currentDetail()).availableActions).not.toContainEqual(expect.objectContaining(downloadAction));
+      submissionSnapshot.documentContentRevision--;
+      actingUserId = "materials-1";
+      actorRoleScopes = { globalRoleKeys: [], projectRoleKeys: ["material_director"] };
+      expect((await currentDetail()).availableActions).not.toContainEqual(expect.objectContaining(downloadAction));
+      actorRoleScopes.projectRoleKeys.push("contract_staff");
+      expect((await currentDetail()).availableActions).toContainEqual(expect.objectContaining(downloadAction));
+      actorRoleScopes = { globalRoleKeys: ["material_director"], projectRoleKeys: [] };
+      expect((await currentDetail()).availableActions).toContainEqual(expect.objectContaining(downloadAction));
     } finally { await app.close(); }
   });
 

@@ -38,7 +38,8 @@ import {
   assertActiveApprovalRecipient,
   type ApprovalActorRoleScopes
 } from "../approval/approval-review-identity";
-import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { clearApprovalRoundSignatureSnapshots, snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { contractRoundSubmissionSnapshot } from "./contract-parallel-duty-access";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -3383,6 +3384,10 @@ export class ContractService {
         where: { id: instance.id },
         data: { status: "withdrawn" }
       });
+      if (version.numericProtocolVersion === 2 &&
+          contractRoundSubmissionSnapshot(instance.frozenNodes)?.contractVersionId === version.id) {
+        await clearApprovalRoundSignatureSnapshots(tx, instance.id);
+      }
 
       await tx.approvalActionLog.create({
         data: {
