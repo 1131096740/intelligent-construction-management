@@ -75,7 +75,7 @@ function projection(c,stage,phase,xid=null){
   FROM target_objects t LEFT JOIN pg_attribute a ON kind='column' AND a.attrelid=t.object_oid AND a.attname=member AND a.attnum>0 AND NOT a.attisdropped
   LEFT JOIN pg_proc f ON kind='function' AND f.oid=t.object_oid LEFT JOIN pg_class c ON kind='table' AND c.oid=t.object_oid),
  acl_rows AS (
-  SELECT 'table'::text AS kind,c.oid AS object_oid,0::smallint AS attnum,g.* FROM pg_class c CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault(CASE WHEN c.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,c.relowner))) g WHERE c.relnamespace=to_regnamespace('public')
+  SELECT 'table'::text AS kind,c.oid AS object_oid,0::smallint AS attnum,g.* FROM pg_class c CROSS JOIN LATERAL aclexplode(coalesce(c.relacl,acldefault(CASE WHEN c.relkind='S' THEN 's'::"char" ELSE 'r'::"char" END,c.relowner))) g WHERE c.relnamespace=to_regnamespace('public')
   UNION ALL SELECT 'column',a.attrelid,a.attnum,g.* FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid CROSS JOIN LATERAL aclexplode(a.attacl) g WHERE c.relnamespace=to_regnamespace('public') AND a.attnum>0 AND NOT a.attisdropped
   UNION ALL SELECT 'function',f.oid,0::smallint,g.* FROM pg_proc f CROSS JOIN LATERAL aclexplode(coalesce(f.proacl,acldefault('f',f.proowner))) g WHERE f.pronamespace=to_regnamespace('public')
   UNION ALL SELECT 'schema',n.oid,0::smallint,g.* FROM pg_namespace n CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) g

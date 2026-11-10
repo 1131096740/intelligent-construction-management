@@ -93,7 +93,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase.startsWith("tail")) {
         result = require("./testdata/local-staged-tail-model.cjs").observe(sql, phase);
         result.ledger = readback().ledger;
-        if (mutate) result = mutate(phase, result);
+        if (mutate) result = mutate(phase, result, sql);
         return { stdout: JSON.stringify(result), stderr: "" };
       }
       if (phase === "qualification-setup") {
@@ -133,7 +133,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase === "qualification-cleanup") result = {};
       if (phase === "cleanup-readback") result = { schemaAbsent: true, eventAbsent: true,
         appOid: setup.appOid, applicationQualified: true };
-      if (mutate) result = mutate(phase, result);
+      if (mutate) result = mutate(phase, result, sql);
       return { stdout: JSON.stringify(result), stderr: "" };
     },
     deploy: async request => {
@@ -496,5 +496,16 @@ test("tail ACL proof must bind the actual changed catalog tuple to its writer XI
   });
   await assert.rejects(fake.fixture.migrate({databaseUrl}),/LOCAL_MIGRATION_TAIL215_SUPPLY_NODE_PROOF/u);
   assert.equal(fake.calls.includes('tail215-readback'),false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("tail catalog renders sequence default ACL with PostgreSQL sequence object kind",async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail259-sequence-kind-'));let checked=false;
+ try{
+  const fake=await fakeFixture(dir,(phase,row,sql)=>{
+   if(phase==='tail213-before'){assert.match(sql,/CASE WHEN c\.relkind='S' THEN 's'::"char"/u);checked=true;}
+   return row;
+  });
+  await fake.fixture.migrate({databaseUrl});assert.equal(checked,true);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
