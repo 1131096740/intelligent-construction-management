@@ -142,7 +142,12 @@ describe("project financing quota PostgreSQL runner", () => {
       for (const filename of [
         "run-project-financing-quota-concurrency-local.cjs",
         "money-bigint-runner-runtime.cjs",
+        "local-staged-migrations.cjs",
+        "local-staged-migration-controls.cjs",
+        "local-staged-migration-acl.sql",
+        "local-staged-migration-qualification.json",
         "migration-baseline.cjs",
+        "schema.prisma",
         "database-dynamic-gate-manifest.json",
         "migrations"
       ]) {
@@ -164,7 +169,19 @@ describe("project financing quota PostgreSQL runner", () => {
         '  process.stderr.write("original-prisma-failure"); process.exit(19);',
         "}",
         'if (args[0] === "context") process.stdout.write(JSON.stringify("unix:///tmp/fake-pfq.sock"));',
-        'if (args[0] === "run") process.stdout.write("fake-container");',
+        'if (args[0] === "run") process.stdout.write("a".repeat(64));',
+        'if (args[0] === "inspect") {',
+        "const prior = fs.readFileSync(calls, 'utf8').trim().split('\\n').map(JSON.parse).find(event => event.args[0] === 'run').args;",
+        'process.stdout.write(JSON.stringify({id:"a".repeat(64),name:"/"+prior[prior.indexOf("--name")+1],',
+        'runId:prior[prior.indexOf("--label")+1].split("=")[1],running:true,ports:{"5432/tcp":[{',
+        'HostIp:"127.0.0.1",HostPort:prior[prior.indexOf("--publish")+1].split(":")[1]}]}}));',
+        '}',
+        'if (args[0] === "exec" && args.includes("psql")) {',
+        'process.stdout.write(JSON.stringify({database:args[args.indexOf("-d")+1],databaseOid:"16384",namespaceOid:"2200",',
+        'actorOid:"10",ownerOid:"10",actor:"jiangkong",sessionActor:"jiangkong",systemIdentifier:"1234567890123456789",',
+        'version:160015,encoding:"UTF8",replication:"origin",ledger:[],roles:[{oid:"10",name:"jiangkong"}]}));',
+        '}',
+
         'if (args[0] === "logs") {',
         "process.stdout.write(" + JSON.stringify(scenario.stdout ?? "") + ");",
         "const ownedApp = fs.readFileSync(calls, 'utf8').trim().split('\\n').map(JSON.parse)" +

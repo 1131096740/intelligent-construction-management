@@ -23,6 +23,7 @@ const {
   withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
 const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
+const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
 
 const DATABASE_NAME = "jiangkong_project_financing_quota_concurrency";
 const LEGACY_DATABASE_NAME =
@@ -92,6 +93,7 @@ const pnpm =
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const commandRuntime = createCommandRuntime({ defaultCwd: root });
 const { command } = commandRuntime;
+let migrationFixture;
 
 function isLocalHostName(hostname) {
   return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
@@ -347,7 +349,7 @@ async function preparePre115MigrationRoot(temporaryRoot) {
   return prismaRoot;
 }
 
-async function runPrismaMigrate({ databaseUrl, runtimeEnv, schemaPath }) {
+async function runPrismaMigrateRaw({ databaseUrl, runtimeEnv, schemaPath }) {
   const args = [
     "--filter",
     "@jiangkong/api",
@@ -362,6 +364,11 @@ async function runPrismaMigrate({ databaseUrl, runtimeEnv, schemaPath }) {
     forwardOutput: true,
     timeoutMs: 15 * 60 * 1000
   });
+}
+
+async function runPrismaMigrate(request) {
+  if (!migrationFixture) throw new Error("项目垫资额度迁移夹具尚未绑定临时容器");
+  return migrationFixture.migrate(request);
 }
 
 async function runPrismaResolveRolledBack({ databaseUrl, runtimeEnv }) {
@@ -961,7 +968,7 @@ async function verifyPre115RetainedMigrations({
     const postgresLogBefore = await capturePostgresLogs(dockerCommand);
     let migrationFailure;
     try {
-      await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv });
+      await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv, expectedFailure: scenario.expectedFailure });
     } catch (error) {
       migrationFailure = error;
     }
@@ -1131,6 +1138,7 @@ async function main() {
     "../dist/database/money-bigint-live-verification"
   );
   const databasePort = await freePort();
+  const fixtureRunId = randomUUID();
   const suffix = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
   const containerName = `jiangkong-pfq-concurrency-${suffix}`;
   const temporaryRoot = await mkdtemp(
@@ -1204,13 +1212,15 @@ async function main() {
       await dockerCommand(["info"]);
       await dockerCommand(["image", "inspect", "postgres:16"]);
       containerLifecycle.containerRunAttempted = true;
-      await dockerCommand([
+      const created = await dockerCommand([
         "run",
         "--pull=never",
         "--detach",
         "--rm",
         "--name",
         containerName,
+        "--label",
+        `jg.local-migration-fixture=${fixtureRunId}`,
         "--env",
         "POSTGRES_USER=jiangkong",
         "--env",
@@ -1232,7 +1242,41 @@ async function main() {
         extraEnv: { POSTGRES_PASSWORD: databasePassword },
         forwardOutput: true
       });
+      const createdContainerId = created.stdout.trim();
       await waitForPostgres(containerName, dockerCommand);
+
+      migrationFixture = createLocalMigrationFixture({
+        container: { id: createdContainerId, name: containerName, runId: fixtureRunId },
+        databaseNames: Object.freeze([...ALLOWED_DATABASE_NAMES]),
+        temporaryRoot,
+        inspectContainer: async (id) => {
+          const inspected = await dockerCommand([
+            "inspect", "--type", "container", "--format",
+            '{"id":{{json .Id}},"name":{{json .Name}},"runId":{{json (index .Config.Labels "jg.local-migration-fixture")}},"running":{{json .State.Running}},"ports":{{json .NetworkSettings.Ports}}}',
+            id
+          ], { timeoutMs: 10_000, maxOutputBytes: 8192 });
+          const value = JSON.parse(inspected.stdout);
+          const bindings = value.ports?.["5432/tcp"];
+          if (!Array.isArray(bindings) || bindings.length !== 1) {
+            throw new Error("项目垫资额度临时容器端口映射未封闭");
+          }
+          return {
+            id: value.id, name: value.name?.replace(/^\//u, ""), runId: value.runId,
+            running: value.running, publishedHost: bindings[0].HostIp,
+            publishedPort: bindings[0].HostPort
+          };
+        },
+        executeSql: async ({ database, sql }) => {
+          if (!ALLOWED_DATABASE_NAMES.includes(database)) {
+            throw new Error("项目垫资额度迁移夹具拒绝非专用数据库");
+          }
+          return dockerCommand([
+            "exec", createdContainerId, "psql", "-h", "127.0.0.1", "-v", "ON_ERROR_STOP=1",
+            "-U", "jiangkong", "-d", database, "-X", "-q", "-A", "-t", "-c", sql
+          ], { timeoutMs: 60_000, maxOutputBytes: 512 * 1024 });
+        },
+        deploy: runPrismaMigrateRaw
+      });
 
       const firstDatabaseUrl = new URL(databaseUrl);
       const applicationName = `jg-pfq-first-${randomUUID()}`;
@@ -1298,6 +1342,7 @@ async function main() {
       );
     }, cleanup);
   } finally {
+    migrationFixture = undefined;
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
   }

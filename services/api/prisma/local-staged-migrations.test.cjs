@@ -1,0 +1,327 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+
+test("an owned container ID mismatch stops before SQL or deployment", async () => {
+  let commands = 0;
+  const fixture = createLocalMigrationFixture({
+    databaseNames: ["jiangkong_project_financing_quota_concurrency"],
+    container: {
+      id: "a".repeat(64),
+      name: "jiangkong-pfq-concurrency-fixture",
+      runId: "01234567-89ab-cdef-0123-456789abcdef"
+    },
+    inspectContainer: async () => ({
+      id: "b".repeat(64),
+      name: "jiangkong-pfq-concurrency-fixture",
+      runId: "01234567-89ab-cdef-0123-456789abcdef",
+      running: true
+    }),
+    executeSql: async () => { commands++; },
+    deploy: async () => { commands++; }
+  });
+  await assert.rejects(fixture.migrate({
+    databaseUrl: "postgresql://jiangkong:local@127.0.0.1:55432/jiangkong_project_financing_quota_concurrency"
+  }), /LOCAL_MIGRATION_CONTAINER_IDENTITY/u);
+  assert.equal(commands, 0);
+});
+
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const os = require("node:os");
+const crypto = require("node:crypto");
+const container = {
+  id: "a".repeat(64), name: "jiangkong-pfq-concurrency-fixture",
+  runId: "01234567-89ab-cdef-0123-456789abcdef"
+};
+const database = "jiangkong_project_financing_quota_concurrency";
+const databaseUrl = "postgresql://jiangkong:local@127.0.0.1:55432/" + database +
+  "?application_name=jg-pfq-first-01234567-89ab-cdef-0123-456789abcdef";
+const actor = { oid: "10", name: "jiangkong", superuser: true, createRole: false,
+  createDb: true, replication: true, bypassRls: true, memberships: [] };
+const legacyNames = ["jg_payment_execution_payer_issuer", "jg_pol275_owner", "jg_pol275_runtime",
+  "jg_pol279_runtime", "jg_pol280_runtime"];
+const inert = (name, oid) => ({ oid: String(oid), name, superuser: false, createRole: false,
+  createDb: false, replication: false, bypassRls: false, memberships: [] });
+const observedContainer = () => ({ ...container, running: true,
+  publishedHost: "127.0.0.1", publishedPort: "55432" });
+
+async function canonicalRows() {
+  const dir = path.join(__dirname, "migrations");
+  const names = (await fs.readdir(dir, { withFileTypes: true }))
+    .filter(row => row.isDirectory()).map(row => row.name).sort();
+  return Promise.all(names.map(async name => ({ name, sha256: crypto.createHash("sha256")
+    .update(await fs.readFile(path.join(dir, name, "migration.sql"))).digest("hex") })));
+}
+
+async function fakeFixture(temporaryRoot, mutate, failDatabases = []) {
+  const rows = await canonicalRows();
+  const calls = [];
+  const databaseNames = [database, "jiangkong_project_financing_quota_pre115_clean",
+    "jiangkong_project_financing_quota_pre115_duplicate", "jiangkong_project_financing_quota_pre115_cross_business",
+    "jiangkong_project_financing_quota_pre115_replacement_child", "jiangkong_project_financing_quota_pre115_replacement_parent",
+    "jiangkong_project_financing_quota_pre116_legacy"];
+  const databaseStates = new Map();
+  const deploymentRequests = [];
+  let currentDatabase = database;
+  function currentState() {
+    if (!databaseStates.has(currentDatabase)) databaseStates.set(currentDatabase, {
+      applied: 0, oid: String(16384 + databaseStates.size), failed: false, rolledBack: false
+    });
+    return databaseStates.get(currentDatabase);
+  }
+  let plan;
+  let setup;
+  let roles = [actor];
+  const readback = () => ({ database: currentDatabase, databaseOid: currentState().oid, namespaceOid: "2200",
+    actorOid: "10", ownerOid: "10", actor: "jiangkong", sessionActor: "jiangkong",
+    systemIdentifier: "1234567890123456789", version: 160015, encoding: "UTF8", replication: "origin",
+    roles, ledger: [...rows.slice(0, currentState().applied).map(row => ({ ...row, finished: true, rolledBack: false })),
+      ...(currentState().rolledBack ? [{ ...rows[114], finished: false, rolledBack: true }] : [])]
+      .sort((left, right) => left.name.localeCompare(right.name)) });
+  const fixture = createLocalMigrationFixture({ container, databaseNames, temporaryRoot,
+    inspectContainer: async () => observedContainer(),
+    executeSql: async ({ database: targetDatabase, phase, sql }) => {
+      currentDatabase = targetDatabase;
+      calls.push(phase);
+      let result = readback();
+      if (phase === "qualification-setup") {
+        const match = /'(\{"database":[^\n]+?\})'/u.exec(sql);
+        assert.ok(match, "setup must bind its actual plan");
+        plan = JSON.parse(match[1]);
+        setup = { runId: plan.runId, appOid: String(30000 + databaseStates.size), fileCallerOids: [10, 20004, 20005],
+          schemaOid: "31001", controlOid: "31002", eventOid: "31003", qualified: true };
+        roles = [...roles, inert(plan.appName, Number(setup.appOid))];
+        result = setup;
+      }
+      if (phase === "stage205-readback") {
+        const anchors = [
+          [204, "ALTER TABLE", "pg_class", "ContractArchiveFile", null],
+          [204, "CREATE FUNCTION", "pg_proc", "protectProjectParticipatingCompanyEndDate", "bf63fd6b2e56aa7d6562f0ab2793ee9f87fd3ffaacb03aee7f3f7162e34c5faa"],
+          [205, "ALTER TABLE", "pg_class", "ContractVersion", null],
+          [205, "ALTER FUNCTION", "pg_proc", "jg_contract_direct_pending_file_guard_v1", "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1"]
+        ];
+        result = { ...result, ...setup, readerPid: 202,
+          events: anchors.map(([stage, tag, catalog, name, bodySha256], index) => ({
+            ordinal: index + 1, stage, tag, catalog, name, bodySha256, objectOid: String(40001 + index),
+            querySha256: rows[Number(stage) - 1].sha256, runId: plan.runId, nonce: plan.nonce,
+            databaseOid: plan.databaseOid, systemIdentifier: plan.systemIdentifier, actorOid: plan.actorOid,
+            appOid: setup.appOid, fileCallerOids: setup.fileCallerOids, backendPid: 101,
+            backendStart: "2026-11-10T12:00:00.123456Z", transactionId: index < 2 ? "1001" : "1002",
+            preceding: { ...rows[Number(stage) - 2], finished: true, rolledBack: false }
+          })) };
+      }
+      if (phase === "qualification-cleanup") result = {};
+      if (phase === "cleanup-readback") result = { schemaAbsent: true, eventAbsent: true,
+        appOid: setup.appOid, applicationQualified: true };
+      if (mutate) result = mutate(phase, result);
+      return { stdout: JSON.stringify(result), stderr: "" };
+    },
+    deploy: async request => {
+      const url = new URL(request.databaseUrl);
+      currentDatabase = decodeURIComponent(url.pathname.slice(1));
+      const state = currentState();
+      const target = request.schemaPath ? path.dirname(request.schemaPath) : __dirname;
+      const files = (await fs.readdir(path.join(target, "migrations"), { withFileTypes: true }))
+        .filter(row => row.isDirectory());
+      calls.push("deploy-" + files.length);
+      deploymentRequests.push({ database: currentDatabase, count: files.length, url: request.databaseUrl });
+      if (files.length === 205) {
+        const initial = deploymentRequests.filter(row => row.database === currentDatabase && row.count === 203).at(-1);
+        assert.equal(url.searchParams.get("application_name"), new URL(initial.url).searchParams.get("application_name"));
+        assert.ok(url.searchParams.get("options").includes("application_role_oid=" + setup.appOid));
+        assert.match(url.searchParams.get("options"), /file_caller_oids=\[10,20004,20005\]/u);
+      } else assert.equal(url.searchParams.has("options"), false);
+      if (files.length === 203 && state.applied === 114 && failDatabases.includes(currentDatabase) && !state.failed) {
+        state.failed = true;
+        state.failure = new Error(currentDatabase.includes("duplicate") ?
+          "project_financing_quota_duplicate_attachment" : "project_financing_quota_cross_business_attachment");
+        throw state.failure;
+      }
+      const before = state.applied;
+      state.applied = files.length;
+      if (files.length === 203) roles = [...roles, ...legacyNames
+        .filter(name => !roles.some(role => role.name === name))
+        .map(name => inert(name, 20001 + legacyNames.indexOf(name)))];
+      for (const row of rows.slice(0, files.length)) {
+        const bytes = await fs.readFile(path.join(target, "migrations", row.name, "migration.sql"));
+        assert.equal(crypto.createHash("sha256").update(bytes).digest("hex"), row.sha256);
+      }
+      return { stdout: before === state.applied ? "No pending migrations to apply." :
+        "Applying migration " + rows.slice(before, state.applied).map(row => row.name).join("\n"), stderr: "" };
+    }
+  });
+  return { fixture, calls, deploymentRequests, databaseNames,
+    resolveHistorical(name) {
+      const state = databaseStates.get(name);
+      assert.ok(state?.failed);
+      state.rolledBack = true;
+    },
+    failure(name) { return databaseStates.get(name)?.failure; }
+  };
+}
+
+test("full fixture deploys exact203 then qualified205, cleans independently and preserves the final no-pending path", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-test-"));
+  try {
+    const { fixture, calls } = await fakeFixture(temporaryRoot);
+    const result = await fixture.migrate({ databaseUrl, runtimeEnv: {} });
+    assert.match(result.stdout, /20261108160000_operating_amount_protocol_v2/u);
+    assert.match(result.stdout, /20261108220000_contract_archive_v2_authority|20261109100000_contract_direct_pending_input_v1/u);
+    assert.match(result.stdout, /20261111096000_contract_direct_outside_operating_basis_bridge_v2/u);
+    assert.match(result.stdout, /20260802020000_project_financing_quota_termination_idempotency/u);
+    assert.deepEqual(calls, ["preflight", "deploy-203", "stage203-readback", "qualification-setup",
+      "deploy-205", "stage205-readback", "qualification-cleanup", "cleanup-readback", "post-qualification",
+      "deploy-256", "complete-readback"]);
+    const repeated = await fixture.migrate({ databaseUrl, runtimeEnv: {} });
+    assert.equal(repeated.stdout, "No pending migrations to apply.");
+    assert.deepEqual(calls.slice(-2), ["preflight", "deploy-256"]);
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+test("engine URL must use the port actually inspected on the owned container", async () => {
+  let commands = 0;
+  const fixture = createLocalMigrationFixture({ container, databaseNames: [database],
+    inspectContainer: async () => observedContainer(),
+    executeSql: async () => { commands++; }, deploy: async () => { commands++; }
+  });
+  await assert.rejects(fixture.migrate({ databaseUrl: databaseUrl.replace(":55432/", ":55433/") }), /LOCAL_MIGRATION_TARGET/u);
+  assert.equal(commands, 0);
+});
+
+test("container and option accessors or proxies cannot authorize a fixture", () => {
+  let getters = 0;
+  const unsafe = { get container() { getters++; return container; } };
+  assert.throws(() => createLocalMigrationFixture(unsafe), /LOCAL_MIGRATION_INPUT/u);
+  assert.equal(getters, 0);
+  const proxied = new Proxy(container, { get() { throw new Error("proxy invoked"); } });
+  assert.throws(() => createLocalMigrationFixture({ container: proxied }), /LOCAL_MIGRATION_INPUT/u);
+});
+
+for (const change of ["schema", "hole"]) {
+  test("a historical prefix with a changed " + change + " stops before SQL and deployment", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-source-"));
+    try {
+      const target = path.join(temporaryRoot, "prefix");
+      await fs.mkdir(path.join(target, "migrations"), { recursive: true });
+      await fs.copyFile(path.join(__dirname, "schema.prisma"), path.join(target, "schema.prisma"));
+      await fs.copyFile(path.join(__dirname, "migrations/migration_lock.toml"), path.join(target, "migrations/migration_lock.toml"));
+      const rows = await canonicalRows();
+      for (const row of rows.slice(0, 114)) {
+        await fs.cp(path.join(__dirname, "migrations", row.name), path.join(target, "migrations", row.name), { recursive: true });
+      }
+      if (change === "schema") await fs.appendFile(path.join(target, "schema.prisma"), "\n// tampered datasource material\n");
+      else await fs.rm(path.join(target, "migrations", rows[50].name), { recursive: true });
+      let commands = 0;
+      const fixture = createLocalMigrationFixture({ container, databaseNames: [database], temporaryRoot,
+        inspectContainer: async () => observedContainer(),
+        executeSql: async () => { commands++; }, deploy: async () => { commands++; }
+      });
+      await assert.rejects(fixture.migrate({ databaseUrl, schemaPath: path.join(target, "schema.prisma") }),
+        change === "schema" ? /LOCAL_MIGRATION_SCHEMA/u : /LOCAL_MIGRATION_SOURCE_PREFIX/u);
+      assert.equal(commands, 0);
+    } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+  });
+}
+
+for (const [name, phase, mutate, error] of [
+  ["wrong203checksum", "stage203-readback", row => ({ ...row, ledger: row.ledger.map((item, index) => index ? item : { ...item, sha256: "f".repeat(64) }) }), /LOCAL_MIGRATION_LEDGER/u],
+  ["unresolved203failure", "stage203-readback", row => ({ ...row, ledger: row.ledger.map((item, index) => index ? item : { ...item, finished: false }) }), /LOCAL_MIGRATION_LEDGER/u],
+  ["replaced database", "stage203-readback", row => ({ ...row, databaseOid: "90000" }), /LOCAL_MIGRATION_STAGE203/u],
+  ["unexpected role", "stage203-readback", row => ({ ...row, roles: [...row.roles, inert("unknown_runtime", 29000)] }), /LOCAL_MIGRATION_ROLE_PROVENANCE/u],
+  ["missing205commit", "stage205-readback", row => ({ ...row, ledger: row.ledger.slice(0, -1) }), /LOCAL_MIGRATION_STAGE205/u],
+  ["changedmigrationbackend", "stage205-readback", row => ({ ...row, events: row.events.map((item, index) => index === 2 ? { ...item, backendPid: 303 } : item) }), /LOCAL_MIGRATION_CONTROL/u],
+  ["cleanupnotproven", "cleanup-readback", row => ({ ...row, eventAbsent: false }), /LOCAL_MIGRATION_CLEANUP/u]
+]) {
+  test(name + " stops without running later phases or retrying", async () => {
+    const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-negative-"));
+    try {
+      const { fixture, calls } = await fakeFixture(temporaryRoot, (current, row) => current === phase ? mutate(row) : row);
+      await assert.rejects(fixture.migrate({ databaseUrl }), error);
+      assert.equal(calls.includes("deploy-256"), false);
+      const completedCalls = calls.length;
+      await assert.rejects(fixture.migrate({ databaseUrl }), /LOCAL_MIGRATION_STOPPED/u);
+      assert.equal(calls.length, completedCalls);
+    } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+  });
+}
+
+for (const query of ["host=/another/socket", "schema=other", "options=-c%20role=other",
+  "application_name=second"]) {
+  test("engine target refuses added query " + query, async () => {
+    let commands = 0;
+    const fixture = createLocalMigrationFixture({ container, databaseNames: [database],
+      inspectContainer: async () => observedContainer(),
+      executeSql: async () => { commands++; }, deploy: async () => { commands++; }
+    });
+    await assert.rejects(fixture.migrate({ databaseUrl: databaseUrl + "&" + query }), /LOCAL_MIGRATION_TARGET/u);
+    assert.equal(commands, 0);
+  });
+}
+
+async function prefix(root, count) {
+  const target = path.join(root, "prefix-" + count);
+  await fs.mkdir(path.join(target, "migrations"), { recursive: true });
+  await fs.copyFile(path.join(__dirname, "schema.prisma"), path.join(target, "schema.prisma"));
+  await fs.copyFile(path.join(__dirname, "migrations/migration_lock.toml"), path.join(target, "migrations/migration_lock.toml"));
+  for (const row of (await canonicalRows()).slice(0, count)) {
+    await fs.cp(path.join(__dirname, "migrations", row.name), path.join(target, "migrations", row.name), { recursive: true });
+  }
+  return path.join(target, "schema.prisma");
+}
+
+test("one owned cluster preserves all seven original databases and explicit115 failure/resolve recovery", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-journey-"));
+  try {
+    const negatives = ["duplicate", "cross_business", "replacement_child", "replacement_parent"]
+      .map(suffix => "jiangkong_project_financing_quota_pre115_" + suffix);
+    const harness = await fakeFixture(temporaryRoot, undefined, negatives);
+    const schema114 = await prefix(temporaryRoot, 114);
+    const schema115 = await prefix(temporaryRoot, 115);
+    await harness.fixture.migrate({ databaseUrl });
+    const apps = [];
+    for (const name of harness.databaseNames.slice(1)) {
+      const url = new URL(databaseUrl);
+      url.pathname = "/" + name;
+      url.search = "";
+      const legacy = name.endsWith("pre116_legacy");
+      await harness.fixture.migrate({ databaseUrl: url.toString(), schemaPath: legacy ? schema115 : schema114 });
+      if (negatives.includes(name)) {
+        const expectedFailure = name.endsWith("duplicate") ? "project_financing_quota_duplicate_attachment" :
+          "project_financing_quota_cross_business_attachment";
+        const before = harness.calls.length;
+        await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString(), expectedFailure }),
+          error => error === harness.failure(name));
+        assert.equal(harness.calls.slice(before).includes("deploy-205"), false);
+        assert.equal(harness.calls.slice(before).filter(call => call === "deploy-203").length, 1);
+        // Models only the original runner's independently checked remediation + explicit Prisma resolve.
+        harness.resolveHistorical(name);
+      }
+      const result = await harness.fixture.migrate({ databaseUrl: url.toString() });
+      assert.match(result.stdout, /20261111096000_contract_direct_outside_operating_basis_bridge_v2/u);
+      apps.push(harness.deploymentRequests.filter(row => row.database === name && row.count === 205).length);
+    }
+    assert.deepEqual(apps, [1, 1, 1, 1, 1, 1]);
+    assert.equal(harness.deploymentRequests.filter(row => row.count === 205).length, 7);
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+test("an expected115 error cannot resume without the original explicit resolved rollback state", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-unresolved-"));
+  try {
+    const name = "jiangkong_project_financing_quota_pre115_duplicate";
+    const harness = await fakeFixture(temporaryRoot, undefined, [name]);
+    // The actual runner starts its current empty database before the historical cases.
+    await harness.fixture.migrate({ databaseUrl });
+    const url = new URL(databaseUrl);
+    url.pathname = "/" + name;
+    await harness.fixture.migrate({ databaseUrl: url.toString(), schemaPath: await prefix(temporaryRoot, 114) });
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString(),
+      expectedFailure: "project_financing_quota_duplicate_attachment" }), error => error === harness.failure(name));
+    const deploys = harness.deploymentRequests.length;
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: url.toString() }), /LOCAL_MIGRATION_RECOVERY_NOT_RESOLVED/u);
+    assert.equal(harness.deploymentRequests.length, deploys);
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
