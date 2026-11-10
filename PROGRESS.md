@@ -1,5 +1,9 @@
 ## #382 目标模式接续（2026-11-10）
 
+- [~] 新准确候选 `1374e8c79bd47c994293327b0584ce268d97a448` 经独立复核合入本地。前序 `4f4afc86` 后段发现生成清单漂移与 RC-06 14/28 失败，用户对旧 SHA 的单次授权已记录，旧入口暂挂且未尝试。中间组合 `1039fda9` 清单通过、RC-06 26/28，保留两项焦点失败。现候选仅校正生成清单与两份浏览器测试，相对旧 SHA 的运行时与锁逐字一致。准确构建、UI、清单、E2E 类型通过，P0 3 通过/2 需账号跳过，正式 RC-06 模拟 28/28。17 步新准确方案等待授权，第 14 与 15 步各自有本机隔离库迁移。 [准确预查](/private/tmp/jg-382-manifest-p0-1374.dIEFHw2F/HANDOFF.md) · [旧授权记录](/private/tmp/jg-382-release-4f4a.9WJmRSIV/AUTHORIZATION-RECEIPT.md) · [新单次方案](/private/tmp/jg-382-release-1374.t3cXhS1Q/RUN-HANDOFF.md)
+- [~] #383 手动组按准确 `1374e8c7` 封存并核验 3,662 个文件、256 条迁移，专用运行时树与执行授权仍待。GitHub 回读仍为 14 阶段关闭、31 开放，前置已齐 #394/#398，#428 草稿。 [手动组源码](/private/tmp/jg-382-task01-source-1374.Px886Wuj/HANDOFF.md)
+- [~] #394 存储观察包装器经独立复核修正伪管道、异常退出与回执泄露，15 项离线测试通过，待 Linux 不可替换材料和真实 API/观察端绑定。#398 模拟回滚拆除绑定同轮提交证明，独立 OID10 回查拆除 XID 和 B7，91 项定向通过，外层状态与子进程退出复核继续。两票实际业务仍待。 [合同观察](/private/tmp/jg-394-a08-storage-wrapper-reviewed.jksClPgs/REVIEWED-HANDOFF.md) · [实付拆除](/private/tmp/jg-398-a16-disarm-transport.jy7Y3E2N/HANDOFF.md)
+
 - [~] 准确 `4f4afc8695be635746e0df4bd6f06eec6a7505d1` 经独立复核合入。仅将上轮触发默认超时的三个合成 HTTP 测试独立预算设为 10 秒，原业务断言、夹具、运行时和全局配置逐字保留。定向、API 类型/lint 均通过，额外延迟对照 3 项在 6.58–7.59 秒完成。准确候选只读发布预检、业务用语、业务错误及运维安全自测通过。独立全量 API 复查通过，9,403 项通过、570 项跳过、零失败，含上轮三项和四项真实浏览器。17 步单次方案已封，含隔离测试库迁移，等待准确候选授权。[测试调整与对照](/private/tmp/jg-382-task10-http-budget.5TUAjCpf/HANDOFF.md) · [全量 API 回执](/private/tmp/jg-382-api-preflight-4f4a.xRe8zga0/HANDOFF.md) · [单次发布方案](/private/tmp/jg-382-release-4f4a.9WJmRSIV/RUN-HANDOFF.md)
 
 - [~] 任务10正文接口优化经独立复核合入准确 `806e4059e505306f0b97e670ee8661fa43e93205`。单请求只下载、映射一次模板，渲染前从当前库元数据重新核文件状态、摘要和对象键。撤销及替换反例通过，定向 33 项、API 类型/lint 通过。材料样本正文读取中位数 567→397 毫秒。[准确源码回执](/private/tmp/jg-382-task10-verified-source.DXeQ1ILh/HANDOFF.md)
