@@ -227,7 +227,7 @@
         "event": "call",
         "handler": "createDelegationWithCapability",
         "kind": "background_call",
-        "sourceLine": 178,
+        "sourceLine": 179,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -291,7 +291,7 @@
         "event": "call",
         "handler": "revokeDelegationWithCapability",
         "kind": "background_call",
-        "sourceLine": 207,
+        "sourceLine": 208,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6312,7 +6312,7 @@
         "event": "call",
         "handler": "uploadContractPartyFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 210,
+        "sourceLine": 211,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14662,7 +14662,7 @@
         "event": "call",
         "handler": "cloneCurrentWithCapability",
         "kind": "background_call",
-        "sourceLine": 495,
+        "sourceLine": 496,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14729,7 +14729,7 @@
         "event": "call",
         "handler": "createLayoutWithCapability",
         "kind": "background_call",
-        "sourceLine": 431,
+        "sourceLine": 432,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -14836,7 +14836,7 @@
         "event": "call",
         "handler": "inspectWithCapability",
         "kind": "background_call",
-        "sourceLine": 451,
+        "sourceLine": 452,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15037,7 +15037,7 @@
         "event": "call",
         "handler": "queuePreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 462,
+        "sourceLine": 463,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15104,7 +15104,7 @@
         "event": "call",
         "handler": "publishCurrentWithCapability",
         "kind": "background_call",
-        "sourceLine": 484,
+        "sourceLine": 485,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15171,7 +15171,7 @@
         "event": "call",
         "handler": "saveDraftSourceWithCapability",
         "kind": "background_call",
-        "sourceLine": 439,
+        "sourceLine": 440,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15279,7 +15279,7 @@
         "event": "call",
         "handler": "stopCurrentVersionWithCapability",
         "kind": "background_call",
-        "sourceLine": 506,
+        "sourceLine": 507,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15346,7 +15346,7 @@
         "event": "call",
         "handler": "submitCurrentWithCapability",
         "kind": "background_call",
-        "sourceLine": 473,
+        "sourceLine": 474,
         "sourceColumn": 0
       },
       "semantic": "business_write",
