@@ -66,3 +66,12 @@ for (const [name, mutate] of [
   mutate(proof);
   assert.throws(() => renderCurrent259PublicAccess(proof), /TASK16_CURRENT259_PUBLIC_ACCESS/);
 });
+
+test('retains the qualified UUID wrapper only for the outside writer owner', () => {
+  const sql = renderCurrent259PublicAccess(archive());
+  assert.match(sql, /public.gen_random_uuid\(\)/);
+  assert.match(sql, /pg_random_uuid/);
+  assert.match(sql, /rolcanlogin.*25002::oid|25002::oid.*rolcanlogin/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public.gen_random_uuid\(\) TO %I',\s*'jg_c259_outside_executor_owner'/);
+  assert.equal((sql.match(/GRANT EXECUTE ON FUNCTION public.gen_random_uuid/g) ?? []).length, 1);
+});
