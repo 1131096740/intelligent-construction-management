@@ -45,7 +45,7 @@
         :confirm-btn="{ content: '确认登记', disabled: !directRegistration.canConfirm.value }"
         @confirm="confirmDirectRegistration"
       >
-        请确认已保存的签章 PDF 与纸面合同一致。正式登记完成后合同即生效。
+        请确认已保存的签章原件与纸面合同一致。正式登记完成后合同即生效。
       </t-dialog>
     </section>
 

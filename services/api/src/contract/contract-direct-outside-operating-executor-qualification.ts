@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 import { enabledDirectVersionBody, type readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { enabledDirectCompletionCatalog } from "./contract-direct-outside-completion-catalog";
@@ -6,6 +7,7 @@ type Admission = NonNullable<Awaited<ReturnType<typeof readDirectArchiveNativeAd
 
 /** Qualify the full optional operating executor against the ordinary connection's existing native witness. */
 export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionClient, native: Admission) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   if (native.versionGuardBodySha256 !== enabledDirectVersionBody || native.outsideSlotQualified !== true) return false;
   try {
     const rows = await tx.$queryRaw<Array<{ qualified: boolean; backendPid: number; transactionId: string }>>(Prisma.sql`
@@ -18,7 +20,7 @@ export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionCl
         AND b."anchorOwnerOid"=${native.ownerOid}::oid AND b."executorOwnerOid"=${native.executorOwnerOid}::oid
         AND b."completionRelationOid"=${native.completionOid}::oid AND b."intentBindingSha256"=${native.intentBindingSha256}
         AND b."nonce"=${native.nonce}::uuid AND pg_catalog.current_setting('session_replication_role')='origin'
-        AND ${enabledDirectCompletionCatalog(Prisma.sql`b."anchorOwnerOid"`, Prisma.sql`b."namespaceOid"`)}
+        AND ${enabledDirectCompletionCatalog(Prisma.sql`b."anchorOwnerOid"`, Prisma.sql`b."namespaceOid"`, projection)}
         AND 16=(SELECT count(*) FROM (VALUES
           ('public.jg_issue_direct_outside_operating_v2(uuid,text,text,text,text,integer,text,text,jsonb)',
             'a08085cfb362d55e39326b696536c66ca6d665da18e6848697a25c2f8c0e8783','pg_catalog.uuid',ARRAY[b."issuerSessionOid"],b."issuerOwnerOid",
@@ -73,7 +75,7 @@ export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionCl
             AND p.provolatile::text=q.volatility AND p.proparallel='u' AND p.prosecdef=q.definer AND p.proisstrict=q.strict
             AND NOT (p.proretset OR p.proleakproof) AND p.pronargdefaults=0 AND p.provariadic=0 AND p.prosupport=0
             AND p.prorettype=pg_catalog.to_regtype(q.result_type) AND p.proconfig=ARRAY[q.path]
-            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=q.body
+            AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=q.body
           JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname=q.lang
           WHERE (SELECT count(*)=1+cardinality(q.callers)
             AND count(*) FILTER (WHERE a.grantee=ANY(q.callers) AND NOT a.is_grantable)=cardinality(q.callers)
@@ -105,7 +107,7 @@ export async function hasDirectOutsideOperatingExecutor(tx: Prisma.TransactionCl
             AND p.proowner=b."anchorOwnerOid" AND p.pronamespace=b."namespaceOid" AND p.prokind='f' AND p.provolatile='v'
             AND p.proparallel='u' AND NOT (p.prosecdef OR p.proisstrict OR p.proretset)
             AND p.prorettype='pg_catalog.trigger'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']
-            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=q.body)
+            AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=q.body)
       LIMIT 2
     `);
     return rows.length === 1 && rows[0].qualified === true

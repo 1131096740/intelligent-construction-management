@@ -1,3 +1,5 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY, type UpwardDirectArchiveAuthority } from "../contract/contract-upward-direct-registration";
+import { readUpwardArchiveAdmission } from "../contract/contract-upward-direct-archive-native";
 import { DIRECT_ARCHIVE_EXECUTOR, type DirectArchiveExecutor } from "../contract/contract-direct-archive-executor";
 import { readDirectArchiveNativeAdmission } from "../contract/contract-direct-archive-native-admission";
 import { hasDirectOutsideOperatingExecutor } from "../contract/contract-direct-outside-operating-executor-qualification";
@@ -71,7 +73,8 @@ export class ContractDraftAggregateService {
     private readonly parties: BusinessPartyService,
     private readonly files: FileService,
     private readonly audit: AuditService,
-    @Optional() @Inject(DIRECT_ARCHIVE_EXECUTOR) private readonly directArchiveExecutor?: DirectArchiveExecutor
+    @Optional() @Inject(DIRECT_ARCHIVE_EXECUTOR) private readonly directArchiveExecutor?: DirectArchiveExecutor,
+    @Optional() @Inject(UPWARD_DIRECT_ARCHIVE_AUTHORITY) private readonly upwardDirectAuthority?: UpwardDirectArchiveAuthority
   ) {}
 
   async getSaveResult(contractVersionId: string, actorUserId: string, idempotencyKey: string, numericProtocol?: string) {
@@ -180,7 +183,9 @@ export class ContractDraftAggregateService {
         }
         upwardDraftSubjects = subjects;
         upwardSaveReady = !!saveQualification;
-        return read;
+        const registrationEnabled = !!this.upwardDirectAuthority && read.source.state === "complete"
+          && !!await readUpwardArchiveAdmission(tx).catch(() => null);
+        return { ...read, registrationEnabled };
       })
       : hasDirectSigningInput(version.draftData) ? await this.prisma.$transaction(async tx => {
       try {

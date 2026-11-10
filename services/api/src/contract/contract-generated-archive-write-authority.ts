@@ -1,4 +1,5 @@
-import { generatedUpwardOperatingCatalog } from "./contract-generated-upward-operating-installation";
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha, qualifiedUpwardConstraintOid, qualifiedUpwardConstraintSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
+import { generatedUpwardOperatingCatalogFor } from "./contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -11,7 +12,8 @@ export const installedOriginalAppendBody = "8be75a5ab619a886715b1e3ac7ef39f19db1
 export const installedCompletionGuardBody = "4f76101297574acbb0bf3aefbd6c6d62b0e82a429f8a0a4a20c3b7eb1ab55722";
 
 /** Used by readback to recognize the exact guarded write successor without granting command reads. */
-export const generatedArchiveIngressCatalog = Prisma.sql`
+export function generatedArchiveIngressCatalogFor(projection: UpwardLegacyProjection | null) {
+  return Prisma.sql`
   SELECT c.relowner, c.relnamespace
   FROM pg_catalog.pg_class c
   JOIN pg_catalog.pg_trigger t ON t.tgrelid=c.oid AND t.tgname='jg_generated_archive_write_apply'
@@ -21,7 +23,7 @@ export const generatedArchiveIngressCatalog = Prisma.sql`
     AND p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND p.prosecdef AND p.provolatile='v'
     AND p.prorettype='pg_catalog.trigger'::regtype AND p.proconfig=ARRAY['search_path=pg_catalog, pg_temp']::text[]
     AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${writerIngressBody} OR (
-      1=(SELECT count(*) FROM (${generatedUpwardOperatingCatalog}) u
+      1=(SELECT count(*) FROM (${generatedUpwardOperatingCatalogFor(projection)}) u
         WHERE u.relowner=c.relowner AND u.relnamespace=c.relnamespace
           AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=CASE WHEN u."outsideOperatingQualified" THEN
             '206473c94130778e2c90194a9529782849a30b3561a640ea38e1ebb332572670'
@@ -31,6 +33,9 @@ export const generatedArchiveIngressCatalog = Prisma.sql`
     AND NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
       WHERE a.grantee<>c.relowner OR a.grantor<>c.relowner)
 `;
+}
+
+export const generatedArchiveIngressCatalog = generatedArchiveIngressCatalogFor(null);
 
 function unavailable() {
   return new ServiceUnavailableException("生成合同归档写入资格尚未核对，请保留原件和本次标识");
@@ -42,9 +47,10 @@ function isOid(value: unknown) {
 
 /** The installation owns the command trigger, but only the app may submit its typed column inserts. */
 export async function readGeneratedArchiveWriteInstallation(tx: Prisma.TransactionClient) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   const rows = await tx.$queryRaw<(Installation & { qualified: boolean })[]>(Prisma.sql`
     /* contract_generated_archive_write_catalog_v1 */
-    WITH upward_operating AS (${generatedUpwardOperatingCatalog}), recipes(name, relation, fn, kind, deferred) AS (VALUES
+    WITH upward_operating AS (${generatedUpwardOperatingCatalogFor(projection)}), recipes(name, relation, fn, kind, deferred) AS (VALUES
       ('jg_generated_archive_write_apply','public.jg_contract_generated_archive_write_v1','public.jg_apply_generated_archive_write_v1()',5,FALSE),
       ('jg_generated_archive_write_immutable','public.jg_contract_generated_archive_write_v1','public.jg_apply_generated_archive_write_v1()',27,FALSE),
       ('jg_generated_archive_write_no_truncate','public.jg_contract_generated_archive_write_v1','public.jg_apply_generated_archive_write_v1()',34,FALSE),
@@ -122,10 +128,10 @@ export async function readGeneratedArchiveWriteInstallation(tx: Prisma.Transacti
       AND 3=(SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgrelid=c.oid AND NOT t.tgisinternal)
       AND EXISTS(SELECT 1 FROM public.jg_contract_generated_archive_version_transition_v1 v
         JOIN pg_catalog.pg_proc g ON g.oid=b."guardOid" AND g.proowner=c.relowner AND NOT g.prosecdef
-          AND encode(public.digest(convert_to(g.prosrc,'UTF8'),'sha256'),'hex')='ae9d017bf6f9fd6617e7a58a3908c64c76c0130b0c49aa73a316d34ffbb44449'
-        JOIN pg_catalog.pg_constraint k ON k.oid=v."upwardConstraintOid" AND k.conrelid='public."ContractVersion"'::regclass
+          AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`g.oid`, Prisma.sql`encode(public.digest(convert_to(g.prosrc,'UTF8'),'sha256'),'hex')`)}='ae9d017bf6f9fd6617e7a58a3908c64c76c0130b0c49aa73a316d34ffbb44449'
+        JOIN pg_catalog.pg_constraint k ON k.oid=${qualifiedUpwardConstraintOid(projection, Prisma.sql`v."upwardConstraintOid"`)} AND k.conrelid='public."ContractVersion"'::regclass
           AND k.contype='c' AND k.convalidated AND k.conislocal AND k.conname='ContractVersion_upward_draft_source_check'
-          AND encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(k.oid,false),'UTF8'),'sha256'),'hex')=v."upwardConstraintSha256"
+          AND ${qualifiedUpwardConstraintSha(projection, Prisma.sql`k.oid`, Prisma.sql`encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(k.oid,false),'UTF8'),'sha256'),'hex')`)}=v."upwardConstraintSha256"
         WHERE v."protocolVersion"=1 AND v."sealBindingOid"=b.tableoid
           AND encode(public.digest(convert_to(to_jsonb(b)::text,'UTF8'),'sha256'),'hex')=v."sealBindingSha256")
       AND basis.proowner=c.relowner AND basis.pronamespace=c.relnamespace AND NOT basis.prosecdef

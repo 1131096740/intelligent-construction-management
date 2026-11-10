@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 
 export const directInputSignature = "public.jg_contract_direct_pending_input_v1(pg_catalog.text)";
@@ -63,6 +64,7 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
   `);
   if (probe?.readable !== true) return null;
 
+  const projection = await discoverUpwardLegacyProjection(tx);
   const rows = await tx.$queryRaw<NativeDirectAdmission[]>(Prisma.sql`
     /* contract_direct_native_admission_v1 */
     WITH recipe(signature,body,owner_role,caller,definer,writer_path) AS (VALUES ${recipe})
@@ -70,18 +72,18 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
       v.relowner::text AS "ownerOid",v.relnamespace::text AS "namespaceOid",b."databaseOid"::text AS "databaseOid",
       current_user::regrole::oid::text AS "currentRoleOid",session_user::regrole::oid::text AS "sessionRoleOid",
       pg_catalog.pg_backend_pid() AS "backendPid",pg_catalog.txid_current()::text AS "transactionId",
-      (SELECT encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') FROM pg_catalog.pg_proc p
+      (SELECT ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} FROM pg_catalog.pg_proc p
         WHERE p.oid=pg_catalog.to_regprocedure(${directParentGuard})) AS "parentGuardBodySha256",
-      (SELECT encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') FROM pg_catalog.pg_proc p
+      (SELECT ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} FROM pg_catalog.pg_proc p
         WHERE p.oid=pg_catalog.to_regprocedure(${directVersionTransition})) AS "versionGuardBodySha256",
       EXISTS(SELECT 1 FROM pg_catalog.pg_proc slot JOIN pg_catalog.pg_proc handoff ON
           handoff.oid=pg_catalog.to_regprocedure('public.jg_require_direct_outside_operating_handoff_v2(text,text)')
         JOIN pg_catalog.pg_language lang ON lang.oid=handoff.prolang AND lang.lanname='plpgsql'
         JOIN pg_catalog.pg_proc parent ON parent.oid=pg_catalog.to_regprocedure(${directParentGuard})
-          AND encode(public.digest(convert_to(parent.prosrc,'UTF8'),'sha256'),'hex')=${enabledDirectParentBody}
+          AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`parent.oid`, Prisma.sql`encode(public.digest(convert_to(parent.prosrc,'UTF8'),'sha256'),'hex')`)}=${enabledDirectParentBody}
         WHERE slot.oid=pg_catalog.to_regprocedure('public.jg_guard_contract_direct_archive_slot_v1()')
           AND slot.proowner=b."anchorOwnerOid" AND slot.pronamespace=b."namespaceOid"
-          AND encode(public.digest(convert_to(slot.prosrc,'UTF8'),'sha256'),'hex')=${enabledDirectSlotBody}
+          AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`slot.oid`, Prisma.sql`encode(public.digest(convert_to(slot.prosrc,'UTF8'),'sha256'),'hex')`)}=${enabledDirectSlotBody}
           AND handoff.proowner=b."anchorOwnerOid" AND handoff.pronamespace=b."namespaceOid"
           AND handoff.prokind='f' AND handoff.provolatile='v' AND handoff.proparallel='u'
           AND handoff.proisstrict AND NOT handoff.prosecdef AND NOT handoff.proretset
@@ -184,9 +186,9 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
           AND p.proconfig=CASE WHEN q.writer_path THEN ARRAY['search_path=pg_catalog, public, pg_temp']
             WHEN q.caller='oldInput' THEN ARRAY['search_path=pg_catalog, public']
             ELSE ARRAY['search_path=pg_catalog, pg_temp'] END
-          AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=q.body
+          AND (${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=q.body
             OR (q.signature=${directParentGuard}
-              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${enabledDirectParentBody}
+              AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=${enabledDirectParentBody}
               AND 2=(SELECT count(*) FROM (VALUES
                 (${enabledDirectParentGuard}::text,'b774ebb292ad585ff2564ca3a6b119de77706314d2fc35c9b087055482e1da73'),
                 (${enabledDirectFirstParent}::text,'b31541459ed1f2e4887a5d499279d779aafbbb28d2a4900ebd9a6c4ad7b9eb81')
@@ -204,7 +206,7 @@ export async function readDirectArchiveNativeAdmission(tx: Prisma.TransactionCli
                   WHERE acl.grantor<>successor.proowner OR (acl.grantee<>successor.proowner
                     AND (acl.grantee<>b."executorOwnerOid" OR acl.privilege_type<>'EXECUTE' OR acl.is_grantable)))))
             OR (q.signature=${directVersionTransition}
-              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=${enabledDirectVersionBody}
+              AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=${enabledDirectVersionBody}
               AND EXISTS(SELECT 1 FROM pg_catalog.pg_proc successor JOIN pg_catalog.pg_language lang
                   ON lang.oid=successor.prolang AND lang.lanname='plpgsql'
                 WHERE successor.oid=pg_catalog.to_regprocedure(${enabledDirectVersionGuard})

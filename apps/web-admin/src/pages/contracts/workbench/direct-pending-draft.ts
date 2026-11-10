@@ -209,7 +209,7 @@ function upwardWorkbenchState(workbench: ContractDraftWorkbenchReadModel): Direc
     !samePartyPosition(marker.enterpriseParty, aggregateMarker.enterpriseParty) || !samePartyPosition(marker.companyParty, aggregateMarker.companyParty) ||
     version.contractId !== contract.id || version.versionNo !== 1 || version.status !== "draft" || version.numericProtocolVersion !== 2 ||
     !("changeType" in version) || version.changeType !== "original" || version.documentContentRevision !== null || version.documentContentFingerprint !== null ||
-    caps?.registrationEnabled !== false || caps.copyEnabled !== false || caps.purgeEnabled !== false || !state ||
+    typeof caps?.registrationEnabled !== "boolean" || caps.copyEnabled !== false || caps.purgeEnabled !== false || !state ||
     (marker.fixedPaymentTermsVersionId === null ? workbench.paymentTerms !== null :
       typeof workbench.paymentTerms?.originalText !== "string" || !Array.isArray(workbench.paymentTerms.stages) || workbench.paymentTerms.stages.length !== 0) ||
     (state === "complete" ? version.originalSignedNumberState !== "available" ||
@@ -266,7 +266,7 @@ const archiveFileUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}
 export function directRegistrationCoordinates(workbench: ContractDraftWorkbenchReadModel | null, actor: string | undefined) {
   if (!workbench || !actor || workbench.contract.ownerUserId !== actor ||
     record(workbench.directPendingCapabilities)?.registrationEnabled !== true ||
-    !directSigningMarker(workbench.draft?.directSigningInput)) return null;
+    !(directSigningMarker(workbench.draft?.directSigningInput) || upwardSigningMarker(workbench.draft?.directSigningInput))) return null;
   try {
     if (directWorkbenchState(workbench) !== "complete") return null;
     const source = record(workbench.directPendingInput);
@@ -277,7 +277,7 @@ export function directRegistrationCoordinates(workbench: ContractDraftWorkbenchR
     for (const [index, raw] of files.entries()) {
       const file = record(raw), attachment = workbench.attachments[index];
       if (typeof file?.fileId !== "string" || !archiveFileUuid.test(file.fileId) || fileIds.includes(file.fileId)
-        || file.mimeType !== "application/pdf" || file.displayOrder !== index || attachment?.slotKey !== directOriginalSlot ||
+        || !["application/pdf", "image/jpeg", "image/png"].includes(String(file.mimeType)) || file.displayOrder !== index || attachment?.slotKey !== directOriginalSlot ||
         attachment.fileId !== file.fileId || attachment.displayOrder !== index) return null;
       fileIds.push(file.fileId);
     }

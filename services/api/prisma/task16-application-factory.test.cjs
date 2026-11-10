@@ -142,7 +142,12 @@ function qualified256(t,hooks={}){
  const f=harness(t,hooks),{createHash}=require('node:crypto');
  const {bindSimulatedTask16ImpactReader}=require('./task16-application-factory.cjs');
  const base='services/api/prisma/migrations';
- const migrations=fs.readdirSync(path.join(ROOT,base),{withFileTypes:true}).filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort()
+ const directories=fs.readdirSync(path.join(ROOT,base),{withFileTypes:true}).filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort();
+ const canonical=JSON.parse(fs.readFileSync(path.join(ROOT,'services/api/prisma/database-dynamic-gate-manifest.json'),'utf8')).migrationBaseline;
+ assert.equal(directories.length,canonical.expectedDirectoryCount);
+ // This versioned B7 admission remains pinned to the immutable historical256 ledger.
+ // Successor migrations must never silently become native256 authority.
+ const migrations=directories.filter(name=>name<='20261111096000_contract_direct_outside_operating_basis_bridge_v2')
   .map(name=>{const relative=`${base}/${name}/migration.sql`;return{path:relative,sha256:createHash('sha256').update(fs.readFileSync(path.join(ROOT,relative))).digest('hex')};});
  assert.equal(migrations.length,256);
  const verify=f.adapters.verifySource;

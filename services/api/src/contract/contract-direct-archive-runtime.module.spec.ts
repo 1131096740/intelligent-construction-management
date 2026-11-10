@@ -1,3 +1,4 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY, type UpwardDirectArchiveAuthority, type UpwardDirectExecution } from "./contract-upward-direct-registration";
 import { Test } from "@nestjs/testing";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -22,7 +23,7 @@ jest.mock("@prisma/client", () => ({
   }
 }));
 
-const keys = ["DATABASE_URL", "DIRECT_ARCHIVE_ISSUER_DATABASE_URL", "DIRECT_ARCHIVE_RUNTIME_DATABASE_URL"] as const;
+const keys = ["DATABASE_URL", "DIRECT_ARCHIVE_ISSUER_DATABASE_URL", "DIRECT_ARCHIVE_RUNTIME_DATABASE_URL", "UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL", "UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL"] as const;
 const database = "postgresql://ordinary:synthetic-app@db.invalid:5432/jg_isolated";
 const dedicated = (role: string, name = "jg_isolated") =>
   `postgresql://${role}:synthetic-${role}@db.invalid:5432/${name}?schema=public&connection_limit=1&sslmode=require&sslaccept=strict&sslcert=%2Ffixture%2Fca.crt`;
@@ -54,7 +55,7 @@ async function compile() {
 
 describe("表外直签原生连接在正常模块中的接线", () => {
   const savedEnv = new Map(keys.map(key => [key, process.env[key]]));
-  beforeEach(() => { mockPrisma.mockReset(); });
+  beforeEach(() => { mockPrisma.mockReset(); delete process.env.UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL; delete process.env.UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL; });
   afterEach(() => {
     for (const [key, value] of savedEnv) {
       if (value === undefined) delete process.env[key];
@@ -129,4 +130,61 @@ describe("表外直签原生连接在正常模块中的接线", () => {
       await module.close();
     }
   });
+  it("对上未供应专用连接时不借用已配置的表外客户端", async () => {
+    configuration(dedicated("outside_issuer"), dedicated("outside_executor"));
+    mockPrisma.mockImplementation(() => disconnectedClient());
+    const { module, ordinary } = await compile();
+    try {
+      expect(module.get(UPWARD_DIRECT_ARCHIVE_AUTHORITY)).toBeUndefined();
+      expect(ordinary.$queryRaw).not.toHaveBeenCalled();
+    } finally { await module.close(); }
+  });
+
+  it.each(["outside_issuer", "outside_executor"])("对上配置复用表外%s时保持关闭", async outsideRole => {
+    configuration(dedicated("outside_issuer"), dedicated("outside_executor"));
+    process.env.UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL = dedicated(outsideRole);
+    process.env.UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL = dedicated("upward_executor");
+    mockPrisma.mockImplementation(() => disconnectedClient());
+    const { module } = await compile();
+    try {
+      expect(module.get(UPWARD_DIRECT_ARCHIVE_AUTHORITY)).toBeUndefined();
+      expect(mockPrisma.mock.calls.map(([options]) => options.datasources?.db?.url)).toEqual([
+        dedicated("outside_issuer"), dedicated("outside_executor")]);
+    } finally { await module.close(); }
+  });
+
+  it("对上独立客户端只调用既有Q2签发与专用执行入口", async () => {
+    configuration();
+    process.env.UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL = dedicated("upward_issuer");
+    process.env.UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL = dedicated("upward_executor");
+    const issuer = disconnectedClient(), runtime = disconnectedClient(), execute = disconnectedClient();
+    issuer.$queryRaw.mockResolvedValue([{ intentId }]);
+    runtime.$transaction.mockImplementation((operation: (tx: SyntheticClient) => unknown) => operation(execute));
+    execute.$queryRaw.mockResolvedValue([{ archiveId }]);
+    mockPrisma.mockReturnValueOnce(issuer).mockReturnValueOnce(runtime);
+    const { module, ordinary } = await compile();
+    try {
+      const authority = module.get<UpwardDirectArchiveAuthority | undefined>(UPWARD_DIRECT_ARCHIVE_AUTHORITY);
+      expect(authority).toBeDefined();
+      const command: UpwardDirectExecution = { actor: "handler", projectId: "project", contractId: "contract", versionId: "version",
+        revision: 2, inputSha256: "a".repeat(64), key: "archive-key", nativeNonce: nonce, Q: {}, qText: "{}", requestSha256: "b".repeat(64),
+        originals: [{ fileId: "file", displayOrder: 0, bucket: "private", objectKey: "synthetic-original", mimeType: "image/png",
+          sizeBytes: original.length, contentSha256: createHash("sha256").update(original).digest("hex") }] };
+      await authority!.execute(command);
+      const issued = issuer.$queryRaw.mock.calls[0][0] as Prisma.Sql;
+      expect(issued.sql).toContain("jg_issue_contract_direct_upward_intent_v2");
+      expect(issued.sql).toContain("jg_upward_issuer_channel_v2");
+      expect(issued.sql).toContain("current_user=session_user");
+      expect(issued.sql).toContain("pg_catalog.pg_stat_ssl");
+      expect(issued.values[0]).toBe(nonce);
+      expect((execute.$queryRaw.mock.calls[0][0] as Prisma.Sql).sql).toContain("jg_execute_contract_direct_upward_v2");
+      issuer.$queryRaw.mockResolvedValueOnce([]);
+      await expect(authority!.execute(command)).rejects.toThrow("对上");
+      expect(runtime.$transaction).toHaveBeenCalledTimes(1);
+      expect(ordinary.$queryRaw).not.toHaveBeenCalled();
+      expect(mockPrisma.mock.calls.map(([options]) => options.datasources?.db?.url)).toEqual([dedicated("upward_issuer"), dedicated("upward_executor")]);
+    } finally { await module.close(); }
+    expect(issuer.$disconnect).toHaveBeenCalledTimes(1); expect(runtime.$disconnect).toHaveBeenCalledTimes(1);
+  });
+
 });

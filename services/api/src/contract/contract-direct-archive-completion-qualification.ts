@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { hasGeneratedUpwardOperatingInstallation } from "./contract-generated-upward-operating-installation";
 import { enabledDirectCompletionCatalog, enabledDirectGlobalCompletionBody,
@@ -48,6 +49,7 @@ export async function readDirectArchiveCompletionOid(tx: Prisma.TransactionClien
 }
 
 async function readCompletionCatalog(tx: Prisma.TransactionClient) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   return tx.$queryRaw<Array<{ binding: unknown; actual: unknown }>>(Prisma.sql`
     /* contract_direct_archive_completion_catalog_v1 */
     WITH registry AS (
@@ -80,13 +82,13 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
           'dispatchOid',prior.dispatch_oid::text,'dispatchSha',prior.dispatch_sha),
         'bindings',jsonb_build_object(
           'procedures',(SELECT jsonb_object_agg(w.key,(to_jsonb(p)-'prosrc')||jsonb_build_object(
-            'oid',p.oid::text,'sha256',encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')))
+            'oid',p.oid::text,'sha256',${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}))
             FROM watched_procs w JOIN pg_catalog.pg_proc p ON p.oid=w.oid),
           'registryTriggers',(SELECT jsonb_object_agg(tgname,oid::text) FROM watched_triggers)),
-        'enabledDirectCompletionQualified',${enabledDirectCompletionCatalog(Prisma.sql`c.relowner`, Prisma.sql`c.relnamespace`)},
+        'enabledDirectCompletionQualified',${enabledDirectCompletionCatalog(Prisma.sql`c.relowner`, Prisma.sql`c.relnamespace`, projection)},
         'generatedDispatchUsesOperatingSuccessor',EXISTS(SELECT 1 FROM pg_catalog.pg_proc p
           WHERE p.oid=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(text,boolean)')
-            AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IN (
+            AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} IN (
               'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f',
               'd3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4')),
         'generatedDispatchQualified',2=(SELECT count(*) FROM (VALUES
@@ -100,8 +102,8 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
           WHERE p.proowner=c.relowner AND p.pronamespace=c.relnamespace AND p.prokind='f'
             AND p.prorettype='pg_catalog.date'::regtype AND p.provolatile='v' AND p.proparallel='u'
             AND NOT p.prosecdef AND p.proconfig=ARRAY[h.path] AND NOT p.proisstrict AND NOT p.proretset
-            AND (encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=h.sha OR (h.qualified_acl
-              AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IN (
+            AND (${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=h.sha OR (h.qualified_acl
+              AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} IN (
                 'bd3a09f489d37ed5053ac86435053e593ffabd96aeebc9e94b30e335cbc9850f',
                 'd3c7e0f3c682d24a19135d4d838c7c94f884a87a4a855c34dee63e5a095bb4f4')))
             AND (NOT h.qualified_acl OR (
@@ -116,7 +118,7 @@ async function readCompletionCatalog(tx: Prisma.TransactionClient) {
             ('public.jg_assert_contract_direct_archive_write_profile_v1()','aefd46b1516b7905971112abbbbf795ad4560f74e975be3ee99f076f2ee93616'),
             ('public.jg_require_contract_direct_archive_transition_profile_v1()','45ea86eac1ba402cfe41b007f164bb876fa3749a0c10d164abfa436b1cba1b0b')
           ) helpers(signature,sha) JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(helpers.signature)
-          WHERE encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=helpers.sha
+          WHERE ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=helpers.sha
             AND p.proowner=c.relowner AND NOT p.prosecdef
             AND pg_catalog.has_function_privilege(current_user::regrole::oid,p.oid,'EXECUTE') IS FALSE),
         'registryAclQualified',NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault('r',c.relowner))) acl

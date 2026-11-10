@@ -58,3 +58,27 @@ export class ContractDirectArchiveRuntime implements OnApplicationShutdown {
     await Promise.all([...new Set([this.issuer, this.executor])].map(client => client?.$disconnect()));
   }
 }
+
+/** Q2's installed issuer binding requires logins disjoint from all outside logins. */
+@Injectable()
+export class ContractUpwardDirectArchiveRuntime implements OnApplicationShutdown {
+  readonly issuer?: PrismaClient;
+  readonly executor?: PrismaClient;
+
+  constructor() {
+    const ordinary = connection(process.env.DATABASE_URL);
+    const issuer = dedicatedConnection(process.env.UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL);
+    const executor = dedicatedConnection(process.env.UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL);
+    const outsideRoles = [connection(process.env.DIRECT_ARCHIVE_ISSUER_DATABASE_URL)?.role,
+      connection(process.env.DIRECT_ARCHIVE_RUNTIME_DATABASE_URL)?.role].filter(Boolean);
+    if (!ordinary || !issuer || !executor || new Set([ordinary.role, issuer.role, executor.role]).size !== 3
+      || [issuer, executor].some(target => outsideRoles.includes(target.role) || target.database !== ordinary.database
+        || target.url.hostname !== ordinary.url.hostname || (target.url.port || "5432") !== (ordinary.url.port || "5432"))) return;
+    this.issuer = new PrismaClient({ datasources: { db: { url: issuer.value } } });
+    this.executor = new PrismaClient({ datasources: { db: { url: executor.value } } });
+  }
+
+  async onApplicationShutdown() {
+    await Promise.all([...new Set([this.issuer, this.executor])].map(client => client?.$disconnect()));
+  }
+}

@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -82,6 +83,7 @@ export async function readDirectArchiveRetentionQualification(tx: Prisma.Transac
   preparation: { binding: Row; actual: Row } | null, anchor: Row) {
   try {
     if (!preparation) unavailable();
+    const projection = await discoverUpwardLegacyProjection(tx);
     const rows = await tx.$queryRaw<Array<{ binding: Row; actual: Row }>>(Prisma.sql`
       /* contract_direct_archive_retention_catalog_v1 */
       WITH installed AS (
@@ -144,7 +146,7 @@ export async function readDirectArchiveRetentionQualification(tx: Prisma.Transac
           'relations',(SELECT jsonb_object_agg(relname,oid::text) FROM selected_relations),
           'routines',(SELECT jsonb_object_agg(proname,jsonb_build_object(
             'oid',oid::text,'owner',proowner::text,'namespace',pronamespace::text,
-            'sha',encode(public.digest(convert_to(prosrc,'UTF8'),'sha256'),'hex'),
+            'sha',${qualifiedUpwardRoutineSha(projection, Prisma.sql`oid`, Prisma.sql`encode(public.digest(convert_to(prosrc,'UTF8'),'sha256'),'hex')`)},
             'language',lanname,'returnType',prorettype::text,'volatility',provolatile,'parallel',proparallel,
             'securityDefiner',prosecdef,'strict',proisstrict,'returnsSet',proretset,'configuration',proconfig,'acl',proacl,
             'noPublicExecute',NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(proacl,pg_catalog.acldefault('f',proowner))) acl WHERE acl.grantee=0)

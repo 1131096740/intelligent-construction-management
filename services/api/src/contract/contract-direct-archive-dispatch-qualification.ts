@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "./contract-upward-archive-catalog";
 import { directParentGuard, directVersionTransition, nativeDirectBodies, readDirectArchiveNativeAdmission } from "./contract-direct-archive-native-admission";
 import { hasGeneratedUpwardOperatingInstallation, upwardOperatingParentBody } from "./contract-generated-upward-operating-installation";
 import { qualifyUpwardPendingSave, UPWARD_SAVE_ROUTINE_BODIES } from "./contract-upward-pending-save-profile";
@@ -68,6 +69,7 @@ export async function readDirectArchiveDispatchOid(tx: Prisma.TransactionClient)
 }
 
 async function readCatalog(tx: Prisma.TransactionClient) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   return tx.$queryRaw<Array<{ binding: unknown; actual: unknown }>>(Prisma.sql`
     /* contract_direct_archive_dispatch_catalog_v1 */
     WITH registry AS (
@@ -113,7 +115,7 @@ async function readCatalog(tx: Prisma.TransactionClient) {
           'prepareOid',prior.prepare_oid::text,'prepareSha',prior.prepare_sha,'retentionOid',prior.retention_oid::text,'retentionSha',prior.retention_sha),
         'helpers',(SELECT jsonb_object_agg(h.signature,(to_jsonb(h)-ARRAY['signature','lanname','prosrc'])||
           jsonb_build_object('oid',h.oid::text,'proowner',h.proowner::text,'pronamespace',h.pronamespace::text,'prorettype',h.prorettype::text,
-            'language',h.lanname,'bodySha256',encode(public.digest(convert_to(h.prosrc,'UTF8'),'sha256'),'hex'))) FROM helper_rows h),
+            'language',h.lanname,'bodySha256',${qualifiedUpwardRoutineSha(projection, Prisma.sql`h.oid`, Prisma.sql`encode(public.digest(convert_to(h.prosrc,'UTF8'),'sha256'),'hex')`)})) FROM helper_rows h),
         'triggers',(SELECT jsonb_object_agg(t.tgname,to_jsonb(t)||jsonb_build_object(
           'oid',t.oid::text,'tgrelid',t.tgrelid::text,'tgfoid',t.tgfoid::text,'tgattr',t.tgattr::text,'tgargs',encode(t.tgargs,'hex'))) FROM watched_triggers t),
         'triggerCount',(SELECT count(*)::integer FROM watched_triggers),

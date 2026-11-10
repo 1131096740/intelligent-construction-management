@@ -1,9 +1,10 @@
+import { qualifiedUpwardRoutineSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 
 export const enabledDirectGlobalCompletionBody = "2750e0d605ebcfd1942cec9a4914a3d04c23e40d156b6e37baa6c426849e45fd";
 export const enabledDirectRetentionCompletionBody = "aef44aa0aa64a86f2253d8392aa624b082a84eb98579663c3890d878245fee8a";
 
-export function enabledDirectCompletionCatalog(owner: Prisma.Sql, namespace: Prisma.Sql) {
+export function enabledDirectCompletionCatalog(owner: Prisma.Sql, namespace: Prisma.Sql, projection: UpwardLegacyProjection | null = null) {
   return Prisma.sql`EXISTS(SELECT 1 FROM pg_catalog.pg_proc proof
     JOIN pg_catalog.pg_language l ON l.oid=proof.prolang AND l.lanname='plpgsql'
     JOIN pg_catalog.pg_proc v1 ON v1.oid=pg_catalog.to_regprocedure(
@@ -39,7 +40,7 @@ export function enabledDirectCompletionCatalog(owner: Prisma.Sql, namespace: Pri
           AND p.proowner=proof.proowner AND p.pronamespace=proof.pronamespace AND p.prokind='f'
           AND p.provolatile='v' AND p.proparallel='u' AND NOT p.prosecdef AND NOT p.proisstrict AND NOT p.proretset
           AND p.prorettype='pg_catalog.trigger'::regtype AND p.proconfig=ARRAY[x.path]
-          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=x.body
+          AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=x.body
         JOIN pg_catalog.pg_language lang ON lang.oid=p.prolang AND lang.lanname='plpgsql'
         JOIN pg_catalog.pg_trigger t ON t.tgfoid=p.oid AND t.tgrelid=pg_catalog.to_regclass(x.relation)
           AND t.tgname=x.hook AND t.tgtype=5 AND t.tgenabled='O' AND NOT t.tgisinternal

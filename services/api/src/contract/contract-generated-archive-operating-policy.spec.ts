@@ -247,7 +247,8 @@ describe("生成对上合同经营接线", () => {
   it("原键持久完成证据通过后才从逐源重放和项目期望事实排除对上", async () => {
     const input = fixture({ relationship: "upward" });
     const tx = {
-      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(input.archive) },
+      contractArchiveFile: { findFirst: jest.fn().mockImplementation(async ({ where }: { where: { archiveSource?: string } }) =>
+        where.archiveSource === "direct_signed" ? null : input.archive) },
       contractVersion: { findUnique: jest.fn().mockResolvedValue(input.version), findUniqueOrThrow: jest.fn().mockResolvedValue(input.version),
         findMany: jest.fn().mockResolvedValue([input.version]) },
       contract: { findFirst: jest.fn().mockResolvedValue(input.contract), findUniqueOrThrow: jest.fn().mockResolvedValue(input.contract),

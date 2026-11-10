@@ -1,7 +1,8 @@
+import { discoverUpwardLegacyProjection } from "./contract-upward-archive-catalog";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractArchiveEvidenceFile, type ContractArchiveFile, type ContractVersion } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
-import { generatedArchiveIngressCatalog, installedOriginalAppendBody } from "./contract-generated-archive-write-authority";
+import { generatedArchiveIngressCatalogFor, installedOriginalAppendBody } from "./contract-generated-archive-write-authority";
 
 type Row = Record<string, unknown>;
 const appendBody = "13b8c39ba62c7b1ffdb9c1bfd3effe7c640f1a84b00938c4a7b88a37015a3a23";
@@ -26,9 +27,10 @@ export function requiresGeneratedArchiveOriginals(version: ContractVersion, arch
 }
 
 async function readCatalog(tx: Prisma.TransactionClient) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   const rows = await tx.$queryRaw<Row[]>(Prisma.sql`
     /* contract_generated_archive_original_catalog_v1 */
-    WITH ingress AS (${generatedArchiveIngressCatalog}),
+    WITH ingress AS (${generatedArchiveIngressCatalogFor(projection)}),
     recipe(name,relation,fn,kind,deferred,sha,successor) AS (VALUES
       ('jg_generated_archive_original_append','public.jg_contract_generated_archive_original_v1',
         'public.jg_guard_generated_archive_original_v1()',31,FALSE,${appendBody},${installedOriginalAppendBody}),

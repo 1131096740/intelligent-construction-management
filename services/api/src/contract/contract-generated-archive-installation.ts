@@ -1,9 +1,10 @@
-import { generatedUpwardOperatingCatalog } from "./contract-generated-upward-operating-installation";
+import { discoverUpwardLegacyProjection } from "./contract-upward-archive-catalog";
+import { generatedUpwardOperatingCatalogFor } from "./contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import { readNativeGeneratedArchiveRequestBinding, readNativeGeneratedArchiveSealAuthority } from "./contract-generated-archive-proof-source";
-import { generatedArchiveIngressCatalog, installedCompletionGuardBody, readNativeGeneratedArchiveWriter } from "./contract-generated-archive-write-authority";
+import { generatedArchiveIngressCatalogFor, installedCompletionGuardBody, readNativeGeneratedArchiveWriter } from "./contract-generated-archive-write-authority";
 
 export type GeneratedArchiveSealFile = { fileId: string; mimeType: string; sizeBytes: number; contentSha256: string };
 
@@ -166,6 +167,7 @@ const requireCompletionBody = "1efefbd2aacc26f74f4dfccee0f6a29fec45b241beb9e3838
 
 /** Read the database-owned completion. The caller still checks current access and the full original evidence. */
 export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClient, archiveId: string) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   const [relation] = await tx.$queryRaw<{ relationOid: string | null }[]>(Prisma.sql`
     /* contract_generated_archive_completion_relation_v1 */
     SELECT pg_catalog.to_regclass('public.jg_contract_generated_archive_completion_v1')::pg_catalog.oid::text AS "relationOid"
@@ -175,7 +177,7 @@ export async function readGeneratedArchiveCompletion(tx: Prisma.TransactionClien
 
   const rows = await tx.$queryRaw<{ completion: unknown }[]>(Prisma.sql`
     /* contract_generated_archive_completion_read_v1 */
-    WITH ingress AS (${generatedArchiveIngressCatalog}), upward_operating AS (${generatedUpwardOperatingCatalog}),
+    WITH ingress AS (${generatedArchiveIngressCatalogFor(projection)}), upward_operating AS (${generatedUpwardOperatingCatalogFor(projection)}),
     recipe(fn, result_type, body, successor) AS (VALUES
       ('public.jg_capture_generated_archive_completion_v1(text)', 'pg_catalog.jsonb', ${captureCompletionBody}, NULL),
       ('public.jg_guard_generated_archive_completion_v1()', 'pg_catalog.trigger', ${guardCompletionBody}, ${installedCompletionGuardBody}),

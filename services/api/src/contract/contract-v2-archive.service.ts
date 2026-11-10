@@ -1,3 +1,4 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY, prepareUpwardDirectRegistration, type UpwardDirectArchiveAuthority } from "./contract-upward-direct-registration";
 import { assertNotDirectPendingVersion } from "./contract-direct-pending-policy";
 import { assertDirectPendingSourceQualification, hasDirectSigningInput } from "./contract-direct-pending-source";
 import { readDirectPendingInput } from "./contract-direct-pending-save";
@@ -47,7 +48,8 @@ export class ContractV2ArchiveService {
   constructor(private readonly prisma: PrismaService, private readonly files: FileService,
     private readonly audit: AuditService, private readonly activation: ContractVersionActivationService,
     @Optional() @Inject(GENERATED_ARCHIVE_PREPARATION_READER) private readonly preparationReader?: GeneratedArchivePreparationReader,
-    @Optional() @Inject(DIRECT_ARCHIVE_EXECUTOR) private readonly directArchiveExecutor?: DirectArchiveExecutor) {}
+    @Optional() @Inject(DIRECT_ARCHIVE_EXECUTOR) private readonly directArchiveExecutor?: DirectArchiveExecutor,
+    @Optional() @Inject(UPWARD_DIRECT_ARCHIVE_AUTHORITY) private readonly upwardDirectAuthority?: UpwardDirectArchiveAuthority) {}
 
   async archive(versionId: string, actor: string, input: ArchiveSignedContractV2Dto) {
     const requestSha256 = archiveRequestSha(versionId, actor, input);
@@ -194,6 +196,10 @@ export class ContractV2ArchiveService {
 
   async registerDirect(versionId: string, actor: string, input: RegisterDirectSignedContractV2Dto) {
     const prepared = await this.prisma.$transaction(async tx => {
+      const target = await tx.contractVersion.findUnique({ where: { id: versionId } });
+      if (object(object(target?.draftData).directSigningInput).relationship === "upward") {
+        return prepareUpwardDirectRegistration(tx, versionId, actor, input, this.upwardDirectAuthority);
+      }
       const located = await tx.contractVersion.findUnique({ where: { id: versionId }, select: { contractId: true } });
       if (!located) throw new ForbiddenException("只有当前合同员经办人可以登记本合同");
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM public."Contract" WHERE "id" = ${located.contractId} FOR UPDATE`);

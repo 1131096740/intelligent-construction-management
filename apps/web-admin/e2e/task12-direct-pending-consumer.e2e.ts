@@ -69,6 +69,9 @@ async function openCreate(page: Page, baseURL: string, ready = false, upward: "h
   const options = { failNextUpload: false, loseNextSave: false, lookupUnknown: false, lookupWrongFingerprint: false,
     saveResponseHold: null as Promise<void> | null, lookupResponseHold: null as Promise<void> | null, includeOtherDraft: false,
     qualifySavedInputs: false,
+    upwardRegistration: false,
+    outsideRegistration: false,
+    savedMimeOverride: null as string | null,
     upwardCompanyVersionChanged: false,
     upwardWrongReceiptOrder: false,
     invalidateSavedInputs: false, abortCreatedResponse: false, acquireCapabilityHold: null as Promise<void> | null,
@@ -81,6 +84,7 @@ async function openCreate(page: Page, baseURL: string, ready = false, upward: "h
     latestRevisionOverride: null as number | null, advanceAfterSave: false, advanceBeforeFreshRead: false,
     initialOriginalNumber: null as string | null,
     readState: null as "invalid" | "unavailable" | "wrong-pair" | "lease-held" | null };
+  const uploadedMimes = new Map<string, string>();
   const lookups: string[] = [];
   const leaseAcquisitions: string[] = [];
   const leaseReleases: Array<{ path: string; actor: string; token: string }> = [];
@@ -196,8 +200,16 @@ async function openCreate(page: Page, baseURL: string, ready = false, upward: "h
         expectMockHttpFailure(page.context(), request.url(), 503);
         return json({ message: "原件上传暂不可用" }, 503);
       }
-      return json({ id: file.type === "application/pdf" ? "uploaded-pdf" : "uploaded-photo", mimeType: file.type,
-        sizeBytes: file.size, originalName: file.name }, 201);
+      const fileId = file.type === "application/pdf"
+        ? (options.upwardRegistration || options.outsideRegistration ? "11111111-1111-4111-8111-111111111111" : "uploaded-pdf")
+        : (options.upwardRegistration || options.outsideRegistration ? "22222222-2222-4222-8222-222222222222" : "uploaded-photo");
+      uploadedMimes.set(fileId, file.type);
+      return json({ id: fileId, mimeType: file.type,
+        // WebKit's intercepted multipart snapshot omits file bytes. These exact
+        // fixture filenames carry fixed synthetic bytes; API tests independently verify storage bytes.
+        sizeBytes: file.size === 0 && ["对上原件.pdf", "对上照片.png", "签章.pdf", "签章照片.png"].includes(file.name)
+          ? Buffer.byteLength(file.type === "application/pdf" ? "%PDF-1.4 synthetic" : "synthetic photo") : file.size,
+        originalName: file.name }, 201);
     }
     if (method === "GET" && path === "/api/contracts/create-capability" && new URL(request.url()).searchParams.get("projectId") === project.id) {
       createCapabilityActors.push(request.headers().authorization);
@@ -288,10 +300,11 @@ async function openCreate(page: Page, baseURL: string, ready = false, upward: "h
           paymentTerms: { id: "fixed-payment-terms", versionNo: 1, ...input.paymentTerms } },
         signedFiles: input.attachments.map((item: { fileId: string; displayOrder: number }) => ({
           fileId: item.fileId, displayOrder: item.displayOrder,
-          mimeType: item.fileId === "uploaded-pdf" ? "application/pdf" : "image/png", sizeBytes: 10, contentSha256: "a".repeat(64)
+          mimeType: options.savedMimeOverride ?? uploadedMimes.get(item.fileId) ?? "application/pdf", sizeBytes: 10, contentSha256: "a".repeat(64)
         }))
       } : null;
       if (upward) {
+        workbench.directPendingCapabilities.registrationEnabled = options.upwardRegistration;
         persisted.directSigningInput.companyParticipationId = "upward-participation";
         subjectOptions.draftRevision = workbench.version.draftRevision;
         workbench.directPendingInput = upwardSource(workbench.version.draftRevision, {
@@ -303,9 +316,12 @@ async function openCreate(page: Page, baseURL: string, ready = false, upward: "h
             company: { projectId: project.id, position: persisted.directSigningInput.companyParty, companyEntityId, companyEntityVersionId,
               joinedCompanyEntityVersionId: "upward-company-joined", participationId: "upward-participation" } },
           signedFiles: input.attachments.map((item: { fileId: string; displayOrder: number }) => ({
-            ...item, mimeType: item.fileId === "uploaded-pdf" ? "application/pdf" : "image/png", sizeBytes: 10, contentSha256: "a".repeat(64) }))
+            ...item, mimeType: options.savedMimeOverride ?? uploadedMimes.get(item.fileId) ?? "application/pdf", sizeBytes: 10, contentSha256: "a".repeat(64) }))
         });
-      } else workbench.directPendingInput = sourceResult(workbench.version.draftRevision, qualifiedInput);
+      } else {
+        workbench.directPendingInput = sourceResult(workbench.version.draftRevision, qualifiedInput);
+        workbench.directPendingCapabilities.registrationEnabled = options.outsideRegistration;
+      }
       if (options.invalidateSavedInputs) workbench.directPendingInput.state = "invalid";
       savedReceipt = { contractVersionId: versionId, draftRevision: workbench.version.draftRevision, serverRevision: workbench.version.draftRevision,
         originalSignedNumber: workbench.version.originalSignedNumber, directSigningInput: workbench.directPendingInput,
@@ -390,8 +406,9 @@ test("对上能力关闭时不能提交直签创建", async ({ page, baseURL }) 
   expect(creationRequests).toEqual([]);
 });
 
-async function fillUpwardDraft(page: Page, baseURL: string) {
+async function fillUpwardDraft(page: Page, baseURL: string, registration = false) {
   const fixture = await openCreate(page, baseURL, true, "ready");
+  fixture.options.upwardRegistration = registration;
   await selectUpwardRelationship(page);
   const direct = page.getByRole("radio", { name: "已签合同资料" });
   await expect(direct).toBeEnabled();
@@ -429,8 +446,9 @@ test("对上真实两方位置和有序原件随草稿保存，正式登记保�
     parties: [{ roleKey: "party_b", displayOrder: 0, businessPartyVersionId: "upward-enterprise-version" }],
     attachments: [{ fileId: "uploaded-photo", displayOrder: 0 }, { fileId: "uploaded-pdf", displayOrder: 1 }] });
   expect(saves[0]?.draft).not.toHaveProperty("originalSignedNumber");
-  await expect(page.getByText("资料仅保存为草稿，后续登记尚未开放。", { exact: true })).toBeVisible();
+  await expect(page.getByText("资料仅保存为草稿，当前尚不能正式登记。", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /提交|用印|归档|入账/u })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "正式登记", exact: true })).toHaveCount(0);
 });
 
 test("对上公司版本失效时保存前拦截并保留本机资料", async ({ page, baseURL }) => {
@@ -564,7 +582,7 @@ test("原件上传失败可用原尝试续办，并保存实际主体版本和�
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page.getByText("草稿已保存，资料齐备", { exact: true })).toBeVisible();
   await expect(page.getByText("未注明编号", { exact: true })).toBeVisible();
-  await expect(page.getByText("资料仅保存为草稿，后续登记尚未开放。", { exact: true })).toBeVisible();
+  await expect(page.getByText("资料仅保存为草稿，当前尚不能正式登记。", { exact: true })).toBeVisible();
   for (const action of ["登记合同", "复制", "生成合同", "提交审批", "清理", "归档"]) {
     await expect(page.getByRole("button", { name: action, exact: true })).toHaveCount(0);
   }
@@ -1003,3 +1021,95 @@ test("当前会话初读和刷新均返回401时跳登录并保留回跳版本",
   expect(delayedReadActors).toEqual(["Bearer direct-owner"]);
   expect(refreshActors).toEqual(["direct-owner"]);
 });
+
+test("对上Q2有序照片和PDF正式登记，响应未知后查询同一原键", async ({ page, baseURL }) => {
+  await fillUpwardDraft(page, baseURL!, true);
+  const requests: Array<Record<string, unknown>> = [], queries: string[] = [];
+  let committed: Record<string, unknown> | null = null;
+  await page.route(`**/api/contracts/${versionId}/signed-archive`, async route => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    requests.push(body);
+    const fields = ["contract-direct-archive-request-v1", "2", "direct_signed", contractId, versionId, "direct-owner",
+      body.idempotencyKey, String(body.expectedDraftRevision), body.expectedInputSha256, "2", ...(body.fileIds as string[]), "true"].map(String);
+    const hash = createHash("sha256");
+    for (const value of fields) hash.update(`${Buffer.byteLength(value)}:`).update(value);
+    committed = { status: "archived", requestSha256: hash.digest("hex"), intent: body,
+      result: { archiveId: "33333333-3333-4333-8333-333333333333", contractVersionId: versionId, status: "effective", fileIds: body.fileIds } };
+    expectMockHttpFailure(page.context(), route.request().url(), 503);
+    return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "登记响应暂未确认，请查询原请求" }) });
+  });
+  await page.route(`**/api/contracts/${versionId}/archive-requests/*`, async route => {
+    queries.push(new URL(route.request().url()).pathname.split("/").at(-1)!);
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(queries.length === 1 ? { status: "unknown" } : committed ?? { status: "unknown" }) });
+  });
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  const register = page.getByRole("button", { name: "正式登记", exact: true });
+  await expect(register).toBeEnabled();
+  await register.click();
+  await expect(page.getByText("请确认已保存的签章原件与纸面合同一致。正式登记完成后合同即生效。", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "确认登记", exact: true }).click();
+  await expect(page.getByRole("button", { name: "查询原登记结果", exact: true })).toBeEnabled();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ archiveProtocolVersion: 2, archiveSource: "direct_signed", expectedDraftRevision: 2,
+    fileIds: ["22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111"], confirmedMatchingSignedDocument: true });
+  await page.getByRole("button", { name: "查询原登记结果", exact: true }).click();
+  await expect(page).toHaveURL(new URL(`/合同管理/${contractId}?versionId=${versionId}`, baseURL).href);
+  expect(queries).toEqual([requests[0]!.idempotencyKey, requests[0]!.idempotencyKey]);
+  expect(requests).toHaveLength(1);
+});
+
+
+for (const mimeType of ["image/jpeg", "image/png", "image/gif"]) {
+  test(`表外照片原件登记坐标 ${mimeType}`, async ({ page, baseURL }) => {
+    const { options } = await openCreate(page, baseURL!, true);
+    options.outsideRegistration = true;
+    options.qualifySavedInputs = true;
+    // An untrusted source MIME must suppress registration even when capability is true.
+    if (mimeType === "image/gif") options.savedMimeOverride = mimeType;
+    await page.goto(workbenchRoute);
+    await page.getByRole("textbox", { name: "签订日期（选填）", exact: true }).pressSequentially("2026-11-08");
+    await page.getByRole("button", { name: "查找单位", exact: true }).click();
+    await page.getByPlaceholder("选择施工企业").click();
+    await partyOption(page, "真实施工企业").click();
+    await page.getByPlaceholder("选择施工企业资料版本").click();
+    await partyOption(page, "真实施工企业 · 版本 1").click();
+    await page.getByPlaceholder("选择相对方").click();
+    await partyOption(page, "真实相对方").click();
+    await page.getByPlaceholder("选择相对方资料版本").click();
+    await partyOption(page, "真实相对方 · 版本 2").click();
+    await page.getByLabel("上传签章原件").setInputFiles({ name: "签章照片.png",
+      mimeType: mimeType === "image/gif" ? "image/png" : mimeType, buffer: Buffer.from("synthetic photo") });
+    await expect(page.getByText("签章照片.png", { exact: true })).toBeVisible();
+    const requests: Array<Record<string, unknown>> = [];
+    let receipt: Record<string, unknown> | null = null;
+    await page.route(`**/api/contracts/${versionId}/signed-archive`, async route => {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      requests.push(body);
+      const parts = ["contract-direct-archive-request-v1", "2", "direct_signed", contractId, versionId, "direct-owner",
+        body.idempotencyKey, String(body.expectedDraftRevision), body.expectedInputSha256, "1", ...(body.fileIds as string[]), "true"].map(String);
+      const hash = createHash("sha256");
+      for (const value of parts) hash.update(`${Buffer.byteLength(value)}:`).update(value);
+      const result = { archiveId: "33333333-3333-4333-8333-333333333333", contractVersionId: versionId, status: "effective",
+        fileIds: ["22222222-2222-4222-8222-222222222222"] };
+      receipt = { status: "archived", requestSha256: hash.digest("hex"), intent: body, result };
+      return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(result) });
+    });
+    await page.route(`**/api/contracts/${versionId}/archive-requests/*`, async route =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(receipt ?? { status: "unknown" }) }));
+    await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+    await expect(page.getByText("草稿已保存，资料齐备", { exact: true })).toBeVisible();
+    const register = page.getByRole("button", { name: "正式登记", exact: true });
+    if (mimeType === "image/gif") {
+      await expect(register).toHaveCount(0);
+      expect(requests).toHaveLength(0);
+      return;
+    }
+    await expect(register).toBeEnabled();
+    await register.click();
+    await page.getByRole("button", { name: "确认登记", exact: true }).click();
+    await expect(page).toHaveURL(new URL(`/合同管理/${contractId}?versionId=${versionId}`, baseURL).href);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ archiveProtocolVersion: 2, archiveSource: "direct_signed",
+      expectedDraftRevision: 2, fileIds: ["22222222-2222-4222-8222-222222222222"], confirmedMatchingSignedDocument: true });
+  });
+}

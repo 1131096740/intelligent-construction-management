@@ -1,3 +1,4 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY, type UpwardDirectArchiveAuthority } from "../contract/contract-upward-direct-registration";
 import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "../contract/contract-generated-upward-operating";
 import { nativeGeneratedUpwardOperatingActivation } from "../contract/contract-generated-upward-operating-installation";
 import { ServiceUnavailableException } from "@nestjs/common";
@@ -398,6 +399,7 @@ export class TemplateSyntheticStore {
     $queryRaw: async (queryInput: Prisma.Sql | TemplateStringsArray, ...bindings: unknown[]): Promise<Row[]> => {
       const query = "strings" in queryInput ? queryInput : Prisma.sql(queryInput, ...bindings);
       const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
+      if (text.startsWith("/* contract_upward_archive_projection_probe_v2 */")) return [{ status: "absent", projectionOid: null, closureOid: null }];
       if (text === 'UPDATE public."ContractVersion" SET "originalSignedNumber" = ? WHERE "id" = ? AND "contractId" = ? RETURNING "id", "originalSignedNumber"') {
         if (query.values.length !== 3 || (query.values[0] !== null && typeof query.values[0] !== "string") || typeof query.values[1] !== "string" || typeof query.values[2] !== "string") throw new Error("合成原号写入拒绝未知参数");
         const row = await this.table("contractVersion").findFirst({ where: { id: query.values[1], contractId: query.values[2] } });
@@ -1002,6 +1004,7 @@ export function syntheticWordSource(includeSignatures = false) {
 }
 
 export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean;
+  upwardDirectArchiveAuthority?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => UpwardDirectArchiveAuthority;
   directArchiveExecutor?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => DirectArchiveExecutor } = {}) {
   const store = new TemplateSyntheticStore();
   const actors = [
@@ -1052,6 +1055,7 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
     { provide: PrivateFileStorage, useValue: storage }, MeService, ProjectVisibilityService, ContractReadService,
     ...(options.generatedArchivePreparation ? [{ provide: GENERATED_ARCHIVE_PREPARATION_READER, useValue: storage }] : []),
+    ...(options.upwardDirectArchiveAuthority ? [{ provide: UPWARD_DIRECT_ARCHIVE_AUTHORITY, useValue: options.upwardDirectArchiveAuthority(store, storage) }] : []),
     ...(options.directArchiveExecutor ? [{ provide: DIRECT_ARCHIVE_EXECUTOR, useValue: options.directArchiveExecutor(store, storage) }] : []),
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     { provide: FileService, useFactory: (moduleRef: ModuleRef) => new FileService(prisma, audit, storage, undefined, undefined, moduleRef), inject: [ModuleRef] },
@@ -1059,7 +1063,7 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
     { provide: ContractNegotiationService, useFactory: (files: FileService) => options.realNegotiationReads ? new ContractNegotiationService(prisma, audit, files, auth) : {}, inject: [FileService] }, { provide: AuthService, useValue: auth },
     LayoutTemplateService, ContractTemplateService, { provide: ContractScenarioService, useValue: {} },
     ...(options.draftWorkbench ? [
-      { provide: ContractDraftAggregateService, useFactory: (files: FileService, executor?: DirectArchiveExecutor) => new ContractDraftAggregateService(prisma, new ContractWorkbenchService(prisma, audit, new ContractReadinessService(prisma)), new ContractBillService(prisma, audit), new BusinessPartyService(prisma, audit), files, audit, executor), inject: [FileService, { token: DIRECT_ARCHIVE_EXECUTOR, optional: true }] },
+      { provide: ContractDraftAggregateService, useFactory: (files: FileService, executor?: DirectArchiveExecutor, upward?: UpwardDirectArchiveAuthority) => new ContractDraftAggregateService(prisma, new ContractWorkbenchService(prisma, audit, new ContractReadinessService(prisma)), new ContractBillService(prisma, audit), new BusinessPartyService(prisma, audit), files, audit, executor, upward), inject: [FileService, { token: DIRECT_ARCHIVE_EXECUTOR, optional: true }, { token: UPWARD_DIRECT_ARCHIVE_AUTHORITY, optional: true }] },
       { provide: ContractDraftEditLeaseService, useFactory: () => new ContractDraftEditLeaseService(prisma, auth, audit) },
       // Real creation and read-only project choices join the same guarded workbench seam.
       { provide: ContractFormalFileService, useFactory: (files: FileService) => new ContractFormalFileService(prisma, audit, files), inject: [FileService] },

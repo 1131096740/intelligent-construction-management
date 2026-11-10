@@ -1,6 +1,8 @@
+import { UPWARD_DIRECT_ARCHIVE_AUTHORITY } from "./contract-upward-direct-registration";
+import { nativeUpwardDirectArchiveAuthority } from "./contract-upward-direct-archive-native";
 import { DIRECT_ARCHIVE_EXECUTOR, DIRECT_ARCHIVE_ISSUER_CLIENT, DIRECT_ARCHIVE_RUNTIME_CLIENT,
   nativeDirectArchiveExecutor, type DirectArchiveRuntimeClient, type DirectArchiveSqlClient } from "./contract-direct-archive-executor";
-import { ContractDirectArchiveRuntime } from "./contract-direct-archive-runtime";
+import { ContractDirectArchiveRuntime, ContractUpwardDirectArchiveRuntime } from "./contract-direct-archive-runtime";
 import { GENERATED_UPWARD_OPERATING_ACTIVATION } from "./contract-generated-upward-operating";
 import { nativeGeneratedUpwardOperatingActivation } from "./contract-generated-upward-operating-installation";
 import { GENERATED_ARCHIVE_PREPARATION_READER } from "./contract-generated-archive-preparation";
@@ -52,6 +54,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     ContractV2ArchiveService,
     { provide: GENERATED_ARCHIVE_PREPARATION_READER, useExisting: PrivateFileStorage },
     ContractDirectArchiveRuntime,
+    ContractUpwardDirectArchiveRuntime,
     {
       provide: DIRECT_ARCHIVE_ISSUER_CLIENT,
       inject: [ContractDirectArchiveRuntime],
@@ -69,6 +72,13 @@ import { ContractVersionActivationService } from "./contract-version-activation.
       useFactory: (storage: PrivateFileStorage, issuer?: DirectArchiveSqlClient, runtime?: DirectArchiveRuntimeClient) =>
         issuer && runtime && !Object.is(issuer, runtime) ? nativeDirectArchiveExecutor(storage, issuer, runtime) : undefined
     },
+    {
+      provide: UPWARD_DIRECT_ARCHIVE_AUTHORITY,
+      inject: [PrivateFileStorage, ContractUpwardDirectArchiveRuntime],
+      useFactory: (storage: PrivateFileStorage, runtime: ContractUpwardDirectArchiveRuntime) =>
+        runtime.issuer && runtime.executor && !Object.is(runtime.issuer, runtime.executor)
+          ? nativeUpwardDirectArchiveAuthority(storage, runtime.issuer, runtime.executor) : undefined
+    },
     ContractStatusService,
     ContractReadService,
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
@@ -80,6 +90,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     { provide: GENERATED_UPWARD_OPERATING_ACTIVATION, useValue: nativeGeneratedUpwardOperatingActivation }
   ],
   exports: [
+    UPWARD_DIRECT_ARCHIVE_AUTHORITY,
     DIRECT_ARCHIVE_EXECUTOR,
     ContractService,
     ContractV2SubmissionService,

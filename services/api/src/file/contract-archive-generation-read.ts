@@ -1,3 +1,6 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha } from "../contract/contract-upward-archive-catalog";
+import { usesUpwardDirectArchive } from "../contract/contract-upward-direct-registration";
+import { readUpwardDirectArchiveProof } from "../contract/contract-upward-direct-archive-native";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type ContractArchiveEvidenceFile, type ContractArchiveFile, type FileObject } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -15,6 +18,12 @@ function unavailable(): never {
 }
 
 async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, anchor: Row, executorOwnerOid?: string) {
+  const projection = await discoverUpwardLegacyProjection(tx);
+  const generationSignature = "public.jg_require_contract_direct_archive_generations_v1()";
+  const qualifiedGeneration = projection?.routines.find(item => item.signature === generationSignature
+    && item.beforeSha256 === "5b6ad408598dbde8798f62fa3ed3ea94d32a96faa2b64f3473112df7e2238a35");
+  const generationBody = qualifiedGeneration ? Prisma.sql`${qualifiedGeneration.beforeSha256}`
+    : Prisma.raw("'f258feb6ebac8a63d654ebd6f98557a7b5f88c67f982613002e234dffcbd503b'");
   const rows = await tx.$queryRaw<Row[]>(Prisma.sql`
     /* contract_direct_archive_generation_catalog_v1 */
     WITH recipe(name,signature,sha,volatility,result,strict,readable) AS (VALUES
@@ -25,7 +34,7 @@ async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, 
       ('jg_read_contract_direct_archive_generations_v1','public.jg_read_contract_direct_archive_generations_v1(text)',
         '8b0a12bcc9694ff1170668eea06731ad8153faf07bed5b94f620c718f7d38622','s','pg_catalog.jsonb',true,true),
       ('jg_require_contract_direct_archive_generations_v1','public.jg_require_contract_direct_archive_generations_v1()',
-        'f258feb6ebac8a63d654ebd6f98557a7b5f88c67f982613002e234dffcbd503b','v','pg_catalog.trigger',false,false)
+        ${generationBody},'v','pg_catalog.trigger',false,false)
     ), routines AS (
       SELECT p.*,r.signature,r.sha,r.volatility,r.result,r.strict,r.readable,l.lanname
       FROM recipe r JOIN pg_catalog.pg_proc p ON p.proname=r.name
@@ -71,7 +80,8 @@ async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, 
           OR p.proowner<>b."anchorOwnerOid" OR p.prokind<>'f' OR p.prosecdef OR p.proretset OR p.proparallel<>'u' OR p.lanname<>'plpgsql'
           OR p.prorettype IS DISTINCT FROM pg_catalog.to_regtype(p.result)::oid OR p.provolatile::text<>p.volatility
           OR p.proisstrict IS DISTINCT FROM p.strict OR p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp']
-          OR encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') IS DISTINCT FROM p.sha
+          OR ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} IS DISTINCT FROM p.sha${qualifiedGeneration ? Prisma.sql` OR (p.signature=${generationSignature}
+            AND p.oid IS DISTINCT FROM ${qualifiedGeneration.oid}::oid)` : Prisma.empty}
           OR pg_catalog.has_function_privilege(b."applicationRoleOid",p.oid,'EXECUTE') IS DISTINCT FROM p.readable
           OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
             WHERE acl.grantor<>p.proowner OR (acl.grantee<>p.proowner AND
@@ -96,7 +106,7 @@ async function readCatalog(tx: Prisma.TransactionClient, completionOid: string, 
   if (!row || row.qualified !== true || row.completionOid !== completionOid
     || typeof row.relationOid !== "string" || !/^[1-9][0-9]{0,9}$/u.test(row.relationOid)
     || !(["databaseOid","sessionRoleOid","currentRoleOid","backendPid","transactionId"] as const).every(key => row[key] === anchor[key])) unavailable();
-  return row;
+  return projection ? { ...row, upwardProjection: projection } : row;
 }
 
 export function assertDirectArchiveOriginals(value: unknown) {
@@ -118,6 +128,9 @@ export async function readDirectArchiveGenerations(tx: Prisma.TransactionClient,
   try {
     if (parent.archiveProtocolVersion !== 2 || parent.archiveSource !== "direct_signed" || parent.status !== "confirmed"
       || typeof parent.authoritySha256 !== "string" || !/^[a-f0-9]{64}$/u.test(parent.authoritySha256)) unavailable();
+    if (usesUpwardDirectArchive(parent)) {
+      return assertDirectArchiveOriginals((await readUpwardDirectArchiveProof(tx, parent)).originals);
+    }
     if (usesDirectOutsideOperatingProof(parent)) {
       return assertDirectArchiveOriginals((await readDirectOutsideOperatingProof(tx, parent)).originals);
     }

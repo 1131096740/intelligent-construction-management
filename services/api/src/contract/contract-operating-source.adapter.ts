@@ -1,3 +1,4 @@
+import { assertUpwardDirectArchivePersistentProof } from "./contract-upward-direct-archive-proof";
 import { economicExcludedAt, economicExcludedYuanAt } from "../contract-ledger/contract-economic-coverage";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -35,6 +36,11 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const version = await tx.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
     const contract = await tx.contract.findUniqueOrThrow({ where: { id: version.contractId } });
     if (contract.projectId !== projectId || !version.effectiveAt) throw new BadRequestException("合同尚未正式生效");
+    if (version.numericProtocolVersion === 2 && version.signingSubjectType === "upward") {
+      const direct = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
+        archiveProtocolVersion: 2, archiveSource: "direct_signed", status: "confirmed" } });
+      if (direct) { await assertUpwardDirectArchivePersistentProof(tx, contract, version, direct); return null; }
+    }
     if (version.numericProtocolVersion === 2 && (version.signingSubjectType === "upward" || version.signingSubjectType === "affiliate")) {
       const archive = await tx.contractArchiveFile.findFirst({ where: { contractVersionId: version.id,
         archiveProtocolVersion: 2, archiveSource: "generated_approval", status: "confirmed" } });

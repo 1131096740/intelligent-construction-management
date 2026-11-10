@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha, qualifiedUpwardConstraintOid, qualifiedUpwardConstraintSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -28,7 +29,7 @@ function isOid(value: unknown): boolean {
   return typeof value === "string" && /^[1-9][0-9]*$/u.test(value) && BigInt(value) <= 4294967295n;
 }
 
-async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: Record<string, unknown>) {
+async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: Record<string, unknown>, projection: UpwardLegacyProjection | null) {
   const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
     /* contract_generated_upward_submission_catalog_v1 */
     WITH proof AS (
@@ -65,9 +66,9 @@ async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: R
         (b."subjectConstraintOid",'ContractVersion_signing_subject_check',b.subject_sha),
         (b."upwardConstraintOid",'ContractVersion_upward_draft_source_check',b."upwardConstraintSha256")
       ) AS wanted(oid,name,sha)
-        JOIN pg_catalog.pg_constraint c ON c.oid=wanted.oid AND c.conname=wanted.name
+        JOIN pg_catalog.pg_constraint c ON c.oid=${qualifiedUpwardConstraintOid(projection, Prisma.sql`wanted.oid`)} AND c.conname=wanted.name
           AND c.conrelid='public."ContractVersion"'::regclass AND c.contype='c' AND c.convalidated AND c.conislocal
-          AND encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(c.oid,false),'UTF8'),'sha256'),'hex')=wanted.sha
+          AND ${qualifiedUpwardConstraintSha(projection, Prisma.sql`c.oid`, Prisma.sql`encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(c.oid,false),'UTF8'),'sha256'),'hex')`)}=wanted.sha
         WHERE wanted.name='ContractVersion_signing_subject_check' OR b.completion_oid IS NULL)
         =CASE WHEN b.completion_oid IS NULL THEN 2 ELSE 1 END
       AND pg_catalog.has_table_privilege(b."applicationRoleOid",b.successor_oid,'SELECT')
@@ -107,7 +108,7 @@ async function qualifyGeneratedSuccessor(tx: Prisma.TransactionClient, direct: R
     return result;
   }
   if (!isOid(result.completionOid) || result.completionReadable !== true) throw unavailable();
-  return { ...result, sealCompletion: await qualifySealCompletionSuccessor(tx, result) };
+  return { ...result, sealCompletion: await qualifySealCompletionSuccessor(tx, result, projection) };
 }
 
 async function qualifyArchiveTransitionSuccessor(tx: Prisma.TransactionClient, submission: Record<string, unknown>) {
@@ -177,7 +178,7 @@ async function qualifyArchiveTransitionSuccessor(tx: Prisma.TransactionClient, s
   return result;
 }
 
-async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, submission: Record<string, unknown>) {
+async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, submission: Record<string, unknown>, projection: UpwardLegacyProjection | null) {
   const archiveTransition = await qualifyArchiveTransitionSuccessor(tx, submission);
   const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
     /* contract_generated_upward_seal_completion_catalog_v1 */
@@ -209,10 +210,10 @@ async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, subm
       b."taskTriggerOid"::text AS "taskTriggerOid", b."completionTriggerOid"::text AS "completionTriggerOid",
       b."upwardConstraintOid"<>b.old_constraint_oid AND b."upwardConstraintSha256"<>b.old_constraint_sha
       AND EXISTS(SELECT 1 FROM pg_catalog.pg_constraint c
-        WHERE c.oid=COALESCE(${archiveTransition?.constraintOid ?? null}::pg_catalog.oid,b."upwardConstraintOid")
+        WHERE c.oid=${qualifiedUpwardConstraintOid(projection, Prisma.sql`COALESCE(${archiveTransition?.constraintOid ?? null}::pg_catalog.oid,b."upwardConstraintOid")`)}
         AND c.conrelid='public."ContractVersion"'::regclass AND c.contype='c' AND c.convalidated AND c.conislocal
         AND c.conname='ContractVersion_upward_draft_source_check'
-        AND encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(c.oid,false),'UTF8'),'sha256'),'hex')=
+        AND ${qualifiedUpwardConstraintSha(projection, Prisma.sql`c.oid`, Prisma.sql`encode(public.digest(convert_to(pg_catalog.pg_get_constraintdef(c.oid,false),'UTF8'),'sha256'),'hex')`)}=
           COALESCE(${archiveTransition?.constraintSha256 ?? null}::pg_catalog.text,b."upwardConstraintSha256"))
       AND EXISTS(SELECT 1 FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
         WHERE c.oid=b.completion_oid AND a.grantee=b."applicationRoleOid" AND a.grantor=b."ownerOid"
@@ -241,7 +242,7 @@ async function qualifySealCompletionSuccessor(tx: Prisma.TransactionClient, subm
           AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
           AND p.oid=CASE WHEN wanted.oid IS NULL THEN pg_catalog.to_regprocedure('public.jg_guard_generated_upward_seal_binding_v1()')::oid
                          ELSE b."guardOid" END
-          AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=
+          AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=
             CASE WHEN wanted.oid IS NULL THEN ${sealCompletionBindingBody}
               ELSE ${archiveTransition ? archiveTransitionGuardBody : sealCompletionGuardBody} END
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
@@ -268,6 +269,7 @@ export async function qualifyUpwardPendingSave(
   tx: Prisma.TransactionClient
 ): Promise<Record<string, unknown> & { generatedSuccessor?: Record<string, unknown> }> {
   try {
+    const projection = await discoverUpwardLegacyProjection(tx);
     const exclusiveDefinitions = DIRECT_PENDING_DB_RECIPE.triggers.find(trigger =>
       trigger.name === "jg_direct_pending_attachment_exclusive")?.definitions;
     if (!exclusiveDefinitions?.length) throw unavailable();
@@ -296,7 +298,7 @@ export async function qualifyUpwardPendingSave(
         WHERE b."protocolVersion"=1 AND b."applicationRoleOid"=current_user::regrole::oid
           AND b."applicationRoleOid"=session_user::regrole::oid AND b."namespaceOid"=pg_catalog.to_regnamespace('public')
       ), routines AS (
-        SELECT e.role,p.oid,encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex') AS body
+        SELECT e.role,p.oid,${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)} AS body
         FROM scoped b CROSS JOIN expected e
         JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(e.signature)
         JOIN pg_catalog.pg_language l ON l.oid=p.prolang AND l.lanname='plpgsql'
@@ -379,6 +381,9 @@ export async function qualifyUpwardPendingSave(
     `);
     const result = rows.length === 1 ? rows[0] : null;
     const hooks = result?.triggerOids;
+    const qualifiedSlot = projection?.routines.find(item => item.signature === "public.jg_guard_contract_direct_archive_slot_v1()"
+      && item.oid === result?.slotRoutineOid && item.beforeSha256 === "99d80f7a4bb9105acda415aa7cedd6dba0266849cb9b945cb5e7b0aaf6885164");
+    const expectedBodies = qualifiedSlot ? { ...UPWARD_SAVE_ROUTINE_BODIES, slot: qualifiedSlot.beforeSha256 } : UPWARD_SAVE_ROUTINE_BODIES;
     const names = ["jg_direct_pending_version_shape", "jg_direct_pending_attachment_source", "ContractDraftAttachment_direct_archive_transfer_v1",
       "jg_upward_pending_save_binding_immutable", "jg_upward_pending_save_binding_no_truncate", "jg_upward_pending_save_persistent_proof",
       "jg_direct_pending_file_retained", "jg_direct_pending_attachment_exclusive"];
@@ -388,15 +393,15 @@ export async function qualifyUpwardPendingSave(
       || typeof result.backendPid !== "number" || !Number.isSafeInteger(result.backendPid) || result.backendPid <= 0
       || typeof result.transactionId !== "string" || !/^[1-9][0-9]*$/u.test(result.transactionId)
       || typeof result.createBindingSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(result.createBindingSha256)
-      || !isDeepStrictEqual(result.routineBodies, UPWARD_SAVE_ROUTINE_BODIES) || !hooks || typeof hooks !== "object"
+      || !isDeepStrictEqual(result.routineBodies, expectedBodies) || !hooks || typeof hooks !== "object"
       || Object.keys(hooks).length !== names.length || !names.every(name => isOid((hooks as Record<string, unknown>)[name]))
       || result.restrictedRole !== true || result.privateTechnicalAcl !== true) throw unavailable();
     if (result.successorOid == null) {
       if (result.dualIdentityCheck !== true) throw unavailable();
-      return result;
+      return projection ? { ...result, upwardProjection: projection } : result;
     }
     if (!isOid(result.successorOid) || result.successorReadable !== true) throw unavailable();
-    return { ...result, generatedSuccessor: await qualifyGeneratedSuccessor(tx, result) };
+    return { ...result, ...(projection ? { upwardProjection: projection } : {}), generatedSuccessor: await qualifyGeneratedSuccessor(tx, result, projection) };
   } catch {
     throw unavailable();
   }

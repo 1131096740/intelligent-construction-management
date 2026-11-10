@@ -1,3 +1,5 @@
+import { usesUpwardDirectArchive } from "./contract-upward-direct-registration";
+import { assertUpwardDirectArchivePersistentProof } from "./contract-upward-direct-archive-proof";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractArchiveFile, type ContractVersion } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -65,6 +67,9 @@ async function readProofRoutines(tx: Prisma.TransactionClient, anchor: RecordVal
 /** A prepared source witness alone cannot supply a durable direct-archive receipt. */
 export async function assertDirectArchivePersistentProof(tx: Prisma.TransactionClient, owner: Contract,
   version: ContractVersion, durable: ContractArchiveFile) {
+  if (usesUpwardDirectArchive(durable) || version.signingSubjectType === "upward") {
+    return assertUpwardDirectArchivePersistentProof(tx, owner, version, durable);
+  }
   try {
     const key = durable.idempotencyKey;
     if (!key || !uuid4.test(key) || durable.archiveProtocolVersion !== 2 || durable.archiveSource !== "direct_signed"

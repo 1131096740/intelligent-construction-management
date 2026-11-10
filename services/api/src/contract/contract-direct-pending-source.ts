@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, isQualifiedUpwardDefiner } from "./contract-upward-archive-catalog";
 import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
@@ -176,6 +177,7 @@ async function readActualCatalog(tx: Prisma.TransactionClient, expected: ObjectV
 
 /** A presence check or caller-supplied JSON can never open this source. */
 export async function assertDirectPendingSourceQualification(tx: Prisma.TransactionClient): Promise<DirectPendingSourceQualification> {
+  const upwardProjection = await discoverUpwardLegacyProjection(tx);
   try {
     const environment = await readDeparseEnvironment(tx);
     const transitionOid = await readDirectArchiveTransitionOid(tx);
@@ -257,18 +259,18 @@ export async function assertDirectPendingSourceQualification(tx: Prisma.Transact
     if (!Array.isArray(actual.accessibleDefiners)) unavailable();
     for (const value of actual.accessibleDefiners) {
       const definer = object(value);
-      if (!definer || !DIRECT_PENDING_DB_RECIPE.allowedSecurityDefiners.some(descriptor => {
+      if (!definer || (!isQualifiedUpwardDefiner(upwardProjection, definer) && !DIRECT_PENDING_DB_RECIPE.allowedSecurityDefiners.some(descriptor => {
         const known = object(routines[descriptor.signature]);
         const allowedBody = descriptor.signature === factAppendSignature ? bootstrap.anchorSourceSha256 : descriptor.bodySha256;
         return known && known.oid === definer.oid && definer.bodySha256 === allowedBody;
-      })) unavailable();
+      }))) unavailable();
     }
     const transition = transitionOid === null ? null : await readPreparedDirectArchiveTransition(tx, transitionOid, expected, bootstrap);
     const retention = retentionOid === null ? null : await readDirectArchiveRetentionQualification(tx, retentionOid, transition, bootstrap);
     if (dispatch && (!transition || !retention || dispatch.links.pendingSha !== transition.binding.pendingSha256
       || dispatch.links.prepareSha !== retention.binding.preparationSha256
       || dispatch.archiveRelationOid !== object(object(retention.actual.bindings)?.relations)?.ContractArchiveFile)) unavailable();
-    return { environment, bootstrap, expected, actual, transition, retention, dispatch };
+    return { environment, bootstrap, expected, actual, transition, retention, dispatch, ...(upwardProjection ? { upwardProjection } : {}) };
   } catch (error) {
     if (error instanceof ServiceUnavailableException) throw error;
     // Missing object/rights and observation errors are never proof of absence or

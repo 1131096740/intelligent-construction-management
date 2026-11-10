@@ -1,3 +1,4 @@
+import { discoverUpwardLegacyProjection, qualifiedUpwardRoutineSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
 import { Prisma } from "@prisma/client";
 import type { GeneratedUpwardOperatingActivation, UpwardActivationBinding } from "./contract-generated-upward-operating";
 import { enabledDirectCompletionCatalog, enabledDirectGlobalCompletionBody } from "./contract-direct-outside-completion-catalog";
@@ -46,7 +47,8 @@ const outsideOperatingProfile = Prisma.sql`
         AND t.tgconstraint<>0 AND t.tgqual IS NULL AND t.tgnargs=0 AND t.tgattr::text='') AS qualified
 `;
 
-export const generatedUpwardOperatingCatalog = Prisma.sql`
+export function generatedUpwardOperatingCatalogFor(projection: UpwardLegacyProjection | null) {
+  return Prisma.sql`
   SELECT b."ownerOid" AS relowner,b."namespaceOid" AS relnamespace,
     b."ownerOid"::text AS "ownerOid",b."namespaceOid"::text AS "namespaceOid",b."databaseOid"::text AS "databaseOid",
     current_user::regrole::oid::text AS "currentRoleOid",session_user::regrole::oid::text AS "sessionRoleOid",
@@ -90,7 +92,7 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
     AND v.relowner=b."ownerOid" AND v.relnamespace=b."namespaceOid"
     AND v.relkind='r' AND v.relpersistence='p' AND NOT v.relispartition AND NOT v.relrowsecurity AND NOT v.relforcerowsecurity
   CROSS JOIN LATERAL (${outsideOperatingProfile}) successor
-  CROSS JOIN LATERAL (SELECT ${enabledDirectCompletionCatalog(Prisma.sql`b."ownerOid"`, Prisma.sql`b."namespaceOid"`)} AS qualified)
+  CROSS JOIN LATERAL (SELECT ${enabledDirectCompletionCatalog(Prisma.sql`b."ownerOid"`, Prisma.sql`b."namespaceOid"`, projection)} AS qualified)
     direct_completion
   WHERE b."protocolVersion"=1 AND b."namespaceOid"=pg_catalog.to_regnamespace('public')
     AND b."applicationRoleOid"=current_user::regrole::oid AND b."applicationRoleOid"=session_user::regrole::oid
@@ -112,7 +114,7 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
         AND p.pronamespace=b."namespaceOid" AND p.prokind='f' AND p.provolatile='v' AND p.proparallel='u'
         AND p.prorettype=pg_catalog.to_regtype(x.result_type) AND p.prosecdef=x.definer AND p.proconfig=ARRAY[x.path]
         AND NOT p.proisstrict AND NOT p.proretset
-        AND encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')=CASE
+        AND ${qualifiedUpwardRoutineSha(projection, Prisma.sql`p.oid`, Prisma.sql`encode(public.digest(convert_to(p.prosrc,'UTF8'),'sha256'),'hex')`)}=CASE
           WHEN x.signature='public.jg_contract_archive_v2_complete_guard()' AND direct_completion.qualified
             THEN ${enabledDirectGlobalCompletionBody}::text
           WHEN successor.qualified THEN
@@ -145,14 +147,18 @@ export const generatedUpwardOperatingCatalog = Prisma.sql`
         AND t.tgqual IS NULL AND t.tgnargs=0 AND t.tgattr::text=''
       WHERE x.fn<>'public.jg_guard_generated_upward_seal_completion_v1()' OR t.tgfoid=b."guardOid")
 `;
+}
+
+export const generatedUpwardOperatingCatalog = generatedUpwardOperatingCatalogFor(null);
 
 export async function hasGeneratedUpwardOperatingInstallation(
   tx: Prisma.TransactionClient, identity: Record<string, unknown>, requireOutside = false
 ) {
+  const projection = await discoverUpwardLegacyProjection(tx);
   const rows = await tx.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
     /* contract_generated_upward_operating_installation_v1 */
     SELECT "ownerOid","namespaceOid","databaseOid","currentRoleOid","sessionRoleOid","backendPid","transactionId","outsideOperatingQualified"
-    FROM (${generatedUpwardOperatingCatalog}) installed LIMIT 2
+    FROM (${generatedUpwardOperatingCatalogFor(projection)}) installed LIMIT 2
   `);
   if (rows.length !== 1) return false;
   const { ownerOid, outsideOperatingQualified, ...observed } = rows[0];
@@ -164,9 +170,10 @@ export async function hasGeneratedUpwardOperatingInstallation(
 /** Resolve the stored archive and fixed originals before the same transaction may activate the version. */
 export const nativeGeneratedUpwardOperatingActivation: GeneratedUpwardOperatingActivation = {
   async readBeforeActivation(tx, { archiveId }) {
+    const projection = await discoverUpwardLegacyProjection(tx);
     const rows = await tx.$queryRaw<UpwardActivationBinding[]>(Prisma.sql`
       /* contract_generated_upward_operating_activation_v1 */
-      WITH installed AS MATERIALIZED (${generatedUpwardOperatingCatalog}),
+      WITH installed AS MATERIALIZED (${generatedUpwardOperatingCatalogFor(projection)}),
       candidate AS MATERIALIZED (
         SELECT a.*,c."projectId",p."operatingLedgerEffectiveDate"
         FROM public."ContractArchiveFile" a
