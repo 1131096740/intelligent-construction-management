@@ -107,3 +107,11 @@ test("nested migration accessors and unknown serialization hooks are rejected be
   assert.throws(() => controls.setupSql({ ...plan, migrations: new Proxy(migrations, { get() { reads++; } }) }), /LOCAL_MIGRATION_CONTROL/u);
   assert.equal(reads, 0);
 });
+
+test("generated SQL keeps backend and routine signature locals distinct from query columns", () => {
+  const sql = controls.setupSql(plan);
+  assert.match(sql, /FROM pg_stat_activity AS activity WHERE activity\.pid=observed_backend_pid AND activity\.usesysid=ctl\.actor_oid/u);
+  assert.match(sql, /'backendPid',observed_backend_pid/u);
+  assert.match(sql, /FROM unnest\(allowed\) AS granted\(signature\) WHERE to_regprocedure\(granted\.signature\)/u);
+  assert.match(sql, /SELECT to_regprocedure\(granted\.signature\)::oid FROM unnest\(allowed\) AS granted\(signature\)/u);
+});

@@ -339,11 +339,11 @@ BEGIN
   'public.jg_contract_direct_pending_input_v1(pg_catalog.text)',
   'public.jg_contract_direct_pending_attachment_guard_v1()',
   'public.jg_contract_direct_pending_file_guard_v1()'];
- IF EXISTS(SELECT FROM unnest(allowed) sig WHERE to_regprocedure(sig) IS NULL
-   OR NOT has_function_privilege(app.oid,to_regprocedure(sig),'EXECUTE'))
+ IF EXISTS(SELECT FROM unnest(allowed) AS granted(signature) WHERE to_regprocedure(granted.signature) IS NULL
+   OR NOT has_function_privilege(app.oid,to_regprocedure(granted.signature),'EXECUTE'))
   OR EXISTS(SELECT FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE a.grantee=app.oid
    AND (p.pronamespace<>ctl.namespace_oid OR a.grantor<>ctl.actor_oid OR a.is_grantable OR
-    NOT p.oid=ANY(ARRAY(SELECT to_regprocedure(sig)::oid FROM unnest(allowed) sig))))
+    NOT p.oid=ANY(ARRAY(SELECT to_regprocedure(granted.signature)::oid FROM unnest(allowed) AS granted(signature)))))
   OR EXISTS(SELECT FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a WHERE a.grantee=app.oid
    AND (n.oid<>ctl.namespace_oid OR a.privilege_type<>'USAGE' OR a.is_grantable))
   OR EXISTS(SELECT FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a WHERE a.grantee=app.oid
@@ -417,7 +417,7 @@ REVOKE ALL ON FUNCTION __SCHEMA__.verify_control() FROM PUBLIC;
 CREATE FUNCTION __SCHEMA__.observe() RETURNS event_trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path=pg_catalog,pg_temp AS $event$
 DECLARE ctl __SCHEMA__.control%ROWTYPE; stage integer; next_order integer; q text;
- wanted record; actual record; first_row jsonb; stage_row jsonb; pid integer:=pg_backend_pid();
+ wanted record; actual record; first_row jsonb; stage_row jsonb; observed_backend_pid integer:=pg_backend_pid();
  started text; xid text:=pg_current_xact_id()::text; command text; source_row jsonb;
 BEGIN
  SELECT * INTO STRICT ctl FROM __SCHEMA__.verify_control();
@@ -456,10 +456,10 @@ BEGIN
   OR (wanted.body IS NOT NULL AND (actual.proowner<>ctl.actor_oid OR
    encode(sha256(convert_to(actual.prosrc,'UTF8')),'hex') IS DISTINCT FROM wanted.body))
  THEN RAISE EXCEPTION 'local fixture migration object changed'; END IF;
- SELECT to_char(backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') INTO STRICT started
- FROM pg_stat_activity WHERE pg_stat_activity.pid=pid AND usesysid=ctl.actor_oid;
+ SELECT to_char(activity.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') INTO STRICT started
+ FROM pg_stat_activity AS activity WHERE activity.pid=observed_backend_pid AND activity.usesysid=ctl.actor_oid;
  SELECT payload INTO first_row FROM __SCHEMA__.events WHERE ordinal=1;
- IF next_order>1 AND ((first_row->>'backendPid')::integer<>pid OR first_row->>'backendStart'<>started)
+ IF next_order>1 AND ((first_row->>'backendPid')::integer<>observed_backend_pid OR first_row->>'backendStart'<>started)
  THEN RAISE EXCEPTION 'local fixture migration backend changed'; END IF;
  IF next_order=3 AND (first_row->>'transactionId')::numeric>=xid::numeric
  THEN RAISE EXCEPTION 'local fixture migration transaction reused'; END IF;
@@ -474,7 +474,7 @@ BEGIN
  INSERT INTO __SCHEMA__.events VALUES(next_order,jsonb_build_object(
   'ordinal',next_order,'stage',stage,'tag',wanted.tag,'catalog',wanted.catalog,'name',wanted.name,
   'objectOid',actual.objid::text,'bodySha256',wanted.body,'querySha256',q,
-  'backendPid',pid,'backendStart',started,'transactionId',xid,
+  'backendPid',observed_backend_pid,'backendStart',started,'transactionId',xid,
   'runId',ctl.plan->>'runId','nonce',ctl.plan->>'nonce','databaseOid',ctl.plan->>'databaseOid',
   'systemIdentifier',ctl.plan->>'systemIdentifier','actorOid',ctl.actor_oid::text,
   'appOid',ctl.application_oid::text,'fileCallerOids',ctl.file_caller_setting::jsonb,'preceding',source_row));
