@@ -156,3 +156,16 @@ for(const accessor of [false,true])test(`cleanup UNKNOWN preserves an existing $
  });
  assert.deepEqual(Object.getOwnPropertyDescriptor(original,'resourceCleanup'),before);assert.equal(reads,0);assert.equal(f.state.closeCount,1);
 });
+test('an explicit close revokes before awaiting original cleanup and cannot issue another physical close',async()=>{
+ const f=fixture();let retained;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,async handle=>{
+  retained=handle;const view=f.api.claimCurrent259OwnedResource(handle);
+  const first=f.api.closeCurrent259OwnedResource(handle);
+  assert.throws(()=>f.api.claimCurrent259OwnedResource(handle),/CURRENT259_RESOURCE_HANDLE/u);
+  assert.throws(()=>view.credentials(),/CURRENT259_RESOURCE_CLOSED/u);
+  await Promise.all([first,f.api.closeCurrent259OwnedResource(handle)]);
+ }),/CURRENT259_RESOURCE_CLOSED/u);
+ assert.equal(f.state.closeCount,1);
+ await f.api.closeCurrent259OwnedResource(retained);assert.equal(f.state.closeCount,1);
+ assert.throws(()=>f.api.claimCurrent259OwnedResource(retained),/CURRENT259_RESOURCE_HANDLE/u);
+});

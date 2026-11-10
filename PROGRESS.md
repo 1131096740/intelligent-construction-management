@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 当前259接续只读盘点完成：其余21动态组不能直接套PFQ入口，需固定身份/恢复profile；连续258→259、v7原SQL及两类有洞历史集合分别保留原验收。#394真实backend须沿原绑定app OID，密码/连接数启用须另封阶段，原件仍要求真实COS版本证据。新current259技术profile与ownerTLS源码在独立树实施中，未集成或运行资源；3c55封存包及待授权状态保持。 [其余21组](/private/tmp/jg-382-other21-stage259-route-abgpd0mc/HANDOFF.md) · [归档真实接缝](/private/tmp/jg-394-current259-seams.k8wu5bzl/HANDOFF.md)
+
 - [~] 准确 `3c5557d7` 已集成四处tail技术窗口：213/215/218/221按当前目录/固定源生成206/207/209绑定及实际缺失列权限，独立COMMIT/xmin校读；16例程/18触发器独立元数据资格补齐。原259 SQL/Schema、203/205/C0/四锚点、七库115恢复/13项入口及预算保持。独审两项已修闭，根独立564项编排、三套57项后端、类型/lint/构建及17SQL语法/只读预查通过。新单次259命令已封，尚未执行或创建资源，等待准确新授权，不借已停止749许可；不含Q2业务installer/真实归档/COS/native session门/GitHub/部署/生产。 [源码交接](/private/tmp/jg-382-tail259-qualify.Hl7dS0Xk/HANDOFF.md) · [新单次方案](/private/tmp/jg-382-tail259-independent.86sn3zgr/RUN-PLAN.json)
 
 - [~] #398 当前259物理资源生命周期producer已集成 `b71c5673`：固定真实构建/loader与原资源工厂，私有句柄仅在实际创建及连续核验后生效，失败/结束撤销并保留首错及清理UNKNOWN。异步核验后mint缺口与既有错误字段覆盖两项独审问题已修闭；27定向、标准CI541、API类型/lint通过，全部source/model，未运行真实start/工具/DB。该句柄不是PG owner认证、NAT、三角色session或业务准入，实际迁移/角色/七SQL及A16仍待独立门。 [准确交接](/private/tmp/jg-398-current259-owned-resource-dj9J1kBd/HANDOFF-b71c.md) · [合并核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-b71c.md)

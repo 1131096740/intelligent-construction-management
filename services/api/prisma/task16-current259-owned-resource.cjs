@@ -22,7 +22,7 @@ const HASHES=Object.freeze({docker:'6c3c88771987b73d66d0664b22800f46c827f96db675
 const METHODS=['getReceipt','close','captureLogCursor','execOwnerSql','observePresentedCertificate','setServerCertificate','readPlaintextRejectionEvidence'];
 const FIELDS=['containerId','networkId','port','databaseName','caPath','wrongCaPath','serverCertHashes'];
 const TLS_KEYS=['caSha256','wrongCaSha256','correctCertificateSha256','wrongSanCertificateSha256','correctCertificateDerSha256','wrongSanCertificateDerSha256'];
-const handles=new WeakMap(),usedBuilds=new WeakSet();
+const handles=new WeakMap(),closedHandles=new WeakMap(),usedBuilds=new WeakSet();
 const fail=code=>Object.assign(new Error(code),{code});
 const need=(ok,code)=>{if(!ok)throw fail(code);};
 function own(value,key){need(value&&!types.isProxy(value),'CURRENT259_RESOURCE_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'CURRENT259_RESOURCE_DESCRIPTOR');return d.value;}
@@ -43,6 +43,11 @@ function planSnapshot(value){
 function abortState(signal){if(signal===undefined)return false;need(!types.isProxy(signal)&&Object.getPrototypeOf(signal)===AbortSignal.prototype&&!Object.getOwnPropertyDescriptor(signal,'aborted')&&!Object.getOwnPropertyDescriptor(signal,'addEventListener')&&!Object.getOwnPropertyDescriptor(signal,'removeEventListener'),'CURRENT259_RESOURCE_SIGNAL');return Object.getOwnPropertyDescriptor(AbortSignal.prototype,'aborted').get.call(signal);}
 function claimCurrent259OwnedResource(handle){
  need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');const owner=handles.get(handle);owner.check();return owner.view;
+}
+function closeCurrent259OwnedResource(handle){
+ need(handle&&!types.isProxy(handle),'CURRENT259_RESOURCE_HANDLE');
+ const owner=handles.get(handle)||closedHandles.get(handle);need(owner,'CURRENT259_RESOURCE_HANDLE');
+ closedHandles.set(handle,owner);return owner.close();
 }
 async function withCurrent259OwnedResource(build,planInput,signal,consume){
  need(arguments.length===4&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
@@ -94,7 +99,7 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
   for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{check();try{const result=await methods[key].apply(resource,args);check();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
   resourceView.getReceipt=()=>{check();return methods.getReceipt.call(resource);};
   const view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
-  handles.set(handle,{check,view});
+  handles.set(handle,{check,view,close});
   if(signal)EventTarget.prototype.addEventListener.call(signal,'abort',onAbort,{once:true});
   check();value=await consume(handle);check();loader.verifyFull();check();
  }catch(error){primary=error;hasPrimary=true;}
@@ -113,4 +118,4 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
  }
  if(hasPrimary)throw primary;return value;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,claimCurrent259OwnedResource});
+module.exports=Object.freeze({withCurrent259OwnedResource,claimCurrent259OwnedResource,closeCurrent259OwnedResource});

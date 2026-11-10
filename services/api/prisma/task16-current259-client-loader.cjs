@@ -108,8 +108,9 @@ function loadCurrent259Client(handle){
 
  need(!/\bconstructor\s*\(/u.test(Function.prototype.toString.call(values.PrismaService)),'CURRENT259_LOADER_CONSTRUCTOR');
  const wrapper=require.cache[material.clientEntry];need(wrapper&&own(wrapper.exports,'PrismaClient')===Class,'CURRENT259_LOADER_CLASS');
- const methods=['$connect','$disconnect','$transaction','$queryRawUnsafe'].map(key=>({key,value:Class.prototype[key]}));
- need(methods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CLASS');
+ const methods=['$connect','$disconnect','$transaction','$queryRawUnsafe'].map(key=>({key,descriptor:Object.getOwnPropertyDescriptor(Class.prototype,key)}));
+ need(methods.every(row=>row.descriptor&&Object.hasOwn(row.descriptor,'value')&&typeof row.descriptor.value==='function'),'CURRENT259_LOADER_CLASS');
+ const classMethodsUnchanged=()=>methods.every(({key,descriptor})=>{const actual=Object.getOwnPropertyDescriptor(Class.prototype,key);return actual&&Object.hasOwn(actual,'value')&&['value','writable','enumerable','configurable'].every(field=>actual[field]===descriptor[field]);});
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  applicationExports={records,checkMetadata};const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
@@ -121,7 +122,7 @@ function loadCurrent259Client(handle){
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'TASK16_APP_REFLECTION_CHANGED');
    for(const row of records)need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');
-   need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&methods.every(r=>Class.prototype[r.key]===r.value)&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
+   need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
    checkMetadata();
    for(const p of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,p)))need(files.has(p),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
