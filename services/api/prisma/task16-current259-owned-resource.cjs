@@ -88,6 +88,7 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
   need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');active=true;check();loader.verifyFull();
   const receipt=methods.getReceipt.call(resource);need(receipt.requestedCertificateMode==='correct'&&receipt.reloadState==='OBSERVED_PEER_CERTIFICATE_MATCHED'&&receipt.presentedCertificate?.mode==='correct'&&receipt.presentedCertificate.derSha256===fields.serverCertHashes.correctCertificateDerSha256,'CURRENT259_RESOURCE_TLS');
   const cursor=await methods.captureLogCursor.call(resource);check();need(cursor.runId===runId&&cursor.containerId===fields.containerId,'CURRENT259_RESOURCE_IDENTITY');
+  loader.verifyFull();check();
   handle=Object.freeze({kind:'CURRENT259_OWNED_RESOURCE'});
   const resourceView={...fields,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
   for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{check();try{const result=await methods[key].apply(resource,args);check();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
