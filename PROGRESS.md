@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394 已按当前生成的 Prisma 元数据核对对上直签登记与原键恢复的应用角色读需求。核心路径21表225列，旧权限清单未列132列，包含后续已有独立授权的列；BusinessParty 行锁缺旧矩阵记录。权限实态须按迁移和安装各阶段核对。M254 要求原应用角色保留 LOGIN，角色准备保留原OID、空密码与连接上限0。 [源码对照](/private/tmp/jg-394-ordinary-registration-read.2vNNSarE/HANDOFF.md)
+
 - [~] 准确 `69b89798` 已本地集成：当前259技术迁移完成凭据只可由同一有效资源句柄领取一次，撤销覆盖迁移结束至领取之间的窗口。技术和实付查询统一读取裸IP，保留严格环回校验。合后独立666项编排、30项技术、3项模块装配、21项实付及API类型/lint、CJS语法通过。测试覆盖源码与模拟，真实TLS、259条迁移、角色和业务仍待对应验收。两个封存执行计划摘要未变且均未启动。 [合后复验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-69B897.md)
 
 - [~] #398 一次本机owner连接入口已本地集成准确 `4abf14e8`：保留900秒资源/600秒owner/30秒操作/10秒断开，修正PG16 inet显式text带掩码导致的裸地址读回拒绝；旧843/be60包HOLD且未尝试。中央独立656编排、39与17定向、API类型/lint及语法通过；准确Plan `419c0805…` 经源审/范围审和真实SDK纯prepare/verify/default、根独立只读verify，运行目录为空。仅一个临时PG16、七探针及14条身份SELECT，非预期首错即停清理；待本次准确执行授权，不含迁移/业务/角色激活/生产。3c55迁移单次计划仍独立待授权。 [封存方案](/private/tmp/jg-398-owner-tls-once-IqfTupDD/packet-4abf/RUN-PLAN.json) · [合后核验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-4ABF.md)
