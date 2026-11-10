@@ -52,7 +52,7 @@ test('actual generated259 SDK/native engine/eight exports share one observed phy
  finally{Module._load=originalLoad;}
  assert.throws(()=>loader.check(),/CURRENT259_LOADER/u,'restoring an altered loader hook cannot revive its observation');
  const prior=process.env.PRISMA_QUERY_ENGINE_LIBRARY;
- try{process.env.PRISMA_QUERY_ENGINE_LIBRARY='synthetic-engine-override-not-used';assert.throws(()=>loader.check(),error=>error.code==='CURRENT259_LOADER_CHANGED'&&!JSON.stringify(error).includes('synthetic-engine-override'));}
+ try{process.env.PRISMA_QUERY_ENGINE_LIBRARY='synthetic-engine-override-not-used';assert.throws(()=>observeCurrent259Build(),error=>error.code==='CURRENT259_BUILD_ENVIRONMENT'&&!JSON.stringify(error).includes('synthetic-engine-override'));}
  finally{if(prior===undefined)delete process.env.PRISMA_QUERY_ENGINE_LIBRARY;else process.env.PRISMA_QUERY_ENGINE_LIBRARY=prior;}
  assert.throws(()=>loader.check(),/CURRENT259_LOADER/u); // A rejected material is not silently restored.
 });

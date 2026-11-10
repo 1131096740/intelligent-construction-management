@@ -36,7 +36,7 @@ function loadCurrent259Client(handle){
  let failed=false,loading=false,applicationExports,reflection;
  const hooksMatch=()=>Module._resolveFilename===hooks.resolve&&Module._findPath===hooks.find&&Module.prototype.require===hooks.require&&['.js','.json','.node'].every(ext=>Module._extensions[ext]===hooks.extensions[ext]);
  function guardedOperation(action){
-  need(!loading&&!failed&&coreHooksUnmodified()&&hooksMatch(),'CURRENT259_LOADER_HOOKS');loading=true;
+  try{need(!loading&&!failed&&coreHooksUnmodified()&&hooksMatch(),'CURRENT259_LOADER_HOOKS');}catch(error){failed=true;throw error;}loading=true;
   function guarded(request,parent,isMain){
    need(hooksMatch()&&Module._load===guarded,'CURRENT259_LOADER_HOOKS');
    const resolved=hooks.resolve.call(Module,request,parent,isMain);
@@ -44,7 +44,7 @@ function loadCurrent259Client(handle){
    const result=hooks.load.call(this,request,parent,isMain);
    need(hooksMatch()&&Module._load===guarded,'CURRENT259_LOADER_HOOKS');return result;
   }
-  const restore=()=>{const valid=Module._load===guarded&&hooksMatch();Module._load=hooks.load;loading=false;need(valid,'CURRENT259_LOADER_HOOKS');};
+  const restore=()=>{const valid=Module._load===guarded&&hooksMatch();if(Module._load===guarded)Module._load=hooks.load;loading=false;if(!valid){failed=true;throw Object.assign(new Error('CURRENT259_LOADER_HOOKS'),{code:'CURRENT259_LOADER_HOOKS'});}};
   Module._load=guarded;
   try{const value=action();if(types.isPromise(value))return value.then(result=>{restore();return result;},error=>{failed=true;restore();throw error;});restore();return value;}
   catch(error){failed=true;if(loading)restore();throw error;}
@@ -114,8 +114,8 @@ function loadCurrent259Client(handle){
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  applicationExports={records,checkMetadata};const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
  function check(){
-  need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
   try{
+   need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
    material.checkLight();for(const mod of roots)visit(mod,new Set());
    for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
