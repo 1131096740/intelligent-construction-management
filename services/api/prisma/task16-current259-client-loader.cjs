@@ -175,7 +175,7 @@ function loadCurrent259Client(handle){
       const wrapped=key==='close'?()=>{closed=true;return close();}:(...args)=>{
        check();need(!closed&&dataMethod(target,key)===fn&&dataMethod(target,'getHttpAdapter')===originalMethods.get('getHttpAdapter')&&originalMethods.get('getHttpAdapter').call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
        const result=guardedOperation(()=>fn.apply(target,args));
-       if(types.isPromise(result))return result.then(value=>{collect();return value;});collect();return result;
+       if(types.isPromise(result))return result.then(value=>{collect();return value===target?record.view:value;});collect();return result===target?record.view:result;
       };
       methods.set(key,wrapped);return wrapped;
      }};
