@@ -6,6 +6,16 @@ test('plain metadata cannot become an owner TLS closed-probe proof',async()=>{
  assert.throws(()=>api.claimCurrent259OwnerTls({closed:true},{}),/CURRENT259_OWNER_PROOF/u);
 });
 const fs=require('node:fs'),path=require('node:path');
+// PostgreSQL 16 Table 9.40: an explicit inet-to-text cast includes the mask;
+// host(inet) emits the address without it. Model the server wire at the SQL port.
+function inetWireProjection(sql,row,fields){
+ const input=String.raw`(?:pg_catalog\.inet_(?:client|server)_addr\(\)|a\.client_addr)`;
+ for(const field of fields){
+  const expr=new RegExp(String.raw`(pg_catalog\.host\(${input}\)|${input}::pg_catalog\.text)\s+AS\s+"${field}"`,'u').exec(sql)?.[1];
+  assert.ok(expr,`unsupported modeled inet projection for ${field}`);
+  if(expr.endsWith('::pg_catalog.text'))row[field]+='/32';
+ }
+}
 function fixture(options={}){
  const handle=Object.freeze({}),state={sql:[],active:true,cert:'correct',closed:0,constructed:0,disconnected:0,sequence:0},calls=[],clients=[];
  const runId='12345678-1234-4234-8234-123456789012',database='jg_task01_'+runId.replaceAll('-',''),start='2026-11-11T01:02:03.000004Z';
@@ -32,13 +42,13 @@ function fixture(options={}){
    if(this.url.searchParams.get('sslmode')==='disable')throw Object.assign(new Error('fixed plaintext denial'),{errorCode:'P1010'});
    if(this.url.searchParams.get('sslcert').includes('wrong-ca')||state.cert==='wrong-san')throw Object.assign(new Error('TLS connection certificate was not trusted'),{errorCode:'P1011'});
   }
-  async $queryRawUnsafe(_sql,nonce){state.sql.push({phase:'host',sql:_sql});calls.push('query');this.queryCount=(this.queryCount||0)+1;const value={...row(this.pid),nonce};if(state.queryChange)state.queryChange(value,this);return [value];}
+  async $queryRawUnsafe(_sql,nonce){state.sql.push({phase:'host',sql:_sql});calls.push('query');this.queryCount=(this.queryCount||0)+1;const value={...row(this.pid),nonce};if(state.pgInetWire)inetWireProjection(_sql,value,['clientAddress','serverAddress']);if(state.queryChange)state.queryChange(value,this);return [value];}
   async $disconnect(){calls.push('disconnect');state.disconnectAttempts=(state.disconnectAttempts||0)+1;if(state.disconnectNever)return new Promise(()=>{});if(state.disconnectFailure)throw new Error('disconnect detail');this.disconnected=true;state.disconnected++;}
  }
  const resource={containerId:'7'.repeat(64),networkId:'8'.repeat(64),databaseName:database,port:32456,caPath:options.caFiles?.[0]??'/private/tmp/model/ca.crt',wrongCaPath:options.caFiles?.[1]??'/private/tmp/model/wrong-ca.crt',serverCertHashes:{...tls},getReceipt:receipt,
   async execOwnerSql(sql,phase){state.sql.push({phase,sql});calls.push(phase);const nonce=/'([a-f0-9]{64})'::pg_catalog.text AS nonce/u.exec(sql)?.[1];assert.ok(nonce);
-   let value;if(phase==='current259-owner-anchor')value={...row(6101,false),nonce};
-   else {assert.equal(phase,'current259-owner-live');const client=state.latest;assert.equal(client.disconnected,false);value={database,databaseOid:'16384',systemIdentifier:'7540000000000000001',ownerOid:'16385',loginOid:'16385',loginRole:owner,pid:client.pid,start,tls:true,clientAddress:'172.19.0.1',clientPort:50123,readerPid:6102,readerStart:start,readerOid:'16385',readerRole:owner,readerTls:true,nonce};if(state.liveChange)state.liveChange(value);}
+   let value;if(phase==='current259-owner-anchor'){value={...row(6101,false),nonce};if(state.pgInetWire)inetWireProjection(sql,value,['clientAddress','serverAddress']);}
+   else {assert.equal(phase,'current259-owner-live');const client=state.latest;assert.equal(client.disconnected,false);value={database,databaseOid:'16384',systemIdentifier:'7540000000000000001',ownerOid:'16385',loginOid:'16385',loginRole:owner,pid:client.pid,start,tls:true,clientAddress:'172.19.0.1',clientPort:50123,readerPid:6102,readerStart:start,readerOid:'16385',readerRole:owner,readerTls:true,nonce};if(state.pgInetWire)inetWireProjection(sql,value,['clientAddress']);if(state.liveChange)state.liveChange(value);}
    return {stdout:JSON.stringify(value)};
   },
   async setServerCertificate(mode){calls.push('certificate:'+mode);if(state.restoreFailure&&mode==='correct')throw new Error('restore detail');state.cert=mode;},
@@ -148,4 +158,16 @@ for(const mode of [0o600,0o644,0o664])test(`actual public CA files mode ${mode.t
  const f=fixture({caFiles,realRead:true});
  if(mode===0o664){await assert.rejects(f.api.verifyCurrent259OwnerTls(f.handle),/CURRENT259_OWNER_CA/u);assert.equal(f.state.constructed,0);assert.equal(f.state.closed,1);}
  else {const proof=await f.api.verifyCurrent259OwnerTls(f.handle);assert.equal(f.api.claimCurrent259OwnerTls(proof,f.handle).scope,'CLOSED_OWNER_TLS_CONTROLS_ONLY');assert.equal(f.state.disconnected,7);assert.equal(f.state.closed,0);}
+});
+
+test('the fixed SQL projections deliver bare IPv4 through PostgreSQL inet wire semantics',async()=>{
+ const f=fixture();f.state.pgInetWire=true;const proof=await f.api.verifyCurrent259OwnerTls(f.handle),closed=f.api.claimCurrent259OwnerTls(proof,f.handle);
+ assert.equal(f.state.constructed,7);assert.equal(f.state.disconnected,7);
+ const healthy=closed.probes.filter(row=>row.kind==='healthy');assert.equal(healthy.length,4);
+ for(const probe of healthy){assert.equal(probe.identity.clientAddress,'172.19.0.1');assert.equal(probe.identity.serverAddress,'172.19.0.2');}
+});
+for(const port of ['queryChange','liveChange'])test(`a forged /32 address at ${port} still fails strict readback`,async()=>{
+ const f=fixture();f.state.pgInetWire=true;f.state[port]=row=>{row.clientAddress+='/32';};
+ await assert.rejects(f.api.verifyCurrent259OwnerTls(f.handle),port==='queryChange'?/CURRENT259_OWNER_IDENTITY/u:/CURRENT259_OWNER_LIVE_READBACK/u);
+ assert.equal(f.state.constructed,1);assert.equal(f.state.disconnected,1);assert.equal(f.state.closed,1);
 });
