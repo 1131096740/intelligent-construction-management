@@ -30,8 +30,8 @@ const identitySql=`pg_catalog.current_database()::pg_catalog.text AS database,
  pg_catalog.current_setting('server_version_num')::pg_catalog.int4 AS version,
  pg_catalog.getdatabaseencoding() AS encoding,pg_catalog.current_setting('session_replication_role') AS replication,
  pg_catalog.current_setting('transaction_read_only') AS "readOnly",pg_catalog.current_setting('default_transaction_read_only') AS "defaultReadOnly",
- pg_catalog.inet_client_addr()::pg_catalog.text AS "clientAddress",pg_catalog.inet_client_port() AS "clientPort",
- pg_catalog.inet_server_addr()::pg_catalog.text AS "serverAddress",pg_catalog.inet_server_port() AS "serverPort"`;
+ pg_catalog.host(pg_catalog.inet_client_addr()) AS "clientAddress",pg_catalog.inet_client_port() AS "clientPort",
+ pg_catalog.host(pg_catalog.inet_server_addr()) AS "serverAddress",pg_catalog.inet_server_port() AS "serverPort"`;
 const hostSql=`SELECT ${identitySql},$1::pg_catalog.text AS nonce`;
 const identityKeys=['database','databaseOid','systemIdentifier','effectiveRole','loginRole','effectiveOid','loginOid','ownerOid','pid','start','tls','version','encoding','replication','readOnly','defaultReadOnly','clientAddress','clientPort','serverAddress','serverPort','nonce'];
 function snapshot(row,keys){need(row&&!types.isProxy(row)&&Object.getPrototypeOf(row)===Object.prototype&&Reflect.ownKeys(row).length===keys.length,'CURRENT259_OWNER_DATA');return Object.freeze(Object.fromEntries(keys.map(key=>[key,own(row,key)])));}
@@ -65,7 +65,7 @@ need(!used.has(handle),'CURRENT259_OWNER_REUSED');used.add(handle);
  const cas=[resource.caPath,resource.wrongCaPath].map((file,index)=>{const data=read(file,{privateFile:false,maxBytes:LIMIT,code:'CURRENT259_OWNER_CA'});need(data.identity.uid===process.getuid()&&data.sha256===tls[index?'wrongCaSha256':'caSha256'],'CURRENT259_OWNER_CA');return Object.freeze({file,identity:data.identity,sha256:data.sha256});});
  const source=view.source,sourceSnapshot=JSON.stringify(source),probes=[],owned=[];
  let anchor,primary,failed=false,restoration='NOT_NEEDED',clientCleanup='DISCONNECTED',resourceCleanup='NOT_NEEDED',closing;
- const deadline=Date.now()+180000;
+ const deadline=Date.now()+600000;
  const closeOwned=()=>{if(!closing)closing=Promise.resolve().then(()=>closeCurrent259OwnedResource(handle)).then(()=>{resourceCleanup='CLOSED';},()=>{resourceCleanup='UNKNOWN';});return closing;};
  function check(mode='correct'){
   view.check();need(claimCurrent259OwnedResource(handle)===view&&view.loader===loader&&loader.Class===Class&&view.resource===resource&&view.runId===runId&&view.source===source&&JSON.stringify(source)===sourceSnapshot,'CURRENT259_OWNER_SOURCE');
@@ -102,7 +102,7 @@ need(!used.has(handle),'CURRENT259_OWNER_REUSED');used.add(handle);
   const sql=`SELECT pg_catalog.row_to_json(observed) FROM (SELECT pg_catalog.current_database()::pg_catalog.text AS database,
    d.oid::pg_catalog.text AS "databaseOid",(SELECT system_identifier::pg_catalog.text FROM pg_catalog.pg_control_system()) AS "systemIdentifier",
    d.datdba::pg_catalog.text AS "ownerOid",a.usesysid::pg_catalog.text AS "loginOid",a.usename::pg_catalog.text AS "loginRole",a.pid,${time('a.backend_start')} AS start,
-   coalesce(s.ssl,false) AS tls,a.client_addr::pg_catalog.text AS "clientAddress",a.client_port AS "clientPort",
+   coalesce(s.ssl,false) AS tls,pg_catalog.host(a.client_addr) AS "clientAddress",a.client_port AS "clientPort",
    pg_catalog.pg_backend_pid() AS "readerPid",(SELECT ${time('backend_start')} FROM pg_catalog.pg_stat_activity WHERE pid=pg_catalog.pg_backend_pid()) AS "readerStart",
    current_user::pg_catalog.regrole::pg_catalog.oid::pg_catalog.text AS "readerOid",current_user::pg_catalog.text AS "readerRole",
    coalesce((SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()),false) AS "readerTls",'${nonce}'::pg_catalog.text AS nonce
