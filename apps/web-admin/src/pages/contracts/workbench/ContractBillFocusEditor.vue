@@ -634,7 +634,9 @@ function normalizeImportPreview(
 ): BillImportPreview {
   const candidateRows: ContractBillCandidateRow[] = [];
   const errors: BillImportPreview["errors"] = value.errors.map((issue) => {
-    const message = formatApiErrorMessage(issue.message, 0, "请核对清单中的填写内容");
+    const message = issue.message === "Excel数值单元格超过15位有效数字，无法确认原输入精度；请将该格改为文本格式后重新填写并上传"
+      ? "该数字超过15位有效数字，无法确认原输入精度。请将该单元格改为文本格式后重新填写并上传。"
+      : formatApiErrorMessage(issue.message, 0, "请核对清单中的填写内容");
     return {
       ...issue,
       message: issue.sheet && issue.row && issue.column
