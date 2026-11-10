@@ -26,7 +26,7 @@ async function prepare(page: Page) {
   await expect(page.getByRole("heading", { name: "零星采购工作台", exact: true })).toBeVisible();
   for (const label of ["采购申请", "材料付款", "收货确认"]) await expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();
   await page.getByRole("button", { name: "新建采购申请", exact: true }).click();
-  await expect(page.getByText("新建零星/小额材料采购申请表", { exact: true })).toBeVisible();
+  await expect(page.getByText("新建零星材料采购申请", { exact: true })).toBeVisible();
 }
 
 test("V6.1 正式表单批量附件刷新恢复且不自动上传或重复添加", async ({ page }, info) => {
@@ -169,28 +169,73 @@ test("V6.1 已完成申请不会被旧标签关闭重开复活", async ({ page, 
   await page.locator(".t-date-picker__cell--now:visible").click();
   await expect(date).not.toHaveValue("");
   await page.locator(".t-dialog:visible textarea").first().fill("隔离申请用途");
-  const lines = page.locator(".procurement-line-editor__cards");
-  await lines.locator("label").filter({ hasText: "材料名称" }).locator("input").fill("隔离材料");
-  await lines.locator("label").filter({ hasText: "单位" }).locator("input").fill("件");
-  await lines.locator("label").filter({ hasText: "数量" }).locator("input").fill("1");
   const second = await context.newPage();
   await prepare(second);
   await expect(second.getByPlaceholder("如：工程部")).toHaveValue("本次已完成申请");
   await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "放弃未确认修改并关闭", exact: true }).click();
   await page.getByRole("button", { name: "新建采购申请", exact: true }).click();
-  let creates = 0;
+  await expect(page.getByPlaceholder("如：工程部")).toHaveValue("本次已完成申请");
+  const creates: unknown[] = [];
+  const updates: unknown[] = [];
+  const receipt = { procurementId: "confirmed-draft", versionId: "confirmed-version", code: "LOCAL-1", draftRevision: 1 };
   await page.route("**/api/spot-procurements", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
-    creates++;
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ procurementId: "confirmed-draft", code: "LOCAL-1" }) });
+    creates.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: receipt });
   });
+  await page.route("**/api/spot-procurements/confirmed-draft", async (route) => {
+    if (route.request().method() !== "GET" || updates.length) return route.fallback();
+    await route.fulfill({ json: { procurement: { id: receipt.procurementId }, availableActions: [{ key: "edit_draft", enabled: true }] } });
+  });
+  await page.route("**/api/spot-procurements/confirmed-draft/draft", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    updates.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ...receipt, draftRevision: 2 } });
+  });
+  const grid = page.getByTestId("spot-request-grid");
+  const locateMaterial = grid.getByRole("button", { name: /第1行材料名称.*定位/u });
+  const cellEditor = grid.locator("revogr-edit input");
+  async function expectEditor(column: string) {
+    await expect.poll(() => grid.locator("revo-grid").evaluate(async (element) => {
+      const revoGrid = element as HTMLElement & { getFocused(): Promise<{ column?: { prop?: string } } | null> };
+      return (await revoGrid.getFocused())?.column?.prop;
+    })).toBe(column);
+    await expect(cellEditor).toBeFocused();
+  }
+  // Confirm the optional cells first. The required material name starts autosave.
+  await locateMaterial.click();
+  await expectEditor("materialName");
+  await cellEditor.press("Tab");
+  await expectEditor("specification");
+  await cellEditor.press("Tab");
+  await expectEditor("unit");
+  await cellEditor.fill("件");
+  await cellEditor.press("Tab");
+  await expectEditor("quantity");
+  await cellEditor.fill("1");
+  await cellEditor.press("Enter");
+  await locateMaterial.click();
+  await expectEditor("materialName");
+  await cellEditor.fill("隔离材料");
+  await cellEditor.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: /^已自动保存$/u })).toBeVisible();
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(page).toHaveURL(/confirmed-draft/u);
   await second.getByRole("button", { name: "取消", exact: true }).click();
+  await second.getByRole("button", { name: "放弃未确认修改并关闭", exact: true }).click();
   await second.getByRole("button", { name: "新建采购申请", exact: true }).click();
   await expect(second.getByPlaceholder("如：工程部")).toHaveValue("");
   await expect(second.getByPlaceholder("如：杨帅")).toHaveValue("");
   await expect(second.getByRole("button", { name: "保存草稿", exact: true })).toBeDisabled();
-  expect(creates).toBe(1);
+  const expectedApplication = {
+    applicationDepartment: "本次已完成申请",
+    applicationName: "隔离经办",
+    requestedArrivalAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
+    reason: "隔离申请用途",
+    lines: [expect.objectContaining({ materialName: "隔离材料", unit: "件", quantity: "1" })]
+  };
+  expect(creates).toEqual([expect.objectContaining(expectedApplication)]);
+  expect(updates).toEqual([expect.objectContaining({ ...expectedApplication, expectedVersionId: receipt.versionId, expectedDraftRevision: 1 })]);
   await second.close();
 });
