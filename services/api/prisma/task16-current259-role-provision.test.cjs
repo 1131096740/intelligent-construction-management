@@ -40,7 +40,7 @@ function bindingLinks(bindings){
 bindingLinks(base.bindings);
 function modelRow(index){
  const after=index>0;
- return {identity,logging:{statement:'none',errorStatement:'panic',verbosity:'terse',errorParameters:'0',duration:'off',minDurationStatement:'-1'},backend:{pid:11+index,start:`2026-11-11T06:11:0${index}.000000Z`},access:accessFor(after?[app,...roleRows]:[app],after?postDatabaseAcls:databaseAcls),readOnly:index!==1,
+ return {identity,logging:{statement:'none',errorStatement:'panic',verbosity:'terse',errorParameters:'0',duration:'off',minDurationStatement:'-1',transactionSampleRate:'0',minDurationSample:'-1',debugParse:'off',debugRewritten:'off',debugPlan:'off'},backend:{pid:11+index,start:`2026-11-11T06:11:0${index}.000000Z`},access:accessFor(after?[app,...roleRows]:[app],after?postDatabaseAcls:databaseAcls),readOnly:index!==1,
   isolation:index===1?'serializable':'repeatable read',writeXid:index===1?'314':null,commitStatus:index===2?'committed':null,
   state:{...base,app:{...app},roles:after?roleRows:[],databases:after?postDatabaseAcls:databaseAcls,
    settings:after?[{oid:'117',database:'0',config:['default_transaction_read_only=on']}]:[],violations:0}};
@@ -87,6 +87,10 @@ test('role supply commits once, verifies a new owner backend and admits only the
 
 for(const [name,index,mutate,expected] of [
  ['resource statement logging is enabled',0,row=>{row.logging.statement='all';},'BEFORE'],
+ ['resource transaction sampling is enabled',0,row=>{row.logging.transactionSampleRate='0.1';},'BEFORE'],
+ ['resource statement-duration sampling is enabled',0,row=>{row.logging.minDurationSample='0';},'BEFORE'],
+ ['parse tree logging is enabled in the install backend',1,row=>{row.logging.debugParse='on';},'COMMIT_UNCONFIRMED'],
+ ['plan logging changed on independent readback',2,row=>{row.logging.debugPlan='on';},'COMMIT_UNCONFIRMED'],
  ['foreign database identity',0,row=>{row.identity.systemIdentifier='12345';},'BEFORE'],
  ['stale migration checksum',0,row=>{row.state.ledger[258].sha256='0'.repeat(64);},'BEFORE'],
  ['unbound ordinary app',0,row=>{row.state.bindings[7].rows[0].appOid='101';},'BEFORE'],
@@ -137,7 +141,10 @@ test('credential-bearing SQL follows the fixed transaction-local logging control
  const statements=f.calls[1].sql;
  const firstCredential=statements.indexOf("PASSWORD '"+'e'.repeat(96)+"'");
  assert.ok(firstCredential>0);
+ const begin=statements.indexOf('BEGIN ISOLATION LEVEL SERIALIZABLE');
+ const transactionSampling=statements.indexOf('SET log_transaction_sample_rate=0;');
+ assert.ok(transactionSampling>=0&&transactionSampling<begin,'transaction sampling is disabled before the transaction is sampled');
  const beforeCredentials=statements.slice(0,firstCredential);
- for(const control of ["SET LOCAL log_statement='none';", "SET LOCAL log_min_error_statement='panic';", "SET LOCAL log_error_verbosity='terse';", 'SET LOCAL log_parameter_max_length_on_error=0;'])assert.ok(beforeCredentials.includes(control),control);
+ for(const control of ["SET LOCAL log_statement='none';", "SET LOCAL log_min_error_statement='panic';", "SET LOCAL log_error_verbosity='terse';", 'SET LOCAL log_parameter_max_length_on_error=0;', 'SET LOCAL log_min_duration_sample=-1;', 'SET LOCAL debug_print_parse=off;', 'SET LOCAL debug_print_rewritten=off;', 'SET LOCAL debug_print_plan=off;'])assert.ok(beforeCredentials.includes(control),control);
  assert.ok(f.calls.every(c=>c.phase==='current259-roles-install'||!c.sql.includes('e'.repeat(96))));
 });

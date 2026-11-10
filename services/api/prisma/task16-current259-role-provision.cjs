@@ -29,7 +29,8 @@ const BINDINGS=Object.freeze([
  ['jg_contract_direct_archive_intent_binding_v1'],['jg_contract_direct_upward_issuer_binding_v2'],
  ['jg_contract_direct_upward_execution_binding_v2'],['jg_contract_direct_upward_closure_v2'],
 ]);
-const logging=Object.freeze({statement:'none',errorStatement:'panic',verbosity:'terse',errorParameters:'0',duration:'off',minDurationStatement:'-1'});
+const logging=Object.freeze({statement:'none',errorStatement:'panic',verbosity:'terse',errorParameters:'0',duration:'off',minDurationStatement:'-1',
+ transactionSampleRate:'0',minDurationSample:'-1',debugParse:'off',debugRewritten:'off',debugPlan:'off'});
 const commonRole=Object.freeze({superuser:false,createRole:false,createDb:false,inherit:false,replication:false,bypassRls:false,unlimitedValidity:true});
 const invariantKeys=['ledger','bindings','oldRoleSha256','membershipsSha256','protectedSha256'];
 const roleSpec=([name,login,secret])=>({...commonRole,name,login,limit:login?1:0,password:secret?'scram':'absent'});
@@ -37,7 +38,7 @@ const proofs=new WeakMap();
 const fault=code=>Object.assign(new Error(`CURRENT259_ROLE_PROVISION_${code}`),{code:`CURRENT259_ROLE_PROVISION_${code}`});
 const need=(test,code)=>{if(!test)throw fault(code);};
 const snapshotBytes=fs.readFileSync(path.join(__dirname,'task16-current259-role-provision.sql'));
-need(createHash('sha256').update(snapshotBytes).digest('hex')==='f187cb410d751e21f69e594143034a0749ace105b8bad7dee7e7d27019414498','SOURCE');
+need(createHash('sha256').update(snapshotBytes).digest('hex')==='e1b98579325c57e4d65e0a79cdcaad09656021c37de572e34863b0d82f1fe2ca','SOURCE');
 const snapshotTemplate=snapshotBytes.toString('utf8');
 const quote=value=>`'${value.replaceAll("'","''")}'`;
 const json=value=>`${quote(JSON.stringify(value))}::jsonb`;
@@ -164,7 +165,10 @@ function installSql(scope,before,credentials){
  const read=projection(scope.app.oid,null),expectedRoles=json(ROLE_SPECS.map(roleSpec));
  const changes=ROLE_SPECS.map(([name,login,secret])=>`CREATE ROLE ${name} ${login?'LOGIN':'NOLOGIN'} PASSWORD ${secret?quote(credentials[secret]):'NULL'} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT ${login?1:0};`).join('\n');
  const loginRoles=ROLE_SPECS.filter(([,login])=>login).map(([name])=>name).join(', ');
- return `BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;
+ // PostgreSQL samples a transaction when it starts. This dedicated psql
+ // backend must disable sampling before BEGIN, then recheck inside it.
+ return `SET log_transaction_sample_rate=0;
+BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;
 SET LOCAL search_path=pg_catalog,pg_temp;
 SET LOCAL log_statement='none';
 SET LOCAL log_min_error_statement='panic';
@@ -172,6 +176,10 @@ SET LOCAL log_error_verbosity='terse';
 SET LOCAL log_parameter_max_length_on_error=0;
 SET LOCAL log_duration=off;
 SET LOCAL log_min_duration_statement=-1;
+SET LOCAL log_min_duration_sample=-1;
+SET LOCAL debug_print_parse=off;
+SET LOCAL debug_print_rewritten=off;
+SET LOCAL debug_print_plan=off;
 SET LOCAL password_encryption='scram-sha-256';
 LOCK TABLE public._prisma_migrations,${BINDINGS.map(([name])=>`public.${name}`).join(',')} IN SHARE MODE NOWAIT;
 CREATE TEMP TABLE jg_c259_role_preimage ON COMMIT DROP AS ${read};

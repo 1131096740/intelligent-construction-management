@@ -62,7 +62,9 @@ SELECT jsonb_build_object(
  'backend',jsonb_build_object('pid',pg_backend_pid(),'start',to_char(a.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),
  'logging',jsonb_build_object('statement',current_setting('log_statement'),'errorStatement',current_setting('log_min_error_statement'),
    'verbosity',current_setting('log_error_verbosity'),'errorParameters',current_setting('log_parameter_max_length_on_error'),
-   'duration',current_setting('log_duration'),'minDurationStatement',current_setting('log_min_duration_statement')),
+   'duration',current_setting('log_duration'),'minDurationStatement',current_setting('log_min_duration_statement'),
+   'transactionSampleRate',current_setting('log_transaction_sample_rate'),'minDurationSample',current_setting('log_min_duration_sample'),
+   'debugParse',current_setting('debug_print_parse'),'debugRewritten',current_setting('debug_print_rewritten'),'debugPlan',current_setting('debug_print_plan')),
  'access',(SELECT jsonb_agg(jsonb_build_object('roleOid',r.oid::text,'databaseOid',db.oid::text,
    'connect',has_database_privilege(r.oid,db.oid,'CONNECT'),'temporary',has_database_privilege(r.oid,db.oid,'TEMPORARY'),
    'create',has_database_privilege(r.oid,db.oid,'CREATE')) ORDER BY r.oid,db.oid)
