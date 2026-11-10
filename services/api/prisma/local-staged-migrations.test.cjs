@@ -540,7 +540,13 @@ async function current259Model(temporaryRoot, mutate, technical = true) {
       if(phase === "current259-live-inspect") {
         if(observation === "stopped") throw Error("synthetic stopped container cannot exec");
         const nonce=/'nonce','([a-f0-9]{64})'/u.exec(sql)?.[1];assert.ok(nonce);
-        return Promise.resolve({stdout:JSON.stringify({nonce,database:observation === "wrong-live-db" ? "foreign" : receipt.databaseName,databaseOid:"16384",namespaceOid:"2200",ownerOid:"10",actorOid:"10",actor:"jg_task01_owner",sessionActor:"jg_task01_owner",systemIdentifier:"1234567890123456789",tls:true,clientAddress:"127.0.0.1",serverAddress:"127.0.0.1",serverPort:5432,backendPid:700+observations})});
+        // PostgreSQL 16 Table 9.40: the explicit inet cast includes the
+        // netmask; host(inet) returns the address without it.
+        const address=(key,side)=>{
+          if(sql.includes(`'${key}',pg_catalog.host(pg_catalog.inet_${side}_addr())`))return "127.0.0.1";
+          assert.ok(sql.includes(`'${key}',inet_${side}_addr()::text`));return "127.0.0.1/32";
+        };
+        return Promise.resolve({stdout:JSON.stringify({nonce,database:observation === "wrong-live-db" ? "foreign" : receipt.databaseName,databaseOid:"16384",namespaceOid:"2200",ownerOid:"10",actorOid:"10",actor:"jg_task01_owner",sessionActor:"jg_task01_owner",systemIdentifier:"1234567890123456789",tls:true,clientAddress:observation==="wrong-client"?"127.0.0.2":observation==="cidr-result"?"127.0.0.1/32":address("clientAddress","client"),serverAddress:observation==="wrong-server"?"127.0.0.2":address("serverAddress","server"),serverPort:5432,backendPid:700+observations})});
       }
       return model.ports.executeSql({ database:receipt.databaseName,phase:phase.replace(/^current259-/u,""),sql });
     } };
@@ -713,7 +719,7 @@ test("owned current259 rejects original transport replacement and copied technic
 });
 
 
-for(const physical of ["fail","wrong-id","stopped","wrong-live-db"]) test("owned current259 physical inspection " + physical + " rejects before SQL and deployment",async()=>{
+for(const physical of ["fail","wrong-id","stopped","wrong-live-db","wrong-client","wrong-server","cidr-result"]) test("owned current259 physical inspection " + physical + " rejects before SQL and deployment",async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-inspect-")),model=await current259Model(root);
  const run=model.api.createCurrent259TechnicalMigration(model.handle);model.physicalFailure(physical);
  await assert.rejects(run.migrate());assert.equal(model.counts().commands,0);assert.deepEqual(model.calls,[]);
@@ -796,7 +802,7 @@ test("owned current259 claimed supply immediately revokes on its independent sig
 for(const ended of ['scope ended','signal aborted'])test(`owned current259 unclaimed supply denies after ${ended}`,async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-ended-')),model=await current259Model(root),controller=new AbortController();
  const result=await model.api.createCurrent259TechnicalMigration(model.handle,controller.signal).migrate();
- if(ended==='scope ended')model.close();else controller.abort();
+ if(ended==='scope ended')model.close();else {controller.abort();assert.equal(model.counts().closes,1);}
  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle),/CURRENT259_TECHNICAL_PROFILE|synthetic resource closed/);
  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
 });

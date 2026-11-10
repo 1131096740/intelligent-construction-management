@@ -48,7 +48,7 @@ function frozenMetadata(value){
 function claimCurrent259TechnicalSupply(result,handle){
  need(arguments.length===2&&result&&!types.isProxy(result)&&supplies.has(result));
  const supply=supplies.get(result);need(supply.handle===handle);supplies.delete(result);
- supply.activate();return Object.freeze({source:supply.source,completion:result,check:supply.check});
+ supply.check();return Object.freeze({source:supply.source,completion:result,check:supply.check});
 }
 function createCurrent259TechnicalMigration(handle,signal){
  need(arguments.length===1||arguments.length===2);
@@ -105,7 +105,7 @@ function createCurrent259TechnicalMigration(handle,signal){
     const sql=`SELECT jsonb_build_object('nonce','${nonce}','database',current_database(),'databaseOid',d.oid::text,'namespaceOid',to_regnamespace('public')::oid::text,
      'ownerOid',d.datdba::text,'actorOid',current_user::regrole::oid::text,'actor',current_user,'sessionActor',session_user,
      'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),'tls',coalesce((SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),false),
-     'clientAddress',inet_client_addr()::text,'serverAddress',inet_server_addr()::text,'serverPort',inet_server_port(),'backendPid',pg_backend_pid())
+     'clientAddress',pg_catalog.host(pg_catalog.inet_client_addr()),'serverAddress',pg_catalog.host(pg_catalog.inet_server_addr()),'serverPort',inet_server_port(),'backendPid',pg_backend_pid())
      FROM pg_database d WHERE d.datname=current_database();`;
     const live=await resource.execOwnerSql(sql,'current259-live-inspect');check();need(plain(live)&&typeof live.stdout==='string'&&Buffer.byteLength(live.stdout)<=8192);
     const row=JSON.parse(live.stdout.trim());need(plain(row)&&isDeepStrictEqual(Object.keys(row).sort(),['nonce','database','databaseOid','namespaceOid','ownerOid','actorOid','actor','sessionActor','systemIdentifier','tls','clientAddress','serverAddress','serverPort','backendPid'].sort()));
@@ -128,6 +128,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  profile.options.executeSqlStdin=profile.options.executeSql;
  profiles.set(token,profile);
  return Object.freeze({async migrate(){
+  let supplied=false;
   try{
    check();need(arguments.length===0&&!started);started=true;if(signal)EventTarget.prototype.addEventListener.call(signal,"abort",onAbort,{once:true});
    const temporaryRoot=fs.mkdtempSync(path.join(os.tmpdir(),'jg-current259-migrations-'));check();
@@ -136,11 +137,11 @@ function createCurrent259TechnicalMigration(handle,signal){
    const result=await fixture.migrate({databaseUrl:url.toString(),runtimeEnv:{}});check();
    const completion=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:source.candidateSha,runId,containerId:resource.containerId,database,
     application:result.technicalApplication,databaseIdentity:Object.freeze({...physicalAnchor}),sqlMaterials:Object.freeze(sqlMaterials.slice())});
-   supplies.set(completion,{handle,source:frozenMetadata(source),check,activate(){
-    check();if(signal)EventTarget.prototype.addEventListener.call(signal,"abort",onAbort,{once:true});
-   }});return completion;
+   supplies.set(completion,{handle,source:frozenMetadata(source),check});supplied=true;return completion;
   }catch(error){return await failedOutcome(error);}
-  finally{if(signal)EventTarget.prototype.removeEventListener.call(signal,"abort",onAbort);}
+  // The same once listener protects the completed result before and after claim.
+  // The original owned scope still revokes and closes independently on exit.
+  finally{if(signal&&!supplied)EventTarget.prototype.removeEventListener.call(signal,"abort",onAbort);}
  }});
 }
 const moduleApi=Object.freeze({createCurrent259TechnicalMigration,resolveTechnicalProfile,claimCurrent259TechnicalSupply});
