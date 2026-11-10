@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "profile": "TASK16_DOCKER259_B7_MATERIAL_V1",
+  "fullLedgerSha256": "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952",
+  "prefix256Sha256": "85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24",
+  "readerSignature": "public.jg_read_registered_payment_impacts(text,text,text,text,text)",
+  "readerBodySha256": "f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20",
+  "files": [
+    {
+      "path": "services/api/prisma/task16-baseline-access.json",
+      "sha256": "6c2ec83b104694aa2de351ab6e81757d0a3c6528b5bf0687a546fae23b48976b"
+    },
+    {
+      "path": "services/api/prisma/task16-registered-access.json",
+      "sha256": "b832ca2a1db0aaf87c1eafdb7a8acebf6674aff1ac0ef753b24b189dd29d222a"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-funding.sql",
+      "sha256": "2f9bab18fccb89bba71d7d4194b983c671e0457577ba4e201c1093d2323129d8"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-history-revision.sql",
+      "sha256": "ea09376b0e7a14acf9ecd09b1acf9d94b4d4462491957c97c347837b617695ca"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-write-authority.sql",
+      "sha256": "405dba3ef015bca4d72f60288bc195a256e68f8bb7c17b2c34aa8bc54b7fe86c"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-canonical-proof.sql",
+      "sha256": "cd628eba389d22613006e414672f6a765773ff9e1a84bfa0d200271c08eb0e11"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-intercompany.sql",
+      "sha256": "ff3342398bb0236800ed74653d7c89dfd2eaa4c27750aa526c72f67b961de468"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-canonical-adapter.sql",
+      "sha256": "ee468476449496421a3e153134dc551162d120b906b3d120051a90b58d727be3"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16/registered-voucher.sql",
+      "sha256": "06233c7f552b589573635c716d4c7da86f65df68e79d86745d7eaaffd831b13f"
+    },
+    {
+      "path": "services/api/prisma/prepared/task16-current259/registered-impact-reader.sql",
+      "sha256": "c2cefd0023b59382277307b350f09f1c5d30b3613362c001e74ee81fc81ef7b5"
+    },
+    {
+      "path": "services/api/prisma/task16-current259-catalog.sql",
+      "sha256": "7952af1517f2d1beed7b8c835ca9200d95a69add82005643ffc67f20e6a97f53"
+    },
+    {
+      "path": "services/api/prisma/task16-registered-access-check.cjs",
+      "sha256": "7bac1e1bbdb525d73f00f4f545ae244b8b7d50f92b6e9711cd713f05038ece1f"
+    },
+    {
+      "path": "services/api/prisma/task16-registered-object-witness.cjs",
+      "sha256": "37e399773c8099cb6afd006b7b0c9f7a5a1ad4d61419f31f0d2a677a3cbc97a3"
+    },
+    {
+      "path": "services/api/prisma/task16-schema205-scope.cjs",
+      "sha256": "bd26839aa4153479cc27ba7ff9dcc8d7c39882d84140d4c15aa23581bfc098e4"
+    },
+    {
+      "path": "services/api/prisma/task16-current259-profile.cjs",
+      "sha256": "ea279099d019cf3d7be5cb4e2756daf280cae0230eb9cd6a1161b0efc03e9b2f"
+    },
+    {
+      "path": "services/api/prisma/task16-runtime-inputs.cjs",
+      "sha256": "6755207c6cbb0278bfdc93f28302602c07c61e9c1844df7e71c660495b729b54"
+    },
+    {
+      "path": "services/api/prisma/task16-registered-access-check.sql",
+      "sha256": "53be6f18aee10f532a291e38aa4bc35c9b7063f26eba44651ac632f660722d84"
+    }
+  ],
+  "roles": {
+    "owner": "jg_task01_owner",
+    "runtime": "jg_task01_runtime",
+    "observer": "jg_task01_observer"
+  },
+  "scope": "B7 material and post-install minimal ACL catalog only; no roles/seven-fragment installation or native admission",
+  "readerColumns": [
+    [
+      "Contract",
+      "id",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "Contract",
+      "projectId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "ContractVersion",
+      "contractId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "ContractVersion",
+      "id",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "ContractVersion",
+      "signingSubjectType",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "HistoricalWageSummaryPaymentExecutionLink",
+      "paymentExecutionId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingFact",
+      "id",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingFact",
+      "paymentExecutionId",
+      "pg_catalog",
+      "text",
+      false
+    ],
+    [
+      "OperatingFact",
+      "projectId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingFact",
+      "sourceBusinessId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingFact",
+      "sourceType",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "amountCents",
+      "pg_catalog",
+      "int8",
+      false
+    ],
+    [
+      "OperatingImpactEntry",
+      "factId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "id",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "impactKind",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "numericProtocolVersion",
+      "pg_catalog",
+      "int4",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "paymentExecutionId",
+      "pg_catalog",
+      "text",
+      false
+    ],
+    [
+      "OperatingImpactEntry",
+      "projectId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "sourceBusinessId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "sourceType",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "OperatingImpactEntry",
+      "subjectId",
+      "pg_catalog",
+      "text",
+      false
+    ],
+    [
+      "OperatingImpactEntry",
+      "subjectKind",
+      "pg_catalog",
+      "text",
+      false
+    ],
+    [
+      "PaymentExecution",
+      "id",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentExecution",
+      "idempotencyKey",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentExecution",
+      "paymentRequestId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentExecution",
+      "voucherFileId",
+      "pg_catalog",
+      "text",
+      false
+    ],
+    [
+      "PaymentExecutionWagePayableBinding",
+      "paymentExecutionId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentRequest",
+      "contractId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentRequest",
+      "contractVersionId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentRequest",
+      "id",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentRequest",
+      "paymentSubjectType",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentRequest",
+      "projectId",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "PaymentRequest",
+      "sourceType",
+      "pg_catalog",
+      "text",
+      true
+    ],
+    [
+      "RegisteredPaymentFunding",
+      "executionId",
+      "pg_catalog",
+      "text",
+      true
+    ]
+  ],
+  "publicAclScope": {
+    "relations": "public r,p,v,m,f,S plus column ACL",
+    "functions": "public functions; new B7 separately exact ACL",
+    "schemas": [
+      "public"
+    ],
+    "databases": "all databases",
+    "types": [
+      "public.OperatingLedgerFactWritePayloadV2",
+      "public.OperatingLedgerImpactWritePayloadV2"
+    ],
+    "forbiddenGrantee": "PUBLIC",
+    "source": "services/api/prisma/task16-registered-access-check.sql"
+  }
+}
