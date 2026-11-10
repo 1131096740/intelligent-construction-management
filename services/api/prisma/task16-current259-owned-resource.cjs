@@ -102,8 +102,12 @@ async function withCurrent259OwnedResource(build,planInput,signal,consume){
   if(signal)EventTarget.prototype.removeEventListener.call(signal,'abort',onAbort);
   try{await close();}catch{
    if(!hasPrimary){primary=fail('CURRENT259_RESOURCE_CLEANUP_UNKNOWN');hasPrimary=true;}
-   if(!primary||typeof primary!=='object'||types.isProxy(primary)||!Object.isExtensible(primary))primary=Object.assign(fail('CURRENT259_RESOURCE_CLEANUP_UNKNOWN'),{cause:primary});
-   if(primary&&typeof primary==='object'&&!types.isProxy(primary)&&Object.isExtensible(primary))Object.defineProperty(primary,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});
+   // Do not invoke or overwrite a foreign field, including a configurable
+   // accessor. If annotation is unsafe, retain the original as a hidden cause.
+   if(!primary||typeof primary!=='object'||types.isProxy(primary)||!Object.isExtensible(primary)||Object.getOwnPropertyDescriptor(primary,'resourceCleanup')){
+    const cause=primary;primary=fail('CURRENT259_RESOURCE_CLEANUP_UNKNOWN');Object.defineProperty(primary,'cause',{value:cause});
+   }
+   Object.defineProperty(primary,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});
   }
   invalidate();
  }

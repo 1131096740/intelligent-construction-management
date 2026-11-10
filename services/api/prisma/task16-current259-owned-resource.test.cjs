@@ -146,3 +146,13 @@ test('source or unloaded-tree drift during inspect is rejected before resource c
  await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{consumed++;}),/CURRENT259_RESOURCE_BUILD_REUSED/u);
  assert.equal(consumed,0);assert.equal(f.state.closeCount,1);assert.equal(f.calls.filter(x=>x==='start').length,1);
 });
+for(const accessor of [false,true])test(`cleanup UNKNOWN preserves an existing ${accessor?'accessor':'nonconfigurable'} stage error field without invoking or replacing it`,async()=>{
+ const f=fixture(),original=new Error('FIRST_STAGE_FAILURE');let reads=0;
+ Object.defineProperty(original,'resourceCleanup',accessor?{get(){reads++;throw new Error('GETTER_PRIVATE_DETAIL');},configurable:true}:{value:{status:'earlier'},configurable:false});
+ const before=Object.getOwnPropertyDescriptor(original,'resourceCleanup');f.state.closeFailure=true;
+ await assert.rejects(f.api.withCurrent259OwnedResource(f.build,f.plan,undefined,()=>{throw original;}),error=>{
+  assert.equal(error.code,'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');assert.equal(error.cause,original);
+  assert.equal(Object.getOwnPropertyDescriptor(error,'cause').enumerable,false);assert.equal(error.resourceCleanup.status,'UNKNOWN');return true;
+ });
+ assert.deepEqual(Object.getOwnPropertyDescriptor(original,'resourceCleanup'),before);assert.equal(reads,0);assert.equal(f.state.closeCount,1);
+});
