@@ -70,12 +70,14 @@ function loadCurrent259Client(handle){
  }
  const requireAt=Module.createRequire(path.join(root,'services/api/package.json'));
  const framework={};
- for(const [name,entry]of [['TestingModule','@nestjs/testing/testing-module'],['NestApplication','@nestjs/core/nest-application'],['ExpressAdapter','@nestjs/platform-express/adapters/express-adapter']]){
+ for(const [name,entry]of [['TestingModule','@nestjs/testing/testing-module'],['NestContainer','@nestjs/core/injector/container'],['NestApplication','@nestjs/core/nest-application'],['ExpressAdapter','@nestjs/platform-express/adapters/express-adapter']]){
   const file=fs.realpathSync(requireAt.resolve(entry)),exports=guardedRequire(file);framework[name]=own(exports,name);need(typeof framework[name]==='function','CURRENT259_FRAMEWORK_CLASS');records.push({module:require.cache[file],key:name,value:framework[name]});
  }
  const nativeProxy=globalThis.Proxy;
  const originalCreate=dataMethod(framework.TestingModule.prototype,'createNestApplication'),originalAdapterProxy=dataMethod(framework.TestingModule.prototype,'createAdapterProxy');
  const originalClose=dataMethod(framework.NestApplication.prototype,'close');
+ const creationMethods=new Map(['isHttpServer','createHttpAdapter','applyLogger'].map(key=>[key,dataMethod(framework.TestingModule.prototype,key)]));
+ const setHttpAdapter=dataMethod(framework.NestContainer.prototype,'setHttpAdapter');
  function visit(mod,visited){
   if(visited.has(mod))return;visited.add(mod);need(mod&&mod.loaded&&typeof mod.filename==='string'&&require.cache[mod.filename]===mod,'CURRENT259_LOADER_MODULE');
   const captured=material.capture(mod.filename),prior=files.get(mod.filename);
@@ -141,9 +143,17 @@ function loadCurrent259Client(handle){
    const testing=await guardedOperation(()=>compile.call(builder));collect();
    need(testing&&!types.isProxy(testing)&&Object.getPrototypeOf(testing)===framework.TestingModule.prototype,'CURRENT259_FRAMEWORK_MODULE');
    need(dataMethod(testing,'createNestApplication')===originalCreate&&dataMethod(testing,'createAdapterProxy')===originalAdapterProxy,'CURRENT259_FRAMEWORK_MODULE');
-   let consumed=false;
+   const creationFields=new Map(['container','applicationConfig','graphInspector'].map(key=>[key,own(testing,key)]));
+   const container=creationFields.get('container');
+   need(container&&!types.isProxy(container)&&Object.getPrototypeOf(container)===framework.NestContainer.prototype&&dataMethod(container,'setHttpAdapter')===setHttpAdapter,'CURRENT259_FRAMEWORK_CONTAINER');
+   function checkCreation(){
+    for(const [key,value]of creationMethods)need(dataMethod(testing,key)===value,'CURRENT259_FRAMEWORK_HOOK_CHANGED');
+    for(const [key,value]of creationFields)need(own(testing,key)===value,'CURRENT259_FRAMEWORK_HOOK_CHANGED');
+    need(!types.isProxy(container)&&Object.getPrototypeOf(container)===framework.NestContainer.prototype&&dataMethod(container,'setHttpAdapter')===setHttpAdapter,'CURRENT259_FRAMEWORK_CONTAINER');
+   }
+   checkCreation();let consumed=false;
    ownedModules.set(testing,{create(){
-    check();need(!consumed&&globalThis.Proxy===nativeProxy,'CURRENT259_FRAMEWORK_REENTRY');consumed=true;
+    check();need(!consumed&&globalThis.Proxy===nativeProxy,'CURRENT259_FRAMEWORK_REENTRY');consumed=true;checkCreation();
     need(dataMethod(testing,'createNestApplication')===originalCreate&&dataMethod(testing,'createAdapterProxy')===originalAdapterProxy,'CURRENT259_FRAMEWORK_MODULE');
     const before=Object.getOwnPropertyDescriptor(testing,'createAdapterProxy');
     need(!before||Object.hasOwn(before,'value')&&before.value===originalAdapterProxy&&before.configurable,'CURRENT259_FRAMEWORK_DESCRIPTOR');
