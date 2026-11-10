@@ -11095,7 +11095,7 @@
     },
     {
       "path": "services/api/prisma/prepared/task16/registered-intercompany.sql",
-      "sha256": "ff3342398bb0236800ed74653d7c89dfd2eaa4c27750aa526c72f67b961de468"
+      "sha256": "91d2b78060900ae9cdeee9131e699c88fb3e1a45233efcf4344f39d6f3960657"
     },
     {
       "path": "services/api/prisma/prepared/task16/registered-voucher.sql",
@@ -11103,7 +11103,7 @@
     },
     {
       "path": "services/api/prisma/prepared/task16/registered-write-authority.sql",
-      "sha256": "405dba3ef015bca4d72f60288bc195a256e68f8bb7c17b2c34aa8bc54b7fe86c"
+      "sha256": "665b6e5f8eecb80734c264548b544a22f49e8c0bf5ffe18e69b627971a984102"
     },
     {
       "path": "services/api/prisma/schema.prisma",

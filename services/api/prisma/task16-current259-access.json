@@ -18,7 +18,7 @@
     },
     {
       "path": "services/api/prisma/task16-registered-access.json",
-      "sha256": "ab22afaf3efbd6a74452f34bde2e422ef82621b11e3393eed43ee113b6c89f2c"
+      "sha256": "d19fe664e58659b3008ab2ef2769c6d3e421cb8504d3f98b8fd332133291b5eb"
     },
     {
       "path": "services/api/prisma/prepared/task16/registered-funding.sql",

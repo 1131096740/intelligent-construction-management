@@ -210,7 +210,7 @@ function renderCurrent259RuntimeAcl(witness,provisioned,nonce){
  const {database,databaseOid,namespaceOid,ownerOid,systemIdentifier}=provisioned.databaseIdentity;
  const identity={runId:provisioned.runId,database,databaseOid,namespaceOid,ownerOid,systemIdentifier,runtimeOid:findRole(plan.runtime.role),observerOid:findRole(plan.observer.role)};
  const databaseAcl=renderCurrent259DatabasePrivileges(provisioned);
- const legacy=fixedJson('task16-registered-access.json','ab22afaf3efbd6a74452f34bde2e422ef82621b11e3393eed43ee113b6c89f2c');
+ const legacy=fixedJson('task16-registered-access.json','d19fe664e58659b3008ab2ef2769c6d3e421cb8504d3f98b8fd332133291b5eb');
  const baseline=fixedJson('task16-baseline-access.json','6c2ec83b104694aa2de351ab6e81757d0a3c6528b5bf0687a546fae23b48976b');
  const expect=matrix(plan),proof=proofSql(plan,legacy,baseline),catalog=catalogQuery(source,identity,nonce);
  const verify=readOnly=>postSql(catalog,identity,expect,databaseAcl.expected,proof,material.ledger,legacy.legacyRelationOwners,readOnly);
