@@ -31,6 +31,8 @@ test('actual generated259 SDK/native engine/eight exports share one observed phy
  assert.throws(()=>createCurrent259OwnedApplication(testing),/CURRENT259_FRAMEWORK_REENTRY/u);
  const view=current259OwnedApplicationView(application);
  assert.ok(Object.isFrozen(view));assert.equal(view.getHttpAdapter,current259OwnedApplicationMethod(application,'getHttpAdapter'));
+ const chain=view.useGlobalPipes();if(chain!==view)await current259OwnedApplicationMethod(application,'close')();
+ assert.ok(chain===view,'owned framework fluent return must retain the view');
  first.configureApiSecurity(view);first.configureProjectionExportJson(view);
  assert.equal(view.getHttpAdapter().getInstance().enabled('x-powered-by'),false);
  let traps=0;const foreign=new Proxy({}, {get(){traps++;throw new Error('foreign getter');},getOwnPropertyDescriptor(){traps++;throw new Error('foreign descriptor');}});
