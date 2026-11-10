@@ -42,6 +42,11 @@ test('actual generated259 SDK/native engine/eight exports share one observed phy
  assert.throws(()=>view.getHttpAdapter(),/CURRENT259_FRAMEWORK_CHANGED/u);
  loader.verifyFull();
  process.stdout.write(JSON.stringify({status:'ACTUAL_NEST_OWNED_PROXY_CLOSED',descriptorRestored:true,foreignProxyTraps:traps,initialized:false,listening:false,databaseClientConstructed:false})+'\n');
+ const changed=await loader.createTestingModule({imports:[]}).compile();let getterReads=0,creationError;
+ Object.defineProperty(changed,'createHttpAdapter',{configurable:true,get(){getterReads++;return()=>{throw new Error('synthetic getter must not execute');};}});
+ try{createCurrent259OwnedApplication(changed);}catch(error){creationError=error;}finally{delete changed.createHttpAdapter;await changed.close();}
+ assert.equal(getterReads,0,'foreign framework hook getter must be rejected before invocation');
+ assert.ok(creationError,'changed framework hook must not create an application');
  const prior=process.env.PRISMA_QUERY_ENGINE_LIBRARY;
  try{process.env.PRISMA_QUERY_ENGINE_LIBRARY='synthetic-engine-override-not-used';assert.throws(()=>loader.check(),error=>error.code==='CURRENT259_LOADER_CHANGED'&&!JSON.stringify(error).includes('synthetic-engine-override'));}
  finally{if(prior===undefined)delete process.env.PRISMA_QUERY_ENGINE_LIBRARY;else process.env.PRISMA_QUERY_ENGINE_LIBRARY=prior;}
