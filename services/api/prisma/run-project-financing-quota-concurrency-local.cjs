@@ -464,7 +464,11 @@ function firstPostgresFailure(logs, applicationName) {
       "local fixture old trigger changed": "FIXTURE_OLD_TRIGGER_CHANGED",
       "local fixture old routine changed": "FIXTURE_OLD_ROUTINE_CHANGED",
       "local fixture role catalog changed": "FIXTURE_ROLE_CATALOG_CHANGED",
-      "local fixture file callers changed": "FIXTURE_FILE_CALLERS_CHANGED"
+      "local fixture file callers changed": "FIXTURE_FILE_CALLERS_CHANGED",
+      "local fixture file caller DML changed": "FIXTURE_FILE_CALLER_DML_CHANGED",
+      "local fixture file caller stage changed": "FIXTURE_FILE_CALLER_STAGE_CHANGED",
+      "local fixture file caller column ACL changed": "FIXTURE_FILE_CALLER_COLUMN_ACL_CHANGED",
+      "local fixture readback too large": "FIXTURE_READBACK_TOO_LARGE"
     };
     return {
       status: "captured",

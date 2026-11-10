@@ -50,8 +50,8 @@ function completion() {
     [205, "ALTER TABLE", "pg_class", "ContractVersion", null],
     [205, "ALTER FUNCTION", "pg_proc", "jg_contract_direct_pending_file_guard_v1", "106f9ccc402e856a5057ed0d73f7b3336bbaacdd8ed2eebe0588efef97a14aa1"]
   ];
-  return { ...setup, readerPid: 999, events: anchors.map(([stage, tag, catalog, name, body], index) => ({
-    ordinal: index + 1, stage, tag, catalog, name, bodySha256: body, objectOid: String(19000 + index),
+  return { ...setup, readerPid: 999, fileCallerTransition: transition(), events: anchors.map(([stage, tag, catalog, name, body], index) => ({
+    ordinal: index + 1, stage, tag, catalog, name, bodySha256: body, objectOid: index === 2 ? "31" : String(19000 + index),
     querySha256: migrations[stage - 1].sha256, runId: plan.runId, nonce: plan.nonce,
     databaseOid: plan.databaseOid, systemIdentifier: plan.systemIdentifier, actorOid: plan.actorOid,
     appOid: setup.appOid, fileCallerOids: [...setup.fileCallerOids], backendPid: 333,
@@ -106,4 +106,49 @@ test("nested migration accessors and unknown serialization hooks are rejected be
   assert.throws(() => controls.setupSql({ ...plan, extra: { toJSON() { reads++; return "payload"; } } }), /LOCAL_MIGRATION_CONTROL/u);
   assert.throws(() => controls.setupSql({ ...plan, migrations: new Proxy(migrations, { get() { reads++; } }) }), /LOCAL_MIGRATION_CONTROL/u);
   assert.equal(reads, 0);
+});
+
+// Independent worked facts for two frozen file routes; only CV INSERT gains app.
+function transition() {
+  const route = (role, trigger, relation, allowed) => [String(role), String(trigger), String(relation),
+    23, true, true, true, false, allowed, allowed, null, [[8, allowed]], allowed, allowed, allowed];
+  const before = [route(10, 21, 31, true), route(10, 22, 32, true),
+    route(17000, 21, 31, false), route(17000, 22, 32, false),
+    route(17001, 21, 31, true), route(17001, 22, 32, false)];
+  const after = JSON.parse(JSON.stringify(before)); after[2][8] = true;
+  return { versionOid: "31", before, after, callers: [10, 17000, 17001],
+    acl: ["INSERT", "SELECT", "UPDATE"].map(privilege => ["10", "17000", privilege, false]) };
+}
+test("completed205 proves exact original caller routes plus one app INSERT route", () => {
+  controls.checkCompletion(completion(), plan, setup);
+});
+for (const [name, mutate] of [
+  ["another role gains a route", p => { p.after[5][8] = true; }],
+  ["an old caller loses a route", p => { p.after[0][8] = false; }],
+  ["app gains unrelated route", p => { p.after[3][8] = true; }],
+  ["targeted UPDATE changes", p => { p.after[2][11][0][1] = true; }],
+  ["table INSERT grant masks column delta", p => { p.after[2][12] = true; }],
+  ["root changes", p => { p.after[3][4] = false; }],
+  ["registry gate changes", p => { p.after[3][6] = false; }],
+  ["grant option added", p => { p.acl[0][3] = true; }],
+  ["grantor changed", p => { p.acl[0][0] = "17001"; }],
+  ["SELECT ACL missing", p => { p.acl.splice(1, 1); }],
+  ["additional grantee", p => { p.acl.push(["10", "17001", "INSERT", false]); }],
+  // PostgreSQL16 oid[] JSON uses strings; SQL bridges to bigint[] for numeric protocol.
+  ["unbridged PostgreSQL oid JSON", p => { p.callers = p.callers.map(String); }],
+  ["only C0 remains", p => { p.callers = [10, 17001]; }],
+  ["extra caller appears", p => { p.callers.push(17002); }],
+  ["baseline app INSERT already present", p => { p.before[2][8] = true; }],
+  ["frozen trigger disappears", p => { p.after.pop(); }]
+]) {
+  test(`completed205 rejects ${name}`, () => {
+    const row = completion(); mutate(row.fileCallerTransition);
+    assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
+  });
+}
+
+test("completed205 binds the unchanged caller proof to its actual CV anchor OID", () => {
+  const row = completion();
+  row.events[2].objectOid = "32"; // Proof and every permission fact remain bound to CV31.
+  assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
 });
