@@ -47,6 +47,10 @@ test('actual generated259 SDK/native engine/eight exports share one observed phy
  try{createCurrent259OwnedApplication(changed);}catch(error){creationError=error;}finally{delete changed.createHttpAdapter;await changed.close();}
  assert.equal(getterReads,0,'foreign framework hook getter must be rejected before invocation');
  assert.ok(creationError,'changed framework hook must not create an application');
+ const Module=require('node:module'),originalLoad=Module._load;
+ try{Module._load=function syntheticUntrustedLoad(){throw new Error('untrusted hook must not run');};assert.throws(()=>loader.check(),/CURRENT259_LOADER/u);}
+ finally{Module._load=originalLoad;}
+ assert.throws(()=>loader.check(),/CURRENT259_LOADER/u,'restoring an altered loader hook cannot revive its observation');
  const prior=process.env.PRISMA_QUERY_ENGINE_LIBRARY;
  try{process.env.PRISMA_QUERY_ENGINE_LIBRARY='synthetic-engine-override-not-used';assert.throws(()=>loader.check(),error=>error.code==='CURRENT259_LOADER_CHANGED'&&!JSON.stringify(error).includes('synthetic-engine-override'));}
  finally{if(prior===undefined)delete process.env.PRISMA_QUERY_ENGINE_LIBRARY;else process.env.PRISMA_QUERY_ENGINE_LIBRARY=prior;}
