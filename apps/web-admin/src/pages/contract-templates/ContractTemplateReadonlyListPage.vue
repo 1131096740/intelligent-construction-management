@@ -85,6 +85,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
@@ -135,7 +136,7 @@ async function loadTemplates() {
       await listPublishedContractTemplates()
     );
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合同模板失败。";
+    message.value = formatUnknownApiError(error, "加载合同模板失败。");
   } finally {
     loading.value = false;
   }

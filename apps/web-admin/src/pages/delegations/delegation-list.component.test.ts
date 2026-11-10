@@ -10,6 +10,7 @@ import { listApprovalDelegations, fetchApprovalDelegationDutyOptions, fetchAppro
 const api = { listApprovalDelegations, fetchApprovalDelegationDutyOptions, fetchApprovalDelegationDutyCapability, fetchApprovalDelegationRevokeCapability, fetchApprovalDelegationUserOptions, createApprovalDelegation, revokeApprovalDelegation };
 import {useAuthStore} from "../../auth/auth.store";
 import * as config from "./delegation-list.config";
+import * as errors from "../../api/error-message";
 type Node = { tag: string; text: string; props: Record<string, unknown>; children: Node[]; parent: Node | null };
 const node = (tag: string, text = ""): Node => ({ tag, text, props: {}, children: [], parent: null });
 const renderer = createRenderer<Node, Node>({
@@ -34,7 +35,7 @@ function compile(file: string, dependencies: Record<string, unknown>): Vue.Compo
   return exports.default;
 }
 
-const page = compile("./DelegationListPage.vue", {"../../api/core-flow-read.api": api, "../../auth/auth.store": {useAuthStore}, "./delegation-list.config": config});
+const page = compile("./DelegationListPage.vue", {"../../api/core-flow-read.api": api, "../../api/error-message": errors, "../../auth/auth.store": {useAuthStore}, "./delegation-list.config": config});
 const cleanup: Array<() => void> = [];
 function mount() {
  const root=node("root");const app=renderer.createApp(page);
@@ -130,4 +131,20 @@ it.each(["missing", "unknown", "changed"])("资金委托对%s职责选项失败�
  await nextTick();(all(root).find(n=>n.tag==="button"&&text(n).includes("确认委托"))!.props.onClick as()=>void)();await flush();
  if(kind==="changed"){expect(resolveCapability).toBeDefined();select("选择受托人","another");resolveCapability!(new Response(JSON.stringify({canDelegate:true,resourceId:"fund-round-1:0",actionKey:"fund_account.balance.review",resourceType:"fund_account_balance_review_duty"}),{status:200}));await flush();}
  expect(posted).toEqual([]);expect(text(root)).toMatch(/重选|变化/);
+});
+
+
+it("委托台账读取失败时不显示底层异常", async () => {
+  vi.stubGlobal("fetch", async () => Response.json([]));
+  const load = vi.spyOn(api, "listApprovalDelegations")
+    .mockRejectedValue(new Error("Prisma P2025: SELECT ApprovalDelegation"));
+  try {
+    const root = mount();
+    await flush();
+    expect(text(root)).toContain("加载委托失败");
+    expect(text(root)).not.toContain("Prisma");
+    expect(text(root)).not.toContain("ApprovalDelegation");
+  } finally {
+    load.mockRestore();
+  }
 });

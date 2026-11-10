@@ -29,7 +29,7 @@ import {
   type ContractBillCellError
 } from "./contract-bill-grid";
 import type { WorkbenchBill } from "./contract-bill-editor";
-import { formatUnknownApiError } from "../../../api/error-message";
+import { formatApiErrorMessage, formatUnknownApiError } from "../../../api/error-message";
 
 async function uploadContractBillImportFileWithCapability(
   contractVersionId: string,
@@ -381,7 +381,7 @@ export function createContractBillFocusController(
       messageDanger.value = false;
     } catch (error) {
       if (generation !== remainderCancellationDialogGeneration) return;
-      remainderCancellationError.value = errorMessage(
+      remainderCancellationError.value = formatUnknownApiError(
         error,
         "取消未实施余量失败，请核对服务端最新状态"
       );
@@ -448,7 +448,7 @@ export function createContractBillFocusController(
       if (result.errors.length) {
         pendingImportRows.value = null;
         replaceConfirmVisible.value = false;
-        setError(result.errors.map((error) => error.message).join("；"));
+        setError(result.errors.map((issue) => issue.message).join("；"));
         return;
       }
       if (importMode.value === "replace" && !preservesGovernedBillRowKeys(rows.value, result.candidateRows)) {
@@ -535,7 +535,7 @@ export function createContractBillFocusController(
       );
       message.value = "标准模板已下载";
     } catch (error) {
-      setError(errorMessage(error, "下载标准模板失败"));
+      setError(formatUnknownApiError(error, "下载标准模板失败"));
     } finally {
       busy.value = false;
     }
@@ -633,7 +633,15 @@ function normalizeImportPreview(
   value: ContractDraftBillExcelImportPreview
 ): BillImportPreview {
   const candidateRows: ContractBillCandidateRow[] = [];
-  const errors: BillImportPreview["errors"] = value.errors.map((error) => ({ ...error, message: error.sheet && error.row && error.column ? `${error.sheet} 第 ${error.row} 行 ${error.column} 列：${error.message}` : error.message }));
+  const errors: BillImportPreview["errors"] = value.errors.map((issue) => {
+    const message = formatApiErrorMessage(issue.message, 0, "请核对清单中的填写内容");
+    return {
+      ...issue,
+      message: issue.sheet && issue.row && issue.column
+        ? `${issue.sheet} 第 ${issue.row} 行 ${issue.column} 列：${message}`
+        : message
+    };
+  });
   value.rows.forEach((row, index) => {
     const candidate = importCandidateRow(row);
     if (candidate) {
@@ -823,12 +831,6 @@ function optionalText(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : fallback;
 }
 </script>
 
@@ -1236,13 +1238,13 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       <strong>源文件预览（只读，请在 Excel 修改后重新上传）</strong>
       <div class="focus-toolbar">
         <t-button
-          v-for="(error, index) in preview.errors"
+          v-for="(issue, index) in preview.errors"
           :key="index"
           variant="outline"
-          :aria-label="`定位 ${error.sheet} ${error.column}${error.row}`"
-          @click="locateImportCell(error)"
+          :aria-label="`定位 ${issue.sheet} ${issue.column}${issue.row}`"
+          @click="locateImportCell(issue)"
         >
-          {{ error.column }}{{ error.row }}：{{ error.message }}
+          {{ issue.column }}{{ issue.row }}：{{ issue.message }}
         </t-button>
       </div>
       <JgBusinessGrid

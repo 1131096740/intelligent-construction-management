@@ -57,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../api/error-message";
 import { reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
@@ -107,7 +108,7 @@ async function submitChangePassword() {
     await auth.changePassword(form.oldPassword, form.newPassword, name);
     await router.replace(redirectPath());
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "修改密码失败";
+    errorMessage.value = formatUnknownApiError(error, "修改密码失败");
   } finally {
     clearPasswordFields();
     submitting.value = false;

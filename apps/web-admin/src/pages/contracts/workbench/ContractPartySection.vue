@@ -193,6 +193,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import { computed, reactive, ref } from "vue";
 import {
   fetchContractDraftOperationCapabilities,
@@ -456,7 +457,7 @@ async function uploadAttachment(attachment: AttachmentForm, event: Event) {
     attachment.name = `${attachment.label} - ${file.name}`;
     message.value = "附件已上传";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "附件上传失败";
+    message.value = formatUnknownApiError(error, "附件上传失败");
   } finally {
     busy.value = false;
     input.value = "";

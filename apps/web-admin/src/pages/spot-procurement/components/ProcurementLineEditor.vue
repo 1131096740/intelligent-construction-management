@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatUnknownApiError } from "../../../api/error-message";
 import { computed, nextTick, ref } from "vue";
 import { calculateBusinessLineAmount, normalizeBusinessAmount, normalizeBusinessQuantity, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { VGridVueTemplate, type ColumnRegular } from "@revolist/vue3-datagrid";
@@ -24,7 +25,7 @@ const errors = computed(() => props.readonly ? [] : props.modelValue.flatMap((ro
   for (const [key, label] of [["quantity", "数量"], ["estimatedUnitPrice", "预计单价"], ["estimatedAmount", "预计金额"]] as const) {
     if (!row[key]?.trim()) continue;
     try {if (key === "quantity") {normalizeBusinessQuantity(row[key]!); if (Number(row[key]) <= 0) throw new Error("数量已知时须大于0，未知请留空");} else normalizeBusinessAmount(row[key]!);}
-    catch (error) {result.push({index, key: key!, label: label!, message: error instanceof Error ? error.message : "请核对输入"});}
+    catch (error) {result.push({index, key: key!, label: label!, message: formatUnknownApiError(error, "请核对输入")});}
   }
   return result;
 }));
@@ -111,13 +112,13 @@ const columns = computed<ColumnRegular[]>(() => [{prop: "__selected", name: "选
       role="alert"
     >
       <t-button
-        v-for="error in errors.slice(0, 3)"
-        :key="`${error.index}:${error.key}`"
+        v-for="issue in errors.slice(0, 3)"
+        :key="`${issue.index}:${issue.key}`"
         variant="text"
         theme="danger"
-        @click="locateError(error)"
+        @click="locateError(issue)"
       >
-        第{{ error.index + 1 }}行{{ error.label }}：{{ error.message }}（定位）
+        第{{ issue.index + 1 }}行{{ issue.label }}：{{ issue.message }}（定位）
       </t-button>
     </div>
     <JgBusinessGrid
