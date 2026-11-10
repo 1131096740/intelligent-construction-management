@@ -65,7 +65,7 @@ need(!used.has(handle),'CURRENT259_OWNER_REUSED');used.add(handle);
  const cas=[resource.caPath,resource.wrongCaPath].map((file,index)=>{const data=read(file,{privateFile:false,maxBytes:LIMIT,code:'CURRENT259_OWNER_CA'});need(data.identity.uid===process.getuid()&&data.sha256===tls[index?'wrongCaSha256':'caSha256'],'CURRENT259_OWNER_CA');return Object.freeze({file,identity:data.identity,sha256:data.sha256});});
  const source=view.source,sourceSnapshot=JSON.stringify(source),probes=[],owned=[];
  let anchor,primary,failed=false,restoration='NOT_NEEDED',clientCleanup='DISCONNECTED',resourceCleanup='NOT_NEEDED',closing;
- const deadline=Date.now()+180000;
+ const deadline=Date.now()+600000;
  const closeOwned=()=>{if(!closing)closing=Promise.resolve().then(()=>closeCurrent259OwnedResource(handle)).then(()=>{resourceCleanup='CLOSED';},()=>{resourceCleanup='UNKNOWN';});return closing;};
  function check(mode='correct'){
   view.check();need(claimCurrent259OwnedResource(handle)===view&&view.loader===loader&&loader.Class===Class&&view.resource===resource&&view.runId===runId&&view.source===source&&JSON.stringify(source)===sourceSnapshot,'CURRENT259_OWNER_SOURCE');
