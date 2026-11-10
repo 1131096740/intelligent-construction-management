@@ -13,6 +13,7 @@ test('fixed native import order loads actual profile/resource/core without resou
  const entry=${JSON.stringify(entry)};const root=path.dirname(entry);
  const api=require(entry),owned=require(path.join(root,'task16-current259-owned-resource.cjs'));
  assert.equal(typeof owned.withCurrent259OwnedResource,'function');
+ assert.equal(typeof require(path.join(root,'task16-current259-owner-tls.cjs')).verifyCurrent259OwnerTls,'function');
  assert.equal(typeof require(path.join(root,'local-staged-migrations.cjs')).createLocalMigrationFixture,'function');
  assert.throws(()=>api.createCurrent259TechnicalMigration({}),/CURRENT259_RESOURCE_HANDLE/);`;
  const child=spawnSync(process.execPath,['-e',script],{encoding:'utf8',timeout:10000});
