@@ -1,5 +1,9 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] `c2548acd` 已本地集成 B7 提交前目录核验。只允许已审 reader、其 runtime 执行权限和本次写入坐标变化；成功才输出同一行并提交，独立提交读回仍沿原入口。独立756项编排、99项定向、API类型/lint与PG16.1静态解析通过，合后中央99项通过。B7 实际执行和后继应用准入仍待同轮证据。 [集成记录](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-C254.md)
+
+- [~] `118cb4e3` 已本地集成独立 #398 七片及权限安装。七片写事务在第一片前固定 runtime 角色，五个归档激活绑定保持为空。ACL 安装仅从同句柄七片凭据继续，提交后另后端核写 XID、目录和权限。756项编排、合后34项定向、API类型/lint及五批SQL静态解析通过，未做真实资源。A16 提交失败与断连方案已定位真实 COMMIT 等待边界，同库归档和实付安装顺序另有源码复核。 [集成记录](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-118CB.md) · [A16 方案](/private/tmp/jg-398-a16-pg-fault-design.O09fbL4a/HANDOFF.md) · [同库顺序](/private/tmp/jg-382-combined-live-order.nBp3SPWr/HANDOFF.md)
+
 - [~] 当前本地集成 `204f88fd` 含 #394 归档安装源码、#398 独立实付 PUBLIC 权限差量。归档补齐 M234 前原24条例程最小权限及九角色原事务连续性，提交后独立读回；实付权限脚本要求五个归档激活绑定为空，保留原调用者所需 schema 和摘要函数权限。独立742项编排、29项定向、API类型/lint通过，合后中央29项通过。两票先用各自资源实测；M259 冻结触发器/ACL 与实付新增守卫的同库兼容仍须验收。 [组合记录](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-204F.md) · [资源分离依据](/private/tmp/jg-public-access-8920-review.PQ8yr0w5/REVIEW-4C8-AND-SPLIT.md)
 
 - [~] `dc063813` 修复七片的两处 PostgreSQL PL/pgSQL CASE 解析错误并同步当前源码校验。七片44个PL块通过静态解析，两条件AST语义相同，713项编排、合后59项定向及API类型/lint通过；两组历史205失败名单和基线相同。七片独立执行源码另发现缺事务局部实付角色设置，作者已补，待后继独审与合入。 [语法修复复验](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-DC06.md)
