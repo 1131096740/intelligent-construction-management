@@ -379,18 +379,22 @@ BEGIN
   OR to_regnamespace('public')<>ctl.namespace_oid
   OR current_setting('session_replication_role')<>'origin'
   OR getdatabaseencoding()<>'UTF8'
-  OR (SELECT jsonb_agg(jsonb_build_object('oid',t.oid::text,'relation',t.tgrelid::text,'function',t.tgfoid::text,
+ THEN RAISE EXCEPTION 'local fixture base identity changed'; END IF;
+ IF (SELECT jsonb_agg(jsonb_build_object('oid',t.oid::text,'relation',t.tgrelid::text,'function',t.tgfoid::text,
     'type',t.tgtype,'columns',t.tgattr::text,'enabled',t.tgenabled,'qual',t.tgqual::text,'args',encode(t.tgargs,'hex')) ORDER BY t.oid)
     FROM pg_trigger t WHERE t.oid IN (SELECT (x->>'oid')::oid FROM jsonb_array_elements(ctl.file_trigger_binding) x))
       IS DISTINCT FROM ctl.file_trigger_binding
-  OR (SELECT jsonb_agg(jsonb_build_object('oid',p.oid::text,'owner',p.proowner::text,
+ THEN RAISE EXCEPTION 'local fixture old trigger changed'; END IF;
+ IF (SELECT jsonb_agg(jsonb_build_object('oid',p.oid::text,'owner',p.proowner::text,
     'body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'definer',p.prosecdef,'config',p.proconfig,'acl',p.proacl)
     ORDER BY p.oid) FROM pg_proc p WHERE p.oid IN (
       SELECT (x->>'oid')::oid FROM jsonb_array_elements(ctl.file_routine_binding) x))
     IS DISTINCT FROM ctl.file_routine_binding
-  OR __SCHEMA__.role_catalog() IS DISTINCT FROM ctl.role_binding
-  OR __SCHEMA__.file_callers() IS DISTINCT FROM ARRAY(SELECT x::text::oid FROM jsonb_array_elements(ctl.file_caller_setting::jsonb) x)
- THEN RAISE EXCEPTION 'local fixture scope changed'; END IF;
+ THEN RAISE EXCEPTION 'local fixture old routine changed'; END IF;
+ IF __SCHEMA__.role_catalog() IS DISTINCT FROM ctl.role_binding
+ THEN RAISE EXCEPTION 'local fixture role catalog changed'; END IF;
+ IF __SCHEMA__.file_callers() IS DISTINCT FROM ARRAY(SELECT x::text::oid FROM jsonb_array_elements(ctl.file_caller_setting::jsonb) x)
+ THEN RAISE EXCEPTION 'local fixture file callers changed'; END IF;
  SELECT * INTO STRICT r FROM pg_roles WHERE oid=ctl.application_oid AND rolname=ctl.plan->>'appName';
  IF r.rolsuper OR r.rolinherit OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
    OR NOT r.rolcanlogin OR r.rolconnlimit<>0

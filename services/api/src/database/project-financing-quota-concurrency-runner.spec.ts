@@ -65,6 +65,31 @@ describe("project financing quota PostgreSQL runner", () => {
       postgres: { status: "captured", sqlState: "P0001", reason: "DIRECT_PENDING_CALLERS_REQUIRED" }
     },
     {
+      name: "the bound control identity failure",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture base identity changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_BASE_IDENTITY_CHANGED" }
+    },
+    {
+      name: "the original trigger divergence",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture old trigger changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_OLD_TRIGGER_CHANGED" }
+    },
+    {
+      name: "the original routine divergence",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture old routine changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_OLD_ROUTINE_CHANGED" }
+    },
+    {
+      name: "the role catalog divergence",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture role catalog changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_ROLE_CATALOG_CHANGED" }
+    },
+    {
+      name: "the original file caller divergence",
+      logs: scopedPrefix + "P0001|ERROR:  local fixture file callers changed\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "FIXTURE_FILE_CALLERS_CHANGED" }
+    },
+    {
       name: "the earlier unknown cause ahead of a known prerequisite",
       logs: scopedPrefix + "42501|ERROR:  unknown-secret\n" +
         scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
@@ -218,6 +243,12 @@ describe("project financing quota PostgreSQL runner", () => {
       expect(events.filter(event => event.command === "pnpm")).toHaveLength(1);
       expect(events.find(event => event.command === "pnpm")?.applicationName)
         .toMatch(/^jg-pfq-first-[a-f0-9-]{36}$/u);
+      const controlCalls = events.filter(event => event.args.includes("psql"));
+      expect(controlCalls.length).toBeGreaterThan(0);
+      const ownedApplicationName = events.find(event => event.command === "pnpm")?.applicationName;
+      for (const call of controlCalls) {
+        expect(call.args).toEqual(expect.arrayContaining(["--env", `PGAPPNAME=${ownedApplicationName}`, "a".repeat(64)]));
+      }
       expect(events.at(-1)?.args.slice(0, 3)).toEqual(["rm", "--force", "--volumes"]);
       expect(events.findIndex(event => event.args[0] === "logs")).toBeGreaterThan(
         events.findIndex(event => event.command === "pnpm"));
@@ -257,6 +288,75 @@ describe("project financing quota PostgreSQL runner", () => {
     } finally {
       rmSync(fixture, { recursive: true, force: true });
     }
+  });
+
+  it("retains an owned control readback failure after205 before cleanup without entering later gates", () => {
+    const fixture = mkdtempSync(join(tmpdir(), "pfq-control-readback-error-"));
+    try {
+      const prismaRoot = join(fixture, "services/api/prisma");
+      const dist = join(fixture, "services/api/dist/database");
+      const bin = join(fixture, "bin"), artifacts = join(fixture, "artifacts");
+      for (const directory of [prismaRoot, dist, bin, artifacts]) mkdirSync(directory, { recursive: true });
+      for (const filename of ["run-project-financing-quota-concurrency-local.cjs", "money-bigint-runner-runtime.cjs",
+        "local-staged-migrations.cjs", "local-staged-migration-controls.cjs", "local-staged-migration-acl.sql",
+        "local-staged-migration-qualification.json", "migration-baseline.cjs", "schema.prisma",
+        "database-dynamic-gate-manifest.json", "migrations"]) {
+        cpSync(join(process.cwd(), "prisma", filename), join(prismaRoot, filename), { recursive: true });
+      }
+      writeFileSync(join(dist, "money-bigint-live-verification.js"),
+        "exports.withGuaranteedCleanup = " + withGuaranteedCleanup.toString());
+      const migrations = readdirSync(join(prismaRoot, "migrations")).filter(name => /^\d{14}_/u.test(name)).sort()
+        .map(name => ({ name, sha256: createHash("sha256")
+          .update(readFileSync(join(prismaRoot, "migrations", name, "migration.sql"))).digest("hex") }));
+      const statePath = join(fixture, "state.json");
+      writeFileSync(statePath, JSON.stringify({ prismaRoot, migrations, databases: {}, events: [], appCount: 0, serverLog: "",
+        retainExpectedReason: true,
+        legacyNames: ["jg_payment_execution_payer_issuer", "jg_pol275_owner", "jg_pol275_runtime", "jg_pol279_runtime", "jg_pol280_runtime"],
+        roles: [{ oid: "10", name: "jiangkong", superuser: true, createRole: false, createDb: true,
+          replication: true, bypassRls: true, memberships: [] }] }));
+      const failurePort = [
+        'event.applicationName = tool === "pnpm" ? new URL(process.env.DATABASE_URL).searchParams.get("application_name") :',
+        '  args.find(value => value.startsWith("PGAPPNAME="))?.slice("PGAPPNAME=".length) ?? "psql";',
+        'if (tool !== "pnpm" && args.includes("psql") && args[args.indexOf("-c")+1].startsWith("-- local-fixture readback")) {',
+        '  event.action = "control-readback-failure";',
+        '  event.database = args[args.indexOf("-d")+1];',
+        '  state.serverLog = "JG-PFQ|" + event.applicationName + "|" + event.database +',
+        '    "|202|P0001|ERROR:  local fixture old routine changed\\nSTATEMENT: SELECT bound-secret\\n";',
+        '  state.events.push(event); fs.writeFileSync(statePath,JSON.stringify(state));',
+        '  process.stderr.write("control-port-failure SELECT bound-secret"); process.exit(23);',
+        '}'
+      ].join("\n");
+      const fakeSource = readFileSync(join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8")
+        .replace('if (tool === "pnpm") {', failurePort + '\nif (tool === "pnpm") {')
+        .replace('else if (args[0] === "logs") stdout = state.serverLog;', 'else if (args[0] === "logs") stderr = state.serverLog;');
+      for (const name of ["docker", "pnpm"]) writeFileSync(join(bin, name), "#!" + process.execPath + "\n" + fakeSource, { mode: 0o700 });
+      const evidencePath = join(artifacts, "project_financing_quota-evidence.json");
+      const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
+        env: { PATH: bin, HOME: fixture, TMPDIR: artifacts, NODE_ENV: "test", PNPM_BIN: join(bin, "pnpm"),
+          PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH: evidencePath }, encoding: "utf8", timeout: 15_000
+      });
+      expect({ status: run.status, error: run.error }).toEqual({ status: 1, error: undefined });
+      expect(run.stderr).toContain("LOCAL_MIGRATION_SQL_STAGE205_READBACK");
+      const state = JSON.parse(readFileSync(statePath, "utf8")) as { events: {
+        action?: string; tool: string; applicationName: string; database?: string; count?: number; args: string[]
+      }[] };
+      expect(state.events.filter(event => event.action === "deploy").map(event => event.count)).toEqual([203, 205]);
+      const ownedApplicationName = state.events.find(event => event.tool === "pnpm")!.applicationName;
+      expect(ownedApplicationName).toMatch(/^jg-pfq-first-[a-f0-9-]{36}$/u);
+      const controls = state.events.filter(event => event.args.includes("psql"));
+      expect(controls.length).toBeGreaterThan(2);
+      expect(controls.every(event => event.applicationName === ownedApplicationName &&
+        event.args.includes("a".repeat(64)) && event.database === "jiangkong_project_financing_quota_concurrency")).toBe(true);
+      const failed = state.events.findIndex(event => event.action === "control-readback-failure");
+      const captured = state.events.findIndex(event => event.args[0] === "logs");
+      const removed = state.events.findIndex(event => event.args[0] === "rm");
+      expect(failed).toBeLessThan(captured); expect(captured).toBeLessThan(removed);
+      expect(state.events.some(event => event.action === "business-tests")).toBe(false);
+      const receiptText = readFileSync(evidencePath, "utf8");
+      expect(JSON.parse(receiptText).postgres).toEqual({ status: "captured", sqlState: "P0001", reason: "FIXTURE_OLD_ROUTINE_CHANGED" });
+      expect(statSync(evidencePath).mode & 0o777).toBe(0o600);
+      for (const secret of ["SELECT", "bound-secret", "local fixture", "control-port-failure"]) expect(receiptText).not.toContain(secret);
+    } finally { rmSync(fixture, { recursive: true, force: true }); }
   });
 
   it.each([true, false])("preserves the original CLI masked115 evidence and resolve boundary when expected evidence is retained=%s", (retainExpectedReason) => {
