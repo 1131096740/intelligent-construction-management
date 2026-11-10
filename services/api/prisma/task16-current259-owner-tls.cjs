@@ -62,7 +62,7 @@ need(!used.has(handle),'CURRENT259_OWNER_REUSED');used.add(handle);
  const initial=resourceMethods.getReceipt(),tls=Object.freeze({...initial.tls});
  const hashKeys=['caSha256','wrongCaSha256','correctCertificateSha256','wrongSanCertificateSha256','correctCertificateDerSha256','wrongSanCertificateDerSha256'];
  need(hashKeys.every(key=>/^[a-f0-9]{64}$/u.test(tls[key]))&&tls.caSha256!==tls.wrongCaSha256&&tls.correctCertificateDerSha256!==tls.wrongSanCertificateDerSha256,'CURRENT259_OWNER_CA');
- const cas=[resource.caPath,resource.wrongCaPath].map((file,index)=>{const data=read(file,{privateFile:true,maxBytes:LIMIT,code:'CURRENT259_OWNER_CA'});need(data.sha256===tls[index?'wrongCaSha256':'caSha256'],'CURRENT259_OWNER_CA');return Object.freeze({file,identity:data.identity,sha256:data.sha256});});
+ const cas=[resource.caPath,resource.wrongCaPath].map((file,index)=>{const data=read(file,{privateFile:false,maxBytes:LIMIT,code:'CURRENT259_OWNER_CA'});need(data.identity.uid===process.getuid()&&data.sha256===tls[index?'wrongCaSha256':'caSha256'],'CURRENT259_OWNER_CA');return Object.freeze({file,identity:data.identity,sha256:data.sha256});});
  const source=view.source,sourceSnapshot=JSON.stringify(source),probes=[],owned=[];
  let anchor,primary,failed=false,restoration='NOT_NEEDED',clientCleanup='DISCONNECTED',resourceCleanup='NOT_NEEDED',closing;
  const deadline=Date.now()+180000;
@@ -72,7 +72,7 @@ need(!used.has(handle),'CURRENT259_OWNER_REUSED');used.add(handle);
   need(Object.keys(resourceMethods).every(key=>own(resource,key)===resourceMethods[key]),'CURRENT259_OWNER_RESOURCE');
   const current=resourceMethods.getReceipt();
   need(['runId','sourceSha','containerId','networkId','databaseName','port'].every(key=>current[key]===initial[key])&&hashKeys.every(key=>current.tls?.[key]===tls[key]),'CURRENT259_OWNER_RESOURCE');
-  for(const ca of cas)need(read(ca.file,{privateFile:true,maxBytes:LIMIT,expectedIdentity:ca.identity,code:'CURRENT259_OWNER_CA'}).sha256===ca.sha256,'CURRENT259_OWNER_CA');
+  for(const ca of cas)need(read(ca.file,{privateFile:false,maxBytes:LIMIT,expectedIdentity:ca.identity,code:'CURRENT259_OWNER_CA'}).sha256===ca.sha256,'CURRENT259_OWNER_CA');
   if(mode!==null)need(current.requestedCertificateMode===mode&&current.reloadState==='OBSERVED_PEER_CERTIFICATE_MATCHED'&&current.presentedCertificate?.mode===mode&&current.presentedCertificate.derSha256===tls[mode==='correct'?'correctCertificateDerSha256':'wrongSanCertificateDerSha256'],'CURRENT259_OWNER_CERTIFICATE');
  }
  const full=(mode='correct')=>{check(mode);view.verifyFull();check(mode);};
@@ -117,10 +117,14 @@ need(!used.has(handle),'CURRENT259_OWNER_REUSED');used.add(handle);
   full(mode);const url=new URL(`postgresql://${OWNER}:${credential}@127.0.0.1:${initial.port}/${initial.databaseName}`);
   for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:kind==='plaintext'?'disable':'require',sslaccept:'strict',sslcert:cas[caIndex].file,application_name:`task16_owner_${runId.replaceAll('-','')}`,connect_timeout:'5',pool_timeout:'5'}))url.searchParams.set(key,value);
   let client;try{client=new Class({datasources:{db:{url:url.toString()}},log:[]});}catch{clientCleanup='UNKNOWN';throw fail('CURRENT259_OWNER_CONSTRUCTOR_UNKNOWN');}
-  need(client&&(typeof client==='object'||typeof client==='function')&&!owned.some(entry=>entry.client===client),'CURRENT259_OWNER_CLIENT');
-  const entry={client,disconnect:client.$disconnect,disconnected:false,disconnectAttempted:false};owned.push(entry);
-  const methods={$connect:client.$connect,$queryRawUnsafe:client.$queryRawUnsafe,$disconnect:entry.disconnect};
-  need(typeof client.then!=='function'&&Object.values(methods).every(fn=>typeof fn==='function'),'CURRENT259_OWNER_CLIENT');
+  let entry,methods;
+  try{
+   need(client&&(typeof client==='object'||typeof client==='function')&&!owned.some(item=>item.client===client),'CURRENT259_OWNER_CLIENT');
+   entry={client,disconnect:undefined,disconnected:false,disconnectAttempted:false};owned.push(entry);
+   entry.disconnect=client.$disconnect;
+   methods={$connect:client.$connect,$queryRawUnsafe:client.$queryRawUnsafe,$disconnect:entry.disconnect};
+   need(typeof client.then!=='function'&&Object.values(methods).every(fn=>typeof fn==='function'),'CURRENT259_OWNER_CLIENT');
+  }catch{clientCleanup='UNKNOWN';throw fail('CURRENT259_OWNER_CLIENT_REGISTRATION_UNKNOWN');}
   const clientCheck=()=>need(Object.keys(methods).every(key=>client[key]===methods[key]),'CURRENT259_OWNER_CLIENT_CHANGED');
   let result,probeFailure,hasFailure=false;
   try{
