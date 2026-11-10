@@ -1,3 +1,10 @@
+## #382 目标模式接续（2026-11-10）
+
+- [~] GitHub 45 项中 14 按阶段关闭，31 开放。可接续前置仍为 #394、#398，草稿 #428 为 `4ca0965b`。本地产品候选 `057ba65e7887d8a443f989b0026b7ab05c499e7f` 已合入 14 条受控路径，保留两条作者分支。
+- [~] #394 表外/对上生成合同待办重用详情资格，具资格可办、缺实际安装资格阻塞、撤权和归属变化隐藏。读取期间撤权的 4 个反例已红绿验证，API 160 项及类型/lint 通过。Web 去除 10 个页面的原始错误显示，保留 Excel 超 15 位改用文本的指引和行列坐标，227 项定向、类型/lint/UI 通过。[待办复审](/private/tmp/jg-394-me-lifecycle-7003.R38hDIum/REVIEWED-HANDOFF.md) · [Web 复审](/private/tmp/jg-382-web-safe-errors.PyIwLfkw/PRECISION-REVIEW.md)
+- [~] 准确 `057ba65e` 新隔离副本固定只读 `origin/main` 比较引用，上一轮第 9 步的完整业务安全预查已通过。新候选 177 项 API/文书、两份真实 PDF 物理检查、全量 Web 2,273 项及 UI 通过。正式 17 步含独立测试库迁移，已封准确方案等待单次授权，原 `403f8e45` 的失败副本与回执保留。[准确单次方案](/private/tmp/jg-382-release-057b.n5XQuIdL/RUN-HANDOFF.md)
+- [~] #394 同轮普通角色短租约先核固定 ACL 和独立提交读回再认证，253 项离线通过。#398 固定 arm 故障布置同事务只提交一次，退出不明拒签回执，216 项通过。真实角色会话、归档/资金及浏览器分别待验收。[合同短租约](/private/tmp/jg-394-a08-signed-lease.4YBMZl2M/HANDOFF.md) · [实付事务](/private/tmp/jg-398-a16-arm-transport.X80hsHXp/HANDOFF.md) · [首案路径](/private/tmp/jg-382-next-business-proof.NWi5bAfB/NEXT.md)
+
 ## #382 单次本地发布验证与业务接续（2026-11-10）
 
 - [ ] 经用户授权对准确 `403f8e4598b9f0700020ab262daa4a1273b931c3` 执行完整本地发布验证一次。前 8 阶段通过，第 9 阶段业务用语扫描找不到隔离副本缺失的 `origin/main`，退出 1 并停止。预检已通过、同轮独立文书回归 17/17 且两份实际 PDF 物理检查通过；这不替代完整门禁。无通过回执、未进入动态 PostgreSQL 或执行迁移、未重试或修复原入口。后续新方案须固定比较基线并预检三点 diff。[单次停止](/private/tmp/jg-382-release-403f.jWb4Rn6J/STOP-RECEIPT.md) · [文书回执](/private/tmp/jg-382-release-403f.jWb4Rn6J/RUN-HANDOFF.md)
