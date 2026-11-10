@@ -49,7 +49,8 @@
       "runner": {
         "kind": "workspaceScript",
         "script": "verify:project-financing-quota-concurrency:local",
-        "path": "services/api/prisma/run-project-financing-quota-concurrency-local.cjs"
+        "path": "services/api/prisma/run-project-financing-quota-concurrency-local.cjs",
+        "evidenceEnv": "PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH"
       },
       "state": "executable_local_runner"
     },

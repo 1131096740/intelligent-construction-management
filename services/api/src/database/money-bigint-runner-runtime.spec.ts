@@ -125,6 +125,61 @@ describe("money bigint runner runtime", () => {
     }
   });
 
+  it.each([
+    ["stdout", "bound-secret", ""],
+    ["stderr", "", "bound-secret"],
+    ["combined", "abc", "de"],
+    ["UTF-8 bytes", "汉", "ab"]
+  ])("bounds opt-in %s output and awaits child termination", async (_kind, stdout, stderr) => {
+    jest.useFakeTimers();
+    try {
+      const child = new FakeChild();
+      const runtime = createCommandRuntime({
+        spawnCommand: jest.fn().mockReturnValue(child),
+        defaultTimeoutMs: 60_000,
+        terminationGraceMs: 20
+      });
+      const pending = runtime.command("diagnostic", ["secret-args"], { maxOutputBytes: 4 });
+      const result = pending.catch((error: unknown) => error);
+      let completed = false;
+      void result.then(() => { completed = true; });
+      child.stdout.write(stdout);
+      child.stderr.write(stderr);
+      expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+      expect(runtime.activeCount()).toBe(1);
+      expect(completed).toBe(false);
+      await jest.advanceTimersByTimeAsync(20);
+      expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+      const error = await result;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("子进程输出超过允许字节数");
+      expect(runtime.activeCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("preserves unlimited default output and permits the exact opt-in byte limit", async () => {
+    for (const options of [{}, { maxOutputBytes: 4 }]) {
+      const child = new FakeChild();
+      const runtime = createCommandRuntime({ spawnCommand: jest.fn().mockReturnValue(child) });
+      const pending = runtime.command("small-command", [], options);
+      child.stdout.write("汉");
+      child.stderr.write("a");
+      child.exitCode = 0;
+      child.emit("close", 0, null);
+      await expect(pending).resolves.toEqual({ stdout: "汉", stderr: "a" });
+      expect(child.kill).not.toHaveBeenCalled();
+    }
+    const child = new FakeChild();
+    const runtime = createCommandRuntime({ spawnCommand: jest.fn().mockReturnValue(child) });
+    const pending = runtime.command("unlimited-command", []);
+    child.stdout.write("large-default-output");
+    child.exitCode = 0;
+    child.emit("close", 0, null);
+    await expect(pending).resolves.toEqual({ stdout: "large-default-output", stderr: "" });
+  });
+
   it("attempts every cleanup step and preserves all cleanup failures", async () => {
     const processFailure = new Error("process cleanup failed");
     const containerFailure = new Error("container cleanup failed");

@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import {
+  cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync,
+  statSync, writeFileSync
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { withGuaranteedCleanup } from "./money-bigint-live-verification";
 
 const localRequire = createRequire(__filename);
 const runnerPath = join(
@@ -10,6 +16,232 @@ const runnerPath = join(
 );
 
 describe("project financing quota PostgreSQL runner", () => {
+
+  const firstFailure = {
+    status: "captured",
+    sqlState: "P0001",
+    reason: "ARCHIVE_APPLICATION_QUALIFICATION_REQUIRED"
+  };
+  const scopedPrefix = "JG-PFQ|jg-pfq-first-migrate|" +
+    "jiangkong_project_financing_quota_concurrency|13|";
+  it.each([
+    {
+      name: "the first scoped cause",
+      logs: [
+        "JG-PFQ|unrelated|jiangkong_project_financing_quota_concurrency|11|42501|ERROR:  secret",
+        "JG-PFQ|jg-pfq-first-00000000-0000-0000-0000-000000000000|jiangkong_project_financing_quota_concurrency|11|42501|ERROR:  stale run",
+        scopedPrefix.replace("|13|", "|0|") + "42501|ERROR:  invalid backend",
+        scopedPrefix.replace("|13|", "|9999999999|") + "42501|ERROR:  invalid backend",
+        "JG-PFQ|jg-pfq-first-migrate|other_database|12|23505|ERROR:  secret",
+        scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装",
+        "STATEMENT: SELECT 'postgresql://user:password@secret-host/db', 'bound-secret'",
+        scopedPrefix + "25P02|ERROR:  current transaction is aborted"
+      ].join("\n") + "\n",
+      postgres: firstFailure
+    },
+    {
+      name: "an unknown error without its raw SQL or values",
+      logs: scopedPrefix + "23514|ERROR:  SELECT 'bound-secret' postgresql://user:password@secret-host/db\n",
+      postgres: { status: "captured", sqlState: "23514", reason: "POSTGRES_ERROR" }
+    },
+    {
+      name: "an exact known message with the wrong SQLSTATE",
+      logs: scopedPrefix + "23514|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      postgres: { status: "captured", sqlState: "23514", reason: "POSTGRES_ERROR" }
+    },
+    {
+      name: "an inexact known message",
+      logs: scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装 trailing-secret\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "POSTGRES_ERROR" }
+    },
+    {
+      name: "the file caller prerequisite",
+      logs: scopedPrefix + "P0001|ERROR:  旧文件链实际caller闭包未提供，拒绝假定\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "ARCHIVE_FILE_CALLERS_REQUIRED" }
+    },
+    {
+      name: "the direct pending prerequisite",
+      logs: scopedPrefix + "P0001|ERROR:  真实待登记应用与文件调用者尚未供应，拒绝安装\n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "DIRECT_PENDING_CALLERS_REQUIRED" }
+    },
+    {
+      name: "the earlier unknown cause ahead of a known prerequisite",
+      logs: scopedPrefix + "42501|ERROR:  unknown-secret\n" +
+        scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      postgres: { status: "captured", sqlState: "42501", reason: "POSTGRES_ERROR" }
+    },
+    {
+      name: "a known phrase with extra whitespace",
+      logs: scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装 \n",
+      postgres: { status: "captured", sqlState: "P0001", reason: "POSTGRES_ERROR" }
+    },
+    {
+      name: "a missing primary error",
+      logs: scopedPrefix + "25P02|ERROR:  aborted\n" +
+        scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      postgres: { status: "primary-not-retained" }
+    },
+    {
+      name: "unrelated sessions only",
+      logs: "JG-PFQ|unrelated|other_database|12|23505|ERROR:  secret\n",
+      postgres: { status: "primary-not-retained" }
+    },
+    {
+      name: "a saturated tail without mislabelling a later error",
+      logs: "unrelated record\n".repeat(256) +
+        scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      postgres: { status: "window-exceeded" }
+    },
+    {
+      name: "a saturated mixed stdout and stderr tail",
+      stdout: "one stdout record\n",
+      logs: "unrelated record\n".repeat(255) +
+        scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      postgres: { status: "window-exceeded" }
+    },
+    {
+      name: "a saturated window with a blank stdout line",
+      stdout: "\n",
+      logs: "unrelated record\n".repeat(255) +
+        scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      postgres: { status: "window-exceeded" }
+    },
+    {
+      name: "an oversized record",
+      logs: scopedPrefix + "P0001|ERROR:  " + "x".repeat(128 * 1024),
+      postgres: { status: "unavailable" }
+    },
+    {
+      name: "unavailable server logs",
+      logs: "",
+      logsFailed: true,
+      postgres: { status: "unavailable" }
+    },
+    {
+      name: "an unavailable artifact path",
+      logs: scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      existingEvidence: true,
+      postgres: firstFailure
+    },
+    {
+      name: "an additional cleanup error",
+      logs: scopedPrefix + "P0001|ERROR:  真实归档应用角色或函数资格未提供，拒绝安装\n",
+      cleanupFailed: true,
+      postgres: firstFailure
+    }
+  ])("retains $name before cleanup and stops later gates", (scenario) => {
+    const fixture = mkdtempSync(join(tmpdir(), "pfq-first-error-test-"));
+    try {
+      const prismaRoot = join(fixture, "services/api/prisma");
+      const dist = join(fixture, "services/api/dist/database");
+      const bin = join(fixture, "bin");
+      const artifacts = join(fixture, "artifacts");
+      for (const directory of [prismaRoot, dist, bin, artifacts]) {
+        mkdirSync(directory, { recursive: true });
+      }
+      for (const filename of [
+        "run-project-financing-quota-concurrency-local.cjs",
+        "money-bigint-runner-runtime.cjs",
+        "migration-baseline.cjs",
+        "database-dynamic-gate-manifest.json",
+        "migrations"
+      ]) {
+        cpSync(join(process.cwd(), "prisma", filename), join(prismaRoot, filename), { recursive: true });
+      }
+      writeFileSync(join(dist, "money-bigint-live-verification.js"),
+        "exports.withGuaranteedCleanup = " + withGuaranteedCleanup.toString());
+      const calls = join(fixture, "calls.jsonl");
+      const fake = [
+        "#!" + process.execPath,
+        'const fs = require("node:fs");',
+        'const path = require("node:path");',
+        "const calls = " + JSON.stringify(calls) + ";",
+        "const args = process.argv.slice(2);",
+        'const applicationName = path.basename(process.argv[1]) === "pnpm" ?',
+        '  new URL(process.env.DATABASE_URL).searchParams.get("application_name") : null;',
+        "fs.appendFileSync(calls, JSON.stringify({ command: path.basename(process.argv[1]), args, applicationName }) + '\\n');",
+        'if (path.basename(process.argv[1]) === "pnpm") {',
+        '  process.stderr.write("original-prisma-failure"); process.exit(19);',
+        "}",
+        'if (args[0] === "context") process.stdout.write(JSON.stringify("unix:///tmp/fake-pfq.sock"));',
+        'if (args[0] === "run") process.stdout.write("fake-container");',
+        'if (args[0] === "logs") {',
+        "process.stdout.write(" + JSON.stringify(scenario.stdout ?? "") + ");",
+        "const ownedApp = fs.readFileSync(calls, 'utf8').trim().split('\\n').map(JSON.parse)" +
+          ".find(event => event.command === 'pnpm').applicationName;",
+        "process.stderr.write(" + JSON.stringify(scenario.logs) +
+          ".replaceAll('jg-pfq-first-migrate', ownedApp), () => process.exit(" +
+          (scenario.logsFailed ? 7 : 0) + "));",
+        "}",
+        'if (args[0] === "rm") process.exit(' + (scenario.cleanupFailed ? 9 : 0) + ");"
+      ].join("\n");
+      for (const filename of ["docker", "pnpm"]) {
+        writeFileSync(join(bin, filename), fake, { mode: 0o700 });
+      }
+      const evidencePath = join(artifacts, "project_financing_quota-evidence.json");
+      if (scenario.existingEvidence) writeFileSync(evidencePath, "existing evidence");
+      const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
+        env: {
+          PATH: bin,
+          HOME: fixture,
+          TMPDIR: artifacts,
+          NODE_ENV: "test",
+          PNPM_BIN: join(bin, "pnpm"),
+          DATABASE_DYNAMIC_GATE_CANDIDATE_SHA: "a".repeat(40),
+          PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH: evidencePath
+        },
+        encoding: "utf8",
+        timeout: 10_000
+      });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain("original-prisma-failure");
+      if (scenario.cleanupFailed) expect(run.stderr).toContain("本地金额验收清理失败");
+      const events = readFileSync(calls, "utf8").trim().split("\n")
+        .map(line => JSON.parse(line) as { command: string; args: string[]; applicationName: string | null });
+      expect(events.filter(event => event.command === "pnpm")).toHaveLength(1);
+      expect(events.find(event => event.command === "pnpm")?.applicationName)
+        .toMatch(/^jg-pfq-first-[a-f0-9-]{36}$/u);
+      expect(events.at(-1)?.args.slice(0, 3)).toEqual(["rm", "--force", "--volumes"]);
+      expect(events.findIndex(event => event.args[0] === "logs")).toBeGreaterThan(
+        events.findIndex(event => event.command === "pnpm"));
+      expect(events.findIndex(event => event.args[0] === "logs")).toBeLessThan(
+        events.findIndex(event => event.args[0] === "rm"));
+      const receiptLine = run.stderr.split("\n")
+        .find(line => line.startsWith("[project-financing-quota-failure] {"));
+      expect(receiptLine).toBeDefined();
+      const receiptText = receiptLine?.slice("[project-financing-quota-failure] ".length) ?? "";
+      expect(JSON.parse(receiptText)).toEqual({
+        schemaVersion: 1,
+        gate: "project_financing_quota",
+        status: "failed",
+        phase: "first-migrate-deploy",
+        candidateSha: "a".repeat(40),
+        postgres: scenario.postgres
+      });
+      if (scenario.existingEvidence) {
+        expect(readFileSync(evidencePath, "utf8")).toBe("existing evidence");
+        expect(run.stderr).toContain("evidence-write-unavailable");
+      } else {
+        expect(readFileSync(evidencePath, "utf8").trim()).toBe(receiptText);
+        expect(statSync(evidencePath).mode & 0o777).toBe(0o600);
+      }
+      expect(readdirSync(artifacts)).toEqual(["project_financing_quota-evidence.json"]);
+      for (const secret of ["SELECT", "password", "bound-secret", "secret-host", "25P02"]) {
+        expect(receiptText).not.toContain(secret);
+      }
+      expect(events.find(event => event.args[0] === "logs")?.args.slice(0, 3))
+        .toEqual(["logs", "--tail", "257"]);
+      const dockerRun = events.find(event => event.args[0] === "run")?.args ?? [];
+      expect(dockerRun).toEqual(expect.arrayContaining([
+        "log_line_prefix=JG-PFQ|%a|%d|%p|%e|",
+        "log_min_error_statement=panic",
+        "log_parameter_max_length_on_error=0"
+      ]));
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it("pins the exact local database, migration count, terminal migration and checksum", () => {
     const baseline = localRequire(
       join(process.cwd(), "prisma/migration-baseline.cjs")
@@ -185,7 +417,7 @@ describe("project financing quota PostgreSQL runner", () => {
   it("uses an existing postgres:16 image, loopback publish, double deploy and exact migration proof", () => {
     const source = readFileSync(runnerPath, "utf8");
     const dockerRunBlock = source.match(
-      /await dockerCommand\(\[\s*"run",[\s\S]*?"postgres:16"\s*\]/u
+      /await dockerCommand\(\[\s*"run",[\s\S]*?\]\s*,\s*\{/u
     )?.[0];
     const forbiddenVolumeArgument =
       /"(?:--mount(?:=[^"]*)?|--volume(?:=[^"]*)?|-v)"/u;
@@ -209,7 +441,7 @@ describe("project financing quota PostgreSQL runner", () => {
     }
     expect(dockerRunBlock).not.toMatch(forbiddenVolumeArgument);
     expect(source).toContain(
-      "const firstDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv })"
+      "firstDeploy = await runPrismaMigrate({"
     );
     expect(source).toContain(
       "const secondDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv })"
@@ -228,6 +460,11 @@ describe("project financing quota PostgreSQL runner", () => {
   });
 
   it("exposes one explicit root-to-API opt-in command", () => {
+    const manifest = JSON.parse(readFileSync(
+      join(process.cwd(), "prisma/database-dynamic-gate-manifest.json"), "utf8"
+    )) as { coveredGroups: { id: string; runner: { evidenceEnv?: string } }[] };
+    expect(manifest.coveredGroups.find(group => group.id === "project_financing_quota")
+      ?.runner.evidenceEnv).toBe("PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH");
     const rootPackage = JSON.parse(readFileSync(
       join(process.cwd(), "../..", "package.json"),
       "utf8"

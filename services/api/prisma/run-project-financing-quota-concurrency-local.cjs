@@ -9,7 +9,8 @@ const {
   mkdtemp,
   readFile,
   readdir,
-  rm
+  rm,
+  writeFile
 } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
@@ -417,15 +418,86 @@ async function runPsql(dockerCommand, databaseName, sql) {
   ], { timeoutMs: 60_000 });
 }
 
-async function capturePostgresLogs(dockerCommand) {
+async function capturePostgresLogs(dockerCommand, options = {}) {
   const result = await dockerCommand([
     "logs",
+    ...(options.bounded ? ["--tail", "257"] : []),
     dockerCommand.containerName
-  ]);
+  ], options.bounded ? { timeoutMs: 10_000, maxOutputBytes: 128 * 1024 } : {});
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? ""
   };
+}
+
+function firstPostgresFailure(logs, applicationName) {
+  // The unredirected postgres:16 process writes server records to stderr.
+  // Reject a saturated tail rather than label a later error as the first.
+  if (Buffer.byteLength(logs.stdout) + Buffer.byteLength(logs.stderr) > 128 * 1024) {
+    return { status: "window-exceeded" };
+  }
+  const lineCount = [logs.stdout, logs.stderr].reduce((count, stream) => {
+    if (!stream) return count;
+    return count + stream.split("\n").length - Number(stream.endsWith("\n"));
+  }, 0);
+  if (lineCount > 256) return { status: "window-exceeded" };
+  const lines = logs.stderr.split("\n");
+  const prefix = `JG-PFQ|${applicationName}|${DATABASE_NAME}|`;
+  const record = /^([1-9][0-9]{0,9})\|([0-9A-Z]{5})\|(?:ERROR|FATAL|PANIC):[ \t]+([^\r\n]*)\r?$/u;
+  for (const line of lines) {
+    if (!line.startsWith(prefix)) continue;
+    const match = record.exec(line.slice(prefix.length));
+    if (!match || Number(match[1]) > 2147483647) continue;
+    if (match[2] === "25P02") return { status: "primary-not-retained" };
+    const reasons = {
+      "真实归档应用角色或函数资格未提供，拒绝安装": "ARCHIVE_APPLICATION_QUALIFICATION_REQUIRED",
+      "旧文件链实际caller闭包未提供，拒绝假定": "ARCHIVE_FILE_CALLERS_REQUIRED",
+      "真实待登记应用与文件调用者尚未供应，拒绝安装": "DIRECT_PENDING_CALLERS_REQUIRED"
+    };
+    return {
+      status: "captured",
+      sqlState: match[2],
+      reason: match[2] === "P0001" && Object.hasOwn(reasons, match[3])
+        ? reasons[match[3]]
+        : "POSTGRES_ERROR"
+    };
+  }
+  return { status: "primary-not-retained" };
+}
+
+async function retainFirstDeployFailure(dockerCommand, applicationName) {
+  let postgres;
+  try {
+    postgres = firstPostgresFailure(await capturePostgresLogs(dockerCommand, {
+      bounded: true
+    }), applicationName);
+  } catch {
+    postgres = { status: "unavailable" };
+  }
+  const candidateSha = process.env.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA;
+  const receipt = {
+    schemaVersion: 1,
+    gate: "project_financing_quota",
+    status: "failed",
+    phase: "first-migrate-deploy",
+    candidateSha: /^[0-9a-f]{40}$/u.test(candidateSha ?? "") ? candidateSha : null,
+    postgres
+  };
+  // Only fixed fields, a SQLSTATE and allowlisted reason codes leave this function.
+  console.error("\n[project-financing-quota-failure] " + JSON.stringify(receipt));
+  const evidencePath = process.env.PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH;
+  if (!evidencePath) return;
+  try {
+    if (evidencePath !== path.join(tmpdir(), "project_financing_quota-evidence.json")) {
+      throw new Error("unexpected evidence path");
+    }
+    await writeFile(evidencePath, JSON.stringify(receipt) + "\n", {
+      flag: "wx",
+      mode: 0o600
+    });
+  } catch {
+    console.error("[project-financing-quota-failure] evidence-write-unavailable");
+  }
 }
 
 function postgresLogDelta(before, after) {
@@ -1147,14 +1219,34 @@ async function main() {
         `POSTGRES_DB=${DATABASE_NAME}`,
         "--publish",
         `127.0.0.1:${databasePort}:5432`,
-        "postgres:16"
+        "postgres:16",
+        "-c", "log_destination=stderr",
+        "-c", "logging_collector=off",
+        "-c", "log_line_prefix=JG-PFQ|%a|%d|%p|%e|",
+        "-c", "log_min_messages=error",
+        "-c", "log_error_verbosity=terse",
+        "-c", "log_statement=none",
+        "-c", "log_min_error_statement=panic",
+        "-c", "log_parameter_max_length_on_error=0"
       ], {
         extraEnv: { POSTGRES_PASSWORD: databasePassword },
         forwardOutput: true
       });
       await waitForPostgres(containerName, dockerCommand);
 
-      const firstDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv });
+      const firstDatabaseUrl = new URL(databaseUrl);
+      const applicationName = `jg-pfq-first-${randomUUID()}`;
+      firstDatabaseUrl.searchParams.set("application_name", applicationName);
+      let firstDeploy;
+      try {
+        firstDeploy = await runPrismaMigrate({
+          databaseUrl: firstDatabaseUrl.toString(),
+          runtimeEnv
+        });
+      } catch (error) {
+        await retainFirstDeployFailure(dockerCommand, applicationName);
+        throw error;
+      }
       const secondDeploy = await runPrismaMigrate({ databaseUrl, runtimeEnv });
       if (!/No pending migrations to apply\.?/u.test(secondDeploy.stdout)) {
         throw new Error("第二次 migrate deploy 未证明零待办");
