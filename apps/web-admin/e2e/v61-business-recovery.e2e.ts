@@ -194,29 +194,23 @@ test("V6.1 已完成申请不会被旧标签关闭重开复活", async ({ page, 
     await route.fulfill({ json: { ...receipt, draftRevision: 2 } });
   });
   const grid = page.getByTestId("spot-request-grid");
-  const locateMaterial = grid.getByRole("button", { name: /第1行材料名称.*定位/u });
   const cellEditor = grid.locator("revogr-edit input");
-  async function expectEditor(column: string) {
-    await expect.poll(() => grid.locator("revo-grid").evaluate(async (element) => {
-      const revoGrid = element as HTMLElement & { getFocused(): Promise<{ column?: { prop?: string } } | null> };
-      return (await revoGrid.getFocused())?.column?.prop;
-    })).toBe(column);
+  for (const [column, index, value] of [["unit", 1, "件"], ["quantity", 2, "1"]] as const) {
+    // Scroll the virtualized column into view, then edit it directly.
+    await grid.locator("revo-grid").evaluate((element, prop) => {
+      const revoGrid = element as HTMLElement & { scrollToColumnProp(column: string): Promise<void> };
+      return revoGrid.scrollToColumnProp(prop);
+    }, column);
+    const cell = grid.locator(`revogr-data[col-type="rgCol"] [data-rgrow="0"][data-rgcol="${index}"]`);
+    await cell.dblclick();
     await expect(cellEditor).toBeFocused();
+    await cellEditor.fill(value);
+    await cellEditor.press("Enter");
+    await expect(cell).toHaveText(value);
   }
   // Confirm the optional cells first. The required material name starts autosave.
-  await locateMaterial.click();
-  await expectEditor("materialName");
-  await cellEditor.press("Tab");
-  await expectEditor("specification");
-  await cellEditor.press("Tab");
-  await expectEditor("unit");
-  await cellEditor.fill("件");
-  await cellEditor.press("Tab");
-  await expectEditor("quantity");
-  await cellEditor.fill("1");
-  await cellEditor.press("Enter");
-  await locateMaterial.click();
-  await expectEditor("materialName");
+  await grid.getByRole("button", { name: /第1行材料名称.*定位/u }).click();
+  await expect(cellEditor).toBeFocused();
   await cellEditor.fill("隔离材料");
   await cellEditor.press("Enter");
   await expect(page.getByRole("status").filter({ hasText: /^已自动保存$/u })).toBeVisible();
