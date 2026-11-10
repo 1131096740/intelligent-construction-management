@@ -6,7 +6,7 @@ const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='15640abfba659b37047dded3afd25c23e510df9562ffafd6ea83546f448c71ac';
+const MANIFEST_SHA='97261ec3490dc777588f2318ede3bba248c65da520794a1730506be0266e12a9';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -30,6 +30,12 @@ function material(source){
  const files=manifest.files.map(r=>{const c=capture(r.path);need(c.sha256===r.sha256);return{...r,bytes:c.bytes};});
  const sql=files.find(f=>f.path==='services/api/prisma/prepared/task16-current259/registered-impact-reader.sql').bytes.toString('utf8'),parts=sql.split('$reader$');need(parts.length===3&&hash(parts[1])===BODY);
  const plan=JSON.parse(files[1].bytes.toString('utf8'));
+ // The current generated SDK also selects the signed-original number in the
+ // unprojected contract read. Keep the historical access materials intact.
+ need(equal(manifest.runtimeSelectAdditions,[{table:'ContractVersion',select:['originalSignedNumber']}]));
+ const version=plan.runtime.tables.find(table=>table.table==='ContractVersion');
+ need(version&&!version.select.includes('originalSignedNumber'));
+ version.select=[...version.select,'originalSignedNumber'].sort();
  return{p,manifest,files,sql,plan};
 }
 function loadCurrent259CatalogMaterial(source){
@@ -37,6 +43,7 @@ function loadCurrent259CatalogMaterial(source){
  return snapshot({profile:m.manifest.profile,sourceSha:m.p.candidateSha,sealSha256:m.p.sealSha256,
   ledger:m.p.ledger,ledgerSha256:m.p.ledgerSha256,prefix256Sha256:m.p.prefix256Sha256,
   readerBodySha256:BODY,readerSqlSha256:hash(m.sql),sevenFragments:m.manifest.files.slice(2,9),
+  accessPlan:{runtime:m.plan.runtime,observer:m.plan.observer},
   executionAllowed:false,nativeAdmission:false});
 }
 function request(input){
