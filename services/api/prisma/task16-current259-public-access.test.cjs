@@ -70,3 +70,14 @@ test('standalone payment keeps original callers and does not grant archive roles
   assert.match(sql, /EXISTS \(SELECT FROM public.jg_contract_direct_upward_closure_v2\)/);
   assert.doesNotMatch(sql, /jg_c259_outside_executor_owner|public.gen_random_uuid/);
 });
+
+test('rejects accessors before reading any value from them', () => {
+  const proof = rolesProvisioned();
+  let reads = 0;
+  Object.defineProperty(proof.ordinary, 'oid', {
+    enumerable: true,
+    get() { reads += 1; return '25000'; }
+  });
+  assert.throws(() => renderCurrent259PublicAccess(proof), /TASK16_CURRENT259_PUBLIC_ACCESS/);
+  assert.equal(reads, 0);
+});

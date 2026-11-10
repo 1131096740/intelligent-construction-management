@@ -1,5 +1,7 @@
 'use strict';
 
+const { types } = require('node:util');
+
 // Fixed SQL for the independent current259 payment ACL transaction.
 const CODE = 'TASK16_CURRENT259_PUBLIC_ACCESS';
 const ROLE_NAMES = ['jg_task01_runtime', 'jg_task01_observer'];
@@ -16,6 +18,15 @@ const xid = x => typeof x === 'string' && /^[1-9][0-9]{0,19}$/u.test(x) && BigIn
 const literal = x => "'" + x.replaceAll("'", "''") + "'";
 function need(ok) {
   if (!ok) throw new Error(CODE);
+}
+function field(record, key) {
+  need(record && typeof record === 'object' && !types.isProxy(record));
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  need(descriptor && Object.hasOwn(descriptor, 'value'));
+  return descriptor.value;
+}
+function fields(record, names) {
+  return Object.fromEntries(names.map(name => [name, field(record, name)]));
 }
 
 const aclRows = `SELECT 'routine'::text AS kind,p.oid AS object_oid,0 AS column_no,p.proowner AS object_owner,a.*
@@ -40,7 +51,12 @@ const aclRows = `SELECT 'routine'::text AS kind,p.oid AS object_oid,0 AS column_
   WHERE t.oid IN ('public."OperatingLedgerFactWritePayloadV2"'::regtype,'public."OperatingLedgerImpactWritePayloadV2"'::regtype)`;
 
 function renderCurrent259PublicAccess(roleCompletion) {
-  const { status, commitXid, databaseIdentity: id, ordinary, roles } = structuredClone(roleCompletion ?? {});
+  const { status, commitXid, databaseIdentity, ordinary: rawOrdinary, roles: rawRoles } =
+    fields(roleCompletion, ['status', 'commitXid', 'databaseIdentity', 'ordinary', 'roles']);
+  const id = fields(databaseIdentity, ['database', 'databaseOid', 'namespaceOid', 'ownerOid', 'systemIdentifier']);
+  const ordinary = fields(rawOrdinary, ['oid', 'name']);
+  need(Array.isArray(rawRoles) && !types.isProxy(rawRoles) && rawRoles.length <= 9);
+  const roles = Array.from({ length: rawRoles.length }, (_, index) => fields(field(rawRoles, index), ['name', 'oid']));
   need(status === 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION' && xid(commitXid) &&
     id && typeof id.database === 'string' && /^jg_task01_[a-f0-9]{32}$/u.test(id.database) &&
     oid(id.databaseOid) && oid(id.namespaceOid) && id.ownerOid === '10' && xid(id.systemIdentifier));
