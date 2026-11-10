@@ -11119,7 +11119,7 @@
     },
     {
       "path": "services/api/prisma/task16-baseline-access.sql",
-      "sha256": "212d0ecad8c6543b71a4d1e203732e7e63a012a580a25fbf0b4f05e68646fb8d"
+      "sha256": "9e69de5359263b6b72ed4e151078399de10433d5c7e1af5eef1721ec6793448f"
     },
     {
       "path": "services/api/prisma/task16-migration-history.cjs",

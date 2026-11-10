@@ -74,6 +74,11 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
    const cached=require.cache[row.path];need(!cached||files.get(row.path)?.module===cached&&files.get(row.path)?.exports===cached.exports,"TASK16_APP_PRELOADED_ENTRY");const before=capture(row.path);need(before.sha256===row.sha256&&read(row.path,{maxBytes:64*1024*1024,expectedIdentity:row.identity,code:"TASK16_APP_ENTRY_CHANGED"}).sha256===row.sha256,"TASK16_APP_ENTRY_CHANGED");
    const exports=require(row.path),mod=require.cache[row.path];need(mod?.loaded===true&&mod.exports===exports,"TASK16_APP_ENTRY_CHANGED");applicationRoots.push(mod);
    const descriptor=Object.getOwnPropertyDescriptor(exports,keys[i]);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',"TASK16_APP_EXPORT_CHANGED");records.push({module:mod,key:keys[i],value:descriptor.value});values[keys[i]]=descriptor.value;
+   if(i===0){
+    const key="Task16ImpactReaderToken",token=Object.getOwnPropertyDescriptor(exports,key);
+    need(token&&Object.hasOwn(token,'value')&&typeof token.value==='symbol',"TASK16_APP_EXPORT_CHANGED");
+    records.push({module:mod,key,value:token.value});values[key]=token.value;
+   }
    read(row.path,{maxBytes:64*1024*1024,expectedIdentity:before.identity,code:"TASK16_APP_ENTRY_CHANGED"});check();
   }
   need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype,"TASK16_APP_PRISMA_CLASS");
@@ -84,7 +89,15 @@ function loadTask16Client(source,facts,simulation,applicationEntries){
   const guards=[["auth/guards/jwt-auth.guard","JwtAuthGuard"],["retired-write-entry/retired-write-entry.guard","RetiredWriteEntryGuard"],["operational-write-freeze/operational-write-freeze.guard","OperationalWriteFreezeGuard"],["auth/guards/account-rate-limit.guard","AccountRateLimitGuard"],["auth/guards/permission.guard","PermissionGuard"],["contract-cutover/contract-cutover.guard","ContractCutoverGuard"]].map(([f,k])=>exported(f,k));
   const controller=exported('payment/registered-payment-execution.controller','RegisteredPaymentExecutionController'),filter=exported('project/project-operating-constraint.filter','ProjectOperatingConstraintFilter');
   const serviceProviders=[["payment/payment-amount.service","PaymentAmountService"],["payment/payment-request.service","PaymentRequestService"],["payment/registered-payment-execution.service","RegisteredPaymentExecutionService"],["payment/registered-payment-notification.service","RegisteredPaymentNotificationService"],["approval/approval-sms.service","ApprovalSmsService"]].map(([f,k])=>exported(f,k));
-  const checkMetadata=()=>{const actualImports=metadata('imports',values.Task16RegisteredApplicationModule);need(Array.isArray(actualImports)&&actualImports.length===imports.length&&imports.every((v,i)=>actualImports[i]===v),"TASK16_APP_METADATA_CHANGED");const controllers=metadata('controllers',values.Task16RegisteredApplicationModule);need(controllers?.length===1&&controllers[0]===controller,"TASK16_APP_METADATA_CHANGED");const providers=metadata('providers',values.Task16RegisteredApplicationModule);need(providers?.length===6&&serviceProviders.every((Class,i)=>providers[i]===Class)&&providers[5]?.provide==='APP_FILTER'&&providers[5].useClass===filter,"TASK16_APP_METADATA_CHANGED");const actual=metadata('providers',imports[1])?.filter(row=>row?.provide==='APP_GUARD');need(actual?.length===6&&guards.every((Class,i)=>actual[i].useClass===Class),"TASK16_APP_METADATA_CHANGED");};
+  const readerModule=require.cache[path.join(root,'services/api/dist/payment/registered-payment-impact-reader.js')];
+  const token=values.Task16ImpactReaderToken,readerKey="REGISTERED_PAYMENT_IMPACT_READER";
+  need(readerModule&&files.get(readerModule.filename)?.module===readerModule&&
+   Object.getOwnPropertyDescriptor(readerModule.exports,readerKey)?.value===token,"TASK16_APP_METADATA_SOURCE");
+  records.push({module:readerModule,key:readerKey,value:token});
+  const initialReaderProvider=metadata('providers',values.Task16RegisteredApplicationModule)?.[6];
+  const initialReaderValue=Object.getOwnPropertyDescriptor(initialReaderProvider??{},'useValue')?.value;
+  need(typeof initialReaderValue==='function',"TASK16_APP_METADATA_CHANGED");
+  const checkMetadata=()=>{const actualImports=metadata('imports',values.Task16RegisteredApplicationModule);need(Array.isArray(actualImports)&&actualImports.length===imports.length&&imports.every((v,i)=>actualImports[i]===v),"TASK16_APP_METADATA_CHANGED");const controllers=metadata('controllers',values.Task16RegisteredApplicationModule);need(controllers?.length===1&&controllers[0]===controller,"TASK16_APP_METADATA_CHANGED");const providers=metadata('providers',values.Task16RegisteredApplicationModule);need(providers?.length===7&&serviceProviders.every((Class,i)=>providers[i]===Class)&&providers[5]?.provide==='APP_FILTER'&&providers[5].useClass===filter&&providers[6]===initialReaderProvider&&providers[6].provide===token&&Object.getOwnPropertyDescriptor(providers[6],'useValue')?.value===initialReaderValue,"TASK16_APP_METADATA_CHANGED");const actual=metadata('providers',imports[1])?.filter(row=>row?.provide==='APP_GUARD');need(actual?.length===6&&guards.every((Class,i)=>actual[i].useClass===Class),"TASK16_APP_METADATA_CHANGED");};
   applicationExports={records,checkMetadata};check();return Object.freeze(values);
  };
  const loadFixtureModules=()=>{

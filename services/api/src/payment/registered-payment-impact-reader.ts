@@ -19,6 +19,12 @@ export type RegisteredPaymentImpactReader = (
   factIds: readonly string[]
 ) => Promise<RegisteredPaymentImpact[]>;
 
+export interface Task16RegisteredPaymentImpactRuntime {
+  withTransaction<T>(
+    operation: (tx: Prisma.TransactionClient, read: RegisteredPaymentImpactReader) => Promise<T>
+  ): Promise<T>;
+}
+
 const columns = ["factId", "impactKind", "amountCents", "numericProtocolVersion", "subjectKind", "subjectId"] as const;
 
 function readImpactForFact(row: unknown, expectedFactId: string): RegisteredPaymentImpact | null {

@@ -3,8 +3,8 @@ import { currentRegisteredPaymentApproval } from "./registered-payment-approval"
 import { resolveRegisteredExistingSource } from "./registered-payment-existing-source";
 import { currentRegisteredPaymentDomain } from "./registered-payment-domain";
 import { paymentExecutionVoucherFileId } from "./payment-execution-voucher";
-import { REGISTERED_PAYMENT_IMPACT_READER, type RegisteredPaymentImpact, type RegisteredPaymentImpactReader } from "./registered-payment-impact-reader";
-import { ForbiddenException, Inject, Injectable, Optional } from "@nestjs/common";
+import { REGISTERED_PAYMENT_IMPACT_READER, type RegisteredPaymentImpact, type RegisteredPaymentImpactReader, type Task16RegisteredPaymentImpactRuntime } from "./registered-payment-impact-reader";
+import { ForbiddenException, Inject, Injectable, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
@@ -16,7 +16,8 @@ export class RegisteredPaymentExecutionService {
   private readonly roles: CompanyRoleResolverService;
   constructor(
     private readonly prisma: PrismaService,
-    @Optional() @Inject(REGISTERED_PAYMENT_IMPACT_READER) private readonly impactReader?: RegisteredPaymentImpactReader
+    @Optional() @Inject(REGISTERED_PAYMENT_IMPACT_READER)
+    private readonly impactReader?: RegisteredPaymentImpactReader | Task16RegisteredPaymentImpactRuntime
   ) {
     this.roles = new CompanyRoleResolverService(prisma);
   }
@@ -59,7 +60,7 @@ export class RegisteredPaymentExecutionService {
   }
 
   async result(actorUserId: string, idempotencyKey: string) {
-    return this.prisma.$transaction(async tx => {
+    const operation = async (tx: Prisma.TransactionClient, read?: RegisteredPaymentImpactReader) => {
       if (!(await this.canRegister(tx, actorUserId))) throw new ForbiddenException("只有当前财务人员或综合部主管可以查询实际付款登记");
       const unconfirmed = { status: "unconfirmed", message: "尚未查到付款登记结果，请保留原请求并继续查询" } as const;
       const execution = await tx.paymentExecution.findUnique({ where: { idempotencyKey } });
@@ -76,8 +77,8 @@ export class RegisteredPaymentExecutionService {
       const factIds = facts.map(fact => fact.id);
       let impacts: RegisteredPaymentImpact[] = [];
       if (factIds.length) {
-        impacts = this.impactReader
-          ? await this.impactReader(tx, { requestKey: execution.idempotencyKey, executionId: execution.id,
+        impacts = read
+          ? await read(tx, { requestKey: execution.idempotencyKey, executionId: execution.id,
               paymentId: domain.payment.id, projectId: domain.payment.projectId }, factIds)
           : await tx.operatingImpactEntry.findMany({
               where: { factId: { in: factIds } },
@@ -95,7 +96,20 @@ export class RegisteredPaymentExecutionService {
         amountCents: execution.amountCents.toString(), paidAt: chinaDateOnly(execution.paidAt),
         voucherPending: voucherFileId === null
       }, effects, intercompany };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    };
+    const reader = this.impactReader;
+    if (reader && typeof reader !== "function") {
+      try {
+        return await reader.withTransaction(operation);
+      } catch (error) {
+        const code = (error as { code?: string } | null)?.code;
+        if (code === "TASK16_APP_IMPACT_READER_PROOF" || code === "TASK16_CLIENT_IMPACT_READER_TRANSACTION") {
+          throw new ServiceUnavailableException("暂时无法核对实付影响，请稍后查询");
+        }
+        throw error;
+      }
+    }
+    return this.prisma.$transaction(tx => operation(tx, reader), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async workItems(actorUserId: string) {

@@ -224,3 +224,11 @@ for(const kind of ['valid','missing','wrong-body','wrong-owner','wrong-oid','sam
  }
  assert.equal(f.calls.at(-1),'close-resource');
 });
+
+test("Task16 column ACL readers leave NULL as no explicit grants", () => {
+    for (const file of ["task16-baseline-access.sql", "task16-registered-access-check.sql"]) {
+        const sql = fs.readFileSync(path.join(__dirname, file), "utf8");
+        assert.match(sql, /pg_catalog\.aclexplode\(att\.attacl\) a/u, file);
+        assert.doesNotMatch(sql, /aclexplode\(coalesce\(att\.attacl/u, file);
+    }
+});

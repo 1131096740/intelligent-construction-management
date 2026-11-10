@@ -83,7 +83,7 @@ BEGIN
     ('public.jg_guard_contract_direct_archive_version_transition_v1(public."ContractVersion",public."ContractVersion")', 'c376d219b8d97e2d8e895f39fcf6af1b768fef8ae2dff9c37d356d8374086157', true,'public."ContractVersion"'),
     ('public.jg_guard_contract_direct_archive_slot_v1()', 'cc7b0b876f7f396ed11d3b6f583af25c106b2ef967244648a93c730233efdf8b', false,'pg_catalog.trigger'),
     ('public.jg_guard_contract_direct_archive_dispatch_binding_v1()', '40831a77884f198d09985af3317cf396c706e21161e45e5fb2e042ebe776e8e8', false,'pg_catalog.trigger')
-  ) targets(signature,body_sha,strict,result_type) LOOP
+  ) targets(signature,body_sha,expected_strict,result_type) LOOP
     SELECT proc.*,l.lanname,to_jsonb(proc)-'prosrc' AS metadata INTO STRICT f
     FROM pg_catalog.pg_proc proc JOIN pg_catalog.pg_language l ON l.oid=proc.prolang
     WHERE proc.oid=pg_catalog.to_regprocedure(item.signature);
@@ -91,7 +91,7 @@ BEGIN
     IF actual_sha IS DISTINCT FROM item.body_sha OR f.pronamespace IS DISTINCT FROM public_oid
       OR f.prorettype IS DISTINCT FROM pg_catalog.to_regtype(item.result_type)
       OR f.proowner IS DISTINCT FROM pending."anchorOwnerOid" OR f.prokind<>'f' OR f.prosecdef OR f.proretset
-      OR f.proisstrict IS DISTINCT FROM item.strict OR f.provolatile<>'v' OR f.proparallel<>'u' OR f.lanname<>'plpgsql'
+      OR f.proisstrict IS DISTINCT FROM item.expected_strict OR f.provolatile<>'v' OR f.proparallel<>'u' OR f.lanname<>'plpgsql'
       OR f.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, pg_temp']
       OR pg_catalog.has_function_privilege(f.proowner,f.oid,'EXECUTE') IS DISTINCT FROM TRUE
       OR EXISTS(SELECT 1 FROM pg_catalog.aclexplode(COALESCE(f.proacl,pg_catalog.acldefault('f',f.proowner))) acl

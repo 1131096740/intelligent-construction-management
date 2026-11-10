@@ -202,7 +202,7 @@ DECLARE
   app_name NAME;
   owner_id OID:=current_user::regrole::oid;
   manifest_oid OID:=pg_catalog.to_regprocedure('public.jg_assert_contract_archive_v2_manifest(pg_catalog.text)');
-  activation_oid OID:=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.boolean)');
+  activation_oid OID:=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.bool)');
   direct_completion_oid OID:=pg_catalog.to_regprocedure('public.jg_contract_archive_v2_complete_guard()');
   day_oid OID:=pg_catalog.to_regprocedure('public.jg_contract_archive_v2_ownership_day(pg_catalog.text)');
   source_call TEXT;

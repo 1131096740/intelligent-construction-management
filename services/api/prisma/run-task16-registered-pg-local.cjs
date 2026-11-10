@@ -27,6 +27,7 @@ const NATIVE_CASE_MODULE=(()=>{try{return require('./task16-normal-case.cjs');}c
 const NATIVE_CASE_STAGE=NATIVE_CASE_MODULE?.runTask16NormalCase;
 const NATIVE_CASE_ADMISSION=NATIVE_CASE_MODULE?.validateTask16CaseAdmission;
 let nativeAttempted=false;
+const activeSimulationContexts=new WeakSet();
 const path = require("node:path");
 const { randomBytes, randomUUID } = require("node:crypto");
 const { types: { isProxy } } = require("node:util");
@@ -156,6 +157,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
   const context = { options, runId: randomUUID(), signal: controller.signal, readOnlyCommand: simulation ? injectedAdapters.readOnlyCommand : undefined,
     credentials: { owner: randomBytes(48).toString("hex"), runtime: randomBytes(48).toString("hex"), observer: randomBytes(48).toString("hex") } };
   Object.defineProperties(context,{nativeLoaderFacts:{value:EARLY_LOADER,writable:false},simulation:{value:simulation,writable:false}});
+  if(simulation)activeSimulationContexts.add(context);
   const nativeReentry=!simulation&&nativeAttempted;
   if(!simulation)nativeAttempted=true;
   let failed, ownedResource, ownedResourceClose, ownedResourceReceipt, ownedResourceIdentity;
@@ -302,6 +304,7 @@ async function runTask16RegisteredPg(options, injectedAdapters) {
     if (["NOT_ATTEMPTED", "UNKNOWN_DO_NOT_RETRY"].includes(error?.migrationOutcome)) receipt.migrationOutcome = error.migrationOutcome;
     receipt.failureCode = typeof error?.code === "string" && /^(?:TASK16|TASK01)_[A-Z0-9_]+$/u.test(error.code) ? error.code : "TASK16_DRIVER_STAGE_FAILED";
   } finally {
+    activeSimulationContexts.delete(context);
     if(typeof NATIVE_SEED_RELEASE==='function'){try{NATIVE_SEED_RELEASE(context);}catch{receipt.cleanupFailures.push('fixture-private-handoff');}}
     options?.signal?.removeEventListener?.("abort", onCallerAbort);
     controller.abort();
@@ -336,3 +339,5 @@ if (require.main === module) {
   }).catch(() => { process.stdout.write(`${JSON.stringify({ status: "FAILED_CLOSED", failureCode: "TASK16_DRIVER_ARGUMENTS", nativeExecution: false, financialAcceptance: false })}\n`); process.exitCode = 1; });
 }
 module.exports = { runTask16RegisteredPg };
+
+Object.defineProperty(module.exports,"ownsActiveTask16SimulationContext",{value:context=>activeSimulationContexts.has(context)});

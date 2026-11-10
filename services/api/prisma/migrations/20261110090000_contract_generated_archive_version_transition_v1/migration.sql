@@ -47,7 +47,7 @@ DECLARE
   binding_table OID:='public.jg_contract_generated_archive_version_transition_v1'::regclass;
   seal_table OID:='public.jg_contract_generated_upward_seal_binding_v1'::regclass;
   version_table OID:='public."ContractVersion"'::regclass;
-  archive_basis OID:=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.boolean)');
+  archive_basis OID:=pg_catalog.to_regprocedure('public.jg_generated_archive_activation_basis_v1(pg_catalog.text,pg_catalog.bool)');
   declarations TEXT:=$declarations$  node JSONB;
 $declarations$;
   prior_frozen_block TEXT:=$prior$  IF TG_OP<>'INSERT' AND OLD."signingSubjectType"='upward' AND OLD."status"=awaiting_archive THEN

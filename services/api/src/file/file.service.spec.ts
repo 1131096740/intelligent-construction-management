@@ -6446,6 +6446,75 @@ describe("FileService", () => {
     });
   });
 
+  it.each(["generated_approval", "direct_signed"])(
+    "requires a current archive reader role for a %s original even when the caller uploaded it",
+    async archiveSource => {
+      const buffer = Buffer.from("synthetic signed PDF");
+      const file = {
+        id: "signed-file", originalName: "盖章合同.pdf", mimeType: "application/pdf",
+        bucket: "private-local", objectKey: "uploads/signed-file.pdf", sizeBytes: buffer.length,
+        uploadedByUserId: "archive-handler", storageStatus: "active",
+        contentSha256: createHash("sha256").update(buffer).digest("hex")
+      };
+      const evidence = { id: "evidence", fileId: file.id, archiveFileId: "archive", contractVersionId: "version" };
+      const parent = {
+        id: "archive", archiveProtocolVersion: 2, archiveSource, contractVersionId: "version", status: "confirmed",
+        approvalInstanceId: archiveSource === "generated_approval" ? "approval" : null,
+        sealTaskId: archiveSource === "generated_approval" ? "seal" : null
+      };
+      let active = true;
+      let archiveRole = true;
+      const tx = {
+        contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+        fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+        contractArchiveEvidenceFile: {
+          findFirst: jest.fn().mockResolvedValue(evidence),
+          findMany: jest.fn().mockResolvedValue([evidence])
+        },
+        contractArchiveFile: { findUnique: jest.fn().mockResolvedValue(parent) },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ id: "version", contractId: "contract", signingSubjectType: "our_company" })
+        },
+        contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract", projectId: "project" }) },
+        user: { findUnique: jest.fn().mockImplementation(async () => ({ isActive: active })) },
+        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+        projectMember: {
+          findMany: jest.fn().mockImplementation(async () => archiveRole ? [{ positionKey: "contract_staff" }] : [])
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+          callback(legacyFileTransaction(tx))
+        )
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma, audit as unknown as AuditService, storage as unknown as PrivateFileStorage
+      );
+      storage.read.mockResolvedValue(buffer);
+      const request = { actorUserId: file.uploadedByUserId, downloadReason: "复核盖章合同" };
+      const ticket = await service.createDownloadTicket(file.id, request);
+      const url = new URL(ticket.downloadUrl, "https://fixture.invalid");
+      const issued = {
+        ...request,
+        expiresAt: ticket.expiresAt,
+        token: url.searchParams.get("token") ?? ""
+      };
+
+      audit.record.mockClear();
+      archiveRole = false;
+      await expect(service.getDownloadTicketCapability(file.id, request.actorUserId)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.createDownloadTicket(file.id, request)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.readPrivateFile(file.id, issued)).rejects.toBeInstanceOf(ForbiddenException);
+
+      archiveRole = true;
+      active = false;
+      await expect(service.createDownloadTicket(file.id, request)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.readPrivateFile(file.id, issued)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(storage.read).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("rejects download tickets for pending contract archive files", async () => {
     const tx = {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },

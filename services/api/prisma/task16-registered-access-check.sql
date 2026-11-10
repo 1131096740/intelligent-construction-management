@@ -10,7 +10,7 @@ CREATE TEMP VIEW jg_task16_acl_now AS
   SELECT 'column',c.oid,att.attnum,a.grantor,a.grantee,a.privilege_type,a.is_grantable
     FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
     JOIN pg_catalog.pg_attribute att ON att.attrelid=c.oid AND att.attnum<>0 AND NOT att.attisdropped
-    CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(att.attacl,'{}'::aclitem[])) a
+    CROSS JOIN LATERAL pg_catalog.aclexplode(att.attacl) a
    WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
   UNION ALL
   SELECT 'function',p.oid,0::smallint,a.grantor,a.grantee,a.privilege_type,a.is_grantable

@@ -28,7 +28,7 @@ import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-ent
 import { createApiValidationPipe } from "../validation/api-validation";
 import { RegisteredPaymentExecutionController } from "./registered-payment-execution.controller";
 import { RegisteredPaymentExecutionService } from "./registered-payment-execution.service";
-import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts, type RegisteredPaymentImpactReader } from "./registered-payment-impact-reader";
+import { REGISTERED_PAYMENT_IMPACT_READER, readTask16RegisteredPaymentImpacts, type RegisteredPaymentImpactReader, type Task16RegisteredPaymentImpactRuntime } from "./registered-payment-impact-reader";
 import { RegisteredPaymentNotificationService } from "./registered-payment-notification.service";
 import { MeController } from "../me/me.controller";
 import { MeService } from "../me/me.service";
@@ -94,7 +94,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     } });
     await startApplication();
   });
-  async function startApplication(impactReader?: RegisteredPaymentImpactReader) {
+  async function startApplication(impactReader?: RegisteredPaymentImpactReader | Task16RegisteredPaymentImpactRuntime) {
     const module = await Test.createTestingModule({
       controllers: [PaymentController, FileController, RegisteredPaymentExecutionController, MeController, FundAccountController, AuditController],
       providers: [{ provide: ApprovalSmsService, useValue: { available: () => notificationSmsEnabled, send: async (phone: string) => { notificationSmsCalls.push(phone); notificationSmsTransactionStates.push(notificationTransactionDepth > 0); if (notificationSmsEnabled) return {status:notificationSmsOutcome,message:"Synthetic SMS outcome; no external gateway"}; return {status:"failed",message:"\u5408\u6210\u77ed\u4fe1\u9002\u914d\u5668\u5173\u95ed"}; } } }, PaymentReadService, ProjectVisibilityService, { provide: OperatingSourceReplayService, inject: [PrismaService], useFactory: (prisma: PrismaService) => new OperatingSourceReplayService(prisma,new OperatingLedgerService(prisma),new OperatingSourceAdapterRegistry([new PaymentExecutionOperatingSourceAdapter()])) }, { provide: PaymentRequestService, inject: [PrismaService, AuthService, AuditService, FileService, OperatingSourceReplayService, RegisteredPaymentNotificationService], useFactory: (prisma: PrismaService, auth: AuthService, audit: AuditService, files: FileService, operating: OperatingSourceReplayService, notifications: RegisteredPaymentNotificationService) => new PaymentRequestService(new PaymentAmountService(), prisma, audit, files, auth, undefined, undefined, undefined, undefined, operating, undefined, notifications) }, RegisteredPaymentExecutionService, RegisteredPaymentNotificationService, MeService, AuditService, AuthService, JwtTokenService, FundAccountService, { provide: FileService, inject: [PrismaService, AuditService], useFactory: (prisma: PrismaService, audit: AuditService) => new FileService(prisma,audit,new PrivateFileStorage()) }, { provide: PrismaService, useValue: database.prisma },
@@ -1018,7 +1018,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect(funds.find((account:{scopeKey:string})=>account.scopeKey==="public_cash")).toMatchObject({balanceYuan:"60.0000",companyEntityId:null});
     expect(funds.find((account:{scopeKey:string})=>account.scopeKey==="company:company-a").balanceYuan).toBe("100.0000");
   });
-  it("binds the restricted result reader to the verified payment project and fact", async () => {
+  it.each(["function", "dedicated runtime"] as const)("binds the %s result reader to the verified payment project and fact", async mode => {
     const cash = await prepareCashOperatingPayment();
     const key = "d6cbd278-d7f1-4b28-a01c-07b1b11860c2";
     const recorded = await post("keeper", "/payment-executions/payment-a/registrations", {
@@ -1055,7 +1055,13 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     ]);
     const beforeReads = await observeReadOnly();
     await app.close();
-    await startApplication(readTask16RegisteredPaymentImpacts);
+    let dedicatedTransactions = 0;
+    await startApplication(mode === "function" ? readTask16RegisteredPaymentImpacts : {
+      withTransaction: operation => database.prisma.$transaction(client => {
+        dedicatedTransactions++;
+        return operation(client as Prisma.TransactionClient, readTask16RegisteredPaymentImpacts);
+      })
+    });
 
     const databaseAdapter = database.prisma as unknown as {
       $queryRaw(query: Prisma.Sql | TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
@@ -1096,6 +1102,7 @@ describe("registered payment execution public HTTP (synthetic persistence)", () 
     expect(calls).toHaveLength(0);
     expect(await get("finance", path)).toEqual(ordinary);
     expect(calls).toEqual([[key, ordinary.body.execution.executionId, "payment-a", "project-a", fact.factId]]);
+    expect(dedicatedTransactions).toBe(mode === "dedicated runtime" ? 3 : 0);
 
     const unavailable = { status: 503, body: { statusCode: 503, message: "暂时无法核对实付影响，请稍后查询", error: "Service Unavailable" } };
     sqlError = Object.assign(new Error("Synthetic private database denial"), { code: "42501" });

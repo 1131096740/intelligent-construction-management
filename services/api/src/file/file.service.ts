@@ -1259,7 +1259,9 @@ export class FileService {
         "ticket"
       );
 
-      await this.archiveDownloadGeneration(tx, file, input.actorUserId, "ticket");
+      await this.archiveDownloadGeneration(
+        tx, file, input.actorUserId, "ticket", access?.businessType === "contract_economic_review"
+      );
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
@@ -1325,8 +1327,10 @@ export class FileService {
       if (!file) {
         throw new Error("资料文件不存在或已被移除");
       }
-      await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId, "ticket");
-      await this.archiveDownloadGeneration(tx, file, actorUserId, "ticket");
+      const access = await this.assertCanDownloadFileObject(tx, file, actorUserId, delegatorUserId, "ticket");
+      await this.archiveDownloadGeneration(
+        tx, file, actorUserId, "ticket", access?.businessType === "contract_economic_review"
+      );
       return {
         availableActions: ["create_private_file_download_ticket" as const],
         action: {
@@ -1459,27 +1463,23 @@ export class FileService {
     if (bindings.length !== 1 || bindings[0].id !== evidence.id || evidence.fileId !== file.id
       || parent.id !== evidence.archiveFileId || parent.contractVersionId !== evidence.contractVersionId
       || parent.archiveProtocolVersion !== 2 || parent.status !== "confirmed") throw unavailable();
-    if (parent.archiveSource === "direct_signed") {
-      if (parent.approvalInstanceId != null || parent.sealTaskId != null) throw unavailable();
-      if (phase === "ticket") return null;
-      const version = await tx.contractVersion.findUnique({ where: { id: evidence.contractVersionId } });
-      const contract = version ? await tx.contract.findUnique({ where: { id: version.contractId } }) : null;
-      if (!contract || (!authorizedReviewHistory && !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))) {
-        throw new ForbiddenException("当前账号无权下载该合同归档原件");
-      }
-      return readDirectArchiveGeneration(tx, parent, evidence, file);
-    }
-    if (parent.archiveSource !== "generated_approval") throw unavailable();
+    const direct = parent.archiveSource === "direct_signed";
+    if (direct ? parent.approvalInstanceId != null || parent.sealTaskId != null
+      : parent.archiveSource !== "generated_approval") throw unavailable();
     const version = await tx.contractVersion.findUnique({ where: { id: evidence.contractVersionId } });
     if (!version || version.id !== evidence.contractVersionId) throw unavailable();
+    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+    if (!contract || actor?.isActive !== true || (!(direct && authorizedReviewHistory)
+      && !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))) {
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
+    }
+    if (direct) {
+      return phase === "ticket" ? null : readDirectArchiveGeneration(tx, parent, evidence, file);
+    }
     if (!requiresGeneratedArchiveOriginals(version, parent)) {
       if (version.signingSubjectType === "our_company") return null;
       throw unavailable();
-    }
-    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
-    const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
-    if (!contract || actor?.isActive !== true || !await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES)) {
-      throw new ForbiddenException("当前账号无权下载该合同归档原件");
     }
     return readGeneratedArchiveDownloadGeneration(tx, contract, version, parent, evidence, file);
   }

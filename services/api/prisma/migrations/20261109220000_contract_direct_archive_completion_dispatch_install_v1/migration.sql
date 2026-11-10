@@ -126,7 +126,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF 4<>(SELECT count(*) FROM pg_catalog.pg_trigger t WHERE t.tgfoid IN (old_completion_oid,direct_completion_oid)) THEN
+  IF 4<>(SELECT count(*) FROM pg_catalog.pg_trigger completion_trigger WHERE completion_trigger.tgfoid IN (old_completion_oid,direct_completion_oid)) THEN
     RAISE EXCEPTION '原归档完成延迟触发器库存不正确';
   END IF;
   FOR item IN SELECT * FROM (VALUES
@@ -158,7 +158,7 @@ BEGIN
   END IF;
   next_body:=replace(old_body,anchor,splice||anchor);
   IF encode(public.digest(convert_to(next_body,'UTF8'),'sha256'),'hex') IS DISTINCT FROM
-    '5e408b07516786874983ebdaea2d9c526d7056290df422ccc0861176445305ca' THEN
+    'e70210dc13f30a299a555b39ef19da04862895c9317ae1db3e917b7f156c1b72' THEN
     RAISE EXCEPTION '直签归档完成接线后态与固定源码不一致';
   END IF;
 
@@ -186,8 +186,8 @@ BEGIN
     RAISE EXCEPTION '原生成审批归档清单权威已变化';
   END IF;
 
-  SELECT jsonb_object_agg(t.tgname,t.oid::text) INTO registry_triggers FROM pg_catalog.pg_trigger t
-  WHERE t.tgrelid=binding_oid;
+  SELECT jsonb_object_agg(registry_trigger.tgname,registry_trigger.oid::text) INTO registry_triggers FROM pg_catalog.pg_trigger registry_trigger
+  WHERE registry_trigger.tgrelid=binding_oid;
   IF registry_triggers IS NULL OR 2<>(SELECT count(*) FROM jsonb_object_keys(registry_triggers))
     OR procedures->'registry'->>'sha256' IS DISTINCT FROM 'd4be6bb841d6459e13537724ac423592f8db8ebd53df51a62a0e51a9fcfdd1a5'
     OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=(procedures->'registry'->>'oid')::oid
