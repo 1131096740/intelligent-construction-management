@@ -157,7 +157,7 @@ BEGIN
  ELSE
    IF request."paidAmountCents"::NUMERIC <> (authority->>'paidAmountBeforeExecution')::NUMERIC + e."amountCents" OR
       request."paidAmountCents" > coalesce(request."approvedAmountCents",request."requestedAmountCents") OR
-      request."status" IS DISTINCT FROM CASE WHEN request."paidAmountCents" >= coalesce(request."approvedAmountCents",request."requestedAmountCents") THEN 'paid' ELSE 'partially_paid' END THEN
+      request."status" IS DISTINCT FROM (CASE WHEN request."paidAmountCents" >= coalesce(request."approvedAmountCents",request."requestedAmountCents") THEN 'paid' ELSE 'partially_paid' END) THEN
      RAISE EXCEPTION 'registered payment must commit exactly one matching request paid consequence';
    END IF;
  END IF;

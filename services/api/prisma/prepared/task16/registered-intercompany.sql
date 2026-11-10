@@ -143,8 +143,8 @@ BEGIN
    ELSE RAISE EXCEPTION 'registered canonical graph cannot contain an extra unrecognized impact'; END IF;
  END LOOP;
  SELECT pg_catalog.count(*) INTO expected_payable_count FROM pg_catalog.jsonb_object_keys(expected_payables);
- IF payable_count<>expected_payable_count OR funds_count<>CASE WHEN f."openingTreatment"='not_included' THEN 1 ELSE 0 END
-   OR proxy_count<>CASE WHEN cross_company THEN 1 ELSE 0 END THEN
+ IF payable_count<>expected_payable_count OR funds_count<>(CASE WHEN f."openingTreatment"='not_included' THEN 1 ELSE 0 END)
+   OR proxy_count<>(CASE WHEN cross_company THEN 1 ELSE 0 END) THEN
    RAISE EXCEPTION 'registered canonical graph is missing an applicable payable, funds or proxy consequence';
  END IF;
 END $$;
