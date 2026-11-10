@@ -1734,6 +1734,22 @@ async function exerciseGeneratedSealConfirmation({ server, draft, director, conf
     } });
     const archiveHandler = await loginTemplateActor(server, "staff");
     await assertGeneratedLifecycleWorkItemPending(server, draft, archiveHandler, "archive");
+    const archiveMembership = await store.projectMember.findFirst({
+      where: { userId: "staff", projectId: draft.projectId, positionKey: "contract_staff" }
+    });
+    expect(archiveMembership).not.toBeNull();
+    let archiveRoleRevoked = false;
+    witness.mockImplementationOnce(async (transaction, scope) => {
+      await store.projectMember.delete({ where: { id: archiveMembership!.id } });
+      archiveRoleRevoked = true;
+      return prove(transaction, scope);
+    });
+    try {
+      await assertGeneratedSealWorkItemHidden(server, draft, archiveHandler);
+      expect(archiveRoleRevoked).toBe(true);
+    } finally {
+      if (archiveRoleRevoked) await store.projectMember.create({ data: archiveMembership! });
+    }
     await assertGeneratedSealWorkItemHidden(server, draft, director);
     await store.contract.update({ where: { id: draft.contract.id }, data: { ownerUserId: "employee" } });
     try { await assertGeneratedSealWorkItemHidden(server, draft, archiveHandler); }

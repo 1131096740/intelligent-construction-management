@@ -1841,18 +1841,26 @@ export class MeService {
       const external = isNonInsideContractSubject(version.signingSubjectType) || relationship === "outside" || relationship === "upward";
       const blocked = external ? await this.prisma.$transaction(async tx => {
         if (!await hasCurrentRole(tx)) return null;
-        const currentContract = await tx.contract.findUnique({ where: { id: contract.id } });
-        if (!currentContract || currentContract.voidedAt || currentContract.projectId !== contract.projectId ||
-          currentContract.ownerUserId !== contract.ownerUserId) return null;
+        const readCurrentContract = async () => {
+          const current = await tx.contract.findUnique({ where: { id: contract.id } });
+          return current && !current.voidedAt && current.projectId === contract.projectId &&
+            current.ownerUserId === contract.ownerUserId ? current : null;
+        };
+        const currentContract = await readCurrentContract();
+        if (!currentContract) return null;
         const latest = await tx.contractVersion.findFirst({
           where: { contractId: contract.id, status: { not: "deleting" } }, orderBy: { versionNo: "desc" }
         });
         if (latest?.id !== version.id || latest.status !== version.status) return null;
         const lifecycle = await readContractV2LifecycleContext(tx, currentContract, latest, userId, false);
-        return lifecycle?.status !== "ready" || !lifecycle.webWriteReleased ||
-          lifecycle.approvalInstanceId !== round.id || lifecycle.sealTaskId !== task.id ||
-          (seal ? lifecycle.state !== "pending_seal" || !lifecycle.sealAction.enabled
-            : lifecycle.state !== "pending_archive" || !lifecycle.archiveAction.enabled);
+        // Readiness can change independently of the right to see this task.
+        const project = await tx.project.findUnique({ where: { id: contract.projectId }, select: { isActive: true } });
+        if (!project?.isActive || !await readCurrentContract() || !await hasCurrentRole(tx)) return null;
+        if (lifecycle?.status !== "ready") return true;
+        const expectedState = seal ? "pending_seal" : "pending_archive";
+        if (lifecycle.approvalInstanceId !== round.id || lifecycle.sealTaskId !== task.id ||
+          lifecycle.state !== expectedState) return null;
+        return !lifecycle.webWriteReleased || !(seal ? lifecycle.sealAction.enabled : lifecycle.archiveAction.enabled);
       }) : await hasCurrentRole(this.prisma) ? false : null;
       if (blocked === null) continue;
       const queue = blocked ? result.blocked : result.pending;
