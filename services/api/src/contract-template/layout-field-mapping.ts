@@ -177,7 +177,7 @@ export function prepareLayoutSourceMapping(source: Buffer, sourceFileId: string,
   if (required.length) throw new BadRequestException(`请明确选择${required.map(field => field.label).join("、")}的自动填写位置`);
   const content = { protocolVersion: 1 as const, sourceFileId, sourceSha256: parsed.sourceSha256, draftRevision, bindings };
   const mapping: LayoutSourceMapping = { ...content, fingerprint: mappingFingerprint(content) };
-  const docx = applyLayoutSourceMapping(source, mapping);
+  const docx = applyValidatedLayoutSourceMapping(source, mapping, parsed);
   // Only this verified range-only derivation inherits the master's footer
   // qualification. The reader still hashes the actual derived bytes for IDs.
   const preview = readLayoutPositions(docx, parsed.sourceSha256);
@@ -186,7 +186,10 @@ export function prepareLayoutSourceMapping(source: Buffer, sourceFileId: string,
 
 /** Rechecks the exact source and mapping on every use; original files stay intact. */
 export function applyLayoutSourceMapping(source: Buffer, mapping: LayoutSourceMapping): Buffer {
-  const parsed = readLayoutSourcePositions(source);
+  return applyValidatedLayoutSourceMapping(source, mapping, readLayoutSourcePositions(source));
+}
+
+function applyValidatedLayoutSourceMapping(source: Buffer, mapping: LayoutSourceMapping, parsed: ReturnType<typeof readLayoutSourcePositions>): Buffer {
   const { fingerprint, ...content } = mapping;
   if (mapping.protocolVersion !== 1 || parsed.sourceSha256 !== mapping.sourceSha256 || mappingFingerprint(content) !== fingerprint) {
     throw new BadRequestException("模板原文件或自动填写映射已变化，请重新检查确认");
