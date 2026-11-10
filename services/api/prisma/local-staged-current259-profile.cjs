@@ -5,7 +5,7 @@ const {types,isDeepStrictEqual}=require('node:util');
 const {randomBytes}=require('node:crypto');
 const ROOT=path.resolve(__dirname,'../../..'),ID='CURRENT259_OWNED_TECHNICAL_V1',OWNER='jg_task01_owner';
 const FULL='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
-const profiles=new WeakMap(),usedHandles=new WeakSet();
+const profiles=new WeakMap(),usedHandles=new WeakSet(),supplies=new WeakMap();
 const need=ok=>{if(!ok)throw new Error('CURRENT259_TECHNICAL_PROFILE');};
 function dataDescriptor(owner,key){need(owner&&!types.isProxy(owner));const d=Object.getOwnPropertyDescriptor(owner,key);need(d&&Object.hasOwn(d,'value'));return Object.freeze(d);}
 function sameDescriptor(owner,key,expected){need(isDeepStrictEqual(dataDescriptor(owner,key),expected));}
@@ -36,6 +36,20 @@ const plain=x=>x&&!types.isProxy(x)&&Object.getPrototypeOf(x)===Object.prototype
 function resolveTechnicalProfile(token){
  need(token&&!types.isProxy(token)&&profiles.has(token));const p=profiles.get(token);p.check();return p;
 }
+// Only metadata crosses the completion boundary; no resource, credentials or IO.
+function frozenMetadata(value){
+ if(value===null||['string','boolean','number'].includes(typeof value))return value;
+ need(value&&typeof value==='object'&&!types.isProxy(value));
+ const descriptors=Object.getOwnPropertyDescriptors(value);need(Reflect.ownKeys(descriptors).every(key=>typeof key==='string'&&Object.hasOwn(descriptors[key],'value')));
+ if(Array.isArray(value))return Object.freeze(Array.from({length:descriptors.length.value},(_,i)=>{need(descriptors[i]);return frozenMetadata(descriptors[i].value);}));
+ need(Object.getPrototypeOf(value)===Object.prototype);
+ return Object.freeze(Object.fromEntries(Object.entries(descriptors).map(([key,row])=>[key,frozenMetadata(row.value)])));
+}
+function claimCurrent259TechnicalSupply(result,handle){
+ need(arguments.length===2&&result&&!types.isProxy(result)&&supplies.has(result));
+ const supply=supplies.get(result);need(supply.handle===handle);supplies.delete(result);
+ supply.activate();return Object.freeze({source:supply.source,completion:result,check:supply.check});
+}
 function createCurrent259TechnicalMigration(handle,signal){
  need(arguments.length===1||arguments.length===2);
  if(signal!==undefined)need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===AbortSignal.prototype&&!Object.hasOwn(signal,"aborted"));
@@ -55,6 +69,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  let failed=false,started=false,closing,physicalAnchor;const sqlMaterials=[];let cliMaterial,nodeMaterial,engineMaterial;
  function stop(){
   failed=true;cancellation.abort();
+  if(signal)EventTarget.prototype.removeEventListener.call(signal,"abort",onAbort);
   if(!closing){try{closing=Promise.resolve(closeCurrent259OwnedResource(handle));}catch(error){closing=Promise.reject(error);}closing.catch(()=>{});}
   return closing;
  }
@@ -119,11 +134,14 @@ function createCurrent259TechnicalMigration(handle,signal){
    const fixture=createLocalMigrationFixture({technicalProfile:token,temporaryRoot});
    const url=new URL('postgresql://'+OWNER+'@127.0.0.1:'+resource.port+'/'+database);url.password=view.credentials().owner;url.searchParams.set('application_name','jg-current259-migrate');
    const result=await fixture.migrate({databaseUrl:url.toString(),runtimeEnv:{}});check();
-   return Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:source.candidateSha,runId,containerId:resource.containerId,database,
-    application:result.technicalApplication,sqlMaterials:Object.freeze(sqlMaterials.slice())});
+   const completion=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:source.candidateSha,runId,containerId:resource.containerId,database,
+    application:result.technicalApplication,databaseIdentity:Object.freeze({...physicalAnchor}),sqlMaterials:Object.freeze(sqlMaterials.slice())});
+   supplies.set(completion,{handle,source:frozenMetadata(source),check,activate(){
+    check();if(signal)EventTarget.prototype.addEventListener.call(signal,"abort",onAbort,{once:true});
+   }});return completion;
   }catch(error){return await failedOutcome(error);}
   finally{if(signal)EventTarget.prototype.removeEventListener.call(signal,"abort",onAbort);}
  }});
 }
-const moduleApi=Object.freeze({createCurrent259TechnicalMigration,resolveTechnicalProfile});
+const moduleApi=Object.freeze({createCurrent259TechnicalMigration,resolveTechnicalProfile,claimCurrent259TechnicalSupply});
 module.exports=moduleApi;

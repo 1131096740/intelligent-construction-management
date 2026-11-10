@@ -756,3 +756,56 @@ test("owned current259 technical migration rejects genuine900s owner-only handle
  assert.equal(model.counts().checks,0);assert.equal(model.counts().commands,0);assert.equal(model.counts().observations,0);
  assert.deepEqual(model.calls,[]);
 });
+
+
+test("owned current259 complete supply claim binds the original result and handle once without execution ports",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-claim-'));
+ const model=await current259Model(root);
+ const result=await model.api.createCurrent259TechnicalMigration(model.handle).migrate();
+ const supplied=model.api.claimCurrent259TechnicalSupply(result,model.handle);
+ assert.equal(supplied.completion,result);assert.equal(supplied.source.candidateSha,'c'.repeat(40));
+ assert.equal(supplied.completion.application.oid,result.application.oid);
+ assert.deepEqual(Object.keys(supplied).sort(),['check','completion','source']);
+ assert.ok(Object.isFrozen(supplied)&&Object.isFrozen(supplied.source)&&Object.isFrozen(supplied.source.profile));
+ supplied.check();
+ assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
+});
+
+
+test("owned current259 supply rejects copies, wrong handles and claims before the completed operation",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-order-')),model=await current259Model(root);
+ const run=model.api.createCurrent259TechnicalMigration(model.handle),pending=run.migrate();
+ assert.throws(()=>model.api.claimCurrent259TechnicalSupply(pending,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
+ const result=await pending;
+ for(const copy of [{...result},JSON.parse(JSON.stringify(result)),Object.freeze({status:result.status,nativeAdmission:false})])
+  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(copy,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
+ assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,{}),/CURRENT259_TECHNICAL_PROFILE/);
+ const supplied=model.api.claimCurrent259TechnicalSupply(result,model.handle);supplied.check();
+ assert.deepEqual(supplied.completion.databaseIdentity,{database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',actorOid:'10',actor:'jg_task01_owner',sessionActor:'jg_task01_owner',systemIdentifier:'1234567890123456789',tls:true,clientAddress:'127.0.0.1',serverAddress:'127.0.0.1',serverPort:5432});
+});
+
+test("owned current259 claimed supply immediately revokes on its independent signal after migration",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-abort-')),model=await current259Model(root),controller=new AbortController();
+ const result=await model.api.createCurrent259TechnicalMigration(model.handle,controller.signal).migrate();
+ const supplied=model.api.claimCurrent259TechnicalSupply(result,model.handle);
+ controller.abort();assert.equal(model.counts().closes,1);
+ assert.throws(()=>supplied.check(),/CURRENT259_TECHNICAL_PROFILE/);
+});
+
+
+for(const ended of ['scope ended','signal aborted'])test(`owned current259 unclaimed supply denies after ${ended}`,async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-ended-')),model=await current259Model(root),controller=new AbortController();
+ const result=await model.api.createCurrent259TechnicalMigration(model.handle,controller.signal).migrate();
+ if(ended==='scope ended')model.close();else controller.abort();
+ assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle),/CURRENT259_TECHNICAL_PROFILE|synthetic resource closed/);
+ assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
+});
+
+test("owned current259 partial final readback cannot issue technical supply",async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-partial-'));
+ const model=await current259Model(root,(phase,row)=>{if(phase==='complete-readback')row.ledger.pop();return row;});
+ const partial=model.api.createCurrent259TechnicalMigration(model.handle).migrate();
+ await assert.rejects(partial,/LOCAL_MIGRATION_COMPLETION/);assert.equal(model.deploymentRequests.at(-1).count,259);
+ assert.throws(()=>model.api.claimCurrent259TechnicalSupply(partial,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
+ assert.equal(model.counts().closes,1);
+});
