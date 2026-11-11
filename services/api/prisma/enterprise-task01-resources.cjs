@@ -29,6 +29,30 @@ const fault = code => Object.assign(new Error(code), { code });
 const requireThat = (condition, code) => { if (!condition) throw fault(code); };
 const json = buffer => { try { return JSON.parse(buffer.toString("utf8")); } catch { throw fault("TASK01_RESOURCE_METADATA_INVALID"); } };
 
+// Pure endpoint projection. The owned producer calls this lexical function
+// after a fresh inspect; changing an exported function cannot replace it.
+const endpointInvalid=()=>{throw Object.assign(new Error('CURRENT259_PHYSICAL_ENDPOINT_INVALID'),{code:'CURRENT259_PHYSICAL_ENDPOINT_INVALID'});};
+const endpointNeed=ok=>{if(!ok)endpointInvalid();};
+function endpointOwn(value,key){
+ endpointNeed(value&&typeof value==='object'&&!types.isProxy(value));
+ const d=Object.getOwnPropertyDescriptor(value,key);endpointNeed(d&&Object.hasOwn(d,'value'));return d.value;
+}
+function projectCurrent259PhysicalEndpoint(state,expected){
+ endpointNeed(arguments.length===2);
+ const containerId=endpointOwn(expected,'containerId'),networkId=endpointOwn(expected,'networkId'),databaseName=endpointOwn(expected,'databaseName'),publishedPort=endpointOwn(expected,'publishedPort');
+ endpointNeed(/^[a-f0-9]{64}$/u.test(containerId)&&/^[a-f0-9]{64}$/u.test(networkId)&&/^jg_task01_[a-f0-9]{32}$/u.test(databaseName)&&Number.isInteger(publishedPort)&&publishedPort>1024&&publishedPort<=65535);
+ endpointNeed(endpointOwn(state,'Id')===containerId&&endpointOwn(endpointOwn(state,'State'),'Running')===true);
+ const settings=endpointOwn(state,'NetworkSettings'),ports=endpointOwn(settings,'Ports'),networks=endpointOwn(settings,'Networks');
+ endpointNeed(!types.isProxy(ports)&&!types.isProxy(networks)&&Reflect.ownKeys(ports).length===1&&Reflect.ownKeys(networks).length===1);
+ const published=endpointOwn(ports,'5432/tcp');endpointNeed(Array.isArray(published)&&!types.isProxy(published)&&published.length===1);
+ const binding=endpointOwn(published,'0');endpointNeed(endpointOwn(binding,'HostIp')==='127.0.0.1'&&endpointOwn(binding,'HostPort')===String(publishedPort));
+ const network=endpointOwn(networks,Reflect.ownKeys(networks)[0]),serverAddress=endpointOwn(network,'IPAddress');
+ endpointNeed(endpointOwn(network,'NetworkID')===networkId&&endpointOwn(network,'GlobalIPv6Address')==='');
+ endpointNeed(typeof serverAddress==='string'&&net.isIP(serverAddress)===4);
+ const [a,b]=serverAddress.split('.').map(Number);endpointNeed(a===10||a===172&&b>=16&&b<=31||a===192&&b===168);
+ return Object.freeze({containerId,networkId,databaseName,publishedHost:'127.0.0.1',publishedPort,serverAddress,serverPort:5432});
+}
+
 function literalDirectory(target, allowMissing = false) {
   requireThat(typeof target === "string" && path.isAbsolute(target) && path.normalize(target) === target, "TASK01_RESOURCE_PATH_INVALID");
   let current = path.parse(target).root;
@@ -392,6 +416,12 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     const result = await mutate(["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1", "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"], { input: sql, timeoutMs: 120000 });
     return { stdout: result.stdout.toString("utf8") };
   }
+  async function inspectConnectionEndpoint() {
+    requireThat(arguments.length === 0 && !closePromise, "TASK01_RESOURCE_CLOSED");
+    await verifyDaemon();
+    const state = await inspectOwned();
+    return projectCurrent259PhysicalEndpoint(state, { containerId, networkId, databaseName, publishedPort: receipt.port });
+  }
   async function captureLogCursor() {
     requireThat(!closePromise, "TASK01_RESOURCE_CLOSED");
     await verifyDaemon(); await inspectOwned();
@@ -465,7 +495,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     receipt.port = port;
     await observePresentedCertificate("correct");
     receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
-    return { containerId, networkId, port, databaseName, caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), execOwnerSql: safeOperation(execOwnerSql), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
+    return { containerId, networkId, port, databaseName, caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
   } catch (error) {
     receipt.phase = "failed"; receipt.status = "failed";
     receipt.failureCode = typeof error.code === "string" && error.code.startsWith("TASK01_RESOURCE_") ? error.code : "TASK01_RESOURCE_START_FAILED";
@@ -494,4 +524,4 @@ async function startCurrent259TechnicalPostgres(options) {
     throw fault("TASK01_RESOURCE_INPUT_OR_PREPARATION_FAILED");
   }
 }
-module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres };
+module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, projectCurrent259PhysicalEndpoint };
