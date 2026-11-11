@@ -1,3 +1,7 @@
+## #382 目标模式接续（2026-11-12）
+
+- [~] #394 准确本地 `e99de99b` 的前端 233 定向、类型检查、lint 与 check:ui 全过，lint 0 错误/1105 警告。首 Q2 经营启用先空值建项目和双方主体，再按原空值一次 UPDATE，准确 `af9d4c42` 独立 34 项通过；真实 owner/同轮 COS/公开 HTTP 发行接续中。#398 A16 准确 `3df8ac1a` 已接原一次性入口，作者 230 定向、45 API 模型及 PG16.1 静态通过，独审中。A17 准确 `c392e097` 原 14 批旧渲染逐字不变，独审定位七片 COMMIT 到 A17 写前未核原完整目录，后继需锁内绑定原目录和 C0 前像。未执行真实数据库、HTTP 或 COS。 [前端回执](/private/tmp/jg-394-web-e99.juzOc3B9/RESULT.json) · [Q2独审](/private/tmp/jg-394-q2-operating-review.uNaiRO7L/REVIEW-AF9D.md) · [A16作者](/private/tmp/jg-398-a16-native-recovery.HP713xtZ/HANDOFF-3DF8.md) · [A17作者](/private/tmp/jg-398-voucher-writer.yfQw8Bej/HANDOFF-C392.md)
+
 ## #382 目标模式接续（2026-11-11）
 
 - [~] #394/#398 共用七片、B7 的 JSONB 运算优先级修复已快进本地至准确 `2f67ca9f`。两份实际渲染只增三对括号，独立 78 定向、PG16.1 整批 SQL 与 DO AST 通过，未执行真实 SQL。#394 首 Q2 九步公开用例 `9101a321` 独审发现经营开启项目不能以非空生效日直接 INSERT，须先建挂靠与参与公司再按实际约束启用，后继窄修中。COS 旧235表外锁与当前259对上源不匹配，已核同轮新资格和固定代观测接缝。 [共同修复](/private/tmp/jg-398-2f67-independent.ByMPLnxb/REVIEW-2F67.md) · [Q2 独审](/private/tmp/jg-394-q2-http-review.WebQGQzZ/REVIEW-9101.md) · [COS 接缝](/private/tmp/jg-394-q2-cos-seam.oUyoIKE6/HANDOFF.md)
