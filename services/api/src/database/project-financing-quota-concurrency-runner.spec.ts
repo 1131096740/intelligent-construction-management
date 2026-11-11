@@ -24,7 +24,281 @@ describe("project financing quota PostgreSQL runner", () => {
   };
   const scopedPrefix = "JG-PFQ|jg-pfq-first-migrate|" +
     "jiangkong_project_financing_quota_concurrency|13|";
-  it.each([
+  const hundredArgumentCall = "pg_catalog.jsonb_build_object(" + Array(100).fill("text").join(", ") + ")";
+  const overArgumentCall = "pg_catalog.jsonb_build_object(" + Array(101).fill("text").join(", ") + ")";
+  const permittedMessage = "function sha256(unknown) is not unique";
+  const exactByteMessage = permittedMessage + " ".repeat(4096 - Buffer.byteLength(permittedMessage));
+  const exactMultibyteMessage = permittedMessage + "密" +
+    " ".repeat(4096 - Buffer.byteLength(permittedMessage) - Buffer.byteLength("密"));
+  type FirstFailureScenario = {
+    name: string;
+    logs: string;
+    stdout?: string;
+    logBytes?: number;
+    logsFailed?: boolean;
+    existingEvidence?: boolean;
+    cleanupFailed?: boolean;
+    postgres: {
+      status: string;
+      sqlState?: string;
+      reason?: string;
+      diagnostic?: { messageClass: string; functionCall?: string; functionName?: string };
+    };
+  };
+  it.each<FirstFailureScenario>([
+    {
+      name: "a PG16 server-position suffix on the controlled signature",
+      logs: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique at character 42\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: "sha256(unknown)" } }
+    },
+    ...[
+      ['function name "sha256" is not unique at character 1', "FUNCTION_NAME_AMBIGUOUS"],
+      ['more than one function named "public.digest" at character 2147483647', "REGPROC_NAME_AMBIGUOUS"]
+    ].map(([message, messageClass]) => ({
+      name: "a PG16 position-suffix name class " + messageClass,
+      logs: scopedPrefix + "42725|ERROR:  " + message + "\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass, functionName: messageClass === "REGPROC_NAME_AMBIGUOUS" ? "public.digest" : "sha256" } }
+    })),
+    ...["0", "01", "+1", "-1", "2147483648", "99999999999", "１", "1 at character 2", "1 ", "1; SELECT secret"]
+      .map(position => ({
+        name: "rejects a malformed PG16 position-suffix " + JSON.stringify(position),
+        logs: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique at character " + position + "\n",
+        postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR" }
+      })),
+    {
+      name: "the PG16 maximum hundred standard arguments",
+      logs: scopedPrefix + "42725|ERROR:  function " + hundredArgumentCall + " is not unique\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: hundredArgumentCall } }
+    },
+    {
+      name: "no partial diagnostic beyond the PG16 argument bound",
+      logs: scopedPrefix + "42725|ERROR:  function " + overArgumentCall + " is not unique\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR" }
+    },
+    ...[exactByteMessage, exactByteMessage + " ", exactMultibyteMessage, exactMultibyteMessage + "密"]
+      .map((message, index) => ({
+        name: "no truncation or trimming of a bounded adversarial message " + index,
+        logs: scopedPrefix + "42725|ERROR:  " + message + "\n",
+        postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR" }
+      })),
+    {
+      name: "the last permitted log line without expanding the window",
+      logs: "unrelated record\n".repeat(255) + scopedPrefix + "42725|ERROR:  " + permittedMessage + "\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: "sha256(unknown)" } }
+    },
+    {
+      name: "the exact combined byte window without trimming it",
+      stdout: "synthetic stdout",
+      logBytes: 128 * 1024,
+      logs: scopedPrefix + "42725|ERROR:  " + permittedMessage + "\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: "sha256(unknown)" } }
+    },
+    {
+      name: "a single byte beyond the combined window",
+      stdout: "synthetic stdout",
+      logBytes: 128 * 1024 + 1,
+      logs: scopedPrefix + "42725|ERROR:  " + permittedMessage + "\n",
+      postgres: { status: "unavailable" }
+    },
+    {
+      // A PG16-shaped synthetic log tests retention only, not an actual SQL cause.
+      name: "a controlled PG16 function ambiguity signature",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.has_column_privilege(oid, unknown, unknown) is not unique\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "FUNCTION_CALL_AMBIGUOUS",
+          functionCall: "pg_catalog.has_column_privilege(oid, unknown, unknown)" } }
+    },
+    {
+      name: "a PG16 function name ambiguity",
+      logs: scopedPrefix + "42725|ERROR:  function name \"pg_catalog.has_table_privilege\" is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "FUNCTION_NAME_AMBIGUOUS", "functionName": "pg_catalog.has_table_privilege"}}
+    },
+    {
+      name: "a PG16 regproc name ambiguity",
+      logs: scopedPrefix + "42725|ERROR:  more than one function named \"has_column_privilege\"\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "REGPROC_NAME_AMBIGUOUS", "functionName": "has_column_privilege"}}
+    },
+    {
+      name: "a source-covered sha256 call ambiguity",
+      logs: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "FUNCTION_CALL_AMBIGUOUS", "functionCall": "sha256(unknown)"}}
+    },
+    {
+      name: "a fixed public recipe function ambiguity",
+      logs: scopedPrefix + "42725|ERROR:  function public.jg_guard_contract_direct_archive_retention_binding_v1() is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "FUNCTION_CALL_AMBIGUOUS", "functionCall": "public.jg_guard_contract_direct_archive_retention_binding_v1()"}}
+    },
+    {
+      name: "a source-fixed quoted public name",
+      logs: scopedPrefix + "42725|ERROR:  more than one function named \"public.\"protectContractEconomicReview\"\"\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "REGPROC_NAME_AMBIGUOUS", "functionName": "public.\"protectContractEconomicReview\""}}
+    },
+    {
+      name: "fixed char and array type spellings",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.unnest(\"char\"[], oid[]) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "FUNCTION_CALL_AMBIGUOUS", "functionCall": "pg_catalog.unnest(\"char\"[], oid[])"}}
+    },
+    {
+      name: "fixed catalog type spellings without schema inference",
+      logs: scopedPrefix + "42725|ERROR:  function has_column_privilege(pg_catalog.oid, pg_catalog.int2, pg_catalog.text) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR", "diagnostic": {"messageClass": "FUNCTION_CALL_AMBIGUOUS", "functionCall": "has_column_privilege(pg_catalog.oid, pg_catalog.int2, pg_catalog.text)"}}
+    },
+    {
+      name: "no partial diagnostic for an unknown function",
+      logs: scopedPrefix + "42725|ERROR:  function secret_password(unknown) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a builtin under the wrong schema",
+      logs: scopedPrefix + "42725|ERROR:  function public.acldefault(\"char\", oid) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a public extension under the wrong schema",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.digest(bytea, text) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for an unlisted public jg name",
+      logs: scopedPrefix + "42725|ERROR:  function public.jg_unlisted_bound_secret(text) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for an unlisted quoted builtin",
+      logs: scopedPrefix + "42725|ERROR:  function \"has_column_privilege\"(oid, text, text) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a nonce schema",
+      logs: scopedPrefix + "42725|ERROR:  function jg_fixture_bound_secret.sha256(bytea) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a Unicode lookalike name",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sh\u0430256(bytea) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for an ANSI-decorated message",
+      logs: scopedPrefix + "42725|ERROR:  \u001b[31mfunction pg_catalog.sha256(bytea) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for an embedded NUL type",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(bytea\u0000) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a secret custom type",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(public.bound_secret) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for named argument text",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(value => bytea) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a SQL comment in argument types",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(bytea /* bound-secret */) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a URL instead of a type",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(postgresql://user:password@secret-host/db) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for multiple array suffixes",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.unnest(text[][]) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for an argument value instead of a type",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(12345) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a valid message with trailing SQL",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(bytea) is not unique SELECT 'bound-secret'\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a valid message with trailing whitespace",
+      logs: scopedPrefix + "42725|ERROR:  function pg_catalog.sha256(bytea) is not unique \n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a known name with one unknown type",
+      logs: scopedPrefix + "42725|ERROR:  function has_column_privilege(oid, text, bound_secret) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a nonstandard comma separator",
+      logs: scopedPrefix + "42725|ERROR:  function has_column_privilege(oid,text,text) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no partial diagnostic for a regproc name with appended content",
+      logs: scopedPrefix + "42725|ERROR:  more than one function named \"has_column_privilege\" bound-secret\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "an ambiguity-shaped message under a different SQLSTATE",
+      logs: scopedPrefix + "23514|ERROR:  function pg_catalog.sha256(bytea) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "23514", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "the first unknown42725 rather than a later permitted signature",
+      logs: scopedPrefix + "42725|ERROR:  bound-secret\n" + scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "the first other SQLSTATE rather than a later permitted signature",
+      logs: scopedPrefix + "42501|ERROR:  bound-secret\n" + scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42501", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "a missing primary before a later permitted signature",
+      logs: scopedPrefix + "25P02|ERROR:  aborted\n" + scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "primary-not-retained"}
+    },
+    {
+      name: "no signature from stdout",
+      stdout: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      logs: scopedPrefix + "42725|ERROR:  bound-secret\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no signature from DETAIL or STATEMENT",
+      logs: scopedPrefix + "42725|ERROR:  bound-secret\n" + scopedPrefix + "42725|DETAIL:  function sha256(unknown) is not unique\n" + "STATEMENT: function sha256(unknown) is not unique\n",
+      postgres: {"status": "captured", "sqlState": "42725", "reason": "POSTGRES_ERROR"}
+    },
+    {
+      name: "no signature from another application",
+      logs: "JG-PFQ|another-app|jiangkong_project_financing_quota_concurrency|13|42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "primary-not-retained"}
+    },
+    {
+      name: "no signature from another database",
+      logs: scopedPrefix.replace("|jiangkong_project_financing_quota_concurrency|", "|other_database|") + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "primary-not-retained"}
+    },
+    {
+      name: "no signature from an invalid zero PID",
+      logs: scopedPrefix.replace("|13|", "|0|") + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "primary-not-retained"}
+    },
+    {
+      name: "no signature from an invalid overflow PID",
+      logs: scopedPrefix.replace("|13|", "|2147483648|") + "42725|ERROR:  function sha256(unknown) is not unique\n",
+      postgres: {"status": "primary-not-retained"}
+    },
     {
       name: "the first scoped cause",
       logs: [
@@ -230,12 +504,14 @@ describe("project financing quota PostgreSQL runner", () => {
         '}',
 
         'if (args[0] === "logs") {',
-        "process.stdout.write(" + JSON.stringify(scenario.stdout ?? "") + ");",
         "const ownedApp = fs.readFileSync(calls, 'utf8').trim().split('\\n').map(JSON.parse)" +
           ".find(event => event.command === 'pnpm').applicationName;",
-        "process.stderr.write(" + JSON.stringify(scenario.logs) +
-          ".replaceAll('jg-pfq-first-migrate', ownedApp), () => process.exit(" +
-          (scenario.logsFailed ? 7 : 0) + "));",
+        "const stdout = " + JSON.stringify(scenario.stdout ?? "") + ".replaceAll('jg-pfq-first-migrate', ownedApp);",
+        "let stderr = " + JSON.stringify(scenario.logs) + ".replaceAll('jg-pfq-first-migrate', ownedApp);",
+        "const logBytes = " + JSON.stringify(scenario.logBytes ?? null) + ";",
+        'if (logBytes !== null) stderr += "x".repeat(logBytes - Buffer.byteLength(stdout) - Buffer.byteLength(stderr));',
+        "process.stdout.write(stdout);",
+        "process.stderr.write(stderr, () => process.exit(" + (scenario.logsFailed ? 7 : 0) + "));",
         "}",
         'if (args[0] === "rm") process.exit(' + (scenario.cleanupFailed ? 9 : 0) + ");"
       ].join("\n");
