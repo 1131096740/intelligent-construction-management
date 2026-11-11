@@ -23,6 +23,7 @@ const IMAGE='sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb
 const TOOLS=Object.freeze({docker:'/Applications/Docker.app/Contents/Resources/bin/docker',openssl:'/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl'});
 const HASHES=Object.freeze({docker:'6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40',openssl:'103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c'});
 const METHODS=['getReceipt','close','captureLogCursor','execOwnerSql','observePresentedCertificate','setServerCertificate','readPlaintextRejectionEvidence','inspectConnectionEndpoint'];
+const CONTRACT_HBA='applyCurrent259ContractHbaV1';
 const FIELDS=['containerId','networkId','port','databaseName','caPath','wrongCaPath','serverCertHashes'];
 const TLS_KEYS=['caSha256','wrongCaSha256','correctCertificateSha256','wrongSanCertificateSha256','correctCertificateDerSha256','wrongSanCertificateDerSha256'];
 const handles=new WeakMap(),closedHandles=new WeakMap(),usedBuilds=new WeakSet();
@@ -72,10 +73,11 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   closing=(async()=>{need(typeof methods?.close==='function','CURRENT259_RESOURCE_CLEANUP_UNKNOWN');await methods.close.call(resource);const final=methods.getReceipt.call(resource);need(final.runId===runId&&final.sourceSha===witness.source.candidateSha&&final.containerId===own(resource,'containerId')&&final.networkId===own(resource,'networkId')&&final.status==='closed'&&final.cleanup?.status==='completed'&&final.cleanup.containerAbsent===true&&final.cleanup.volumesAbsent===true&&final.cleanup.networkAbsent===true&&(!technical||final.purpose===TECHNICAL_PURPOSE&&final.limits?.totalDeadlineMs===3600000),'CURRENT259_RESOURCE_CLEANUP_UNKNOWN');})();return closing;
  }
  const onAbort=()=>{invalidate();void close().catch(()=>{});};
+ let methodNames=METHODS;
  function check(){
   try{
    need(active&&!broken,'CURRENT259_RESOURCE_CLOSED');need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');importsCheck(technical);loader.check();toolsCheck();
-   for(const key of METHODS)need(own(resource,key)===methods[key],'CURRENT259_RESOURCE_CHANGED');
+   for(const key of methodNames)need(own(resource,key)===methods[key],'CURRENT259_RESOURCE_CHANGED');
    for(const key of FIELDS)need(isDeepStrictEqual(own(resource,key),fields[key]),'CURRENT259_RESOURCE_CHANGED');
    const receipt=methods.getReceipt.call(resource);
    need(receipt.runId===runId&&receipt.sourceSha===witness.source.candidateSha&&receipt.endpoint===ENDPOINT&&receipt.daemonId===plan.daemonId&&receipt.imageId===IMAGE&&receipt.databaseName===databaseName&&receipt.containerId===fields.containerId&&receipt.networkId===fields.networkId&&receipt.port===fields.port&&receipt.status==='started-awaiting-driver-verification'&&receipt.cleanup?.status==='pending','CURRENT259_RESOURCE_IDENTITY');
@@ -87,7 +89,7 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
  function checkLifetime(){
   try{
    need(active&&!broken,'CURRENT259_RESOURCE_CLOSED');need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');importsCheck(technical);need(Date.now()<=deadline&&handles.get(handle)?.view===view,'CURRENT259_RESOURCE_CLOSED');
-   for(const key of METHODS)need(own(resource,key)===methods[key],'CURRENT259_RESOURCE_CHANGED');
+   for(const key of methodNames)need(own(resource,key)===methods[key],'CURRENT259_RESOURCE_CHANGED');
    for(const key of FIELDS)need(isDeepStrictEqual(own(resource,key),fields[key]),'CURRENT259_RESOURCE_CHANGED');
    const receipt=methods.getReceipt.call(resource);
    need(receipt.runId===runId&&receipt.sourceSha===witness.source.candidateSha&&receipt.endpoint===ENDPOINT&&receipt.daemonId===plan.daemonId&&receipt.imageId===IMAGE&&receipt.databaseName===databaseName&&receipt.containerId===fields.containerId&&receipt.networkId===fields.networkId&&receipt.port===fields.port&&receipt.status==='started-awaiting-driver-verification'&&receipt.cleanup?.status==='pending','CURRENT259_RESOURCE_IDENTITY');
@@ -113,8 +115,9 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   // These are actual original producer return values, never caller projections.
   methods={close:own(resource,'close')};
   methods.getReceipt=own(resource,'getReceipt');
-  for(const key of METHODS)methods[key]=own(resource,key);
-  need(METHODS.every(key=>typeof methods[key]==='function'),'CURRENT259_RESOURCE_CHANGED');
+  if(technical)methodNames=[...METHODS,CONTRACT_HBA];
+  for(const key of methodNames)methods[key]=own(resource,key);
+  need(methodNames.every(key=>typeof methods[key]==='function'),'CURRENT259_RESOURCE_CHANGED');
   fields=Object.fromEntries(FIELDS.map(key=>[key,own(resource,key)]));fields.serverCertHashes=Object.freeze(record(fields.serverCertHashes,TLS_KEYS));
   need(/^[a-f0-9]{64}$/u.test(fields.containerId)&&/^[a-f0-9]{64}$/u.test(fields.networkId)&&Number.isInteger(fields.port)&&fields.port>0&&fields.port<=65535&&fields.databaseName===databaseName,'CURRENT259_RESOURCE_IDENTITY');
   need(fields.caPath===path.join(plan.artifactsDir,'tls-private/ca.crt')&&fields.wrongCaPath===path.join(plan.artifactsDir,'tls-private/wrong-ca.crt')&&TLS_KEYS.every(key=>/^[a-f0-9]{64}$/u.test(fields.serverCertHashes[key])),'CURRENT259_RESOURCE_TLS');
@@ -124,7 +127,7 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   loader.verifyFull();check();
   handle=Object.freeze({kind:'CURRENT259_OWNED_RESOURCE'});
   const resourceView={...fields,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
-  for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
+  for(const key of methodNames.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{need(key!==CONTRACT_HBA||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
   resourceView.getReceipt=()=>{checkOperation();return methods.getReceipt.call(resource);};
   resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
   view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});

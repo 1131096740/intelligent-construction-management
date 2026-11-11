@@ -29,3 +29,25 @@ test('named technical entry rejects caller deadlines/purpose/max flags before pr
   assert.deepEqual(f.writes,[]);assert.deepEqual(f.commands,[]);
  }
 });
+
+test('the fixed contract rules extend the original bytes only before the two final TLS rejects',()=>{
+ const raw={exports:{}};
+ const body=fs.readFileSync(source,'utf8')+'\nmodule.exports={hbaRules,renderHba,ROLES,CONTRACT_LOGINS};';
+ new Function('require','module',body)(require,raw);
+ const {hbaRules,renderHba,ROLES,CONTRACT_LOGINS}=raw.exports;
+ const database='jg_task01_'+'1'.repeat(32);
+ const fixedRoles=['jg_task01_owner','jg_task01_runtime','jg_task01_observer'];
+ assert.deepEqual(ROLES,fixedRoles);
+ const original=[
+  'local all jg_task01_owner peer map=jg_task01_init','local all all reject',
+  'hostnossl all all 0.0.0.0/0 reject','hostnossl all all ::/0 reject',
+  ...fixedRoles.flatMap(role=>[`hostssl ${database} ${role} 0.0.0.0/0 scram-sha-256`,`hostssl ${database} ${role} ::/0 scram-sha-256`]),
+  'hostssl all all 0.0.0.0/0 reject','hostssl all all ::/0 reject',
+ ];
+ assert.equal(renderHba(hbaRules(database,ROLES)),original.join('\n')+'\n');
+ const five=['jg_fixture_app_'+'a'.repeat(24),...CONTRACT_LOGINS];
+ const extended=hbaRules(database,[...ROLES,...five]);
+ assert.equal(extended.length,22);
+ assert.equal(renderHba([...extended.slice(0,10),...extended.slice(20)]),original.join('\n')+'\n');
+ assert.deepEqual(extended.slice(10,20),five.flatMap(role=>['0.0.0.0','::'].map(ip=>['hostssl',database,role,ip,'scram-sha-256',[]])));
+});
