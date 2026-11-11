@@ -29,6 +29,7 @@ function fixture(){
   receipt.relay={id:'ab49e313-e3da-407f-b279-3d09caecfc3e',containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
   receipt.loopbackPlaintextHba={sourceAddress:'127.0.0.1',role:'jg_task01_owner',databaseName:receipt.databaseName,noEncryptionRejected:true};
   resource.relayId=receipt.relay.id;resource.checkRelay=()=>{};
+  resource.beginPrismaRelayDrain=()=>async()=>{calls.push('drained');};
   const close=resource.close;resource.close=async()=>{
    await close.call(resource);receipt.cleanup.relayId=resource.relayId;receipt.cleanup.relayClosed=true;
    if(state.finalRelayPortDrift)receipt.relay.port++;
@@ -45,6 +46,7 @@ function fixture(){
     receipt.topology=state.topologyOverride??q2Topology;
     receipt.relay={id:q2Id,containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
     resource.relayId=q2Id;resource.checkRelay=()=>{if(state.relayDrift)throw new Error('MODEL_RELAY_DRIFT');};
+    resource.beginPrismaRelayDrain=()=>async()=>{calls.push('drained');};
     const close=resource.close;resource.close=async()=>{
      await close.call(resource);receipt.cleanup.relayId=q2Id;receipt.cleanup.relayClosed=!state.relayCleanupUnknown;
      if(state.relayClosePortDrift)receipt.relay.port++;
@@ -52,7 +54,9 @@ function fixture(){
     return resource;
    },
    startCurrent259NormalPaymentPostgres:relayStart('normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'),
-   startCurrent259ResponseLossPostgres:relayStart('loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS')}
+   startCurrent259ResponseLossPostgres:relayStart('loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'),
+   startCurrent259CompetitionPostgres:relayStart('competition-start','UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'),
+   startCurrent259DisconnectRecoveryPostgres:relayStart('disconnect-start','UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS')}
  };
  function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
  privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
@@ -320,9 +324,13 @@ test('Q2 owned wrapper keeps technical lineage, a unique relay identity and the 
   assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
   assert.equal(typeof view.resource.applyCurrent259ContractHbaV1,'function');
   assert.equal(view.resource.checkRelay,undefined);
+  assert.equal(view.resource.beginPrismaRelayDrain,undefined);
+  assert.throws(()=>view.beginPrismaRelayDrain('unexpected'),/CURRENT259_RESOURCE_CLOSED/u);
+  await view.beginPrismaRelayDrain()();
  });
  assert.equal(f.calls.includes('technical-start'),false);
  assert.equal(f.calls.includes('q2-start'),true);
+ assert.equal(f.calls.filter(value=>value==='drained').length,1);
  assert.equal(f.state.closeCount,1);
 });
 test('Q2 refuses a rollback transport receipt and never grants a handle',async()=>{
@@ -347,7 +355,9 @@ test('Q2 cleanup binds the relay host and port in addition to its ID',async()=>{
 
 for(const [name,call,topology] of [
  ['withCurrent259NormalPaymentResource','normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'],
- ['withCurrent259ResponseLossResource','loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS']
+ ['withCurrent259ResponseLossResource','loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'],
+ ['withCurrent259CompetitionResource','competition-start','UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'],
+ ['withCurrent259DisconnectRecoveryResource','disconnect-start','UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS']
 ]) {
  test('owned payment relay binds the exact starter, topology, HBA and cleanup: '+name,async()=>{
   const f=fixture(),signal=new AbortController().signal;
@@ -356,8 +366,10 @@ for(const [name,call,topology] of [
    assert.equal(view.resource.topology,topology);
    assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
    assert.equal(view.resource.applyCurrent259ContractHbaV1,undefined);
+   assert.equal(view.resource.beginPrismaRelayDrain,undefined);
+   await view.beginPrismaRelayDrain()();
   });
-  assert.deepEqual(f.calls,['load',call,'inspect']);
+  assert.deepEqual(f.calls,['load',call,'inspect','drained']);
   assert.equal(f.state.closeCount,1);
  });
  test('owned payment relay rejects final relay-coordinate drift: '+name,async()=>{

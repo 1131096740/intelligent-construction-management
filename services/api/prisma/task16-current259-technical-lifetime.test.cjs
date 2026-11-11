@@ -114,7 +114,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   existsSync:v=>files.has(v),accessSync(){},mkdirSync(){},chmodSync(){},rmdirSync(){},
   renameSync(from,to){files.set(to,files.get(from));files.delete(from);},unlinkSync(v){files.delete(v);},
   readFileSync:v=>Buffer.from(files.get(v)),writeFileSync(v,b){files.set(v,b);written.set(v,b);}};
- let network=false,container=false,running=false,relayOpen=false,log='',tmpfs={},logReadFailure=false;
+ let network=false,container=false,running=false,relayOpen=false,log='',tmpfs={},logReadFailure=false,relayFailure;
  const output=(args,tool,input)=>{
   if(tool!==docker){
    const write=args.indexOf('-out');if(write>=0)files.set(args[write+1],path.basename(args[write+1]));
@@ -205,7 +205,10 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  const relay={async startCurrent259LoopbackForward(input){
   calls.push(['relay-start']);assert.deepEqual(input,{containerId,dockerConfig:config.artifactsDir+'/tls-private/docker-config',signal:config.signal});
   assert.equal(running,true);relayOpen=true;
-  return {port:43125,check(){assert.equal(relayOpen,true);},async close(){relayOpen=false;calls.push(['relay-close']);if(mode==='relay-close-unknown')throw Error('synthetic');}};
+  return {port:43125,check(){assert.equal(relayOpen,true);if(relayFailure)throw relayFailure;},
+   beginPrismaDrain(){assert.equal(relayOpen,true);calls.push(['relay-drain-open']);return async()=>{
+    calls.push(['relay-drain-wait']);if(relayFailure)throw relayFailure;
+   };},async close(){relayOpen=false;calls.push(['relay-close']);if(mode==='relay-close-unknown')throw Error('synthetic');}};
  }};
  const imports={'node:fs':fsModel,'node:crypto':{...crypto,X509Certificate:class{constructor(raw){this.raw=raw;}}},
   'node:child_process':{spawn},'node:net':net,'node:tls':tls,'./task16-current259-loopback-forward.cjs':relay};
@@ -215,7 +218,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   log+=`2026-11-12T03:00:00.000000001Z 2026-11-12 03:00:00.000 UTC [40] user=${logins[0]} db=${database} FATAL:  pg_hba.conf rejects connection for host "${peer}", user "${logins[0]}", database "${database}", no encryption\n`;
  };
  return {start:extra=>holder.exports[firstQ2?'startCurrent259FirstQ2LoopbackPostgres':starter]({...config,...extra}),
-  written,calls,config,networkId,containerId,database,logRejection,failLogRead:()=>{logReadFailure=true;}};
+  written,calls,config,networkId,containerId,database,logRejection,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;}};
 }
 
 test('first-rollback startup checks no Docker publish, validates TLS and HBA, and joins relay and Docker cleanup',async()=>{
@@ -305,7 +308,9 @@ test('Q2 rejects a stale loopback log and a fresh private-network log',async()=>
 
 for(const [starter,topology] of [
  ["startCurrent259NormalPaymentPostgres","UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS"],
- ["startCurrent259ResponseLossPostgres","UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS"]
+ ["startCurrent259ResponseLossPostgres","UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS"],
+ ["startCurrent259CompetitionPostgres","UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS"],
+ ["startCurrent259DisconnectRecoveryPostgres","UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS"]
 ])test("fixed named payment starter uses only its own internal/no-publish TLS and HBA route: "+starter,async()=>{
  const f=rollbackResourceModel("healthy",{starter});
  await assert.rejects(f.start({transport:"UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS"}),/TASK01_RESOURCE_INPUT_INVALID/u);
@@ -330,5 +335,37 @@ test('a live cursor preserves fixed Docker command detail without recording log 
   assert.doesNotMatch(String(error)+JSON.stringify(error),/private fixture log/u);
   return true;
  });
+ await resource.close();
+});
+
+test('the owned resource copies only fixed half-close milestones from a relay timeout',async()=>{
+ const f=rollbackResourceModel('healthy'),resource=await f.start();
+ const flags={hostFin:true,stdinEnded:true,pgFin:true,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,
+  receiveSettled:false,cliExited:false,peerSocketDestroyed:true,peerEndReturned:false};
+ f.failRelay(Object.assign(new Error('private trace'),{code:'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT',
+  relayCloseState:{...flags,raw:'private payload'}}));
+ assert.throws(()=>resource.checkRelay(),error=>{
+  assert.equal(error.code,'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED');
+  assert.equal(error.relayCode,'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT');
+  assert.deepEqual(error.relayCloseState,flags);
+  assert.doesNotMatch(String(error)+JSON.stringify(error.relayCloseState),/private/u);
+  return true;
+ });
+ await resource.close();
+});
+
+test('the first-rollback resource opens a Prisma relay wait and maps its fixed failure',async()=>{
+ const f=rollbackResourceModel('healthy'),resource=await f.start();
+ assert.throws(()=>resource.beginPrismaRelayDrain('other-deploy'),/TASK01_RESOURCE_CLOSED/u);
+ const wait=resource.beginPrismaRelayDrain();
+ assert.deepEqual(f.calls.filter(([name])=>name.startsWith('relay-drain')), [['relay-drain-open']]);
+ f.failRelay(Object.assign(new Error('private trace'),{code:'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT'}));
+ await assert.rejects(wait(),error=>{
+  assert.equal(error.code,'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED');
+  assert.equal(error.relayCode,'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT');
+  assert.doesNotMatch(String(error),/private/u);
+  return true;
+ });
+ assert.deepEqual(f.calls.filter(([name])=>name.startsWith('relay-drain')), [['relay-drain-open'],['relay-drain-wait']]);
  await resource.close();
 });

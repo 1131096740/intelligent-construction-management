@@ -16,6 +16,7 @@ const HOST = '127.0.0.1';
 const FRAME = 32768;
 const CONNECTIONS = 8;
 const HALF_CLOSE_MS = 5000;
+const PRISMA_DRAIN_MS = 5000;
 const CLOSE_MS = 3000;
 const CONFIG_SHA = createHash('sha256').update('{"auths":{}}\n').digest('hex');
 const EOF = Buffer.alloc(4);
@@ -47,7 +48,7 @@ for my $fh (\*STDIN, \*STDOUT, $pg) {
   defined($flags) && fcntl($fh, F_SETFL, $flags | O_NONBLOCK) or exit 42;
 }
 my ($frames, $to_pg, $to_host) = ('', '', '');
-my ($host_fin, $pg_fin, $pg_write_closed) = (0, 0, 0);
+my ($host_fin, $stdin_eof, $pg_fin, $pg_write_closed) = (0, 0, 0, 0);
 while (1) {
   if (!$host_fin && !length($to_pg) && length($frames) >= 4) {
     my $length = unpack('N', substr($frames, 0, 4));
@@ -64,7 +65,7 @@ while (1) {
   }
   last if $pg_write_closed && $pg_fin && !length($to_host);
   my ($read, $write) = (IO::Select->new(), IO::Select->new());
-  $read->add(\*STDIN) if !length($to_pg);
+  $read->add(\*STDIN) if !$stdin_eof && !length($to_pg);
   $read->add($pg) if !$pg_fin && !length($to_host);
   $write->add($pg) if length($to_pg);
   $write->add(\*STDOUT) if length($to_host);
@@ -89,8 +90,8 @@ while (1) {
       $to_host = pack('N', $count) . $data;
       unless ($count) { alarm(5) unless $host_fin; $pg_fin = 1; }
     } else {
-      exit 43 unless $count && !$host_fin;
-      $frames .= $data;
+      if (!$count) { exit 43 unless $host_fin; $stdin_eof = 1; }
+      else { exit 43 if $host_fin; $frames .= $data; }
     }
   }
 }
@@ -128,9 +129,9 @@ function write(stream, data, retirePeer) {
     error && !retirePeer?.(error) ? reject(fault('STREAM')) : resolve()));
 }
 
-function end(stream, retirePeer) {
-  return new Promise((resolve, reject) => stream.end(error =>
-    error && !retirePeer(error) ? reject(fault('STREAM')) : resolve()));
+function end(stream, data, retirePeer) {
+  return new Promise((resolve, reject) => stream.end(data, error =>
+    error && !retirePeer?.(error) ? reject(fault('STREAM')) : resolve()));
 }
 
 async function send(socket, stdin, halfClosed, peer) {
@@ -147,7 +148,9 @@ async function send(socket, stdin, halfClosed, peer) {
     if (!peer.retire(error)) throw error;
   }
   halfClosed();
-  await write(stdin, EOF);
+  // The framed FIN carries the PostgreSQL meaning. Closing the CLI stdin after
+  // those bytes separately releases the Docker attach transport's input side.
+  await end(stdin, EOF);
 }
 
 async function receive(stdout, socket, halfClosed, peer) {
@@ -165,7 +168,10 @@ async function receive(stdout, socket, halfClosed, peer) {
           need(!pending.length, 'FRAME');
           fin = true;
           halfClosed();
-          if (!peer.retired()) await end(socket, peer.retire);
+          if (!peer.retired()) {
+            await end(socket, undefined, peer.retire);
+            peer.endReturned();
+          }
           break;
         }
       }
@@ -187,9 +193,13 @@ async function startCurrent259LoopbackForward(options) {
     '/usr/bin/env', '-i', '/usr/bin/perl', '-T', '-e', PUMP];
   const env = { PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C', TZ: 'UTC', DOCKER_CONFIG: dockerConfig };
   const workers = new Set();
-  let firstFailure, closing, active = false;
-  const fail = suffix => {
-    if (!firstFailure) firstFailure = fault(suffix);
+  let firstFailure, closing, active = false, prismaWindow, notifyStopped;
+  const stopped = new Promise(resolve => { notifyStopped = resolve; });
+  const fail = (suffix, relayCloseState) => {
+    if (!firstFailure) {
+      firstFailure = fault(suffix);
+      if (relayCloseState) Object.defineProperty(firstFailure, 'relayCloseState', { value: Object.freeze({ ...relayCloseState }) });
+    }
     void close().catch(() => {});
   };
   const onAbort = () => fail('ABORTED');
@@ -207,15 +217,22 @@ async function startCurrent259LoopbackForward(options) {
     catch { socket.destroy(); fail('CHILD'); return; }
 
     let exited = false, halfCloseTimer;
-    const worker = { socket, child, closed: new Promise(resolve => child.once('close', exitCode => {
+    const closeState = { hostFin: false, stdinEnded: false, pgFin: false, stdoutEnded: false, cliClosed: false,
+      stdoutRawEnd: false, receiveSettled: false, cliExited: false, peerEndReturned: false };
+    const closeSnapshot = () => ({ ...closeState, peerSocketDestroyed: socket.destroyed });
+    child.once('exit', () => { closeState.cliExited = true; });
+    child.stdout.once('end', () => { closeState.stdoutRawEnd = true; });
+    const worker = { socket, child, closeSnapshot, closed: new Promise(resolve => child.once('close', exitCode => {
       exited = true;
+      closeState.cliClosed = true;
       resolve(exitCode);
       if (!closing && exitCode !== 0) fail('CHILD');
     })) };
     workers.add(worker);
     const observeError = () => { if (!closing) fail('STREAM'); };
-    const halfClosed = () => {
-      if (!halfCloseTimer) halfCloseTimer = setTimeout(() => fail('HALF_CLOSE_TIMEOUT'), HALF_CLOSE_MS);
+    const halfClosed = side => {
+      closeState[side] = true;
+      if (!halfCloseTimer) halfCloseTimer = setTimeout(() => fail('HALF_CLOSE_TIMEOUT', closeSnapshot()), HALF_CLOSE_MS);
     };
     // Native clients may reset after a terminal PostgreSQL reply. Retire only
     // that peer, then send an ordered EOF and drain its exact worker. Child and
@@ -223,12 +240,13 @@ async function startCurrent259LoopbackForward(options) {
     let retired = false;
     const peer = {
       retired: () => retired,
+      endReturned() { closeState.peerEndReturned = true; },
       retire(error) {
         const reason = error?.code;
         if (!['ECONNRESET', 'EPIPE'].includes(reason) &&
           !(retired && ['ERR_STREAM_PREMATURE_CLOSE', 'ERR_STREAM_DESTROYED'].includes(reason))) return false;
         retired = true;
-        halfClosed();
+        halfClosed('hostFin');
         return true;
       }
     };
@@ -246,21 +264,28 @@ async function startCurrent259LoopbackForward(options) {
       if (!exited) { try { child.kill('SIGTERM'); } catch { /* Wait for close or escalate. */ } }
     };
     worker.kill = () => { if (!exited) { try { child.kill('SIGKILL'); } catch { /* Close proof remains required. */ } } };
-    const fromHost = send(socket, child.stdin, halfClosed, peer);
-    const fromPg = receive(child.stdout, socket, halfClosed, peer);
-    void Promise.all([fromHost, fromPg, worker.closed]).catch(error => {
+    const fromHost = send(socket, child.stdin, () => halfClosed('hostFin'), peer).then(() => { closeState.stdinEnded = true; });
+    const fromPg = receive(child.stdout, socket, () => halfClosed('pgFin'), peer).then(() => {
+      closeState.stdoutEnded = true;
+      closeState.receiveSettled = true;
+    });
+    const window = prismaWindow?.accepting ? prismaWindow : undefined;
+    window?.workers.add(worker);
+    worker.done = Promise.all([fromHost, fromPg, worker.closed]).catch(error => {
       if (!closing) fail(error?.code === code('FRAME') ? 'FRAME' : 'STREAM');
     }).finally(() => {
       clearTimeout(halfCloseTimer);
       socket.destroy();
       child.stdin.destroy();
       if (exited) workers.delete(worker);
+      window?.workers.delete(worker);
     });
   });
 
   function close() {
     if (closing) return closing;
     active = false;
+    notifyStopped();
     offEvent.call(signal, 'abort', onAbort);
     closing = Promise.resolve().then(async () => {
       const closed = new Promise((resolve, reject) => server.close(error => error ? reject(fault('CLEANUP')) : resolve()));
@@ -282,6 +307,40 @@ async function startCurrent259LoopbackForward(options) {
     return closing;
   }
 
+  function check() {
+    if (firstFailure) throw firstFailure;
+    need(active && !closing && server.listening, 'CLOSED');
+    try { checkConfig(dockerConfig, configIdentity); }
+    catch { fail('CONFIG'); throw firstFailure; }
+  }
+  function beginPrismaDrain() {
+    need(arguments.length === 0, 'INPUT');
+    check();
+    need(!prismaWindow, 'DEPLOY_DRAIN_ACTIVE');
+    const window = { workers: new Set(), accepting: true };
+    prismaWindow = window;
+    return async function waitPrismaDrain() {
+      need(arguments.length === 0 && prismaWindow === window && window.accepting, 'DEPLOY_DRAIN_ACTIVE');
+      window.accepting = false;
+      let timeout;
+      try {
+        await Promise.race([
+          Promise.all([...window.workers].map(worker => worker.done)),
+          stopped,
+          new Promise(resolve => { timeout = setTimeout(() => {
+            fail('DEPLOY_DRAIN_TIMEOUT', window.workers.values().next().value?.closeSnapshot());
+            resolve();
+          }, PRISMA_DRAIN_MS); })
+        ]);
+        if (firstFailure) throw firstFailure;
+        need(active && !closing && window.workers.size === 0, 'CLOSED');
+      } finally {
+        clearTimeout(timeout);
+        prismaWindow = undefined;
+      }
+    };
+  }
+
   await new Promise((resolve, reject) => {
     const failed = () => reject(fault('LISTEN'));
     server.once('error', failed);
@@ -297,12 +356,7 @@ async function startCurrent259LoopbackForward(options) {
     need(!aborted.call(signal), 'ABORTED');
     active = true;
     onEvent.call(signal, 'abort', onAbort, { once: true });
-    return Object.freeze({ port: address.port, check() {
-      if (firstFailure) throw firstFailure;
-      need(active && !closing && server.listening, 'CLOSED');
-      try { checkConfig(dockerConfig, configIdentity); }
-      catch { fail('CONFIG'); throw firstFailure; }
-    }, close });
+    return Object.freeze({ port: address.port, check, close, beginPrismaDrain });
   } catch (error) {
     try { await close(); } catch { throw fault('CLEANUP'); }
     throw error;

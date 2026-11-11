@@ -7,8 +7,9 @@ const BUSINESS_DATE=/^\d{4}-\d\d-\d\d$/u;
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const fixtures=new WeakSet();
 
-function coordinate(runId,name,outside=false) {
-  const namespace=outside?'current259-first-outside-direct':'current259-first-q2';
+function coordinate(runId,name,scenario='upward') {
+  const namespace=scenario==='outside-operating'?'current259-first-outside-operating'
+    :scenario==='outside'?'current259-first-outside-direct':'current259-first-q2';
   const raw=hash(namespace+'/'+runId+'/'+name).slice(0,32);
   const variant=(Number.parseInt(raw[16],16)&3|8).toString(16);
   return [raw.slice(0,8),raw.slice(8,12),'4'+raw.slice(13,16),variant+raw.slice(17,20),raw.slice(20)].join('-');
@@ -23,7 +24,13 @@ function current259FirstQ2UploadPrefix(caseId) {
 function current259FirstOutsideDirectUploadPrefix(caseId) {
   if(arguments.length!==1 || typeof caseId!=='string' || !UUID.test(caseId))
     throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
-  return 'uploads/idempotent/'+coordinate(caseId,'upload',true)+'/';
+  return 'uploads/idempotent/'+coordinate(caseId,'upload','outside')+'/';
+}
+
+function current259FirstOutsideOperatingUploadPrefix(caseId) {
+  if(arguments.length!==1 || typeof caseId!=='string' || !UUID.test(caseId))
+    throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
+  return 'uploads/idempotent/'+coordinate(caseId,'upload','outside-operating')+'/';
 }
 
 function originalPdf() {
@@ -41,7 +48,9 @@ function originalPdf() {
   return Buffer.from(pdf+'trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n','ascii');
 }
 
-function buildFixture(runId,businessDate,operating,outside) {
+function buildFixture(runId,businessDate,operating,scenario) {
+  const outside=scenario!=='upward';
+  const outsideOperating=scenario==='outside-operating';
   if(typeof runId!=='string' || !UUID.test(runId) ||
     typeof businessDate!=='string' || !BUSINESS_DATE.test(businessDate) || typeof operating!=='boolean')
     throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
@@ -49,7 +58,7 @@ function buildFixture(runId,businessDate,operating,outside) {
   if(!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==businessDate)
     throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
   const ids=Object.freeze(Object.fromEntries(['actor','project','enterprise','enterpriseVersion','company','companyVersion',
-    'assignment','participation','member','upload','save','archive'].map(name=>[name,coordinate(runId,name,outside)])));
+    'assignment','participation','member','upload','save','archive'].map(name=>[name,coordinate(runId,name,scenario)])));
   const previousDay=new Date(date.getTime()-86400000).toISOString();
   const previousChinaMidnight=new Date(date.getTime()-86400000-8*3600000).toISOString();
   const phone='1990000'+String(Number.parseInt(hash(runId).slice(0,7),16)%10000).padStart(4,'0');
@@ -83,10 +92,11 @@ function buildFixture(runId,businessDate,operating,outside) {
     where:Object.freeze({id:ids.project,operatingLedgerEffectiveDate:null}),
     data:Object.freeze({operatingLedgerEffectiveDate:previousDay}),
   }):null;
-  const uploadPrefix=outside?current259FirstOutsideDirectUploadPrefix(runId):current259FirstQ2UploadPrefix(runId);
+  const uploadPrefix=outsideOperating?current259FirstOutsideOperatingUploadPrefix(runId)
+    :outside?current259FirstOutsideDirectUploadPrefix(runId):current259FirstQ2UploadPrefix(runId);
   const downstreamName='首条表外相对方'+suffix;
-  const downstreamId=coordinate(runId,'counterparty',true);
-  const downstreamVersionId=coordinate(runId,'counterparty-version',true);
+  const downstreamId=coordinate(runId,'counterparty',scenario);
+  const downstreamVersionId=coordinate(runId,'counterparty-version',scenario);
   const downstreamCode='911101080000000007';
   const counterparty=outside?Object.freeze({
     party:Object.freeze({id:downstreamId,type:'organization',name:downstreamName,normalizedName:downstreamName,
@@ -100,7 +110,7 @@ function buildFixture(runId,businessDate,operating,outside) {
     sizeBytes:pdf.length,contentSha256:hash(pdf)});
   let used=false;
   const fixture=Object.freeze({seed,projectActivation,uploadPrefix,original,archiveIdempotencyKey:ids.archive,
-    ...(outside?{relationship:'outside',counterparty}:{}),createCase(){
+    ...(outside?{relationship:'outside',counterparty}:{}),...(outsideOperating?{outsideOperating:true}:{}),createCase(){
     if(arguments.length!==0 || used)throw new Error('CURRENT259_FIRST_Q2_FIXTURE_USED');
     used=true;
     try{
@@ -117,10 +127,15 @@ function buildFixture(runId,businessDate,operating,outside) {
 
 function buildCurrent259FirstQ2Fixture(runId,businessDate,operating) {
   if(arguments.length!==3)throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
-  return buildFixture(runId,businessDate,operating,false);
+  return buildFixture(runId,businessDate,operating,'upward');
 }
 function buildCurrent259FirstOutsideDirectFixture(runId,businessDate) {
   if(arguments.length!==2)throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
-  return buildFixture(runId,businessDate,false,true);
+  return buildFixture(runId,businessDate,false,'outside');
 }
-module.exports=Object.freeze({buildCurrent259FirstQ2Fixture,buildCurrent259FirstOutsideDirectFixture,current259FirstQ2UploadPrefix,current259FirstOutsideDirectUploadPrefix,isCurrent259FirstQ2Fixture:value=>fixtures.has(value)});
+function buildCurrent259FirstOutsideOperatingFixture(runId,businessDate) {
+  if(arguments.length!==2)throw new Error('CURRENT259_FIRST_Q2_FIXTURE_INPUT');
+  return buildFixture(runId,businessDate,true,'outside-operating');
+}
+module.exports=Object.freeze({buildCurrent259FirstQ2Fixture,buildCurrent259FirstOutsideDirectFixture,buildCurrent259FirstOutsideOperatingFixture,
+  current259FirstOutsideOperatingUploadPrefix,current259FirstQ2UploadPrefix,current259FirstOutsideDirectUploadPrefix,isCurrent259FirstQ2Fixture:value=>fixtures.has(value)});

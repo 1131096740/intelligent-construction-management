@@ -375,3 +375,156 @@ for (const faultAfterReset of ['FRAME', 'CHILD']) {
     await assert.rejects(connect(relay.port), { code: 'ECONNREFUSED' });
   });
 }
+
+test('the framed host FIN also ends CLI stdin before an attach adapter releases output', { timeout: 7000 }, async t => {
+  const child = fakeWorker(), input = [];
+  child.stdin.on('data', chunk => input.push(chunk));
+  child.stdin.once('finish', () => {
+    const header = Buffer.alloc(4);
+    header.writeUInt32BE(reply.length);
+    assert.deepEqual(Buffer.concat(input), Buffer.concat([header, reply, Buffer.alloc(4)]));
+    child.stdout.end(Buffer.concat([header, reply, Buffer.alloc(4)]));
+    child.stderr.end();
+    queueMicrotask(() => child.emit('close', 0));
+  });
+  const fixture = load(t, () => child);
+  const relay = await fixture.start();
+  t.after(() => relay.close());
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  const received = once(client, 'data'), closed = once(client, 'close');
+  client.end(reply);
+  assert.deepEqual((await received)[0], reply);
+  await closed;
+  relay.check();
+});
+
+for (const trailing of [false, true]) {
+  test('Perl rejects physical stdin protocol violations before releasing the worker: ' + trailing, { timeout: 5000 }, async t => {
+    let observeFin;
+    const observedFin = new Promise(resolve => { observeFin = resolve; });
+    const pgPort = await listener(t, peer => { peer.on('end', observeFin); peer.resume(); });
+    let provideChild;
+    const childPromise = new Promise(resolve => { provideChild = resolve; });
+    const fixture = load(t, pump => {
+      const relocated = pump.replace('PeerPort => 5432,', 'PeerPort => ' + pgPort + ',');
+      const child = spawn('/usr/bin/perl', ['-T', '-e', relocated], { env: { PATH: '/usr/bin:/bin' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      provideChild(child);
+      return child;
+    });
+    const relay = await fixture.start();
+    t.after(() => relay.close());
+    const client = await connect(relay.port);
+    t.after(() => client.destroy());
+    const child = await childPromise, exited = once(child, 'close');
+    if (trailing) {
+      child.stdin.write(Buffer.alloc(4));
+      await observedFin;
+      child.stdin.end(Buffer.from([1]));
+    } else child.stdin.end();
+    assert.deepEqual(await exited, [43, null]);
+    await relay.close();
+  });
+}
+
+test('timeout freezes the exact host, framed output and local CLI closure milestones', { timeout: 9000 }, async t => {
+  const child = fakeWorker();
+  child.stdin.once('finish', () => { child.stdout.write(Buffer.alloc(4)); });
+  const fixture = load(t, () => child);
+  const relay = await fixture.start();
+  t.after(() => relay.close());
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  const clientClosed = once(client, 'close');
+  client.resume();client.end();
+  await clientClosed;
+  const deadline = Date.now() + 6500;
+  let failure;
+  while (!failure && Date.now() < deadline) {
+    try { relay.check(); } catch (error) { failure = error; }
+    if (!failure) await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.equal(failure?.code, 'CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT');
+  assert.deepEqual(failure.relayCloseState, { hostFin: true, stdinEnded: true, pgFin: true, stdoutEnded: false, cliClosed: false,
+    stdoutRawEnd: false, receiveSettled: false, cliExited: false, peerSocketDestroyed: true, peerEndReturned: true });
+  assert.equal(Object.isFrozen(failure.relayCloseState), true);
+  await relay.close();
+  assert.equal(failure.relayCloseState.cliClosed, false);
+});
+
+test('one Prisma window waits for its worker local CLI close and excludes an earlier long-lived peer', { timeout: 7000 }, async t => {
+  const oldWorker = fakeWorker(), prisma = fakeWorker();
+  let oldAccepted, prismaAccepted;
+  const oldReady = new Promise(resolve => { oldAccepted = resolve; });
+  const prismaReady = new Promise(resolve => { prismaAccepted = resolve; });
+  let count = 0;
+  const fixture = load(t, () => {
+    if (++count === 1) { oldAccepted(); return oldWorker; }
+    prismaAccepted();return prisma;
+  });
+  const relay = await fixture.start();
+  t.after(() => relay.close());
+  const long = await connect(relay.port);
+  t.after(() => long.destroy());
+  await oldReady;
+  const wait = relay.beginPrismaDrain();
+  assert.throws(() => relay.beginPrismaDrain(), { code: 'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE' });
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  await prismaReady;
+  let finished = false;
+  const drained = wait().then(() => { finished = true; });
+  prisma.stdin.once('finish', () => {
+    prisma.emit('exit', 0);
+    prisma.stdout.end(Buffer.alloc(4));
+    prisma.stderr.end();
+  });
+  const closed = once(client, 'close');
+  client.resume();client.end();
+  await closed;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(finished, false);
+  assert.equal(long.destroyed, false);
+  prisma.emit('close', 0);
+  await drained;
+  assert.equal(long.destroyed, false);
+  assert.equal(oldWorker.stdin.destroyed, false);
+  await assert.rejects(wait(), { code: 'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_ACTIVE' });
+  await relay.beginPrismaDrain()();
+  relay.check();
+});
+
+test('the bounded Prisma wait times out only its unsettled window and projects close milestones', { timeout: 8000 }, async t => {
+  const child = fakeWorker();
+  let accepted;
+  const ready = new Promise(resolve => { accepted = resolve; });
+  const fixture = load(t, () => { accepted();return child; });
+  const relay = await fixture.start(), wait = relay.beginPrismaDrain();
+  t.after(() => relay.close());
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  await ready;
+  await assert.rejects(wait(), error => {
+    assert.equal(error.code, 'CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT');
+    assert.deepEqual(error.relayCloseState, {hostFin:false,stdinEnded:false,pgFin:false,stdoutEnded:false,cliClosed:false,
+      stdoutRawEnd:false,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false});
+    return true;
+  });
+  await relay.close();
+});
+
+test('a Prisma wait preserves the original malformed frame failure', { timeout: 5000 }, async t => {
+  const child = fakeWorker();
+  let accepted;
+  const ready = new Promise(resolve => { accepted = resolve; });
+  const fixture = load(t, () => { accepted();return child; });
+  const relay = await fixture.start(), wait = relay.beginPrismaDrain();
+  t.after(() => relay.close());
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  await ready;
+  const bad = Buffer.alloc(4);bad.writeUInt32BE(32769);
+  const outcome = assert.rejects(wait(), { code: 'CURRENT259_LOOPBACK_FORWARD_FRAME' });
+  child.stdout.write(bad);
+  await outcome;await relay.close();
+});

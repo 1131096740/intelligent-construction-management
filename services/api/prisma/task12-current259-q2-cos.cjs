@@ -3,7 +3,7 @@ const {createHash}=require('node:crypto');
 const {types}=require('node:util');
 
 const uuid='[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
-const uploadKey=new RegExp('^uploads/idempotent/('+uuid+')/'+uuid+'-([a-f0-9]{64})-首条对上原件\\.pdf$','u');
+const uploadKey=new RegExp('^uploads/idempotent/('+uuid+')/'+uuid+'-([a-f0-9]{64})-首条(对上|表外)原件\\.pdf$','u');
 const bucketName=/^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?-[0-9]{5,20}$/u;
 const regionName=/^[a-z]{2}(?:-[a-z0-9]+)+$/u;
 const interesting=new Set(['content-length','content-encoding','content-range','location','x-cos-version-id','x-cos-request-id']);
@@ -38,13 +38,14 @@ function selectHeaders(raw) {
 
 // Pure protocol for an independently approved read-only COS observer. It has
 // no credential, signer, transport or permission to report bucket versioning.
-function createCurrent259FirstQ2CosRead(bucket,region,observedUpload) {
-  need(arguments.length===3 && typeof bucket==='string' && bucket.length<=63 && bucketName.test(bucket) &&
+function createCurrent259FirstQ2CosRead(bucket,region,observedUpload,outside) {
+  const relationship=arguments.length===3?'对上':outside===true?'表外':outside===false?'对上':undefined;
+  need((arguments.length===3||arguments.length===4) && relationship!==undefined && typeof bucket==='string' && bucket.length<=63 && bucketName.test(bucket) &&
     typeof region==='string' && region.length<=63 && regionName.test(region),'INPUT');
   const {fileId,bucket:uploadBucket,objectKey,mimeType,sizeBytes,contentSha256}=readOwn(observedUpload,
     ['fileId','bucket','objectKey','mimeType','sizeBytes','contentSha256'],'INPUT');
   const key=typeof objectKey==='string' && objectKey.length<256 && uploadKey.exec(objectKey);
-  need(key && fileId===key[1] && contentSha256===key[2] && bucket===uploadBucket && mimeType==='application/pdf' &&
+  need(key && fileId===key[1] && contentSha256===key[2] && key[3]===relationship && bucket===uploadBucket && mimeType==='application/pdf' &&
     Number.isInteger(sizeBytes) && sizeBytes>=1 && sizeBytes<=16_384,'INPUT');
   const host=bucket+'.cos.'+region+'.myqcloud.com';
   const uri='/'+objectKey.split('/').map(encodePart).join('/');

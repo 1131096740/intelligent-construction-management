@@ -7,6 +7,7 @@ const addAbortListener=EventTarget.prototype.addEventListener,removeAbortListene
 const {types}=require('node:util');
 const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 const {claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair}=require('./task16-current259-live-sessions.cjs');
+const {describeCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
 const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
@@ -441,7 +442,9 @@ async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=
    if(['NOT_NEEDED','APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF','UNKNOWN_DO_NOT_CONTINUE'].includes(data('appCleanupOutcome')))cleanup=data('appCleanupOutcome');
   }
   if(cleanupUnknown)cleanup='UNKNOWN_DO_NOT_CONTINUE';
-  throw Object.assign(fault(code),{appStartupOutcome:startup,appCleanupOutcome:cleanup});
+  const failure=Object.assign(fault(code),{appStartupOutcome:startup,appCleanupOutcome:cleanup});
+  const detail=describeCurrent259DisconnectFailure(first);
+  throw detail?carryCurrent259DisconnectFailure(failure,detail):failure;
  }
  if(retirement){
   const closeProof=Object.freeze({});

@@ -340,6 +340,7 @@ export interface ContractDetailReadModel {
 }
 
 export interface ContractApprovalReviewContextReadModel {
+  expectedParallelApprovalEpoch?: string;
   expectedContractUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;

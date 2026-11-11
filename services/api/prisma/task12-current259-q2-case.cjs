@@ -2,6 +2,7 @@
 
 const {createHash}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
+const {verifyCurrent259OutsideOperatingEvidence}=require('./task12-current259-outside-operating-proof.cjs');
 
 const FILE_NAME='首条对上原件.pdf';
 const MIME='application/pdf';
@@ -70,16 +71,17 @@ function verifyOutsideSubjects(value,fixture){
 function createCurrent259FirstQ2Case(fixture) {
   const {ids,phone,businessDate,operatingDate,uploadPrefix,pdf,contentSha256}=fixture;
   const outside=Boolean(fixture.counterparty);
+  const outsideOperating=outside&&operatingDate!==null;
   const relationship=outside?'outside':'upward';
   const filename=outside?'首条表外原件.pdf':FILE_NAME;
   const name=outside?'首条表外直签合同':CONTRACT_NAME;
   const originalNumber=outside?'首条表外原号':ORIGINAL_NUMBER;
   const reason=outside?'首条表外归档原件验收':DOWNLOAD_REASON;
   const file=Object.freeze({fileId:ids.upload,displayOrder:0,mimeType:MIME,sizeBytes:pdf.length,contentSha256});
-  const mode=operatingDate?'internal_reference_only':'not_applicable';
+  const mode=outsideOperating?'projection_required':operatingDate?'internal_reference_only':'not_applicable';
   let cursor=0,issued=false,stopped=false,observed=false,uploadObserved=false,uploadGeneration;
   let password=fixture.password;
-  let authorization,lease,contractId,versionId,revision,bucket,objectKey,q,inputSha,intent,outcome,downloadPath;
+  let authorization,lease,contractId,versionId,revision,bucket,objectKey,q,inputSha,intent,outcome,downloadPath,sourceCode;
   const stop=()=>{stopped=true;password=undefined;authorization=undefined;lease=undefined;downloadPath=undefined;};
   const secured=(method,path,json,extra)=>{
     const headers=Object.freeze({authorization,...extra});
@@ -104,6 +106,10 @@ function createCurrent259FirstQ2Case(fixture) {
         version.contractId===contract.id && version.status==='draft' && version.versionNo===1 &&
         version.changeType==='original' && version.numericProtocolVersion===2 && version.draftRevision===1 &&
         version.firstSubmittedAt===null && body.terms===null,'CREATE');
+      if(outsideOperating){
+        sourceCode=contract.code??contract.temporaryCode??contract.name;
+        need(typeof sourceCode==='string'&&sourceCode.trim().length>0&&sourceCode.length<=256,'CREATE');
+      }
       contractId=contract.id;versionId=version.id;revision=version.draftRevision;
     }],
     ['LEASE',201,()=>secured('POST',draftPath()+'/edit-lease'),body=>{
@@ -200,12 +206,12 @@ function createCurrent259FirstQ2Case(fixture) {
       text(archive.fileManifestSha256,SHA) && digest(archive.fileManifestText)===archive.fileManifestSha256 &&
       equal(JSON.parse(archive.fileManifestText),[file]),'EVIDENCE');
     need(equal(version,{id:versionId,contractId,status:'effective',draftRevision:revision,effectiveAt:archive.confirmedAt,taxFactsFrozenAt:archive.confirmedAt}) &&
-      equal(counts,{archives:1,evidenceFiles:1,physicalAliases:0,draftSlots:0,approvalRounds:0,sealTasks:0,operatingFacts:0,operatingImpacts:0,
+      equal(counts,{archives:1,evidenceFiles:1,physicalAliases:0,draftSlots:0,approvalRounds:0,sealTasks:0,operatingFacts:Number(outsideOperating),operatingImpacts:Number(outsideOperating),
         archiveAudits:1,uploadAudits:1,downloadTicketAudits:1,downloadAudits:1}) &&
       equal(archivedFile,{...file,archiveFileId:outcome.archiveId,contractVersionId:versionId}) &&
-      equal(archiveAudit,{actorUserId:ids.actor,action:'contract.archive.complete',businessType:'contract_version',businessId:versionId,
+      (outsideOperating||equal(archiveAudit,{actorUserId:ids.actor,action:'contract.archive.complete',businessType:'contract_version',businessId:versionId,
         metadata:{archiveId:outcome.archiveId,archiveSource:'direct_signed',sourceRevision:revision,
-          inputSha256:inputSha,requestSha256:expectedSha,fileIds:[ids.upload],...(outside?{actingRoleKey:'contract_staff'}:{relationship})}}),'EVIDENCE');
+          inputSha256:inputSha,requestSha256:expectedSha,fileIds:[ids.upload],...(outside?{actingRoleKey:'contract_staff'}:{relationship})}})),'EVIDENCE');
     const authority=JSON.parse(archive.authorityText);
     const generationProof=evidence.generationProof;
     if(outside)need(generationProof?.protocolVersion===1 && generationProof.archiveId===outcome.archiveId &&
@@ -214,7 +220,7 @@ function createCurrent259FirstQ2Case(fixture) {
       typeof evidence.sourceBasisText==='string' && Buffer.byteLength(evidence.sourceBasisText)<=128*1024 &&
       digest(evidence.sourceBasisText)===authority.sourceBasisSha256 &&
       equal(JSON.parse(evidence.sourceBasisText),authority.sourceBasis) &&
-      equal(authority.sourceBasis.reviewScope,{excludedAmountYuan:'0.0000',sources:[]}) &&
+      (outsideOperating||equal(authority.sourceBasis.reviewScope,{excludedAmountYuan:'0.0000',sources:[]})) &&
       equal(authority.sourceBasis.fileManifest,[file]),'EVIDENCE');
     const originals=outside?generationProof.originals:authority?.originals;
     const generation=originals?.[0]?.objectGeneration;
@@ -226,10 +232,13 @@ function createCurrent259FirstQ2Case(fixture) {
       equal(authority.fileManifest,[file]) && authority.fileManifestSha256===archive.fileManifestSha256 &&
       generationId(generation) && generation===uploadGeneration &&
       equal(originals,[{...file,bucket,objectKey,objectGeneration:generation}]) &&
-      equal(authority.operatingConsequence,{protocolVersion:1,mode,operatingLedgerEffectiveDateSnapshot:operatingDate,expectedSource:null}),'EVIDENCE');
+      (outsideOperating||equal(authority.operatingConsequence,{protocolVersion:1,mode,operatingLedgerEffectiveDateSnapshot:operatingDate,expectedSource:null})),'EVIDENCE');
     const versioned={...physical(),objectGeneration:generation};
     need(equal(storage,{driver:'cos',versioning:'Enabled',upload:versioned,download:versioned}),'EVIDENCE');
-    return generation;
+    const operatingLedger=outsideOperating?verifyCurrent259OutsideOperatingEvidence(evidence.ledger,{ids,archive,authority,q,originals,
+      businessDate,operatingDate,sourceCode,contractId,versionId,revision,inputSha256:inputSha,requestSha256:expectedSha,
+      counterparty:fixture.counterparty,archiveAudit}):undefined;
+    return {generation,operatingLedger};
   }
   return Object.freeze({
     next(){
@@ -262,10 +271,12 @@ function createCurrent259FirstQ2Case(fixture) {
     observation,
     finish(evidence){
       readiness();need(observed && arguments.length===1,'STATE');stop();
-      let generation;
-      try{generation=verifyEvidence(evidence);}catch{throw error('EVIDENCE');}
-      return Object.freeze({status:outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_PROTOCOL_MATCHED_NOT_ACCEPTANCE':'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',httpSteps:steps.length,operatingMode:mode,
-        ...(outside?{persistedGenerationSha256:digest(generation)}:{}),
+      let qualified;
+      try{qualified=verifyEvidence(evidence);}catch{throw error('EVIDENCE');}
+      return Object.freeze({status:outsideOperating?'CURRENT259_FIRST_OUTSIDE_OPERATING_PROTOCOL_MATCHED_NOT_ACCEPTANCE':
+        outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_PROTOCOL_MATCHED_NOT_ACCEPTANCE':'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',httpSteps:steps.length,operatingMode:mode,
+        ...(outside?{persistedGenerationSha256:digest(qualified.generation)}:{}),
+        ...(outsideOperating?{operatingLedger:qualified.operatingLedger}:{}),
         executionAllowed:false,nativeAdmission:false,storageAcceptance:false});
     },
   });

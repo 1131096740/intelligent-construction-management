@@ -129,3 +129,28 @@ test('outside seeds the distinct counterparty before readback and uses the separ
   const proof=JSON.parse(row(archive.sql,'archive',103));
   assert.throws(()=>archive.finish(JSON.stringify({witness:proof,evidence})),/ARCHIVE/u);
 });
+
+test('the operating fixture activates its project after coverage and reads V2 issue, use and ledger without V1 generation fallback',()=>{
+  const {buildCurrent259FirstOutsideOperatingFixture}=require('./task12-current259-q2-fixture.cjs');
+  const {createCurrent259FirstQ2ArchiveReadback}=require('./task12-current259-q2-seed.cjs');
+  const fixture=buildCurrent259FirstOutsideOperatingFixture(caseId,'2026-11-11');
+  const seed=createCurrent259FirstQ2Seed(fixture,identity);
+  const before=seed.beforeSql();
+  seed.verifyBefore(row(before,'before',100));
+  const write=seed.writeSql();
+  assert.ok(write.indexOf('UPDATE public."Project"')>write.indexOf('INSERT INTO public."ProjectParticipatingCompany"'));
+  seed.verifyWritten(row(write,'write',101));
+  const committed=seed.committedSql();
+  assert.deepEqual(seed.finish(row(committed,'committed',102)),{seedRows:11,operating:true,seedXid:'803'});
+  const coordinates={actorId:fixture.seed.User.id,projectId:fixture.seed.Project.id,contractId:'12345678-1234-4234-8234-123456789013',
+    versionId:'12345678-1234-4234-8234-123456789014',archiveId:'12345678-1234-4234-8234-123456789015',
+    idempotencyKey:fixture.archiveIdempotencyKey,fileId:fixture.original.fileId,revision:2,inputSha256:'a'.repeat(64),requestSha256:'b'.repeat(64)};
+  const archive=createCurrent259FirstQ2ArchiveReadback(fixture,identity,coordinates);
+  assert.match(archive.sql,/REPEATABLE READ READ ONLY/u);
+  assert.match(archive.sql,/JOIN public\.jg_contract_direct_outside_operating_receipt_v2/u);
+  assert.match(archive.sql,/JOIN public\.jg_contract_direct_outside_operating_use_v2/u);
+  assert.match(archive.sql,/pg_catalog.pg_xact_status\(used\."transactionId"::text::xid8\)='committed'/u);
+  assert.match(archive.sql,/used\.xmin=a\.xmin AND fact\.xmin=a\.xmin AND impact\.xmin=a\.xmin/u);
+  assert.match(archive.sql,/issued\.xmin<>used\.xmin/u);
+  assert.doesNotMatch(archive.sql,/jg_read_(?:contract_direct_archive_generations_v1|direct_outside_operating_archive_v2)/u);
+});

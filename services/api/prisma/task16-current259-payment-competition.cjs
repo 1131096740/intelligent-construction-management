@@ -5,6 +5,8 @@ const path=require('node:path');
 const { claimCurrent259TechnicalResourceContinuity }=require('./task16-current259-owned-resource.cjs');
 const { loadCurrent259CatalogMaterial }=require('./task16-current259-catalog.cjs');
 const { claimCurrent259PaymentBusinessPermit }=require('./task16-current259-payment-run-authorization.cjs');
+const { paymentLoopbackForScenario }=require('./task16-current259-payment-loopback.cjs');
+const COMPETITION_TOPOLOGY=paymentLoopbackForScenario('competition').topology;
 const fetchSlot=Object.getOwnPropertyDescriptor(globalThis,'fetch');
 const fetch=fetchSlot?.value;
 const builtin=process.binding('natives')['internal/bootstrap/web/exposed-window-or-worker'];
@@ -112,16 +114,35 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
  const token=permission.continuityToken;
  try{
   need(first.session.owner===second.session.owner&&first.session.observer===second.session.observer&&first.session.runtime!==second.session.runtime&&
-   second.loader===loader&&second.source===source&&permission.scope.scenario==='competition');
+   second.handle===handle&&second.loader===loader&&second.source===source&&permission.scope.scenario==='competition'&&
+   leases.every((lease,index)=>lease.application===applications[index])&&
+   new URL(first.application.origin).origin!==new URL(second.application.origin).origin);
   for(const lease of leases)lease.activateContinuity(token);
   const view=claimCurrent259TechnicalResourceContinuity(handle,token),resource=view.resource,observe=own(resource,'execOwnerSql');
-  const sessions=leases.map(lease=>lease.session);
-  const owners=[sessions[0].identity[0],...sessions.map(session=>({...session.identity[1],clientAddress:session.endpoint.clientAddress,clientPort:session.endpoint.clientPort}))];
-  need(typeof observe==='function'&&uuid(view.runId)&&typeof own(loader,'loadPaymentModules')==='function');
+  const getReceipt=own(resource,'getReceiptContinuity');
+  need(typeof observe==='function'&&typeof getReceipt==='function'&&uuid(view.runId)&&typeof own(loader,'loadPaymentModules')==='function');
+  const receipt=getReceipt.call(resource,token),relay=receipt.relay;
+  need(resource.topology===COMPETITION_TOPOLOGY&&receipt.topology===resource.topology&&receipt.runId===view.runId&&
+   receipt.containerId===resource.containerId&&receipt.networkId===resource.networkId&&receipt.databaseName===resource.databaseName&&
+   relay?.containerId===resource.containerId&&uuid(relay.id)&&relay.id===resource.relayId&&relay.host==='127.0.0.1'&&
+   Number.isInteger(relay.port)&&relay.port>1024&&relay.port<=65535&&relay.port===resource.port&&receipt.port===relay.port);
+  const sessions=leases.map(lease=>lease.session),endpoints=sessions.map(session=>session.endpoint);
+  need(endpoints.every(endpoint=>endpoint.transport===COMPETITION_TOPOLOGY&&endpoint.relayId===relay.id&&
+   endpoint.host===relay.host&&endpoint.port===relay.port&&endpoint.clientAddress==='127.0.0.1'&&
+   endpoint.serverAddress==='127.0.0.1'&&endpoint.serverPort===5432&&
+   Number.isInteger(endpoint.clientPort)&&endpoint.clientPort>0&&endpoint.clientPort<=65535)&&
+   endpoints[0].clientPort!==endpoints[1].clientPort);
+  const owner=sessions[0].identity[0];
+  const owners=[owner,...sessions.map((session,index)=>({...session.identity[1],clientAddress:endpoints[index].clientAddress,clientPort:endpoints[index].clientPort}))];
+  need(equal(owner,sessions[1].identity[0])&&owners[1].loginOid===owners[2].loginOid&&owners[1].loginOid!==owner.loginOid&&
+   owners.every(row=>row.database===resource.databaseName&&
+   row.databaseOid===owner.databaseOid&&row.systemIdentifier===owner.systemIdentifier&&row.tls===true)&&
+   new Set(owners.map(row=>row.pid)).size===3&&new Set(owners.map(row=>row.start)).size===3);
   const check=()=>{
    permission.check();
    for(const lease of leases)lease.check();
-   need(own(resource,'execOwnerSql')===observe&&own(globalThis,'fetch')===fetch);
+   need(own(resource,'execOwnerSql')===observe&&own(resource,'getReceiptContinuity')===getReceipt&&
+    sessions.every((session,index)=>session.endpoint===endpoints[index])&&own(globalThis,'fetch')===fetch);
   };
   const full=async()=>{check();await permission.verifyFull();for(const session of sessions)await session.verifyFull();check();};
   await full();
@@ -138,7 +159,7 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   const contexts=leases.map(({application,session})=>Object.freeze({
    proof:Object.freeze({authorizationReference:permission.scope.authorizationReference,runId:fixtureRunId,resourceRunId:view.runId,
     databaseName:owners[0].database,databaseOid:owners[0].databaseOid,systemIdentifier:sessions[0].identity[0].systemIdentifier,
-    host:'127.0.0.1',port:session.endpoint.publishedPort,ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',
+    host:relay.host,port:relay.port,ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',
     sourceSealSha256:source.sealSha256,preparedSqlSha256:Object.freeze(Object.fromEntries(material.sevenFragments.map(row=>[path.basename(row.path),row.sha256]))),
     transport:'isolated-loopback-tls-verify-full',application:Object.freeze({origin:application.origin,databaseRole:'jg_task01_runtime',
      sourceSealSha256:source.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})}),

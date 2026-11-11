@@ -20,15 +20,18 @@ function fixture(options={}){
  const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();options.onContinuity?.();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId,...(options.recovery?{ordinary:{oid:'208'}}:{})};
- const relayId='12345678-1234-4234-8234-123456789012',topology=options.topology??'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';
- const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,...(options.relay?{transport:topology,relayId,host:'127.0.0.1',port:52123,serverAddress:'127.0.0.1'}
+ const relay=options.relay??Boolean(options.competition||options.recovery);
+ const relayId='12345678-1234-4234-8234-123456789012',topology=options.topology??
+  (options.competition?'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS':options.recovery?'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS':
+   'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS');
+ const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,...(relay?{transport:topology,relayId,host:'127.0.0.1',port:52123,serverAddress:'127.0.0.1'}
    :{publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2'}),serverPort:5432};
  const rows=['owner','runtime','observer',...(options.competition||options.recovery?['runtime']:[])].map((kind,i)=>({
   database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',
   effectiveRole:'jg_task01_'+kind,loginRole:'jg_task01_'+kind,effectiveOid:identity[kind+'Oid'],loginOid:identity[kind+'Oid'],
   pid:101+i,start:'2026-11-11T00:00:0'+(i+1)+'.000001Z',tls:true,version:160010,encoding:'UTF8',replication:'origin',
   readOnly:kind==='observer'?'on':'off',defaultReadOnly:kind==='observer'?'on':'off',
-  clientAddress:options.relay?'127.0.0.1':'172.19.0.1',clientPort:53100+i,serverAddress:endpoint.serverAddress,serverPort:5432,nonce:''
+  clientAddress:relay?'127.0.0.1':'172.19.0.1',clientPort:53100+i,serverAddress:endpoint.serverAddress,serverPort:5432,nonce:''
  }));
  class Client{
   constructor(input){this.index=clients.length;this.input=input;this.disconnects=0;clients.push(this);options.onConstruct?.(this);}
@@ -39,7 +42,7 @@ function fixture(options={}){
  }
  const receipt={runId:identity.runId,containerId:endpoint.containerId,networkId:endpoint.networkId,databaseName:identity.database,port:52123,
   requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:'d'.repeat(64)},tls:{caSha256:'c'.repeat(64),correctCertificateDerSha256:'d'.repeat(64)}};
- const resource={...endpoint,...(options.relay?{topology}:{}),port:52123,caPath:'/fixed/ca.crt',getReceipt(){check();return clone(receipt);},
+ const resource={...endpoint,...(relay?{topology}:{}),port:52123,caPath:'/fixed/ca.crt',getReceipt(){check();return clone(receipt);},
   async inspectConnectionEndpoint(){check();calls.push(['inspect']);const value={...endpoint};options.onInspect?.(value);return value;},
   async execOwnerSql(_sql,phase){check();calls.push(['owner',phase]);
    if(phase.startsWith('current259-a16-cancel-')||phase.startsWith('current259-a16-disconnect-'))return options.onCancel(_sql,phase);
@@ -365,17 +368,20 @@ test('business installed catalog rejection still permanently stops and closes al
 });
 
 
-for(const mode of ['complete','old-backend','directory-drift','rollback-error','replacement-name-drift'])test('A16 same-resource rotation '+mode,async()=>{
+for(const mode of ['complete','old-backend','directory-drift','rollback-error','replacement-name-drift','replacement-relay-drift'])test('A16 same-resource rotation '+mode,async()=>{
  const token=Object.freeze({}),closeProof=Object.freeze({}),attempt=Object.freeze({}),rollback=Object.freeze({});
- let proof,challenge,directoryReads=0,submitted=0,replacementCalls=0,completeOwner;
+ let proof,challenge,directoryReads=0,submitted=0,replacementCalls=0,completeOwner,connectedReplacement=false;
  const outcome=new Promise(resolve=>{completeOwner=resolve;});
  const owner={pid:812,startedAt:'2026-11-11T00:00:10.000001Z'};
  const f=fixture({recovery:true,continuityToken:token,closeProof,attempt,rollback,getOriginalProof:()=>proof,keepOld:mode==='old-backend',replacementNameDrift:mode==='replacement-name-drift',
   onDirectory(){return mode==='directory-drift'&&directoryReads++>0?'b'.repeat(64):'a'.repeat(64);},
-  confirm(){if(mode==='rollback-error')throw new Error('ledger drift');},
+  confirm(){if(mode==='rollback-error')throw Object.assign(new Error('PG_CASE_DISCONNECT_LEDGER_CHANGED'),{privateSql:'private rollback bytes'});},
+  onConnect(client){if(client.index===3)connectedReplacement=true;},
+  onInspect(endpoint){if(mode==='replacement-relay-drift'&&connectedReplacement)endpoint.relayId='foreign-relay';},
   onCancel(sql,phase){
    if(phase==='current259-a16-disconnect-owner'){
     assert.match(sql,/pg_catalog.pg_terminate_backend\(102\)/u);
+    assert.match(sql,/pg_catalog.host\(a.client_addr\)='127\.0\.0\.1' AND a.client_port=53101/u);
     challenge=sql.match(/'nonce','([a-f0-9]{64})'/u)[1];
     return outcome;
    }
@@ -401,6 +407,9 @@ for(const mode of ['complete','old-backend','directory-drift','rollback-error','
    const next=f.api.claimCurrent259LiveSessions(fresh,f.handle);
    assert.equal(next.owner,original.owner);assert.equal(next.observer,original.observer);assert.notEqual(next.runtime,original.runtime);
    assert.equal(next.identity[1].pid,104);
+   assert.equal(original.endpoint.transport,'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS');
+   assert.equal(next.endpoint.transport,original.endpoint.transport);
+   assert.equal(next.endpoint.relayId,original.endpoint.relayId);assert.equal(next.endpoint.port,original.endpoint.port);
    assert.throws(()=>original.checkLight(),/RETIRED/u);
    await next.verifyFull();
    return 'recovered';
@@ -417,9 +426,22 @@ for(const mode of ['complete','old-backend','directory-drift','rollback-error','
   assert.ok(events.indexOf('rollback')<events.indexOf('connect:3'));
   assert.equal(events.slice(events.indexOf('disconnect:1')+1).includes('identity:1'),false);
  }else{
-  await assert.rejects(run,/FAILED_CLOSED/u);
+  await assert.rejects(run,error=>{
+   assert.equal(error.code,'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED');
+   const diagnostics={
+    'old-backend':{stage:'RETAINED_SESSIONS',code:'CURRENT259_LIVE_SESSIONS_INDEPENDENT_IDENTITY'},
+    'directory-drift':{stage:'RETAINED_SESSIONS',code:'CURRENT259_LIVE_SESSIONS_RECOVERY_DIRECTORY'},
+    'rollback-error':{stage:'ROLLBACK_OBSERVATION',code:'PG_CASE_DISCONNECT_LEDGER_CHANGED'},
+    'replacement-name-drift':{stage:'REPLACEMENT_RUNTIME',code:'CURRENT259_LIVE_SESSIONS_INDEPENDENT_IDENTITY'},
+    'replacement-relay-drift':{stage:'REPLACEMENT_RUNTIME',code:'CURRENT259_LIVE_SESSIONS_PHYSICAL_ENDPOINT'}
+   };
+   const detail=require('./task16-current259-disconnect-failure.cjs').describeCurrent259DisconnectFailure(error);
+   assert.deepEqual(detail,diagnostics[mode]);
+   assert.doesNotMatch(JSON.stringify(detail),/private rollback/u);
+   return true;
+  });
   assert.equal(replacementCalls,0);
-  assert.equal(f.clients.length,mode==='replacement-name-drift'?4:3);
+  assert.equal(f.clients.length,mode.startsWith('replacement-')?4:3);
   assert.equal(f.resourceClosed(),1);
  }
  assert.equal(submitted,1);
@@ -477,3 +499,41 @@ for(const topology of ['UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS','UNVERIFIED_PAYM
   assert.deepEqual(f.clients,[]);
  });
 }
+
+test('two runtimes on the competition relay keep distinct backend identities and one resource coordinate',async()=>{
+ const f=fixture({competition:true});
+ await f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,async proofs=>{
+  const [left,right]=proofs.map(p=>f.api.claimCurrent259LiveSessions(p,f.handle));
+  assert.equal(left.endpoint.transport,'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS');
+  assert.equal(left.endpoint.relayId,right.endpoint.relayId);
+  assert.equal(left.endpoint.port,right.endpoint.port);
+  assert.deepEqual([left.endpoint.clientPort,right.endpoint.clientPort],[53101,53103]);
+  assert.deepEqual([left.identity[1].pid,right.identity[1].pid],[102,104]);
+  assert.equal(f.api.isCurrent259PaymentLoopbackImpactSession(left),true);
+  assert.equal(f.api.isCurrent259PaymentLoopbackImpactSession(right),true);
+ });
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1,1]);
+});
+test('the two competition runtime observations cannot name the same loopback socket',async()=>{
+ const f=fixture({competition:true,onIdentity(row,index){if(index===3)row.clientPort=53101;}});
+ await assert.rejects(f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,
+  ()=>assert.fail('duplicated runtime peer')),/FAILED_CLOSED/u);
+ assert.equal(f.resourceClosed(),1);
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1,1]);
+});
+for(const wrong of [{relay:false},{topology:'UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'}])
+ test('genuine two-lane proof alone cannot bypass the fixed competition transport: '+JSON.stringify(wrong),async()=>{
+  const f=fixture({competition:true,...wrong});
+  await assert.rejects(f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,
+   ()=>assert.fail('wrong competition transport')),/FAILED_CLOSED/u);
+  assert.deepEqual(f.clients,[]);
+  assert.equal(f.resourceClosed(),1);
+ });
+
+for(const wrong of [{relay:false},{topology:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'}])
+ test('a disconnect permit cannot authorize a different physical transport: '+JSON.stringify(wrong),async()=>{
+  const f=fixture({recovery:true,...wrong});
+  await assert.rejects(f.api.withCurrent259DisconnectLiveSessions(f.completion,f.handle,f.continuityToken,
+   ()=>assert.fail('wrong disconnect transport')),/FAILED_CLOSED/u);
+  assert.deepEqual(f.clients,[]);assert.equal(f.resourceClosed(),1);
+ });

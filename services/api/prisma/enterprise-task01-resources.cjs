@@ -14,8 +14,11 @@ const FIRST_Q2_LIFETIME = Symbol("current259 first-Q2 lifetime");
 const FIRST_Q2_TOPOLOGY = "UNVERIFIED_FIRST_Q2_LOOPBACK_TLS";
 const NORMAL_LIFETIME = Symbol("current259 normal payment lifetime");
 const RESPONSE_LOSS_LIFETIME = Symbol("current259 response loss lifetime");
+const COMPETITION_LIFETIME = Symbol("current259 payment competition lifetime");
+const DISCONNECT_RECOVERY_LIFETIME = Symbol("current259 disconnect recovery lifetime");
 const loopbackScenarios = new Map([
-  [FIRST_ROLLBACK_LIFETIME, "cancel-commit"], [NORMAL_LIFETIME, "normal"], [RESPONSE_LOSS_LIFETIME, "response-loss"]
+  [FIRST_ROLLBACK_LIFETIME, "cancel-commit"], [NORMAL_LIFETIME, "normal"], [RESPONSE_LOSS_LIFETIME, "response-loss"],
+  [COMPETITION_LIFETIME, "competition"], [DISCONNECT_RECOVERY_LIFETIME, "disconnect-commit-recovery"]
 ]);
 const TECHNICAL_PURPOSE = "CURRENT259_TECHNICAL_MIGRATIONS_V1";
 
@@ -115,10 +118,18 @@ const sha = value => createHash("sha256").update(value).digest("hex");
 const fault = code => Object.assign(new Error(code), { code });
 const COMMAND_KINDS = new Set(["timeout", "aborted", "output-limit", "spawn-error", "signal-exit", "nonzero-exit"]);
 const CURSOR_STAGES = new Set(["CURSOR_DAEMON", "CURSOR_OWNERSHIP", "CURSOR_LOG_READ"]);
-const RELAY_CODE = /^CURRENT259_LOOPBACK_FORWARD_(?:ABORTED|CONFIG|LIMIT|CHILD|STREAM|FRAME|HALF_CLOSE_TIMEOUT|LISTEN|CLOSED|CLEANUP)$/u;
+const RELAY_CODE = /^CURRENT259_LOOPBACK_FORWARD_(?:ABORTED|CONFIG|LIMIT|CHILD|STREAM|FRAME|HALF_CLOSE_TIMEOUT|DEPLOY_DRAIN_TIMEOUT|DEPLOY_DRAIN_ACTIVE|LISTEN|CLOSED|CLEANUP)$/u;
+const RELAY_CLOSE_FIELDS = ["hostFin", "stdinEnded", "pgFin", "stdoutEnded", "cliClosed",
+  "stdoutRawEnd", "receiveSettled", "cliExited", "peerSocketDestroyed", "peerEndReturned"];
 function ownErrorField(error, key) {
   if (!error || typeof error !== "object" || types.isProxy(error)) return undefined;
   return Object.getOwnPropertyDescriptor(error, key)?.value;
+}
+function copyRelayCloseState(target, error) {
+  const source = ownErrorField(error, "relayCloseState");
+  const state = Object.fromEntries(RELAY_CLOSE_FIELDS.map(key => [key, ownErrorField(source, key)]));
+  if (Object.values(state).every(value => typeof value === "boolean"))
+    Object.defineProperty(target, "relayCloseState", { value: Object.freeze(state) });
 }
 const requireThat = (condition, code) => { if (!condition) throw fault(code); };
 const json = buffer => { try { return JSON.parse(buffer.toString("utf8")); } catch { throw fault("TASK01_RESOURCE_METADATA_INVALID"); } };
@@ -320,14 +331,27 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     await inspectNetwork(cleanup);
     return value;
   }
+  function relayFailure(error) {
+    const failure = fault("TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"), code = ownErrorField(error, "code");
+    if (typeof code === "string" && RELAY_CODE.test(code)) Object.defineProperty(failure, "relayCode", { value: code });
+    if (code === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" || code === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT")
+      copyRelayCloseState(failure, error);
+    return failure;
+  }
   function checkRelay() {
     if (!loopback || !relay) return;
     try { relay.check(); }
-    catch (error) {
-      const failure = fault("TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"), code = ownErrorField(error, "code");
-      if (typeof code === "string" && RELAY_CODE.test(code)) Object.defineProperty(failure, "relayCode", { value: code });
-      throw failure;
-    }
+    catch (error) { throw relayFailure(error); }
+  }
+  function beginPrismaRelayDrain() {
+    requireThat(arguments.length === 0 && loopback && relay && !closePromise, "TASK01_RESOURCE_CLOSED");
+    let wait;
+    try { wait = relay.beginPrismaDrain(); }
+    catch (error) { throw relayFailure(error); }
+    return async () => {
+      try { await wait(); }
+      catch (error) { throw relayFailure(error); }
+    };
   }
   async function ownContainerExists(cleanup) {
     const result = await docker(["container", "ls", "--all", "--no-trunc", "--filter", `id=${containerId}`, "--format", "{{.ID}}"], { cleanup, timeoutMs: 10000 });
@@ -435,6 +459,8 @@ async function prepareTask01Postgres(options = {}, lifetime) {
           if (COMMAND_KINDS.has(commandKind)) Object.defineProperty(failure, "commandKind", { value: commandKind });
           if (CURSOR_STAGES.has(cursorStage)) Object.defineProperty(failure, "cursorStage", { value: cursorStage });
           if (typeof relayCode === "string" && RELAY_CODE.test(relayCode)) Object.defineProperty(failure, "relayCode", { value: relayCode });
+          if (relayCode === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" || relayCode === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT")
+            copyRelayCloseState(failure, error);
         }
         throw failure;
       }
@@ -788,7 +814,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     }
     receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
     return { containerId, networkId, port, databaseName,
-      ...(loopback ? { relayId: receipt.relay.id, checkRelay } : {}), caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical && !paymentLoopback ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1),
+      ...(loopback ? { relayId: receipt.relay.id, checkRelay, beginPrismaRelayDrain } : {}), caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical && !paymentLoopback ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1),
       beginCurrent259ContractPlaintextProbe: safeOperation(beginCurrent259ContractPlaintextProbe),
       verifyCurrent259ContractPlaintextRejection: safeOperation(verifyCurrent259ContractPlaintextRejection) } : {}), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
   } catch (error) {
@@ -841,5 +867,13 @@ async function startCurrent259ResponseLossPostgres(options) {
   requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
   return startCurrent259FixedPostgres(options, RESPONSE_LOSS_LIFETIME);
 }
+async function startCurrent259CompetitionPostgres(options) {
+  requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
+  return startCurrent259FixedPostgres(options, COMPETITION_LIFETIME);
+}
+async function startCurrent259DisconnectRecoveryPostgres(options) {
+  requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
+  return startCurrent259FixedPostgres(options, DISCONNECT_RECOVERY_LIFETIME);
+}
 module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, startCurrent259FirstRollbackPostgres,
-  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, projectCurrent259PhysicalEndpoint };
+  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259DisconnectRecoveryPostgres, projectCurrent259PhysicalEndpoint };

@@ -6,7 +6,7 @@ const {createHash}=require('node:crypto');
 const entry=path.join(__dirname,'task12-current259-first-q2-once.cjs');
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 
-function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInput=false,forgeKey=false,forgeGeneration=false,forgeFixedBytes=false,outside=false,wrongScenario=false,persistedDrift=false,failureKind,preflight}={}){
+function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInput=false,forgeKey=false,forgeGeneration=false,forgeFixedBytes=false,outside=false,operating=false,wrongScenario=false,persistedDrift=false,wrongLedgerXmin=false,failureKind,preflight}={}){
   const root=fs.mkdtempSync('/private/tmp/jg-394-once-model-');
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const runRoot=path.join(root,'run');fs.mkdirSync(runRoot,{mode:0o700});
@@ -26,22 +26,29 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
     slots[file]=bytes;
     cos[purpose]={file,sha256:drift&&index===0?'f'.repeat(64):digest(bytes),identity:{mode:0o600}};
   }
-  const plan={purpose:outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_PRIVATE_COS':'CURRENT259_FIRST_Q2_PRIVATE_COS',source:{candidateSha:'a'.repeat(40)},
-    case:{id:caseId,businessDate:today,operating:false,...(outside?{relationship:'outside'}:{})},cos,resource:{daemonId:'model-daemon-12345',transport:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS'},
+  const plan={purpose:outside&&operating?'CURRENT259_FIRST_OUTSIDE_OPERATING_PRIVATE_COS'
+      :outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_PRIVATE_COS':'CURRENT259_FIRST_Q2_PRIVATE_COS',source:{candidateSha:'a'.repeat(40)},
+    case:{id:caseId,businessDate:today,operating,...(outside?{relationship:'outside'}:{})},cos,resource:{daemonId:'model-daemon-12345',transport:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS'},
     run:{root:runRoot,attemptFile,receiptFile,resourceDir:path.join(runRoot,'resource')}};
   const sha256='c'.repeat(64),calls=[],proof=Object.freeze({}),completion=Object.freeze({}),handle=Object.freeze({}),
-    fixture=Object.freeze({...(outside?{relationship:'outside'}:{}),uploadPrefix:cos.prefix,archiveIdempotencyKey:caseId,seed:{User:{id:caseId}},original:{fileId:caseId}});
+    fixture=Object.freeze({...(outside?{relationship:'outside'}:{}),...(outside&&operating?{outsideOperating:true}:{}),uploadPrefix:cos.prefix,archiveIdempotencyKey:caseId,seed:{User:{id:caseId}},original:{fileId:caseId}});
   const inputSha256='e'.repeat(64);
   const requestParts=['contract-direct-archive-request-v1','2','direct_signed',caseId,caseId,caseId,caseId,'2',inputSha256,'1',caseId,'true'];
   const requestSha256=digest(requestParts.map(value=>Buffer.byteLength(value,'utf8')+':'+value).join(''));
   const evidence={archiveId:caseId,contractId:caseId,versionId:caseId,fileId:caseId,actorId:caseId,idempotencyKey:caseId,status:'effective',revision:2,
-    effectiveAt:'2026-11-11T02:00:00.000Z',operatingMode:'not_applicable',fileBytes:5,fileSha256:'a'.repeat(64),
+    effectiveAt:'2026-11-11T02:00:00.000Z',operatingMode:outside&&operating?'projection_required':'not_applicable',fileBytes:5,fileSha256:'a'.repeat(64),
     downloadBytes:5,downloadSha256:'a'.repeat(64),
     cosCurrentGenerationSha256:'b'.repeat(64),cosCurrentContentSha256:'a'.repeat(64),cosCurrentBytes:5,
     cosFixedGenerationSha256:'b'.repeat(64),cosFixedContentSha256:'a'.repeat(64),cosFixedBytes:5,
     inputSha256,requestSha256,authoritySha256:'a'.repeat(64),archives:1,evidenceFiles:1,physicalAliases:0,draftSlots:0,
-    approvalRounds:0,sealTasks:0,operatingFacts:0,operatingImpacts:0,archiveAudits:1,uploadAudits:1,downloadTicketAudits:1,downloadAudits:1};
+    approvalRounds:0,sealTasks:0,operatingFacts:Number(outside&&operating),operatingImpacts:Number(outside&&operating),archiveAudits:1,uploadAudits:1,downloadTicketAudits:1,downloadAudits:1};
   if(outside)evidence.persistedGenerationSha256=(persistedDrift?'f':'b').repeat(64);
+  if(outside&&operating)evidence.operatingLedger={
+    factId:'12345678-1234-4234-8234-123456789023',impactId:'12345678-1234-4234-8234-123456789024',
+    factKind:'downstream_contract',impactKind:'contract_commitment_reference',amountYuan:'100.0054',direction:'increase',
+    intentPayloadSha256:'c'.repeat(64),issuedXmin:'802',transactionId:'803',commitStatus:'committed',
+    xmins:{archive:'803',version:'803',evidence:'803',audit:'803',intentUse:'803',fact:'803',impact:wrongLedgerXmin?'804':'803'}
+  };
   if(forgeInput)evidence.inputSha256='f'.repeat(64);
   if(forgeKey){
     evidence.idempotencyKey='12345678-1234-4234-8234-123456789099';
@@ -53,7 +60,8 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
   if(forgeFixedBytes)evidence.cosFixedBytes=4;
   const evidenceSha256=digest(JSON.stringify(evidence));
   if(alterEvidence)evidence.downloadSha256='d'.repeat(64);
-  const appReceipt=Object.freeze({evidence,evidenceSha256,status:outside&&!wrongScenario?'CURRENT259_FIRST_OUTSIDE_DIRECT_HTTP_AND_NEST_CLOSED':'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED',httpSteps:9,verifiedClients:5,storageAcceptance:true,proofSha256:'b'.repeat(64)});
+  const appReceipt=Object.freeze({evidence,evidenceSha256,status:outside&&!wrongScenario?(operating?'CURRENT259_FIRST_OUTSIDE_OPERATING_HTTP_AND_NEST_CLOSED'
+    :'CURRENT259_FIRST_OUTSIDE_DIRECT_HTTP_AND_NEST_CLOSED'):'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED',httpSteps:9,verifiedClients:5,storageAcceptance:true,proofSha256:'b'.repeat(64)});
   const proc={argv:['node',entry,'--plan',path.join(root,'PLAN.json'),'--expected-plan-sha256',sha256,...(once?['--once']:[])],
     execArgv:preflight==='FRESH'?['--synthetic']:[],env:preflight==='HOST_ENV'?{HTTPS_PROXY:'sensitive-synthetic-value'}:{},getuid:process.getuid,stdout:{write:value=>calls.push(JSON.parse(value))},once(){},removeListener(){}};
   if(preflight==='ARGS')proc.argv[4]='--synthetic-path-token';
@@ -74,7 +82,8 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
     }},
     './task12-current259-first-q2-cos-native.cjs':{async openCurrent259FirstQ2Cos(permit){
       calls.push('cos');permitUse.cos=permit;
-      assert.equal(holder.exports.claimCurrent259FirstQ2CosPermit(permit).plan,cos);
+      const scope=holder.exports.claimCurrent259FirstQ2CosPermit(permit);
+      assert.equal(scope.plan,cos);assert.equal(scope.outside,outside);
       assert.throws(()=>holder.exports.claimCurrent259FirstQ2CosPermit(permit),/AUTHORITY/u);
       return Object.freeze({environment:()=>({}),check(){},read(){},close(){}});
     }},
@@ -91,7 +100,9 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
     './task12-current259-q2-fixture.cjs':{buildCurrent259FirstQ2Fixture(id,day,operating){
       assert.equal(outside,false);assert.equal(id,caseId);assert.equal(day,today);assert.equal(operating,false);return fixture;
     },buildCurrent259FirstOutsideDirectFixture(id,day){
-      assert.equal(outside,true);assert.equal(id,caseId);assert.equal(day,today);calls.push('outside-fixture');return fixture;
+      assert.equal(outside,true);assert.equal(operating,false);assert.equal(id,caseId);assert.equal(day,today);calls.push('outside-fixture');return fixture;
+    },buildCurrent259FirstOutsideOperatingFixture(id,day){
+      assert.equal(outside&&operating,true);assert.equal(id,caseId);assert.equal(day,today);calls.push('outside-operating-fixture');return fixture;
     }},
     './task12-current259-contract-login.cjs':{async withCurrent259FirstQ2SeededLogin(acl,seen,supplied,use){
       assert.equal(acl,completion);assert.equal(seen,handle);assert.equal(supplied,fixture);calls.push('seeded');return use(proof);
@@ -243,6 +254,22 @@ test('outside once publishes three agreeing generation digests and rejects a res
   assert.equal(result.evidence.persistedGenerationSha256,result.evidence.cosCurrentGenerationSha256);
   assert.equal(result.evidence.persistedGenerationSha256,result.evidence.cosFixedGenerationSha256);
   const drift=model(t,{outside:true,persistedDrift:true});await settled(drift);
+  const stopped=JSON.parse(fs.readFileSync(drift.receiptFile,'utf8'));
+  assert.equal(stopped.status,'CURRENT259_FIRST_Q2_STOPPED');
+  assert.equal(stopped.evidence,undefined);
+});
+
+test('the operating once publishes a bounded ledger proof only after matching archive and ledger xmins',async t=>{
+  const good=model(t,{outside:true,operating:true});await settled(good);
+  assert.ok(good.calls.includes('outside-operating-fixture'));
+  const receipt=JSON.parse(fs.readFileSync(good.receiptFile,'utf8'));
+  assert.equal(receipt.status,'CURRENT259_FIRST_OUTSIDE_OPERATING_ACCEPTANCE_COMPLETE');
+  assert.equal(receipt.evidence.operatingFacts,1);
+  assert.equal(receipt.evidence.operatingLedger.amountYuan,'100.0054');
+  assert.equal(receipt.evidence.operatingLedger.commitStatus,'committed');
+  assert.equal(receipt.evidence.operatingLedger.xmins.impact,receipt.evidence.operatingLedger.xmins.archive);
+  assert.doesNotMatch(JSON.stringify(receipt),/payloadText|secretKey|objectKey|downloadUrl/u);
+  const drift=model(t,{outside:true,operating:true,wrongLedgerXmin:true});await settled(drift);
   const stopped=JSON.parse(fs.readFileSync(drift.receiptFile,'utf8'));
   assert.equal(stopped.status,'CURRENT259_FIRST_Q2_STOPPED');
   assert.equal(stopped.evidence,undefined);

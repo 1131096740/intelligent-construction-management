@@ -51,7 +51,7 @@ const COMMAND_KINDS=new Set(['timeout','aborted','output-limit','spawn-error','s
 const CURSOR_STAGES=new Set(['CURSOR_DAEMON','CURSOR_OWNERSHIP','CURSOR_LOG_READ']);
 const LOCAL_FAILURE=/^LOCAL_MIGRATION_(?:CONTAINER_IDENTITY|CONTAINER_PORT|INPUT|TARGET|SCHEMA|SOURCE|SOURCE_PREFIX|SOURCE_204_205|PREFIX_CACHE|READBACK|CONTROL|DATABASE_IDENTITY|ROLE_PROVENANCE|CURRENT259_FRESH_FULL_ONLY|STAGE203|STAGE205|CLEANUP|TAIL_PREFIX|TAIL_READBACK|TAIL_QUALIFICATION|TAIL_STDIN_PORT|COMPLETION|STOPPED|PARTIAL_QUALIFICATION|PARTIAL_TAIL_QUALIFICATION|TAIL(?:213|215|218|221)_[A-Z0-9_]{1,30}|SQL_(?:PREFLIGHT|QUALIFICATION_SETUP|QUALIFICATION_CLEANUP|CLEANUP_READBACK|POST_QUALIFICATION|COMPLETE_READBACK|STAGE(?:203|205|213|215|218|221)_READBACK|TAIL(?:213|215|218|221)_(?:BEFORE|SUPPLY|READBACK)))$/u;
 const TECHNICAL_CODE=/^(?:TASK01_RESOURCE_(?:ABORTED|ABORTED_OR_TIMEOUT|COMMAND_FAILED|COMMAND_TIMEOUT|CONTAINER_CHANGED|DAEMON_CHANGED|IMAGE_CHANGED|LIMITS_CHANGED|LOOPBACK_FORWARD_FAILED|LOG_WINDOW_CHANGED|LOG_WINDOW_INVALID|METADATA_INVALID|MOUNTS_CHANGED|NETWORK_CHANGED|NETWORK_OTHER_OWNER|OPERATION_FAILED|OUTPUT_LIMIT|PORT_CHANGED|SQL_INPUT_INVALID)|CURRENT259_(?:RESOURCE_(?:ABORTED|CLOSED|CHANGED|DESCRIPTOR|IDENTITY|PRODUCER_CHANGED|PURPOSE|TLS|TOOL_CHANGED)|BUILD_[A-Z0-9_]{1,40}|LOADER_[A-Z0-9_]{1,40}))$/u;
-const RELAY_CODE=/^CURRENT259_LOOPBACK_FORWARD_(?:ABORTED|CONFIG|LIMIT|CHILD|STREAM|FRAME|HALF_CLOSE_TIMEOUT|LISTEN|CLOSED|CLEANUP)$/u;
+const RELAY_CODE=/^CURRENT259_LOOPBACK_FORWARD_(?:ABORTED|CONFIG|LIMIT|CHILD|STREAM|FRAME|HALF_CLOSE_TIMEOUT|DEPLOY_DRAIN_TIMEOUT|DEPLOY_DRAIN_ACTIVE|LISTEN|CLOSED|CLEANUP)$/u;
 function fixedLocalFailure(error){
  const message=ownErrorField(error,'message');
  return typeof message==='string'&&LOCAL_FAILURE.test(message)?message:undefined;
@@ -116,6 +116,8 @@ function createCurrent259TechnicalMigration(handle,signal){
  // Fixed entry imports this module before the physical resource producer.
  bindings();
  const view=claimCurrent259TechnicalResource(handle);need(!usedHandles.has(handle));usedHandles.add(handle);view.verifyFull();
+ const beginPrismaRelayDrain=Object.getOwnPropertyDescriptor(view,'beginPrismaRelayDrain')?.value;
+ need(view.resource.topology!=='UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'||typeof beginPrismaRelayDrain==='function');
  need(view.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&view.deadlineMs===3600000);
  const source=view.source,build=view.build,resource=view.resource;
  need(source.profile.ledgerSha256===FULL&&source.profile.ledger.length===259&&build.node.path===process.execPath);
@@ -123,7 +125,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  need(receipt.databaseName===database&&receipt.containerId===resource.containerId&&receipt.runId===runId);
  const frozenIdentity={runId,containerId:resource.containerId,networkId:resource.networkId,database,port:resource.port,name:receipt.containerName};
  let failed=false,started=false,closing,physicalAnchor;const sqlMaterials=[];let cliMaterial,nodeMaterial,engineMaterial;
- let recording=false,stage='INITIAL_CHECK',controlPhase,controlBoundary,firstFailure,lastSuccessfulDeployPrefix=null;
+ let recording=false,stage='INITIAL_CHECK',controlPhase,controlBoundary,firstFailure,lastSuccessfulDeployPrefix=null,prismaExitZeroPrefix;
  function recordControlPhase(phase,boundary){
   need(typeof phase==='string'&&CONTROL_PHASE.test(phase)&&CONTROL_BOUNDARIES.has(boundary));
   controlPhase=phase;controlBoundary=boundary;stage='CONTROL_'+boundary;
@@ -132,11 +134,16 @@ function createCurrent259TechnicalMigration(handle,signal){
   if(!recording||firstFailure)return;
   const code=ownErrorCode(error),relayCode=ownErrorField(error,'relayCode');
   const commandKind=ownErrorField(error,'commandKind'),cursorStage=ownErrorField(error,'cursorStage');
+  const relayCloseSource=ownErrorField(error,'relayCloseState');
+  const relayCloseState=(relayCode==='CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT'||relayCode==='CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT')&&Object.fromEntries(
+   ['hostFin','stdinEnded','pgFin','stdoutEnded','cliClosed','stdoutRawEnd','receiveSettled','cliExited','peerSocketDestroyed','peerEndReturned']
+    .map(key=>[key,ownErrorField(relayCloseSource,key)]));
   firstFailure=Object.freeze({stage,...(controlPhase?{controlPhase,controlBoundary}:{}),...(checkGate?{checkGate}:{}),
    ...(typeof code==='string'&&TECHNICAL_CODE.test(code)?{causeCode:code}:{}),
    ...(typeof relayCode==='string'&&RELAY_CODE.test(relayCode)?{relayCode}:{}),
+   ...(relayCloseState&&Object.values(relayCloseState).every(value=>typeof value==='boolean')?{relayCloseState:Object.freeze(relayCloseState)}:{}),
    ...(COMMAND_KINDS.has(commandKind)?{commandKind}:{}),...(CURSOR_STAGES.has(cursorStage)?{cursorStage}:{}),
-   lastSuccessfulDeployPrefix});
+   ...(stage==='PRISMA_RELAY_DRAIN'?{prismaExitZeroPrefix}:{}),lastSuccessfulDeployPrefix});
  }
  function bindFailure(error){
   if(!recording)return;
@@ -237,6 +244,9 @@ function createCurrent259TechnicalMigration(handle,signal){
     const prefix=request.schemaPath===undefined?'259':path.basename(path.dirname(request.schemaPath));
     const phase=prefix==='259'||DEPLOY_PREFIXES.has(prefix)?prefix:'UNCLASSIFIED';
     try{
+     stage='PRISMA_RELAY_PRECHECK';
+     const waitForRelay=beginPrismaRelayDrain?.call(view);
+     need(!beginPrismaRelayDrain||typeof waitForRelay==='function');
      stage='PRISMA_DEPLOY';
      let result;
      try{result=await runTask16BoundedCommand(process.execPath,[tools.cli,'migrate','deploy','--schema',request.schemaPath??path.join(__dirname,'schema.prisma')],{cwd:ROOT,env,signal:cancellation.signal,timeoutMs:180000,maxOutputBytes:1024*1024});}
@@ -246,6 +256,10 @@ function createCurrent259TechnicalMigration(handle,signal){
      }
      const resultFailure=deploymentResult(result);
      if(resultFailure)throw deploymentFault(phase,resultFailure);
+     if(waitForRelay){
+      stage='PRISMA_RELAY_DRAIN';prismaExitZeroPrefix=phase==='UNCLASSIFIED'?null:Number(phase);
+      await waitForRelay();
+     }
      stage='PRISMA_POSTCHECK';
      try{check();toolMaterials();}
      catch{throw deploymentFault(phase,'POST_SUCCESS_VERIFICATION');}

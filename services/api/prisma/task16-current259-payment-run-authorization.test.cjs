@@ -55,6 +55,12 @@ function fixture(t,options={}){
    async withCurrent259ResponseLossResource(build,plan,sig,consume){
     return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'response-loss');
    },
+   async withCurrent259CompetitionResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'competition');
+   },
+   async withCurrent259DisconnectRecoveryResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'disconnect-commit-recovery');
+   },
    async withCurrent259TechnicalResource(build,plan,sig,consume,scenario){
     const loopback=require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(scenario);
     assert.equal(build,s.handle);assert.ok(fs.existsSync(path.join(s.runRoot,'attempt.json')));
@@ -203,7 +209,12 @@ function fixture(t,options={}){
     assert.equal(closed,closeProof);assert.equal(prior,attempt);
     assert.equal(state.calls.at(-1),'original-app-closed');
     state.calls.push('retire','rollback');
-    if(options.rollbackFailure)throw new Error('rollback not confirmed');
+    if(options.rollbackFailure){
+     const {captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
+     const cause=Object.assign(new Error('PG_CASE_DISCONNECT_LEDGER_CHANGED'),{privateSql:'SECRET_SQL_PASSWORD'});
+     const error=Object.assign(new Error('CURRENT259_LIVE_SESSIONS_FAILED_CLOSED'),{code:'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED'});
+     throw carryCurrent259DisconnectFailure(error,captureCurrent259DisconnectFailure(cause,'ROLLBACK_OBSERVATION'));
+    }
     return next(replacementProof,rollback,originalApp.origin);
    });}finally{state.calls.push('pools-close');}
   };
@@ -359,6 +370,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
  write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
  write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
+ write('services/api/prisma/task16-current259-disconnect-failure.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-disconnect-failure.cjs'),'utf8'));
  for(const [name,keys]of [
   ['task16-current259-b7-install',['installCurrent259B7']],
   ['local-staged-current259-profile',['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']],
@@ -366,7 +378,8 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
   ['task16-current259-seven-install',['installCurrent259SevenFragments']],
   ['task16-current259-payment-acl-install',['installCurrent259PaymentAcl']],
   ['task16-current259-owned-resource',['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource',
-   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','claimCurrent259TechnicalResource']],
+   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','withCurrent259CompetitionResource',
+   'withCurrent259DisconnectRecoveryResource','claimCurrent259TechnicalResource']],
   ['task16-current259-catalog',['renderCurrent259CatalogRead']],
   ['task16-runtime-inputs',['readQualifiedTask16File']]
  ])write('services/api/prisma/'+name+'.cjs','module.exports=Object.freeze({'+keys.map(key=>key+':()=>{throw new Error("resource calls forbidden in default model");}').join(',')+'});');
@@ -396,7 +409,7 @@ function competitionFixture(t,options={}){
 test('competition consumes one fixed plan and reaches only the two-lane case, closing both apps before pools',async t=>{
  const f=competitionFixture(t),result=await f.done;
  assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
- assert.deepEqual(f.state.calls,['start','technical259','roles9-cap2','seven','acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
+ assert.deepEqual(f.state.calls,['start-competition','technical259','roles9-cap2','seven','acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
  assert.equal(receipt.business.competitionObserved,true);
  assert.equal(receipt.business.winner,'comprehensive_director');
@@ -406,7 +419,7 @@ test('competition live permit replay stops before environment and fixture',async
  const f=competitionFixture(t,{replayLive:true}),result=await f.done;
  assert.equal(result.status,'STOPPED');
  assert.equal(result.onceAttemptConsumed,true);
- assert.deepEqual(f.state.calls,['start','technical259','roles9-cap2','seven','acl','b7','live-two']);
+ assert.deepEqual(f.state.calls,['start-competition','technical259','roles9-cap2','seven','acl','b7','live-two']);
  assert.equal(f.state.closes,1);
 });
 test('competition verification reaches neither resource nor attempt',async t=>{
@@ -433,14 +446,28 @@ for(const rollbackFailure of [false,true])test('fresh A16 once only starts a rep
  assert.equal(result.status,rollbackFailure?'STOPPED':'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
  assert.equal(result.onceAttemptConsumed,true);
  assert.deepEqual(f.state.calls,[
-  'start','technical259','roles9','seven','acl','b7','live-disconnect','env','original-app','first-post','original-app-closed','retire','rollback',
+  'start-disconnect-commit-recovery','technical259','roles9','seven','acl','b7','live-disconnect','env','original-app','first-post','original-app-closed','retire','rollback',
   ...(!rollbackFailure?['replacement-app','recover','replacement-app-closed']:[]),'env-close','pools-close'
  ]);
  assert.equal(receipt.business.runtimeReplaced,rollbackFailure?undefined:true);
+ assert.equal(receipt.scope.databaseTransport,'PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS_V1');
+ assert.equal(receipt.resource.topology,'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS');
+ assert.equal(receipt.resource.cleanup.relayId,receipt.resource.relay.id);
  assert.equal(receipt.financialAcceptance,false);
  assert.equal(f.state.closes,1);
 });
 
+
+test('disconnect once publishes the branded first failure independently of later cleanup UNKNOWN',async t=>{
+ const f=disconnectFixture(t,{rollbackFailure:true,cleanupFailure:true}),result=await f.done;
+ const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.equal(result.status,'STOPPED');
+ assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+ assert.equal(receipt.failureStage,'retireOriginalRuntimeAndConfirmRollback');
+ assert.deepEqual(receipt.disconnectFailure,{stage:'ROLLBACK_OBSERVATION',code:'PG_CASE_DISCONNECT_LEDGER_CHANGED'});
+ assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
+ assert.doesNotMatch(text,/SECRET_SQL_PASSWORD/u);
+});
 
 test('fresh A16 refuses an equivalent replacement listener before issuing the recovery case permit',async t=>{
  const f=disconnectFixture(t,{sameListener:true}),result=await f.done;
@@ -542,3 +569,30 @@ test('the once receipt retains the fixed Prisma prefix diagnostic and first fail
   assert.equal(f.state.calls.filter(call=>call==='independent-sessions').length,1);
   assert.equal(f.state.closes,1);
  });
+
+test('competition rejects another payment topology before claiming its two-lane role permit',async t=>{
+ const f=competitionFixture(t,{resourceTopology:'UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'}),result=await f.done;
+ assert.equal(result.status,'STOPPED');assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_RESOURCE_IDENTITY');
+ assert.deepEqual(f.state.calls,['start-competition']);assert.equal(f.state.closes,1);
+});
+test('competition does not certify the winner if the final relay identity differs',async t=>{
+ const f=competitionFixture(t,{relayCleanupWrongId:true}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.scope.databaseTransport,'PAYMENT_COMPETITION_LOOPBACK_TLS_V1');
+ assert.equal(receipt.resource.topology,'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS');
+ assert.equal(receipt.resource.cleanup.status,'UNKNOWN');assert.equal(receipt.resource.cleanup.relayClosed,false);
+});
+
+test('disconnect plan rejects a rollback-profile resource before its first technical or business action',async t=>{
+ const f=disconnectFixture(t,{resourceTopology:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'}),result=await f.done;
+ assert.equal(result.status,'STOPPED');assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_RESOURCE_IDENTITY');
+ assert.deepEqual(f.state.calls,['start-disconnect-commit-recovery']);assert.equal(f.state.closes,1);
+});
+test('disconnect does not certify its recovered case if the original relay cleanup ID differs',async t=>{
+ const f=disconnectFixture(t,{relayCleanupWrongId:true}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.business.runtimeReplaced,true);assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
+ assert.equal(receipt.resource.cleanup.relayClosed,false);
+});

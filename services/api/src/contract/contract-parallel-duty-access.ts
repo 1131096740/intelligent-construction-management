@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
@@ -53,6 +54,18 @@ export function contractPendingApprovalSnapshot(
     ? snapshot : null;
 }
 
+export function contractParallelApprovalEpoch(
+  version: Parameters<typeof contractPendingApprovalSnapshot>[0],
+  round: (NonNullable<Parameters<typeof contractPendingApprovalSnapshot>[1]> & { id: string }) | null
+): string | undefined {
+  const snapshot = contractPendingApprovalSnapshot(version, round);
+  if (!version || !round || !snapshot) return undefined;
+  return createHash("sha256").update(JSON.stringify([
+    "contract.approve/v2", version.id, round.id, round.applicantUserId,
+    version.draftRevision, version.documentContentRevision, version.documentContentFingerprint
+  ])).digest("hex");
+}
+
 const CONTRACT_APPROVAL_FORM_READER_ROLES = new Set<RoleKey>([
   "contract_staff", "contract_director", "project_manager", "finance_staff",
   "finance_director", "comprehensive_director", "chairman", "general_manager"
@@ -87,25 +100,25 @@ export function pendingContractApprovalFormHasReaderRole(nodes: unknown, scopes?
 /** Frozen duties define scope; current active assignments define who may discharge them. */
 export async function contractParallelDutyIdentity(tx: Prisma.TransactionClient, round: {
   id: string; status: string; currentNodeIndex: number; frozenNodes: unknown;
-}, projectId: string, actorUserId: string, nodeIndex: number) {
+}, projectId: string, actorUserId: string, nodeIndex: number, lockAssignments = true) {
   if (round.status !== "in_progress" || !isParallelApprovalRound(round.frozenNodes) || !activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(nodeIndex)) return null;
   const node = round.frozenNodes[nodeIndex];
   const approved = Array.isArray(node.approvedRoleKeys) ? node.approvedRoleKeys : [];
   const pending = (node.roleKeys as RoleKey[]).filter(role => !approved.includes(role));
   if (pending.some(role => !frozenContractDutyRoleScope(node, role))) return null;
-  const [actor] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`SELECT "id", "isActive" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE`);
+  const [actor] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`SELECT "id", "isActive" FROM "User" WHERE "id" = ${actorUserId}${lockAssignments ? Prisma.sql` FOR SHARE` : Prisma.empty}`);
   if (!actor?.isActive) return null;
   const currentRole = async (userId: string) => {
     const projectRoles = pending.filter(role => frozenContractDutyRoleScope(node, role) === "project");
     const globalRoles = [...pending.filter(role => frozenContractDutyRoleScope(node, role) === "global"), "super_admin"];
-    const projectAssignments = projectRoles.length ? await loadProjectApprovalAssignments(tx, projectId, projectRoles, userId) : [];
+    const projectAssignments = projectRoles.length ? await loadProjectApprovalAssignments(tx, projectId, projectRoles, userId, lockAssignments) : [];
     const globalAssignments = globalRoles.length ? await tx.$queryRaw<Array<{ userId: string; roleKey: string }>>(Prisma.sql`
       SELECT up."userId", p."key" AS "roleKey"
       FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId"
       INNER JOIN "User" u ON u."id" = up."userId"
       WHERE up."projectId" IS NULL AND up."userId" = ${userId} AND u."isActive" = TRUE
         AND p."key" IN (${Prisma.join(globalRoles)})
-      FOR SHARE OF up, p, u
+      ${lockAssignments ? Prisma.sql`FOR SHARE OF up, p, u` : Prisma.empty}
     `) : [];
     if (globalAssignments.some(row => row.roleKey === "super_admin")) return "super_admin" as RoleKey;
     return pending.find(role => [...projectAssignments, ...globalAssignments].some(row => row.userId === userId && row.roleKey === role));
@@ -121,7 +134,7 @@ export async function contractParallelDutyIdentity(tx: Prisma.TransactionClient,
     const role = await currentRole(fromUserId);
     const mandate = await tx.approvalDelegation.findFirst({ where: { ...scope, fromUserId, toUserId: actorUserId, enabled: true, startsAt: { lte: now }, endsAt: { gt: now } } });
     if (role && role !== "super_admin" && mandate) {
-      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalDelegation" WHERE "id" = ${mandate.id} FOR SHARE`);
+      if (lockAssignments) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalDelegation" WHERE "id" = ${mandate.id} FOR SHARE`);
       const verifiedNow = new Date();
       const current = await tx.approvalDelegation.findFirst({ where: { id: mandate.id, ...scope, fromUserId, toUserId: actorUserId, enabled: true, startsAt: { lte: verifiedNow }, endsAt: { gt: verifiedNow } } });
       if (current) return { approvedRoleKey: role, representedUserId: fromUserId, viaAssignment: false, delegationId: mandate.id };

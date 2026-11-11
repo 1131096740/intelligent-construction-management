@@ -86,7 +86,8 @@ function ownerOnly(body){
 }
 async function openCurrent259FirstQ2Cos(permit){
   need(arguments.length===1,'SCOPE');
-  const {plan,signal,check:checkScope,application,observer}=claimCurrent259FirstQ2CosPermit(permit);
+  const {plan,outside,signal,check:checkScope,application,observer}=claimCurrent259FirstQ2CosPermit(permit);
+  need(typeof outside==='boolean','SCOPE');
   const host=plan.bucket+'.cos.'+plan.region+'.myqcloud.com';
   const cancel=new AbortController();
   let closed=false,ready=false,observing=false,readback;
@@ -168,7 +169,7 @@ async function openCurrent259FirstQ2Cos(permit){
         observing=true;
         if(stage==='current'){
           need(!readback&&upload?.objectKey?.startsWith(plan.prefix),'SCOPE');
-          readback=createCurrent259FirstQ2CosRead(plan.bucket,plan.region,upload);
+          readback=createCurrent259FirstQ2CosRead(plan.bucket,plan.region,upload,outside);
         }else need(stage==='fixed'&&arguments.length===1&&readback,'SCOPE');
         const next=readback.next(stage);
         const query=next.versionId===null?null:{name:'versionId',encoded:encode(next.versionId)};

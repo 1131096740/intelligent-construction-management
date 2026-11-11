@@ -1691,6 +1691,7 @@ type ContractReviewDialogContext = Pick<
   | "expectedApprovalInstanceId"
   | "expectedNodeIndex"
   | "expectedApprovalUpdatedAt"
+  | "expectedParallelApprovalEpoch"
   | "decision"
   | "ownerContractRisk"
 >;
@@ -2671,6 +2672,7 @@ function currentContractReviewDialogContext(
     expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
     expectedNodeIndex: coordinates.expectedNodeIndex,
     expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+    expectedParallelApprovalEpoch: coordinates.expectedParallelApprovalEpoch,
     decision,
     ownerContractRisk: freezeContractReviewOwnerRisk(
       capability.ownerContractRisk
@@ -3585,10 +3587,12 @@ function captureContractReviewContext(
     dialog.decision !== decision ||
     dialog.contractId !== freshDialog.contractId ||
     dialog.contractVersionId !== freshDialog.contractVersionId ||
-    dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+    (dialog.expectedParallelApprovalEpoch === undefined
+      ? dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+        dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt
+      : dialog.expectedParallelApprovalEpoch !== freshDialog.expectedParallelApprovalEpoch) ||
     dialog.expectedApprovalInstanceId !== freshDialog.expectedApprovalInstanceId ||
     dialog.expectedNodeIndex !== freshDialog.expectedNodeIndex ||
-    dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt ||
     !sameContractReviewOwnerRisk(
       dialog.ownerContractRisk,
       freshDialog.ownerContractRisk
@@ -3645,6 +3649,7 @@ function captureContractReviewContext(
     expectedApprovalInstanceId: dialog.expectedApprovalInstanceId,
     expectedNodeIndex: dialog.expectedNodeIndex,
     expectedApprovalUpdatedAt: dialog.expectedApprovalUpdatedAt,
+    expectedParallelApprovalEpoch: dialog.expectedParallelApprovalEpoch,
     decision,
     requiresSelfReviewConfirmation: requiresContractSelfReviewConfirmation.value,
     ...(comment ? { comment } : {}),

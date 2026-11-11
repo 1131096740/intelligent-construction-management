@@ -35,9 +35,12 @@ const leaseToken='a'.repeat(43);
 const mimeType='application/pdf';
 
 function drive({operating=false,outside=false,change=(stage,response)=>response,earlyVersion='q2-real-version-model',omitVersion=false}={}) {
-  const fixture=outside?require('./task12-current259-q2-fixture.cjs').buildCurrent259FirstOutsideDirectFixture(runId,day)
-    :buildCurrent259FirstQ2Fixture(runId,day,operating);
+  const builders=require('./task12-current259-q2-fixture.cjs');
+  const fixture=outside?(operating?builders.buildCurrent259FirstOutsideOperatingFixture(runId,day)
+    :builders.buildCurrent259FirstOutsideDirectFixture(runId,day)):buildCurrent259FirstQ2Fixture(runId,day,operating);
   const flow=fixture.createCase(), relationship=outside?'outside':'upward';
+  const outsideOperating=outside&&operating;
+  const sourceCode='隔离材料合同-001';
   const fileName=outside?'首条表外原件.pdf':'首条对上原件.pdf';
   const reason=outside?'首条表外归档原件验收':'首条对上归档原件验收';
   const originalNumber=outside?'首条表外原号':'首条对上原号';
@@ -53,7 +56,7 @@ function drive({operating=false,outside=false,change=(stage,response)=>response,
     return req;
   }
   reply('POST','/auth/login',201,{user:{id:actor,phone:seed.User.phone,roleKeys:['contract_staff'],globalRoleKeys:[],mustChangePassword:false},tokens:{accessToken}});
-  const create=reply('POST','/contracts',201,{contract:{id:contractId,projectId:project,ownerUserId:actor,contractTypeKey:'material_purchase'},
+  const create=reply('POST','/contracts',201,{contract:{id:contractId,projectId:project,ownerUserId:actor,contractTypeKey:'material_purchase',temporaryCode:sourceCode},
     version:{id:versionId,contractId,status:'draft',versionNo:1,changeType:'original',numericProtocolVersion:2,draftRevision:1,firstSubmittedAt:null},terms:null});
   assert.deepEqual(create.json,{projectId:project,contractTypeKey:'material_purchase',numericProtocolVersion:2,handlingMode:'direct_signed',relationship});
   assert.equal(create.headers.authorization,'Bearer '+accessToken);
@@ -120,28 +123,60 @@ function drive({operating=false,outside=false,change=(stage,response)=>response,
   assert.equal(downloaded.headers,undefined);
   const time='2026-11-11T12:00:00.000Z';
   const fileManifestText=JSON.stringify(signedFiles),fileManifestSha256=digest(fileManifestText);
-  const sourceBasis={directInput:{inputSha256,Q},businessTime:{archivedAt:time,businessDay:day,...(outside?{handlerUserId:actor}:{})},
-    ...(outside?{reviewScope:{excludedAmountYuan:'0.0000',sources:[]},fileManifest:signedFiles}:{})};
-  const sourceBasisText=JSON.stringify(sourceBasis);
+  const factId='66666666-6666-4666-8666-666666666666',impactId='77777777-7777-4777-8777-777777777777';
   const originals=[{...signedFiles[0],bucket,objectKey:key,objectGeneration:storage.objectGeneration}];
+  const reviewScope=outsideOperating?{economicExcludedYuan:'0.0000',sources:[]}:{excludedAmountYuan:'0.0000',sources:[]};
+  const operatingConsequence=outsideOperating?{protocolVersion:1,mode:'projection_required',operatingLedgerEffectiveDateSnapshot:'2026-11-10',reviewScope,
+    debtor:{...Q.subjects.enterprise,kind:'construction_enterprise',id:seed.BusinessPartyVersion.id},
+    creditor:{kind:'downstream_counterparty',id:fixture.counterparty.version.id,businessPartyId:fixture.counterparty.party.id,
+      contractPartySnapshotId:termsId,name:fixture.counterparty.party.name,creditCode:fixture.counterparty.party.unifiedSocialCreditCode},
+    expectedSource:{sourceType:'contract_version',sourceBusinessId:versionId,sourceBusinessCode:sourceCode,sourceVersion:1,
+      entryKind:'original',factKind:'downstream_contract',factIdempotencyKey:'contract_version:'+versionId,
+      impactIdempotencyKey:'contract_version:'+versionId+':commitment',sourceImpactKey:'contract_commitment_reference',
+      impactKind:'contract_commitment_reference',numericProtocolVersion:2,amountState:'known',amountYuan:'100.0054',direction:'increase'}
+  }:{protocolVersion:1,mode:operating?'internal_reference_only':'not_applicable',
+    operatingLedgerEffectiveDateSnapshot:operating?'2026-11-10':null,expectedSource:null};
+  const intentText=JSON.stringify({protocolVersion:2,archiveSource:'direct_signed',relationship:'outside',actor,projectId:project,
+    contractId,contractVersionId:versionId,sourceRevision:2,inputSha256,requestKey:keyId,requestSha256,
+    orderedEvidence:originals,directInput:{Q,inputSha256},operatingConsequence});
+  const intentPayloadSha256=digest(intentText);
+  const sourceBasis={directInput:{inputSha256,Q},businessTime:{archivedAt:time,businessDay:day,...(outside?{handlerUserId:actor}:{})},
+    ...(outside?{reviewScope,fileManifest:signedFiles}:{}),...(outsideOperating?{intentPayloadSha256}:{})};
+  const sourceBasisText=JSON.stringify(sourceBasis);
   const authority={...(outside?{sourceBasisSha256:digest(sourceBasisText)}:{recipeVersion:'contract-upward-direct-archive-v1/1',originals}),
     authorityProtocolVersion:1,archiveSource:'direct_signed',projectId:project,contractId,contractVersionId:versionId,
     handlerUserId:actor,sourceRevision:2,requestSha256,sourceBasis,fileManifest:signedFiles,fileManifestSha256,
-    operatingConsequence:{protocolVersion:1,mode:operating?'internal_reference_only':'not_applicable',
-      operatingLedgerEffectiveDateSnapshot:operating?'2026-11-10':null,expectedSource:null}};
+    operatingConsequence};
   const authorityText=JSON.stringify(authority);
   const evidence={archive:{id:archiveId,contractVersionId:versionId,uploadedByUserId:actor,confirmedByUserId:actor,confirmedAt:time,
     status:'confirmed',archiveProtocolVersion:2,archiveSource:'direct_signed',idempotencyKey:keyId,requestSha256,sourceRevision:2,
     authorityText,authoritySha256:digest(authorityText),qText,fileManifestText,fileManifestSha256,approvalInstanceId:null,sealTaskId:null},
     version:{id:versionId,contractId,status:'effective',
       draftRevision:2,effectiveAt:time,taxFactsFrozenAt:time},counts:{archives:1,evidenceFiles:1,physicalAliases:0,draftSlots:0,approvalRounds:0,
-      sealTasks:0,operatingFacts:0,operatingImpacts:0,archiveAudits:1,uploadAudits:1,downloadTicketAudits:1,downloadAudits:1},
+      sealTasks:0,operatingFacts:Number(outsideOperating),operatingImpacts:Number(outsideOperating),archiveAudits:1,uploadAudits:1,downloadTicketAudits:1,downloadAudits:1},
     archivedFile:{...signedFiles[0],archiveFileId:archiveId,contractVersionId:versionId},
     archiveAudit:{actorUserId:actor,action:'contract.archive.complete',businessType:'contract_version',businessId:versionId,
-      metadata:{archiveId,archiveSource:'direct_signed',sourceRevision:2,inputSha256,requestSha256,fileIds:[file],
+      metadata:outsideOperating?{archiveId,archiveSource:'direct_signed',requestSha256,intentPayloadSha256,operatingFactId:factId,operatingImpactId:impactId}
+        :{archiveId,archiveSource:'direct_signed',sourceRevision:2,inputSha256,requestSha256,fileIds:[file],
         ...(outside?{actingRoleKey:'contract_staff'}:{relationship})}},
     ...(outside?{sourceBasisText,generationProof:{protocolVersion:1,archiveId,contractVersionId:versionId,
       authoritySha256:digest(authorityText),originals}}:{}),
+    ...(outsideOperating?{ledger:{
+      intent:{payloadText:intentText,payloadSha256:intentPayloadSha256,issuedXmin:'802',transactionId:'803',commitStatus:'committed'},
+      xmins:{archive:'803',version:'803',evidence:'803',audit:'803',intentUse:'803',fact:'803',impact:'803'},
+      fact:{id:factId,projectId:project,sourceType:'contract_version',sourceBusinessId:versionId,sourceBusinessCode:sourceCode,
+        sourceVersion:1,entryKind:'original',factKind:'downstream_contract',idempotencyKey:'contract_version:'+versionId,
+        status:'confirmed',direction:'neutral',amountCents:null,amountYuan:'100.0054',numericProtocolVersion:2,
+        occurredAt:time,confirmedAt:time,confirmedByUserId:actor,recordedByUserId:actor,ledgerDate:'2026-11-10',
+        debtorSubjectKind:'construction_enterprise',debtorSubjectId:seed.BusinessPartyVersion.id,
+        creditorSubjectKind:'downstream_counterparty',creditorSubjectId:fixture.counterparty.version.id,
+        affiliateAssignmentId:seed.ProjectAffiliateAssignment.id,archiveId,archiveAuthoritySha256:digest(authorityText),
+        intentPayloadSha256,execution:[null,null,null]},
+      impact:{id:impactId,factId,projectId:project,sourceType:'contract_version',sourceBusinessId:versionId,
+        idempotencyKey:'contract_version:'+versionId+':commitment',impactKind:'contract_commitment_reference',
+        sourceImpactKey:'contract_commitment_reference',direction:'increase',amountCents:null,amountYuan:'100.0054',numericProtocolVersion:2,
+        subjectRole:'debtor',subjectKind:'construction_enterprise',subjectId:seed.BusinessPartyVersion.id,execution:[null,null,null,null,null]},
+    }}:{}),
     storage:{driver:'cos',versioning:'Enabled',upload:storage,download:{...storage}}};
   return {flow,evidence,responses};
 }
@@ -297,5 +332,36 @@ test('Q1 SAVE rejects an upward company identity or a wrong party snapshot befor
       if(stage===5)mutate(response.body.directSigningInput.Q.subjects);
       return response;
     }}),/CASE_SAVE/u);
+  }
+});
+
+test('outside operating binds an independent committed fact, impact and stored generation to the same archive',()=>{
+  const {flow,evidence}=drive({outside:true,operating:true});
+  flow.observation();
+  const result=flow.finish(evidence);
+  assert.equal(result.operatingMode,'projection_required');
+  assert.equal(result.operatingLedger.amountYuan,'100.0054');
+  assert.equal(result.operatingLedger.xmins.fact,result.operatingLedger.xmins.archive);
+  assert.equal(result.operatingLedger.xmins.impact,result.operatingLedger.xmins.archive);
+  assert.notEqual(result.operatingLedger.issuedXmin,result.operatingLedger.xmins.archive);
+});
+
+test('outside operating stops on missing ledger writes, drifted xmins, intent, execution and COS generation',()=>{
+  const mutations=[
+    e=>{e.counts.operatingFacts=0;},
+    e=>{e.ledger.xmins.impact='804';},
+    e=>{e.ledger.intent.issuedXmin='803';},
+    e=>{e.ledger.intent.commitStatus='in progress';},
+    e=>{e.ledger.intent.payloadText=e.ledger.intent.payloadText.replace('projection_required','not_applicable');},
+    e=>{e.ledger.fact.archiveAuthoritySha256='f'.repeat(64);},
+    e=>{e.ledger.impact.execution[0]='another-payment';},
+    e=>{e.generationProof.originals[0].objectGeneration='new-generation';},
+    e=>{e.archiveAudit.metadata.operatingFactId=archiveId;},
+  ];
+  for(const mutate of mutations){
+    const {flow,evidence}=drive({outside:true,operating:true});
+    flow.observation();
+    mutate(evidence);
+    assert.throws(()=>flow.finish(evidence),/CASE_EVIDENCE/u);
   }
 });

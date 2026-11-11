@@ -1,4 +1,4 @@
-import { contractApprovalFormHasReaderRole, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "./contract-parallel-duty-access";
+import { contractApprovalFormHasReaderRole, contractParallelApprovalEpoch, contractParallelDutyIdentity, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "./contract-parallel-duty-access";
 import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
 import { hasDirectSigningInput } from "./contract-direct-pending-source";
 import { readContractV2LifecycleContext } from "./contract-v2-lifecycle-context";
@@ -43,10 +43,12 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import {
-  approvalReviewAccessOnFrozenNode,
+  resolveApprovalReviewOnFrozenNode,
   type ApprovalReviewAccess
 } from "../approval/approval-node-access";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
+import { requiresApprovalSelfReviewConfirmation } from "../approval/approval-self-review";
 import type { ApprovalActorRoleScopes } from "../approval/approval-review-identity";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -96,6 +98,7 @@ interface CurrentContractApprovalReview {
     id: string;
     currentNodeIndex: number;
     updatedAt: Date;
+    expectedParallelApprovalEpoch?: string;
   } | null;
 }
 
@@ -1467,7 +1470,9 @@ export class ContractReadService {
           contract.projectId,
           roleKeys,
           actorUserId,
-          actorRoles.roleScopes
+          actorRoles.roleScopes,
+          this.prisma,
+          version
         );
     if (actorUserId && !currentApprovalReview.access.canAct) {
       const participantIds = await this.contractParticipantIds([contract], versions, new Map([[contract.projectId, roleKeys]]), actorUserId);
@@ -1482,7 +1487,10 @@ export class ContractReadService {
             expectedApprovalInstanceId: currentApprovalReview.approval.id,
             expectedNodeIndex: currentApprovalReview.approval.currentNodeIndex,
             expectedApprovalUpdatedAt:
-              currentApprovalReview.approval.updatedAt.toISOString()
+              currentApprovalReview.approval.updatedAt.toISOString(),
+            ...(currentApprovalReview.approval.expectedParallelApprovalEpoch
+              ? { expectedParallelApprovalEpoch: currentApprovalReview.approval.expectedParallelApprovalEpoch }
+              : {})
           }
         : null;
     const currentApprovalWithdrawal = readOnlyHistory
@@ -2273,7 +2281,8 @@ export class ContractReadService {
     roleKeys: RoleKey[],
     actorUserId?: string,
     actorRoleScopes?: ApprovalActorRoleScopes,
-    readClient: PrismaService | Prisma.TransactionClient = this.prisma
+    readClient: PrismaService | Prisma.TransactionClient = this.prisma,
+    version?: Parameters<typeof contractParallelApprovalEpoch>[0]
   ): Promise<CurrentContractApprovalReview> {
     if (!actorUserId) {
       return emptyCurrentContractApprovalReview();
@@ -2332,6 +2341,14 @@ export class ContractReadService {
       return emptyCurrentContractApprovalReview();
     }
     const instance = instances[0];
+    const epoch = version && contractParallelApprovalEpoch(version, {
+      ...instance, businessType, businessId, flowType: "contract.approve", status: "in_progress"
+    });
+    const approvalCoordinates = {
+      id: instance.id,
+      updatedAt: instance.updatedAt,
+      ...(epoch ? { expectedParallelApprovalEpoch: epoch } : {})
+    };
     let selfReviewApplicantUserId = instance.applicantUserId;
     if (actorUserId !== instance.applicantUserId) {
       try {
@@ -2343,7 +2360,31 @@ export class ContractReadService {
       }
     }
 
-    const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
+    if (isParallelApprovalRound(instance.frozenNodes)) {
+      const round = { ...instance, status: "in_progress" };
+      let delegated: CurrentContractApprovalReview | undefined;
+      for (const nodeIndex of activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)) {
+        // The frozen route supplies the duty. Current role holders and scoped
+        // delegates use the same eligibility test as the locked POST.
+        const identity = await contractParallelDutyIdentity(readClient, round, projectId, actorUserId, nodeIndex, false);
+        if (!identity) continue;
+        const direct = identity.representedUserId === actorUserId;
+        const requiresSelfReviewConfirmation = direct && requiresApprovalSelfReviewConfirmation({
+          applicantUserId: selfReviewApplicantUserId, actorUserId, actorRoleKeys: [identity.approvedRoleKey],
+          nodeRoleKeys: [identity.approvedRoleKey], allowContractDirectorSelfReview: true
+        });
+        const review = {
+          access: { canAct: true, canReview: selfReviewApplicantUserId !== actorUserId || requiresSelfReviewConfirmation,
+            requiresSelfReviewConfirmation },
+          approval: { ...approvalCoordinates, currentNodeIndex: nodeIndex }
+        };
+        if (direct) return review;
+        delegated ??= review;
+      }
+      return delegated ?? emptyCurrentContractApprovalReview();
+    }
+
+    const direct = resolveApprovalReviewOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
@@ -2354,14 +2395,10 @@ export class ContractReadService {
       actorRoleScopes,
       true
     );
-    if (directOrAssignedAccess.canAct) {
+    if (direct.access.canAct) {
       return {
-        access: directOrAssignedAccess,
-        approval: {
-          id: instance.id,
-          currentNodeIndex: instance.currentNodeIndex,
-          updatedAt: instance.updatedAt
-        }
+        access: direct.access,
+        approval: { ...approvalCoordinates, currentNodeIndex: direct.currentNodeIndex }
       };
     }
 
@@ -2370,7 +2407,7 @@ export class ContractReadService {
       projectId,
       readClient
     );
-    const delegatedAccess = approvalReviewAccessOnFrozenNode(
+    const delegated = resolveApprovalReviewOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
@@ -2382,13 +2419,9 @@ export class ContractReadService {
       true
     );
     return {
-      access: delegatedAccess,
-      approval: delegatedAccess.canAct
-        ? {
-            id: instance.id,
-            currentNodeIndex: instance.currentNodeIndex,
-            updatedAt: instance.updatedAt
-          }
+      access: delegated.access,
+      approval: delegated.access.canAct
+        ? { ...approvalCoordinates, currentNodeIndex: delegated.currentNodeIndex }
         : null
     };
   }

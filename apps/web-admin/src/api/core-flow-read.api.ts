@@ -1157,6 +1157,7 @@ export type ExecutePaymentApprovalReviewActionResult =
     };
 
 export interface ReviewContractApprovalPayload {
+  expectedParallelApprovalEpoch?: string;
   decision: "approve" | "reject";
   comment?: string;
   selfReviewReason?: string;
@@ -1170,6 +1171,7 @@ export interface ReviewContractApprovalPayload {
 }
 
 export interface ContractReviewApprovalCoordinates {
+  expectedParallelApprovalEpoch?: string;
   expectedContractUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
@@ -6156,7 +6158,10 @@ function contractApprovalReviewActionPayload(
     expectedContractUpdatedAt: context.expectedContractUpdatedAt,
     expectedApprovalInstanceId: context.expectedApprovalInstanceId,
     expectedNodeIndex: context.expectedNodeIndex,
-    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt,
+    ...(context.expectedParallelApprovalEpoch !== undefined
+      ? { expectedParallelApprovalEpoch: context.expectedParallelApprovalEpoch }
+      : {})
   };
 }
 
@@ -6191,6 +6196,9 @@ function normalizeContractApprovalReviewAction(
     !expectedContractUpdatedAt ||
     !expectedApprovalInstanceId ||
     !expectedApprovalUpdatedAt ||
+    (input.expectedParallelApprovalEpoch !== undefined &&
+      (typeof input.expectedParallelApprovalEpoch !== "string" ||
+        !/^[a-f0-9]{64}$/u.test(input.expectedParallelApprovalEpoch))) ||
     !Number.isInteger(input.routeGeneration) ||
     input.routeGeneration < 0 ||
     !Number.isInteger(input.detailEpoch) ||
@@ -6229,6 +6237,9 @@ function normalizeContractApprovalReviewAction(
     expectedApprovalInstanceId,
     expectedNodeIndex: input.expectedNodeIndex,
     expectedApprovalUpdatedAt,
+    ...(input.expectedParallelApprovalEpoch !== undefined
+      ? { expectedParallelApprovalEpoch: input.expectedParallelApprovalEpoch }
+      : {}),
     decision: input.decision,
     requiresSelfReviewConfirmation:
       input.requiresSelfReviewConfirmation,
@@ -6260,6 +6271,7 @@ function sameContractApprovalReviewContext(
     expected.expectedNodeIndex === actual.expectedNodeIndex &&
     expected.expectedApprovalUpdatedAt ===
       actual.expectedApprovalUpdatedAt &&
+    expected.expectedParallelApprovalEpoch === actual.expectedParallelApprovalEpoch &&
     expected.decision === actual.decision &&
     expected.comment === actual.comment &&
     expected.requiresSelfReviewConfirmation ===
@@ -6312,20 +6324,22 @@ function assertContractApprovalReviewPreflight(
     (action) => action.key === "review_approval" && action.enabled
   );
   const coordinates = preflight.reviewApprovalContext;
+  const matchesReviewCoordinates = coordinates &&
+    (context.expectedParallelApprovalEpoch === undefined
+      ? coordinates.expectedContractUpdatedAt === context.expectedContractUpdatedAt &&
+        coordinates.expectedApprovalUpdatedAt === context.expectedApprovalUpdatedAt
+      : coordinates.expectedParallelApprovalEpoch === context.expectedParallelApprovalEpoch);
   if (
     preflight.id !== context.contractId ||
     preflight.contractVersionId !== context.contractVersionId ||
-    preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt ||
+    preflight.lifecycleUpdatedAt !== coordinates?.expectedContractUpdatedAt ||
     enabledReviewActions.length !== 1 ||
     (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !==
       context.requiresSelfReviewConfirmation ||
-    coordinates?.expectedContractUpdatedAt !==
-      context.expectedContractUpdatedAt ||
+    !coordinates || !matchesReviewCoordinates ||
     coordinates.expectedApprovalInstanceId !==
       context.expectedApprovalInstanceId ||
     coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
-    coordinates.expectedApprovalUpdatedAt !==
-      context.expectedApprovalUpdatedAt ||
     !sameContractApprovalOwnerRisk(
       context.ownerContractRisk,
       preflight.ownerContractRisk ?? null

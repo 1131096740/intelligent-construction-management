@@ -74,7 +74,7 @@ function assemblyFixture(nativeMode = false) {
   };
   const cosKeys=['FILE_STORAGE_DRIVER','COS_BUCKET','COS_REGION','COS_SECRET_ID','COS_SECRET_KEY','COS_SESSION_TOKEN'];
   if(nativeMode)bridge.native={
-    fixture:Object.freeze({}),
+    fixture:Object.freeze(nativeMode==='outside-operating'?{relationship:'outside',outsideOperating:true}:{}),
     beginHttp(){events.push('full-before-http');},
     endHttp(success){events.push(success?'full-after-http':'end-failed-http');},
     storageEnvironment(){return Object.fromEntries(cosKeys.map((key,i)=>[key,i===0?'cos':'synthetic-'+i]));}
@@ -87,7 +87,8 @@ function assemblyFixture(nativeMode = false) {
       assert.equal(process.env.COS_SESSION_TOKEN,'synthetic-5');
       events.push('http');
       if(nativeMode==='fail')throw new Error('sensitive remote error should not escape');
-      return Object.freeze({status:'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',httpSteps:9,proofSha256:'a'.repeat(64)});
+      return Object.freeze({status:nativeMode==='outside-operating'?'CURRENT259_FIRST_OUTSIDE_OPERATING_PROTOCOL_MATCHED_NOT_ACCEPTANCE'
+        :'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',httpSteps:9,proofSha256:'a'.repeat(64)});
     }},
     './task12-current259-contract-login.cjs': { takeCurrent259FirstQ2Bridge(value) {
       assert.equal(value, bridge); assert.equal(claimed, false); claimed = true;
@@ -192,5 +193,15 @@ test('native request failure preserves its fixed stage and closes before restori
     await assert.rejects(model.run(model.bridge),{code:'CURRENT259_FIRST_Q2_APP_HTTP'});
     assert.deepEqual(model.events.slice(-6),['listen','full-before-http','http','end-failed-http','app-close','readback']);
     assert.equal(process.env.COS_SESSION_TOKEN,undefined);
+  }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
+});
+
+test('the verified operating outside fixture closes the same Nest providers before releasing its distinct result',async()=>{
+  const model=assemblyFixture('outside-operating');
+  try{
+    const result=await model.run(model.bridge);
+    assert.equal(result.status,'CURRENT259_FIRST_OUTSIDE_OPERATING_HTTP_AND_NEST_CLOSED');
+    assert.equal(result.verifiedClients,5);
+    assert.deepEqual(model.events.slice(-6),['listen','full-before-http','http','full-after-http','app-close','readback']);
   }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
 });

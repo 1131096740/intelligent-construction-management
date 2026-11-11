@@ -21,7 +21,8 @@ const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback
 const LEGACY_TOPOLOGY='UNVERIFIED_HOST_PUBLISHED_TLS';
 const paymentStartNames=Object.freeze(Object.fromEntries([
  ['cancel-commit','startCurrent259FirstRollbackPostgres'],['normal','startCurrent259NormalPaymentPostgres'],
- ['response-loss','startCurrent259ResponseLossPostgres']
+ ['response-loss','startCurrent259ResponseLossPostgres'],['competition','startCurrent259CompetitionPostgres'],
+ ['disconnect-commit-recovery','startCurrent259DisconnectRecoveryPostgres']
 ].map(([scenario,name])=>[paymentLoopbackForScenario(scenario).topology,name])));
 const paymentStarters=Object.freeze(Object.fromEntries(Object.entries(paymentStartNames).map(([topology,name])=>
  [topology,Object.getOwnPropertyDescriptor(resourceExports,name)?.value])));
@@ -145,7 +146,7 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical,t
   // These are actual original producer return values, never caller projections.
   methods={close:own(resource,'close')};
   methods.getReceipt=own(resource,'getReceipt');
-  if(technical)methodNames=[...METHODS,...(!paymentLoopback?CONTRACT_METHODS:[]),...(loopback?['checkRelay']:[])];
+  if(technical)methodNames=[...METHODS,...(!paymentLoopback?CONTRACT_METHODS:[]),...(loopback?['checkRelay','beginPrismaRelayDrain']:[])];
   for(const key of methodNames)methods[key]=own(resource,key);
   need(methodNames.every(key=>typeof methods[key]==='function'),'CURRENT259_RESOURCE_CHANGED');
   fields=Object.fromEntries(relayFields.map(key=>[key,own(resource,key)]));fields.serverCertHashes=Object.freeze(record(fields.serverCertHashes,TLS_KEYS));
@@ -158,10 +159,15 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical,t
   loader.verifyFull();check();
   handle=Object.freeze({kind:'CURRENT259_OWNED_RESOURCE'});
   const resourceView={...fields,topology};
-  for(const key of methodNames.filter(k=>!['close','getReceipt','checkRelay'].includes(k)))resourceView[key]=async(...args)=>{need(!CONTRACT_METHODS.includes(key)||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
+  for(const key of methodNames.filter(k=>!['close','getReceipt','checkRelay','beginPrismaRelayDrain'].includes(k)))resourceView[key]=async(...args)=>{need(!CONTRACT_METHODS.includes(key)||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
   resourceView.getReceipt=()=>{checkOperation();return methods.getReceipt.call(resource);};
   resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
-  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
+  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,
+   ...(loopback?{beginPrismaRelayDrain(){
+    need(arguments.length===0&&active&&!broken&&!businessToken&&!abortState(signal)&&
+     own(resource,'beginPrismaRelayDrain')===methods.beginPrismaRelayDrain,'CURRENT259_RESOURCE_CLOSED');
+    return methods.beginPrismaRelayDrain.call(resource);
+   }}:{}),verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
   handles.set(handle,{check,checkContinuity,view,close,technical});
   if(signal)EventTarget.prototype.addEventListener.call(signal,'abort',onAbort,{once:true});
   check();value=await consume(handle);check();loader.verifyFull();check();
@@ -205,6 +211,14 @@ async function withCurrent259FirstQ2LoopbackResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,Q2_TOPOLOGY);
 }
+async function withCurrent259CompetitionResource(build,plan,signal,consume){
+ need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('competition').topology);
+}
+async function withCurrent259DisconnectRecoveryResource(build,plan,signal,consume){
+ need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('disconnect-commit-recovery').topology);
+}
 function claimCurrent259TechnicalResource(handle){
  need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.check();return owner.view;
@@ -213,4 +227,4 @@ function claimCurrent259TechnicalResourceContinuity(handle,token){
  businessIssuer(token,handle);need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.view.checkLifetime();return owner.view;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});
+module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259DisconnectRecoveryResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});

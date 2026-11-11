@@ -10,7 +10,8 @@ const keyA='10101010-1234-4bcd-8f12-0123456789ab';
 const keyB='20202020-1234-4bcd-8f12-0123456789ab';
 function model(options={}){
  const events=[],handle={},permit={},token={},source={sealSha256:'a'.repeat(64)},applicationPair=[{},{}];
- const identity=Object.freeze({database:'test_database',databaseOid:'83',systemIdentifier:'5556789',loginOid:'10',pid:812,start:'2026-11-11T00:00:00.000001Z'});
+ const topology='UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS',relayId='da49e313-e3da-407f-b279-3d09caecfc3e',containerId='c'.repeat(64),networkId='d'.repeat(64);
+ const identity=Object.freeze({tls:true,database:'test_database',databaseOid:'83',systemIdentifier:'5556789',loginOid:'10',pid:812,start:'2026-11-11T00:00:00.000001Z'});
  const owner={
   async $transaction(consume){
    events.push('owner-transaction');
@@ -26,10 +27,13 @@ function model(options={}){
   }
  },observer={},finish=[],clients=[{},{}];
  const leases=applicationPair.map((application,index)=>{
-  application.origin='http://127.0.0.1:'+String(32000+index);
+  application.origin='http://127.0.0.1:'+String(32000+(options.sameListener?0:index));
   return {application,handle,source,session:{owner,observer,runtime:clients[index],
    identity:[identity,{...identity,loginOid:'92',pid:813+index,start:'2026-11-11T00:00:00.00000'+String(2+index)+'Z'}],
-   endpoint:{publishedPort:42531,clientAddress:'172.19.0.1',clientPort:49150+index},async verifyFull(){events.push('full-'+index);}},
+   endpoint:{transport:options.wrongProfile&&index===1?'UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS':topology,
+    relayId:options.wrongRelay&&index===1?'ab49e313-e3da-407f-b279-3d09caecfc3e':relayId,host:'127.0.0.1',
+    port:options.wrongPort&&index===1?42532:42531,clientAddress:'127.0.0.1',clientPort:49150+(options.sameClientPort?0:index),
+    serverAddress:'127.0.0.1',serverPort:5432},async verifyFull(){events.push('full-'+index);}},
   activateContinuity(value){assert.equal(value,token);events.push('active-'+index);},
   finishContinuity(value){assert.equal(value,token);events.push('done-'+index);},check(){}};
  });
@@ -61,7 +65,11 @@ function model(options={}){
  };
  const loader={loadPaymentModules(){return modules;}};
  for(const lease of leases)lease.loader=loader;
- const view={runId,resource:{async execOwnerSql(sql,label){
+ const view={runId,resource:{topology,relayId,containerId,networkId,databaseName:identity.database,port:42531,getReceiptContinuity(value){
+  assert.equal(value,token);
+  return {topology,runId,containerId,networkId,databaseName:identity.database,port:42531,
+   relay:{id:relayId,containerId,host:'127.0.0.1',port:42531}};
+ },async execOwnerSql(sql,label){
   assert.equal(label,'current259-competition-overlap');
   const service=fs.readFileSync(path.join(__dirname,'../src/payment/payment-request.service.ts'),'utf8');
   const lock=service.split('private async lockPaymentRequestForUpdate(')[1].split('Prisma.sql`')[1].split('`);')[0];
@@ -72,8 +80,8 @@ function model(options={}){
   assert.ok(prefix.endsWith('FROM "PaymentRequest" payment'));
   assert.match(sql,/pg_catalog\.pg_blocking_pids/);
   assert.match(sql,/a\.xact_start IS NOT NULL/);
-  assert.match(sql,/task16_live_[a-z0-9]+_runtime_a','172\.19\.0\.1',49150/);
-  assert.match(sql,/task16_live_[a-z0-9]+_runtime_b','172\.19\.0\.1',49151/);
+  assert.match(sql,/task16_live_[a-z0-9]+_runtime_a','127\.0\.0\.1',49150/);
+  assert.match(sql,/task16_live_[a-z0-9]+_runtime_b','127\.0\.0\.1',49151/);
   assert.deepEqual(events.slice(-3),['owner-holds','post-0','post-1']);
   events.push('overlap');
   return {stdout:JSON.stringify({overlap:true,readerPid:options.sameMonitor?813:815,databaseOid:'83',systemIdentifier:'5556789',readerOid:'10',readerTls:true})};
@@ -107,3 +115,11 @@ for(const [option,events] of Object.entries({samePid:['case'],earlyPost:['case']
   else assert.deepEqual(fixture.events,[]);
  });
 }
+
+for(const fault of ['sameListener','wrongProfile','wrongRelay','wrongPort','sameClientPort'])
+ test('crossed competition transport fails before fixture or row lock: '+fault,async()=>{
+  const fixture=model({[fault]:true});
+  await assert.rejects(fixture.run(),{code:'CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED'});
+  assert.equal(fixture.events.includes('fixture'),false);
+  assert.equal(fixture.events.includes('owner-transaction'),false);
+ });

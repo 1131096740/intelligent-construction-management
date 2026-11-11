@@ -119,6 +119,7 @@ async function runCurrent259FirstQ2Http(bridge,server){
     cosCurrentGenerationSha256:digest(upload.objectGeneration),cosCurrentContentSha256:upload.contentSha256,cosCurrentBytes:upload.sizeBytes,
     cosFixedGenerationSha256:digest(download.objectGeneration),cosFixedContentSha256:download.contentSha256,cosFixedBytes:download.sizeBytes,
     ...(bridge.fixture.relationship==='outside'?{persistedGenerationSha256:result.persistedGenerationSha256}:{}),
+    ...(bridge.fixture.outsideOperating===true?{operatingLedger:result.operatingLedger}:{}),
     inputSha256:coordinates.inputSha256,requestSha256:archive.requestSha256,authoritySha256:archive.authoritySha256,
     archives:counts.archives,evidenceFiles:counts.evidenceFiles,physicalAliases:counts.physicalAliases,
     draftSlots:counts.draftSlots,approvalRounds:counts.approvalRounds,sealTasks:counts.sealTasks,

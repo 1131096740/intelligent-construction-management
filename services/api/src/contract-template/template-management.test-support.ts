@@ -74,6 +74,8 @@ import { ModuleRef, Reflector } from "@nestjs/core";
 import * as bcrypt from "bcryptjs";
 import PizZip from "pizzip";
 import { Prisma } from "@prisma/client";
+import { ApprovalFormController } from "../approval/approval-form.controller";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuthController } from "../auth/auth.controller";
 import { AuthService } from "../auth/auth.service";
 import { JwtTokenService } from "../auth/jwt-token.service";
@@ -174,8 +176,8 @@ export class TemplateSyntheticStore {
     return {
       findUnique: async ({ where }: { where: Row }) => fixtureClone(find(where)[0] ?? null),
       findUniqueOrThrow: async ({ where }: { where: Row }) => { const row = find(where)[0]; if (!row) throw new Error("合成持久层未找到唯一记录"); return fixtureClone(row); },
-      findFirst: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy)[0] ?? null,
-      findMany: async (args: { where?: Row; orderBy?: Row } = {}) => this.sorted(find(args.where), args.orderBy),
+      findFirst: async (args: { where?: Row; orderBy?: Row | Row[] } = {}) => this.sorted(find(args.where), args.orderBy)[0] ?? null,
+      findMany: async (args: { where?: Row; orderBy?: Row | Row[] } = {}) => this.sorted(find(args.where), args.orderBy),
       create: async ({ data }: { data: Row }) => {
         if (name === "contractPristineDraftDeletionReceipt") this.pristineReceiptWriteAttempts++;
         const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), draftRevision: 1, status: "draft", ...(name === "contract" ? { voidedAt: null } : {}), ...(name === "fileObject" ? { purgeReceiptId: null } : {}), ...(name === "contractSealTask" ? { approvedByUserId: null, approvedAt: null, completedByUserId: null, completedAt: null, cancelledByUserId: null, cancelledAt: null, cancellationReason: null } : {}), ...(name === "contractEconomicReview" ? { revision: 1, status: "pending_review", confirmedAt: null, contractReviewedById: null, financeReviewedById: null, frozenSources: null } : {}), ...(name === "contractVersion" ? { baseVersionId: null, firstSubmittedAt: null, effectiveAt: null, documentContentRevision: 1, documentContentFingerprint: null, readinessSnapshot: null, companyEntityId: null, companyEntityNameSnapshot: null, estimatedAmountCents: null, estimatedAmountYuan: null, settlementMode: "none", settlementModeConfirmedAt: null, latestDraftPreviewDocumentId: null } : {}), ...(name === "contractGeneratedDocument" ? { docxFileId: null, pdfFileId: null, errorMessage: null } : {}), ...data };
@@ -212,9 +214,17 @@ export class TemplateSyntheticStore {
     };
   }
 
-  private sorted(rows: Row[], order?: Row) {
-    const [key, direction] = Object.entries(order ?? {})[0] ?? [];
-    return fixtureClone(key ? [...rows].sort((a, b) => (Number(a[key]) - Number(b[key])) * (direction === "desc" ? -1 : 1)) : rows);
+  private sorted(rows: Row[], order?: Row | Row[]) {
+    const fields = Array.isArray(order) ? order.flatMap(Object.entries) : Object.entries(order ?? {});
+    return fixtureClone(fields.length ? [...rows].sort((a, b) => {
+      for (const [key, direction] of fields) {
+        const left = a[key], right = b[key];
+        const difference = typeof left === "string" && typeof right === "string"
+          ? (left < right ? -1 : left > right ? 1 : 0) : Number(left) - Number(right);
+        if (difference) return difference * (direction === "desc" ? -1 : 1);
+      }
+      return 0;
+    }) : rows);
   }
 
   private apply(row: Row, data: Row, tableName: string) {
@@ -839,7 +849,10 @@ export class TemplateSyntheticStore {
       }
       // Evaluate only the exact approval-assignment SQL emitted by the real route.
       const projectProjection = (count: number, actor: boolean) => `WITH members AS MATERIALIZED ( SELECT pm."projectId", pm."userId", pm."positionKey" AS "roleKey", u."isActive" AS "userIsActive" FROM "ProjectMember" pm INNER JOIN "User" u ON u."id" = pm."userId" WHERE pm."projectId" = ? AND u."isActive" = TRUE AND pm."positionKey" IN (${Array(count).fill("?").join(",")}) ${actor ? 'AND pm."userId" = ? ' : ''}FOR SHARE OF pm, u ), positions AS MATERIALIZED ( SELECT up."projectId", up."userId", p."key" AS "roleKey", u."isActive" AS "userIsActive" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" = ? AND u."isActive" = TRUE AND p."key" IN (${Array(count).fill("?").join(",")}) ${actor ? 'AND up."userId" = ? ' : ''}FOR SHARE OF up, p, u ) SELECT * FROM members UNION SELECT * FROM positions`;
-      const projectShape = [[1, true], [2, false]].find(([count, actor]) => text === projectProjection(Number(count), Boolean(actor)));
+      const projectShape = [[1, true], [2, false]].find(([count, actor]) => {
+        const locked = projectProjection(Number(count), Boolean(actor));
+        return text === locked || text === locked.replace("FOR SHARE OF pm, u ", "").replace("FOR SHARE OF up, p, u ", "");
+      });
       if (projectShape) {
         const count = Number(projectShape[0]), actor = Boolean(projectShape[1]);
         const width = 1 + count + Number(actor);
@@ -852,7 +865,10 @@ export class TemplateSyntheticStore {
         return [...members, ...assignments].filter(row => roles.includes(row.roleKey as string) && (!actor || row.userId === actorId) && users.some(u => u.id === row.userId && u.isActive === true)).map(row => ({ projectId, userId: row.userId, roleKey: row.roleKey, userIsActive: true }));
       }
       const applicantSql = 'SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" IS NULL AND up."userId" = ? AND p."key" IN (\'contract_director\', \'contract_staff\') AND u."isActive" = TRUE FOR SHARE OF up, p, u';
-      const liveGlobalShape = [1, 2, 3].find(count => text === `SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" IS NULL AND up."userId" = ? AND u."isActive" = TRUE AND p."key" IN (${Array(count).fill("?").join(",")}) FOR SHARE OF up, p, u`);
+      const liveGlobalShape = [1, 2, 3].find(count => {
+        const read = `SELECT up."userId", p."key" AS "roleKey" FROM "UserPosition" up INNER JOIN "Position" p ON p."id" = up."positionId" INNER JOIN "User" u ON u."id" = up."userId" WHERE up."projectId" IS NULL AND up."userId" = ? AND u."isActive" = TRUE AND p."key" IN (${Array(count).fill("?").join(",")})`;
+        return text === read || text === read + " FOR SHARE OF up, p, u";
+      });
       if (liveGlobalShape) {
         if (query.values.length !== liveGlobalShape + 1) throw new Error("合成当前职责参数不符");
         const users = await this.prisma.user.findMany(), positions = await this.prisma.position.findMany();
@@ -904,7 +920,7 @@ export class TemplateSyntheticStore {
       if (text === 'SELECT "id" FROM "ApprovalInstance" WHERE "id" = ? FOR UPDATE') return this.prisma.approvalInstance.findMany({ where: { id } });
       if (text === 'SELECT "id" FROM "ContractSealTask" WHERE "id" = ? FOR UPDATE') return this.prisma.contractSealTask.findMany({ where: { id } });
       if (text === 'SELECT "id" FROM "ApprovalDelegation" WHERE "id" = ? FOR SHARE') return this.prisma.approvalDelegation.findMany({ where: { id } });
-      if (text === 'SELECT "id", "isActive" FROM "User" WHERE "id" = ? FOR SHARE') return this.prisma.user.findMany({ where: { id } });
+      if (['SELECT "id", "isActive" FROM "User" WHERE "id" = ? FOR SHARE', 'SELECT "id", "isActive" FROM "User" WHERE "id" = ?'].includes(text)) return this.prisma.user.findMany({ where: { id } });
       if (text === 'SELECT "id", "isActive", "name" FROM "User" WHERE "id" = ? FOR UPDATE') return this.prisma.user.findMany({ where: { id } });
       if (text === `SELECT "id", "fileId", "contentSha256" FROM "HandwrittenSignatureVersion" WHERE "userId" = ? AND "source" = 'canvas' ORDER BY "createdAt" DESC, "id" DESC LIMIT 1 FOR UPDATE`) return (await this.prisma.handwrittenSignatureVersion.findMany({ where: { userId: id, source: "canvas" }, orderBy: { createdAt: "desc" } })).slice(0, 1);
       if (text === 'SELECT "id", "contentSha256", "storageStatus" FROM "FileObject" WHERE "id" = ? FOR UPDATE') return this.prisma.fileObject.findMany({ where: { id } });
@@ -1003,7 +1019,7 @@ export function syntheticWordSource(includeSignatures = false) {
   return zip.generate({ type: "nodebuffer" });
 }
 
-export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean;
+export async function createTemplateTestServer(options: { draftWorkbench?: boolean; realNegotiationReads?: boolean; legacyWorkbenchReads?: boolean; economicReviewReads?: boolean; generatedArchivePreparation?: boolean; generatedApprovalPdf?: boolean;
   upwardDirectArchiveAuthority?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => UpwardDirectArchiveAuthority;
   directArchiveExecutor?: (store: TemplateSyntheticStore, storage: PrivateFileStorage) => DirectArchiveExecutor } = {}) {
   const store = new TemplateSyntheticStore();
@@ -1051,7 +1067,8 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
   const audit = new AuditService(prisma);
   const tokens = new JwtTokenService();
   const auth = new AuthService(prisma, tokens, audit);
-  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController, ArchiveController, MeController, ...(options.legacyWorkbenchReads ? [ContractWorkbenchController] : []), ...(options.economicReviewReads ? [ContractEconomicReviewController] : [])] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController], providers: [
+  const module = await Test.createTestingModule({ controllers: [...(options.draftWorkbench ? [ContractDraftController, ContractController, ProjectController, ArchiveController, MeController, ...(options.legacyWorkbenchReads ? [ContractWorkbenchController] : []), ...(options.economicReviewReads ? [ContractEconomicReviewController] : [])] : []), BusinessEntryDefinitionController, AuthController, FileController, ContractTemplateController, ContractDocumentController,
+    ...(options.generatedApprovalPdf ? [ApprovalFormController] : [])], providers: [
     { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit },
     { provide: PrivateFileStorage, useValue: storage }, MeService, ProjectVisibilityService, ContractReadService,
     ...(options.generatedArchivePreparation ? [{ provide: GENERATED_ARCHIVE_PREPARATION_READER, useValue: storage }] : []),
@@ -1059,6 +1076,10 @@ export async function createTemplateTestServer(options: { draftWorkbench?: boole
     ...(options.directArchiveExecutor ? [{ provide: DIRECT_ARCHIVE_EXECUTOR, useValue: options.directArchiveExecutor(store, storage) }] : []),
     { provide: CONTRACT_VERSION_FILE_READ_AUTHORITY, useExisting: ContractReadService },
     { provide: FileService, useFactory: (moduleRef: ModuleRef) => new FileService(prisma, audit, storage, undefined, undefined, moduleRef), inject: [ModuleRef] },
+    ...(options.generatedApprovalPdf ? [{
+      provide: ApprovalFormService, useFactory: (files: FileService) => new ApprovalFormService(prisma, files, audit, auth),
+      inject: [FileService]
+    }] : []),
     { provide: ContractDocumentService, useFactory: (files: FileService) => new ContractDocumentService(prisma, audit, files, new BusinessNumberingService()), inject: [FileService] },
     { provide: ContractNegotiationService, useFactory: (files: FileService) => options.realNegotiationReads ? new ContractNegotiationService(prisma, audit, files, auth) : {}, inject: [FileService] }, { provide: AuthService, useValue: auth },
     LayoutTemplateService, ContractTemplateService, { provide: ContractScenarioService, useValue: {} },

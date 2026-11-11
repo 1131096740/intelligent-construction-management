@@ -108,3 +108,15 @@ test('only the fixed cancellation relay renders loopback runtime coordinates',()
  assert.throws(()=>createCurrent259A16FaultPlan({...relay,mode:'disconnect-commit'}),/TASK16_CURRENT259_A16_FAULT/u);
  assert.throws(()=>createCurrent259A16FaultPlan({...relay,runtime:original.runtime}),/TASK16_CURRENT259_A16_FAULT/u);
 });
+
+test('only the dedicated disconnect topology can terminate a loopback runtime',()=>{
+ const {createCurrent259A16FaultPlan}=require(file),original=scope(),runtime={...original.runtime,clientAddress:'127.0.0.1'};
+ const relay={...original,mode:'disconnect-commit',transport:'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS',runtime};
+ const owner=createCurrent259A16FaultPlan(relay).ownerSql;
+ assert.match(owner,/pg_catalog.pg_terminate_backend\(112\)/u);
+ assert.match(owner,/pg_catalog.host\(a.client_addr\)='127\.0\.0\.1'/u);
+ assert.doesNotMatch(owner,/pg_cancel_backend/u);
+ for(const input of [{...relay,mode:'cancel-commit'},{...relay,runtime:original.runtime},
+  {...relay,transport:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'},{...relay,transport:'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'}])
+  assert.throws(()=>createCurrent259A16FaultPlan(input),/TASK16_CURRENT259_A16_FAULT/u);
+});

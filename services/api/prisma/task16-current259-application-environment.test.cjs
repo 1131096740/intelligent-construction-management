@@ -98,6 +98,24 @@ test('unknown application shutdown retains its environment and storage for the u
  }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
 });
 
+test('disconnect keeps the original safe failure when the real environment wrapper cannot confirm cleanup',async()=>{
+ const restore=cleanEnvironment();let f;
+ const {captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
+ const original=Object.assign(new Error('PG_CASE_DISCONNECT_LEDGER_CHANGED'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE',privateSql:'private SQL'});
+ const detail=captureCurrent259DisconnectFailure(original,'ROLLBACK_OBSERVATION');
+ try{
+  f=fixture();
+  await assert.rejects(f.api.withCurrent259ApplicationEnvironment(f.handle,()=>{throw carryCurrent259DisconnectFailure(original,detail);}),error=>{
+   assert.equal(error.code,'CURRENT259_APP_ENV_CLEANUP_UNKNOWN');
+   assert.equal(error.storageCleanup,'UNKNOWN');
+   assert.equal(error.cause,original);
+   assert.equal(captureCurrent259DisconnectFailure(error,'ORIGINAL_APPLICATION'),detail);
+   assert.doesNotMatch(JSON.stringify(detail),/private SQL/u);
+   return true;
+  });
+ }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
+});
+
 test('actual WeChat credential aliases cannot be inherited into the isolated application',async()=>{
  const restore=cleanEnvironment();let f;
  try{

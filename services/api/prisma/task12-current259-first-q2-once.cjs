@@ -5,6 +5,7 @@ const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArg
 const fs=require('node:fs'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const {types}=require('node:util');
+const {verifyCurrent259OutsideOperatingReceipt}=require('./task12-current259-outside-operating-proof.cjs');
 
 const cosPermits=new WeakMap(),appPermits=new WeakMap();
 let current,entered=false;
@@ -29,7 +30,8 @@ function claim(map,permit,phase){
 function claimCurrent259FirstQ2CosPermit(permit){
   need(arguments.length===1,'AUTHORITY');
   const grant=claim(cosPermits,permit,'COS_PREFLIGHT');
-  return Object.freeze({plan:grant.state.plan.cos,check:grant.state.check,signal:grant.state.controller.signal,
+  return Object.freeze({plan:grant.state.plan.cos,outside:grant.state.plan.case.relationship==='outside',
+    check:grant.state.check,signal:grant.state.controller.signal,
     application:grant.state.application,observer:grant.state.observer});
 }
 function claimCurrent259FirstQ2ApplicationPermit(permit,proof,handle,fixture){
@@ -96,12 +98,13 @@ function archiveRequestSha256(row){
   return hash(parts.map(value=>Buffer.byteLength(value,'utf8')+':'+value).join(''));
 }
 function validateReceiptEvidence(result,operating,fixture,outside){
-  const keys=outside?[...receiptKeys,'persistedGenerationSha256']:receiptKeys;
+  const outsideOperating=outside&&operating;
+  const keys=outside?[...receiptKeys,'persistedGenerationSha256',...(outsideOperating?['operatingLedger']:[])]:receiptKeys;
   const evidence=fixed(own(result,'evidence'),keys,'RESULT'),evidenceSha256=own(result,'evidenceSha256');
   need(receiptIds.every(key=>typeof evidence[key]==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(evidence[key]))&&
     receiptHashes.every(key=>isSha256(evidence[key]))&&evidence.status==='effective'&&evidence.revision===2&&
     typeof evidence.effectiveAt==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u.test(evidence.effectiveAt)&&
-    Number.isFinite(Date.parse(evidence.effectiveAt))&&evidence.operatingMode===(operating?'internal_reference_only':'not_applicable')&&
+    Number.isFinite(Date.parse(evidence.effectiveAt))&&evidence.operatingMode===(outsideOperating?'projection_required':operating?'internal_reference_only':'not_applicable')&&
     Number.isInteger(evidence.fileBytes)&&evidence.fileBytes>0&&evidence.fileBytes<=16384&&
     evidence.downloadBytes===evidence.fileBytes&&evidence.downloadSha256===evidence.fileSha256&&
     evidence.cosCurrentBytes===evidence.fileBytes&&evidence.cosFixedBytes===evidence.fileBytes&&
@@ -110,7 +113,9 @@ function validateReceiptEvidence(result,operating,fixture,outside){
     (!outside||evidence.persistedGenerationSha256===evidence.cosFixedGenerationSha256)&&
     evidence.actorId===fixture.actorId&&evidence.fileId===fixture.fileId&&evidence.idempotencyKey===fixture.idempotencyKey&&
     archiveRequestSha256(evidence)===evidence.requestSha256&&
-    Object.entries(receiptCounts).every(([key,value])=>evidence[key]===value)&&
+    Object.entries(receiptCounts).every(([key,value])=>evidence[key]===
+      (outsideOperating&&['operatingFacts','operatingImpacts'].includes(key)?1:value))&&
+    (!outsideOperating||verifyCurrent259OutsideOperatingReceipt(evidence.operatingLedger))&&
     isSha256(evidenceSha256)&&hash(JSON.stringify(evidence))===evidenceSha256,'RESULT');
   return {evidence,evidenceSha256};
 }
@@ -157,8 +162,9 @@ async function main(){
     const {verifyCurrent259FirstQ2Plan}=require('../../../scripts/prepare-task12-current259-first-q2.cjs');
     preflight='PLAN_VERIFY';
     checked=verifyCurrent259FirstQ2Plan(args.file,args.digest);
-    if(!args.once)return {status:checked.plan.case.relationship==='outside'
-      ?'CURRENT259_FIRST_OUTSIDE_DIRECT_HOLD':'CURRENT259_FIRST_Q2_HOLD',planSha256:args.digest};
+    const outside=checked.plan.case.relationship==='outside', outsideOperating=outside&&checked.plan.case.operating;
+    const scenario=outsideOperating?'CURRENT259_FIRST_OUTSIDE_OPERATING':outside?'CURRENT259_FIRST_OUTSIDE_DIRECT':'CURRENT259_FIRST_Q2';
+    if(!args.once)return {status:scenario+'_HOLD',planSha256:args.digest};
     preflight='HOST_ENV';checkHostEnv();
     preflight='TIME';checkDate(checked.plan);
     preflight='PLAN_RECHECK';checked.check();
@@ -171,11 +177,11 @@ async function main(){
     const {installCurrent259ArchiveAuthoritiesWithRegisteredFileSource}=require('./task16-current259-archive-install.cjs');
     const {installCurrent259OrdinaryArchiveAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
     const {withCurrent259FirstQ2SeededLogin,withCurrent259FirstQ2NativeApplication}=require('./task12-current259-contract-login.cjs');
-    const {buildCurrent259FirstQ2Fixture,buildCurrent259FirstOutsideDirectFixture}=require('./task12-current259-q2-fixture.cjs');
+    const {buildCurrent259FirstQ2Fixture,buildCurrent259FirstOutsideDirectFixture,buildCurrent259FirstOutsideOperatingFixture}=require('./task12-current259-q2-fixture.cjs');
     need([openCurrent259FirstQ2Cos,withCurrent259FirstQ2LoopbackResource,withCurrent259FirstQ2NativeApplication].every(fn=>typeof fn==='function'),'INCOMPLETE');
     const plan=checked.plan,sha256=checked.sha256,controller=new AbortController();
-    const outside=plan.case.relationship==='outside';
-    const buildFixture=outside?buildCurrent259FirstOutsideDirectFixture:buildCurrent259FirstQ2Fixture;
+    const buildFixture=outsideOperating?buildCurrent259FirstOutsideOperatingFixture
+      :outside?buildCurrent259FirstOutsideDirectFixture:buildCurrent259FirstQ2Fixture;
     need(typeof buildFixture==='function','INCOMPLETE');
     const marker=Buffer.from(JSON.stringify({status:'CONSUMED',planSha256:sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id})+'\n');
     preflight='RUN_DIRECTORY';
@@ -212,7 +218,8 @@ async function main(){
         const acl=await stage('ORDINARY_ACL',()=>installCurrent259OrdinaryArchiveAcl(archive,handle));
         const fixture=outside?buildFixture(plan.case.id,plan.case.businessDate)
           :buildFixture(plan.case.id,plan.case.businessDate,plan.case.operating);
-        need(fixture.uploadPrefix===plan.cos.prefix&&fixture.relationship===(outside?'outside':undefined),'SCOPE');
+        need(fixture.uploadPrefix===plan.cos.prefix&&fixture.relationship===(outside?'outside':undefined)&&
+          fixture.outsideOperating===(outsideOperating?true:undefined),'SCOPE');
         state.receiptFixture=Object.freeze({actorId:fixture.seed.User.id,fileId:fixture.original.fileId,idempotencyKey:fixture.archiveIdempotencyKey});
         return stage('SEEDED_LOGIN',()=>withCurrent259FirstQ2SeededLogin(acl,handle,fixture,async proof=>{
           state.phase='APPLICATION';
@@ -225,12 +232,12 @@ async function main(){
     cleanup='CLOSED';
     state.phase='COMPLETE';
     const proofSha256=own(receipt,'proofSha256');
-    need(own(receipt,'status')===(outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_HTTP_AND_NEST_CLOSED':'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED')&&own(receipt,'httpSteps')===9&&
+    need(own(receipt,'status')===scenario+'_HTTP_AND_NEST_CLOSED'&&own(receipt,'httpSteps')===9&&
       own(receipt,'verifiedClients')===5&&own(receipt,'storageAcceptance')===true&&
       isSha256(proofSha256),'RESULT');
     const projected=validateReceiptEvidence(receipt,plan.case.operating,state.receiptFixture,outside);
     state.checkFull();
-    return writeReceipt(state,outside?'CURRENT259_FIRST_OUTSIDE_DIRECT_ACCEPTANCE_COMPLETE':'CURRENT259_FIRST_Q2_ACCEPTANCE_COMPLETE',cleanup,{proofSha256,...projected});
+    return writeReceipt(state,scenario+'_ACCEPTANCE_COMPLETE',cleanup,{proofSha256,...projected});
   }catch(cause){
     primary=cause;
     process.exitCode=1;

@@ -7,11 +7,11 @@ const id='12345678-1234-4234-8234-123456789012',port=34567;
 const routes=[['POST','/auth/login'],['POST','/contracts'],['POST','/contract-drafts/'+id+'/edit-lease'],
   ['POST','/contract-drafts/'+id+'/files'],['PUT','/contract-drafts/'+id],['POST','/contracts/'+id+'/signed-archive'],
   ['GET','/contracts/'+id+'/archive-requests/'+id],['POST','/files/'+id+'/download-ticket'],['GET','/files/'+id+'/download?token=model']];
-function model({rejectAt=0,changePathAt=0,driftAt=0,firstOutside=false,wrongUploadName=false}={}){
+function model({rejectAt=0,changePathAt=0,driftAt=0,firstOutside=false,firstOutsideOperating=false,wrongUploadName=false}={}){
   const requests=[],events=[],payloads=[],server={listening:true,address:()=>({address:'127.0.0.1',family:'IPv4',port})};
   const controller=new AbortController();
   let next=0,physicalChecks=0;
-  const bridge={signal:controller.signal,checkHttpFiles(){if(++physicalChecks===driftAt)throw new Error('model file drift');},check(){assert.equal(controller.signal.aborted,false);},fixture:{...(firstOutside?{relationship:'outside'}:{}),createCase(){return {
+  const bridge={signal:controller.signal,checkHttpFiles(){if(++physicalChecks===driftAt)throw new Error('model file drift');},check(){assert.equal(controller.signal.aborted,false);},fixture:{...(firstOutside?{relationship:'outside'}:{}),...(firstOutsideOperating?{outsideOperating:true}:{}),createCase(){return {
     next(){
       const index=next++,route=routes[index];
       return {method:route[0],path:changePathAt===index+1?'https://elsewhere.invalid/':route[1],
@@ -22,12 +22,15 @@ function model({rejectAt=0,changePathAt=0,driftAt=0,firstOutside=false,wrongUplo
     acceptUploadObservation(row){assert.equal(row.objectGeneration,'v1');},
     observation(){return {actorId:id,inputSha256:digest('frozen Q')};},
     finish(result){assert.equal(result.storage.upload.objectGeneration,'v1');assert.equal(result.storage.download.objectGeneration,'v1');
-      return {status:'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',httpSteps:9,operatingMode:'not_applicable',...(firstOutside?{persistedGenerationSha256:digest('v1')}:{})};}
+      return {status:firstOutsideOperating?'CURRENT259_FIRST_OUTSIDE_OPERATING_PROTOCOL_MATCHED_NOT_ACCEPTANCE':'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',
+        httpSteps:9,operatingMode:firstOutsideOperating?'projection_required':'not_applicable',
+        ...(firstOutside?{persistedGenerationSha256:digest('v1')}:{}),
+        ...(firstOutsideOperating?{operatingLedger:{factId:id,amountYuan:'100.0054'}}:{})};}
   };}},async observeUpload(coord){events.push('owner-upload');assert.equal(coord,'same fixed upload');return {fileId:id};},
     async observeArchive(coord){events.push('owner-archive');assert.equal(coord.inputSha256,digest('frozen Q'));return {archive:{id,idempotencyKey:id,confirmedAt:'2026-11-11T02:00:00.000Z',requestSha256:'b'.repeat(64),authoritySha256:'c'.repeat(64),qText:'{}',token:'never-export'},
       version:{id,contractId:id,status:'effective',draftRevision:2,effectiveAt:'2026-11-11T02:00:00.000Z'},
       archivedFile:{fileId:id,mimeType:'application/pdf',sizeBytes:5,contentSha256:digest('proof')},
-      counts:{archives:1,evidenceFiles:1,physicalAliases:0,draftSlots:0,approvalRounds:0,sealTasks:0,operatingFacts:0,operatingImpacts:0,
+      counts:{archives:1,evidenceFiles:1,physicalAliases:0,draftSlots:0,approvalRounds:0,sealTasks:0,operatingFacts:Number(firstOutsideOperating),operatingImpacts:Number(firstOutsideOperating),
         archiveAudits:1,uploadAudits:1,downloadTicketAudits:1,downloadAudits:1}};},
     cos:{versioning:'Enabled',async read(stage,upload){events.push('cos-'+stage);if(stage==='current')assert.equal(upload.fileId,id);return {objectGeneration:'v1',contentSha256:digest('proof'),sizeBytes:5,objectKey:'keep-private'};}}
   };
@@ -104,4 +107,15 @@ test('outside uses its fixed multipart name and rejects the original Q2 filename
   const wrong=model({firstOutside:true,wrongUploadName:true});
   await assert.rejects(wrong.send(),/FIRST_Q2_HTTP_BODY/u);
   assert.equal(wrong.requests.length,3);
+});
+
+test('the operating sender preserves nine original routes and projects the qualified ledger without raw proof',async()=>{
+  const f=model({firstOutside:true,firstOutsideOperating:true});
+  const out=await f.send();
+  assert.deepEqual(f.requests.map(r=>[r.method,r.path]),routes);
+  assert.equal(out.evidence.operatingMode,'projection_required');
+  assert.equal(out.evidence.operatingFacts,1);
+  assert.deepEqual(out.evidence.operatingLedger,{factId:id,amountYuan:'100.0054'});
+  assert.equal(out.evidence.persistedGenerationSha256,out.evidence.cosFixedGenerationSha256);
+  assert.doesNotMatch(JSON.stringify(out.evidence),/never-export|keep-private|payloadText|downloadUrl/u);
 });

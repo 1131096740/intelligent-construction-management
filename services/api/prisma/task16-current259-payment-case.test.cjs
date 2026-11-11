@@ -38,8 +38,12 @@ function caseFixture(t,options={}){
  return {...f,caseApi:holder.exports,issue(application,scope){
   const profile=require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(options.transportScenario??scope.scenario);
   if(profile){
-   const {publishedPort,port}=f.session.endpoint;
-   f.session.endpoint={transport:profile.topology,relayId:'12345678-1234-4234-8234-123456789012',host:'127.0.0.1',port:publishedPort??port};
+   const current=scope.disconnectPhase==='recovery'?f.otherSession:f.session;
+   const {publishedPort,port}=current.endpoint;
+   const relayId=scope.disconnectPhase==='recovery'&&options.replacementRelayDrift?
+    'ab49e313-e3da-407f-b279-3d09caecfc3e':'12345678-1234-4234-8234-123456789012';
+   current.endpoint={transport:profile.topology,relayId,host:'127.0.0.1',port:publishedPort??port};
+   if(scope.disconnectPhase==='recovery'&&options.replacementRelayDrift)f.session.endpoint={...f.session.endpoint,relayId};
   }
   const token=Object.freeze({});permissions.set(token,{application,handle:f.handle,scope:Object.freeze({...scope,authorizationReference:'synthetic-approved-model-only'})});return token;
  }};
@@ -153,8 +157,9 @@ test('full checks occur at the three quiet boundaries and never inside original 
  assert.deepEqual(f.calls.filter(x=>['activate-continuity','finish-continuity'].includes(x)),['activate-continuity','finish-continuity']);
 });
 
-test('A16 recovery uses the replacement application with exactly the original seed and password',async t=>{
- const f=caseFixture(t,{retirement:true}),m=paymentModel(f);
+for(const mode of ['complete','foreign-key','post-first','swapped-relay','resolved-key'])
+ test('A16 replacement uses the original seed, relay and key: '+mode,async t=>{
+ const f=caseFixture(t,{retirement:true,replacementRelayDrift:mode==='swapped-relay'}),m=paymentModel(f);
  const rollback=Object.freeze({}),attempt=Object.freeze({}),trace=[],signal=new AbortController().signal;
  const options='/payment-executions/'+m.plan.ids.payment+'/registration-options';
  const post='/payment-executions/'+m.plan.ids.payment+'/registrations';
@@ -183,7 +188,9 @@ test('A16 recovery uses the replacement application with exactly the original se
   assert.equal(execution.runtime,f.otherSession.runtime);
   assert.equal(execution.password,m.captured().execution.password);
   assert.equal(execution.httpTimeoutMs,5000);
-  continuity.assertHttpRequest(result,'GET');
+  if(mode==='post-first')continuity.assertHttpRequest(post,'POST');
+  continuity.assertHttpRequest(mode==='foreign-key'?'/payment-executions/results/foreign':result,'GET');
+  if(mode==='resolved-key')throw Object.assign(new Error('PG_CASE_DISCONNECT_KEY_ALREADY_RESOLVED'),{requestBody:'private key model'});
   continuity.assertHttpRequest(post,'POST');trace.push('recovery-post');
   continuity.assertHttpRequest(result,'GET');
   return {caseId:'registered.null-cross-company.disconnect-commit-recovery',passed:true,rollbackObserved:true,
@@ -193,12 +200,23 @@ test('A16 recovery uses the replacement application with exactly the original se
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{...scope,disconnectPhase:'attempt'})));
  assert.equal(first.value,attempt);
  assert.equal(f.api.claimCurrent259DisconnectApplicationClose(first.closeProof,f.proof,f.handle),'http://127.0.0.1:52124/');
- const recovered=await f.api.withCurrent259OwnedApplication(f.secondProof,f.handle,signal,app=>
+ const recover=()=>f.api.withCurrent259OwnedApplication(f.secondProof,f.handle,signal,app=>
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{...scope,disconnectPhase:'recovery',disconnectAttempt:attempt,disconnectRollback:rollback})));
- assert.equal(recovered.rollbackObserved,true);
- assert.deepEqual(trace,['fault-ready','original-post','recovery-post']);
+ if(mode==='complete'){
+  assert.equal((await recover()).rollbackObserved,true);
+  assert.deepEqual(trace,['fault-ready','original-post','recovery-post']);assert.equal(f.resourceCloses(),0);
+ }else{
+  await assert.rejects(recover(),error=>{
+   assert.equal(error.code,'TASK16_APP_FAILED_CLOSED');
+   const detail=require('./task16-current259-disconnect-failure.cjs').describeCurrent259DisconnectFailure(error);
+   assert.deepEqual(detail,{stage:'RECOVERY_PAYMENT',code:mode==='resolved-key'?
+    'PG_CASE_DISCONNECT_KEY_ALREADY_RESOLVED':'CURRENT259_PAYMENT_CASE_FAILED_CLOSED'});
+   assert.doesNotMatch(JSON.stringify(detail),/private key/u);
+   return true;
+  });
+  assert.deepEqual(trace,['fault-ready','original-post']);assert.equal(f.resourceCloses(),1);
+ }
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
- assert.equal(f.resourceCloses(),0);
 });
 
 for(const mode of ['early','foreign','duplicate','missing','missing-fault','wrong-fault'])test('cancellation refuses the '+mode+' original-key result read',async t=>{

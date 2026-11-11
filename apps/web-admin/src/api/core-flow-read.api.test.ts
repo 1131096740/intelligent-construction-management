@@ -2927,6 +2927,46 @@ describe("core flow read API client", () => {
     }
   );
 
+  it("posts the same parallel round after another duty updates both timestamps", async () => {
+    const epoch = "a".repeat(64);
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail({
+        expectedParallelApprovalEpoch: epoch,
+        expectedContractUpdatedAt: "2026-08-01T00:08:00.000Z",
+        expectedApprovalUpdatedAt: "2026-08-01T00:08:00.000Z"
+      })))
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = contractReviewActionInput({ expectedParallelApprovalEpoch: epoch });
+    const prepared = await prepareContractApprovalReviewAction(input);
+
+    await expect(executeContractApprovalReviewAction({
+      decision: "approve",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      stale: vi.fn(),
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    })).resolves.toMatchObject({ status: "completed" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      expectedParallelApprovalEpoch: epoch, expectedApprovalInstanceId: "approval-a", expectedNodeIndex: 1,
+      expectedContractUpdatedAt: input.expectedContractUpdatedAt, expectedApprovalUpdatedAt: input.expectedApprovalUpdatedAt
+    });
+  });
+
+  it.each([undefined, "b".repeat(64)])("refuses a missing or changed parallel epoch before the approval POST", async (freshEpoch) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(
+      contractReviewDetail({ expectedParallelApprovalEpoch: freshEpoch })
+    ));
+    await expect(prepareContractApprovalReviewAction(contractReviewActionInput({
+      expectedParallelApprovalEpoch: "a".repeat(64)
+    }))).rejects.toThrow("合同审批资格、风险或审批坐标已变化");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("freezes the contract review facts and performs one POST after the fresh GET", async () => {
     const risk = contractOwnerRisk();
     const fetchMock = vi.spyOn(globalThis, "fetch")
@@ -4685,6 +4725,7 @@ function contractReviewDetail(
     expectedApprovalInstanceId?: string;
     expectedNodeIndex?: number;
     expectedApprovalUpdatedAt?: string;
+    expectedParallelApprovalEpoch?: string;
     reviewApprovalContext?: null;
     availableActions?: Array<Record<string, unknown>>;
     requiresSelfReviewConfirmation?: boolean;
@@ -4702,6 +4743,7 @@ function contractReviewDetail(
         ? null
         : {
             expectedContractUpdatedAt,
+            expectedParallelApprovalEpoch: overrides.expectedParallelApprovalEpoch,
             expectedApprovalInstanceId:
               overrides.expectedApprovalInstanceId ?? "approval-a",
             expectedNodeIndex: overrides.expectedNodeIndex ?? 1,

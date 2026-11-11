@@ -21,7 +21,7 @@ export interface ApprovalReviewAccess {
   requiresSelfReviewConfirmation: boolean;
 }
 
-export function approvalReviewAccessOnFrozenNode(
+export function resolveApprovalReviewOnFrozenNode(
   frozenNodes: unknown,
   currentNodeIndex: number,
   roleKeys: RoleKey[],
@@ -31,9 +31,9 @@ export function approvalReviewAccessOnFrozenNode(
   allowContractDirectorSelfReview = false,
   actorRoleScopes?: ApprovalActorRoleScopes,
   legacyContractRoute = false
-): ApprovalReviewAccess {
+) {
   if (hasVersionedApprovalNodes(frozenNodes) && !isParallelApprovalRound(frozenNodes)) {
-    return {canAct: false, canReview: false, requiresSelfReviewConfirmation: false};
+    return { currentNodeIndex, access: { canAct: false, canReview: false, requiresSelfReviewConfirmation: false } };
   }
   if (isParallelApprovalRound(frozenNodes)) {
     currentNodeIndex = activeApprovalNodeIndexes(frozenNodes, currentNodeIndex).find(index =>
@@ -69,11 +69,18 @@ export function approvalReviewAccessOnFrozenNode(
       allowContractDirectorSelfReview
     });
 
-  return {
+  const access: ApprovalReviewAccess = {
     canAct,
     canReview: canAct && (applicantUserId !== userId || requiresSelfReviewConfirmation),
     requiresSelfReviewConfirmation
   };
+  return { currentNodeIndex, access };
+}
+
+export function approvalReviewAccessOnFrozenNode(
+  ...args: Parameters<typeof resolveApprovalReviewOnFrozenNode>
+): ApprovalReviewAccess {
+  return resolveApprovalReviewOnFrozenNode(...args).access;
 }
 
 export function canActOnFrozenApprovalNode(

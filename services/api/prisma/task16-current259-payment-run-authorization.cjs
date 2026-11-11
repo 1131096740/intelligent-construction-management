@@ -106,15 +106,21 @@ function original(relative,names){
 const {installCurrent259B7}=original('./task16-current259-b7-install.cjs',['installCurrent259B7']);
 const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=original('./local-staged-current259-profile.cjs',
  ['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']);
+const {describeCurrent259DisconnectFailure,captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=original(
+ './task16-current259-disconnect-failure.cjs',
+ ['describeCurrent259DisconnectFailure','captureCurrent259DisconnectFailure','carryCurrent259DisconnectFailure']);
 const {provisionCurrent259Roles}=original('./task16-current259-role-provision.cjs',['provisionCurrent259Roles']);
 const {installCurrent259SevenFragments}=original('./task16-current259-seven-install.cjs',['installCurrent259SevenFragments']);
 const {installCurrent259PaymentAcl}=original('./task16-current259-payment-acl-install.cjs',['installCurrent259PaymentAcl']);
 const {withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259NormalPaymentResource,
- withCurrent259ResponseLossResource,claimCurrent259TechnicalResource}=original('./task16-current259-owned-resource.cjs',
+ withCurrent259ResponseLossResource,withCurrent259CompetitionResource,
+ withCurrent259DisconnectRecoveryResource,claimCurrent259TechnicalResource}=original('./task16-current259-owned-resource.cjs',
  ['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource','withCurrent259NormalPaymentResource',
-  'withCurrent259ResponseLossResource','claimCurrent259TechnicalResource']);
+  'withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259DisconnectRecoveryResource',
+  'claimCurrent259TechnicalResource']);
 const paymentResources=Object.freeze({normal:withCurrent259NormalPaymentResource,'response-loss':withCurrent259ResponseLossResource,
- 'cancel-commit':withCurrent259FirstRollbackResource});
+ 'cancel-commit':withCurrent259FirstRollbackResource,competition:withCurrent259CompetitionResource,
+ 'disconnect-commit-recovery':withCurrent259DisconnectRecoveryResource});
 const {renderCurrent259CatalogRead}=original('./task16-current259-catalog.cjs',['renderCurrent259CatalogRead']);
 const {readQualifiedTask16File:read}=original('./task16-runtime-inputs.cjs',['readQualifiedTask16File']);
 function importsCheck(){
@@ -364,8 +370,11 @@ async function run(args){
          const sameApplications=()=>coordinates.every(({app,inspect,runtime})=>typeof inspect==='function'&&
           data(app,'inspect')===inspect&&data(app,'runtime')===runtime&&inspect.call(app).runtime===runtime);
          need(sameApplications()&&(!request.competition||coordinates.length===2&&coordinates[0].runtime!==coordinates[1].runtime),'BUSINESS_APPLICATION');
-         if(disconnectPhase==='recovery')need(typeof oldOrigin==='string'&&typeof data(application,'origin')==='string'&&
-          new URL(application.origin).origin!==new URL(oldOrigin).origin,'DISCONNECT_REPLACEMENT_ENDPOINT');
+         if(disconnectPhase==='recovery'){
+          try{need(typeof oldOrigin==='string'&&typeof data(application,'origin')==='string'&&
+           new URL(application.origin).origin!==new URL(oldOrigin).origin,'DISCONNECT_REPLACEMENT_ENDPOINT');}
+          catch(error){throw carryCurrent259DisconnectFailure(error,captureCurrent259DisconnectFailure(error,'RECOVERY_APPLICATION'));}
+         }
          const business={active:true,claimed:false,application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
           ...(disconnectPhase?{disconnectPhase,disconnectAttempt,disconnectRollback}:{})})};
@@ -425,6 +434,8 @@ async function run(args){
       hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
       const technicalFailure=stage==='technical259'?describeCurrent259TechnicalFailure(error):undefined;
       if(technicalFailure)receipt.technicalFailure=technicalFailure;
+      const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
+      if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
      }
      throw error;
     }finally{state.active=false;currentRun=undefined;EventTarget.prototype.removeEventListener.call(controller.signal,'abort',onAbort);}

@@ -633,6 +633,7 @@ async function current259Model(temporaryRoot, mutate, technical = true, commandF
   function awaitRead(file) { return require("node:fs").readFileSync(file, "utf8"); }
   const api = load("local-staged-current259-profile.cjs");
   return { ...model, api, handle, receipt, close: () => { closed = true; },
+    installRelayDrain: begin => { resource.topology="UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS";view.beginPrismaRelayDrain=begin; },
     installGetter: field => {
       const map={core:["./local-staged-migrations.cjs","createLocalMigrationFixture"],owned:["./task16-current259-owned-resource.cjs","claimCurrent259TechnicalResource"],input:["./task16-runtime-inputs.cjs","readQualifiedTask16File"],command:["./task16-bounded-command.cjs","runTask16BoundedCommand"]};
       const [file,key]=map[field],owner=moduleCache[nativeRequire.resolve(file)].exports,value=owner[key];let reads=0;
@@ -1096,13 +1097,17 @@ test("owned current259 preserves a bounded relay cause from the first failed che
   t.after(()=>fs.rm(root,{recursive:true,force:true}));
   let f;
   f=await current259Model(root,undefined,true,()=>{f.scheduleFullFailure(2,Object.assign(new Error("private relay detail"),{
-    code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",relayCode:"CURRENT259_LOOPBACK_FORWARD_STREAM"
+    code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",relayCode:"CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT",
+    relayCloseState:{hostFin:true,stdinEnded:true,pgFin:true,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,
+      receiveSettled:false,cliExited:false,peerSocketDestroyed:true,peerEndReturned:false,private:"private relay bytes"}
   }));});
   f.failClose();
   await assert.rejects(f.api.createCurrent259TechnicalMigration(f.handle).migrate(),error=>{
     const detail=f.api.describeCurrent259TechnicalFailure(error);
     assert.deepEqual(detail,{stage:"CONTROL_BEFORE_READ",controlPhase:"stage203-readback",controlBoundary:"BEFORE_READ",
-      checkGate:"FULL_SOURCE",causeCode:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",relayCode:"CURRENT259_LOOPBACK_FORWARD_STREAM",
+      checkGate:"FULL_SOURCE",causeCode:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",relayCode:"CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT",
+      relayCloseState:{hostFin:true,stdinEnded:true,pgFin:true,stdoutEnded:false,cliClosed:false,stdoutRawEnd:true,
+        receiveSettled:false,cliExited:false,peerSocketDestroyed:true,peerEndReturned:false},
       lastSuccessfulDeployPrefix:203});
     assert.equal(error.resourceCleanup.status,"UNKNOWN");
     assert.doesNotMatch(JSON.stringify(detail),/private relay/u);
@@ -1129,4 +1134,61 @@ test("owned current259 keeps the fixed stage203 readback guard separate from CLI
   assert.equal(f.counts().commands,1);
   assert.equal(f.counts().closes,1);
   assert.equal(f.calls.at(-1),"stage203-readback");
+});
+
+test("owned migration waits for its Prisma relay workers before the next full synchronous source check",async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-relay-drain-order-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const events=[];
+  let f,fullChecksAtExit;
+  f=await current259Model(root,undefined,true,()=>{
+    events.push("child");fullChecksAtExit=f.counts().checks;
+  });
+  f.installRelayDrain(()=>{
+    events.push("window");
+    return async()=>{
+      assert.equal(f.counts().checks,fullChecksAtExit);
+      await new Promise(resolve=>setImmediate(resolve));
+      assert.equal(f.counts().checks,fullChecksAtExit);
+      events.push("drained");
+    };
+  });
+  await f.api.createCurrent259TechnicalMigration(f.handle).migrate();
+  assert.deepEqual(events,Array.from({length:7},()=>["window","child","drained"]).flat());
+});
+
+for(const mode of ["child-failed","relay-failed"])test("owned migration preserves first post-child outcome: "+mode,async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-relay-drain-failure-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  let f,checksAtExit,opened=0,waited=0;
+  f=await current259Model(root,undefined,true,()=>{
+    checksAtExit=f.counts().checks;
+    if(mode==="child-failed")return {code:1,actualSettled:true,stdout:Buffer.alloc(0),stderr:Buffer.from("Error: P1000: private raw CLI data")};
+  });
+  const flags={hostFin:true,stdinEnded:true,pgFin:true,stdoutEnded:false,cliClosed:false,
+    stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:true,peerEndReturned:false};
+  f.installRelayDrain(()=>{
+    opened++;
+    return async()=>{
+      waited++;
+      assert.equal(f.counts().checks,checksAtExit);
+      throw Object.assign(new Error("private raw relay data"),{code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",
+        relayCode:"CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT",relayCloseState:flags});
+    };
+  });
+  await assert.rejects(f.api.createCurrent259TechnicalMigration(f.handle).migrate(),error=>{
+    const detail=f.api.describeCurrent259TechnicalFailure(error);
+    assert.equal(f.counts().checks,checksAtExit);
+    assert.equal(detail.lastSuccessfulDeployPrefix,null);
+    if(mode==="child-failed"){
+      assert.equal(detail.stage,"PRISMA_DEPLOY");assert.equal(detail.prismaCode,"P1000");assert.equal(waited,0);
+    }else{
+      assert.equal(detail.stage,"PRISMA_RELAY_DRAIN");assert.equal(detail.prismaExitZeroPrefix,203);
+      assert.equal(detail.relayCode,"CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT");
+      assert.deepEqual(detail.relayCloseState,flags);assert.equal(waited,1);
+    }
+    assert.doesNotMatch(JSON.stringify(detail),/private raw/u);
+    return true;
+  });
+  assert.equal(opened,1);assert.equal(f.counts().commands,1);assert.equal(f.counts().closes,1);
 });

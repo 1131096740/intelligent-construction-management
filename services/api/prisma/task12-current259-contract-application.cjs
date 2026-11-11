@@ -174,7 +174,8 @@ async function runCurrent259FirstQ2Application(bridge) {
         HTTP_BRIDGES.delete(qualified);
         bridge.native.endHttp(Boolean(nativeResult));
       }
-      const protocol=bridge.native.fixture.relationship==='outside'
+      const protocol=bridge.native.fixture.outsideOperating===true?'CURRENT259_FIRST_OUTSIDE_OPERATING_PROTOCOL_MATCHED_NOT_ACCEPTANCE'
+        :bridge.native.fixture.relationship==='outside'
         ?'CURRENT259_FIRST_OUTSIDE_DIRECT_PROTOCOL_MATCHED_NOT_ACCEPTANCE':'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE';
       need(nativeResult?.status===protocol&&nativeResult.httpSteps===9 &&
         typeof nativeResult.proofSha256==='string' && /^[a-f0-9]{64}$/u.test(nativeResult.proofSha256),'HTTP');
@@ -204,7 +205,8 @@ async function runCurrent259FirstQ2Application(bridge) {
     throw error;
   }
   if(failure)throw failure;
-  if(nativeResult)return Object.freeze({status:bridge.native.fixture.relationship==='outside'
+  if(nativeResult)return Object.freeze({status:bridge.native.fixture.outsideOperating===true?'CURRENT259_FIRST_OUTSIDE_OPERATING_HTTP_AND_NEST_CLOSED'
+    :bridge.native.fixture.relationship==='outside'
     ?'CURRENT259_FIRST_OUTSIDE_DIRECT_HTTP_AND_NEST_CLOSED':'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED',verifiedClients:5,httpSteps:9,storageAcceptance:true,proofSha256:nativeResult.proofSha256,evidence:nativeResult.evidence,evidenceSha256:nativeResult.evidenceSha256});
   return Object.freeze({status:'CURRENT259_FIRST_Q2_NEST_ASSEMBLY_CLOSED',verifiedClients:5,storageAcceptance:false,
     executionAllowed:false,nativeAdmission:false});

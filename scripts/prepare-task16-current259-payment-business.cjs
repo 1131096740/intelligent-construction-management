@@ -43,6 +43,7 @@ function scope(installation,selected){const cancellation=selected.scenario==='ca
    'GET /payment-executions/results/:idempotencyKey (committed)'],
   ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',
   approvalPath:false,commitFaults:'DISCONNECT_EXACT_COMMIT_ONCE',
+  databaseTransport:paymentLoopbackForScenario(selected.scenario).plan,
   commitDisconnection:{owner:'ONE_FIXED_LOCK_TRANSACTION_AND_BOUNDED_READ_ONLY_READY',runtimeReplacements:1,httpTimeoutMs:5000,
    readyBudgetMs:5000,waitSeconds:12,settleSeconds:3,automaticRetry:false,confirmedRollbackRequired:true},
   multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};
@@ -54,6 +55,7 @@ function scope(installation,selected){const cancellation=selected.scenario==='ca
    'GET /payment-executions/results/:idempotencyKey (both original keys)'],
   ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',ownerObservation:'FIXED_SAME_PAYMENT_ROW_LOCK_AND_TWO_TLS_BACKEND_WAITERS',
   observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',approvalPath:false,commitFaults:false,
+  databaseTransport:paymentLoopbackForScenario(COMPETITION.scenario).plan,
   multiActorConcurrency:true,competition:{runtimeSessions:2,runtimePoolSize:1,httpTimeoutMs:5000,automaticRetry:false},supplementaryVoucher:false,corrections:false};
  const loopback=paymentLoopbackForScenario(selected.scenario);
  return {...installation.scope,stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','selectedCase','ownedCleanup'],

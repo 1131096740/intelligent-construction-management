@@ -9,6 +9,14 @@ const profiles = Object.freeze({
     plan: 'PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'
   }),
+  competition: Object.freeze({
+    plan: 'PAYMENT_COMPETITION_LOOPBACK_TLS_V1',
+    topology: 'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'
+  }),
+  'disconnect-commit-recovery': Object.freeze({
+    plan: 'PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS_V1',
+    topology: 'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS'
+  }),
   'cancel-commit': Object.freeze({
     plan: 'FIRST_ROLLBACK_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'

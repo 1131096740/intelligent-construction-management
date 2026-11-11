@@ -308,6 +308,9 @@ export class ContractController {
     @Body() body: ReviewContractApprovalDto
   ) {
     const precise = await this.preciseLifecycle?.reviewIfV2(contractVersionId, user.id, body);
+    if (!precise && body.expectedParallelApprovalEpoch !== undefined) {
+      throw new BadRequestException("当前合同不支持并联审批轮次");
+    }
     return precise ?? this.contracts.reviewApproval(contractVersionId, user.id, body);
   }
 

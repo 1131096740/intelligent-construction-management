@@ -19,7 +19,7 @@ import { lockContractDraftMutationBoundary } from "./contract-draft-lifecycle";
 import { ContractApprovalRouteService } from "./contract-approval-route.service";
 import { resolveContractOriginators } from "./contract-originators";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
-import { contractParallelDutyIdentity, contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "./contract-parallel-duty-access";
+import { contractParallelApprovalEpoch, contractParallelDutyIdentity, contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "./contract-parallel-duty-access";
 import { ConfirmContractSealV2Dto } from "./dto/contract-lifecycle-v2.dto";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
@@ -56,7 +56,11 @@ export class ContractV2SubmissionService {
       const activeRounds = await tx.approvalInstance.findMany({ where: { businessType: "contract_version", businessId: version.id, flowType: "contract.approve", status: "in_progress" } });
       const snapshot = contractRoundSubmissionSnapshot(round?.frozenNodes);
       if (!contract || contract.voidedAt || version.status !== "in_approval" || !round || activeRounds.length !== 1 || activeRounds[0].id !== round.id || round.businessId !== version.id || round.businessType !== "contract_version" || round.flowType !== "contract.approve" || !isParallelApprovalRound(round.frozenNodes) || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint) conflict("当前合同审批轮次已变化，请刷新后重试");
-      if (version.updatedAt.getTime() !== Date.parse(input.expectedContractUpdatedAt) || round.updatedAt.getTime() !== Date.parse(input.expectedApprovalUpdatedAt)) conflict("当前合同或审批资料已变化，请刷新后重试");
+      const matchesReviewContext = input.expectedParallelApprovalEpoch === undefined
+        ? version.updatedAt.getTime() === Date.parse(input.expectedContractUpdatedAt) &&
+          round.updatedAt.getTime() === Date.parse(input.expectedApprovalUpdatedAt)
+        : contractParallelApprovalEpoch(version, round) === input.expectedParallelApprovalEpoch;
+      if (!matchesReviewContext) conflict("当前合同或审批资料已变化，请刷新后重试");
       if (input.decision === "reject_previous") throw new BadRequestException("并联审批没有上一节点，请填写意见并退回经办人");
       const identity = await contractParallelDutyIdentity(tx, round, contract.projectId, actorUserId, input.expectedNodeIndex);
       if (!identity) throw new ForbiddenException("当前账号无权处理这项合同审批职责");

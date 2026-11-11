@@ -219,6 +219,56 @@ function createCurrent259FirstQ2UploadReadback(fixture,identity,bucket,input) {
   });
 }
 
+function outsideOperatingReadback(instant){
+  const originals=`(used."payload"->'orderedEvidence')`;
+  const generationProof=`jsonb_build_object('protocolVersion',1,'archiveId',a."id",'contractVersionId',v."id",
+    'authoritySha256',a."authoritySha256",'originals',${originals})`;
+  const ledger=`jsonb_build_object(
+ 'intent',jsonb_build_object('payloadText',used."payload"::text,'payloadSha256',issued."payloadSha256",
+   'issuedXmin',issued.xmin::text,'transactionId',used."transactionId"::text,
+   'commitStatus',pg_catalog.pg_xact_status(used."transactionId"::text::xid8)),
+ 'xmins',jsonb_build_object('archive',a.xmin::text,'version',v.xmin::text,'evidence',e.xmin::text,'audit',l.xmin::text,
+   'intentUse',used.xmin::text,'fact',fact.xmin::text,'impact',impact.xmin::text),
+ 'fact',jsonb_build_object('id',fact."id",'projectId',fact."projectId",'sourceType',fact."sourceType",
+   'sourceBusinessId',fact."sourceBusinessId",'sourceBusinessCode',fact."sourceBusinessCode",'sourceVersion',fact."sourceVersion",
+   'entryKind',fact."entryKind",'factKind',fact."factKind",'idempotencyKey',fact."idempotencyKey",'status',fact."status",
+   'direction',fact."direction",'amountCents',fact."amountCents",'amountYuan',fact."amountYuan"::numeric(24,4)::text,
+   'numericProtocolVersion',fact."numericProtocolVersion",'occurredAt',${instant('fact."occurredAt"')},'confirmedAt',${instant('fact."confirmedAt"')},
+   'confirmedByUserId',fact."confirmedByUserId",'recordedByUserId',fact."recordedByUserId",
+   'ledgerDate',fact."operatingLedgerEffectiveDateSnapshot"::text,'debtorSubjectKind',fact."debtorSubjectKind",
+   'debtorSubjectId',fact."debtorSubjectId",'creditorSubjectKind',fact."creditorSubjectKind",'creditorSubjectId',fact."creditorSubjectId",
+   'affiliateAssignmentId',fact."affiliateAssignmentId",'archiveId',fact."sourceSnapshot"->>'archiveAuthorityId',
+   'archiveAuthoritySha256',fact."sourceSnapshot"->>'archiveAuthoritySha256','intentPayloadSha256',fact."sourceSnapshot"->>'intentPayloadSha256',
+   'execution',jsonb_build_array(fact."paymentExecutionId",fact."fundExecutionId",fact."fundExecutionCaseId")),
+ 'impact',jsonb_build_object('id',impact."id",'factId',impact."factId",'projectId',impact."projectId",'sourceType',impact."sourceType",
+   'sourceBusinessId',impact."sourceBusinessId",'idempotencyKey',impact."idempotencyKey",'impactKind',impact."impactKind",
+   'sourceImpactKey',impact."sourceImpactKey",'direction',impact."direction",'amountCents',impact."amountCents",
+   'amountYuan',impact."amountYuan"::numeric(24,4)::text,'numericProtocolVersion',impact."numericProtocolVersion",
+   'subjectRole',impact."subjectRole",'subjectKind',impact."subjectKind",'subjectId',impact."subjectId",
+   'execution',jsonb_build_array(impact."paymentExecutionId",impact."fundExecutionId",impact."fundExecutionCaseId",
+      impact."costCategoryCode",impact."fundPurpose")))`;
+  const joins=`JOIN public.jg_contract_direct_outside_operating_use_v2 used ON used."archiveId"=a."id"
+    AND used."contractVersionId"=v."id" AND used."requestKey"=a."idempotencyKey"
+ JOIN public.jg_contract_direct_outside_operating_receipt_v2 issued ON issued."intentId"=used."intentId"
+ JOIN public.jg_contract_direct_archive_intent_binding_v1 b ON b."databaseOid"=used."databaseOid"
+    AND b."runtimeSessionOid"=used."runtimeSessionOid" AND b."executorOwnerOid"=used."executorOwnerOid"
+ JOIN public."Project" project ON project."id"=c."projectId"
+ JOIN public."OperatingFact" fact ON fact."sourceType"='contract_version' AND fact."sourceBusinessId"=v."id"
+ JOIN public."OperatingImpactEntry" impact ON impact."factId"=fact."id" AND impact."sourceType"='contract_version'
+    AND impact."sourceBusinessId"=v."id"`;
+  const predicates=`AND used."databaseOid"=(SELECT oid FROM pg_catalog.pg_database WHERE datname=pg_catalog.current_database())
+   AND b."anchorOwnerOid"=current_user::regrole::oid AND b."namespaceOid"=to_regnamespace('public') AND b."protocolVersion"=1
+   AND issued."bindingSha256"=encode(public.digest(convert_to(to_jsonb(b)::text,'UTF8'),'sha256'),'hex')
+   AND issued."payloadSha256"=encode(public.digest(convert_to(used."payload"::text,'UTF8'),'sha256'),'hex')
+   AND used."claimedAt">=issued."issuedAt" AND used."claimedAt"<issued."expiresAt" AND issued.xmin<>used.xmin
+   AND used."transactionId">0 AND mod(used."transactionId",4294967296::bigint)::text=used.xmin::text
+   AND pg_catalog.pg_xact_status(used."transactionId"::text::xid8)='committed'
+   AND used.xmin=a.xmin AND fact.xmin=a.xmin AND impact.xmin=a.xmin
+   AND to_jsonb(project."operatingLedgerEffectiveDate")=used."payload"#>'{operatingConsequence,operatingLedgerEffectiveDateSnapshot}'
+   AND ${originals}->0->>'fileId'=f."id"`;
+  return {generationProof,ledger,joins,predicates,authorityObject:`(${originals}->0)`};
+}
+
 function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
   need(arguments.length===3 && isCurrent259FirstQ2Fixture(fixture) &&
     input && !types.isProxy(input) && Object.getPrototypeOf(input)===Object.prototype,'INPUT');
@@ -268,13 +318,15 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
  'archiveAudit',jsonb_build_object('actorUserId',l."actorUserId",'action',l."action",'businessType',l."businessType",
    'businessId',l."businessId",'metadata',l."metadata"))`;
   const {original}=fixture;
-  const outside=fixture.relationship==='outside';
-  const authorityObject=outside?`(g.proof#>'{originals,0}')`:`(a."authoritySnapshot"#>'{originals,0}')`;
-  const projected=outside?`(${evidenceProjection} || jsonb_build_object('generationProof',g.proof,
-    'sourceBasisText',(a."authoritySnapshot"->'sourceBasis')::text))`:evidenceProjection;
-  const generationJoin=outside?`JOIN public.jg_contract_direct_archive_generation_v1 stored ON stored."evidenceId"=e."id"
+  const outside=fixture.relationship==='outside', operating=fixture.outsideOperating===true;
+  const operatingProof=operating?outsideOperatingReadback(instant):null;
+  const authorityObject=operating?operatingProof.authorityObject
+    :outside?`(g.proof#>'{originals,0}')`:`(a."authoritySnapshot"#>'{originals,0}')`;
+  const projected=outside?`(${evidenceProjection} || jsonb_build_object('generationProof',${operating?operatingProof.generationProof:'g.proof'},
+    'sourceBasisText',(a."authoritySnapshot"->'sourceBasis')::text${operating?`,'ledger',${operatingProof.ledger}`:''}))`:evidenceProjection;
+  const generationJoin=operating?operatingProof.joins:outside?`JOIN public.jg_contract_direct_archive_generation_v1 stored ON stored."evidenceId"=e."id"
  CROSS JOIN LATERAL (SELECT public.jg_read_contract_direct_archive_generations_v1(a."id") AS proof) g`:'';
-  const proofScope=outside?`AND g.proof->>'archiveId'=a."id" AND g.proof->>'contractVersionId'=v."id"
+  const proofScope=operating?operatingProof.predicates:outside?`AND g.proof->>'archiveId'=a."id" AND g.proof->>'contractVersionId'=v."id"
    AND g.proof->>'authoritySha256'=a."authoritySha256" AND ${authorityObject}->>'fileId'=f."id"
    AND ${authorityObject}->>'objectGeneration'=stored."objectGeneration" AND stored.xmin=a.xmin`:'';
   const sql=`${readerStart}
@@ -305,7 +357,7 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
     let result;
     try{result=JSON.parse(raw);}catch{need(false,'ARCHIVE');}
     need(result && equal(Object.keys(result).sort(),['evidence','witness']) && result.evidence &&
-      equal(Object.keys(result.evidence).sort(),['archive','archiveAudit','archivedFile','counts',...(outside?['generationProof','sourceBasisText']:[]),'version']),'ARCHIVE');
+      equal(Object.keys(result.evidence).sort(),['archive','archiveAudit','archivedFile','counts',...(outside?['generationProof',...(operating?['ledger']:[]),'sourceBasisText']:[]),'version']),'ARCHIVE');
     read(JSON.stringify(result.witness),'archive',nonce,owner);
     // Full domain and COS generation cross-check is done by the case parser.
     return result.evidence;

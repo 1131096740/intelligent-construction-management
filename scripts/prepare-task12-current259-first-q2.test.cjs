@@ -132,3 +132,21 @@ test('the first outside direct-sign plan seals its own non-operating case and ca
   assert.throws(()=>fixture.api.prepareCurrent259FirstOutsideDirectPlan({...options,operating:true}),/PLAN_INPUT/u);
   assert.deepEqual(fixture.slotsRead,[]);
 });
+
+test('the fixed operating outside plan requires its own scope, input and upload prefix',t=>{
+  const f=model(t);
+  const sealed=f.api.prepareCurrent259FirstOutsideOperatingPlan(f.options);
+  const {plan}=f.api.verifyCurrent259FirstQ2Plan(sealed.file,sealed.sha256);
+  const fixture=require('../services/api/prisma/task12-current259-q2-fixture.cjs');
+  assert.equal(plan.purpose,'CURRENT259_FIRST_OUTSIDE_OPERATING_PRIVATE_COS');
+  assert.equal(plan.case.relationship,'outside');
+  assert.equal(plan.case.operating,true);
+  assert.notEqual(plan.cos.prefix,fixture.current259FirstOutsideDirectUploadPrefix(f.options.caseId));
+  assert.notEqual(plan.cos.prefix,fixture.current259FirstQ2UploadPrefix(f.options.caseId));
+  assert.ok(plan.scope.stages.includes('firstOutsideOperatingHttp'));
+  const changed={...plan,case:{...plan.case,operating:false}};
+  const bytes=JSON.stringify(changed);
+  fs.writeFileSync(sealed.file,bytes);
+  assert.throws(()=>f.api.verifyCurrent259FirstQ2Plan(sealed.file,digest(bytes)),/PLAN_INPUT/u);
+  assert.deepEqual(f.slotsRead,[]);
+});

@@ -7,6 +7,7 @@ const path=require('node:path');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
 const authorization=require('./task16-current259-payment-run-authorization.cjs');
 const {paymentLoopbackForScenario,isCurrent259PaymentLoopbackTopology}=require('./task16-current259-payment-loopback.cjs');
+const {captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
 const fetchDescriptor=Object.getOwnPropertyDescriptor(globalThis,'fetch');
 const originalFetch=fetchDescriptor?.value;
 const builtin=process.binding('natives')['internal/bootstrap/web/exposed-window-or-worker'];
@@ -24,12 +25,13 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission;
+ let attempted=false,permission,disconnectStage;
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
   permission.check();lease.activateContinuity(permission.continuityToken);lease.check();
   const scope=permission.scope,cancellation=scope.scenario==='cancel-commit',disconnect=scope.scenario==='disconnect-commit-recovery';
   const recovery=disconnect&&scope.disconnectPhase==='recovery';
+  if(disconnect)disconnectStage=recovery?'RECOVERY_PAYMENT':'ORIGINAL_PAYMENT_ATTEMPT';
   const faulting=cancellation||disconnect&&!recovery;
   need(cancellation||disconnect&&['attempt','recovery'].includes(scope.disconnectPhase)||['normal','response-loss'].includes(scope.scenario));
   const {session,loader,source}=lease,load=Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value;
@@ -53,6 +55,7 @@ async function executeCurrent259PaymentCase(lease,permit){
     endpoint.relayId===relay?.id&&relay.containerId===resource.containerId&&relay.host==='127.0.0.1'&&
     endpoint.host===relay.host&&endpoint.port===resource.port&&relay.port===resource.port);
   }else need(!isCurrent259PaymentLoopbackTopology(resource.topology)&&resource.port===session.endpoint.publishedPort);
+  if(recovery)need(resource.runId===prior.runId&&resource.topology===prior.topology&&equal(resource.relay,prior.relay));
   const material=loadCurrent259CatalogMaterial(source);
   const check=()=>{
    permission.check();lease.check();
@@ -132,7 +135,8 @@ async function executeCurrent259PaymentCase(lease,permit){
     checkPrepared();need(result&&typeof result==='object'&&Reflect.ownKeys(result).length===0&&barrierUsed&&postCount===1);
     await permission.verifyFull();checkPrepared();
     lease.finishContinuity(permission.continuityToken);permission.check();
-    disconnectAttempts.set(result,Object.freeze({handle:lease.handle,password:execution.password,plan,fixture:frozen}));
+    disconnectAttempts.set(result,Object.freeze({handle:lease.handle,password:execution.password,plan,fixture:frozen,
+     runId:resource.runId,topology:resource.topology,relay:resource.relay}));
     return result;
    }
   }else if(recovery){
@@ -148,10 +152,12 @@ async function executeCurrent259PaymentCase(lease,permit){
   else need([result.executionId,result.rootId].every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value)));
   lease.finishContinuity(permission.continuityToken);permission.check();
   return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
- }catch{
+ }catch(error){
+  const detail=disconnectStage?captureCurrent259DisconnectFailure(error,disconnectStage):undefined;
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';
   try{await lease.failClosed();cleanup='FIXED_CLOSE_RETURNED_NOT_FULL_PROOF';}catch{/* retain safe unknown */}
-  throw Object.assign(new Error('CURRENT259_PAYMENT_CASE_FAILED_CLOSED'),{code:'CURRENT259_PAYMENT_CASE_FAILED_CLOSED',fixtureOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED',appCleanupOutcome:cleanup==='UNKNOWN_DO_NOT_CONTINUE'?cleanup:'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF'});
+  const failure=Object.assign(new Error('CURRENT259_PAYMENT_CASE_FAILED_CLOSED'),{code:'CURRENT259_PAYMENT_CASE_FAILED_CLOSED',fixtureOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED',appCleanupOutcome:cleanup==='UNKNOWN_DO_NOT_CONTINUE'?cleanup:'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF'});
+  throw detail?carryCurrent259DisconnectFailure(failure,detail):failure;
  }
 }
 function runCurrent259PaymentCase(application,handle,permit){return require('./task16-current259-application-factory.cjs').consumeCurrent259PaymentApplication(application,handle,permit);}

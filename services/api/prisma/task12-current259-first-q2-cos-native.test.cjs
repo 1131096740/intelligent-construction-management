@@ -17,15 +17,31 @@ const denied='<Error><Code>AccessDenied</Code></Error>';
 // Header names and values observed on the signed fixed Chengdu COS policy read.
 // The request id in this model is synthetic.
 const emptyPolicyHeaders=['Content-Length','0','Content-Type','application/xml','Server','tencent-cos'];
-function model(change){
+const original=Buffer.from('%PDF-1.4\nfixed original\n');
+const objectId='12345678-1234-4234-8234-123456789013';
+const generation='archive/v1+?=';
+const originalNames=['首条对上原件.pdf','首条表外原件.pdf'];
+const profiles=[
+  {casePrefix:prefix,outside:false},
+  {casePrefix:'uploads/idempotent/22345678-1234-4234-8234-123456789012/',outside:true},
+  {casePrefix:'uploads/idempotent/32345678-1234-4234-8234-123456789012/',outside:true},
+];
+function upload(casePrefix,name){
+  const contentSha256=sha(original);
+  return {fileId:casePrefix.split('/')[2],bucket,objectKey:casePrefix+objectId+'-'+contentSha256+'-'+name,
+    mimeType:'application/pdf',sizeBytes:original.length,contentSha256};
+}
+function model(change,{casePrefix=prefix,outside=false}={}){
   const controller=new AbortController(),calls=[],permit=Object.freeze({});
-  const replies=[[200,version],[200,acl],[404,policy],[200,bytes],[403,denied]];
+  const casePlan={...plan,prefix:casePrefix,canary:{...plan.canary,key:casePrefix+'q2-private-canary.bin'}};
+  const objectReply=[200,original,['X-Cos-Version-Id',generation]];
+  const replies=[[200,version],[200,acl],[404,policy],[200,bytes],[403,denied],objectReply,objectReply];
   let claimed=false;
   const ports={
     '@xmldom/xmldom':{get DOMParser(){assert.fail('external XML module would enter the sealed app cache');}},
     './task12-current259-first-q2-once.cjs':{claimCurrent259FirstQ2CosPermit(value){
       assert.equal(value,permit);assert.equal(claimed,false);claimed=true;
-      return {plan,signal:controller.signal,check(){assert.equal(controller.signal.aborted,false);},
+      return {plan:casePlan,outside,signal:controller.signal,check(){assert.equal(controller.signal.aborted,false);},
         application:{secretId:'TMP-APP',secretKey:'app-key',sessionToken:'app-token'},
         observer:{secretId:'TMP-OBS',secretKey:'obs-key',sessionToken:'obs-token'}};
     }},
@@ -106,6 +122,39 @@ test('unproven empty policy replies and the same response at another route stop 
     const f=model((i,reply)=>i===at?badReply:reply);
     await assert.rejects(f.open(),/CURRENT259_FIRST_Q2_COS_NATIVE_/u);
     assert.equal(f.calls.length,at+1);
+    assert.ok(f.calls.every(call=>call.signal.aborted));
+  }
+});
+
+test('upward and both outside profiles each read their exact current and fixed original over the real COS helper',async()=>{
+  for(const profile of profiles){
+    const f=model(undefined,profile),cos=await f.open();
+    const originalUpload=upload(profile.casePrefix,originalNames[Number(profile.outside)]);
+    const observed=await cos.read('current',originalUpload);
+    const fixed=await cos.read('fixed');
+    assert.deepEqual(fixed,observed);
+    assert.equal(fixed.objectKey,originalUpload.objectKey);
+    assert.equal(fixed.objectGeneration,generation);
+    assert.equal(fixed.contentSha256,originalUpload.contentSha256);
+    const encoded='/'+originalUpload.objectKey.split('/').map(encodeURIComponent).join('/');
+    assert.deepEqual(f.calls.slice(5).map(call=>call.path),[encoded,encoded+'?versionId=archive%2Fv1%2B%3F%3D']);
+    assert.ok(f.calls.slice(5).every(call=>call.headers['x-cos-security-token']==='obs-token'));
+    cos.close();
+  }
+});
+
+test('crossed original names or outside case prefixes are rejected before any object GET',async()=>{
+  const violations=[
+    [profiles[0],upload(profiles[0].casePrefix,originalNames[1])],
+    [profiles[1],upload(profiles[1].casePrefix,originalNames[0])],
+    [profiles[2],upload(profiles[2].casePrefix,originalNames[0])],
+    [profiles[2],upload(profiles[1].casePrefix,originalNames[1])],
+    [profiles[1],upload(profiles[2].casePrefix,originalNames[1])],
+  ];
+  for(const [profile,wrongUpload] of violations){
+    const f=model(undefined,profile),cos=await f.open();
+    await assert.rejects(cos.read('current',wrongUpload),/CURRENT259_FIRST_Q2_COS_(?:NATIVE_SCOPE|INPUT)/u);
+    assert.equal(f.calls.length,5);
     assert.ok(f.calls.every(call=>call.signal.aborted));
   }
 });

@@ -15,10 +15,13 @@ const { schema205ScopeSql } = require('./task16-schema205-scope.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
 
 const { paymentLoopbackForScenario, isCurrent259PaymentLoopbackTopology } = require('./task16-current259-payment-loopback.cjs');
+const { captureCurrent259DisconnectFailure, carryCurrent259DisconnectFailure } = require('./task16-current259-disconnect-failure.cjs');
 
 const paymentLoopbackImpactSessions = new WeakSet();
 const receipts = new WeakMap(), impactBoundaries = new WeakMap(), competitionPairs=new WeakMap(), used = new WeakSet();
 const ROLLBACK_TOPOLOGY = paymentLoopbackForScenario('cancel-commit').topology;
+const COMPETITION_TOPOLOGY = paymentLoopbackForScenario('competition').topology;
+const DISCONNECT_TOPOLOGY = paymentLoopbackForScenario('disconnect-commit-recovery').topology;
 const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
 const METHOD_NAMES = ['$disconnect', '$connect', '$queryRawUnsafe', '$transaction'];
@@ -81,12 +84,14 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
   const topology = resource.topology;
   const paymentLoopback = isCurrent259PaymentLoopbackTopology(topology);
-  const firstRollback = topology === ROLLBACK_TOPOLOGY;
-  need(!paymentLoopback || !competition && !recovery, 'PHYSICAL_ENDPOINT');
   let active = true, broken = false, checking = false, closing, resourceClosing;
   let cleanup = 'DISCONNECTED', resourceCleanup = 'NOT_NEEDED', proofs = [], initialRows, ca;
   let methods, initial, businessToken, faultUsed = false;
   let replacementRow, retiredRuntime, disconnectOutcome, directoryBefore, replacementUsed=false, recoveryComplete=false;
+  let disconnectStage='LIVE_ADMISSION', disconnectFailure;
+  function rememberDisconnectFailure(error,stage=disconnectStage) {
+    if(recovery)disconnectFailure??=captureCurrent259DisconnectFailure(error,stage);
+  }
   const activeLanes=new Set();
   const applicationName=(kind,index)=>'task16_live_'+view.runId.replaceAll('-', '')+'_'+kind+
     (competition&&kind==='runtime'?(index===1?'_a':'_b'):recovery&&index===3?'_repl':'');
@@ -176,7 +181,8 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     }
   }
   async function commitFault(token, submit, disconnect) {
-    need(!competition&&disconnect===recovery&&(!paymentLoopback||firstRollback),'CANCEL_SCOPE');
+    const faultTopology=disconnect?DISCONNECT_TOPOLOGY:ROLLBACK_TOPOLOGY;
+    need(!competition&&disconnect===recovery&&(!paymentLoopback||topology===faultTopology),'CANCEL_SCOPE');
     const authorize=disconnect?assertCurrent259CommitDisconnectIssuer:assertCurrent259CommitCancellationIssuer;
     authorize(token, handle);
     checkContinuity(token);
@@ -188,7 +194,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     const mode=disconnect?'disconnect-commit':'cancel-commit';
     const phase=disconnect?'current259-a16-disconnect':'current259-a16-cancel';
     const fault = createCurrent259A16FaultPlan({ mode,
-      ...(firstRollback ? { transport: ROLLBACK_TOPOLOGY } : {}), nonce: randomBytes(32).toString('hex'),
+      ...(paymentLoopback ? { transport: topology } : {}), nonce: randomBytes(32).toString('hex'),
       database: { name: identity.database, oid: identity.databaseOid, namespaceOid: identity.namespaceOid, systemIdentifier: identity.systemIdentifier },
       runtime: { oid: runtime.loginOid, pid: runtime.pid, startedAt: runtime.start, clientAddress: runtime.clientAddress, clientPort: runtime.clientPort } });
     const run = (sql, phase) => settled(() => methods.execOwnerSql(sql, phase));
@@ -216,22 +222,24 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
       if(disconnect)disconnectOutcome=outcome;
       return outcome;
     } catch (error) {
+      rememberDisconnectFailure(error,'ORIGINAL_COMMIT_FAULT');
       broken = true; active = false;
       await Promise.allSettled([closeResource(), owner, probe, request]);
-      throw error;
+      throw disconnectFailure?carryCurrent259DisconnectFailure(error,disconnectFailure):error;
     }
   }
-  async function settled(action, disconnect = false) {
+  async function settled(action, disconnect = false, failureStage) {
     if (!disconnect) checkLight();
     let timer;
     const result = await Promise.race([
-      Promise.resolve().then(action).then(value => ({ value }), () => ({ failed: true })),
+      Promise.resolve().then(action).then(value => ({ value }), error => ({ failed: true, error })),
       new Promise(resolve => { timer = setTimeout(() => resolve({ timeout: true }), disconnect ? 10000 : 30000); })
     ]);
     clearTimeout(timer);
     if (result.timeout || result.failed) {
       if (result.timeout) cleanup = 'UNKNOWN';
       broken = true; active = false;
+      if(failureStage&&result.failed)rememberDisconnectFailure(result.error,failureStage);
       throw fail(result.timeout ? 'UNSETTLED' : 'OPERATION');
     }
     if (!disconnect) checkLight();
@@ -330,7 +338,8 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
         parseCurrent259ClientSessions(observed.slice(0,3), { ...expected, nonce });
         if(competition){
           parseCurrent259ClientSessions([observed[0],observed[3],observed[2]],{...expected,nonce});
-          need(observed[1][0].pid!==observed[3][0].pid&&observed[1][0].start!==observed[3][0].start,'SESSION_CHANGED');
+          const left=observed[1][0],right=observed[3][0];
+          need(left.pid!==right.pid&&left.start!==right.start&&left.clientPort!==right.clientPort,'SESSION_CHANGED');
         }
         initialRows = observed.map(rows => Object.freeze({ ...rows[0] }));
       } else {
@@ -344,8 +353,11 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
       if(replacementRow&&!installedOnly&&!sourceContinuityOnly)need(await recoveryDirectory()===directoryBefore,'RECOVERY_DIRECTORY');
       if (!((installedOnly || sourceContinuityOnly) && businessToken)) view.verifyFull();
       checkLight();
-    } catch {
-      broken = true; active = false; await closeResource(); throw fail('VERIFICATION');
+    } catch(error) {
+      rememberDisconnectFailure(error);
+      broken = true; active = false; await closeResource();
+      const failure=fail('VERIFICATION');
+      throw disconnectFailure?carryCurrent259DisconnectFailure(failure,disconnectFailure):failure;
     } finally { checking = false; }
   }
   async function connectClient(kind, credentials) {
@@ -437,6 +449,7 @@ ROLLBACK;`;
   }
   async function replaceRuntime(closeProof,attempt,consumeReplacement) {
     try {
+      disconnectStage='ORIGINAL_RUNTIME_RETIREMENT';
       checkLight();
       need(recovery&&disconnectOutcome?.state==='commit-disconnected'&&directoryBefore&&!businessToken&&
         !replacementUsed&&typeof consumeReplacement==='function','REPLACEMENT_SCOPE');
@@ -449,11 +462,15 @@ ROLLBACK;`;
       oldClient.disconnectAttempted=true;
       try{await settled(()=>oldClient.methods.$disconnect.call(oldClient.client),true);}
       catch{cleanup='UNKNOWN';throw fail('REPLACEMENT_RETIRE_UNKNOWN');}
+      disconnectStage='RETAINED_SESSIONS';
       await verifyRetained();
+      disconnectStage='ROLLBACK_OBSERVATION';
       const load=own(loader,'loadPaymentModules');
       const confirmation=own(load.call(loader),'confirmRegisteredNullCrossCompanyDisconnectRollback');
-      const rollback=await settled(()=>confirmation(attempt,Object.freeze({checkLight})));
+      const rollback=await settled(()=>confirmation(attempt,Object.freeze({checkLight})),false,disconnectStage);
+      disconnectStage='RETAINED_SESSIONS';
       await verifyRetained();
+      disconnectStage='REPLACEMENT_RUNTIME';
       await connectClient('runtime',view.credentials());
       const nonce=randomBytes(32).toString('hex'), physical=await endpoint();
       const observed=await observe([0,3,2],nonce);
@@ -468,16 +485,19 @@ ROLLBACK;`;
       replacementRow=Object.freeze({...next});
       const replacement=issueProof(3);
       proofs.push(replacement);
+      disconnectStage='RECOVERY_APPLICATION';
       const result=await consumeReplacement(replacement,rollback,oldOrigin);
       checkLight();need(!receipts.has(replacement),'REPLACEMENT_REQUIRED');
       recoveryComplete=true;
       return result;
     } catch(error) {
+      rememberDisconnectFailure(error);
       broken=true;active=false;await closeResource();throw error;
     }
   }
   let value, hasPrimary = false;
   try {
+    need((topology === COMPETITION_TOPOLOGY) === competition && (topology === DISCONNECT_TOPOLOGY) === recovery, 'PHYSICAL_ENDPOINT');
     methods = Object.fromEntries(['getReceipt', 'inspectConnectionEndpoint', 'execOwnerSql'].map(key => [key, own(resource, key)]));
     need(Object.values(methods).every(fn => typeof fn === 'function'));
     initial = methods.getReceipt();
@@ -491,16 +511,23 @@ ROLLBACK;`;
     await verify();
     proofs=(competition?[1,3]:[1]).map(issueProof);
     if(competition){Object.freeze(proofs);competitionPairs.set(proofs,handle);}
+    disconnectStage='ORIGINAL_APPLICATION';
     value = recovery?await consume(proofs[0],replaceRuntime):await consume(competition?proofs:proofs[0]);
+    disconnectStage='FINAL_LIVE_VERIFICATION';
     checkLight();
     need(!recovery||recoveryComplete,'REPLACEMENT_REQUIRED');
     await verify();
-  } catch {
+  } catch(error) {
+    rememberDisconnectFailure(error);
     hasPrimary = true; broken = true; active = false;
   } finally {
-    try { await close(); } catch { hasPrimary = true; }
+    try { await close(); }
+    catch(error) { rememberDisconnectFailure(error,'LIVE_CLEANUP'); hasPrimary = true; }
   }
-  if (hasPrimary) throw Object.assign(fail('FAILED_CLOSED'), { clientCleanupOutcome: cleanup, resourceCleanupOutcome: resourceCleanup });
+  if (hasPrimary) {
+    const error=Object.assign(fail('FAILED_CLOSED'), { clientCleanupOutcome: cleanup, resourceCleanupOutcome: resourceCleanup });
+    throw disconnectFailure?carryCurrent259DisconnectFailure(error,disconnectFailure):error;
+  }
   return value;
 }
 

@@ -3,7 +3,7 @@
 const { isIP } = require('node:net');
 const { types } = require('node:util');
 
-const ROLLBACK_TOPOLOGY = 'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';
+const { paymentLoopbackForScenario } = require('./task16-current259-payment-loopback.cjs');
 const CODE = 'TASK16_CURRENT259_A16_FAULT';
 const TABLE = 'public."OperatingImpactEntry"';
 const OWNER = 'jg_task01_owner';
@@ -35,7 +35,10 @@ function data(record, keys) {
 function snapshot(input) {
   const transport = input && !types.isProxy(input) && Object.getOwnPropertyDescriptor(input, 'transport');
   const { mode, nonce, database, runtime } = data(input, ['mode', 'nonce', 'database', 'runtime', ...(transport ? ['transport'] : [])]);
-  if (transport) need(transport.value === ROLLBACK_TOPOLOGY && mode === 'cancel-commit');
+  if (transport) {
+    const scenario = mode === 'disconnect-commit' ? 'disconnect-commit-recovery' : 'cancel-commit';
+    need(transport.value === paymentLoopbackForScenario(scenario).topology);
+  }
   const db = data(database, ['name', 'oid', 'namespaceOid', 'systemIdentifier']);
   const target = data(runtime, ['oid', 'pid', 'startedAt', 'clientAddress', 'clientPort']);
   need((mode === 'cancel-commit' || mode === 'disconnect-commit') && hex(nonce));

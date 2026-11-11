@@ -19,6 +19,7 @@ test('the fixed competition plan cannot be consumed by the normal business verif
  assert.equal(verified.plan.purpose,'current259-payment-owned-two-actor-competition');
  assert.equal(verified.plan.case.scenario,'competition');
  assert.equal(verified.plan.scope.multiActorConcurrency,true);
+ assert.equal(verified.plan.scope.databaseTransport,'PAYMENT_COMPETITION_LOOPBACK_TLS_V1');
  assert.deepEqual(verified.plan.scope.competition,{runtimeSessions:2,runtimePoolSize:1,httpTimeoutMs:5000,automaticRetry:false});
  assert.equal(verified.plan.scope.seedPostCount,4);
  assert.equal(verified.plan.scope.registrationPostCount,2);
@@ -64,6 +65,7 @@ test('fixed disconnect recovery plan requires both separated application phases 
  const {plan}=f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256);
  assert.equal(plan.case.caseId,'registered.null-cross-company.disconnect-commit-recovery');
  assert.equal(plan.scope.commitFaults,'DISCONNECT_EXACT_COMMIT_ONCE');
+ assert.equal(plan.scope.databaseTransport,'PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS_V1');
  assert.equal(plan.scope.registrationPostCount,2);
  assert.equal(plan.scope.commitDisconnection.httpTimeoutMs,5000);
  assert.equal(plan.scope.commitDisconnection.automaticRetry,false);
@@ -100,6 +102,30 @@ for(const [scenario,profile,other] of [
  assert.equal(verified.plan.scope.registrationPostCount,2);
  assert.equal(verified.plan.scope.commitFaults,false);
  const raw=JSON.parse(fs.readFileSync(f.output,'utf8'));raw.scope.databaseTransport=other;
+ const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');fs.writeFileSync(f.output,bytes);
+ const digest=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,digest));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('changing the competition plan to another scenario transport never qualifies an attempt',t=>{
+ const f=fixture(t),saved=f.business.prepareCurrent259PaymentCompetitionPlan({runRoot:f.runRoot,daemonId:f.daemonId,
+  output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'});
+ const plan=JSON.parse(fs.readFileSync(f.output,'utf8'));
+ assert.equal(plan.scope.databaseTransport,'PAYMENT_COMPETITION_LOOPBACK_TLS_V1');
+ plan.scope.databaseTransport='PAYMENT_NORMAL_LOOPBACK_TLS_V1';
+ const bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');fs.writeFileSync(f.output,bytes);
+ const digest=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ assert.notEqual(digest,saved.sha256);
+ assert.throws(()=>f.business.verifyCurrent259PaymentCompetitionPlan(f.output,digest));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('disconnect plan refuses another transport even when its JSON digest is recomputed',t=>{
+ const f=fixture(t);
+ f.business.prepareCurrent259PaymentBusinessPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,
+  scenario:'disconnect-commit-recovery',paidAt:'2026-11-10',openingDate:'2026-11-09'});
+ const raw=JSON.parse(fs.readFileSync(f.output,'utf8'));raw.scope.databaseTransport='FIRST_ROLLBACK_LOOPBACK_TLS_V1';
  const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');fs.writeFileSync(f.output,bytes);
  const digest=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
  assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,digest));
