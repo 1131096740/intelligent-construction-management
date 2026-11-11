@@ -8,20 +8,31 @@ const fdMethods=Object.freeze(Object.fromEntries(['realpathSync','lstatSync','fs
 const fdConstants=fs.constants,readOnly=fdConstants.O_RDONLY,noFollow=fdConstants.O_NOFOLLOW;
 function checkFdMethods(){need(Object.getOwnPropertyDescriptor(fs,'constants')?.value===fdConstants&&Object.getOwnPropertyDescriptor(fdConstants,'O_RDONLY')?.value===readOnly&&Object.getOwnPropertyDescriptor(fdConstants,'O_NOFOLLOW')?.value===noFollow);for(const [key,descriptor]of Object.entries(fdMethods)){const now=Object.getOwnPropertyDescriptor(fs,key);need(now&&['value','writable','enumerable','configurable'].every(k=>now[k]===descriptor[k]));}}
 let original,broken=false;
+function ownData(owner,key){
+ need(owner&&!types.isProxy(owner));const descriptor=Object.getOwnPropertyDescriptor(owner,key);
+ need(descriptor&&Object.hasOwn(descriptor,'value'));return descriptor;
+}
+const sameDescriptor=(a,b)=>a&&b&&['value','writable','enumerable','configurable'].every(k=>a[k]===b[k]);
 function captureCurrent259BusinessIssuer(){
  need(arguments.length===0);
- const issuer=require.cache[FILE],main=require.main,exports=issuer?.exports;
- const descriptor=exports&&Object.getOwnPropertyDescriptor(exports,'assertCurrent259PaymentBusinessContinuity');
- need(issuer&&issuer===main&&main.filename===FILE&&Object.isFrozen(exports)&&descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function');
- if(original){need(original.issuer===issuer&&original.exports===exports&&original.descriptor.value===descriptor.value);return;}
- original=Object.freeze({issuer,main,exports,descriptor:Object.freeze(descriptor)});
+ try{
+  need(!broken);
+  const cache=ownData(require,'cache').value,main=ownData(require,'main').value,issuer=ownData(cache,FILE).value;
+  need(issuer&&issuer===main&&!types.isProxy(issuer));
+  const filename=ownData(main,'filename'),exportsDescriptor=ownData(issuer,'exports'),exports=exportsDescriptor.value;
+  need(filename.value===FILE&&exports&&!types.isProxy(exports)&&Object.isFrozen(exports));
+  const descriptor=ownData(exports,'assertCurrent259PaymentBusinessContinuity');need(typeof descriptor.value==='function');
+  if(original){need(original.issuer===issuer&&original.exports===exports&&sameDescriptor(original.exportsDescriptor,exportsDescriptor)&&sameDescriptor(original.descriptor,descriptor)&&sameDescriptor(original.filename,filename));return;}
+  original=Object.freeze({issuer,main,exports,exportsDescriptor:Object.freeze(exportsDescriptor),filename:Object.freeze(filename),descriptor:Object.freeze(descriptor)});
+ }catch(error){broken=true;throw error;}
 }
 function assertCurrent259BusinessIssuer(token,handle){
- try{need(original&&!broken);const {issuer,main,exports,descriptor}=original;
- need(require.main===main&&require.cache[FILE]===issuer&&issuer.exports===exports);
- const current=Object.getOwnPropertyDescriptor(exports,'assertCurrent259PaymentBusinessContinuity');
- need(current&&['value','writable','enumerable','configurable'].every(k=>current[k]===descriptor[k]));
- need(descriptor.value(token,handle)===true);return true;
+ try{
+  need(original&&!broken);const {issuer,main,exports,descriptor}=original;
+  const cache=ownData(require,'cache').value;
+  need(ownData(require,'main').value===main&&ownData(cache,FILE).value===issuer&&sameDescriptor(ownData(main,'filename'),original.filename)&&sameDescriptor(ownData(issuer,'exports'),original.exportsDescriptor));
+  need(sameDescriptor(ownData(exports,'assertCurrent259PaymentBusinessContinuity'),descriptor));
+  need(descriptor.value(token,handle)===true);return true;
  }catch(error){broken=true;throw error;}
 }
 function checkCurrent259FileIdentity(file,expected){

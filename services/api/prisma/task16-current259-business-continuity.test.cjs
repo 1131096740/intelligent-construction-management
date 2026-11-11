@@ -35,3 +35,21 @@ test('metadata refuses an accessor snapshot without invoking it',t=>{
  const file=path.join(dir,'material');fs.writeFileSync(file,'x');let reads=0;
  const fake={get ctimeMs(){reads++;return 0;}};assert.throws(()=>checkCurrent259FileIdentity(file,fake));assert.equal(reads,0);
 });
+test('initial main exports accessor is rejected without a getter and restoration does not revive capture',()=>{
+ const f=issuerFixture(),descriptor=Object.getOwnPropertyDescriptor(f.main,'exports');let reads=0;
+ Object.defineProperty(f.main,'exports',{configurable:true,get(){reads++;return descriptor.value;}});
+ assert.throws(()=>f.api.captureCurrent259BusinessIssuer());assert.equal(reads,0);
+ Object.defineProperty(f.main,'exports',descriptor);assert.throws(()=>f.api.captureCurrent259BusinessIssuer());
+});
+test('replacing captured main exports with an accessor invokes no getter and cannot be restored',()=>{
+ const f=issuerFixture();f.api.captureCurrent259BusinessIssuer();
+ const descriptor=Object.getOwnPropertyDescriptor(f.main,'exports');let reads=0;
+ Object.defineProperty(f.main,'exports',{configurable:true,get(){reads++;return descriptor.value;}});
+ assert.throws(()=>f.api.assertCurrent259BusinessIssuer(f.token,f.handle));assert.equal(reads,0);
+ Object.defineProperty(f.main,'exports',descriptor);assert.throws(()=>f.api.assertCurrent259BusinessIssuer(f.token,f.handle));assert.equal(f.calls(),0);
+});
+test('a Proxy exports value is refused before descriptor or freeze traps',()=>{
+ const f=issuerFixture();let traps=0;
+ f.main.exports=new Proxy({}, {getOwnPropertyDescriptor(){traps++;return undefined;},isExtensible(){traps++;return true;}});
+ assert.throws(()=>f.api.captureCurrent259BusinessIssuer());assert.equal(traps,0);
+});
