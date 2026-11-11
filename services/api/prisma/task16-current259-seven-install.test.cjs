@@ -255,3 +255,35 @@ test('an oversized nested preimage retains the size category without raw bytes',
  assert.equal(f.calls.length,1);
  assert.equal(f.closed(),true);
 });
+
+test('standalone and archive writers give the temporary checks every referenced column',async()=>{
+ const f=fixture();
+ await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
+ const executor={name:'jg_c259_outside_executor_owner',oid:'220',login:false};
+ const lease={source,completion:{...roleCompletion,roles:[...roles,executor]}};
+ const view={source,runId,resource:{containerId,databaseName:database}};
+ const archive=f.api.archiveSevenMaterial(lease,view,nonce);
+ const {writerBefore,writerMiddle}=archive.readBefore({stdout:JSON.stringify({nonce,phase:'current259-seven-before',
+  backendPid:11,backendStart:'2026-11-11T04:00:00.000000Z',pre:model(),registry,fileRoles:['10','100'],
+  catalogSha256:'5'.repeat(64),installXid:null,commitStatus:null})});
+ const fragment=read('prepared/task16/registered-intercompany.sql');
+ const closedShape=fragment.match(/^\s*closed_shape := (.+);$/mu)?.[1];
+ const constraintFormat=fragment.match(/^.*ADD CONSTRAINT %I CHECK \((.+)\)%s',constraint_name.*$/mu)?.[1];
+ assert.ok(closedShape&&constraintFormat);
+ const referenced=new Set([...closedShape.matchAll(/"([A-Za-z][A-Za-z0-9]*)"/gu),
+  ...constraintFormat.matchAll(/"([A-Za-z][A-Za-z0-9]*)"/gu)].map(match=>match[1]));
+ const actualTable=read('migrations/20260828070000_pol13b_inter_entity_relationship/migration.sql');
+ assert.match(actualTable,/"status" TEXT NOT NULL DEFAULT 'draft'/u);
+ for(const sql of [f.calls[1].sql,writerBefore+'\n'+writerMiddle]){
+  const original=sql.match(/CREATE TEMP TABLE pg_temp\."jg_current259_seven_reference" \(([\s\S]*?)\n\) ON COMMIT DROP;/u);
+  const addition=sql.match(/ALTER TABLE pg_temp\."jg_current259_seven_reference" (ADD COLUMN [^;]+);/u);
+  assert.ok(original&&addition);
+  const supplied=new Set([...(original[1]+addition[1]).matchAll(/"([A-Za-z][A-Za-z0-9]*)"\s+\w/gu)].map(match=>match[1]));
+  assert.deepEqual([...referenced].filter(name=>!supplied.has(name)),[]);
+  assert.match(addition[1],/ADD COLUMN "status" text NOT NULL\b/u);
+  assert.ok(sql.includes(fragment));
+  const rewrite=sql.indexOf('DECLARE constraint_name TEXT; definition TEXT; closed_shape TEXT;',sql.indexOf(addition[0]));
+  assert.ok(rewrite>sql.indexOf(addition[0])&&rewrite<sql.indexOf('DECLARE observation jsonb; item jsonb;'));
+ }
+ assert.doesNotMatch(f.calls[0].sql,/ADD COLUMN "status"/u);
+});

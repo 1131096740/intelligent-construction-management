@@ -150,7 +150,7 @@ function material(witness){
  const constraintEdit=intercompany.match(/ALTER TABLE public\."InterEntityRelationshipEntry" ALTER COLUMN "evidenceFileId" DROP NOT NULL;\nDO \$\$\nDECLARE constraint_name[\s\S]+?\nEND \$\$;/u)?.[0];
  need(constraintEdit&&constraintEdit.split(RELATION).length===4);
  return {ledger:catalog.ledger,fragments:fragmentNames.map(name=>files.get(name)),newRoutines,
-  ...currentRewriteBodies(catalog.ledger,changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3);\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
+  ...currentRewriteBodies(catalog.ledger,changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3), ADD COLUMN "status" text NOT NULL;\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
 }
 function inputOf(lease,view){
  const {completion:roleCompletion,source}=lease;
