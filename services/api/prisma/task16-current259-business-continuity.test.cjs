@@ -11,6 +11,40 @@ test('large material continuity uses an actual no-follow FD identity without rea
  fs.renameSync(file,file+'.old');fs.copyFileSync(file+'.old',file);assert.throws(()=>checkCurrent259FileIdentity(file,identity));
  fs.unlinkSync(file);fs.symlinkSync(file+'.old',file);assert.throws(()=>checkCurrent259FileIdentity(file,identity));
 });
+test('a later close wrapper or getter is never invoked and the actual FD closes on success and failure',t=>{
+ const dir=fs.mkdtempSync('/private/tmp/jg-259-meta-close-');t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'material');fs.writeFileSync(file,'x');
+ const stat=fs.lstatSync(file,{bigint:true}),identity=Object.fromEntries(['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'].map(k=>[k,String(stat[k])]));
+ const source=fs.readFileSync(path.join(__dirname,'task16-current259-business-continuity.cjs'),'utf8');
+ const evaluate=new Function('require','module','__dirname',source);
+ const first=new Error('descriptor identity read failed');
+ for(const laterDescriptor of ['wrapper','getter']){
+  for(const failAfterOpen of [false,true]){
+   let fd,laterCalls=0,originalCloses=0;
+   const fsAtLoad={
+    ...fs,
+    openSync(...args){fd=fs.openSync(...args);return fd;},
+    fstatSync(...args){if(failAfterOpen)throw first;return fs.fstatSync(...args);},
+    closeSync(openedFd){originalCloses++;fs.closeSync(openedFd);},
+   };
+   const fixture={exports:{}};
+   evaluate(name=>name==='node:fs'?fsAtLoad:require(name),fixture,__dirname);
+   const later=()=>{laterCalls++;throw new Error('later close');};
+   Object.defineProperty(fsAtLoad,'closeSync',laterDescriptor==='wrapper'?{value:later}:{get:later});
+   try{
+    const check=()=>fixture.exports.checkCurrent259FileIdentity(file,identity);
+    if(failAfterOpen)assert.throws(check,error=>error===first);
+    else assert.equal(check(),true);
+    assert.equal(Number.isInteger(fd),true);
+    assert.throws(()=>fs.fstatSync(fd),{code:'EBADF'});
+    assert.equal(originalCloses,1);
+    assert.equal(laterCalls,0);
+   }finally{
+    if(Number.isInteger(fd)&&originalCloses===0)fs.closeSync(fd);
+   }
+  }
+ }
+});
 function issuerFixture(){
  const token=Object.freeze({}),handle=Object.freeze({});let calls=0;
  const main={filename:path.join(__dirname,'task16-current259-payment-run-authorization.cjs'),exports:Object.freeze({assertCurrent259PaymentBusinessContinuity(t,h){calls++;return t===token&&h===handle;}})};

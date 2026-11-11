@@ -4,7 +4,9 @@
 const fs=require('node:fs'),path=require('node:path'),{types}=require('node:util');
 const FILE=path.join(__dirname,'task16-current259-payment-run-authorization.cjs');
 const need=ok=>{if(!ok)throw new Error('CURRENT259_BUSINESS_CONTINUITY');};
-const fdMethods=Object.freeze(Object.fromEntries(['realpathSync','lstatSync','fstatSync','openSync','closeSync'].map(k=>[k,Object.freeze(Object.getOwnPropertyDescriptor(fs,k))])));
+const fdMethods=Object.freeze(Object.fromEntries(['realpathSync','lstatSync','fstatSync','openSync'].map(k=>[k,Object.freeze(Object.getOwnPropertyDescriptor(fs,k))])));
+// Dependencies may wrap the global close slot. Close our own FD with the original method.
+const fdClose=Object.freeze(ownData(fs,'closeSync'));need(typeof fdClose.value==='function');
 const fdConstants=fs.constants,readOnly=fdConstants.O_RDONLY,noFollow=fdConstants.O_NOFOLLOW;
 function checkFdMethods(){need(Object.getOwnPropertyDescriptor(fs,'constants')?.value===fdConstants&&Object.getOwnPropertyDescriptor(fdConstants,'O_RDONLY')?.value===readOnly&&Object.getOwnPropertyDescriptor(fdConstants,'O_NOFOLLOW')?.value===noFollow);for(const [key,descriptor]of Object.entries(fdMethods)){const now=Object.getOwnPropertyDescriptor(fs,key);need(now&&['value','writable','enumerable','configurable'].every(k=>now[k]===descriptor[k]));}}
 let original,broken=false;
@@ -44,7 +46,7 @@ function checkCurrent259FileIdentity(file,expected){
  const matches=stat=>keys.every(k=>Object.hasOwn(stat,k)&& (typeof expected[k]==='string'?String(stat[k]):stat[k])===expected[k]);
  const before=fs.lstatSync(file,{bigint:big});need(before.isFile()&&!before.isSymbolicLink()&&matches(before));
  const fd=fs.openSync(file,readOnly|noFollow);
- try{need(matches(fs.fstatSync(fd,{bigint:big}))&&matches(fs.lstatSync(file,{bigint:big})));}finally{fs.closeSync(fd);}
+ try{need(matches(fs.fstatSync(fd,{bigint:big}))&&matches(fs.lstatSync(file,{bigint:big})));}finally{Reflect.apply(fdClose.value,fs,[fd]);}
  return true;
 }
 module.exports=Object.freeze({captureCurrent259BusinessIssuer,assertCurrent259BusinessIssuer,checkCurrent259FileIdentity});
