@@ -29,11 +29,11 @@ function fixture(t,options={}){
    state.calls.push('b7');assert.equal(value,acl);assert.equal(h,handle);
    const authority=module.exports.claimCurrent259B7WritePermit(permit,h,value);
    const beforeSql=require('./task16-current259-catalog.cjs').renderCurrent259CatalogRead({source:s.rawSource,identity:scopeIdentity,phase:'before',nonce:'d'.repeat(64)});
-   const binding={scope:'CURRENT259_DOCKER_B7_INSTALL',planSha256:options.competitionSha??saved.sha256,sourceSha:source.candidateSha,sourceSealSha256:source.sourceSealSha256,runId:technical.runId,containerId:technical.containerId,aclXid:acl.installXid,nonce:'d'.repeat(64),identity:scopeIdentity,beforeCatalogSha256:'c'.repeat(64),beforeSqlSha256:hash(beforeSql),installSqlSha256:'e'.repeat(64)};
+   const binding={scope:'CURRENT259_DOCKER_B7_INSTALL',planSha256:options.selectedPlanSha??saved.sha256,sourceSha:source.candidateSha,sourceSealSha256:source.sourceSealSha256,runId:technical.runId,containerId:technical.containerId,aclXid:acl.installXid,nonce:'d'.repeat(64),identity:scopeIdentity,beforeCatalogSha256:'c'.repeat(64),beforeSqlSha256:hash(beforeSql),installSqlSha256:'e'.repeat(64)};
    options.beforeConsume?.({api:module.exports,permit,h,value,binding,authority});
    assert.equal(authority.consumeWrite(Object.freeze(binding)),true);state.consumed=binding;
    assert.equal(authority.check(),true);
-   return Object.freeze({status:'CURRENT259_B7_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:technical.runId,installXid:'1300',readerOid:'3000',planSha256:options.competitionSha??saved.sha256,installSqlSha256:binding.installSqlSha256,bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20'});
+   return Object.freeze({status:'CURRENT259_B7_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:technical.runId,installXid:'1300',readerOid:'3000',planSha256:options.selectedPlanSha??saved.sha256,installSqlSha256:binding.installSqlSha256,bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20'});
   }},
   './local-staged-current259-profile.cjs':{createCurrent259TechnicalMigration(h,provided){
    assert.equal(h,handle);assert.equal(provided,signal);return {async migrate(){state.calls.push('technical259');if(Object.hasOwn(options,'technicalFailure'))throw options.technicalFailure;await options.onTechnical?.(state);return technical;}};
@@ -101,13 +101,54 @@ function fixture(t,options={}){
   };
   ports['./task16-current259-payment-competition.cjs']={executeCurrent259PaymentCompetition(){assert.fail('unexpected raw competition callback');}};
  }
+ if(options.disconnect){
+  const firstProof=Object.freeze({}),replacementProof=Object.freeze({}),closeProof=Object.freeze({});
+  const attempt=Object.freeze({}),rollback=Object.freeze({});
+  const app=origin=>Object.freeze({origin,runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
+  const originalApp=app('http://127.0.0.1:52123/'),replacementApp=app(options.sameListener?'http://127.1:52123':'http://127.0.0.1:52124/');
+  ports['./task16-current259-live-sessions.cjs'].withCurrent259DisconnectLiveSessions=async(b7,h,permit,consume)=>{
+   assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live-disconnect');
+   assert.equal(module.exports.claimCurrent259DisconnectLivePermit(permit,h,b7),true);
+   try{return await consume(firstProof,async(closed,prior,next)=>{
+    assert.equal(closed,closeProof);assert.equal(prior,attempt);
+    assert.equal(state.calls.at(-1),'original-app-closed');
+    state.calls.push('retire','rollback');
+    if(options.rollbackFailure)throw new Error('rollback not confirmed');
+    return next(replacementProof,rollback,originalApp.origin);
+   });}finally{state.calls.push('pools-close');}
+  };
+  ports['./task16-current259-application-factory.cjs'].claimCurrent259DisconnectApplicationClose=()=>assert.fail('fake main must not receive the raw claim');
+  ports['./task16-current259-application-factory.cjs'].withCurrent259OwnedDisconnectApplication=async(proof,h,sig,consume)=>{
+   assert.equal(proof,firstProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('original-app');
+   const value=await consume(originalApp);state.calls.push('original-app-closed');return {value,closeProof};
+  };
+  ports['./task16-current259-application-factory.cjs'].withCurrent259OwnedApplication=async(proof,h,sig,consume)=>{
+   assert.equal(proof,replacementProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('replacement-app');
+   try{return await consume(replacementApp);}finally{state.calls.push('replacement-app-closed');}
+  };
+  ports['./task16-current259-payment-case.cjs'].runCurrent259PaymentCase=async(current,h,permit)=>{
+   const business=module.exports.claimCurrent259PaymentBusinessPermit(permit,current,h);business.check();
+   assert.equal(business.scope.scenario,'disconnect-commit-recovery');
+   if(business.scope.disconnectPhase==='attempt'){
+    assert.equal(current,originalApp);
+    assert.equal(module.exports.assertCurrent259PaymentBusinessContinuity(business.continuityToken,h,'disconnect-commit-recovery'),true);
+    state.calls.push('first-post');
+    return attempt;
+   }
+   assert.equal(current,replacementApp);
+   assert.equal(business.scope.disconnectPhase,'recovery');
+   assert.equal(business.scope.disconnectAttempt,attempt);assert.equal(business.scope.disconnectRollback,rollback);
+   state.calls.push('recover');
+   return {caseId:business.scope.caseId,passed:true,rollbackObserved:true,executionId:'execution',rootId:'root'};
+  };
+ }
  const rq=name=>{
   if(!name.startsWith('.'))return require(name);
   const resolved=path.resolve(__dirname,name);
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const proc={argv:['node',file,...(options.competition?[options.default?'--competition':'--competition-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.competitionSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const proc={argv:['node',file,...(options.competition?[options.default?'--competition':'--competition-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  new Function('require','module','__dirname','__filename','process',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc);
@@ -117,7 +158,7 @@ test('default verifies a fixed payment install plan without consuming an attempt
  const f=fixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit']);
 });
 test('fresh once follows technical259→roles→seven→ACL→B7 under one handle and immutable attempt',async t=>{
  const f=fixture(t),result=await f.done;
@@ -131,10 +172,11 @@ test('fresh once follows technical259→roles→seven→ACL→B7 under one handl
 
 test('an imported module exposes claim only and cannot mint from JSON or a native flag',t=>{
  const f=fixture(t,{imported:true});
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit']);
  assert.throws(()=>f.api.claimCurrent259B7WritePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionRolePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionLivePermit({native:true},f.handle,f.acl));
+ assert.throws(()=>f.api.claimCurrent259DisconnectLivePermit({native:true},f.handle,f.acl));
  assert.deepEqual(f.state.calls,[]);assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
 });
 
@@ -257,7 +299,7 @@ function competitionFixture(t,options={}){
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
  const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
- return fixture(t,{...options,competition:true,planFixture:s,saved,businessApi:s.business,competitionSha:plan.sha256});
+ return fixture(t,{...options,competition:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 test('competition consumes one fixed plan and reaches only the two-lane case, closing both apps before pools',async t=>{
  const f=competitionFixture(t),result=await f.done;
@@ -281,4 +323,38 @@ test('competition verification reaches neither resource nor attempt',async t=>{
  assert.equal(f.state.exit,0);
  assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
+});
+
+
+function disconnectFixture(t,options={}){
+ const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
+ new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
+ const s=holder.exports.fixture(t),plan=s.business.prepareCurrent259PaymentBusinessPlan({
+  runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,scenario:'disconnect-commit-recovery',paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ return fixture(t,{...options,disconnect:true,business:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+}
+for(const rollbackFailure of [false,true])test('fresh A16 once only starts a replacement application after retired original and confirmed rollback ('+rollbackFailure+')',async t=>{
+ const f=disconnectFixture(t,{rollbackFailure}),result=await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,rollbackFailure?'STOPPED':'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.equal(result.onceAttemptConsumed,true);
+ assert.deepEqual(f.state.calls,[
+  'start','technical259','roles9','seven','acl','b7','live-disconnect','env','original-app','first-post','original-app-closed','retire','rollback',
+  ...(!rollbackFailure?['replacement-app','recover','replacement-app-closed']:[]),'env-close','pools-close'
+ ]);
+ assert.equal(receipt.business.runtimeReplaced,rollbackFailure?undefined:true);
+ assert.equal(receipt.financialAcceptance,false);
+ assert.equal(f.state.closes,1);
+});
+
+
+test('fresh A16 refuses an equivalent replacement listener before issuing the recovery case permit',async t=>{
+ const f=disconnectFixture(t,{sameListener:true}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_DISCONNECT_REPLACEMENT_ENDPOINT');
+ assert.equal(f.state.calls.includes('recover'),false);
+ assert.equal(f.state.calls.filter(call=>call==='first-post').length,1);
+ assert.equal(f.state.closes,1);
 });

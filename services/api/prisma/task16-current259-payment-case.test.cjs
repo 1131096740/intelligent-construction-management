@@ -136,3 +136,51 @@ test('full checks occur at the three quiet boundaries and never inside original 
  assert.equal(f.calls.filter(x=>x==='permission-full').length,3);assert.equal(f.calls.filter(x=>x==='sessions-full').length,5);
  assert.deepEqual(f.calls.filter(x=>['activate-continuity','finish-continuity'].includes(x)),['activate-continuity','finish-continuity']);
 });
+
+test('A16 recovery uses the replacement application with exactly the original seed and password',async t=>{
+ const f=caseFixture(t,{retirement:true}),m=paymentModel(f);
+ const rollback=Object.freeze({}),attempt=Object.freeze({}),trace=[],signal=new AbortController().signal;
+ const options='/payment-executions/'+m.plan.ids.payment+'/registration-options';
+ const post='/payment-executions/'+m.plan.ids.payment+'/registrations';
+ const result='/payment-executions/results/'+m.plan.ids.requestKey;
+ const scope={scenario:'disconnect-commit-recovery',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate};
+ let faulted=false;
+ const originalVerify=f.session.verifyFull;
+ f.session.verifyFull=async()=>{assert.equal(faulted,false,'old runtime is never queried after the fault');return originalVerify();};
+ f.session.disconnectCommit=async(token,submit)=>{
+  f.session.checkContinuity(token);trace.push('fault-ready');
+  await submit();
+  faulted=true;
+  return {mode:'disconnect-commit',state:'commit-disconnected',transactionId:'108',executionAllowed:false,nativeAdmission:false};
+ };
+ for(const key of ['activateBusinessContinuity','deactivateBusinessContinuity','checkContinuity'])f.otherSession[key]=f.session[key];
+ m.modules.runRegisteredNullCrossCompanyDisconnectAttempt=async(execution,prepared,continuity,disconnect)=>{
+  assert.equal(execution,m.captured().execution);assert.equal(prepared.accessToken,'private-model-token');
+  continuity.assertHttpRequest(options,'GET');
+  const outcome=await disconnect(async()=>{continuity.assertHttpRequest(post,'POST');trace.push('original-post');});
+  assert.equal(outcome.state,'commit-disconnected');
+  return attempt;
+ };
+ m.modules.runRegisteredNullCrossCompanyDisconnectRecovery=async(proof,execution,continuity)=>{
+  assert.equal(proof,rollback);
+  assert.equal(execution.owner,f.session.owner);assert.equal(execution.observer,f.session.observer);
+  assert.equal(execution.runtime,f.otherSession.runtime);
+  assert.equal(execution.password,m.captured().execution.password);
+  assert.equal(execution.httpTimeoutMs,5000);
+  continuity.assertHttpRequest(result,'GET');
+  continuity.assertHttpRequest(post,'POST');trace.push('recovery-post');
+  continuity.assertHttpRequest(result,'GET');
+  return {caseId:'registered.null-cross-company.disconnect-commit-recovery',passed:true,rollbackObserved:true,
+   executionId:'11111111-1111-4111-8111-111111111111',rootId:'22222222-2222-4222-8222-222222222222'};
+ };
+ const first=await f.api.withCurrent259OwnedDisconnectApplication(f.proof,f.handle,signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{...scope,disconnectPhase:'attempt'})));
+ assert.equal(first.value,attempt);
+ assert.equal(f.api.claimCurrent259DisconnectApplicationClose(first.closeProof,f.proof,f.handle),'http://127.0.0.1:52124/');
+ const recovered=await f.api.withCurrent259OwnedApplication(f.secondProof,f.handle,signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{...scope,disconnectPhase:'recovery',disconnectAttempt:attempt,disconnectRollback:rollback})));
+ assert.equal(recovered.rollbackObserved,true);
+ assert.deepEqual(trace,['fault-ready','original-post','recovery-post']);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+ assert.equal(f.resourceCloses(),0);
+});

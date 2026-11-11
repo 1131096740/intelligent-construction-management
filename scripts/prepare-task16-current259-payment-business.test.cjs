@@ -56,3 +56,18 @@ for(const [paidAt,openingDate]of [['2026-02-30','2026-02-01'],['2026-11-10','202
  assert.throws(()=>f.business.prepareCurrent259PaymentBusinessPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,scenario:'normal',paidAt,openingDate}));
  assert.equal(f.state.captures,0);assert.equal(fs.existsSync(f.output),false);
 });
+
+test('fixed disconnect recovery plan requires both separated application phases and no automatic retry',t=>{
+ const f=fixture(t),saved=f.business.prepareCurrent259PaymentBusinessPlan({
+  runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,scenario:'disconnect-commit-recovery',paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const {plan}=f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256);
+ assert.equal(plan.case.caseId,'registered.null-cross-company.disconnect-commit-recovery');
+ assert.equal(plan.scope.commitFaults,'DISCONNECT_EXACT_COMMIT_ONCE');
+ assert.equal(plan.scope.registrationPostCount,2);
+ assert.equal(plan.scope.commitDisconnection.httpTimeoutMs,5000);
+ assert.equal(plan.scope.commitDisconnection.automaticRetry,false);
+ assert.ok(plan.scope.stages.indexOf('retireOriginalRuntime')<plan.scope.stages.indexOf('confirmRollback'));
+ assert.ok(plan.scope.stages.indexOf('confirmRollback')<plan.scope.stages.indexOf('replacementApplication'));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

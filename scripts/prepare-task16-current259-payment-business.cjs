@@ -10,7 +10,8 @@ const COMPETITION_PURPOSE='current259-payment-owned-two-actor-competition';
 const ENTRY='services/api/prisma/task16-current259-payment-run-authorization.cjs';
 const SCENARIOS=Object.freeze({normal:Object.freeze({scenario:'normal',caseId:'registered.null-cross-company.commit',handler:'runRegisteredNullCrossCompanyCommit'}),
  'response-loss':Object.freeze({scenario:'response-loss',caseId:'registered.null-cross-company.response-loss',handler:'runRegisteredNullCrossCompanyResponseLoss'}),
- 'cancel-commit':Object.freeze({scenario:'cancel-commit',caseId:'registered.null-cross-company.cancel-commit',handler:'runRegisteredNullCrossCompanyCommitCancellation'})});
+ 'cancel-commit':Object.freeze({scenario:'cancel-commit',caseId:'registered.null-cross-company.cancel-commit',handler:'runRegisteredNullCrossCompanyCommitCancellation'}),
+ 'disconnect-commit-recovery':Object.freeze({scenario:'disconnect-commit-recovery',caseId:'registered.null-cross-company.disconnect-commit-recovery',handler:'runRegisteredNullCrossCompanyDisconnectRecovery'})});
 const COMPETITION=Object.freeze({scenario:'competition',caseId:'registered.two-actor.payment-competition',handler:'runRegisteredTwoActorPaymentCompetition'});
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const need=ok=>{if(!ok)throw Object.assign(new Error('PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'),{code:'PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'});};
@@ -30,6 +31,20 @@ function dates(scenario,paidAt,openingDate,competition){
  return {...(competition?COMPETITION:SCENARIOS[scenario]),paidAt,openingDate};
 }
 function scope(installation,selected){const cancellation=selected.scenario==='cancel-commit',competition=selected.scenario===COMPETITION.scenario;
+ if(selected.scenario==='disconnect-commit-recovery')return {...installation.scope,
+  stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','disconnectOriginalCommit',
+   'closeOriginalApplication','retireOriginalRuntime','confirmRollback','replacementApplication','recoverOriginalKey','ownedCleanup'],
+  applications:true,environmentPreparation:true,fixtures:true,businessWrites:true,liveSessionAdmission:false,financialAcceptance:false,
+  seedPostCount:3,registrationPostCount:2,seedRoutes:['POST /auth/login','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
+  caseRoutes:['GET /payment-executions/:paymentId/registration-options','POST /payment-executions/:paymentId/registrations (initial)',
+   'GET /payment-executions/results/:idempotencyKey (after confirmed rollback)',
+   'POST /payment-executions/:paymentId/registrations (same frozen request after confirmed rollback)',
+   'GET /payment-executions/results/:idempotencyKey (committed)'],
+  ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',
+  approvalPath:false,commitFaults:'DISCONNECT_EXACT_COMMIT_ONCE',
+  commitDisconnection:{owner:'ONE_FIXED_LOCK_TRANSACTION_AND_BOUNDED_READ_ONLY_READY',runtimeReplacements:1,httpTimeoutMs:5000,
+   readyBudgetMs:5000,waitSeconds:12,settleSeconds:3,automaticRetry:false,confirmedRollbackRequired:true},
+  multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};
  if(competition)return {...installation.scope,stages:[...installation.scope.stages.slice(0,-1),'competitionLiveSessions','applicationEnvironment','ownedApplicationPair','seedTwoActorFixture','observeSamePaymentLock','selectedCase','ownedCleanup'],
   applications:true,environmentPreparation:true,fixtures:true,businessWrites:true,liveSessionAdmission:false,financialAcceptance:false,
   seedPostCount:4,registrationPostCount:2,seedRoutes:['POST /auth/login (finance)','POST /auth/login (comprehensive director)','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],

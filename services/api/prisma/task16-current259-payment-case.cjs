@@ -19,7 +19,7 @@ function snapshot(value){
  return Object.freeze(Object.fromEntries(Object.keys(ds).map(k=>[k,snapshotValue(ds[k].value)])));
 }
 function snapshotValue(value){return value!==null&&typeof value==='object'?snapshot(value):value;}
-const used=new WeakSet();
+const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
@@ -27,11 +27,19 @@ async function executeCurrent259PaymentCase(lease,permit){
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
   permission.check();lease.activateContinuity(permission.continuityToken);lease.check();
-  const scope=permission.scope,cancellation=scope.scenario==='cancel-commit';
-  need(cancellation||['normal','response-loss'].includes(scope.scenario));
+  const scope=permission.scope,cancellation=scope.scenario==='cancel-commit',disconnect=scope.scenario==='disconnect-commit-recovery';
+  const recovery=disconnect&&scope.disconnectPhase==='recovery';
+  const faulting=cancellation||disconnect&&!recovery;
+  need(cancellation||disconnect&&['attempt','recovery'].includes(scope.disconnectPhase)||['normal','response-loss'].includes(scope.scenario));
   const {session,loader,source}=lease,load=Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value;
-  const cancel=Object.getOwnPropertyDescriptor(session,'cancelCommit')?.value;
-  need(!cancellation||typeof cancel==='function');
+  const faultName=disconnect?'disconnectCommit':'cancelCommit';
+  const commitFault=Object.getOwnPropertyDescriptor(session,faultName)?.value;
+  need(!faulting||typeof commitFault==='function');
+  const prior=recovery?disconnectAttempts.get(scope.disconnectAttempt):undefined;
+  if(recovery){
+   need(prior&&prior.handle===lease.handle&&typeof scope.disconnectRollback==='object'&&scope.disconnectRollback);
+   disconnectAttempts.delete(scope.disconnectAttempt);
+  }
   need(typeof load==='function'&&qualifiedFetch);
   const original={...Object.fromEntries(['owner','runtime','observer','verifyFull','checkLight'].map(k=>[k,session[k]]))};
   const resource=snapshot(lease.resourceIdentity()),identity=snapshot(session.identity[0]);
@@ -40,13 +48,14 @@ async function executeCurrent259PaymentCase(lease,permit){
   const check=()=>{
    permission.check();lease.check();
    need(session===lease.session&&loader===lease.loader&&source===lease.source&&Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value===load&&
-    Object.keys(original).every(k=>session[k]===original[k])&&(!cancellation||Object.getOwnPropertyDescriptor(session,'cancelCommit')?.value===cancel)&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
+    Object.keys(original).every(k=>session[k]===original[k])&&(!faulting||Object.getOwnPropertyDescriptor(session,faultName)?.value===commitFault)&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
     Object.getOwnPropertyDescriptor(globalThis,'fetch')?.value===originalFetch);
   };
   check();await permission.verifyFull();await original.verifyFull.call(session);check();
   const modules=load.call(loader);check();
   const names=['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss'];
   if(cancellation)names.push('runRegisteredNullCrossCompanyCommitCancellation');
+  if(disconnect)names.push(recovery?'runRegisteredNullCrossCompanyDisconnectRecovery':'runRegisteredNullCrossCompanyDisconnectAttempt');
   const methods=Object.fromEntries(names.map(k=>{const d=Object.getOwnPropertyDescriptor(modules,k);need(d&&Object.hasOwn(d,'value')&&typeof d.value==='function');return [k,d.value];}));
   const runId=resource.runId.replaceAll('-','').slice(0,12);
   const proof=Object.freeze({authorizationReference:scope.authorizationReference,runId,resourceRunId:resource.runId,databaseName:resource.databaseName,
@@ -54,18 +63,27 @@ async function executeCurrent259PaymentCase(lease,permit){
    ownerRole:'jg_task01_owner',runtimeRole:'jg_task01_runtime',observerRole:'jg_task01_observer',sourceSealSha256:source.sealSha256,
    preparedSqlSha256:Object.freeze(Object.fromEntries(material.sevenFragments.map(r=>[path.basename(r.path),r.sha256]))),
    transport:'isolated-loopback-tls-verify-full',application:Object.freeze({origin:lease.application.origin,databaseRole:'jg_task01_runtime',sourceSealSha256:source.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})});
-  const plan=snapshot(methods.buildRegisteredPgFixturePlan(runId,scope.paidAt,scope.openingDate));check();
-  const execution=Object.freeze({proof,owner:original.owner,runtime:original.runtime,observer:original.observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000});
+  const plan=prior?.plan??snapshot(methods.buildRegisteredPgFixturePlan(runId,scope.paidAt,scope.openingDate));check();
+  const execution=Object.freeze({proof,owner:original.owner,runtime:original.runtime,observer:original.observer,
+   password:prior?.password??randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   const transport=async(target,init)=>{check();const url=new URL(target);need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);const response=await originalFetch(target,init);check();return response;};
   attempted=true;
-  const prepared=await methods.seedRegisteredPgFixture(execution,plan,Object.freeze({checkLight:check,fetch:transport}));check();
+  const prepared=prior?.fixture??await methods.seedRegisteredPgFixture(execution,plan,Object.freeze({checkLight:check,fetch:transport}));check();
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
   await permission.verifyFull();await original.verifyFull.call(session);check();
   const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
-  let armed=false,barrierUsed=false,postCount=0;
+  let armed=false,barrierUsed=false,postCount=0,resultReads=0;
   const assertHttpRequest=(route,method)=>{
    checkPrepared();const ids=plan.ids;
-   if(cancellation){
+   if(recovery){
+    if(method==='GET'){
+     need(resultReads===postCount&&resultReads<2&&route===`/payment-executions/results/${ids.requestKey}`);
+     resultReads++;return;
+    }
+    need(method==='POST'&&resultReads===1&&postCount===0&&route===`/payment-executions/${ids.payment}/registrations`);
+    postCount++;return;
+   }
+   if(faulting){
     if(method==='GET'){need(!barrierUsed&&route===`/payment-executions/${ids.payment}/registration-options`);return;}
     need(armed&&postCount===0&&method==='POST'&&route===`/payment-executions/${ids.payment}/registrations`);
     postCount++;return;
@@ -76,25 +94,37 @@ async function executeCurrent259PaymentCase(lease,permit){
   const continuity=Object.freeze({checkLight:checkPrepared,fetch:transport,assertHttpRequest});
   const caseId='registered.null-cross-company.'+(scope.scenario==='normal'?'commit':scope.scenario);
   let result;
-  if(cancellation){
-   result=await methods.runRegisteredNullCrossCompanyCommitCancellation(execution,frozen,continuity,async submit=>{
+  if(faulting){
+   const handler=disconnect?methods.runRegisteredNullCrossCompanyDisconnectAttempt:methods.runRegisteredNullCrossCompanyCommitCancellation;
+   result=await handler(execution,frozen,continuity,async submit=>{
     checkPrepared();need(!barrierUsed&&typeof submit==='function');barrierUsed=true;
-    await cancel.call(session,permission.continuityToken,async()=>{
+    const outcome=await commitFault.call(session,permission.continuityToken,async()=>{
      checkPrepared();need(!armed&&postCount===0);armed=true;
      try{await submit();}finally{armed=false;}
     });
     checkPrepared();need(postCount===1);
+    return outcome;
    });
+   if(disconnect){
+    checkPrepared();need(result&&typeof result==='object'&&Reflect.ownKeys(result).length===0&&barrierUsed&&postCount===1);
+    await permission.verifyFull();checkPrepared();
+    lease.finishContinuity(permission.continuityToken);permission.check();
+    disconnectAttempts.set(result,Object.freeze({handle:lease.handle,password:execution.password,plan,fixture:frozen}));
+    return result;
+   }
+  }else if(recovery){
+   result=await methods.runRegisteredNullCrossCompanyDisconnectRecovery(scope.disconnectRollback,execution,continuity);
   }else{
    const handler=scope.scenario==='normal'?methods.runRegisteredNullCrossCompanyCommit:methods.runRegisteredNullCrossCompanyResponseLoss;
    result=await handler(execution,frozen,continuity);
   }
   checkPrepared();await permission.verifyFull();await original.verifyFull.call(session);checkPrepared();
   need(result&&result.caseId===caseId&&result.passed===true);
+  if(recovery)need(postCount===1&&resultReads===2&&result.rollbackObserved===true);
   if(cancellation)need(barrierUsed&&postCount===1&&result.rollbackObserved===true);
   else need([result.executionId,result.rootId].every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value)));
   lease.finishContinuity(permission.continuityToken);permission.check();
-  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId}),financialAcceptance:false});
+  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
  }catch{
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';
   try{await lease.failClosed();cleanup='FIXED_CLOSE_RETURNED_NOT_FULL_PROOF';}catch{/* retain safe unknown */}

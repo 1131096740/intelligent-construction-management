@@ -18,6 +18,7 @@ function fixture(t,options={}){
  for(const [key,value]of Object.entries(environment))process.env[key]=value;
  t.after(()=>{for(const [key,value]of Object.entries(prior))if(value===undefined)delete process.env[key];else process.env[key]=value;});
  let claimed=false,sessionActive=true,resourceActive=true,resourceCloses=0,reader;
+ if(options.retirement)session.disconnectOriginal=true;
  session.checkLight=()=>{assert.ok(sessionActive&&resourceActive);};
  session.close=async()=>{calls.push('sessions-close');sessionActive=false;};
  session.verifyFull=async()=>{session.checkLight();calls.push('sessions-full');await options.onFull?.();};
@@ -28,8 +29,8 @@ function fixture(t,options={}){
   createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');},
   Task16ImpactReaderToken:token};
  function framework(lane,entries){
-  const server={listening:true,address(){return {address:'127.0.0.1',family:'IPv4',port:52124+lane};}};
-  const app={async close(){calls.push('app-close');await options.onClose?.(lane);},get(key){providerReads[lane]++;return entries.get(key);},
+  const server={listening:true,address(){return this.listening?{address:'127.0.0.1',family:'IPv4',port:52124+lane}:null;}};
+  const app={async close(){calls.push('app-close');await options.onClose?.(lane);if(options.retirement&&!options.stillListening)server.listening=false;},get(key){providerReads[lane]++;return entries.get(key);},
    getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
    enableCors(){calls.push('cors');},useGlobalPipes(){calls.push('validation');},
    async init(){calls.push('init');await options.onInit?.();},
@@ -39,7 +40,8 @@ function fixture(t,options={}){
   return {builder,server,entries};
  }
  const firstApp=framework(0,providers),secondApp=framework(1,new Map());
- const otherSession={...session,runtime:options.competitionModule?runtimeModel.fixture().session.runtime:null,competitionLane:'b'};
+ const otherSession={...session,runtime:options.competitionModule||options.retirement?runtimeModel.fixture().session.runtime:null,competitionLane:'b',
+  ...(options.retirement?{disconnectOriginal:false,disconnectReplacement:true}:{})};
  const leases=new Set();
  if(options.competitionModule)for(const [lane,current]of [session,otherSession].entries()){
   current.competitionLane=lane===0?'a':'b';
@@ -57,7 +59,7 @@ function fixture(t,options={}){
   check(){assert.ok(resourceActive);},checkLifetime(){assert.ok(resourceActive);},verifyFull(){assert.ok(resourceActive);}};
  const imports={
   './task16-current259-live-sessions.cjs':{assertCurrent259CompetitionLivePair(value,provided){return !!options.competitionModule&&value===pair&&provided===handle;},claimCurrent259LiveSessions(value,provided){
-   if(options.competitionModule&&provided===handle&&value===secondProof&&claimed)return otherSession;
+   if((options.competitionModule||options.retirement)&&provided===handle&&value===secondProof&&claimed)return otherSession;
    if(value!==proof||provided!==handle||claimed)throw new Error('CURRENT259_LIVE_SESSIONS_HANDLE');
    claimed=true;return session;
   }},
@@ -75,7 +77,7 @@ function fixture(t,options={}){
  localRequire.cache=options.paymentModule?{...require.cache,[paymentFile]:{exports:options.paymentModule}}:require.cache;
  new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(localRequire,module,__dirname);
  return {...model,api:module.exports,proof,handle,session,view,loader,calls,environment,directory,resourceCloses:()=>resourceCloses,
-  reader:()=>reader,providers,token,claimed:()=>claimed,pair,serverReads,providerReads,apps:[firstApp,secondApp],bundle};
+  reader:()=>reader,providers,token,claimed:()=>claimed,pair,secondProof,otherSession,serverReads,providerReads,apps:[firstApp,secondApp],bundle};
 }
 
 
@@ -367,5 +369,36 @@ test('first HTTP close rejection survives later abort while the peer is still cl
  assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
  assert.equal(error.code,'TASK16_APP_CLOSE_UNKNOWN');
  assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);
+ assert.equal(f.resourceCloses(),1);
+});
+
+
+test('original A16 app publishes one close receipt only after its actual listener closes',async t=>{
+ let continueClose,notifyClose;
+ const closeWaiting=new Promise(resolve=>{notifyClose=resolve;});
+ const wait=new Promise(resolve=>{continueClose=resolve;});t.after(continueClose);
+ let done=false;
+ const model=fixture(t,{retirement:true,async onClose(){notifyClose();await wait;}});
+ const signal=new AbortController().signal;
+ const running=model.api.withCurrent259OwnedDisconnectApplication(model.proof,model.handle,signal,()=> 'old-attempt').then(value=>{done=true;return value;});
+ await closeWaiting;
+ assert.equal(done,false);
+ assert.equal(model.apps[0].server.listening,true);
+ continueClose();
+ const result=await running;
+ assert.equal(result.value,'old-attempt');
+ assert.equal(model.apps[0].server.listening,false);
+ assert.equal(model.resourceCloses(),0);
+ assert.throws(()=>model.api.claimCurrent259DisconnectApplicationClose({...result.closeProof},model.proof,model.handle),/TASK16_APP_HANDLE/u);
+ assert.throws(()=>model.api.claimCurrent259DisconnectApplicationClose(result.closeProof,{},model.handle),/TASK16_APP_HANDLE/u);
+ assert.equal(model.api.claimCurrent259DisconnectApplicationClose(result.closeProof,model.proof,model.handle),'http://127.0.0.1:52124/');
+ assert.throws(()=>model.api.claimCurrent259DisconnectApplicationClose(result.closeProof,model.proof,model.handle),/TASK16_APP_HANDLE/u);
+});
+
+test('old app that returned from close with its original listener active cannot issue retirement',async t=>{
+ const f=fixture(t,{retirement:true,stillListening:true});
+ await assert.rejects(f.api.withCurrent259OwnedDisconnectApplication(f.proof,f.handle,new AbortController().signal,()=> 'old-attempt'),{
+  code:'TASK16_APP_CLOSE_UNKNOWN',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'
+ });
  assert.equal(f.resourceCloses(),1);
 });

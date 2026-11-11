@@ -4,7 +4,7 @@
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),businessContinuities=new WeakMap();
-const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap();
+const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap();
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
 const need=(ok,suffix='INVALID')=>{if(!ok)throw fault(suffix);};
@@ -61,10 +61,19 @@ function claimCurrent259CompetitionLivePermit(permit,handle,b7){
   entry.check();return true;
  }catch(error){revoke(entry||currentRun);throw error;}
 }
+function claimCurrent259DisconnectLivePermit(permit,handle,b7){
+ const entry=permit&&!types.isProxy(permit)&&disconnectLivePermissions.get(permit);
+ if(entry)disconnectLivePermissions.delete(permit);
+ try{
+  need(arguments.length===3&&entry&&entry===currentRun&&entry.active&&entry.disconnect&&entry.handle===handle&&entry.disconnectB7===b7&&entry.claimed&&entry.writeUsed,'DISCONNECT_LIVE_AUTHORITY');
+  entry.check();return true;
+ }catch(error){revoke(entry||currentRun);throw error;}
+}
 function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario){
  const entry=token&&!types.isProxy(token)&&businessContinuities.get(token),state=currentRun;
  try{
-  const scenarioMatches=arguments.length===2||arguments.length===3&&expectedScenario==='cancel-commit'&&entry?.scope.scenario===expectedScenario;
+  const fixedFault=expectedScenario==='cancel-commit'||expectedScenario==='disconnect-commit-recovery'&&entry?.scope.disconnectPhase==='attempt';
+  const scenarioMatches=arguments.length===2||arguments.length===3&&fixedFault&&entry?.scope.scenario===expectedScenario;
   need(scenarioMatches&&entry&&entry===state?.business&&entry.active&&entry.claimed&&entry.handle===handle&&state.handle===handle&&
    state.active&&!state.controller.signal.aborted&&Date.now()<=state.endAt&&state.source===entry.source&&
    state.checkedBuild===entry.build&&state.businessB7===entry.b7&&state.businessLive===entry.liveProof&&state.businessApplication===entry.application&&state.businessScope===entry.scope&&state.view.loader===entry.loader&&data(state.view,'checkLifetime')===entry.lifetime,'BUSINESS_CONTINUITY');
@@ -84,7 +93,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
  }catch(error){revoke(currentRun);throw error;}
 }
 // Publish the only export before the fixed consumer can require it in main.
-const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity,claimCurrent259CompetitionRolePermit,claimCurrent259CompetitionLivePermit});
+const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity,claimCurrent259CompetitionRolePermit,claimCurrent259CompetitionLivePermit,claimCurrent259DisconnectLivePermit});
 module.exports=moduleApi;
 // B7's original lineage imports the technical owner before loader/core caches.
 const records=[];
@@ -179,7 +188,8 @@ async function run(args){
   // Capture the fixed business closure before the first installation await,
   // never adopt a cache/export replacement after B7 has already been written.
   if(request.business)original('./task16-current259-business-continuity.cjs',['captureCurrent259BusinessIssuer']).captureCurrent259BusinessIssuer();
-  if(request.business&&plan.case.scenario==='cancel-commit')original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
+  const disconnect=request.business&&plan.case.scenario==='disconnect-commit-recovery';
+  if(request.business&&(plan.case.scenario==='cancel-commit'||disconnect))original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
   const provisionCompetition=request.competition?original('./task16-current259-role-provision.cjs',['provisionCurrent259CompetitionRoles']).provisionCurrent259CompetitionRoles:undefined;
   if(request.competition)original('./task16-current259-payment-competition.cjs',['executeCurrent259PaymentCompetition']);
   businessFlow=request.business?Object.freeze({
@@ -191,6 +201,10 @@ async function run(args){
     withCompetitionLiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259CompetitionLiveSessions']).withCurrent259CompetitionLiveSessions,
     withCompetitionApplications:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedApplicationPair']).withCurrent259OwnedApplicationPair,
     runCompetition:original('./task16-current259-application-factory.cjs',['consumeCurrent259PaymentCompetition']).consumeCurrent259PaymentCompetition
+   }:{}),
+   ...(disconnect?{
+    withDisconnectLiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259DisconnectLiveSessions']).withCurrent259DisconnectLiveSessions,
+    withDisconnectOriginalApplication:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedDisconnectApplication','claimCurrent259DisconnectApplicationClose']).withCurrent259OwnedDisconnectApplication
    }:{})
   }):undefined;
   const abort=()=>controller?.abort();
@@ -204,7 +218,7 @@ async function run(args){
    await withCurrent259TechnicalResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt());
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition};
+    state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition,disconnect};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -256,26 +270,39 @@ async function run(args){
      receipt.b7Binding=state.binding;receipt.b7={installXid:b7.installXid,readerOid:b7.readerOid,bodySha256:b7.bodySha256};
      if(request.business){
       const {withCurrent259LiveSessions,withCurrent259ApplicationEnvironment,withCurrent259OwnedApplication,runCurrent259PaymentCase}=businessFlow;
-      const {withCompetitionLiveSessions,withCompetitionApplications,runCompetition}=businessFlow;
-      const livePermit=request.competition?Object.freeze({kind:'CURRENT259_PRIVATE_COMPETITION_LIVE'}):undefined;
-      if(livePermit){state.competitionB7=b7;competitionLivePermissions.set(livePermit,state);}
-      const withLive=livePermit?(completion,handle,consume)=>withCompetitionLiveSessions(completion,handle,livePermit,consume):withCurrent259LiveSessions;
-      const withApplication=request.competition?withCompetitionApplications:withCurrent259OwnedApplication;
+      const {withCompetitionLiveSessions,withCompetitionApplications,runCompetition,withDisconnectLiveSessions,withDisconnectOriginalApplication}=businessFlow;
+      let withLive=withCurrent259LiveSessions;
+      if(request.competition){
+       const livePermit=Object.freeze({kind:'CURRENT259_PRIVATE_COMPETITION_LIVE'});
+       state.competitionB7=b7;competitionLivePermissions.set(livePermit,state);
+       withLive=(completion,h,consume)=>withCompetitionLiveSessions(completion,h,livePermit,consume);
+      }
+      if(disconnect){
+       const livePermit=Object.freeze({kind:'CURRENT259_PRIVATE_DISCONNECT_LIVE'});
+       state.disconnectB7=b7;disconnectLivePermissions.set(livePermit,state);
+       withLive=(completion,h,consume)=>withDisconnectLiveSessions(completion,h,livePermit,consume);
+      }
+      const normalApplication=request.competition?withCompetitionApplications:withCurrent259OwnedApplication;
       const runCase=request.competition?runCompetition:runCurrent259PaymentCase;
       stage='liveSessions';state.check();
-      await settled(withLive(b7,handle,async liveProof=>{
+      await settled(withLive(b7,handle,async (initialLiveProof,replaceRuntime)=>{
        state.check();stage='applicationEnvironment';
        return withCurrent259ApplicationEnvironment(handle,async environment=>{
         state.check();environment.check();stage='ownedApplication';
-        return withApplication(liveProof,handle,controller.signal,async application=>{
+        const runApplication=(liveProof,disconnectPhase,disconnectAttempt,disconnectRollback,oldOrigin)=>{
+         const withApplication=disconnectPhase==='attempt'?withDisconnectOriginalApplication:normalApplication;
+         return withApplication(liveProof,handle,controller.signal,async application=>{
          state.check();environment.check();
          const applications=request.competition?application:[application];
          const coordinates=applications.map(app=>({app,inspect:data(app,'inspect'),runtime:data(app,'runtime')}));
          const sameApplications=()=>coordinates.every(({app,inspect,runtime})=>typeof inspect==='function'&&
           data(app,'inspect')===inspect&&data(app,'runtime')===runtime&&inspect.call(app).runtime===runtime);
          need(sameApplications()&&(!request.competition||coordinates.length===2&&coordinates[0].runtime!==coordinates[1].runtime),'BUSINESS_APPLICATION');
+         if(disconnectPhase==='recovery')need(typeof oldOrigin==='string'&&typeof data(application,'origin')==='string'&&
+          new URL(application.origin).origin!==new URL(oldOrigin).origin,'DISCONNECT_REPLACEMENT_ENDPOINT');
          const business={active:true,claimed:false,application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
-          authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId})};
+          authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
+          ...(disconnectPhase?{disconnectPhase,disconnectAttempt,disconnectRollback}:{})})};
          state.business=business;state.businessB7=b7;state.businessLive=liveProof;state.businessApplication=application;state.businessScope=business.scope;
          business.verifyFull=()=>{
           try{state.check();environment.check();need(business.active&&state.business===business&&currentRun===state&&
@@ -288,14 +315,32 @@ async function run(args){
          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
          try{
           const result=await runCase(application,handle,businessPermit);
-          business.check();need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
+          business.check();
+          if(disconnectPhase==='attempt'){
+           need(business.claimed&&result&&typeof result==='object'&&Reflect.ownKeys(result).length===0,'BUSINESS_RESULT');
+           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'ORIGINAL_FAILED_AWAITING_ROLLBACK'};
+           stage='closeOriginalApplication';
+           return result;
+          }
+          need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
           const cancellation=plan.case.scenario==='cancel-commit';
-          if(cancellation)need(data(result,'rollbackObserved')===true,'BUSINESS_RESULT');
+          if(cancellation||disconnectPhase==='recovery')need(data(result,'rollbackObserved')===true,'BUSINESS_RESULT');
           if(request.competition)need(data(result,'competitionObserved')===true&&['finance_staff','comprehensive_director'].includes(data(result,'winner')),'BUSINESS_RESULT');
           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
            ...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId}),
-           ...(request.competition?{competitionObserved:true,winner:result.winner}:{})};
+           ...(request.competition?{competitionObserved:true,winner:result.winner}:{}),
+           ...(disconnectPhase==='recovery'?{rollbackObserved:true,runtimeReplaced:true}:{})};
+          return result;
          }finally{business.active=false;businessPermissions.delete(businessPermit);}
+         });
+        };
+        if(!disconnect)return runApplication(initialLiveProof);
+        need(typeof replaceRuntime==='function','DISCONNECT_SCOPE');
+        const original=await runApplication(initialLiveProof,'attempt');
+        state.check();environment.check();stage='retireOriginalRuntimeAndConfirmRollback';
+        return replaceRuntime(original.closeProof,original.value,(replacement,rollback,oldOrigin)=>{
+         state.check();environment.check();stage='replacementApplication';
+         return runApplication(replacement,'recovery',original.value,rollback,oldOrigin);
         });
        });
       }));

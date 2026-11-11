@@ -94,7 +94,13 @@ async function createCurrent259Application(context,boundary,continuity){
    return result;
   };
   const result={inspect,status:'CURRENT259_APPLICATION_PROTOCOL_RETURNED_NOT_NATIVE_PROOF',origin:`http://127.0.0.1:${port}/`,runtime,close,sourceBinding:{sourceSha,sourceSealSha256:seal,registeredManifestSha256:manifest},nativeProof:false,environmentPreparationImplemented:false,financialAcceptance:false};
-  if(readerAdmission&&continuity)competitionInspections.set(result,()=>{check();return inspectServer();});
+  if(readerAdmission&&continuity){
+   competitionInspections.set(result,()=>{check();return inspectServer();});
+   if(continuity.retirement)retirementInspections.set(result,()=>{
+    need(released&&method(server,'address')===addressMethod&&server.listening===false&&addressMethod.call(server)===null,'TASK16_APP_CLOSE_UNKNOWN');
+    return `http://127.0.0.1:${port}/`;
+   });
+  }
   return result;
  }catch(error){const orphan=takeCurrent259CreationFailure(error);if(orphan)registered.push({value:orphan.value,kind:'app',close:orphan.close});let unknown=false;try{await close();}catch{unknown=true;}let code='TASK16_APP_FAILED_CLOSED';try{const descriptor=error&&Object.getOwnPropertyDescriptor(error,'code');if(descriptor&&Object.hasOwn(descriptor,'value')&&CODES.has(descriptor.value))code=descriptor.value;}catch{/* Untrusted exception descriptors are never projected. */}throw Object.assign(new Error(code),{code,appStartupOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED',appCleanupOutcome:unknown?'UNKNOWN_DO_NOT_CONTINUE':registered.length?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'});}
 }
@@ -102,6 +108,7 @@ async function createCurrent259Application(context,boundary,continuity){
 const admissions=new WeakMap(),claims=new WeakSet(),opens=new WeakSet();
 const paymentApplications=new WeakMap(),paymentLeases=new WeakSet();
 const competitionApplications=new WeakMap(),competitionInspections=new WeakMap();
+const retirementInspections=new WeakMap(),closedDisconnectApplications=new WeakMap();
 const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
 const paymentModule=require('./task16-current259-payment-case.cjs');
 const paymentExecute=Object.getOwnPropertyDescriptor(paymentModule,'executeCurrent259PaymentCase');
@@ -174,13 +181,14 @@ function bindSimulatedCurrent259Application(context,session){
  * Consumes a live session capability inside its original resource scope. The
  * environment and private local storage must already satisfy the real factory.
  */
-async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pair){
+async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pair,retirement){
  const code='TASK16_APP_IMPACT_READER_PROOF';
  need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
  const session=claimCurrent259LiveSessions(proof,handle);
+ need(!retirement||own(session,'disconnectOriginal')===true,'TASK16_APP_HANDLE');
  let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,httpClosing,shutdown,shutdownUnknown=false,businessToken;
  const revoke=()=>{active=false;if(clients)admissions.delete(clients);};
  const closeBacking=async()=>{
@@ -254,7 +262,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    loadModules(request){check();const result=load.call(loader,request);check();return result;},
    createTestingModule(metadata){check();const result=create.call(loader,metadata);check();return result;}
   });
-  app=await createCurrent259Application(context,boundary,{checkLight:check,onClose:revoke});
+  app=await createCurrent259Application(context,boundary,{checkLight:check,onClose:revoke,...(retirement?{retirement:true}:{})});
   appInspect=own(app,'inspect');appClose=own(app,'close');
   check();await verifySession.call(session);check();
   const inspected=appInspect.call(app);
@@ -265,13 +273,14 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
     try{check();return appInspect.call(app);}
     catch{broken=true;revoke();void close().catch(()=>{});throw fault('TASK16_APP_FAILED_CLOSED');}
    }});
-  const inspectCompetition=pair?competitionInspections.get(app):undefined;
-  need(!pair||typeof inspectCompetition==='function',code);
+  const boundedInspection=pair||retirement||Object.getOwnPropertyDescriptor(session,'disconnectReplacement')?.value===true;
+  const inspectScoped=boundedInspection?competitionInspections.get(app):undefined;
+  need(!boundedInspection||typeof inspectScoped==='function',code);
   const getReceipt=Object.getOwnPropertyDescriptor(view.resource,'getReceipt')?.value,getReceiptContinuity=Object.getOwnPropertyDescriptor(view.resource,'getReceiptContinuity')?.value;
   paymentApplications.set(application,Object.freeze({handle,application,session,loader,source,
    check:()=>{
     checkPaymentModule();
-    const inspected=businessToken&&inspectCompetition?inspectCompetition():appInspect.call(app);
+    const inspected=businessToken&&inspectScoped?inspectScoped():appInspect.call(app);
     need(inspected.runtime===original.runtime&&inspected.origin===application.origin,code);
    },
    activateContinuity(token){businessIssuer(token,handle);need(!businessToken||businessToken===token,code);need(typeof activateSession==='function'&&own(session,'activateBusinessContinuity')===activateSession,code);activateSession.call(session,token);businessToken=token;check();},
@@ -279,7 +288,14 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    resourceIdentity(){checkPaymentModule();if(businessToken){businessIssuer(businessToken,handle);view.checkLifetime();need(typeof getReceiptContinuity==='function'&&own(view.resource,'getReceiptContinuity')===getReceiptContinuity,code);return getReceiptContinuity.call(view.resource,businessToken);}check();need(typeof getReceipt==='function'&&own(view.resource,'getReceipt')===getReceipt,'TASK16_APP_HANDLE');return getReceipt.call(view.resource);},
    async failClosed(){broken=true;revoke();try{await close();}finally{await terminate();}}
   }));
-  return Object.freeze({application,close,terminate,cleanupUnknown:cleanupIsUnknown});
+  const confirmHttpClosed=retirement?()=>{
+   need(!aborted.call(signal)&&claimCurrent259TechnicalResource(handle)===view,'TASK16_APP_CLOSE_UNKNOWN');
+   checkSession.call(session);
+   const confirm=retirementInspections.get(app);
+   need(typeof confirm==='function','TASK16_APP_CLOSE_UNKNOWN');
+   return confirm();
+  }:undefined;
+  return Object.freeze({application,close,terminate,cleanupUnknown:cleanupIsUnknown,confirmHttpClosed});
  }catch(error){
   pair?.rememberFailure(error);
   revoke();let cleanupUnknown=false;
@@ -299,6 +315,16 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
 async function withCurrent259OwnedApplication(proof,handle,signal,consume){
  need(arguments.length===4&&typeof consume==='function','TASK16_APP_BOUNDARY');
  return withOwnedApplication(proof,handle,signal,consume);
+}
+async function withCurrent259OwnedDisconnectApplication(proof,handle,signal,consume){
+ need(arguments.length===4&&typeof consume==='function','TASK16_APP_BOUNDARY');
+ return withOwnedApplication(proof,handle,signal,consume,undefined,true);
+}
+function claimCurrent259DisconnectApplicationClose(closeProof,proof,handle){
+ const row=closedDisconnectApplications.get(closeProof);
+ need(arguments.length===3&&row?.proof===proof&&row.handle===handle,'TASK16_APP_HANDLE');
+ closedDisconnectApplications.delete(closeProof);
+ return row.origin;
 }
 async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&assertCurrent259CompetitionLivePair(proofs,handle),'TASK16_APP_BOUNDARY');
@@ -332,12 +358,12 @@ async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
   return consume(applications);
  },pair),pair);
 }
-async function withOwnedApplication(proof,handle,signal,consume,pair){
+async function withOwnedApplication(proof,handle,signal,consume,pair,retirement=false){
  need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
- let owned,control,value,first,hasPrimary=false,cleanupUnknown=false,abortObserved=false,creationSettled=false;
+ let owned,control,value,first,closedOrigin,hasPrimary=false,cleanupUnknown=false,abortObserved=false,creationSettled=false;
  let resolveAbort,closingOutcome,closeSettled=false;
  const outcome=promise=>Promise.resolve(promise).then(value=>({value}),error=>({failed:true,error}));
  const beginClose=()=>{
@@ -361,7 +387,7 @@ async function withOwnedApplication(proof,handle,signal,consume,pair){
   if(aborted.call(signal))onAbort();
   const creating=outcome(createCurrent259OwnedApplication(proof,handle,signal,scope=>{
    control=scope;if(abortObserved){scope.revoke();void scope.terminate();}
-  },pair)).then(async result=>{
+  },pair,retirement)).then(async result=>{
    creationSettled=true;
    // The race retains handlers for late resolution or rejection. Late startup
    // can only be cleaned up and never becomes the callback's application.
@@ -395,6 +421,10 @@ async function withOwnedApplication(proof,handle,signal,consume,pair){
     }else if(closed.failed){
      cleanupUnknown=true;if(!hasPrimary){first=closed.error;hasPrimary=true;}
     }
+    if(retirement&&!hasPrimary){
+     try{closedOrigin=owned.confirmHttpClosed();}
+     catch{cleanupUnknown=true;first=fault('TASK16_APP_CLOSE_UNKNOWN');hasPrimary=true;}
+    }
     if(hasPrimary){pair?.rememberFailure(first);await control.terminate();}
     cleanupUnknown=cleanupUnknown||control.cleanupUnknown()||abortObserved&&!creationSettled;
    }
@@ -413,8 +443,13 @@ async function withOwnedApplication(proof,handle,signal,consume,pair){
   if(cleanupUnknown)cleanup='UNKNOWN_DO_NOT_CONTINUE';
   throw Object.assign(fault(code),{appStartupOutcome:startup,appCleanupOutcome:cleanup});
  }
+ if(retirement){
+  const closeProof=Object.freeze({});
+  closedDisconnectApplications.set(closeProof,Object.freeze({proof,handle,origin:closedOrigin}));
+  return Object.freeze({value,closeProof});
+ }
  return value;
 }
 module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication,
- withCurrent259OwnedApplicationPair,consumeCurrent259PaymentApplication,consumeCurrent259PaymentCompetition,isCurrent259PaymentLease};
-for(const key of ['consumeCurrent259PaymentApplication','consumeCurrent259PaymentCompetition','isCurrent259PaymentLease'])Object.defineProperty(module.exports,key,{writable:false,configurable:false});
+ withCurrent259OwnedApplicationPair,withCurrent259OwnedDisconnectApplication,claimCurrent259DisconnectApplicationClose,consumeCurrent259PaymentApplication,consumeCurrent259PaymentCompetition,isCurrent259PaymentLease};
+for(const key of ['withCurrent259OwnedDisconnectApplication','claimCurrent259DisconnectApplicationClose','consumeCurrent259PaymentApplication','consumeCurrent259PaymentCompetition','isCurrent259PaymentLease'])Object.defineProperty(module.exports,key,{writable:false,configurable:false});

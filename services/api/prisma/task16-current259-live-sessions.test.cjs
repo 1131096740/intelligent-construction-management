@@ -19,9 +19,9 @@ function fixture(options={}){
  const continuityToken=options.continuityToken??Object.freeze({});
  const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();options.onContinuity?.();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
- const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId};
+ const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId,...(options.recovery?{ordinary:{oid:'208'}}:{})};
  const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2',serverPort:5432};
- const rows=['owner','runtime','observer',...(options.competition?['runtime']:[])].map((kind,i)=>({
+ const rows=['owner','runtime','observer',...(options.competition||options.recovery?['runtime']:[])].map((kind,i)=>({
   database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',
   effectiveRole:'jg_task01_'+kind,loginRole:'jg_task01_'+kind,effectiveOid:identity[kind+'Oid'],loginOid:identity[kind+'Oid'],
   pid:101+i,start:'2026-11-11T00:00:0'+(i+1)+'.000001Z',tls:true,version:160010,encoding:'UTF8',replication:'origin',
@@ -40,21 +40,40 @@ function fixture(options={}){
  const resource={...endpoint,port:endpoint.publishedPort,caPath:'/fixed/ca.crt',getReceipt(){check();return clone(receipt);},
   async inspectConnectionEndpoint(){check();calls.push(['inspect']);const value={...endpoint};options.onInspect?.(value);return value;},
   async execOwnerSql(_sql,phase){check();calls.push(['owner',phase]);
-   if(phase.startsWith('current259-a16-cancel-'))return options.onCancel(_sql,phase);
+   if(phase.startsWith('current259-a16-cancel-')||phase.startsWith('current259-a16-disconnect-'))return options.onCancel(_sql,phase);
+   if(phase==='current259-live-recovery-directory'){
+    const challenge=_sql.match(/'nonce','([a-f0-9]{64})'/u)[1];
+    assert.match(_sql,/jg_contract_direct_pending_binding_v1/u);
+    assert.match(_sql,/jg_contract_direct_upward_closure_v2/u);
+    return {stdout:JSON.stringify({nonce:challenge,valid:true,sha256:options.onDirectory?.()??'a'.repeat(64)})};
+   }
    if(phase==='current259-live-catalog'){const row=clone(proofRow);row.identity.backendPid=500+(cursor++);row.identity.backendStart='2026-11-11T04:00:'+String(cursor).padStart(2,'0')+'.000001Z';options.onCatalog?.(row);return {stdout:JSON.stringify(row)};}
    const value={nonce:_sql.match(/'([a-f0-9]{64})'::pg_catalog.text AS nonce/)[1],database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',readerPid:900,readerRole:'jg_task01_owner',readerOid:'10',readerTls:true,readerStart:'2026-11-11T04:00:00.000001Z',
     sessions:rows.map(row=>Object.fromEntries(['database','databaseOid','loginRole','loginOid','pid','start','tls','clientAddress','clientPort'].map(key=>[key,row[key]])))};
+   if(options.recovery){
+    const ids=Array.from(_sql.match(/WHERE a.pid IN \(([0-9,]+)\)/u)[1].split(','),Number);
+    value.sessions=value.sessions.filter(row=>ids.includes(row.pid));
+    if(_sql.includes('"retiredRuntimePresent"')){
+     value.retiredRuntimePresent=options.keepOld===true;
+     value.runtimeLanes=ids.includes(104)?[[104,'task16_live_'+identity.runId.replaceAll('-','')+'_runtime_replacement']]:null;
+    }
+   }
    if(options.competition)value.runtimeLanes=(options.runtimePids??[102,104]).map((pid,i)=>[pid,
     'task16_live_'+identity.runId.replaceAll('-','')+'_runtime_'+(i===0?'a':'b')]);
    options.onOwner?.(value);return {stdout:JSON.stringify(value)};
   }};
  resource.getReceiptContinuity=token=>{continuity(token);return clone(receipt);};
- const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyBusinessFiles(token){continuity(token);calls.push(['scan',++scans]);options.onScan?.(scans);},verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
+ const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client,...(options.recovery?{loadPaymentModules(){return {async confirmRegisteredNullCrossCompanyDisconnectRollback(attempt,continuity){assert.equal(attempt,options.attempt);continuity.checkLight();calls.push(['rollback']);return options.confirm?.()??options.rollback;}};}}:{})},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyBusinessFiles(token){continuity(token);calls.push(['scan',++scans]);options.onScan?.(scans);},verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
  const imports={
-  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,assertCurrent259CommitCancellationIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,assertCurrent259CommitCancellationIssuer:continuity,assertCurrent259CommitDisconnectIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
   './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request:requested,stagedProof,committedProof,check,checkContinuity:continuity};}},
   './task16-current259-payment-run-authorization.cjs':Object.freeze({claimCurrent259CompetitionLivePermit(permit,h,b7){
    assert.equal(permit,continuityToken);assert.equal(h,handle);assert.equal(b7,completion);return true;
+  },claimCurrent259DisconnectLivePermit(permit,h,b7){
+   assert.ok(options.recovery);assert.equal(permit,continuityToken);assert.equal(h,handle);assert.equal(b7,completion);return true;
+  }}),
+  './task16-current259-application-factory.cjs':Object.freeze({claimCurrent259DisconnectApplicationClose(closeProof,proof,h){
+   assert.equal(h,handle);assert.equal(closeProof,options.closeProof);assert.equal(proof,options.getOriginalProof());calls.push(['listener-closed']);return 'http://127.0.0.1:52124/';
   }}),
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,token){continuity(token,h);return view;},claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;options.onClose?.();}},
   './task16-runtime-inputs.cjs':{readQualifiedTask16File(){options.onRead?.();return {sha256:'c'.repeat(64),identity:{uid:process.getuid()}};}}
@@ -335,4 +354,65 @@ test('business installed catalog rejection still permanently stops and closes al
   assert.throws(()=>session.checkContinuity(continuityToken));
  }),/FAILED_CLOSED/);
  assert.equal(f.resourceClosed(),1);assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
+});
+
+
+for(const mode of ['complete','old-backend','directory-drift','rollback-error'])test('A16 same-resource rotation '+mode,async()=>{
+ const token=Object.freeze({}),closeProof=Object.freeze({}),attempt=Object.freeze({}),rollback=Object.freeze({});
+ let proof,challenge,directoryReads=0,submitted=0,replacementCalls=0,completeOwner;
+ const outcome=new Promise(resolve=>{completeOwner=resolve;});
+ const owner={pid:812,startedAt:'2026-11-11T00:00:10.000001Z'};
+ const f=fixture({recovery:true,continuityToken:token,closeProof,attempt,rollback,getOriginalProof:()=>proof,keepOld:mode==='old-backend',
+  onDirectory(){return mode==='directory-drift'&&directoryReads++>0?'b'.repeat(64):'a'.repeat(64);},
+  confirm(){if(mode==='rollback-error')throw new Error('ledger drift');},
+  onCancel(sql,phase){
+   if(phase==='current259-a16-disconnect-owner'){
+    assert.match(sql,/pg_catalog.pg_terminate_backend\(102\)/u);
+    challenge=sql.match(/'nonce','([a-f0-9]{64})'/u)[1];
+    return outcome;
+   }
+   assert.equal(phase,'current259-a16-disconnect-ready');
+   return {stdout:JSON.stringify({nonce:challenge,state:'ready',owner})};
+  }
+ });
+ const scoped=async (first,replace)=>{
+  proof=first;
+  const original=f.api.claimCurrent259LiveSessions(first,f.handle);
+  original.activateBusinessContinuity(token);
+  const fault=await original.disconnectCommit(token,async()=>{
+   submitted++;
+   completeOwner({stdout:JSON.stringify({nonce:challenge,mode:'disconnect-commit',state:'commit-disconnected',owner,
+    runtimePid:102,runtimeStartedAt:'2026-11-11T00:00:02.000001Z',transactionId:'108',commitStartedAt:'2026-11-11T00:00:11.000001Z'})});
+  });
+  assert.equal(fault.state,'commit-disconnected');
+  original.deactivateBusinessContinuity(token);
+  return replace(closeProof,attempt,async (fresh,confirmed,oldOrigin)=>{
+   replacementCalls++;
+   assert.equal(confirmed,rollback);
+   assert.equal(oldOrigin,'http://127.0.0.1:52124/');
+   const next=f.api.claimCurrent259LiveSessions(fresh,f.handle);
+   assert.equal(next.owner,original.owner);assert.equal(next.observer,original.observer);assert.notEqual(next.runtime,original.runtime);
+   assert.equal(next.identity[1].pid,104);
+   assert.throws(()=>original.checkLight(),/RETIRED/u);
+   await next.verifyFull();
+   return 'recovered';
+  });
+ };
+ const run=async()=>f.api.withCurrent259DisconnectLiveSessions(f.completion,f.handle,token,scoped);
+ if(mode==='complete'){
+  assert.equal(await run(),'recovered');
+  assert.equal(replacementCalls,1);
+  assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1,1]);
+  const events=f.calls.map(event=>event.join(':'));
+  assert.ok(events.indexOf('listener-closed')<events.indexOf('disconnect:1'));
+  assert.ok(events.indexOf('disconnect:1')<events.indexOf('rollback'));
+  assert.ok(events.indexOf('rollback')<events.indexOf('connect:3'));
+  assert.equal(events.slice(events.indexOf('disconnect:1')+1).includes('identity:1'),false);
+ }else{
+  await assert.rejects(run,/FAILED_CLOSED/u);
+  assert.equal(replacementCalls,0);
+  assert.equal(f.clients.length,3);
+  assert.equal(f.resourceClosed(),1);
+ }
+ assert.equal(submitted,1);
 });
