@@ -21,7 +21,7 @@ const ENDPOINT='unix:///Users/leoyang/.docker/run/docker.sock';
 const IMAGE='sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d';
 const TOOLS=Object.freeze({docker:'/Applications/Docker.app/Contents/Resources/bin/docker',openssl:'/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl'});
 const HASHES=Object.freeze({docker:'6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40',openssl:'103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c'});
-const METHODS=['getReceipt','close','captureLogCursor','execOwnerSql','observePresentedCertificate','setServerCertificate','readPlaintextRejectionEvidence'];
+const METHODS=['getReceipt','close','captureLogCursor','execOwnerSql','observePresentedCertificate','setServerCertificate','readPlaintextRejectionEvidence','inspectConnectionEndpoint'];
 const FIELDS=['containerId','networkId','port','databaseName','caPath','wrongCaPath','serverCertHashes'];
 const TLS_KEYS=['caSha256','wrongCaSha256','correctCertificateSha256','wrongSanCertificateSha256','correctCertificateDerSha256','wrongSanCertificateDerSha256'];
 const handles=new WeakMap(),closedHandles=new WeakMap(),usedBuilds=new WeakSet();
