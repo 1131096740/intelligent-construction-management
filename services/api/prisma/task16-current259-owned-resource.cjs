@@ -23,7 +23,7 @@ const IMAGE='sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb
 const TOOLS=Object.freeze({docker:'/Applications/Docker.app/Contents/Resources/bin/docker',openssl:'/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl'});
 const HASHES=Object.freeze({docker:'6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40',openssl:'103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c'});
 const METHODS=['getReceipt','close','captureLogCursor','execOwnerSql','observePresentedCertificate','setServerCertificate','readPlaintextRejectionEvidence','inspectConnectionEndpoint'];
-const CONTRACT_HBA='applyCurrent259ContractHbaV1';
+const CONTRACT_METHODS=['applyCurrent259ContractHbaV1','beginCurrent259ContractPlaintextProbe','verifyCurrent259ContractPlaintextRejection'];
 const FIELDS=['containerId','networkId','port','databaseName','caPath','wrongCaPath','serverCertHashes'];
 const TLS_KEYS=['caSha256','wrongCaSha256','correctCertificateSha256','wrongSanCertificateSha256','correctCertificateDerSha256','wrongSanCertificateDerSha256'];
 const handles=new WeakMap(),closedHandles=new WeakMap(),usedBuilds=new WeakSet();
@@ -115,7 +115,7 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   // These are actual original producer return values, never caller projections.
   methods={close:own(resource,'close')};
   methods.getReceipt=own(resource,'getReceipt');
-  if(technical)methodNames=[...METHODS,CONTRACT_HBA];
+  if(technical)methodNames=[...METHODS,...CONTRACT_METHODS];
   for(const key of methodNames)methods[key]=own(resource,key);
   need(methodNames.every(key=>typeof methods[key]==='function'),'CURRENT259_RESOURCE_CHANGED');
   fields=Object.fromEntries(FIELDS.map(key=>[key,own(resource,key)]));fields.serverCertHashes=Object.freeze(record(fields.serverCertHashes,TLS_KEYS));
@@ -127,7 +127,7 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   loader.verifyFull();check();
   handle=Object.freeze({kind:'CURRENT259_OWNED_RESOURCE'});
   const resourceView={...fields,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
-  for(const key of methodNames.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{need(key!==CONTRACT_HBA||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
+  for(const key of methodNames.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{need(!CONTRACT_METHODS.includes(key)||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
   resourceView.getReceipt=()=>{checkOperation();return methods.getReceipt.call(resource);};
   resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
   view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});

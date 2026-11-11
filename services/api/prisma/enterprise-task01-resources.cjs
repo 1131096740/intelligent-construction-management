@@ -74,6 +74,29 @@ sync -f /jg-task01
 check "$2"
 test "$(stat -c '%d:%i' "$file")" != "$before"
 printf '%s\n' "$2"`;
+// Only a fresh server primary record for the explicit hostnossl reject
+// counts. The role and database are selected by this owned resource.
+function contractPlaintextReject(lines, role, database) {
+  const logPrefix = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z \d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3} [A-Z0-9+-]+ \[([1-9][0-9]{0,9})\] /u;
+  const start = `user=${role} db=${database} FATAL:  pg_hba.conf rejects connection for host "`;
+  const end = `", user "${role}", database "${database}", no encryption`;
+  return lines.split("\n").slice(0, -1).some(line => {
+    const prefix = logPrefix.exec(line);
+    if (!prefix || Number(prefix[1]) > 2147483647) return false;
+    const record = line.slice(prefix[0].length);
+    return record.startsWith(start) && record.endsWith(end) &&
+      net.isIP(record.slice(start.length, -end.length)) !== 0;
+  });
+}
+function contractPlaintextReadback(result, cursor, role, database) {
+  requireThat(result.stdout.length >= cursor.stdoutBytes && result.stderr.length >= cursor.stderrBytes &&
+    sha(result.stdout.subarray(0, cursor.stdoutBytes)) === cursor.stdoutSha256 &&
+    sha(result.stderr.subarray(0, cursor.stderrBytes)) === cursor.stderrSha256,
+    "TASK01_RESOURCE_CONTRACT_PLAINTEXT_WINDOW");
+  return [[result.stdout, cursor.stdoutBytes], [result.stderr, cursor.stderrBytes]].some(([stream, offset]) =>
+    (offset === 0 || stream[offset - 1] === 10) &&
+    contractPlaintextReject(stream.subarray(offset).toString("utf8"), role, database));
+}
 const PGDATA = "/var/lib/postgresql/data";
 const TMPFS = {
   [PGDATA]: "rw,nosuid,nodev,noexec,size=536870912,mode=0700",
@@ -472,7 +495,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     const result = await mutate(["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1", "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"], { input: sql, timeoutMs: 120000 });
     return { stdout: result.stdout.toString("utf8") };
   }
-  let contractHbaAttempted = false;
+  let contractHbaAttempted = false, contractOrdinary, contractPlaintextStarted = false, contractPlaintextCursor;
   async function applyCurrent259ContractHbaV1() {
     requireThat(technical && arguments.length === 0 && !contractHbaAttempted && !closePromise, "TASK01_RESOURCE_CONTRACT_HBA_UNAVAILABLE");
     contractHbaAttempted = true;
@@ -500,6 +523,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     const transition = { beforeSha256, afterSha256, rules: rules.length };
     receipt.contractHba = transition;
     persist();
+    contractOrdinary = logins[0];
     return Object.freeze({ ...transition });
   }
   async function inspectConnectionEndpoint() {
@@ -522,6 +546,21 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     const lines = Buffer.concat([result.stdout.subarray(cursor.stdoutBytes), result.stderr.subarray(cursor.stderrBytes)]).toString("utf8").split("\n");
     const matching = lines.some(line => line.includes("FATAL:") && line.includes("pg_hba.conf") && line.includes("no encryption") && line.includes(`user "${target.role}"`) && line.includes(`database "${databaseName}"`));
     return Object.freeze({ hbaNoEncryptionRejected: matching, roleMatched: matching, databaseMatched: matching });
+  }
+  async function beginCurrent259ContractPlaintextProbe() {
+    requireThat(technical && arguments.length === 0 && contractOrdinary && !contractPlaintextStarted && !closePromise,
+      "TASK01_RESOURCE_CONTRACT_PLAINTEXT_WINDOW");
+    contractPlaintextStarted = true;
+    contractPlaintextCursor = await captureLogCursor();
+  }
+  async function verifyCurrent259ContractPlaintextRejection() {
+    const cursor = contractPlaintextCursor;
+    requireThat(technical && arguments.length === 0 && contractOrdinary && cursor?.runId === runId &&
+      cursor.containerId === containerId && !closePromise, "TASK01_RESOURCE_CONTRACT_PLAINTEXT_WINDOW");
+    contractPlaintextCursor = undefined;
+    await verifyDaemon(); await inspectOwned();
+    const result = await docker(["logs", "--timestamps", containerId], { timeoutMs: 10000 });
+    return contractPlaintextReadback(result, cursor, contractOrdinary, databaseName);
   }
   async function setServerCertificate(mode) {
     requireThat(!closePromise && ["correct", "wrong-san"].includes(mode), "TASK01_RESOURCE_CERTIFICATE_MODE_INVALID");
@@ -581,7 +620,9 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     receipt.port = port;
     await observePresentedCertificate("correct");
     receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
-    return { containerId, networkId, port, databaseName, caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1) } : {}), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
+    return { containerId, networkId, port, databaseName, caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1),
+      beginCurrent259ContractPlaintextProbe: safeOperation(beginCurrent259ContractPlaintextProbe),
+      verifyCurrent259ContractPlaintextRejection: safeOperation(verifyCurrent259ContractPlaintextRejection) } : {}), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
   } catch (error) {
     receipt.phase = "failed"; receipt.status = "failed";
     receipt.failureCode = typeof error.code === "string" && error.code.startsWith("TASK01_RESOURCE_") ? error.code : "TASK01_RESOURCE_START_FAILED";

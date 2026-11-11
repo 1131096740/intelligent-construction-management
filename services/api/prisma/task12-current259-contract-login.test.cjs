@@ -86,6 +86,10 @@ function fixture(preloaded = false) {
     },
     getReceipt(){return {configuration:{hbaSha256:blob('a')}};},
     async applyCurrent259ContractHbaV1(){assert.equal(arguments.length,0);calls.push('hba');return {beforeSha256:blob('a'),afterSha256:blob('b'),rules:22};},
+    async beginCurrent259ContractPlaintextProbe(){calls.push('plaintext-cursor');assert.equal(arguments.length,0);},
+    async verifyCurrent259ContractPlaintextRejection(){
+      calls.push('plaintext-readback');assert.equal(arguments.length,0);return !control.noPlaintextEvidence;
+    },
     async inspectConnectionEndpoint(){return {containerId,networkId,databaseName:database,publishedHost:'127.0.0.1',publishedPort:32456,
       serverAddress:'172.29.0.2',serverPort:5432};},
     async observePresentedCertificate(){return {mode:'correct',derSha256:blob('c')};},
@@ -102,6 +106,7 @@ function fixture(preloaded = false) {
       calls.push('construct');
     }
     async $connect(){
+      if(control.pending==='CONNECT')return new Promise(()=>{});
       const [prefix,parts]=writeIds.get(this.role.name).split('$');
       const [iterations,salt]=parts.split(':');
       const salted=pbkdf2Sync(this.url.password,Buffer.from(salt,'base64'),Number(iterations),32,'sha256');
@@ -111,12 +116,15 @@ function fixture(preloaded = false) {
       if(this.url.searchParams.get('sslcert')===resource.wrongCaPath)code='P1011';
       else if(this.url.searchParams.get('sslmode')==='disable')code='P1010';
       else if(stored!==Buffer.from(verifier,'base64').toString('hex'))code='P1000';
-      if(code && control.drift!=='negative')throw Object.assign(new Error('certificate validation failed'),{errorCode:code});
+      if(code && control.drift!=='negative')throw Object.assign(new Error(code==='P1011'?
+        control.certificateError??'Error opening a TLS connection: The certificate was not trusted':
+        'connection denied'),{errorCode:code});
       this.backend=next();
       assert.equal(prefix,'SCRAM-SHA-256');
     }
     async $disconnect(){assert.equal(activeClients--,1);calls.push('disconnect');if(control.drift==='disconnect')throw new Error('sensitive');}
     async $queryRawUnsafe(sql,challenge) {
+      if(control.pending==='QUERY')return new Promise(()=>{});
       assert.match(sql,/pg_stat_ssl/u);
       if(process.env.JG_STATIC_PACKET_DIR)fs.writeFileSync(path.join(process.env.JG_STATIC_PACKET_DIR,'tls-host.sql'),sql);
       clientRow={database,databaseOid:identity.databaseOid,role:this.role.name,sessionRole:this.role.name,oid:this.role.oid,
@@ -148,7 +156,8 @@ function fixture(preloaded = false) {
   };
   privateRequire.resolve=name=>name;
   privateRequire.cache=cache;
-  new Function('require','module',apiSource)(privateRequire,module);
+  const clock=(fn,milliseconds)=>setTimeout(fn,control.pending?1:milliseconds);
+  new Function('require','module','setTimeout',apiSource)(privateRequire,module,clock);
   return {api:module.exports,handle,completion,control,calls,source,cache};
 }
 
@@ -227,4 +236,32 @@ test('a callback failure revokes the issued lease and retains only the safe comm
 
 test('a preloaded ACL cache slot is rejected before require can read it',()=>{
   assert.throws(()=>fixture(true),/CURRENT259_CONTRACT_LOGIN_IMPORT/u);
+});
+
+test('a certificate file-load error does not prove an untrusted issuer',async()=>{
+  const f=fixture();
+  f.control.certificateError='could not load certificate file from disk';
+  await assert.rejects(f.api.withCurrent259ContractLogin(f.completion,f.handle,()=>assert.fail('unexpected lease')),
+    {code:'CURRENT259_CONTRACT_LOGIN_TLS',stageFailure:'TLS_NEGATIVE'});
+  assert.equal(f.calls.filter(value=>value==='construct').length,1);
+  assert.equal(f.control.closed,1);
+});
+
+test('a Prisma access denial without matching fresh server HBA evidence does not prove plaintext rejection',async()=>{
+  const f=fixture();
+  f.control.noPlaintextEvidence=true;
+  await assert.rejects(f.api.withCurrent259ContractLogin(f.completion,f.handle,()=>assert.fail('unexpected lease')),
+    {code:'CURRENT259_CONTRACT_LOGIN_TLS',stageFailure:'TLS_PLAINTEXT_HBA'});
+  assert.deepEqual(f.calls.slice(-4),['plaintext-cursor','construct','disconnect','plaintext-readback']);
+  assert.equal(f.control.closed,1);
+});
+
+for(const [operation,count] of [['CONNECT',1],['QUERY',4]])test('an unreturned '+operation+' keeps its first failure and unknown client cleanup',async()=>{
+  const f=fixture();
+  f.control.pending=operation;
+  await assert.rejects(f.api.withCurrent259ContractLogin(f.completion,f.handle,()=>assert.fail('unexpected lease')),
+    {code:'CURRENT259_CONTRACT_LOGIN_TLS',stageFailure:operation+'_TIMEOUT',clientCleanup:'UNKNOWN',roleCommit:'COMMITTED'});
+  assert.equal(f.calls.filter(value=>value==='construct').length,count);
+  assert.equal(f.calls.filter(value=>value==='disconnect').length,count);
+  assert.equal(f.control.closed,1);
 });

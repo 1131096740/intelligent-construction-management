@@ -18,7 +18,7 @@ const LOGIN_NAMES = ['jg_c259_outside_issuer_login', 'jg_c259_outside_executor_l
 const BINDINGS = ['jg_contract_direct_archive_intent_binding_v1', 'jg_contract_direct_archive_native_nonce_v1',
   'jg_contract_direct_upward_issuer_binding_v2', 'jg_contract_direct_upward_closure_v2', 'jg_contract_direct_upward_execution_binding_v2'];
 const METHODS = ['execOwnerSql', 'getReceipt', 'applyCurrent259ContractHbaV1', 'inspectConnectionEndpoint',
-  'observePresentedCertificate'];
+  'observePresentedCertificate', 'beginCurrent259ContractPlaintextProbe', 'verifyCurrent259ContractPlaintextRejection'];
 const CLIENT_METHODS = ['$disconnect', '$connect', '$queryRawUnsafe'];
 const PROOFS = new WeakMap();
 const USED = new WeakSet();
@@ -290,16 +290,18 @@ function clientIdentity(rows, challenge, scope, role, endpoint) {
 }
 function engineError(error) {
   if (!error || typeof error!=='object' || types.isProxy(error)) return {};
+  const message=Object.getOwnPropertyDescriptor(error,'message')?.value;
   return {
     code:Object.getOwnPropertyDescriptor(error,'errorCode')?.value ?? Object.getOwnPropertyDescriptor(error,'code')?.value,
-    message:Object.getOwnPropertyDescriptor(error,'message')?.value,
+    certificateMarker:typeof message==='string' && message.toLowerCase().includes('tls connection') &&
+      message.toLowerCase().includes('certificate was not trusted'),
   };
 }
-async function bounded(operation, phase) {
+async function bounded(operation, phase, context) {
   let timer;
   try {
     return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{
-      timer=setTimeout(()=>reject(fail(phase)),15000);
+      timer=setTimeout(()=>{context.cleanup='UNKNOWN';reject(fail(phase));},15000);
     })]);
   } finally { clearTimeout(timer); }
 }
@@ -354,19 +356,22 @@ async function verifyTls(context) {
       };
       clientCheck();
       let connectionError, rejected=false;
-      try { await bounded(()=>clientMethods.$connect.call(client),'CONNECT_TIMEOUT'); }
-      catch (error) { connectionError=error; rejected=true; }
+      try { await bounded(()=>clientMethods.$connect.call(client),'CONNECT_TIMEOUT',context); }
+      catch (error) {
+        if (ownFaults.has(error)) throw error;
+        connectionError=error; rejected=true;
+      }
       clientCheck();
       if (kind!=='positive') {
         const observed=engineError(connectionError);
         const expected={password:'P1000',ca:'P1011',plaintext:'P1010'}[kind];
         need(rejected && observed.code===expected &&
-          (kind!=='ca' || typeof observed.message==='string' && /certificate|cert(ification)? path|unknown issuer/iu.test(observed.message)),'TLS_NEGATIVE');
+          (kind!=='ca' || observed.certificateMarker),'TLS_NEGATIVE');
       } else {
         need(!rejected,'TLS_CONNECT');
         const inspect=async()=>{
           const challenge=randomBytes(32).toString('hex');
-          const rows=await bounded(()=>clientMethods.$queryRawUnsafe.call(client,hostSql,challenge),'QUERY_TIMEOUT');
+          const rows=await bounded(()=>clientMethods.$queryRawUnsafe.call(client,hostSql,challenge),'QUERY_TIMEOUT',context);
           clientCheck();
           return clientIdentity(rows,challenge,scope,role,endpoint);
         };
@@ -386,7 +391,7 @@ async function verifyTls(context) {
     } catch(error) { primary=error; hasPrimary=true; }
     try {
       need(typeof disconnect==='function','DISCONNECT_UNKNOWN');
-      await bounded(()=>disconnect.call(client),'DISCONNECT_UNKNOWN');
+      await bounded(()=>disconnect.call(client),'DISCONNECT_UNKNOWN',context);
     } catch {
       context.cleanup='UNKNOWN';
       if (!hasPrimary) { primary=fail('DISCONNECT_UNKNOWN'); hasPrimary=true; }
@@ -395,7 +400,15 @@ async function verifyTls(context) {
     full();
     if (result) accepted.push(Object.freeze(result));
   }
-  for (const kind of ['ca','password','plaintext']) await probe(0,kind);
+  await probe(0,'ca');
+  await probe(0,'password');
+  full();
+  await methods.beginCurrent259ContractPlaintextProbe.call(resource);
+  full();
+  await probe(0,'plaintext');
+  const rejected = await methods.verifyCurrent259ContractPlaintextRejection.call(resource);
+  full();
+  need(rejected===true,'TLS_PLAINTEXT_HBA');
   for (let index=0; index<scope.targets.length; index++) await probe(index,'positive');
   return Object.freeze(accepted);
 }
