@@ -486,12 +486,26 @@ for (const [display, catalog] of [
     postgresDiagnosticTypes.set(spelling + "[]", spelling + "[]");
   }
 }
+const postgresDiagnosticOperators = new Map([
+  "=", "<>", ">", "->", "->>", "#>", "#>>", "-", "||", "~"
+].map(operator => [operator, operator]));
 function postgresAmbiguityDiagnostic(sqlState, message) {
   if (sqlState !== "42725" || Buffer.byteLength(message) > 4096) return null;
   // PG16's server formatter may append this position even in TERSE mode.
   // Check the original byte budget above; discard only its bounded literal suffix.
   const position = / at character ([1-9][0-9]{0,9})$/u.exec(message);
   if (position && Number(position[1]) <= 2147483647) message = message.slice(0, position.index);
+  const operatorPrefix = "operator is not unique: ";
+  if (message.startsWith(operatorPrefix)) {
+    const signature = message.slice(operatorPrefix.length), candidates = [];
+    for (const operator of postgresDiagnosticOperators.values()) {
+      const operands = signature.split(" " + operator + " ");
+      if (operands.length !== 2) continue;
+      const left = postgresDiagnosticTypes.get(operands[0]), right = postgresDiagnosticTypes.get(operands[1]);
+      if (left !== undefined && right !== undefined) candidates.push(left + " " + operator + " " + right);
+    }
+    return candidates.length === 1 ? { messageClass: "OPERATOR_AMBIGUOUS", operatorCall: candidates[0] } : null;
+  }
   const call = /^function (.+)\(([^()]*)\) is not unique$/u.exec(message);
   if (call) {
     const name = postgresDiagnosticNames.get(call[1]);

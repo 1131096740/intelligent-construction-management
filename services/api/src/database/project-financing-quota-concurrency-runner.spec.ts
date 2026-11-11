@@ -42,10 +42,45 @@ describe("project financing quota PostgreSQL runner", () => {
       status: string;
       sqlState?: string;
       reason?: string;
-      diagnostic?: { messageClass: string; functionCall?: string; functionName?: string };
+      diagnostic?: { messageClass: string; functionCall?: string; functionName?: string; operatorCall?: string };
     };
   };
   it.each<FirstFailureScenario>([
+    {
+      name: "a PG16 controlled binary operator ambiguity",
+      logs: scopedPrefix + "42725|ERROR:  operator is not unique: unknown -> unknown\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "OPERATOR_AMBIGUOUS", operatorCall: "unknown -> unknown" } }
+    },
+    ...["=", "<>", ">", "->", "->>", "#>", "#>>", "-", "||", "~"].map(operator => ({
+      name: "a PG16 binary operator literal " + operator,
+      logs: scopedPrefix + "42725|ERROR:  operator is not unique: unknown " + operator + " unknown at character 42\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "OPERATOR_AMBIGUOUS", operatorCall: "unknown " + operator + " unknown" } }
+    })),
+    {
+      name: "a PG16 binary operator with fixed multiword and array operand types",
+      logs: scopedPrefix + "42725|ERROR:  operator is not unique: timestamp without time zone = pg_catalog.text[]\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "OPERATOR_AMBIGUOUS", operatorCall: "timestamp without time zone = pg_catalog.text[]" } }
+    },
+    ...["unknown + unknown", "unknown public.-> unknown", 'unknown "->" unknown', "secret = unknown",
+      "public.secret = unknown", "-> unknown", "unknown ->", "unknown -> unknown; SELECT secret",
+      "unknown -> unknown -- secret", "unknown -> unknown/*secret*/", "https://secret -> unknown",
+      "unknown -> unknown\u0000", "unknown -> unknown\u001b[31m", "unknown -> unknown at character 0",
+      "unknown -> unknown at character 1 at character 2", "unknown - unknown - unknown"].map(signature => ({
+        name: "rejects an unsafe PG16 binary operator signature " + JSON.stringify(signature),
+        logs: scopedPrefix + "42725|ERROR:  operator is not unique: " + signature + "\n",
+        postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR" }
+      })),
+    ...[
+      { label: "unknown primary", logs: scopedPrefix + "42725|ERROR:  private unknown ambiguity\n", postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR" } },
+      { label: "aborted primary", logs: scopedPrefix + "25P02|ERROR:  current transaction is aborted\n", postgres: { status: "primary-not-retained" } }
+    ].map(first => ({
+      name: "a PG16 binary operator cannot replace " + first.label,
+      logs: first.logs + scopedPrefix + "42725|ERROR:  operator is not unique: unknown -> unknown\n",
+      postgres: first.postgres
+    })),
     {
       name: "a PG16 server-position suffix on the controlled signature",
       logs: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique at character 42\n",
