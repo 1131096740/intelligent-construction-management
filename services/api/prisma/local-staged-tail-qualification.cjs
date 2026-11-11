@@ -19,7 +19,7 @@ function frozen(value){
  need(Object.getPrototypeOf(value)===Object.prototype);return Object.freeze(Object.fromEntries(Object.keys(ds).map(k=>[k,frozen(ds[k].value)])));
 }
 const keys=(x,wanted)=>need(equal(Object.keys(x).sort(),wanted.slice().sort()));
-const MATRIX_SHA='ac144a3c6a1dbaef2cb41ce0815dfd7afd30f0d7d8d9a29eaaf0580532d7888e',POST213_SHA='0080a3d2f5321b9a89772bad7ecff244b6653c612a406ab4538f27372725937c';
+const MATRIX_SHA='6d0a300adf93f237fbe87454b74aaca5d701494d7bf978d9c7102ef0684bb3fd',POST213_SHA='0080a3d2f5321b9a89772bad7ecff244b6653c612a406ab4538f27372725937c';
 function verifyMaterials(){
  need(hash(fs.readFileSync(path.join(__dirname,'local-staged-tail-qualification.json')))===MATRIX_SHA&&
   hash(fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql')))===POST213_SHA);
