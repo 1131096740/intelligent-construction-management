@@ -71,6 +71,20 @@ function fixture(preloaded = false,transport=NAT) {
         const nonce=sql.match(/'nonce','([a-f0-9]{64})'/u)?.[1];
         assert.ok(nonce);
         const write=seedPhase==='write';
+        if(control.generated){
+          if(write){
+            assert.equal([...sql.matchAll(/INSERT INTO public\."User"\(/gu)].length,8);
+            assert.equal([...sql.matchAll(/INSERT INTO public\."Position"\(/gu)].length,5);
+            assert.equal([...sql.matchAll(/INSERT INTO public\."ProjectMember"\(/gu)].length,2);
+            assert.equal([...sql.matchAll(/INSERT INTO public\."UserPosition"\(/gu)].length,5);
+            assert.doesNotMatch(sql,/INSERT INTO public\."(?:Contract|ApprovalInstance|HandwrittenSignatureVersion)"/u);
+          }
+          if(seedPhase==='committed'){
+            assert.match(sql,/pg_xact_status\('704'::xid8\)/u);
+            assert.match(sql,/a\.xmin::text::numeric=mod/u);
+            assert.doesNotMatch(sql,/\$2[aby]\$10\$/u);
+          }
+        }
         return sqlResult({phase:seedPhase,nonce,identity,backend:next(),readOnly:!write,
           isolation:write?'serializable':'repeatable read',writeXid:write?'704':null,
           commitStatus:seedPhase==='committed'?'committed':null,matches:control.seedDrift!==seedPhase});
@@ -175,12 +189,21 @@ function fixture(preloaded = false,transport=NAT) {
   }
   const appModules=Object.freeze({PrismaService:AppPrisma,ContractDirectArchiveRuntime:Outside,ContractUpwardDirectArchiveRuntime:Upward});
   const view={source,runId,resource,loader:{Class:Client,
+    loadGeneratedContractDraftAdmission(){
+      const typescript=require('typescript');
+      const source=fs.readFileSync(path.join(__dirname,'../src/database/task12-generated-approval-admission.ts'),'utf8');
+      const compiled=typescript.transpileModule(source,{compilerOptions:{module:typescript.ModuleKind.CommonJS,
+        target:typescript.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
+      const exports={};
+      new Function('require','exports',compiled)(require,exports);
+      return Object.freeze(exports);
+    },
     loadContractApplicationModules(){assert.ok(control.applicationModel);return appModules;},createContractTestingModule(){}},
     verifyFull:()=>assert.equal(control.closed,undefined)};
   const module={exports:{}};
   const ports={
     './task16-current259-ordinary-archive-acl.cjs':{claimCurrent259OrdinaryArchiveAcl(candidate,actual){
-      assert.equal(actual,handle);assert.equal(candidate,completion);assert.equal(claimed,false);claimed=true;return prior;
+      assert.equal(actual,handle);assert.equal(candidate,completion);assert.equal(claimed,false);claimed=true;return control.generated?{...prior,generatedDraft:true}:prior;
     }},
     './task16-current259-owned-resource.cjs':{
       claimCurrent259TechnicalResource(actual){assert.equal(actual,handle);assert.equal(control.closed,undefined);return view;},
@@ -201,6 +224,15 @@ function fixture(preloaded = false,transport=NAT) {
       assert.equal(await bridge.verifyProviders(),5);
       for(const client of clients)await client.$disconnect();
       await bridge.verifyClosed();
+      if(bridge.generated){
+        assert.equal(bridge.native,undefined);
+        assert.deepEqual(bridge.generated.seed,{seedRows:21,operating:false,seedXid:'704'});
+        if(control.applicationHttpFailure)throw Object.assign(new Error('foreign raw detail'),{
+          code:'CURRENT259_FIRST_Q2_APP_GENERATED_HTTP',generatedHttpFailure:{step:'WORKBENCH',httpStatus:403,secret:'raw'},
+          appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'
+        });
+        return Object.freeze({status:'CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED',nativeAdmission:false,storageAcceptance:false});
+      }
       return Object.freeze({verifiedClients:5});
     }}),
   };
@@ -428,4 +460,51 @@ test('Q2 loopback still needs the persisted HBA transition and fresh plaintext r
   await assert.rejects(noLog.api.withCurrent259ContractLogin(noLog.completion,noLog.handle,()=>assert.fail('unexpected lease')),
     error=>error.code==='CURRENT259_CONTRACT_LOGIN_TLS'&&error.stageFailure==='TLS_PLAINTEXT_HBA');
   assert.ok(!noLog.calls.includes('tls-live'));
+});
+
+test('the generated admission uses the original owned relay, committed seed and one Nest draft protocol',async()=>{
+  const caseId='22345678-1234-4234-8234-123456789012';
+  const model=fixture(false,Q2_RELAY);
+  model.control.applicationModel=true;model.control.generated=true;
+  const result=await model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,caseId);
+  assert.equal(result.status,'CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED');
+  assert.equal(result.storageAcceptance,false);
+  assert.equal(result.nativeAdmission,false);
+  assert.deepEqual(model.calls.slice(0,6),['before','seed-before','seed-write','seed-committed','before','write']);
+  assert.equal(model.calls.at(-1),'application-closed');
+
+  const bad=fixture(false,Q2_RELAY);
+  bad.control.generated=true;bad.control.seedDrift='committed';
+  await assert.rejects(bad.api.withCurrent259GeneratedDraftAdmission(bad.completion,bad.handle,caseId),
+    error=>error.code==='CURRENT259_CONTRACT_LOGIN_SEED_COMMITTED'&&error.seedCommit==='UNKNOWN');
+  assert.ok(!bad.calls.includes('write')&&!bad.calls.includes('hba')&&!bad.calls.includes('construct'));
+
+  const fake=fixture(false,Q2_RELAY);
+  await assert.rejects(fake.api.withCurrent259GeneratedDraftAdmission({...fake.completion},fake.handle,caseId),/HANDLE/u);
+  assert.deepEqual(fake.calls,[]);
+
+  const oldAcl=fixture(false,Q2_RELAY);
+  await assert.rejects(oldAcl.api.withCurrent259GeneratedDraftAdmission(oldAcl.completion,oldAcl.handle,caseId),
+    error=>error.stageFailure==='ACL_PROFILE'&&error.seedCommit==='NOT_ATTEMPTED');
+  assert.deepEqual(oldAcl.calls,[]);
+
+  const published=fixture();
+  await assert.rejects(published.api.withCurrent259GeneratedDraftAdmission(published.completion,published.handle,caseId),
+    error=>error.stageFailure==='PHYSICAL_ENDPOINT'&&error.seedCommit==='NOT_ATTEMPTED');
+  assert.deepEqual(published.calls,[]);
+  assert.equal(published.control.closed,1);
+});
+
+test('generated login preserves the fixed HTTP step independently of app cleanup',async()=>{
+  const model=fixture(false,Q2_RELAY);
+  model.control.applicationModel=true;model.control.generated=true;model.control.applicationHttpFailure=true;
+  await assert.rejects(model.api.withCurrent259GeneratedDraftAdmission(model.completion,model.handle,
+    '22345678-1234-4234-8234-123456789012'),error=>{
+    assert.equal(error.code,'CURRENT259_CONTRACT_LOGIN_CONSUMER');
+    assert.deepEqual(error.generatedHttpFailure,{step:'WORKBENCH',httpStatus:403});
+    assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+    assert.doesNotMatch(JSON.stringify(error),/secret|raw/u);
+    return true;
+  });
+  assert.equal(model.control.closed,1);
 });

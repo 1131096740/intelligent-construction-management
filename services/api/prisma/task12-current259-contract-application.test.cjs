@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-function assemblyFixture(nativeMode = false) {
+function assemblyFixture(nativeMode = false, generatedMode = false) {
   const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'jg-q2-model-'));
   const caPath = path.join(parent, 'tls-private', 'ca.crt');
   const events = [];
@@ -79,7 +79,58 @@ function assemblyFixture(nativeMode = false) {
     endHttp(success){events.push(success?'full-after-http':'end-failed-http');},
     storageEnvironment(){return Object.fromEntries(cosKeys.map((key,i)=>[key,i===0?'cos':'synthetic-'+i]));}
   };
+  const projectId='22345678-1234-4234-8234-123456789012',versionId='32345678-1234-4234-8234-123456789012';
+  const messages=[
+    {method:'POST',path:'/auth/login',json:{phone:'19900000000',password:'inert'}},
+    {method:'GET',path:'/contracts/create-capability?projectId='+projectId+'&relationship=inside'},
+    {method:'POST',path:'/contracts',json:{projectId,numericProtocolVersion:2,relationship:'inside',contractTypeKey:'material_purchase'}},
+    {method:'POST',path:'/contract-drafts/'+versionId+'/edit-lease'},
+    {method:'GET',path:'/contract-drafts/'+versionId+'/workbench'},
+  ];
+  if(generatedMode)bridge.generated={
+    projectId,seed:Object.freeze({seedRows:21,operating:false,seedXid:'704'}),
+    beginHttp(){events.push('generated-start');},
+    checkHttpFiles(){assert.equal(server.listening,true);},
+    endHttp(success){events.push(success?'generated-complete':'generated-failed');},
+    async openDraft(send){
+      for(const message of messages){
+        const reply=await send(generatedMode==='wrong-route'&&message.path==='/contracts'?{...message,path:'/arbitrary'}:message);
+        if(generatedMode==='capability-error'&&reply.status===403)throw new Error('foreign body should not escape');
+        assert.equal(reply.body.fixture,true);
+      }
+      return Object.freeze({status:'DRAFT_ADMISSION_PROTOCOL_MATCHED',projectId,versionId});
+    }
+  };
   const ports = {
+    './task12-current259-generated-draft-http.cjs':{async runCurrent259GeneratedDraftHttp(value,target){
+      const sender={exports:{}};
+      const source=fs.readFileSync(path.join(__dirname,'task12-current259-generated-draft-http.cjs'),'utf8');
+      const {EventEmitter}=require('node:events');
+      new Function('require','module',source)(name=>{
+        if(name==='./task12-current259-contract-application.cjs')return module.exports;
+        if(name==='./task12-current259-generated-draft-diagnostic.cjs')return require(name);
+        assert.equal(name,'node:http');
+        return {request(options,callback){
+          assert.equal(options.hostname,'127.0.0.1');assert.equal(options.port,32123);assert.equal(options.agent,false);
+          assert.equal(process.env.FILE_STORAGE_DRIVER,'local');assert.equal(process.env.COS_BUCKET,undefined);
+          events.push(options.path);
+          const outgoing=new EventEmitter();
+          outgoing.end=()=>{
+            const reply=new EventEmitter();
+            reply.headers=generatedMode==='redirect'?{location:'/other'}:{};
+            reply.socket={remoteAddress:'127.0.0.1',remotePort:32123};
+            reply.statusCode=generatedMode==='capability-error'&&options.path.startsWith('/contracts/create-capability')?403:200;
+            reply.complete=true;reply.destroy=()=>{};
+            callback(reply);
+            reply.emit('data',Buffer.from('{"fixture":true}'));reply.emit('end');
+          };
+          return outgoing;
+        }};
+      },sender);
+      const result=await sender.exports.runCurrent259GeneratedDraftHttp(value,target);
+      await assert.rejects(sender.exports.runCurrent259GeneratedDraftHttp(value,target),/HTTP/u);
+      return result;
+    }},
     './task12-current259-first-q2-http.cjs':{async runCurrent259FirstQ2Http(value,target){
       module.exports.takeCurrent259FirstQ2HttpBridge(value,target);
       assert.equal(target,server);assert.equal(server.listening,true);
@@ -203,5 +254,38 @@ test('the verified operating outside fixture closes the same Nest providers befo
     assert.equal(result.status,'CURRENT259_FIRST_OUTSIDE_OPERATING_HTTP_AND_NEST_CLOSED');
     assert.equal(result.verifiedClients,5);
     assert.deepEqual(model.events.slice(-6),['listen','full-before-http','http','full-after-http','app-close','readback']);
+  }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
+});
+
+test('the generated owned sender permits only the five fixed local routes and closes the verified Nest app',async()=>{
+  const model=assemblyFixture(false,true);
+  try{
+    const result=await model.run(model.bridge);
+    assert.equal(result.status,'CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED');
+    assert.equal(result.httpSteps,5);assert.equal(result.storageAcceptance,false);
+    assert.deepEqual(result.seed,{seedRows:21,operating:false,seedXid:'704'});
+    assert.deepEqual(model.events.slice(-10).map(value=>value.split('?')[0]),['listen','generated-start','/auth/login',
+      '/contracts/create-capability','/contracts','/contract-drafts/32345678-1234-4234-8234-123456789012/edit-lease',
+      '/contract-drafts/32345678-1234-4234-8234-123456789012/workbench','generated-complete','app-close','readback']);
+  }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
+});
+
+test('generated sender refuses redirects and unexpected routes before any later HTTP or proof',async()=>{
+  for(const [mode,expected] of [['redirect',1],['wrong-route',2]]){
+    const model=assemblyFixture(false,mode);
+    try{
+      await assert.rejects(model.run(model.bridge),{code:'CURRENT259_FIRST_Q2_APP_GENERATED_HTTP'});
+      assert.equal(model.events.filter(value=>value.startsWith('/')).length,expected);
+      assert.deepEqual(model.events.slice(-3),['generated-failed','app-close','readback']);
+    }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
+  }
+});
+
+test('generated HTTP failure retains only the fixed step and allowed status after app closure',async()=>{
+  const model=assemblyFixture(false,'capability-error');
+  try{
+    await assert.rejects(model.run(model.bridge),error=>error.code==='CURRENT259_FIRST_Q2_APP_GENERATED_HTTP'&&
+      JSON.stringify(error.generatedHttpFailure)===JSON.stringify({step:'CAPABILITY',httpStatus:403}));
+    assert.deepEqual(model.events.slice(-3),['generated-failed','app-close','readback']);
   }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
 });

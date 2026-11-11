@@ -66,6 +66,31 @@ const protectedBindings=[
 ];
 const lockRelations=[...new Set([...relations,...protectedBindings,...manifest.privateTablesDenied,
  '_prisma_migrations','jg_contract_direct_archive_intent_binding_v1','jg_contract_direct_archive_native_nonce_v1'])].sort();
+// Fresh generated inside/material workbench. Include filter/order columns
+// even on rows that are absent, and all Prisma scalars only on unprojected reads.
+const generatedDraftReads=Object.freeze({
+ ApprovalInstance:['businessId','businessType','createdAt','id'],
+ ContractBill:['id','contractVersionId','billKey','name','amountRole','pricingMode','quantityScale','unitPriceScale','schemaSnapshot','revision','numericProtocolVersion','taxInclusiveAmountYuan','taxExclusiveAmountYuan','taxAmountYuan','taxInclusiveAmountCents','taxExclusiveAmountCents','taxAmountCents','createdAt','updatedAt'],
+ ContractBillRow:['id','contractBillId','rowKey','sortOrder','itemCode','itemName','specification','unit','quantity','unitPrice','taxRate','taxRateSource','pricingFactStatus','precisionPolicy','numericProtocolVersion','numericSource','numericReviewStatus','taxInclusiveAmountYuan','taxExclusiveAmountYuan','taxAmountYuan','taxInclusiveAmountCents','taxExclusiveAmountCents','taxAmountCents','taxExclusiveUnitPrice','isProvisional','settlementBasis','lineageId','remainderDisposition','remainderDispositionReason','remainderDispositionByUserId','remainderDispositionAt','customData','createdAt','updatedAt'],
+ ContractDraftCheckpoint:['contractVersionId','id','sequenceNo','name','snapshot','createdAt'],
+ ContractSealTask:['createdAt'],
+ ContractTakeover:['id','contractId','projectId'],
+ ContractVersionAuthorizationLink:['id','contractVersionId','side','required','authorizationId','reusedFromContractVersionId','createdAt'],
+ PaymentTermsStage:['name','basis','ratioBps','triggerEvent','dueDays','requiresInvoice','allowsEarlyPayment','allowsInstallments','originalText','createdAt'],
+});
+const generatedKeys=new Map(keys);
+const generatedRows=[...requirementRows];
+for(const [relation,columns] of Object.entries(generatedDraftReads))for(const column of columns){
+ const name=relation+'.'+column, prior=generatedKeys.get(name)??[];
+ need(!prior.includes('SELECT'),'SOURCE');
+ generatedKeys.set(name,[...prior,'SELECT']);
+ generatedRows.push({relation,column,privilege:'SELECT'});
+}
+const ordinaryProfile=Object.freeze({keys,rows:requirementRows,lockRelations,sha256:requirementsSha256});
+const generatedProfile=Object.freeze({keys:generatedKeys,rows:generatedRows,
+ lockRelations:[...new Set([...lockRelations,...Object.keys(generatedDraftReads)])].sort(),
+ sha256:sha(JSON.stringify([requirementsSha256,generatedDraftReads]))});
+
 const protectedRowsSql=`pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
  ${protectedBindings.map(name=>`(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(b.xmin::text,pg_catalog.to_jsonb(b))
    ORDER BY pg_catalog.to_jsonb(b)::text COLLATE "C",b.xmin::text COLLATE "C") FROM public.${name} b)`).join(', ')},
@@ -97,10 +122,10 @@ function rawEntries(acl) {
     FROM pg_catalog.aclexplode(${acl})) acl_rows)`;
 }
 
-function targets(ordinary){
+function targets(ordinary,profile){
  const app=ownerRoleSql(ordinary);
  return `WITH requested AS (
- SELECT req.* FROM pg_catalog.jsonb_to_recordset(${json(requirementRows)}) req(relation text,"column" text,privilege text)
+ SELECT req.* FROM pg_catalog.jsonb_to_recordset(${json(profile.rows)}) req(relation text,"column" text,privilege text)
  WHERE NOT (req.relation='BusinessParty' AND req."column"=${quote(manifest.businessPartyRowLockFallback)} AND req.privilege='UPDATE')
    OR NOT pg_catalog.has_any_column_privilege(${app},'public."BusinessParty"'::regclass,'UPDATE')
 ), resolved AS (
@@ -126,7 +151,7 @@ SELECT CASE WHEN EXISTS (SELECT 1 FROM resolved r WHERE r.granted IS NULL OR
    ORDER BY g.relation COLLATE "C",g."column" COLLATE "C" NULLS FIRST) FROM grouped g),'[]'::jsonb) END`;
 }
 
-function limits(ordinary) {
+function limits(ordinary,profile) {
  const app=ownerRoleSql(ordinary);
  const privateNames=literalList(manifest.privateTablesDenied);
  const lockFields=Object.entries(manifest.retainRowLocks).map(([name,column])=>
@@ -148,7 +173,9 @@ function limits(ordinary) {
     (a.attname NOT IN ('contentSha256','executionId','fileId') AND pg_catalog.has_column_privilege(${app},a.attrelid,a.attnum,'SELECT'))))
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid='public."FileObject"'::regclass AND a.attnum>0 AND NOT a.attisdropped
    AND a.attname<>'createdAt' AND pg_catalog.has_column_privilege(${app},a.attrelid,a.attnum,'UPDATE'))
- ${lockFields}
+ ${lockFields}${profile===generatedProfile?`
+ OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relnamespace=pg_catalog.to_regnamespace('public')
+  AND c.relname IN (${literalList(Object.keys(generatedDraftReads))}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
  THEN RAISE EXCEPTION '${CODE}_PRIVILEGE_BOUNDARY'; END IF;`;
 }
 
@@ -227,24 +254,24 @@ function observeRow(phase,challenge,catalog,protection,changes,installXid,commit
  'changes',${changes},'installXid',${installXid},'commitStatus',${commitStatus})
  FROM pg_catalog.pg_stat_activity WHERE pid=pg_catalog.pg_backend_pid();`;
 }
-function render(lease,ordinary,phase,challenge,before,staged){
+function render(lease,ordinary,phase,challenge,before,staged,profile){
  const write=phase===phases[1], first=phase===phases[0];
  const {guardSql,catalogSql,sevenCatalogSql}=lease.ordinaryAclWitness(phase);
  const delta=before?.changes;
- const targetSql=targets(ordinary);
+ const targetSql=targets(ordinary,profile);
  const archive=quote(lease.completion.catalogSha256);
  const preProtection=protectSeven(sevenCatalogSql);
  const postProtection=first?null:protectSeven(normalizedSevenCatalog(sevenCatalogSql,delta));
  const guard=(body)=>`DO $ordinary_archive_acl$ BEGIN\n${body}\nEND $ordinary_archive_acl$;`;
  const pre=guard(`${guardSql}
- ${limits(ordinary)}
+ ${limits(ordinary,profile)}
  IF ${catalogSql} IS DISTINCT FROM ${archive}
   OR ${sevenCatalogSql} IS DISTINCT FROM ${quote(lease.completion.sevenCatalogSha256)}
   ${write?`OR ${preProtection} IS DISTINCT FROM ${quote(before.protectedSha256)}`:''}
   OR (${targetSql}) ${write?`IS DISTINCT FROM ${json(delta)}`:'IS NULL'}
  THEN RAISE EXCEPTION '${CODE}_PREIMAGE'; END IF;`);
  const post=first?'':guard(`${guardSql}
- ${limits(ordinary)}
+ ${limits(ordinary,profile)}
  IF ${normalizedCatalog(catalogSql,delta)} IS DISTINCT FROM ${archive}
   OR ${postProtection} IS DISTINCT FROM ${quote(before.protectedSha256)}
   OR ${exactPostimage(ordinary,delta)} OR (${targetSql}) IS DISTINCT FROM '[]'::jsonb
@@ -253,7 +280,7 @@ function render(lease,ordinary,phase,challenge,before,staged){
  THEN RAISE EXCEPTION '${CODE}_POSTIMAGE'; END IF;`);
  if(first)return [readOnly,setup,pre,observeRow(phase,challenge,catalogSql,preProtection,`(${targetSql})`,'NULL::text','NULL::text'),'ROLLBACK;'].join('\n');
  if(write)return [writer,setup,
-  `LOCK TABLE ${lockRelations.map(name=>'public.'+identifier(name)).join(', ')} IN SHARE ROW EXCLUSIVE MODE NOWAIT;`,
+  `LOCK TABLE ${profile.lockRelations.map(name=>'public.'+identifier(name)).join(', ')} IN SHARE ROW EXCLUSIVE MODE NOWAIT;`,
   pre,grants(ordinary,delta),post,observeRow(phase,challenge,catalogSql,postProtection,'NULL::jsonb','pg_catalog.pg_current_xact_id()::text','NULL::text'),'COMMIT;'].join('\n');
  return [readOnly,setup,post,observeRow(phase,challenge,catalogSql,postProtection,'NULL::jsonb',quote(staged.installXid),
   `pg_catalog.pg_xact_status(${quote(staged.installXid)}::xid8)`),'ROLLBACK;'].join('\n');
@@ -261,7 +288,7 @@ function render(lease,ordinary,phase,challenge,before,staged){
 
 const outputKeys=['phase','challenge','backendPid','backendStart','catalogSha256','protectedSha256','changes','installXid','commitStatus'];
 const deltaKeys=['relation','column','relationOid','attnum','privileges','rawAcl','acl'];
-function readResult(result,phase,challenge,ordinary){
+function readResult(result,phase,challenge,ordinary,profile){
  need(typeof result?.stdout==='string' && Buffer.byteLength(result.stdout)<=1024*1024,'OUTPUT');
  let value;
  try{value=JSON.parse(result.stdout);}catch{throw fault('OUTPUT');}
@@ -273,7 +300,7 @@ function readResult(result,phase,challenge,ordinary){
   need(value.changes===null && xid(value.installXid) && value.commitStatus===(phase===phases[2]?'committed':null),'OUTPUT');
   return value;
  }
- need(value.installXid===null && value.commitStatus===null && Array.isArray(value.changes) && value.changes.length<=keys.size,'OUTPUT');
+ need(value.installXid===null && value.commitStatus===null && Array.isArray(value.changes) && value.changes.length<=profile.keys.size,'OUTPUT');
  const targets=new Set(), physical=new Set(), relationOids=new Map();
  for(const row of value.changes){
   need(shape(row,deltaKeys) && typeof row.relation==='string' && (row.column===null||typeof row.column==='string') &&
@@ -281,7 +308,7 @@ function readResult(result,phase,challenge,ordinary){
     (row.attnum===0)===(row.column===null),'DELTA');
   const key=row.column===null?row.relation:row.relation+'.'+row.column;
   const coord=row.relationOid+'/'+row.attnum;
-  const allowed=keys.get(key);
+  const allowed=profile.keys.get(key);
   need(allowed && !targets.has(key) && !physical.has(coord) &&
     (!relationOids.has(row.relation)||relationOids.get(row.relation)===row.relationOid) &&
     Array.isArray(row.privileges) && row.privileges.length>0 &&
@@ -297,7 +324,17 @@ function readResult(result,phase,challenge,ordinary){
 }
 
 async function installCurrent259OrdinaryArchiveAcl(archiveCompletion,handle){
- need(arguments.length===2 && handle && typeof handle==='object' && !types.isProxy(handle) && !used.has(handle),'HANDLE');
+ need(arguments.length===2,'HANDLE');
+ return install(archiveCompletion,handle,ordinaryProfile);
+}
+
+async function installCurrent259GeneratedDraftOrdinaryAcl(archiveCompletion,handle){
+ need(arguments.length===2,'HANDLE');
+ return install(archiveCompletion,handle,generatedProfile);
+}
+
+async function install(archiveCompletion,handle,profile){
+ need(handle && typeof handle==='object' && !types.isProxy(handle) && !used.has(handle),'HANDLE');
  const lease=claimCurrent259ArchiveInstallation(archiveCompletion,handle);
  used.add(handle);
  let writeAttempted=false,phase=phases[0];
@@ -311,11 +348,11 @@ async function installCurrent259OrdinaryArchiveAcl(archiveCompletion,handle){
   const run=async(next,before,staged)=>{
    phase=next;check();
    const challenge=randomBytes(32).toString('hex');
-   const sql=render(lease,ordinary,phase,challenge,before,staged);
+   const sql=render(lease,ordinary,phase,challenge,before,staged,profile);
    check();
    if(phase===phases[1])writeAttempted=true;
    const result=await exec.call(resource,sql,phase);check();
-   return readResult(result,phase,challenge,ordinary);
+   return readResult(result,phase,challenge,ordinary,profile);
   };
   const before=await run(phases[0]);
   need(before.catalogSha256===archiveCompletion.catalogSha256,'ARCHIVE_PREIMAGE');
@@ -328,8 +365,8 @@ async function installCurrent259OrdinaryArchiveAcl(archiveCompletion,handle){
   check();
   const completion=Object.freeze({status:proofStatus,sourceSha:archiveCompletion.sourceSha,runId:archiveCompletion.runId,
     containerId:archiveCompletion.containerId,installXid:committed.installXid,archiveInstallXid:archiveCompletion.installXid,
-    catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256,executionAllowed:false,nativeAdmission:false});
-  proofs.set(completion,{handle,check,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
+    catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,executionAllowed:false,nativeAdmission:false});
+  proofs.set(completion,{handle,check,generatedDraft:profile===generatedProfile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
     catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
     protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))});
   return completion;
@@ -346,7 +383,8 @@ function claimCurrent259OrdinaryArchiveAcl(completion,handle){
  need(receipt.handle===handle,'HANDLE');
  proofs.delete(completion);receipt.check();
  const {check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
- return Object.freeze({completion,check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql});
+ return Object.freeze({completion,check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
+  ...(receipt.generatedDraft?{generatedDraft:true}:{})});
 }
 
-module.exports=Object.freeze({installCurrent259OrdinaryArchiveAcl,claimCurrent259OrdinaryArchiveAcl});
+module.exports=Object.freeze({installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl});

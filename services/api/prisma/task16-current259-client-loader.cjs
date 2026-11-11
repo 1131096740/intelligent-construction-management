@@ -212,6 +212,26 @@ function loadCurrent259Client(handle){
    collect();return published;
   }catch(error){failed=true;throw error;}
  }
+ let generatedDraftAdmission;
+ function loadGeneratedContractDraftAdmission(){
+  need(arguments.length===0,'CURRENT259_GENERATED_DRAFT_FIXED_ENTRY');
+  check();
+  if(generatedDraftAdmission)return generatedDraftAdmission;
+  try{
+   const file=path.join(root,'services/api/dist/database/task12-generated-approval-admission.js');
+   const exports=guardedRequire(file),module=require.cache[file];
+   need(module?.loaded===true&&module.exports===exports,'CURRENT259_GENERATED_DRAFT_FIXED_ENTRY');
+   roots.push(module);
+   generatedDraftAdmission=Object.freeze(Object.fromEntries([
+    'buildTask12GeneratedApprovalFixture','hashTask12GeneratedAdmissionPassword','openTask12GeneratedApprovalDraft'
+   ].map(key=>{
+    const descriptor=Object.getOwnPropertyDescriptor(exports,key),value=own(exports,key);
+    need(typeof value==='function','CURRENT259_GENERATED_DRAFT_FIXED_ENTRY');
+    records.push({module,key,value,descriptor});return [key,value];
+   })));
+   collect();return generatedDraftAdmission;
+  }catch(error){failed=true;throw error;}
+ }
  function createContractTestingModule(){
   need(arguments.length===0&&contract,'CURRENT259_CONTRACT_FIXED_ENTRIES');
   return createOwnedTestingModule({imports:[contract.root]},contract);
@@ -291,7 +311,7 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

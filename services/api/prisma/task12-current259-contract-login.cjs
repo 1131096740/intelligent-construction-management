@@ -3,9 +3,10 @@ const { createHash, createHmac, pbkdf2Sync, randomBytes } = require('node:crypto
 const { isIP } = require('node:net');
 const fs = require('node:fs');
 const { isDeepStrictEqual: equal, types } = require('node:util');
+const {projectGeneratedDraftHttpFailure}=require('./task12-current259-generated-draft-diagnostic.cjs');
 const { readQualifiedTask16File: readFile } = require('./task16-runtime-inputs.cjs');
 const { isCurrent259FirstQ2Fixture } = require('./task12-current259-q2-fixture.cjs');
-const { createCurrent259FirstQ2Seed, createCurrent259FirstQ2UploadReadback, createCurrent259FirstQ2ArchiveReadback } = require('./task12-current259-q2-seed.cjs');
+const { createCurrent259FirstQ2Seed, createCurrent259GeneratedDraftSeed, createCurrent259FirstQ2UploadReadback, createCurrent259FirstQ2ArchiveReadback } = require('./task12-current259-q2-seed.cjs');
 // A fixed controller loads this scope before the ACL producer, which loads the
 // genuine technical/physical lineage. A preloaded ACL export is never adopted.
 const aclPath = require.resolve('./task16-current259-ordinary-archive-acl.cjs');
@@ -505,7 +506,7 @@ function captureHttpFiles(cache) {
   };
 }
 
-function openContractApplication(context, loader, originalSessions, verifyCommitted, native) {
+function openContractApplication(context, loader, originalSessions, verifyCommitted, native, generated) {
   context.check();verifyCa(context.cas);
   const assemblyPath=require.resolve('./task12-current259-contract-application.cjs');
   const cache=require.cache;
@@ -539,9 +540,7 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
     need(CLIENT_METHODS.every(key=>typeof captured[key]==='function'),'APP_CLIENTS');
   };
   let providers, constructed=false;
-  const nativeBridge=native?Object.freeze({
-    check,signal:native.signal,fixture:native.fixture,cos:native.cos,
-    storageEnvironment(){check();return native.cos.environment();},
+  const httpContinuity={
     beginHttp(){
       need(!verifyHttpFiles,'APP_CONTINUITY');
       check();
@@ -554,6 +553,10 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
       verifyHttpFiles=undefined;
       if(success)check();
     },
+  };
+  const nativeBridge=native?Object.freeze({
+    check,signal:native.signal,fixture:native.fixture,cos:native.cos,
+    storageEnvironment(){check();return native.cos.environment();},...httpContinuity,
     async observeUpload(input){
       check();
       const readback=createCurrent259FirstQ2UploadReadback(native.fixture,context.scope.identity,native.cosPlan.bucket,input);
@@ -571,6 +574,9 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
   }):undefined;
   const bridge=Object.freeze({
     check, loaded, caPath:context.cas[0].file,...(nativeBridge?{native:nativeBridge}:{}),
+    ...(generated?{generated:Object.freeze({check,...httpContinuity,projectId:generated.fixture.project.id,seed:generated.seed,
+      openDraft(send){check();return generated.openDraft(generated.fixture,generated.password,send);},
+    })}:{}),
     createTestingModule(){check();return create.call(loader);},
     constructProviders(){
       check();need(!constructed,'APP_CONSTRUCT');constructed=true;
@@ -648,7 +654,19 @@ async function withCurrent259FirstQ2SeededLogin(completion, handle, fixture, use
   return contractLogin(completion,handle,use,fixture);
 }
 
-async function contractLogin(completion, handle, use, fixture) {
+async function withCurrent259GeneratedDraftAdmission(completion,handle,caseId) {
+  need(arguments.length===3 && typeof caseId==='string' && relayIdShape.test(caseId),'HANDLE');
+  return contractLogin(completion,handle,async proof=>{
+    const record=PROOFS.get(proof);
+    need(record?.handle===handle&&record.generated,'HANDLE');
+    PROOFS.delete(proof);record.check();
+    const result=await record.openApplication(undefined,record.generated);
+    need(result?.status==='CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED'&&result.nativeAdmission===false,'APP_IMPORT');
+    return result;
+  },undefined,caseId);
+}
+
+async function contractLogin(completion, handle, use, fixture, generatedCaseId) {
   need(typeof use==='function' && !types.isProxy(use) &&
     completion && !types.isProxy(completion) && Object.isFrozen(completion) && handle && !types.isProxy(handle),'HANDLE');
   checkAclImport();
@@ -657,12 +675,14 @@ async function contractLogin(completion, handle, use, fixture) {
   catch { throw fail('HANDLE'); }
   let phase='BEFORE', proof, active=true, context, secrets, verifiers, roleCommit='NOT_ATTEMPTED';
   let application, applicationFailure, seedCommit='NOT_ATTEMPTED';
+  let generated;
   try {
     const view=claimCurrent259TechnicalResource(handle);
     need(!USED.has(handle),'HANDLE');
     USED.add(handle);
     const { resource, loader }=view;
-    need(resource.topology===LEGACY_TRANSPORT || resource.topology===CURRENT259_FIRST_Q2_TRANSPORT,'PHYSICAL_ENDPOINT');
+    need(resource.topology===CURRENT259_FIRST_Q2_TRANSPORT ||
+      (!generatedCaseId&&resource.topology===LEGACY_TRANSPORT),'PHYSICAL_ENDPOINT');
     const Class=own(loader,'Class');
     const methods=Object.fromEntries(METHODS.map(key=>[key,own(resource,key)]));
     need(typeof Class==='function' && METHODS.every(key=>typeof methods[key]==='function'),'METHOD');
@@ -681,6 +701,7 @@ async function contractLogin(completion, handle, use, fixture) {
       need(view.loader===loader&&own(loader,'Class')===Class&&METHODS.every(key=>own(resource,key)===methods[key]),'METHOD');
     };
     check();
+    need(Boolean(generatedCaseId)===(prior.generatedDraft===true),'ACL_PROFILE');
     const scope=scopeOf(prior,view,completion);
     const runSql=async(sql,label,continuity=check)=>{
       continuity();
@@ -691,9 +712,18 @@ async function contractLogin(completion, handle, use, fixture) {
     const run=async(sql,label)=>parse(await runSql(sql,label));
     let before=await run(readerSql(scope),'before');
     checkBefore(before,scope);
-    if(fixture){
+    if(fixture||generatedCaseId){
       phase='SEED_BEFORE';
-      const seed=createCurrent259FirstQ2Seed(fixture,scope.identity);
+      let seed;
+      if(generatedCaseId){
+        const entries=own(loader,'loadGeneratedContractDraftAdmission').call(loader);
+        const input=own(entries,'buildTask12GeneratedApprovalFixture')(generatedCaseId);
+        const password=randomBytes(32).toString('hex');
+        const passwordHash=await own(entries,'hashTask12GeneratedAdmissionPassword')(password);
+        check();
+        generated={fixture:input,password,openDraft:own(entries,'openTask12GeneratedApprovalDraft')};
+        seed=createCurrent259GeneratedDraftSeed(input,scope.identity,passwordHash);
+      }else seed=createCurrent259FirstQ2Seed(fixture,scope.identity);
       seed.verifyBefore(await runSql(seed.beforeSql(),'seed-before'));
       phase='SEED_WRITE';
       const sql=seed.writeSql();
@@ -703,6 +733,7 @@ async function contractLogin(completion, handle, use, fixture) {
       const seeded=seed.finish(await runSql(seed.committedSql(),'seed-committed'));
       seedCommit='COMMITTED';
       need(![scope.role.commitXid,scope.archive.installXid,completion.installXid].includes(seeded.seedXid),'SEED_COMMITTED');
+      if(generated)generated.seed=seeded;
       phase='SEED_CONTINUITY';
       const after=await run(readerSql(scope),'before');
       checkBefore(after,scope);
@@ -748,8 +779,8 @@ async function contractLogin(completion, handle, use, fixture) {
     });
     // A downstream source stage can extend this private record with a fixed
     // credential bridge. No untrusted callback receives its contents.
-    PROOFS.set(proof,{handle,source:prior.source,check,fixture,openApplication(native){
-      application=Promise.resolve().then(()=>openContractApplication(context,loader,sessions,verifyCommitted,native));
+    PROOFS.set(proof,{handle,source:prior.source,check,fixture,generated,openApplication(native,generatedDraft){
+      application=Promise.resolve().then(()=>openContractApplication(context,loader,sessions,verifyCommitted,native,generatedDraft));
       void application.catch(error=>{applicationFailure=error;});
       return application;
     }});
@@ -766,10 +797,14 @@ async function contractLogin(completion, handle, use, fixture) {
     active=false;
     const error=fail(phase);
     Object.defineProperty(error,'roleCommit',{value:roleCommit,enumerable:true});
-    if(fixture)Object.defineProperty(error,'seedCommit',{value:seedCommit,enumerable:true});
+    if(fixture||generatedCaseId)Object.defineProperty(error,'seedCommit',{value:seedCommit,enumerable:true});
     const reason=ownFaults.get(primary);
     if(reason)Object.defineProperty(error,'stageFailure',{value:reason,enumerable:true});
     if(applicationFailure && !types.isProxy(applicationFailure)){
+      if(generatedCaseId&&Object.getOwnPropertyDescriptor(applicationFailure,'code')?.value==='CURRENT259_FIRST_Q2_APP_GENERATED_HTTP'){
+        const detail=projectGeneratedDraftHttpFailure(Object.getOwnPropertyDescriptor(applicationFailure,'generatedHttpFailure')?.value);
+        if(detail)Object.defineProperty(error,'generatedHttpFailure',{value:detail,enumerable:true});
+      }
       const cleanup=Object.getOwnPropertyDescriptor(applicationFailure,'appCleanupOutcome');
       if(cleanup && Object.hasOwn(cleanup,'value') && cleanup.value==='UNKNOWN_DO_NOT_CONTINUE')
         Object.defineProperty(error,'appCleanupOutcome',{value:cleanup.value,enumerable:true});
@@ -781,8 +816,9 @@ async function contractLogin(completion, handle, use, fixture) {
   } finally {
     active=false;
     if (proof) PROOFS.delete(proof);
+    if(generated)generated.password=undefined;
     secrets?.fill(null);
     verifiers?.fill(null);
   }
 }
-module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,takeCurrent259FirstQ2Bridge});
+module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,withCurrent259GeneratedDraftAdmission,takeCurrent259FirstQ2Bridge});

@@ -1,6 +1,6 @@
 'use strict';
 
-const {randomBytes}=require('node:crypto');
+const {createHash,randomBytes}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 const {isCurrent259FirstQ2Fixture}=require('./task12-current259-q2-fixture.cjs');
 
@@ -136,11 +136,7 @@ function read(raw,phase,nonce,owner) {
 
 // Renders fixed owner SQL only. The true runner will supply the private
 // resource, ancestry and one-shot authorization. This module has no IO port.
-function createCurrent259FirstQ2Seed(fixture,identity) {
-  need(arguments.length===2 && isCurrent259FirstQ2Fixture(fixture),'INPUT');
-  const owner=qualifyIdentity(identity);
-  const seedNames=Object.keys(seedColumns),empty=absent([...seedNames,...emptyBusiness]);
-  need(equal(Object.keys(fixture.seed),seedNames),'INPUT');
+function createSeedProtocol(owner, lockedTables, empty, writes, readPostimage, seedCount, operating) {
   const challenges=Object.fromEntries(['before','write','committed'].map(stage=>[stage,randomBytes(32).toString('hex')]));
   let state='initial',before,writer;
   function take(expected,next) {need(state===expected,'STATE');state=next;}
@@ -154,28 +150,83 @@ function createCurrent259FirstQ2Seed(fixture,identity) {
  IF (${ownerIdentitySql}) IS DISTINCT FROM ${json(owner)} OR ((${scopedSql}) AND (${empty}) AND (${loggingCheck})) IS DISTINCT FROM TRUE
  THEN RAISE EXCEPTION 'FIRST_Q2_SEED_PREIMAGE'; END IF;
 END $first_q2_seed$;`;
-      const postimage=seeded(fixture,'pg_current_xact_id()');
+      const postimage=readPostimage('pg_current_xact_id()');
       const verified=`DO $first_q2_seed_post$ BEGIN
  IF ((${scopedSql}) AND (${postimage})) IS DISTINCT FROM TRUE THEN RAISE EXCEPTION 'FIRST_Q2_SEED_POSTIMAGE'; END IF;
 END $first_q2_seed_post$;`;
       return [loggingSql,'BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;',setup,
-        'SET LOCAL lock_timeout=\'5s\';','LOCK TABLE '+[...seedNames,...emptyBusiness].map(table).join(', ')+' IN SHARE ROW EXCLUSIVE MODE NOWAIT;',
-        guarded,...seedNames.flatMap(name=>seedRows(fixture,name).map(row=>insert(name,row))),activationSql(fixture.projectActivation),
+        'SET LOCAL lock_timeout=\'5s\';','LOCK TABLE '+lockedTables.map(table).join(', ')+' IN SHARE ROW EXCLUSIVE MODE NOWAIT;',
+        guarded,...writes,
         'SET CONSTRAINTS ALL IMMEDIATE;',verified,project('write',challenges.write,'true'),'COMMIT;'].filter(Boolean).join('\n');
     },
     verifyWritten(raw){take('read-write','failed');writer=checked(raw,'write');need(distinct(before.backend,writer.backend),'WRITE');state='written';},
     committedSql(){
       take('written','read-committed');
-      return readerStart+'\n'+project('committed',challenges.committed,seeded(fixture,quote(writer.writeXid)+'::xid8'),writer.writeXid)+'\nROLLBACK;';
+      return readerStart+'\n'+project('committed',challenges.committed,readPostimage(quote(writer.writeXid)+'::xid8'),writer.writeXid)+'\nROLLBACK;';
     },
     finish(raw){
       take('read-committed','closed');
       const final=checked(raw,'committed');
       need(distinct(before.backend,final.backend) && distinct(writer.backend,final.backend),'COMMITTED');
-      return Object.freeze({seedRows:seedNames.reduce((count,name)=>count+seedRows(fixture,name).length,0),operating:Boolean(fixture.projectActivation),seedXid:writer.writeXid});
+      return Object.freeze({seedRows:seedCount,operating,seedXid:writer.writeXid});
     },
   });
 }
+
+function createCurrent259FirstQ2Seed(fixture,identity) {
+  need(arguments.length===2 && isCurrent259FirstQ2Fixture(fixture),'INPUT');
+  const owner=qualifyIdentity(identity), names=Object.keys(seedColumns);
+  need(equal(Object.keys(fixture.seed),names),'INPUT');
+  const locked=[...names,...emptyBusiness];
+  return createSeedProtocol(owner,locked,absent(locked),
+    [...names.flatMap(name=>seedRows(fixture,name).map(row=>insert(name,row))),activationSql(fixture.projectActivation)],
+    at=>seeded(fixture,at),names.reduce((count,name)=>count+seedRows(fixture,name).length,0),Boolean(fixture.projectActivation));
+}
+
+function createCurrent259GeneratedDraftSeed(fixture,identity,passwordHash) {
+  need(arguments.length===3 && Object.isFrozen(fixture) && fixture.users.length===8 && fixture.members.length===2 &&
+    fixture.globalRoles.length===5 && typeof passwordHash==='string' && /^\$2[aby]\$10\$[.\/A-Za-z0-9]{53}$/u.test(passwordHash),'INPUT');
+  const owner=qualifyIdentity(identity);
+  const groups={
+    User:fixture.users.map(row=>({...row,passwordHash:row.id===fixture.handler.id?passwordHash:null})),
+    Project:[fixture.project],
+    ProjectMember:fixture.members,
+  };
+  const roleKeys=fixture.globalRoles.map(row=>quote(row.roleKey)).join(',');
+  const positionCount='(SELECT count(*) FROM public."Position" WHERE "key" IN ('+roleKeys+'))';
+  const positions=at=>positionCount+'=5 AND '+fixture.globalRoles.map(row=>
+    'EXISTS(SELECT FROM public."Position" p WHERE p."id"='+quote(row.positionId)+
+    ' AND p."key"='+quote(row.roleKey)+' AND p."name"='+quote(row.positionName)+
+    ' AND p.xmin::text::numeric=mod(('+at+')::text::numeric,4294967296))').join(' AND ');
+  const prohibited=[...emptyBusiness.filter(name=>name!=='UserPosition'),'ApprovalActionLog','ContractGeneratedDocument','HandwrittenSignatureVersion'];
+  const empty=absent([...Object.keys(groups),'UserPosition',...prohibited])+' AND '+positionCount+'=0';
+  const locked=[...Object.keys(groups),'UserPosition','Position',...prohibited];
+  const match=(name,rows,at)=>'((SELECT count(*) FROM '+table(name)+')='+rows.length+' AND '+rows.map(row=>{
+    let columns=seedColumns[name], proofRow=row, credential;
+    if(name==='User'){
+      const {passwordHash,...rest}=row;
+      proofRow=rest;
+      columns=columns.filter(column=>column!=='passwordHash').concat('sessionVersion');
+      credential=passwordHash===null?'r."passwordHash" IS NULL':
+        `encode(sha256(convert_to(r."passwordHash",'UTF8')),'hex')=`+quote(createHash('sha256').update(passwordHash).digest('hex'));
+    }
+    const comparisons=columns.map(ident).map(column=>'r.'+column+' IS NOT DISTINCT FROM e.'+column);
+    if(credential)comparisons.push(credential);
+    return 'EXISTS(SELECT FROM '+table(name)+' r CROSS JOIN '+typed(name,proofRow)+' e WHERE r.xmin::text::numeric=mod(('+at+')::text::numeric,4294967296) AND '+comparisons.join(' AND ')+')';
+  }).join(' AND ')+')';
+  const roleMatch=at=>'((SELECT count(*) FROM public."UserPosition")=5 AND '+fixture.globalRoles.map(row=>
+    'EXISTS(SELECT FROM public."UserPosition" a JOIN public."Position" p ON p."id"=a."positionId" WHERE a."id"='+quote(row.id)+
+    ' AND a."userId"='+quote(row.userId)+' AND a."projectId" IS NULL AND p."key"='+quote(row.roleKey)+' AND p."id"='+quote(row.positionId)+
+    ' AND a.xmin::text::numeric=mod(('+at+')::text::numeric,4294967296))').join(' AND ')+')';
+  const writes=Object.entries(groups).flatMap(([name,rows])=>rows.map(row=>insert(name,row))).concat(
+    fixture.globalRoles.map(row=>'INSERT INTO public."Position"("id","key","name","updatedAt") VALUES ('+
+      [row.positionId,row.roleKey,row.positionName].map(quote).join(',')+',LOCALTIMESTAMP);'),
+    fixture.globalRoles.map(row=>'INSERT INTO public."UserPosition"("id","userId","positionId","projectId") SELECT '+
+      quote(row.id)+','+quote(row.userId)+',p."id",NULL FROM public."Position" p WHERE p."key"='+quote(row.roleKey)+';'));
+  return createSeedProtocol(owner,locked,empty,writes,
+    at=>[...Object.entries(groups).map(([name,rows])=>match(name,rows,at)),positions(at),roleMatch(at),absent(prohibited)].join(' AND '),21,false);
+}
+
 // Read the one expected upload on a separate owner connection while the app
 // remains alive. The COS observer may use this result only in its own lease.
 function createCurrent259FirstQ2UploadReadback(fixture,identity,bucket,input) {
@@ -364,4 +415,4 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
   }});
 }
 
-module.exports=Object.freeze({createCurrent259FirstQ2Seed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});
+module.exports=Object.freeze({createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});

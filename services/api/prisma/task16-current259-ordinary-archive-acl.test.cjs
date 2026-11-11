@@ -212,3 +212,21 @@ test('the next-stage protection restores exactly the allowed seven-fragment ACL 
   assert.match(lease.protectedSql,/p\."rawAcl"::aclitem\[\]/u);
   assert.ok(f.calls[2].sql.includes(lease.protectedSql+' IS DISTINCT FROM'));
 });
+
+test('only the fixed generated ACL admits the actual pristine workbench read columns',async()=>{
+  const candidate={relation:'ContractBillRow',column:'contractBillId',relationOid:'17003',attnum:2,
+    privileges:['SELECT'],rawAcl:null,acl:[]};
+  const observe=(row,n)=>{if(!n)row.changes.push(candidate);};
+  const old=fixture({observe});
+  await assert.rejects(old.api.installCurrent259OrdinaryArchiveAcl(old.completion,old.handle),/PRESTATE_REJECTED/u);
+  assert.equal(old.calls.length,1);
+  const generated=fixture({observe});
+  const result=await generated.api.installCurrent259GeneratedDraftOrdinaryAcl(generated.completion,generated.handle);
+  assert.match(generated.calls[1].sql,/GRANT SELECT \("contractBillId"\) ON TABLE public\."ContractBillRow"/u);
+  const lease=generated.api.claimCurrent259OrdinaryArchiveAcl(result,generated.handle);
+  assert.equal(lease.generatedDraft,true);
+  assert.equal(result.nativeAdmission,false);
+  const bad=fixture({observe:(row,n)=>{if(!n)row.changes.push({...candidate,privileges:['UPDATE']});}});
+  await assert.rejects(bad.api.installCurrent259GeneratedDraftOrdinaryAcl(bad.completion,bad.handle),/PRESTATE_REJECTED/u);
+  assert.equal(bad.calls.length,1);
+});

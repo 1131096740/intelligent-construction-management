@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {randomBytes}=require('node:crypto');
 const {types}=require('node:util');
+const {projectGeneratedDraftHttpFailure}=require('./task12-current259-generated-draft-diagnostic.cjs');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
   takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
 
@@ -12,6 +13,7 @@ const SECRET_KEYS=['JWT_ACCESS_SECRET','JWT_REFRESH_SECRET','FILE_DOWNLOAD_SECRE
 const KEYS=[...Object.keys(ENVIRONMENT),'FILE_STORAGE_ROOT',...SECRET_KEYS];
 const COS_KEYS=['COS_BUCKET','COS_REGION','COS_SECRET_ID','COS_SECRET_KEY','COS_SESSION_TOKEN'];
 const HTTP_BRIDGES=new WeakMap();
+const GENERATED_HTTP_BRIDGES=new WeakMap();
 const FOREIGN=/^(?:SMS_|APPROVAL_SMS_|COS_|TENCENT|WX_|WECHAT_|PRISMA_|JWT_|FILE_|CONTRACT_CUTOVER_|OPERATIONAL_WRITE_FREEZE|DIRECT_ARCHIVE_|UPWARD_DIRECT_ARCHIVE_|OPERATING_LEDGER_DB_WRITE_SECRET|DATABASE_URL|SKIP_DATABASE_CONNECT|HOST$|PORT$|WEB_ORIGIN$|NODE_OPTIONS$|NODE_PATH$)/u;
 const ownFaults=new WeakMap();
 let busy=false;
@@ -91,13 +93,16 @@ function takeCurrent259FirstQ2HttpBridge(bridge,server) {
   need(arguments.length===2 && HTTP_BRIDGES.get(bridge)===server && HTTP_BRIDGES.delete(bridge),'SCOPE');
 }
 
+function takeCurrent259GeneratedHttpBridge(bridge,server) {
+  need(arguments.length===2 && GENERATED_HTTP_BRIDGES.get(bridge)===server && GENERATED_HTTP_BRIDGES.delete(bridge),'HTTP');
+}
 async function runCurrent259FirstQ2Application(bridge) {
   const {takeCurrent259FirstQ2Bridge}=require('./task12-current259-contract-login.cjs');
   takeCurrent259FirstQ2Bridge(bridge);
   need(arguments.length===1 && !busy,'SCOPE');
   busy=true;
   let environment,testing,application,owned,orphan,server;
-  let closeModule,closeApplication,nativeResult;
+  let closeModule,closeApplication,nativeResult,generatedResult,generatedHttpFailure;
   let providersAttempted=false,compileAttempted=false,pending=false;
   let failure,cleanupUnknown=false,stage='PREPARE';
   const check=()=>{bridge.check();environment.check();};
@@ -181,8 +186,30 @@ async function runCurrent259FirstQ2Application(bridge) {
         typeof nativeResult.proofSha256==='string' && /^[a-f0-9]{64}$/u.test(nativeResult.proofSha256),'HTTP');
       check();verifyProviderIdentity(owned);
     }
+    if(bridge.generated){
+      stage='GENERATED_HTTP';
+      need(!bridge.native,'GENERATED_HTTP');
+      const {runCurrent259GeneratedDraftHttp}=require('./task12-current259-generated-draft-http.cjs');
+      const qualified=Object.freeze({...bridge.generated,check});
+      bridge.generated.beginHttp();
+      GENERATED_HTTP_BRIDGES.set(qualified,server);
+      try{generatedResult=await runCurrent259GeneratedDraftHttp(qualified,server);}
+      catch(error){
+        if(error&&!types.isProxy(error)&&Object.getOwnPropertyDescriptor(error,'code')?.value==='CURRENT259_GENERATED_DRAFT_HTTP'){
+          generatedHttpFailure=projectGeneratedDraftHttpFailure(Object.getOwnPropertyDescriptor(error,'generatedHttpFailure')?.value);
+        }
+        throw error;
+      }
+      finally{
+        GENERATED_HTTP_BRIDGES.delete(qualified);
+        bridge.generated.endHttp(Boolean(generatedResult));
+      }
+      need(generatedResult?.status==='DRAFT_ADMISSION_PROTOCOL_MATCHED'&&generatedResult.projectId===bridge.generated.projectId,'GENERATED_HTTP');
+      check();verifyProviderIdentity(owned);
+    }
   }catch(error){
     failure=fault(ownFaults.get(error)??stage);
+    if(generatedHttpFailure)Object.defineProperty(failure,'generatedHttpFailure',{value:generatedHttpFailure,enumerable:true});
   }
   try{
     if(closeApplication)await bounded(()=>closeApplication.call(owned));
@@ -208,8 +235,10 @@ async function runCurrent259FirstQ2Application(bridge) {
   if(nativeResult)return Object.freeze({status:bridge.native.fixture.outsideOperating===true?'CURRENT259_FIRST_OUTSIDE_OPERATING_HTTP_AND_NEST_CLOSED'
     :bridge.native.fixture.relationship==='outside'
     ?'CURRENT259_FIRST_OUTSIDE_DIRECT_HTTP_AND_NEST_CLOSED':'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED',verifiedClients:5,httpSteps:9,storageAcceptance:true,proofSha256:nativeResult.proofSha256,evidence:nativeResult.evidence,evidenceSha256:nativeResult.evidenceSha256});
+  if(generatedResult)return Object.freeze({status:'CURRENT259_GENERATED_DRAFT_PROTOCOL_AND_NEST_CLOSED',draft:generatedResult,seed:bridge.generated.seed,
+    verifiedClients:5,httpSteps:5,storageAcceptance:false,executionAllowed:false,nativeAdmission:false});
   return Object.freeze({status:'CURRENT259_FIRST_Q2_NEST_ASSEMBLY_CLOSED',verifiedClients:5,storageAcceptance:false,
     executionAllowed:false,nativeAdmission:false});
 }
 
-module.exports=Object.freeze({runCurrent259FirstQ2Application,takeCurrent259FirstQ2HttpBridge});
+module.exports=Object.freeze({runCurrent259FirstQ2Application,takeCurrent259FirstQ2HttpBridge,takeCurrent259GeneratedHttpBridge});
