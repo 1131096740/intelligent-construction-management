@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 准确 `516d3a4f` 已合入原前像比较的括号修复。PG16.1 AST 确认旧式在 `->` 右侧计算未定字符串减法，新式先取 `identity` JSONB，再删除三个会话键。独立定向3/3，冷920/147、类型/lint/构建、17批静态、21输入及独立只读预检均通过。13批渲染逐字同31a，四个供给批次各仅增加一对括号。新封存单次验证等待对准确方案授权。 [独审](/private/tmp/jg-382-pfq-jsonb-preimage-merge.7MIDKMK6/HANDOFF-516D.md) · [封包](/private/tmp/jg-382-pfq259-functional-516d.71lv6dhk/RUN-HANDOFF.md)
+
 - [~] 准确 `31a51e6f` 冷920/147、类型/lint/构建、17批静态、21输入和独立只读预检通过；按用户明确单次授权执行一次后终态1，仍在首库 `TAIL213_SUPPLY / RESOURCE_PORT / SUPPLY_RESULT` 停止。真实PG `42725` 已保留固定脱敏 `OPERATOR_AMBIGUOUS / unknown - unknown`，定位为两个未定类型操作数的二元减号歧义，具体语句尚未确认。本次完整259、后六库、13并发未完成；脚本清理及根准确容器查询空0，许可消耗，不重试、不修复或跑后继门。无其他组、原生业务、COS、GitHub、部署或生产。 [停止回执](/private/tmp/jg-382-pfq259-diagnostic-31a5-cold.308yurs9/STOP-RECEIPT.md)
 
 - [~] #398私有 `6c888656` 已修正真实SDK加载时graceful-fs合法包装closeSync造成的误拒，原捕获关闭方法只用于自建FD；完整965标准、147 API、23支付、类型/lint/构建、两SDK纯装载及离线HOLD三步通过。未合该业务组合；实际物理FD测量与路径计数显示单次业务校验可能超过原5秒预算，真实HTTP/PG未测。六固定物理文件复核边界方案保留逐await身份/权限/实际目录与原提交锚点，待独立源码实现及验证，未执行原生业务。 [本地回执](/private/tmp/jg-398-fd-close-composition.DpH3c3LV/HANDOFF-6C888.md) · [成本](/private/tmp/jg-398-fd-close-composition.DpH3c3LV/BUSINESS-CONTINUITY-COST.md) · [后继设计](/private/tmp/jg-398-business-continuity-design-iQ9Z0a01/HANDOFF.md)
