@@ -49,6 +49,9 @@ function fixture(t,options={}){
    async withCurrent259FirstRollbackResource(build,plan,sig,consume){
     return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'cancel-commit');
    },
+   async withCurrent259AttributionGapResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'attribution-gap');
+   },
    async withCurrent259NormalPaymentResource(build,plan,sig,consume){
     return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'normal');
    },
@@ -165,10 +168,20 @@ function fixture(t,options={}){
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,app,h);lease.check();
    assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(options.selectedPlanSha??saved.sha256));
    options.onBusiness?.({api:module.exports,permit,application,handle,lease,s});
+   if(options.gapFailureStage){
+    lease.recordAttributionGapFailure('raw private failing response');
+    lease.recordAttributionGapFailure(options.gapFailureStage);
+    lease.recordAttributionGapFailure('CASE_FINAL');
+   }
    if(Object.hasOwn(options,'caseFailure'))throw options.caseFailure;
+   if(options.attributionGap){
+    assert.equal(permit.kind,'CURRENT259_PRIVATE_ATTRIBUTION_GAP_CASE');
+    assert.deepEqual(lease.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
+   }
    lease.check();return {caseId:lease.scope.caseId,passed:true,...(options.scenario==='cancel-commit'
     ?{rollbackObserved:true,...(options.omitOriginalResult?{}:{originalResultUnconfirmed:true}),
-      ...(options.omitRollbackEvidence?{}:{rollbackEvidence:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:'a'.repeat(64)}})}:{executionId:'public-execution',rootId:'public-root'})};
+      ...(options.omitRollbackEvidence?{}:{rollbackEvidence:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:'a'.repeat(64)}})}:options.attributionGap?{attributionGapEvidence:{registrationStatus:409,projectAmountCents:'500',gapAmountCents:'300',originalRequestKeySha256:'e'.repeat(64),
+      originalResultUnconfirmed:true,...options.gapEvidenceOverride},...(options.gapExecution?{executionId:'forged'}:{})}:{executionId:'public-execution',rootId:'public-root'})};
   }};
  }
 
@@ -249,7 +262,7 @@ function fixture(t,options={}){
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.competition?[options.default?'--competition':'--competition-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  new Function('require','module','__dirname','__filename','process',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc);
@@ -378,7 +391,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
   ['task16-current259-seven-install',['installCurrent259SevenFragments']],
   ['task16-current259-payment-acl-install',['installCurrent259PaymentAcl']],
   ['task16-current259-owned-resource',['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource',
-   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','withCurrent259CompetitionResource',
+   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259AttributionGapResource',
    'withCurrent259DisconnectRecoveryResource','claimCurrent259TechnicalResource']],
   ['task16-current259-catalog',['renderCurrent259CatalogRead']],
   ['task16-runtime-inputs',['readQualifiedTask16File']]
@@ -596,3 +609,66 @@ test('disconnect does not certify its recovered case if the original relay clean
  assert.equal(receipt.business.runtimeReplaced,true);assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
  assert.equal(receipt.resource.cleanup.relayClosed,false);
 });
+
+function attributionGapFixture(t,options={}){
+ const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
+ new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
+ const s=holder.exports.fixture(t),plan=s.business.prepareCurrent259PaymentAttributionGapPlan({
+  runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ return fixture(t,{business:true,attributionGap:true,scenario:'attribution-gap',...options,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+}
+test('the fixed attribution-gap publisher verifies without opening resources or an attempt',async t=>{
+ const f=attributionGapFixture(t,{default:true}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));
+ assert.deepEqual(f.state.calls,[]);
+ assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
+});
+test('the attribution-gap plan is refused by the ordinary business entry before the attempt marker',async t=>{
+ const f=attributionGapFixture(t,{attributionGap:false}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ assert.deepEqual(f.state.calls,[]);
+ assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
+});
+test('the attribution-gap publisher issues one case on its own resource and only publishes fixed rejection evidence',async t=>{
+ const f=attributionGapFixture(t),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.deepEqual(f.state.calls,['start-attribution-gap','technical259','roles9','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.deepEqual(receipt.business,{scenario:'attribution-gap',caseId:'registered.project-attribution-gap',permission:'CONSUMED_ONCE',
+  outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',attributionGapEvidence:{registrationStatus:409,projectAmountCents:'500',gapAmountCents:'300',
+   originalRequestKeySha256:'e'.repeat(64),originalResultUnconfirmed:true}});
+ assert.equal(receipt.resource.cleanup.relayClosed,true);
+ assert.equal(receipt.financialAcceptance,false);
+});
+for(const options of [{gapExecution:true},{gapEvidenceOverride:{gapAmountCents:'301'}},{gapEvidenceOverride:{registrationStatus:201}}]){
+ test('the attribution-gap publisher rejects forged completion '+Object.keys(options)[0],async t=>{
+  const f=attributionGapFixture(t,options),result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_RESULT');
+  assert.equal(f.state.calls.filter(x=>x==='case').length,1);
+ });
+}
+
+
+for(const [stage,code] of [
+ ['PUBLIC_ACCOUNT','PG_CASE_ATTRIBUTION_GAP_PUBLIC_BALANCES'],
+ ['REGISTRATION','PG_CASE_ATTRIBUTION_GAP_EXPECTED_CONFLICT'],
+ ['ORIGINAL_RESULT','PG_CASE_ATTRIBUTION_GAP_ORIGINAL_RESULT'],
+ ['OWNER_AFTER','PG_CASE_ATTRIBUTION_GAP_OWNER_READ']
+]){
+ test('the attribution-gap receipt preserves the fixed first failure at '+stage,async t=>{
+  const f=attributionGapFixture(t,{gapFailureStage:stage,caseFailure:new Error('raw private failing response')});
+  const result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+  assert.equal(receipt.failureStage,'seedAndSelectedCase');
+  assert.deepEqual(receipt.attributionGapFailure,{stage,code});
+  assert.equal(receipt.disconnectFailure,undefined);
+  assert.equal(receipt.resource.cleanup.relayClosed,true);
+  assert.ok(!JSON.stringify(receipt).includes('raw private failing response'));
+  assert.deepEqual(f.state.calls.slice(-4),['case','app-close','env-close','pools-close']);
+ });
+}

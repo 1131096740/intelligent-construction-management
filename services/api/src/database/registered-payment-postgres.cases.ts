@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
 import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, assertRegisteredPgResourceProof, registeredPgHttp } from "./registered-payment-postgres.fixture";
-import type { PreparedRegisteredPgCompetition, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
+import type { PreparedRegisteredPgAttributionGap, PreparedRegisteredPgCompetition, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
 
 /** Source-derived inventory, not an executable resource runner or a PG result. */
 export function registeredPaymentPostgresCases() {
@@ -155,11 +155,30 @@ function fixedCancellationMethod(target: object, key: "$transaction" | "$execute
 
 type CheckedOperation = <T>(operation: () => T | PromiseLike<T>) => Promise<T>;
 
-function captureOwnerRead(context: RegisteredPgExecutionContext, originalKeyMustBeAbsent = false) {
+const attributionGapOwnerGuards = `
+ AND EXISTS (
+   SELECT 1 FROM public."FundAccountBalanceRegistration" r
+   JOIN public."RegisteredFundAccount" a ON a.id=r."accountId"
+   WHERE r.id=$4 AND r."balanceYuan"=8 AND r.status='confirmed' AND a."writeRevision"=0
+   AND (SELECT count(*) FROM public."FundAccountBalanceRegistration" versions WHERE versions."accountId"=a.id)=1
+   AND (SELECT count(*) FROM public."FundAccountSourceBatch" source WHERE source."registrationId"=r.id)=2
+   AND EXISTS (SELECT 1 FROM public."FundAccountSourceBatch" source WHERE source."registrationId"=r.id
+     AND source.id=$7 AND source."projectStatus"='project' AND source."projectId"=$5 AND source."amountYuan"=5)
+   AND EXISTS (SELECT 1 FROM public."FundAccountSourceBatch" source WHERE source."registrationId"=r.id
+     AND source.id=$8 AND source."projectStatus"='project' AND source."projectId"=$6 AND source."amountYuan"=3)
+ )
+ AND NOT EXISTS (SELECT 1 FROM public."ProjectUpstreamFundFact" f WHERE f."projectId" IN ($5,$6))
+ AND NOT EXISTS (SELECT 1 FROM public."ProjectFundingAllocation" f WHERE f."projectId" IN ($5,$6))
+ AND NOT EXISTS (SELECT 1 FROM public."FundMovement" f WHERE f."sourceProjectId" IN ($5,$6) OR f."beneficiaryProjectId" IN ($5,$6))
+ AND NOT EXISTS (SELECT 1 FROM public."InterEntityRelationshipEntry" f WHERE f."projectId" IN ($5,$6))`;
+
+function captureOwnerRead(context: RegisteredPgExecutionContext, originalKeyMustBeAbsent = false,
+  gapFixture?: PreparedRegisteredPgAttributionGap) {
   // The public result also reports unconfirmed when execution funding is absent.
   // Prove that even an execution associated to a different request has not used this key.
-  const query = originalKeyMustBeAbsent ? cancellationOwnerFieldsSql +
-    ' AND NOT EXISTS (SELECT 1 FROM public."PaymentExecution" e WHERE e."idempotencyKey"=$3)' : cancellationOwnerFieldsSql;
+  const query = cancellationOwnerFieldsSql +
+    (originalKeyMustBeAbsent ? ' AND NOT EXISTS (SELECT 1 FROM public."PaymentExecution" e WHERE e."idempotencyKey"=$3)' : "") +
+    (gapFixture ? attributionGapOwnerGuards : "");
   // These columns belong to the independently verified owner read.
   const owner = context.owner;
   const checkTransaction = fixedCancellationMethod(owner, "$transaction");
@@ -187,7 +206,9 @@ function captureOwnerRead(context: RegisteredPgExecutionContext, originalKeyMust
       checkMethods();
       const { ids } = fixture.plan;
       const rows = await checked(() => read.call(tx, query, ids.settlement, ids.payment,
-        ...(originalKeyMustBeAbsent ? [ids.requestKey] : []))) as CancellationOwnerFields[];
+        ...(originalKeyMustBeAbsent ? [ids.requestKey] : []),
+        ...(gapFixture ? [gapFixture.companyBRegistrationId, ids.project, gapFixture.attributionGap.otherProjectId,
+          gapFixture.companyBSourceId, gapFixture.attributionGap.otherSourceId] : []))) as CancellationOwnerFields[];
       checkMethods();
       const observed = rows[0];
       const proof = context.proof;
@@ -257,6 +278,78 @@ async function assertRecordedOriginalResult(context: RegisteredPgExecutionContex
   const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`, "GET", undefined, fixture.accessToken, continuity));
   const resultBody = result.body as { status?: unknown; execution?: { executionId?: unknown; amountCents?: unknown; paidAt?: unknown }; effects?: unknown[]; intercompany?: unknown[] };
   check(result.status === 200 && resultBody.status === "recorded" && resultBody.execution?.executionId === executionId && resultBody.execution?.amountCents === "4000" && resultBody.execution?.paidAt === plan.paidAt && resultBody.effects?.length === 0 && resultBody.intercompany?.length === 1, "PG_CASE_PUBLIC_ORIGINAL_RESULT");
+}
+
+/** Only the fixed attribution-gap executor may admit this case on its own fresh database. */
+export async function runRegisteredProjectAttributionGap(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgAttributionGap, continuity: RegisteredPgSeedContinuity) {
+  const checked: CheckedOperation = async operation => {
+    continuity.checkLight();
+    const value = await operation();
+    continuity.checkLight();
+    return value;
+  };
+  const { plan, attributionGap } = fixture;
+  const { ids } = plan;
+  check(attributionGap.otherProjectId !== ids.project && attributionGap.otherSourceId !== fixture.companyBSourceId,
+    "PG_CASE_ATTRIBUTION_GAP_DISTINCT_SOURCES");
+  const identity = await checked(() => assertRegisteredPgConnectedRoles(context, continuity));
+  const observeOwner = captureOwnerRead(context, true, fixture);
+  continuity.markAttributionGapStage?.("OBSERVER_BEFORE");
+  const before = await checked(() => observe(context, fixture, continuity, true));
+  continuity.markAttributionGapStage?.("OWNER_BEFORE");
+  const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
+  continuity.markAttributionGapStage?.("BEFORE_STATE");
+  check(before.request.approvedAmountCents === 10000n && before.request.paidAmountCents === 0n &&
+    before.settlement.payableAmountCents === 10000n && before.settlement.paidAmountCents === 0n &&
+    before.balanceA === "100.0000" && before.balanceB === "8.0000" &&
+    [before.executions, before.funding, before.allocations, before.events, before.roots,
+      before.facts, before.impacts, before.audits].every(rows => rows.length === 0), "PG_CASE_ATTRIBUTION_GAP_BEFORE");
+  const endpoint = `/payment-executions/${ids.payment}`;
+  const scopeKey = `company:${ids.companyB}`;
+  continuity.markAttributionGapStage?.("PUBLIC_ACCOUNT");
+  const accountResponse = await checked(() => registeredPgHttp(context, `/fund-accounts/${scopeKey}`, "GET", undefined, fixture.accessToken, continuity));
+  const account = accountResponse.body as {scopeKey?: unknown; balanceYuan?: unknown; currentRegistrationId?: unknown;
+    projectBalances?: Array<{projectId?: unknown; projectStatus?: unknown; amountYuan?: unknown}>} | null;
+  check(accountResponse.status === 200 && account?.scopeKey === scopeKey && account.balanceYuan === "8.0000" &&
+    account.currentRegistrationId === fixture.companyBRegistrationId && account.projectBalances?.length === 2 &&
+    account.projectBalances.some(row => row.projectId === ids.project && row.projectStatus === "project" && row.amountYuan === "5.0000") &&
+    account.projectBalances.some(row => row.projectId === attributionGap.otherProjectId && row.projectStatus === "project" && row.amountYuan === "3.0000"),
+    "PG_CASE_ATTRIBUTION_GAP_PUBLIC_BALANCES");
+  continuity.markAttributionGapStage?.("PUBLIC_OPTIONS");
+  const optionsResponse = await checked(() => registeredPgHttp(context, `${endpoint}/registration-options`, "GET", undefined, fixture.accessToken, continuity));
+  const options = optionsResponse.body as { paymentId?: unknown; projectId?: unknown; expectedPaymentUpdatedAt?: unknown;
+    remainingAmountCents?: unknown; accounts?: Array<{ scopeKey: string; eligible: boolean; currentRegistrationId: string }> } | null;
+  check(optionsResponse.status === 200 && options?.paymentId === ids.payment && options.projectId === ids.project &&
+    typeof options.expectedPaymentUpdatedAt === "string" && options.remainingAmountCents === "10000" &&
+    options.accounts?.some(account => account.scopeKey === scopeKey && account.eligible && account.currentRegistrationId === fixture.companyBRegistrationId),
+    "PG_CASE_ATTRIBUTION_GAP_OPTIONS");
+  continuity.markAttributionGapStage?.("REGISTRATION");
+  const response = await checked(() => registeredPgHttp(context, `${endpoint}/registrations`, "POST", {
+    idempotencyKey: ids.requestKey, expectedPaymentUpdatedAt: options.expectedPaymentUpdatedAt, amountCents: "800",
+    paidAt: plan.paidAt, scopeKey, expectedRegistrationId: fixture.companyBRegistrationId, openingTreatment: "not_included",
+    openingReason: "本次付款未计入核对期初", openingEvidence: "隔离PG合成项目归属差额",
+    sourceAllocations: [{sourceBatchId: fixture.companyBSourceId, amountCents: "500"},
+      {sourceBatchId: attributionGap.otherSourceId, amountCents: "300"}],
+    confirmationPassword: context.password
+  }, fixture.accessToken, continuity));
+  const conflict = response.body as {message?: unknown} | null;
+  check(response.status === 409 && conflict?.message === "所选来源的项目归属不足，差额须先由业务确认，不能自动形成垫资到账",
+    "PG_CASE_ATTRIBUTION_GAP_EXPECTED_CONFLICT");
+  continuity.markAttributionGapStage?.("ORIGINAL_RESULT");
+  const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`,
+    "GET", undefined, fixture.accessToken, continuity));
+  const body = result.body as {status?: unknown} | null;
+  check(result.status === 200 && body?.status === "unconfirmed" && !Object.hasOwn(body, "execution"),
+    "PG_CASE_ATTRIBUTION_GAP_ORIGINAL_RESULT");
+  continuity.markAttributionGapStage?.("OBSERVER_AFTER");
+  const after = await checked(() => observe(context, fixture, continuity, true));
+  continuity.markAttributionGapStage?.("OWNER_AFTER");
+  const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
+  continuity.markAttributionGapStage?.("FINANCIAL_COMPARISON");
+  check(isDeepStrictEqual(before, after) && isDeepStrictEqual(ownerBefore, ownerAfter), "PG_CASE_ATTRIBUTION_GAP_LEDGER_CHANGED");
+  return { caseId: "registered.project-attribution-gap", database: identity.database, observerPid: identity.observerPid,
+    passed: true as const, registrationStatus: response.status, projectAmountCents: "500", gapAmountCents: "300", originalResultUnconfirmed: true as const };
 }
 
 async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,

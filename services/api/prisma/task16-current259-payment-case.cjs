@@ -25,15 +25,22 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission,disconnectStage;
+ let attempted=false,permission,disconnectStage,attributionGapStage;
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
   permission.check();lease.activateContinuity(permission.continuityToken);lease.check();
   const scope=permission.scope,cancellation=scope.scenario==='cancel-commit',disconnect=scope.scenario==='disconnect-commit-recovery';
+  const attributionGap=scope.scenario==='attribution-gap';
+  const gapScope={expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false};
+  if(attributionGap){
+   attributionGapStage='CASE_SETUP';
+   need(scope.caseId==='registered.project-attribution-gap'&&scope.handler==='runRegisteredProjectAttributionGap'&&
+    equal(scope.attributionGap,gapScope)&&typeof permission.recordAttributionGapFailure==='function');
+  }
   const recovery=disconnect&&scope.disconnectPhase==='recovery';
   if(disconnect)disconnectStage=recovery?'RECOVERY_PAYMENT':'ORIGINAL_PAYMENT_ATTEMPT';
   const faulting=cancellation||disconnect&&!recovery;
-  need(cancellation||disconnect&&['attempt','recovery'].includes(scope.disconnectPhase)||['normal','response-loss'].includes(scope.scenario));
+  need(attributionGap||cancellation||disconnect&&['attempt','recovery'].includes(scope.disconnectPhase)||['normal','response-loss'].includes(scope.scenario));
   const {session,loader,source}=lease,load=Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value;
   const faultName=disconnect?'disconnectCommit':'cancelCommit';
   const commitFault=Object.getOwnPropertyDescriptor(session,faultName)?.value;
@@ -65,7 +72,8 @@ async function executeCurrent259PaymentCase(lease,permit){
   };
   check();await permission.verifyFull();await original.verifyFull.call(session);check();
   const modules=load.call(loader);check();
-  const names=['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss'];
+  const names=attributionGap?['buildRegisteredPgFixturePlan','seedRegisteredPgAttributionGapFixture','runRegisteredProjectAttributionGap']:
+   ['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss'];
   if(cancellation)names.push('runRegisteredNullCrossCompanyCommitCancellation');
   if(disconnect)names.push(recovery?'runRegisteredNullCrossCompanyDisconnectRecovery':'runRegisteredNullCrossCompanyDisconnectAttempt');
   const methods=Object.fromEntries(names.map(k=>{const d=Object.getOwnPropertyDescriptor(modules,k);need(d&&Object.hasOwn(d,'value')&&typeof d.value==='function');return [k,d.value];}));
@@ -80,13 +88,42 @@ async function executeCurrent259PaymentCase(lease,permit){
    password:prior?.password??randomBytes(32).toString('hex'),httpTimeoutMs:5000});
   const transport=async(target,init)=>{check();const url=new URL(target);need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);const response=await originalFetch(target,init);check();return response;};
   attempted=true;
-  const prepared=prior?.fixture??await methods.seedRegisteredPgFixture(execution,plan,Object.freeze({checkLight:check,fetch:transport}));check();
+  const seed=attributionGap?methods.seedRegisteredPgAttributionGapFixture:methods.seedRegisteredPgFixture;
+  const prepared=prior?.fixture??await seed(execution,plan,Object.freeze({checkLight:check,fetch:transport}));check();
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
   await permission.verifyFull();await original.verifyFull.call(session);check();
   const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
   let armed=false,barrierUsed=false,faultSettled=false,postCount=0,resultReads=0,rollbackEvidence;
+  const gapRoutes=attributionGap?[
+   ['GET',`/fund-accounts/company:${plan.ids.companyB}`],
+   ['GET',`/payment-executions/${plan.ids.payment}/registration-options`],
+   ['POST',`/payment-executions/${plan.ids.payment}/registrations`],
+   ['GET',`/payment-executions/results/${plan.ids.requestKey}`]
+  ]:undefined;
+  let gapRouteIndex=0,gapBodiesChecked=0;
+  const assertHttpBody=(route,method,body)=>{
+   checkPrepared();
+   need(equal(gapRoutes[gapBodiesChecked],[method,route])&&gapRouteIndex===gapBodiesChecked+1);
+   if(method==='POST'){
+    const command=snapshot(body);
+    need(typeof command.expectedPaymentUpdatedAt==='string'&&Number.isFinite(Date.parse(command.expectedPaymentUpdatedAt)));
+    need(equal(command,{
+     idempotencyKey:plan.ids.requestKey,expectedPaymentUpdatedAt:command.expectedPaymentUpdatedAt,amountCents:gapScope.paymentAmountCents,
+     paidAt:plan.paidAt,scopeKey:`company:${plan.ids.companyB}`,expectedRegistrationId:frozen.companyBRegistrationId,
+     openingTreatment:'not_included',openingReason:'本次付款未计入核对期初',openingEvidence:'隔离PG合成项目归属差额',
+     sourceAllocations:[{sourceBatchId:frozen.companyBSourceId,amountCents:gapScope.projectAmountCents},
+      {sourceBatchId:frozen.attributionGap.otherSourceId,amountCents:gapScope.gapAmountCents}],
+     confirmationPassword:execution.password
+    }));
+   }else need(body===undefined);
+   gapBodiesChecked++;
+  };
   const assertHttpRequest=(route,method)=>{
    checkPrepared();const ids=plan.ids;
+   if(attributionGap){
+    need(gapRouteIndex===gapBodiesChecked&&equal(gapRoutes[gapRouteIndex],[method,route]));
+    gapRouteIndex++;return;
+   }
    if(recovery){
     if(method==='GET'){
      need(resultReads===postCount&&resultReads<2&&route===`/payment-executions/results/${ids.requestKey}`);
@@ -108,8 +145,9 @@ async function executeCurrent259PaymentCase(lease,permit){
    need(method==='POST'&&route===`/payment-executions/${ids.payment}/registrations`||method==='GET'&&
     [ `/payment-executions/${ids.payment}/registration-options`,`/payment-executions/results/${ids.requestKey}`].includes(route));
   };
-  const continuity=Object.freeze({checkLight:checkPrepared,fetch:transport,assertHttpRequest});
-  const caseId='registered.null-cross-company.'+(scope.scenario==='normal'?'commit':scope.scenario);
+  const continuity=Object.freeze({checkLight:checkPrepared,fetch:transport,assertHttpRequest,
+   ...(attributionGap?{assertHttpBody,markAttributionGapStage(stage){attributionGapStage=stage;}}:{})});
+  const caseId=attributionGap?'registered.project-attribution-gap':'registered.null-cross-company.'+(scope.scenario==='normal'?'commit':scope.scenario);
   let result;
   if(faulting){
    const handler=disconnect?methods.runRegisteredNullCrossCompanyDisconnectAttempt:methods.runRegisteredNullCrossCompanyCommitCancellation;
@@ -141,6 +179,9 @@ async function executeCurrent259PaymentCase(lease,permit){
    }
   }else if(recovery){
    result=await methods.runRegisteredNullCrossCompanyDisconnectRecovery(scope.disconnectRollback,execution,continuity);
+  }else if(attributionGap){
+   result=await methods.runRegisteredProjectAttributionGap(execution,frozen,continuity);
+   attributionGapStage='CASE_FINAL';
   }else{
    const handler=scope.scenario==='normal'?methods.runRegisteredNullCrossCompanyCommit:methods.runRegisteredNullCrossCompanyResponseLoss;
    result=await handler(execution,frozen,continuity);
@@ -148,11 +189,19 @@ async function executeCurrent259PaymentCase(lease,permit){
   checkPrepared();await permission.verifyFull();await original.verifyFull.call(session);checkPrepared();
   need(result&&result.caseId===caseId&&result.passed===true);
   if(recovery)need(postCount===1&&resultReads===2&&result.rollbackObserved===true);
-  if(cancellation)need(barrierUsed&&faultSettled&&postCount===1&&resultReads===1&&result.rollbackObserved===true&&result.originalResultUnconfirmed===true);
+  let attributionGapEvidence;
+  if(attributionGap){
+   need(gapRouteIndex===gapRoutes.length&&gapBodiesChecked===gapRoutes.length&&
+    result.registrationStatus===gapScope.expectedStatus&&result.originalResultUnconfirmed===true&&result.projectAmountCents===gapScope.projectAmountCents&&
+    result.gapAmountCents===gapScope.gapAmountCents&&!Object.hasOwn(result,'executionId')&&!Object.hasOwn(result,'rootId'));
+   attributionGapEvidence=Object.freeze({registrationStatus:result.registrationStatus,projectAmountCents:result.projectAmountCents,gapAmountCents:result.gapAmountCents,
+    originalRequestKeySha256:createHash('sha256').update(plan.ids.requestKey).digest('hex'),originalResultUnconfirmed:true});
+  }else if(cancellation)need(barrierUsed&&faultSettled&&postCount===1&&resultReads===1&&result.rollbackObserved===true&&result.originalResultUnconfirmed===true);
   else need([result.executionId,result.rootId].every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value)));
   lease.finishContinuity(permission.continuityToken);permission.check();
-  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
+  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
  }catch(error){
+  if(attributionGapStage)permission?.recordAttributionGapFailure?.(attributionGapStage);
   const detail=disconnectStage?captureCurrent259DisconnectFailure(error,disconnectStage):undefined;
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';
   try{await lease.failClosed();cleanup='FIXED_CLOSE_RETURNED_NOT_FULL_PROOF';}catch{/* retain safe unknown */}

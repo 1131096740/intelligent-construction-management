@@ -48,6 +48,10 @@ export interface RegisteredPgSeedContinuity {
   fetch: typeof fetch;
   /** Source-owned case request checker; never a caller route list. */
   assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
+  assertHttpBody?: (route: string, method: "GET" | "POST", body: unknown) => void;
+  markAttributionGapStage?: (stage: "OBSERVER_BEFORE" | "OWNER_BEFORE" | "BEFORE_STATE" | "PUBLIC_ACCOUNT" |
+    "PUBLIC_OPTIONS" | "REGISTRATION" | "ORIGINAL_RESULT" | "OBSERVER_AFTER" | "OWNER_AFTER" |
+    "FINANCIAL_COMPARISON") => void;
 }
 
 export interface RegisteredPgFixturePlan {
@@ -71,6 +75,10 @@ export interface PreparedRegisteredPgFixture {
   companyARegistrationId: string;
   companyBRegistrationId: string;
   companyBSourceId: string;
+}
+
+export interface PreparedRegisteredPgAttributionGap extends PreparedRegisteredPgFixture {
+  attributionGap: { otherProjectId: string; otherSourceId: string };
 }
 
 export interface PreparedRegisteredPgCompetition extends PreparedRegisteredPgFixture {
@@ -216,6 +224,7 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
   requireCondition(target.origin === application.origin && !target.username && !target.password && !target.hash, "PG_RESOURCE_HTTP_TARGET_ORIGIN");
   if (continuity?.assertHttpRequest) continuity.assertHttpRequest(route, method);
   else if (continuity) requireCondition(method === "POST" && ["/auth/login", "/fund-accounts/openings"].includes(route), "PG_RESOURCE_SEED_HTTP_ROUTE");
+  continuity?.assertHttpBody?.(route, method, body);
   const transport = continuity ? continuity.fetch : fetch;
   requireCondition(typeof transport === "function", "PG_RESOURCE_HTTP_TRANSPORT");
   light();
@@ -240,6 +249,13 @@ export async function seedRegisteredPgFixture(context: RegisteredPgExecutionCont
   return seedFixture(context, plan, continuity);
 }
 
+export async function seedRegisteredPgAttributionGapFixture(context: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
+  continuity: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgAttributionGap> {
+  const result = await seedFixture(context, plan, continuity, undefined, true);
+  requireCondition("attributionGap" in result, "PG_FIXTURE_ATTRIBUTION_GAP");
+  return result;
+}
+
 export async function seedRegisteredPgCompetitionFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
   primaryContinuity: RegisteredPgSeedContinuity, contenderContinuity: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgCompetition> {
   const result = await seedFixture(primary, plan, primaryContinuity, { context: contender, continuity: contenderContinuity });
@@ -248,7 +264,8 @@ export async function seedRegisteredPgCompetitionFixture(primary: RegisteredPgEx
 }
 
 async function seedFixture(context: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan, continuity?: RegisteredPgSeedContinuity,
-  contender?: { context: RegisteredPgExecutionContext; continuity: RegisteredPgSeedContinuity }): Promise<PreparedRegisteredPgFixture | PreparedRegisteredPgCompetition> {
+  contender?: { context: RegisteredPgExecutionContext; continuity: RegisteredPgSeedContinuity },
+  attributionGap = false): Promise<PreparedRegisteredPgFixture | PreparedRegisteredPgCompetition | PreparedRegisteredPgAttributionGap> {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   let ownerAttempted = false;
@@ -279,6 +296,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     const ids = plan.ids;
     const second = contender ? { actorId: randomUUID(), requestKey: randomUUID(), phone: "198" + plan.phone.slice(3),
       passwordHash: await checked(() => bcrypt.hash(contender.context.password, 12)) } : undefined;
+    const otherProjectId = attributionGap ? randomUUID() : undefined;
     const approved = second ? 4000n : 10000n;
     ownerAttempted = true;
     await checked(() => context.owner.$transaction(async tx => {
@@ -316,6 +334,10 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
         && constructionVersion.versionNo === 1 && constructionVersion.snapshot !== null && typeof constructionVersion.snapshot === "object"
         && !Array.isArray(constructionVersion.snapshot) && constructionVersion.snapshot.name === constructionName, "PG_FIXTURE_CONSTRUCTION_PARTY");
       await checked(() => tx.project.create({ data: { id: ids.project, code: `T16-${plan.runId}-P`, name: `PG合成项目${plan.runId}`, isActive: true, operatingLedgerEffectiveDate: null } }));
+      if (otherProjectId) await checked(() => tx.project.create({ data: {
+        id: otherProjectId, code: `T16-${plan.runId}-OTHER`, name: `PG合成其他项目${plan.runId}`,
+        isActive: true, operatingLedgerEffectiveDate: null
+      } }));
       await checked(() => tx.projectAffiliateAssignment.create({ data: {
         id: ids.constructionEnterpriseAssignment, projectId: ids.project,
         businessPartyId: constructionParty.id, businessPartyVersionId: constructionVersion.id,
@@ -348,17 +370,24 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     const accessToken = auth.tokens.accessToken;
     const registrations: Array<{ id: string; sources: Array<{ id: string }> }> = [];
     for (const companyId of [ids.companyA, ids.companyB]) {
+      const gapCompany = otherProjectId !== undefined && companyId === ids.companyB;
       const response = await checked(() => registeredPgHttp(context, "/fund-accounts/openings", "POST", {
-        scopeKey: `company:${companyId}`, balanceYuan: "100", asOfDate: plan.openingDate,
+        scopeKey: `company:${companyId}`, balanceYuan: gapCompany ? "8" : "100", asOfDate: plan.openingDate,
         evidenceReference: "隔离PG合成期初核对", reconciliationNote: "项目来源明确，不新增收入", reason: "合成期初",
         idempotencyKey: `opening-${plan.runId}-${companyId}`,
-        sources: [{ amountYuan: "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: ids.project }]
+        sources: [{ amountYuan: gapCompany ? "5" : "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: ids.project },
+          ...(gapCompany ? [{ amountYuan: "3", sourceStatus: "known", sourceName: "合成其他项目资金", projectStatus: "project", projectId: otherProjectId }] : [])]
       }, accessToken, continuity));
-      const registration = response.body as { id?: unknown; sources?: Array<{ id: string }> };
-      requireCondition(response.status === 201 && typeof registration.id === "string" && registration.sources?.length === 1 && typeof registration.sources[0]?.id === "string", "PG_FIXTURE_REAL_HTTP_OPENING");
+      const registration = response.body as { id?: unknown; sources?: Array<{ id: string; projectId?: string }> };
+      requireCondition(response.status === 201 && typeof registration.id === "string" &&
+        registration.sources?.length === (gapCompany ? 2 : 1) && typeof registration.sources[0]?.id === "string", "PG_FIXTURE_REAL_HTTP_OPENING");
+      if (gapCompany) requireCondition(registration.sources[0].projectId === ids.project &&
+        registration.sources[1]?.projectId === otherProjectId && typeof registration.sources[1]?.id === "string" &&
+        registration.sources[1].id !== registration.sources[0].id, "PG_FIXTURE_ATTRIBUTION_GAP_SOURCES");
       registrations.push({ id: registration.id, sources: registration.sources });
     }
     const prepared = { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
+    if (otherProjectId) return { ...prepared, attributionGap: { otherProjectId, otherSourceId: registrations[1]!.sources[1]!.id } };
     if (!contender || !second) return prepared;
     const loginB = await checked(() => registeredPgHttp(contender.context, "/auth/login", "POST",
       { phone: second.phone, password: contender.context.password }, undefined, contender.continuity));

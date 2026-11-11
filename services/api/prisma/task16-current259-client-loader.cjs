@@ -76,8 +76,8 @@ function loadCurrent259Client(handle){
  for(const [entry,keys,publish]of [
   [requireAt.resolve('bcryptjs'),['hash'],false],
   [path.join(root,'services/api/dist/company-entity/unified-social-credit-code.js'),['assertValidUnifiedSocialCreditCode'],false],
-  [path.join(root,'services/api/dist/database/registered-payment-postgres.fixture.js'),['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','seedRegisteredPgCompetitionFixture','assertRegisteredPgConnectedRoles','registeredPgHttp'],true],
-  [path.join(root,'services/api/dist/database/registered-payment-postgres.cases.js'),['registeredPaymentPostgresCases','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss','runRegisteredNullCrossCompanyCommitCancellation','runRegisteredNullCrossCompanyDisconnectAttempt','confirmRegisteredNullCrossCompanyDisconnectRollback','runRegisteredNullCrossCompanyDisconnectRecovery','runRegisteredTwoActorPaymentCompetition'],true]
+  [path.join(root,'services/api/dist/database/registered-payment-postgres.fixture.js'),['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','seedRegisteredPgCompetitionFixture','seedRegisteredPgAttributionGapFixture','assertRegisteredPgConnectedRoles','registeredPgHttp'],true],
+  [path.join(root,'services/api/dist/database/registered-payment-postgres.cases.js'),['registeredPaymentPostgresCases','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss','runRegisteredNullCrossCompanyCommitCancellation','runRegisteredNullCrossCompanyDisconnectAttempt','confirmRegisteredNullCrossCompanyDisconnectRollback','runRegisteredNullCrossCompanyDisconnectRecovery','runRegisteredTwoActorPaymentCompetition','runRegisteredProjectAttributionGap'],true]
  ]){
   const file=fs.realpathSync(entry),exports=guardedRequire(file),mod=require.cache[file];
   for(const key of keys){const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function','CURRENT259_PAYMENT_EXPORT');

@@ -22,7 +22,7 @@ const LEGACY_TOPOLOGY='UNVERIFIED_HOST_PUBLISHED_TLS';
 const paymentStartNames=Object.freeze(Object.fromEntries([
  ['cancel-commit','startCurrent259FirstRollbackPostgres'],['normal','startCurrent259NormalPaymentPostgres'],
  ['response-loss','startCurrent259ResponseLossPostgres'],['competition','startCurrent259CompetitionPostgres'],
- ['disconnect-commit-recovery','startCurrent259DisconnectRecoveryPostgres']
+ ['disconnect-commit-recovery','startCurrent259DisconnectRecoveryPostgres'],['attribution-gap','startCurrent259AttributionGapPostgres']
 ].map(([scenario,name])=>[paymentLoopbackForScenario(scenario).topology,name])));
 const paymentStarters=Object.freeze(Object.fromEntries(Object.entries(paymentStartNames).map(([topology,name])=>
  [topology,Object.getOwnPropertyDescriptor(resourceExports,name)?.value])));
@@ -215,6 +215,10 @@ async function withCurrent259CompetitionResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('competition').topology);
 }
+async function withCurrent259AttributionGapResource(build,plan,signal,consume){
+ need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('attribution-gap').topology);
+}
 async function withCurrent259DisconnectRecoveryResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('disconnect-commit-recovery').topology);
@@ -227,4 +231,4 @@ function claimCurrent259TechnicalResourceContinuity(handle,token){
  businessIssuer(token,handle);need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.view.checkLifetime();return owner.view;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259DisconnectRecoveryResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});
+module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});

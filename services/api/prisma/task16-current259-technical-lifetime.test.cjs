@@ -308,6 +308,7 @@ test('Q2 rejects a stale loopback log and a fresh private-network log',async()=>
 
 for(const [starter,topology] of [
  ["startCurrent259NormalPaymentPostgres","UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS"],
+ ["startCurrent259AttributionGapPostgres","UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS"],
  ["startCurrent259ResponseLossPostgres","UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS"],
  ["startCurrent259CompetitionPostgres","UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS"],
  ["startCurrent259DisconnectRecoveryPostgres","UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS"]

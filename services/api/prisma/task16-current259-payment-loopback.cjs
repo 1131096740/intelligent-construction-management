@@ -17,6 +17,10 @@ const profiles = Object.freeze({
     plan: 'PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS'
   }),
+  'attribution-gap': Object.freeze({
+    plan: 'PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS_V1',
+    topology: 'UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS'
+  }),
   'cancel-commit': Object.freeze({
     plan: 'FIRST_ROLLBACK_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'

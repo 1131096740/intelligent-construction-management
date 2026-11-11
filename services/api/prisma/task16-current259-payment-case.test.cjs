@@ -26,7 +26,8 @@ function caseFixture(t,options={}){
   const record=permissions.get(permit);permissions.delete(permit);
   assert.ok(record&&record.application===application&&record.handle===handle,'untrusted business token');
   const continuityToken=Object.freeze({});continuities.add(continuityToken);
-  return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();}};
+  return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
+   ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{})};
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
   name=>name==='./task16-current259-application-factory.cjs'?factory:name==='./task16-current259-payment-run-authorization.cjs'?authorization:require(name),holder);
@@ -247,3 +248,73 @@ for(const [scenario,transportScenario] of [['normal','response-loss'],['response
  }));
  assert.deepEqual(m.counts(),{builds:0,seeds:0,consumers:0});
 });
+
+const gapScope=Object.freeze({scenario:'attribution-gap',caseId:'registered.project-attribution-gap',handler:'runRegisteredProjectAttributionGap',
+ attributionGap:Object.freeze({expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false})});
+function gapCaseModel(t,mode){
+ const f=caseFixture(t,mode==='wrong-topology'?{transportScenario:'normal'}:{}),m=paymentModel(f);
+ m.plan.ids.companyB='61345678-1234-4234-8234-123456789abc';
+ m.modules.seedRegisteredPgAttributionGapFixture=async(...args)=>({
+  ...await m.modules.seedRegisteredPgFixture(...args),
+  attributionGap:{otherProjectId:'model-foreign-project',otherSourceId:'model-foreign-source'}
+ });
+ m.modules.runRegisteredProjectAttributionGap=async(execution,fixture,continuity)=>{
+  const call=(method,route,body)=>{continuity.assertHttpRequest(route,method);continuity.assertHttpBody(route,method,body);};
+  const failAt=stage=>{
+   if(mode===stage){continuity.markAttributionGapStage?.(stage);throw new Error('raw private failing response');}
+  };
+  const {ids}=fixture.plan,account='company:'+ids.companyB,payment='/payment-executions/'+ids.payment;
+  const original='/payment-executions/results/'+ids.requestKey,post=payment+'/registrations';
+  failAt('PUBLIC_ACCOUNT');
+  call('GET','/fund-accounts/'+account);
+  call('GET',payment+'/registration-options');
+  const command={idempotencyKey:ids.requestKey,expectedPaymentUpdatedAt:'2026-11-10T00:00:00.000Z',amountCents:'800',
+   paidAt:m.plan.paidAt,scopeKey:account,expectedRegistrationId:'b',openingTreatment:'not_included',
+   openingReason:'本次付款未计入核对期初',openingEvidence:'隔离PG合成项目归属差额',
+   sourceAllocations:[{sourceBatchId:'s',amountCents:'500'},{sourceBatchId:'model-foreign-source',amountCents:'300'}],
+   confirmationPassword:execution.password};
+  if(mode==='wrong-source')command.sourceAllocations[1].sourceBatchId='s';
+  if(mode==='extra-property')command.observationSelectionRef='foreign';
+  failAt('REGISTRATION');
+  call('POST',post,command);
+  if(mode==='second-post')call('POST',post,command);
+  failAt('ORIGINAL_RESULT');
+  if(mode!=='omitted-result')call('GET',mode==='wrong-key'?original+'-drift':original);
+  failAt('OWNER_AFTER');
+  return {caseId:gapScope.caseId,passed:true,registrationStatus:409,projectAmountCents:'500',gapAmountCents:'300',originalResultUnconfirmed:true,
+   ...(mode==='claimed-execution'?{executionId:'model-claimed-id'}:{})};
+ };
+ const invoke=async()=>f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>{
+  const permit=f.issue(app,{...gapScope,paidAt:m.plan.paidAt,openingDate:m.plan.openingDate});
+  return f.caseApi.runCurrent259PaymentCase(app,f.handle,permit);
+ });
+ return {f,m,invoke};
+}
+test('owned attribution-gap permission only publishes the rejection and hashed original key',async t=>{
+ const {m,invoke}=gapCaseModel(t,'valid');
+ const result=await invoke();
+ assert.deepEqual(result,{caseId:gapScope.caseId,passed:true,
+  attributionGapEvidence:{registrationStatus:409,projectAmountCents:'500',gapAmountCents:'300',originalResultUnconfirmed:true,
+   originalRequestKeySha256:createHash('sha256').update(m.plan.ids.requestKey).digest('hex')},financialAcceptance:false});
+ assert.equal(m.counts().seeds,1);
+});
+for(const mode of ['wrong-topology','wrong-source','extra-property','second-post','wrong-key','omitted-result','claimed-execution']){
+ test('owned attribution-gap permission rejects '+mode,async t=>{
+  const {m,invoke}=gapCaseModel(t,mode);
+  await assert.rejects(invoke(),/TASK16_APP_FAILED_CLOSED/u);
+  if(mode==='wrong-topology')assert.equal(m.counts().seeds,0);
+ });
+}
+
+
+for(const stage of ['PUBLIC_ACCOUNT','REGISTRATION','ORIGINAL_RESULT','OWNER_AFTER']){
+ test('the owned attribution-gap wrapper records the first failure at '+stage+' before closure',async t=>{
+  const {f,invoke}=gapCaseModel(t,stage);
+  await assert.rejects(invoke(),/TASK16_APP_FAILED_CLOSED/u);
+  const failures=f.calls.filter(row=>Array.isArray(row)&&row[0]==='gap-first-failure');
+  assert.deepEqual(failures,[['gap-first-failure',stage]]);
+  assert.ok(f.calls.indexOf(failures[0])<f.calls.indexOf('app-close'));
+  assert.equal(f.calls.filter(row=>row==='app-close').length,1);
+  assert.equal(f.calls.filter(row=>row==='sessions-close').length,1);
+ });
+}

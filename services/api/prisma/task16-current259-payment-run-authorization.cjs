@@ -4,8 +4,22 @@
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
 const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
-const permissions=new WeakMap(),businessPermissions=new WeakMap(),businessContinuities=new WeakMap();
+const permissions=new WeakMap(),businessPermissions=new WeakMap(),attributionGapPermissions=new WeakMap(),businessContinuities=new WeakMap();
 const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap();
+const attributionGapFailureCodes=new Map([
+ ['CASE_SETUP','PG_CASE_ATTRIBUTION_GAP_SETUP'],
+ ['OBSERVER_BEFORE','PG_CASE_ATTRIBUTION_GAP_BEFORE'],
+ ['OWNER_BEFORE','PG_CASE_ATTRIBUTION_GAP_OWNER_READ'],
+ ['BEFORE_STATE','PG_CASE_ATTRIBUTION_GAP_BEFORE'],
+ ['PUBLIC_ACCOUNT','PG_CASE_ATTRIBUTION_GAP_PUBLIC_BALANCES'],
+ ['PUBLIC_OPTIONS','PG_CASE_ATTRIBUTION_GAP_OPTIONS'],
+ ['REGISTRATION','PG_CASE_ATTRIBUTION_GAP_EXPECTED_CONFLICT'],
+ ['ORIGINAL_RESULT','PG_CASE_ATTRIBUTION_GAP_ORIGINAL_RESULT'],
+ ['OBSERVER_AFTER','PG_CASE_ATTRIBUTION_GAP_OBSERVER_READ'],
+ ['OWNER_AFTER','PG_CASE_ATTRIBUTION_GAP_OWNER_READ'],
+ ['FINANCIAL_COMPARISON','PG_CASE_ATTRIBUTION_GAP_LEDGER_CHANGED'],
+ ['CASE_FINAL','PG_CASE_ATTRIBUTION_GAP_FINAL']
+]);
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
 const need=(ok,suffix='INVALID')=>{if(!ok)throw fault(suffix);};
@@ -84,13 +98,20 @@ function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario
  }catch(error){if(entry)entry.active=false;revoke(state);throw error;}
 }
 function claimCurrent259PaymentBusinessPermit(permit,application,handle){
- const entry=permit&&!types.isProxy(permit)&&businessPermissions.get(permit);
- if(entry)businessPermissions.delete(permit);
+ const original=permit&&!types.isProxy(permit)&&businessPermissions.get(permit);
+ const gap=permit&&!types.isProxy(permit)&&attributionGapPermissions.get(permit);
+ const entry=original||gap;
+ if(original)businessPermissions.delete(permit);
+ if(gap)attributionGapPermissions.delete(permit);
  try{
   need(arguments.length===3&&entry&&entry===currentRun?.business&&entry.active&&!entry.claimed&&
-   entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
+   Boolean(gap)===(entry.scope.scenario==='attribution-gap')&&entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
   entry.claimed=true;const token=Object.freeze({kind:'CURRENT259_PRIVATE_BUSINESS_CONTINUITY'});entry.continuityToken=token;businessContinuities.set(token,entry);entry.check();
-  return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull});
+  return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull,
+   ...(gap?{recordAttributionGapFailure(stage){
+    const code=attributionGapFailureCodes.get(stage);
+    if(code&&entry===currentRun?.business&&entry.active&&entry.claimed)entry.attributionGapFailure??=Object.freeze({stage,code});
+   }}:{})});
  }catch(error){revoke(currentRun);throw error;}
 }
 // Publish the only export before the fixed consumer can require it in main.
@@ -114,13 +135,13 @@ const {installCurrent259SevenFragments}=original('./task16-current259-seven-inst
 const {installCurrent259PaymentAcl}=original('./task16-current259-payment-acl-install.cjs',['installCurrent259PaymentAcl']);
 const {withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259NormalPaymentResource,
  withCurrent259ResponseLossResource,withCurrent259CompetitionResource,
- withCurrent259DisconnectRecoveryResource,claimCurrent259TechnicalResource}=original('./task16-current259-owned-resource.cjs',
+ withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259TechnicalResource}=original('./task16-current259-owned-resource.cjs',
  ['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource','withCurrent259NormalPaymentResource',
-  'withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259DisconnectRecoveryResource',
+  'withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259DisconnectRecoveryResource','withCurrent259AttributionGapResource',
   'claimCurrent259TechnicalResource']);
 const paymentResources=Object.freeze({normal:withCurrent259NormalPaymentResource,'response-loss':withCurrent259ResponseLossResource,
  'cancel-commit':withCurrent259FirstRollbackResource,competition:withCurrent259CompetitionResource,
- 'disconnect-commit-recovery':withCurrent259DisconnectRecoveryResource});
+ 'disconnect-commit-recovery':withCurrent259DisconnectRecoveryResource,'attribution-gap':withCurrent259AttributionGapResource});
 const {renderCurrent259CatalogRead}=original('./task16-current259-catalog.cjs',['renderCurrent259CatalogRead']);
 const {readQualifiedTask16File:read}=original('./task16-runtime-inputs.cjs',['readQualifiedTask16File']);
 function importsCheck(){
@@ -217,28 +238,30 @@ function finalResource(plan,created,started,firstError,topology){
 function parse(args){
  need(Array.isArray(args)&&args.every(value=>typeof value==='string'),'ARGUMENTS');
  const competition=args[0]==='--competition'||args[0]==='--competition-once';
+ const attributionGap=args[0]==='--attribution-gap'||args[0]==='--attribution-gap-once';
  const pfq=args[0]==='--pfq-composition'||args[0]==='--pfq-composition-once';
- const business=competition||args[0]==='--business'||args[0]==='--business-once',once=['--once','--business-once','--competition-once','--pfq-composition-once'].includes(args[0]),rest=once||business||pfq?args.slice(1):args;
+ const business=competition||attributionGap||args[0]==='--business'||args[0]==='--business-once',once=['--once','--business-once','--competition-once','--attribution-gap-once','--pfq-composition-once'].includes(args[0]),rest=once||business||pfq?args.slice(1):args;
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,competition,pfq,file:rest[1],sha256:rest[3]};
+ return {once,business,competition,attributionGap,pfq,file:rest[1],sha256:rest[3]};
 }
 async function run(args){
- const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once','--pfq-composition-once'].includes(args[0]);
+ const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once','--attribution-gap-once','--pfq-composition-once'].includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
  let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
   const names=request.pfq?['readCurrent259PfqCompositionPlan','verifyCurrent259PfqCompositionPlan']:request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
+   request.attributionGap?['readCurrent259PaymentAttributionGapPlan','verifyCurrent259PaymentAttributionGapPlan']:
    request.business?['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']:['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan'];
   const planModule=original(request.business?'../../../scripts/prepare-task16-current259-payment-business.cjs':'../../../scripts/prepare-task16-current259-payment-install.cjs',names);
   const [readPlan,verifyPlan]=names.map(name=>planModule[name]);
   const basic=readPlan(request.file,request.sha256);plan=basic.plan;
   const loopbackScenario=request.pfq?'cancel-commit':request.business?plan.case.scenario:undefined;
   const loopback=paymentLoopbackForScenario(loopbackScenario);
-  need(plan.scope.databaseTransport===loopback?.plan,'RESOURCE_PROFILE');
+  need(plan.scope.databaseTransport===loopback?.plan&&request.attributionGap===(loopbackScenario==='attribution-gap'),'RESOURCE_PROFILE');
   if(!request.once){
    checked=verifyPlan(request.file,request.sha256);checked.check();importsCheck();
-   return {status:request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
+   return {status:request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap?'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
   }
   onceAttempted=true;
   try{writeNew(plan,plan.run.attemptFile,JSON.stringify({status:'STARTED',purpose:plan.purpose,planSha256:request.sha256,candidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true})+'\n');}
@@ -377,7 +400,8 @@ async function run(args){
          }
          const business={active:true,claimed:false,application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
-          ...(disconnectPhase?{disconnectPhase,disconnectAttempt,disconnectRollback}:{})})};
+          ...(disconnectPhase?{disconnectPhase,disconnectAttempt,disconnectRollback}:{}),
+          ...(request.attributionGap?{attributionGap:plan.scope.attributionGap}:{})})};
          state.business=business;state.businessB7=b7;state.businessLive=liveProof;state.businessApplication=application;state.businessScope=business.scope;
          business.verifyFull=()=>{
           try{state.check();environment.check();need(business.active&&state.business===business&&currentRun===state&&
@@ -385,7 +409,9 @@ async function run(args){
           catch(error){business.active=false;revoke(state);throw error;}
          };
          business.check=()=>assertCurrent259PaymentBusinessContinuity(business.continuityToken,handle);
-         const businessPermit=Object.freeze({kind:'CURRENT259_PRIVATE_PAYMENT_CASE'});businessPermissions.set(businessPermit,business);
+         const casePermissions=request.attributionGap?attributionGapPermissions:businessPermissions;
+         const businessPermit=Object.freeze({kind:request.attributionGap?'CURRENT259_PRIVATE_ATTRIBUTION_GAP_CASE':'CURRENT259_PRIVATE_PAYMENT_CASE'});
+         casePermissions.set(businessPermit,business);
          stage='seedAndSelectedCase';
          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
          try{
@@ -408,13 +434,20 @@ async function run(args){
             Number(proof.observedXid32)<=0xffffffff&&hex(proof.originalRequestKeySha256,64),'BUSINESS_RESULT');
            rollbackEvidence=Object.freeze(proof);
           }
+          let attributionGapEvidence;
+          if(request.attributionGap){
+           const proof=fixed(data(result,'attributionGapEvidence'),['registrationStatus','projectAmountCents','gapAmountCents','originalRequestKeySha256','originalResultUnconfirmed']);
+           need(proof.registrationStatus===plan.scope.attributionGap.expectedStatus&&proof.projectAmountCents===plan.scope.attributionGap.projectAmountCents&&proof.gapAmountCents===plan.scope.attributionGap.gapAmountCents&&
+            proof.originalResultUnconfirmed===true&&hex(proof.originalRequestKeySha256,64)&&!Object.hasOwn(result,'executionId')&&!Object.hasOwn(result,'rootId'),'BUSINESS_RESULT');
+           attributionGapEvidence=Object.freeze(proof);
+          }
           if(request.competition)need(data(result,'competitionObserved')===true&&['finance_staff','comprehensive_director'].includes(data(result,'winner')),'BUSINESS_RESULT');
           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
-           ...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:{executionId:result.executionId,rootId:result.rootId}),
+           ...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:request.attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),
            ...(request.competition?{competitionObserved:true,winner:result.winner}:{}),
            ...(disconnectPhase==='recovery'?{rollbackObserved:true,runtimeReplaced:true}:{})};
           return result;
-         }finally{business.active=false;businessPermissions.delete(businessPermit);}
+         }finally{business.active=false;casePermissions.delete(businessPermit);}
          });
         };
         if(!disconnect)return runApplication(initialLiveProof);
@@ -436,6 +469,8 @@ async function run(args){
       if(technicalFailure)receipt.technicalFailure=technicalFailure;
       const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
       if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
+      // The case records this before application and live-session cleanup can mask the error.
+      if(request.attributionGap&&state?.business?.attributionGapFailure)receipt.attributionGapFailure=state.business.attributionGapFailure;
      }
      throw error;
     }finally{state.active=false;currentRun=undefined;EventTarget.prototype.removeEventListener.call(controller.signal,'abort',onAbort);}
@@ -463,6 +498,6 @@ async function run(args){
 if(require.main===module)queueMicrotask(()=>{
  void run(process.argv.slice(2)).then(result=>{
   const exit=result.status==='PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
-  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once','--competition-once','--pfq-composition-once'].includes(process.argv[2]))process.exit(exit);});
+  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once','--competition-once','--attribution-gap-once','--pfq-composition-once'].includes(process.argv[2]))process.exit(exit);});
  });
 });

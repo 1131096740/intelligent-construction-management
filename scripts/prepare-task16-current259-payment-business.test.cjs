@@ -131,3 +131,32 @@ test('disconnect plan refuses another transport even when its JSON digest is rec
  assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,digest));
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
+
+test('attribution gap has a distinct verifier, resource profile and sole expected-rejection POST',t=>{
+ const f=fixture(t),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ assert.throws(()=>f.business.prepareCurrent259PaymentBusinessPlan({...options,scenario:'attribution-gap'}));
+ const saved=f.business.prepareCurrent259PaymentAttributionGapPlan(options);
+ const {plan}=f.business.verifyCurrent259PaymentAttributionGapPlan(f.output,saved.sha256);
+ assert.equal(plan.purpose,'current259-payment-owned-project-attribution-gap');
+ assert.equal(plan.case.scenario,'attribution-gap');
+ assert.equal(plan.case.handler,'runRegisteredProjectAttributionGap');
+ assert.equal(plan.scope.databaseTransport,'PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS_V1');
+ assert.equal(plan.scope.registrationPostCount,1);
+ assert.deepEqual(plan.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
+ assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256));
+ assert.throws(()=>f.business.verifyCurrent259PaymentCompetitionPlan(f.output,saved.sha256));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('attribution gap refuses a valid normal plan and a recomputed wrong refusal status',t=>{
+ const f=fixture(t),options={runRoot:f.runRoot,daemonId:f.daemonId,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ const normal=f.business.prepareCurrent259PaymentBusinessPlan({...options,output:f.output+'.normal',scenario:'normal'});
+ assert.throws(()=>f.business.verifyCurrent259PaymentAttributionGapPlan(normal.file,normal.sha256));
+ const gap=f.business.prepareCurrent259PaymentAttributionGapPlan({...options,output:f.output+'.gap'});
+ const raw=JSON.parse(fs.readFileSync(gap.file,'utf8'));
+ raw.scope.attributionGap.expectedStatus=201;
+ const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');fs.writeFileSync(gap.file,bytes);
+ const digest=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ assert.throws(()=>f.business.verifyCurrent259PaymentAttributionGapPlan(gap.file,digest));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

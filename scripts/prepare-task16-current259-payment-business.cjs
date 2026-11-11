@@ -7,6 +7,7 @@ const base=require('./prepare-task16-current259-payment-install.cjs');
 const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const {paymentLoopbackForScenario}=require('../services/api/prisma/task16-current259-payment-loopback.cjs');
 const PURPOSE='current259-payment-owned-seed-and-case';
+const ATTRIBUTION_GAP_PURPOSE='current259-payment-owned-project-attribution-gap';
 const COMPETITION_PURPOSE='current259-payment-owned-two-actor-competition';
 const ENTRY='services/api/prisma/task16-current259-payment-run-authorization.cjs';
 const SCENARIOS=Object.freeze({normal:Object.freeze({scenario:'normal',caseId:'registered.null-cross-company.commit',handler:'runRegisteredNullCrossCompanyCommit'}),
@@ -14,6 +15,9 @@ const SCENARIOS=Object.freeze({normal:Object.freeze({scenario:'normal',caseId:'r
  'cancel-commit':Object.freeze({scenario:'cancel-commit',caseId:'registered.null-cross-company.cancel-commit',handler:'runRegisteredNullCrossCompanyCommitCancellation'}),
  'disconnect-commit-recovery':Object.freeze({scenario:'disconnect-commit-recovery',caseId:'registered.null-cross-company.disconnect-commit-recovery',handler:'runRegisteredNullCrossCompanyDisconnectRecovery'})});
 const COMPETITION=Object.freeze({scenario:'competition',caseId:'registered.two-actor.payment-competition',handler:'runRegisteredTwoActorPaymentCompetition'});
+const ATTRIBUTION_GAP=Object.freeze({scenario:'attribution-gap',caseId:'registered.project-attribution-gap',handler:'runRegisteredProjectAttributionGap'});
+const FIXED_PLANS=Object.freeze({competition:{purpose:COMPETITION_PURPOSE,selected:COMPETITION},
+ 'attribution-gap':{purpose:ATTRIBUTION_GAP_PURPOSE,selected:ATTRIBUTION_GAP}});
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const need=ok=>{if(!ok)throw Object.assign(new Error('PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'),{code:'PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'});};
 function fixed(value,keys){need(value&&!types.isProxy(value)&&Object.getPrototypeOf(value)===Object.prototype&&Reflect.ownKeys(value).length===keys.length);return Object.fromEntries(keys.map(k=>{const d=Object.getOwnPropertyDescriptor(value,k);need(d&&Object.hasOwn(d,'value'));return[k,d.value];}));}
@@ -24,14 +28,25 @@ function parent(file){
  const st=fs.lstatSync(dir);need(st.isDirectory()&&st.uid===process.getuid()&&(st.mode&0o077)===0);
  return Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,st[k]]));
 }
-function dates(scenario,paidAt,openingDate,competition){
- need(competition?scenario===COMPETITION.scenario:Object.hasOwn(SCENARIOS,scenario));
+function dates(scenario,paidAt,openingDate,profile){
+ need(profile?scenario===profile.selected.scenario:Object.hasOwn(SCENARIOS,scenario));
  for(const v of [paidAt,openingDate]){need(typeof v==='string'&&/^\d{4}-\d\d-\d\d$/u.test(v)&&v.slice(0,4)!=='0000');const d=new Date(v+'T00:00:00.000Z');need(Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v);}
  const today=new Date(Date.now()+8*3600000).toISOString().slice(0,10);
  need(openingDate<=paidAt&&paidAt<=today);
- return {...(competition?COMPETITION:SCENARIOS[scenario]),paidAt,openingDate};
+ return {...(profile?.selected??SCENARIOS[scenario]),paidAt,openingDate};
 }
 function scope(installation,selected){const cancellation=selected.scenario==='cancel-commit',competition=selected.scenario===COMPETITION.scenario;
+ if(selected.scenario===ATTRIBUTION_GAP.scenario)return {...installation.scope,
+  stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','selectedCase','ownedCleanup'],
+  databaseTransport:paymentLoopbackForScenario(selected.scenario).plan,
+  applications:true,environmentPreparation:true,fixtures:true,businessWrites:true,liveSessionAdmission:false,financialAcceptance:false,
+  seedPostCount:3,registrationPostCount:1,seedRoutes:['POST /auth/login','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
+  caseRoutes:['GET /fund-accounts/:scopeKey','GET /payment-executions/:paymentId/registration-options',
+   'POST /payment-executions/:paymentId/registrations (sole expected attribution rejection)','GET /payment-executions/results/:idempotencyKey'],
+  ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',
+  ownerObservation:'FIXED_READ_ONLY_PROJECT_SOURCE_AND_NO_INFLOW',
+  attributionGap:{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false},
+  approvalPath:false,commitFaults:false,multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};
  if(selected.scenario==='disconnect-commit-recovery')return {...installation.scope,
   stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','disconnectOriginalCommit',
    'closeOriginalApplication','retireOriginalRuntime','confirmRollback','replacementApplication','recoverOriginalKey','ownedCleanup'],
@@ -72,62 +87,74 @@ function capture(file,expected){const data=read(file,{privateFile:true,maxBytes:
 function writeNew(file,bytes){parent(file);let fd;try{fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{if(fd!==undefined)fs.closeSync(fd);}const dir=fs.openSync(path.dirname(file),fs.constants.O_RDONLY);try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}}
 function prepareCurrent259PaymentBusinessPlan(options){
  need(arguments.length===1);
- return prepare(options,false);
+ return prepare(options);
 }
 function prepareCurrent259PaymentCompetitionPlan(options){
  need(arguments.length===1);
- return prepare(options,true);
+ return prepare(options,FIXED_PLANS.competition);
 }
-function prepare(options,competition){
- const o=fixed(options,['runRoot','daemonId','output','paidAt','openingDate',...(competition?[]:['scenario'])]);
- const selected=dates(competition?COMPETITION.scenario:o.scenario,o.paidAt,o.openingDate,competition),parentIdentity=parent(o.output);
+function prepareCurrent259PaymentAttributionGapPlan(options){
+ need(arguments.length===1);
+ return prepare(options,FIXED_PLANS['attribution-gap']);
+}
+function prepare(options,profile){
+ const o=fixed(options,['runRoot','daemonId','output','paidAt','openingDate',...(profile?[]:['scenario'])]);
+ const selected=dates(profile?.selected.scenario??o.scenario,o.paidAt,o.openingDate,profile),parentIdentity=parent(o.output);
  const reserved=['resource','attempt.json','receipt.json','receipt.json.pending'].map(x=>path.join(o.runRoot,x));need(!reserved.includes(o.output));
  const sidecar=o.output+'.installation.json';parent(sidecar);
  const installed=base.prepareCurrent259PaymentInstallPlan({runRoot:o.runRoot,daemonId:o.daemonId,output:sidecar});
  const captured=base.readCurrent259PaymentInstallPlan(sidecar,installed.sha256);
- const raw={schemaVersion:1,purpose:competition?COMPETITION_PURPOSE:PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:scope(captured.plan,selected)};
+ const raw={schemaVersion:1,purpose:profile?.purpose??PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:scope(captured.plan,selected)};
  need(equal(parent(o.output),parentIdentity));const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');writeNew(o.output,bytes);
  return Object.freeze({status:'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
 }
 function readCurrent259PaymentBusinessPlan(file,digest){
- need(arguments.length===2);return readPlan(file,digest,false);
+ need(arguments.length===2);return readPlan(file,digest);
 }
 function readCurrent259PaymentCompetitionPlan(file,digest){
- need(arguments.length===2);return readPlan(file,digest,true);
+ need(arguments.length===2);return readPlan(file,digest,FIXED_PLANS.competition);
 }
-function readPlan(file,digest,competition){
+function readCurrent259PaymentAttributionGapPlan(file,digest){
+ need(arguments.length===2);return readPlan(file,digest,FIXED_PLANS['attribution-gap']);
+}
+function readPlan(file,digest,profile){
  need(typeof digest==='string'&&/^[a-f0-9]{64}$/u.test(digest));const parentIdentity=parent(file),data=capture(file);need(data.sha256===digest);
  const raw=JSON.parse(data.bytes.toString('utf8'));fixed(raw,['schemaVersion','purpose','entry','parentIdentity','installation','case','scope']);
- const purpose=competition?COMPETITION_PURPOSE:PURPOSE;
+ const purpose=profile?.purpose??PURPOSE;
  need(raw.schemaVersion===1&&raw.purpose===purpose&&raw.entry===ENTRY&&equal(parentIdentity,raw.parentIdentity));
  const sidecar=fixed(raw.installation,['path','sha256','identity','parentIdentity']);need(sidecar.path===file+'.installation.json'&&equal(parent(sidecar.path),sidecar.parentIdentity));
  const side=capture(sidecar.path,sidecar.identity);need(side.sha256===sidecar.sha256);
  const original=base.readCurrent259PaymentInstallPlan(sidecar.path,sidecar.sha256);
- const selected=fixed(raw.case,['scenario','caseId','handler','paidAt','openingDate']);need(equal(selected,dates(selected.scenario,selected.paidAt,selected.openingDate,competition))&&equal(raw.scope,scope(original.plan,selected)));
+ const selected=fixed(raw.case,['scenario','caseId','handler','paidAt','openingDate']);need(equal(selected,dates(selected.scenario,selected.paidAt,selected.openingDate,profile))&&equal(raw.scope,scope(original.plan,selected)));
  const plan=freeze({...original.plan,purpose,entry:ENTRY,installation:sidecar,case:selected,scope:raw.scope});
  const info=freeze({path:file,sha256:digest,identity:data.identity,parentIdentity});
  return Object.freeze({plan,file:info});
 }
 function verifyCurrent259PaymentBusinessPlan(file,digest){
- need(arguments.length===2);return verifyPlan(file,digest,false);
+ need(arguments.length===2);return verifyPlan(file,digest);
 }
 function verifyCurrent259PaymentCompetitionPlan(file,digest){
- need(arguments.length===2);return verifyPlan(file,digest,true);
+ need(arguments.length===2);return verifyPlan(file,digest,FIXED_PLANS.competition);
 }
-function verifyPlan(file,digest,competition){
- const saved=readPlan(file,digest,competition),p=saved.plan;
+function verifyCurrent259PaymentAttributionGapPlan(file,digest){
+ need(arguments.length===2);return verifyPlan(file,digest,FIXED_PLANS['attribution-gap']);
+}
+function verifyPlan(file,digest,profile){
+ const saved=readPlan(file,digest,profile),p=saved.plan;
  const original=base.verifyCurrent259PaymentInstallPlan(p.installation.path,p.installation.sha256);
  let broken=false;
- function checkInputs(){try{need(!broken);const again=readPlan(file,digest,competition);need(equal(again,saved)&&equal(parent(file),saved.file.parentIdentity));capture(file,saved.file.identity);capture(p.installation.path,p.installation.identity);}catch(error){broken=true;throw error;}}
+ function checkInputs(){try{need(!broken);const again=readPlan(file,digest,profile);need(equal(again,saved)&&equal(parent(file),saved.file.parentIdentity));capture(file,saved.file.identity);capture(p.installation.path,p.installation.identity);}catch(error){broken=true;throw error;}}
  function check(){try{need(!broken);original.check();checkInputs();}catch(error){broken=true;throw error;}}
  check();return Object.freeze({...saved,buildHandle:original.buildHandle,loader:original.loader,checkInputs,check});
 }
 function parse(args){
  if(args.length===13&&args[0]==='--prepare'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--scenario'&&args[9]==='--paid-at'&&args[11]==='--opening-date')return prepareCurrent259PaymentBusinessPlan({runRoot:args[2],daemonId:args[4],output:args[6],scenario:args[8],paidAt:args[10],openingDate:args[12]});
  if(args.length===11&&args[0]==='--prepare-competition'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentCompetitionPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
+ if(args.length===11&&args[0]==='--prepare-attribution-gap'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentAttributionGapPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===5&&args[0]==='--verify'&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256'){const v=verifyCurrent259PaymentBusinessPlan(args[2],args[4]);return{status:'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES',candidateSha:v.plan.material.source.candidateSha,planSha256:args[4]};}
  need(false);
 }
 module.exports=Object.freeze({prepareCurrent259PaymentBusinessPlan,readCurrent259PaymentBusinessPlan,verifyCurrent259PaymentBusinessPlan,
- prepareCurrent259PaymentCompetitionPlan,readCurrent259PaymentCompetitionPlan,verifyCurrent259PaymentCompetitionPlan});
+ prepareCurrent259PaymentCompetitionPlan,readCurrent259PaymentCompetitionPlan,verifyCurrent259PaymentCompetitionPlan,
+ prepareCurrent259PaymentAttributionGapPlan,readCurrent259PaymentAttributionGapPlan,verifyCurrent259PaymentAttributionGapPlan});
 if(require.main===module){try{process.stdout.write(JSON.stringify(parse(process.argv.slice(2)))+'\n');}catch{process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:'PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'})+'\n');process.exitCode=1;}}

@@ -8,8 +8,8 @@ const {loadCurrent259Client}=require('./task16-current259-client-loader.cjs');
 test('real original fixture/cases and both lazy dependency functions are fixed before the loader is returned',()=>{
  const loader=loadCurrent259Client(observeCurrent259Build()),exports=loader.loadPaymentModules();
  const fixture=require('../dist/database/registered-payment-postgres.fixture.js'),cases=require('../dist/database/registered-payment-postgres.cases.js');
- for(const key of ['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','assertRegisteredPgConnectedRoles','registeredPgHttp'])assert.equal(exports[key],fixture[key]);
- for(const key of ['registeredPaymentPostgresCases','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss','runRegisteredNullCrossCompanyCommitCancellation'])assert.equal(exports[key],cases[key]);
+ for(const key of ['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','seedRegisteredPgAttributionGapFixture','assertRegisteredPgConnectedRoles','registeredPgHttp'])assert.equal(exports[key],fixture[key]);
+ for(const key of ['registeredPaymentPostgresCases','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss','runRegisteredNullCrossCompanyCommitCancellation','runRegisteredProjectAttributionGap'])assert.equal(exports[key],cases[key]);
  assert.equal(loader.loadPaymentModules(),exports);loader.verifyFull();
  const root=path.resolve(__dirname,'../../..'),runtimeRoots=['node_modules','services/api/node_modules','packages/shared-domain/node_modules','services/api/dist','packages/shared-domain/dist'].map(p=>path.join(root,p)+path.sep);
  const rows=Object.keys(require.cache).filter(file=>runtimeRoots.some(p=>file.startsWith(p))).map(file=>{const st=fs.lstatSync(file,{bigint:true});return {file,identity:Object.fromEntries(['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'].map(k=>[k,String(st[k])]))};});
