@@ -51,12 +51,25 @@ const aclRows = `SELECT 'routine'::text AS kind,p.oid AS object_oid,0 AS column_
   WHERE t.oid IN ('public."OperatingLedgerFactWritePayloadV2"'::regtype,'public."OperatingLedgerImpactWritePayloadV2"'::regtype)`;
 
 function renderCurrent259PublicAccess(roleCompletion) {
+  return renderPublicAccess(roleCompletion, false);
+}
+
+function renderCurrent259CompetitionPublicAccess(roleCompletion) {
+  return renderPublicAccess(roleCompletion, true);
+}
+
+function renderPublicAccess(roleCompletion, competition) {
   const { status, commitXid, databaseIdentity, ordinary: rawOrdinary, roles: rawRoles } =
     fields(roleCompletion, ['status', 'commitXid', 'databaseIdentity', 'ordinary', 'roles']);
   const id = fields(databaseIdentity, ['database', 'databaseOid', 'namespaceOid', 'ownerOid', 'systemIdentifier']);
   const ordinary = fields(rawOrdinary, ['oid', 'name']);
   need(Array.isArray(rawRoles) && !types.isProxy(rawRoles) && rawRoles.length <= 9);
-  const roles = Array.from({ length: rawRoles.length }, (_, index) => fields(field(rawRoles, index), ['name', 'oid']));
+  const roles = Array.from({ length: rawRoles.length }, (_, index) => {
+    const rawRole = field(rawRoles, index);
+    const role = fields(rawRole, ['name', 'oid']);
+    if (ROLE_NAMES.includes(role.name) && Object.hasOwn(rawRole, 'limit')) role.limit = field(rawRole, 'limit');
+    return role;
+  });
   need(status === 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION' && xid(commitXid) &&
     id && typeof id.database === 'string' && /^jg_task01_[a-f0-9]{32}$/u.test(id.database) &&
     oid(id.databaseOid) && oid(id.namespaceOid) && id.ownerOid === '10' && xid(id.systemIdentifier));
@@ -65,11 +78,15 @@ function renderCurrent259PublicAccess(roleCompletion) {
   const bound = ROLE_NAMES.map(name => {
     const found = roles.filter(row => row?.name === name);
     need(found.length === 1 && oid(found[0].oid));
-    return { name, oid: found[0].oid };
+    const limit = competition && name === ROLE_NAMES[0] ? 2 : 1;
+    need(found[0].limit === limit || (!competition && found[0].limit === undefined));
+    return { name, oid: found[0].oid, limit };
   });
   need(new Set(['10', ordinary.oid, ...bound.map(role => role.oid)]).size === bound.length + 2);
   const [runtime, observer] = bound;
-  const roleRows = bound.map(role => `(${literal(role.name)},${role.oid}::oid)`).join(',');
+  const roleRows = bound.map(role => `(${literal(role.name)},${role.oid}::oid${competition ? ',' + role.limit : ''})`).join(',');
+  const roleColumns = competition ? 'name,oid,connection_limit' : 'name,oid';
+  const roleLimit = competition ? 'e.connection_limit' : '1';
   const roleXmin = `(mod(${literal(commitXid)}::numeric,4294967296))::text`;
   const archiveInactive = ARCHIVE_BINDINGS.map(name => `EXISTS (SELECT FROM public.${name})`).join('\n    OR ');
   return `SET LOCAL search_path=pg_catalog,pg_temp;
@@ -92,9 +109,9 @@ BEGIN
     OR inet_server_port() IS DISTINCT FROM 5432
     OR NOT EXISTS (SELECT FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
     OR NOT EXISTS (SELECT FROM pg_catalog.pg_roles r WHERE r.oid=${ordinary.oid}::oid AND r.rolname=${literal(ordinary.name)})
-    OR EXISTS (SELECT FROM (VALUES ${roleRows}) e(name,oid)
+    OR EXISTS (SELECT FROM (VALUES ${roleRows}) e(${roleColumns})
       WHERE NOT EXISTS (SELECT FROM pg_catalog.pg_authid r WHERE r.oid=e.oid AND r.rolname::text=e.name
-        AND r.xmin::text=${roleXmin} AND r.rolcanlogin AND r.rolconnlimit=1 AND r.rolvaliduntil IS NULL))
+        AND r.xmin::text=${roleXmin} AND r.rolcanlogin AND r.rolconnlimit=${roleLimit} AND r.rolvaliduntil IS NULL))
     OR ${archiveInactive}
     OR NOT EXISTS (SELECT FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_language l ON l.oid=p.prolang
@@ -169,4 +186,4 @@ END $current259_public_access$;
 DROP VIEW pg_temp.jg_c259_public_acl_live;`;
 }
 
-module.exports = { renderCurrent259PublicAccess };
+module.exports = { renderCurrent259PublicAccess, renderCurrent259CompetitionPublicAccess };

@@ -6,7 +6,7 @@ const { isDeepStrictEqual, types } = require('node:util');
 const { claimCurrent259SevenInstallation } = require('./task16-current259-seven-install.cjs');
 const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { renderCurrent259RuntimeAcl, renderCurrent259CompetitionRuntimeAcl } = require('./task16-current259-runtime-acl.cjs');
-const { renderCurrent259PublicAccess } = require('./task16-current259-public-access.cjs');
+const { renderCurrent259PublicAccess, renderCurrent259CompetitionPublicAccess } = require('./task16-current259-public-access.cjs');
 const { parseCurrent259CatalogRead } = require('./task16-current259-catalog.cjs');
 
 const CODE = 'TASK16_CURRENT259_PAYMENT_ACL';
@@ -123,7 +123,8 @@ async function installCurrent259PaymentAcl(sevenCompletion, handle) {
     const request = catalogRequest(source, roleCompletion, nonce, competition);
     const renderRuntime = competition ? renderCurrent259CompetitionRuntimeAcl : renderCurrent259RuntimeAcl;
     const runtime = renderRuntime(source, roleCompletion, nonce);
-    const publicSql = renderCurrent259PublicAccess(roleCompletion);
+    const renderPublic = competition ? renderCurrent259CompetitionPublicAccess : renderCurrent259PublicAccess;
+    const publicSql = renderPublic(roleCompletion);
     const witness = runtime.witnessSql.trim();
     need(witness.endsWith(';'));
     const projection = witness.slice(0, -1);

@@ -74,7 +74,16 @@ function fixture(mode = '') {
       }
     },
     './task16-current259-public-access.cjs': {
-      renderCurrent259PublicAccess() { return 'SELECT 1 /* public acl */;'; }
+      renderCurrent259PublicAccess(input) {
+        assert.equal(input, roleCompletion);
+        assert.equal(roleCompletion.roles[0].limit, 1);
+        return 'SELECT 1 /* public acl */;';
+      },
+      renderCurrent259CompetitionPublicAccess(input) {
+        assert.equal(input, roleCompletion);
+        assert.deepEqual(input.roles.map(role => role.limit), [2, 1]);
+        return 'SELECT 1 /* competition public acl */;';
+      }
     },
     './task16-current259-catalog.cjs': {
       parseCurrent259CatalogRead(stdout, request) {
@@ -150,6 +159,7 @@ test('claimed competition uses only the fixed two-lane ACL and carries the same 
   const installed = await f.api.installCurrent259PaymentAcl(f.completion, f.handle);
   assert.equal(installed.status, 'CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION');
   assert.match(f.calls[0].sql, /competition runtime acl/u);
+  assert.match(f.calls[0].sql, /competition public acl/u);
   assert.equal(f.api.claimCurrent259PaymentAcl(installed, f.handle).request.identity.runtimeProfile, 'CURRENT259_TWO_RUNTIME_LANES');
 });
 

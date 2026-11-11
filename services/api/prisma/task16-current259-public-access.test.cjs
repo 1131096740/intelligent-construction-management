@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { renderCurrent259PublicAccess } = require('./task16-current259-public-access.cjs');
+const { renderCurrent259PublicAccess, renderCurrent259CompetitionPublicAccess } = require('./task16-current259-public-access.cjs');
 
 function rolesProvisioned() {
   return {
@@ -80,4 +80,22 @@ test('rejects accessors before reading any value from them', () => {
   });
   assert.throws(() => renderCurrent259PublicAccess(proof), /TASK16_CURRENT259_PUBLIC_ACCESS/);
   assert.equal(reads, 0);
+});
+
+
+test('fixed competition PUBLIC closure binds runtime two and observer one to committed role OIDs',()=>{
+  const original=rolesProvisioned();
+  const single=rolesProvisioned();
+  single.roles.forEach(role=>{role.limit=1;});
+  assert.equal(renderCurrent259PublicAccess(single),renderCurrent259PublicAccess(original));
+  const competition=rolesProvisioned();
+  competition.roles[0].limit=2;
+  competition.roles[1].limit=1;
+  assert.throws(()=>renderCurrent259PublicAccess(competition),/TASK16_CURRENT259_PUBLIC_ACCESS/u);
+  const sql=renderCurrent259CompetitionPublicAccess(competition);
+  assert.match(sql,/VALUES \('jg_task01_runtime',25004::oid,2\),\('jg_task01_observer',25005::oid,1\)\) e\(name,oid,connection_limit\)/u);
+  assert.match(sql,/r\.xmin::text=.*r\.rolconnlimit=e\.connection_limit/u);
+  assert.throws(()=>renderCurrent259CompetitionPublicAccess(single),/TASK16_CURRENT259_PUBLIC_ACCESS/u);
+  competition.roles[1].limit=2;
+  assert.throws(()=>renderCurrent259CompetitionPublicAccess(competition),/TASK16_CURRENT259_PUBLIC_ACCESS/u);
 });
