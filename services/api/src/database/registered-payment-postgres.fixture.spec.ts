@@ -108,13 +108,15 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "competition", "competition-stale-todo", "competition-second-win"])(
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "competition", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid"])(
     "verifies the %s case through only the approved observer columns", async scenario => {
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
     const prepared = { plan, accessToken: "synthetic-only", companyARegistrationId: "registration-a", companyBRegistrationId: "registration-b", companyBSourceId: "source-b" };
     const competition = scenario.startsWith("competition");
+    const disconnect = scenario.startsWith("disconnect");
+    let posts = 0;
     const total = competition ? 4000n : 10000n, paid = competition ? 3000n : 4000n;
     const contender = { actorId: randomUUID(), requestKey: randomUUID(), accessToken: "synthetic-contender-only" };
     let recorded = false;
@@ -141,7 +143,7 @@ describe("registered PG original case: explicit observer projection protocol (no
             tls: true, readOnly: "on", isolation: "repeatable read",
             settlementStatus: after("cancel-settlement-status") ? "paid" : "approved",
             settlementUpdatedAt: after("cancel-settlement-updated-at") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z",
-            requestUpdatedAt: after("cancel-request-updated-at") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z"
+            requestUpdatedAt: after("cancel-request-updated-at") || after("disconnect-ledger-drift") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z"
           }];
         }
       });
@@ -221,6 +223,17 @@ describe("registered PG original case: explicit observer projection protocol (no
       }
       if (route.endsWith("/registration-options")) return respond(200, { expectedPaymentUpdatedAt: "2026-11-07T00:00:00.000Z", remainingAmountCents: "10000", accounts: [{ scopeKey: `company:${ids.companyB}`, eligible: true }] });
       if (route.endsWith("/registrations") && init?.method === "POST") {
+        if (disconnect) {
+          posts++;
+          const oldApp = new URL(String(input)).port === "15433";
+          expect(oldApp).toBe(posts === 1);
+          if (oldApp) {
+            submittedCancellation = true;
+            return respond(scenario === "disconnect-first-succeeded" ? 201 : 503, {});
+          }
+          recorded = true;
+          return respond(201, {});
+        }
         if (scenario === "upstream-failure") return respond(503, {});
         if (scenario.startsWith("cancel-")) {
           submittedCancellation = true;
@@ -240,11 +253,56 @@ describe("registered PG original case: explicit observer projection protocol (no
         responseCancellations.push(jest.spyOn(response.body!, "cancel"));
         return response;
       }
+      if (disconnect && route === `/payment-executions/results/${ids.requestKey}` && !recorded && scenario !== "disconnect-recorded-key")
+        return respond(200, { status: "unconfirmed" });
       if (route === `/payment-executions/results/${ids.requestKey}`) return respond(200, { status: "recorded", execution: { executionId: "execution-one", amountCents: "4000", paidAt: plan.paidAt }, effects: [], intercompany: [{}] });
       throw new Error("Unapproved HTTP protocol request");
     });
     try {
       const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn() };
+      if (disconnect) {
+        const fault = async (submit: () => Promise<void>) => {
+          await submit();
+          return { mode: "disconnect-commit", state: "commit-disconnected", transactionId: "407", executionAllowed: false, nativeAdmission: false } as const;
+        };
+        const begin = registeredCases.runRegisteredNullCrossCompanyDisconnectAttempt(f.context, prepared, continuity, fault);
+        if (scenario === "disconnect-first-succeeded") {
+          await expect(begin).rejects.toThrow("PG_CASE_DISCONNECT_HTTP_STATUS");
+          await expect(registeredCases.runRegisteredNullCrossCompanyDisconnectAttempt(f.context, prepared, continuity, fault)).rejects.toThrow("PG_CASE_DISCONNECT_ATTEMPT_USED");
+          expect(posts).toBe(1);
+          return;
+        }
+        const attempt = await begin;
+        await expect(registeredCases.runRegisteredNullCrossCompanyDisconnectAttempt(f.context, prepared, continuity, fault)).rejects.toThrow("PG_CASE_DISCONNECT_ATTEMPT_USED");
+        expect(Object.keys(attempt)).toEqual([]);
+        const confirm = registeredCases.confirmRegisteredNullCrossCompanyDisconnectRollback(attempt, continuity);
+        if (scenario === "disconnect-ledger-drift") {
+          await expect(confirm).rejects.toThrow("PG_CASE_DISCONNECT_LEDGER_CHANGED");
+          expect(posts).toBe(1);
+          return;
+        }
+        const confirmed = await confirm;
+        expect(Object.keys(confirmed)).toEqual([]);
+        await expect(registeredCases.confirmRegisteredNullCrossCompanyDisconnectRollback(attempt, continuity)).rejects.toThrow("PG_CASE_DISCONNECT_ATTEMPT");
+        const second: RegisteredPgExecutionContext = {
+          ...f.context, proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } },
+          runtime: { $queryRawUnsafe: async () => [{ ...f.sessions[1], pid: scenario === "disconnect-same-pid" ? 101 : 103 }] } as unknown as RegisteredPgExecutionContext["runtime"]
+        };
+        await expect(registeredCases.runRegisteredNullCrossCompanyDisconnectRecovery({ ...confirmed }, second, continuity)).rejects.toThrow("PG_CASE_DISCONNECT_ROLLBACK_PROOF");
+        const recovered = registeredCases.runRegisteredNullCrossCompanyDisconnectRecovery(confirmed, second, continuity);
+        if (scenario === "disconnect-recorded-key" || scenario === "disconnect-same-pid") {
+          await expect(recovered).rejects.toThrow(scenario === "disconnect-recorded-key" ? "PG_CASE_DISCONNECT_KEY_ALREADY_RESOLVED" : "PG_CASE_DISCONNECT_REPLACEMENT_IDENTITY");
+          expect(posts).toBe(1);
+        } else {
+          await expect(recovered).resolves.toMatchObject({ passed: true, rollbackObserved: true, executionId: "execution-one", rootId: "root-one" });
+          expect(posts).toBe(2);
+          const [first, second] = fetch.mock.calls.filter(([, init]) => init?.method === "POST");
+          expect(first?.[1]?.body).toBe(second?.[1]?.body);
+          expect(fetch.mock.calls.map(([, init]) => init?.method)).toEqual(["GET", "POST", "GET", "POST", "GET"]);
+        }
+        await expect(registeredCases.runRegisteredNullCrossCompanyDisconnectRecovery(confirmed, second, continuity)).rejects.toThrow("PG_CASE_DISCONNECT_ROLLBACK_PROOF");
+        return;
+      }
       if (competition) {
         const second: RegisteredPgExecutionContext = {
           ...f.context, password: "synthetic-second-credential",
