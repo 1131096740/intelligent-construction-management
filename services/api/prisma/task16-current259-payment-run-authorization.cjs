@@ -210,7 +210,11 @@ async function run(args){
   return {status:'STOPPED',failureCode:safeCode(hasFirst?first:error),onceAttemptConsumed:requestedOnce,resourceCreationRequested:started,receiptOutcome:published?'WRITTEN':'UNKNOWN',executionAllowed:false,nativeAdmission:false,financialAcceptance:false};
  }
 }
-if(require.main===module)void run(process.argv.slice(2)).then(result=>{
- const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'?0:1;
- process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(process.argv[2]==='--once')process.exit(exit);});
+// Let CommonJS finish this main module before the plan helper reimports it.
+// The fresh-entry predicate above is captured before any dependency load.
+if(require.main===module)queueMicrotask(()=>{
+ void run(process.argv.slice(2)).then(result=>{
+  const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'?0:1;
+  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(process.argv[2]==='--once')process.exit(exit);});
+ });
 });

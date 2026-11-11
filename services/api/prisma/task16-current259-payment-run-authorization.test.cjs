@@ -171,3 +171,33 @@ test('a getter in the one-use B7 binding is rejected without reading it',async t
  const f=fixture(t,{beforeConsume({binding}){Object.defineProperty(binding,'beforeSqlSha256',{enumerable:true,get(){getters++;return '0'.repeat(64);}});}});
  const result=await f.done;assert.equal(result.status,'STOPPED');assert.equal(getters,0);assert.equal(f.state.consumed,null);
 });
+
+test('real CommonJS default CLI finishes main initialization before its plan helper reimports frozen exports',t=>{
+ const base=fs.mkdtempSync('/private/tmp/jg-payment-cjs-main-model-');
+ t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
+ const entry=path.join(base,'services/api/prisma/task16-current259-payment-run-authorization.cjs');
+ const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
+ write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
+ for(const [name,keys]of [
+  ['task16-current259-b7-install',['installCurrent259B7']],
+  ['local-staged-current259-profile',['createCurrent259TechnicalMigration']],
+  ['task16-current259-role-provision',['provisionCurrent259Roles']],
+  ['task16-current259-seven-install',['installCurrent259SevenFragments']],
+  ['task16-current259-payment-acl-install',['installCurrent259PaymentAcl']],
+  ['task16-current259-owned-resource',['withCurrent259TechnicalResource','claimCurrent259TechnicalResource']],
+  ['task16-current259-catalog',['renderCurrent259CatalogRead']],
+  ['task16-runtime-inputs',['readQualifiedTask16File']]
+ ])write('services/api/prisma/'+name+'.cjs','module.exports=Object.freeze({'+keys.map(key=>key+':()=>{throw new Error("resource calls forbidden in default model");}').join(',')+'});');
+ write('scripts/prepare-task16-current259-payment-install.cjs',`
+ require('../services/api/prisma/task16-current259-payment-run-authorization.cjs');
+ const plan={material:{source:{candidateSha:'${'a'.repeat(40)}'}}};
+ module.exports=Object.freeze({
+  readCurrent259PaymentInstallPlan(){return {plan};},
+  verifyCurrent259PaymentInstallPlan(){return {check(){}};}
+ });
+ `);
+ const result=require('node:child_process').spawnSync(process.execPath,[entry,'--plan',path.join(base,'unused-plan.json'),'--expected-plan-sha256','f'.repeat(64)],{encoding:'utf8',env:{}});
+ assert.equal(result.status,0,result.stdout);
+ assert.equal(JSON.parse(result.stdout).status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES');
+ assert.equal(fs.existsSync(path.join(base,'attempt.json')),false);
+});
