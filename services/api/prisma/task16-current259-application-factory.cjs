@@ -193,7 +193,11 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
  const closeHttp=()=>{
   revoke();
   if(!app)return Promise.resolve();
-  return httpClosing??=Promise.resolve().then(()=>appClose.call(app));
+  if(!httpClosing){
+   const pending=Promise.resolve().then(()=>appClose.call(app));
+   httpClosing=pair?pending.catch(error=>{pair.rememberHttpCloseFailure();throw error;}):pending;
+  }
+  return httpClosing;
  };
  const close=()=>{
   revoke();
@@ -301,9 +305,14 @@ async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
  const controls=new Set();
  let shutdown,unknown=false,failed=false,first,stopWaiting;
  const cancellation=new Promise(resolve=>{stopWaiting=resolve;});
+ const rememberFailure=error=>{if(!failed){failed=true;first=error;}};
  const pair=Object.freeze({
   register(control){controls.add(control);},
-  rememberFailure(error){if(!failed){failed=true;first=error;}},
+  rememberFailure,
+  rememberHttpCloseFailure(){
+   unknown=true;
+   rememberFailure(fault('TASK16_APP_CLOSE_UNKNOWN'));
+  },
   failure(){return first;},
   cleanupUnknown(){return unknown;},
   abort(){stopWaiting(null);},

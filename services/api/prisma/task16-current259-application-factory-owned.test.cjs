@@ -346,3 +346,26 @@ for(const mode of ['complete','abort','close-rejected'])test('competition failur
  assert.equal(stopped.appCleanupOutcome,mode==='complete'?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'UNKNOWN_DO_NOT_CONTINUE');
  if(mode!=='abort')assert.ok(f.calls.indexOf('http-finished-0')<f.calls.indexOf('sessions-close'));
 });
+
+test('first HTTP close rejection survives later abort while the peer is still closing',async t=>{
+ let notifyOuter,releaseOuter,innerRejected=false;
+ const outerStarted=new Promise(resolve=>{notifyOuter=resolve;});
+ const outerHold=new Promise(resolve=>{releaseOuter=resolve;});
+ const controller=new AbortController();
+ const f=fixture(t,{competitionModule:{},async onClose(lane){
+  if(lane===0){notifyOuter();await outerHold;}
+  else{innerRejected=true;throw new Error('first HTTP close rejection');}
+ }});
+ t.after(releaseOuter);
+ const running=f.api.withCurrent259OwnedApplicationPair(f.pair,f.handle,controller.signal,async()=> 'completed business');
+ const stopped=running.then(()=>assert.fail('expected closure failure'),error=>error);
+ await outerStarted;
+ assert.equal(innerRejected,true);
+ assert.equal(f.calls.includes('sessions-close'),false);
+ controller.abort();
+ const error=await stopped;
+ assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+ assert.equal(error.code,'TASK16_APP_CLOSE_UNKNOWN');
+ assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);
+ assert.equal(f.resourceCloses(),1);
+});
