@@ -12,6 +12,7 @@ import { ClearingModule } from "./clearing/clearing.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractBillModule } from "./contract-bill/contract-bill.module";
 import { ContractDocumentModule } from "./contract-document/contract-document.module";
+import { ContractDocumentWorkerModule } from "./contract-document/contract-document-worker.module";
 import { ContractModule } from "./contract/contract.module";
 import { ContractTemplateModule } from "./contract-template/contract-template.module";
 import { ContractTakeoverModule } from "./contract-takeover/contract-takeover.module";
@@ -56,6 +57,7 @@ import { ProjectFundDisputeModule } from "./project-fund-dispute/project-fund-di
     ContractModule,
     ContractBillModule,
     ContractDocumentModule,
+    ContractDocumentWorkerModule,
     ContractWorkbenchModule,
     ContractTemplateModule,
     ContractTakeoverModule,
