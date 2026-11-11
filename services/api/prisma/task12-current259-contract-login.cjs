@@ -20,8 +20,11 @@ const BINDINGS = ['jg_contract_direct_archive_intent_binding_v1', 'jg_contract_d
 const METHODS = ['execOwnerSql', 'getReceipt', 'applyCurrent259ContractHbaV1', 'inspectConnectionEndpoint',
   'observePresentedCertificate', 'beginCurrent259ContractPlaintextProbe', 'verifyCurrent259ContractPlaintextRejection'];
 const CLIENT_METHODS = ['$disconnect', '$connect', '$queryRawUnsafe'];
+const APP_DSN_KEYS = ['DATABASE_URL','DIRECT_ARCHIVE_ISSUER_DATABASE_URL','DIRECT_ARCHIVE_RUNTIME_DATABASE_URL',
+  'UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL','UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL'];
 const PROOFS = new WeakMap();
 const USED = new WeakSet();
+const APP_BRIDGES = new WeakSet();
 const ownFaults = new WeakMap();
 function fail(phase) {
   const error=Object.assign(new Error('CURRENT259_CONTRACT_LOGIN_' + phase), { code:'CURRENT259_CONTRACT_LOGIN_' + phase });
@@ -264,6 +267,21 @@ function claimCurrent259ContractLogin(proof, handle) {
   return Object.freeze({ completion:proof, source:record.source, check:record.check });
 }
 
+function withCurrent259FirstQ2Application(proof, handle) {
+  try{
+    need(arguments.length===2 && proof && !types.isProxy(proof) && PROOFS.has(proof),'HANDLE');
+    const record=PROOFS.get(proof);
+    need(record.handle===handle,'HANDLE');
+    PROOFS.delete(proof);
+    record.check();
+    return record.openApplication();
+  }catch(error){return Promise.reject(error);}
+}
+
+function takeCurrent259FirstQ2Bridge(bridge) {
+  need(arguments.length===1 && APP_BRIDGES.delete(bridge),'HANDLE');
+}
+
 const hostSql = `SELECT pg_catalog.current_database()::text AS database,a.datid::text AS "databaseOid",
  current_user::text AS role,session_user::text AS "sessionRole",a.usesysid::text AS oid,a.pid,${stamp('a.backend_start')} AS start,
  s.ssl AS tls,pg_catalog.host(pg_catalog.inet_client_addr()) AS "clientAddress",pg_catalog.inet_client_port() AS "clientPort",
@@ -320,6 +338,26 @@ function verifyCa(cas) {
   }
 }
 
+async function readLiveClient(context, client, query, role, endpoint, check) {
+  const inspect=async()=>{
+    const challenge=randomBytes(32).toString('hex');
+    const rows=await bounded(()=>query.call(client,hostSql,challenge),'QUERY_TIMEOUT',context);
+    check();
+    return clientIdentity(rows,challenge,context.scope,role,endpoint);
+  };
+  const first=await inspect();
+  const challenge=randomBytes(32).toString('hex');
+  const observed=await context.run(liveSql(first,challenge),'tls-live');
+  const { challenge:ignored,sessionRole,serverAddress,serverPort,...session }=first;
+  need(observed.challenge===challenge && equal(observed.identity,context.scope.identity) && observed.reader &&
+    backend(observed.reader.pid,observed.reader.start) && distinct(observed.reader,first) &&
+    equal(observed.session,session),'TLS_LIVE');
+  const { challenge:next,...nextIdentity }=await inspect();
+  const { challenge:previous,...firstIdentity }=first;
+  need(equal(nextIdentity,firstIdentity),'TLS_SESSION_CHANGED');
+  return Object.freeze({name:role.name,oid:role.oid,pid:first.pid,start:first.start});
+}
+
 async function verifyTls(context) {
   const { check, run, resource, Class, methods, scope, secrets }=context;
   const cas=getCa(resource);
@@ -332,6 +370,8 @@ async function verifyTls(context) {
   const certificate=await methods.observePresentedCertificate.call(resource,'correct');
   full();
   need(certificate.mode==='correct' && certificate.derSha256===resource.serverCertHashes.correctCertificateDerSha256,'CERTIFICATE');
+  context.cas=cas;
+  context.endpoint=endpoint;
   const accepted=[];
   async function probe(index, kind) {
     full();
@@ -369,24 +409,8 @@ async function verifyTls(context) {
           (kind!=='ca' || observed.certificateMarker),'TLS_NEGATIVE');
       } else {
         need(!rejected,'TLS_CONNECT');
-        const inspect=async()=>{
-          const challenge=randomBytes(32).toString('hex');
-          const rows=await bounded(()=>clientMethods.$queryRawUnsafe.call(client,hostSql,challenge),'QUERY_TIMEOUT',context);
-          clientCheck();
-          return clientIdentity(rows,challenge,scope,role,endpoint);
-        };
-        const first=await inspect();
-        const challenge=randomBytes(32).toString('hex');
-        const observed=await run(liveSql(first,challenge),'tls-live');
-        const { challenge:ignored,sessionRole,serverAddress,serverPort,...session }=first;
-        need(observed.challenge===challenge && equal(observed.identity,scope.identity) && observed.reader &&
-          backend(observed.reader.pid,observed.reader.start) && distinct(observed.reader,first) &&
-          equal(observed.session,session),'TLS_LIVE');
-        const second=await inspect();
-        const { challenge:next,...nextIdentity }=second;
-        const { challenge:previous,...firstIdentity }=first;
-        need(equal(nextIdentity,firstIdentity) && accepted.every(item=>distinct(item,first)),'TLS_SESSION_CHANGED');
-        result={name:role.name,oid:role.oid,pid:first.pid,start:first.start};
+        result=await readLiveClient(context,client,clientMethods.$queryRawUnsafe,role,endpoint,clientCheck);
+        need(accepted.every(item=>distinct(item,result)),'TLS_SESSION_CHANGED');
       }
     } catch(error) { primary=error; hasPrimary=true; }
     try {
@@ -413,6 +437,105 @@ async function verifyTls(context) {
   return Object.freeze(accepted);
 }
 
+function openContractApplication(context, loader, originalSessions, verifyCommitted) {
+  context.check();verifyCa(context.cas);
+  const assemblyPath=require.resolve('./task12-current259-contract-application.cjs');
+  const cache=require.cache;
+  need(!Object.getOwnPropertyDescriptor(cache,assemblyPath),'APP_IMPORT');
+  const assembly=require('./task12-current259-contract-application.cjs');
+  const entry=Object.getOwnPropertyDescriptor(cache,assemblyPath)?.value;
+  const run=own(assembly,'runCurrent259FirstQ2Application');
+  need(entry && typeof run==='function' && Object.isFrozen(assembly),'APP_IMPORT');
+  const load=own(loader,'loadContractApplicationModules');
+  const create=own(loader,'createContractTestingModule');
+  const check=()=>{
+    context.check();verifyCa(context.cas);
+    need(require.cache===cache && Object.getOwnPropertyDescriptor(cache,assemblyPath)?.value===entry &&
+      own(entry,'exports')===assembly && own(assembly,'runCurrent259FirstQ2Application')===run &&
+      own(loader,'loadContractApplicationModules')===load && own(loader,'createContractTestingModule')===create,'APP_IMPORT');
+  };
+  check();
+  const loaded=load.call(loader);
+  const tokens=['PrismaService','ContractDirectArchiveRuntime','ContractUpwardDirectArchiveRuntime'];
+  const [PrismaService, Outside, Upward]=tokens.map(key=>own(loaded,key));
+  const clients=[], operations=[];
+  const remember=client=>{
+    need(client,'APP_CLIENTS');
+    clients.push(client);
+    const captured=Object.fromEntries(CLIENT_METHODS.map(key=>[key,client[key]]));
+    operations.push(captured);
+    need(CLIENT_METHODS.every(key=>typeof captured[key]==='function'),'APP_CLIENTS');
+  };
+  let providers, constructed=false;
+  const bridge=Object.freeze({
+    check, loaded, caPath:context.cas[0].file,
+    createTestingModule(){check();return create.call(loader);},
+    constructProviders(){
+      check();need(!constructed,'APP_CONSTRUCT');constructed=true;
+      const env=process.env;
+      need(!types.isProxy(env),'APP_ENV');
+      const saved=APP_DSN_KEYS.map(key=>Object.getOwnPropertyDescriptor(env,key));
+      need(saved.every(value=>value===undefined),'APP_ENV');
+      const urls=context.scope.targets.map((role,index)=>{
+        const url=new URL(`postgresql://${role.name}:${context.secrets[index]}@127.0.0.1:${context.resource.port}/${context.resource.databaseName}`);
+        for(const [key,value] of Object.entries({schema:'public',connection_limit:index===0?'4':'1',sslmode:'require',
+          sslaccept:'strict',sslcert:context.cas[0].file,application_name:'jg_394_contract_app',connect_timeout:'5',pool_timeout:'5'}))url.searchParams.set(key,value);
+        return url.toString();
+      });
+      try {
+        APP_DSN_KEYS.forEach((key,index)=>{env[key]=urls[index];});
+        const ordinary=new PrismaService({datasources:{db:{url:urls[0]}},log:[]});
+        remember(ordinary);
+        const outside=new Outside();
+        remember(own(outside,'issuer'));remember(own(outside,'executor'));
+        const upward=new Upward();
+        remember(own(upward,'issuer'));remember(own(upward,'executor'));
+        need(new Set(clients).size===5,'APP_CLIENTS');
+        providers=Object.freeze([ordinary,outside,upward]);
+      } catch(error) {
+        context.cleanup='UNKNOWN';
+        if(ownFaults.has(error))throw error;
+        throw fail('APP_CONSTRUCT');
+      } finally {
+        try{
+          APP_DSN_KEYS.forEach((key,index)=>{
+            if(saved[index])Object.defineProperty(env,key,saved[index]);else delete env[key];
+          });
+        }finally{urls.fill(null);}
+      }
+      need(process.env===env && APP_DSN_KEYS.every(key=>Object.getOwnPropertyDescriptor(env,key)===undefined),'APP_ENV');
+      check();return providers;
+    },
+    async verifyProviders(){
+      check();need(providers && clients.length===5,'APP_CLIENTS');
+      const observed=[];
+      for(const [index,client] of clients.entries()){
+        const methods=operations[index];
+        const clientCheck=()=>{
+          check();need(CLIENT_METHODS.every(key=>typeof methods[key]==='function' && methods[key]===client[key]),'APP_CLIENTS');
+          need([providers[0],providers[1].issuer,providers[1].executor,providers[2].issuer,providers[2].executor].every((value,i)=>value===clients[i]),'APP_CLIENTS');
+        };
+        clientCheck();await bounded(()=>methods.$connect.call(client),'CONNECT_TIMEOUT',context);clientCheck();
+        const session=await readLiveClient(context,client,methods.$queryRawUnsafe,context.scope.targets[index],context.endpoint,clientCheck);
+        need([...originalSessions,...observed].every(item=>distinct(item,session)),'TLS_SESSION_CHANGED');
+        observed.push(session);
+      }
+      return observed.length;
+    },
+    async verifyClosed(){
+      const reader=await verifyCommitted('application-closed');
+      need(originalSessions.every(row=>distinct(row,reader)),'COMMITTED');
+    },
+    async disconnectUnowned(){
+      const results=await Promise.allSettled(clients.map((client,index)=>
+        bounded(()=>operations[index].$disconnect.call(client),'DISCONNECT_UNKNOWN',context)));
+      need(results.every(result=>result.status==='fulfilled'),'DISCONNECT_UNKNOWN');
+    },
+  });
+  check();APP_BRIDGES.add(bridge);
+  return run(bridge);
+}
+
 async function withCurrent259ContractLogin(completion, handle, use) {
   need(arguments.length===3 && typeof use==='function' && !types.isProxy(use) &&
     completion && !types.isProxy(completion) && Object.isFrozen(completion) && handle && !types.isProxy(handle),'HANDLE');
@@ -421,6 +544,7 @@ async function withCurrent259ContractLogin(completion, handle, use) {
   try { prior=claimAcl(completion,handle); }
   catch { throw fail('HANDLE'); }
   let phase='BEFORE', proof, active=true, context, secrets, verifiers, roleCommit='NOT_ATTEMPTED';
+  let application, applicationFailure;
   try {
     const view=claimCurrent259TechnicalResource(handle);
     need(!USED.has(handle),'HANDLE');
@@ -483,9 +607,18 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     });
     // A downstream source stage can extend this private record with a fixed
     // credential bridge. No untrusted callback receives its contents.
-    PROOFS.set(proof,{handle,source:prior.source,check});
+    PROOFS.set(proof,{handle,source:prior.source,check,openApplication(){
+      application=Promise.resolve().then(()=>openContractApplication(context,loader,sessions,verifyCommitted));
+      void application.catch(error=>{applicationFailure=error;});
+      return application;
+    }});
     phase='CONSUMER';
-    const result=await use(proof);
+    let result,consumerFailure,consumerFailed=false;
+    try{result=await use(proof);}catch(error){consumerFailed=true;consumerFailure=error;}
+    if(application){
+      try{await application;}catch(error){if(!consumerFailed)throw error;}
+    }
+    if(consumerFailed)throw consumerFailure;
     check();
     return result;
   } catch(primary) {
@@ -494,6 +627,11 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     Object.defineProperty(error,'roleCommit',{value:roleCommit,enumerable:true});
     const reason=ownFaults.get(primary);
     if(reason)Object.defineProperty(error,'stageFailure',{value:reason,enumerable:true});
+    if(applicationFailure && !types.isProxy(applicationFailure)){
+      const cleanup=Object.getOwnPropertyDescriptor(applicationFailure,'appCleanupOutcome');
+      if(cleanup && Object.hasOwn(cleanup,'value') && cleanup.value==='UNKNOWN_DO_NOT_CONTINUE')
+        Object.defineProperty(error,'appCleanupOutcome',{value:cleanup.value,enumerable:true});
+    }
     if(context?.cleanup==='UNKNOWN')Object.defineProperty(error,'clientCleanup',{value:'UNKNOWN',enumerable:true});
     try { await closeCurrent259OwnedResource(handle); }
     catch { Object.defineProperty(error,'resourceCleanup',{value:'UNKNOWN',enumerable:true}); }
@@ -505,4 +643,4 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     verifiers?.fill(null);
   }
 }
-module.exports=Object.freeze({withCurrent259ContractLogin,claimCurrent259ContractLogin});
+module.exports=Object.freeze({withCurrent259ContractLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,takeCurrent259FirstQ2Bridge});
