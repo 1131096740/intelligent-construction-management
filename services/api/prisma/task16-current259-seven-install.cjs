@@ -10,7 +10,7 @@ const {isDeepStrictEqual:equal,types}=require('node:util');
 const {claimCurrent259ProvisionedRoles}=require('./task16-current259-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql}=require('./task16-current259-catalog.cjs');
-const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage}=require('./task16-current259-seven-preimage.cjs');
+const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage,describeCurrent259SevenPreimageFailure}=require('./task16-current259-seven-preimage.cjs');
 const {functionProofSql}=require('./task16-registered-access-check.cjs');
 const {registeredObjectWitnessSql,schema205RegistrySql,schema205RegistryValid,schema205EnforceConfigSql,SCHEMA205_DEPARSE_LOCAL}=require('./task16-registered-object-witness.cjs');
 const {schema205ScopeSql,schema205SevenDeltaSql}=require('./task16-schema205-scope.cjs');
@@ -528,7 +528,10 @@ function sevenFailureDetail(failure,phase,boundary){
  const sqlState=ownFailureField(postgres,'sqlState'),guard=ownFailureField(postgres,'guard'),section=ownFailureField(postgres,'section');
  const scopeReason=ownFailureField(postgres,'scopeReason');
  const beforeSql=phase===phases[0]&&boundary==='OWNER_SQL'&&code==='TASK01_RESOURCE_COMMAND_FAILED';
+ const preimage=phase===phases[0]&&boundary==='READBACK'&&code==='TASK16_CURRENT259_SEVEN_PREIMAGE'
+  ?describeCurrent259SevenPreimageFailure(failure):undefined;
  return Object.freeze({phase,boundary,
+  ...(preimage?{causeCode:code,...preimage}:{}),
   ...(typeof code==='string'&&/^(?:CURRENT259_SEVEN_INSTALL_(?:QUALIFICATION|ROUTINE_SOURCE|OUTPUT|BEFORE|REGISTRY|FILE_CALLERS|STAGED|COMMITTED)|TASK01_RESOURCE_(?:COMMAND_FAILED|COMMAND_TIMEOUT|ABORTED|ABORTED_OR_TIMEOUT|OUTPUT_LIMIT|LOOPBACK_FORWARD_FAILED))$/u.test(code)?{causeCode:code}:{}),
   ...(beforeSql&&typeof sqlState==='string'&&/^(?:P0001|55000|55P03|57014|22023|42501|42601|42702|42703|42704|42725|42804|42883|42P01)$/u.test(sqlState)?{sqlState}:{}),
   ...(beforeSql&&['CURRENT259_SEVEN_INSTALL_SCOPE','CURRENT259_SEVEN_INSTALL_FRESH_OBJECTS','TASK16_CURRENT259_SEVEN_PREIMAGE'].includes(guard)?{guard}:{}),
@@ -537,6 +540,9 @@ function sevenFailureDetail(failure,phase,boundary){
 }
 function describeCurrent259SevenPrestateCommandFailure(failure){
  return sevenFailureDetail(failure,phases[0],'OWNER_SQL');
+}
+function describeCurrent259SevenPrestateReadbackFailure(failure){
+ return sevenFailureDetail(failure,phases[0],'READBACK');
 }
 async function installCurrent259SevenFragments(roleCompletion,handle){
  need(arguments.length===2&&handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
@@ -608,4 +614,4 @@ END $current259_voucher_seven_preimage$;
 SET LOCAL search_path=pg_catalog,pg_temp;`;
 }
 module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,
- claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure});
+ claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure,describeCurrent259SevenPrestateReadbackFailure});

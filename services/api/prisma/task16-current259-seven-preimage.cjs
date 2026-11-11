@@ -7,6 +7,8 @@ const { isDeepStrictEqual } = require("node:util");
 const { SCHEMA205_DEPARSE_LOCAL, schema205DeparsePremisesSql } = require("./task16-registered-object-witness.cjs");
 
 const CODE = "TASK16_CURRENT259_SEVEN_PREIMAGE";
+const MAX_PREIMAGE_BYTES = 128 * 1024;
+const failures = new WeakMap();
 const TABLE = "InterEntityRelationshipEntry";
 const PUBLIC = 'public."' + TABLE + '"';
 const TEMP = 'pg_temp."jg_current259_seven_reference"';
@@ -44,9 +46,16 @@ const COLUMN_TYPES = new Map([
   ["reauthorizedAt", ["pg_catalog.timestamp(3)", "1114", 3, "0"]],
 ]);
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
-const need = (ok, field) => {
-  if (!ok) throw Object.assign(new Error(CODE), { code: CODE, field });
+const need = (ok, field, reason) => {
+  if (ok) return;
+  const failure = Object.assign(new Error(CODE), { code: CODE, field });
+  // Field names are fixed by this parser or its digest-pinned source recipe.
+  failures.set(failure, Object.freeze({ preimageField: field, ...(reason ? { preimageReason: reason } : {}) }));
+  throw failure;
 };
+function describeCurrent259SevenPreimageFailure(failure) {
+  return failures.get(failure);
+}
 const sqlLiteral = value => "'" + value.replaceAll("'", "''") + "'";
 const list = values => values.map(sqlLiteral).join(", ");
 
@@ -300,8 +309,9 @@ function freezeJson(value) {
  * not prove that this happened or grant install authority.
  */
 function parseCurrent259SevenPreimage(json, ownerOid, nonce) {
-  need(typeof json === "string" && Buffer.byteLength(json) <= 64 * 1024 && validOid(ownerOid) &&
-    validNonce(nonce), "observation");
+  need(typeof json === "string", "observation");
+  need(Buffer.byteLength(json) <= MAX_PREIMAGE_BYTES, "observation", "SIZE_LIMIT");
+  need(validOid(ownerOid) && validNonce(nonce), "observation");
   let observation;
   try {
     observation = JSON.parse(json);
@@ -348,4 +358,4 @@ function parseCurrent259SevenPreimage(json, ownerOid, nonce) {
   return freezeJson({ nonce, version, publicOid, ownerOid, guards, actual });
 }
 
-module.exports = Object.freeze({ renderCurrent259SevenPreimage, parseCurrent259SevenPreimage });
+module.exports = Object.freeze({ renderCurrent259SevenPreimage, parseCurrent259SevenPreimage, describeCurrent259SevenPreimageFailure });

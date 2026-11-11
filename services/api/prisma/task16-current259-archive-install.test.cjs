@@ -348,3 +348,20 @@ test('the registered archive prestate retains the common fixed owner diagnostic 
  assert.deepEqual(f.calls.map(x=>x.phase),['archive-install-before','current259-seven-before']);
  assert.equal(f.closed(),1);
 });
+
+test('the registered archive preserves the fixed parser field and stops before its writer',async()=>{
+ const f=model((row,phase)=>{
+  if(phase==='current259-seven-before')row.pre.expected.columns.find(column=>column.name==='adjustsEntryId').notNull='private mismatch';
+  return row;
+ });
+ await assert.rejects(f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle),error=>{
+  assert.equal(error.code,'CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED');
+  assert.equal(error.phase,'current259-seven-before');
+  assert.deepEqual(error.sevenFailure,{phase:'current259-seven-before',boundary:'READBACK',
+   causeCode:'TASK16_CURRENT259_SEVEN_PREIMAGE',preimageField:'adjustsEntryId'});
+  assert.doesNotMatch(JSON.stringify(error),/private/u);
+  return true;
+ });
+ assert.deepEqual(f.calls.map(x=>x.phase),['archive-install-before','current259-seven-before']);
+ assert.equal(f.closed(),1);
+});

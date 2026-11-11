@@ -199,3 +199,21 @@ test("unknown catalog fields cannot be retained as qualified actual state", () =
   observed.actual.relation.claim = { executeSql: true };
   rejected(observed, "relation");
 });
+
+test('physical PG16 deparse sizes fit while the nested witness remains bounded', () => {
+  const { parseCurrent259SevenPreimage } = require('./task16-current259-seven-preimage.cjs');
+  const sized = bytes => {
+    const observed = syntheticObservation();
+    const initial = Buffer.byteLength(JSON.stringify(observed));
+    observed.actual.checks[0].tree += 'x'.repeat(bytes - initial);
+    const json = JSON.stringify(observed);
+    assert.equal(Buffer.byteLength(json), bytes);
+    return json;
+  };
+  for (const bytes of [67436, 128 * 1024]) {
+    const result = parseCurrent259SevenPreimage(sized(bytes), OWNER, NONCE);
+    assert.equal(result.guards.length, 3);
+  }
+  assert.throws(() => parseCurrent259SevenPreimage(sized(128 * 1024 + 1), OWNER, NONCE),
+    { code: 'TASK16_CURRENT259_SEVEN_PREIMAGE', field: 'observation' });
+});

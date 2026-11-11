@@ -8,7 +8,7 @@ const { claimCurrent259ProvisionedRoles } = require('./task16-current259-role-pr
 const {
   claimCurrent259TechnicalResource, closeCurrent259OwnedResource,
 } = require('./task16-current259-owned-resource.cjs');
-const { archiveSevenMaterial, describeCurrent259SevenPrestateCommandFailure } = require('./task16-current259-seven-install.cjs');
+const { archiveSevenMaterial, describeCurrent259SevenPrestateCommandFailure, describeCurrent259SevenPrestateReadbackFailure } = require('./task16-current259-seven-install.cjs');
 
 const OWNER = 'jg_task01_owner';
 const LEDGER = 'd3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
@@ -524,7 +524,9 @@ async function installArchive(provisionResult, handle, registered) {
       try { beforeSeven = await view.resource.execOwnerSql(plan.beforeSql, phase); }
       catch (error) { sevenFailure = describeCurrent259SevenPrestateCommandFailure(error); throw error; }
       check();
-      const material = plan.readBefore(beforeSeven);
+      let material;
+      try { material = plan.readBefore(beforeSeven); }
+      catch (error) { sevenFailure = describeCurrent259SevenPrestateReadbackFailure(error); throw error; }
       sevenCatalogSql = material.finalCatalog;
       const distinct = (a, b) => a.backendPid !== b.backendPid && a.backendStart !== b.backendStart;
       need(distinct(before, material));

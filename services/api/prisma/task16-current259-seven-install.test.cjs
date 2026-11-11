@@ -221,3 +221,37 @@ test('all current259 seven catalog readbacks skip empty ACL inputs without chang
   assert.match(sql,/jsonb_build_array\(a\.attnum,a\.attacl\)/u);
  }
 });
+
+test('failed before readback retains the parser field from its genuine exception only',async()=>{
+ const f=fixture((row,index)=>{
+  assert.equal(index,0);
+  row.pre.actual.checks[0].expression='private unexpected expression';
+ });
+ await assert.rejects(f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle),error=>{
+  assert.equal(error.code,'CURRENT259_SEVEN_INSTALL_PRESTATE_REJECTED');
+  assert.deepEqual(f.api.describeCurrent259SevenFailure(error),{
+   phase:'current259-seven-before',boundary:'READBACK',causeCode:'TASK16_CURRENT259_SEVEN_PREIMAGE',
+   preimageField:'InterEntityRelationshipEntry_reference_check'
+  });
+  assert.doesNotMatch(JSON.stringify(f.api.describeCurrent259SevenFailure(error)),/private/u);
+  return true;
+ });
+ assert.equal(f.calls.length,1);
+ assert.equal(f.closed(),true);
+ const forged=Object.assign(new Error('private'),{code:'TASK16_CURRENT259_SEVEN_PREIMAGE',field:'InterEntityRelationshipEntry_reference_check'});
+ assert.deepEqual(f.api.describeCurrent259SevenPrestateReadbackFailure(forged),
+  {phase:'current259-seven-before',boundary:'READBACK'});
+});
+
+test('an oversized nested preimage retains the size category without raw bytes',async()=>{
+ const f=fixture(row=>{row.pre.actual.checks[0].tree+='x'.repeat(128*1024);});
+ await assert.rejects(f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle),error=>{
+  assert.deepEqual(f.api.describeCurrent259SevenFailure(error),{
+   phase:'current259-seven-before',boundary:'READBACK',causeCode:'TASK16_CURRENT259_SEVEN_PREIMAGE',
+   preimageField:'observation',preimageReason:'SIZE_LIMIT'
+  });
+  return true;
+ });
+ assert.equal(f.calls.length,1);
+ assert.equal(f.closed(),true);
+});
