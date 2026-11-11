@@ -6,6 +6,7 @@ const controls=require('./local-staged-migration-controls.cjs');
 const technicalProfiles=require('./local-staged-technical-profile-policy.cjs');
 const WINDOWS=[213,215,218,221],FULL='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
 const hash=x=>createHash('sha256').update(x).digest('hex'),quote=x=>"'"+x.replaceAll("'","''")+"'";
+const validationReasons=new WeakMap();
 const need=x=>{if(!x)throw new Error('LOCAL_MIGRATION_TAIL_QUALIFICATION');};
 const oid=x=>typeof x==='string'&&/^[1-9][0-9]{0,9}$/u.test(x)&&BigInt(x)<=0xffffffffn;
 const txid=x=>typeof x==='string'&&/^[1-9][0-9]{0,19}$/u.test(x)&&BigInt(x)<=0xffffffffffffffffn;
@@ -123,44 +124,75 @@ function catalogSql(){
 }
 function readSql(c,stage,phase,xid=null){return `-- local-tail ${stage} ${phase}\nBEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL search_path=pg_catalog,pg_temp;\n${projection(c,stage,phase,xid)};\nROLLBACK;\n`;}
 function validateRow(input,c,stage,phase,prior){
+ let reason='SHAPE';
+ try{
  const row=frozen(input),cfg=config(c,stage,phase);keys(row,['scope','identity','ledger','pending','app','routines','triggers','appTablePrivileges','roleSha256','catalogSha256','protectedAclSha256','bindings','targets','required','locks','writeXid','commitStatus']);
  need(equal(row.scope,{stage,phase,nonce:c.plan.nonce,runId:c.plan.runId,sourceSha256:FULL}));
+ reason='IDENTITY';
  const id=row.identity;keys(id,['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier','actor','sessionActor','version','encoding','replication','backendPid','backendStart','readOnly']);
  for(const key of ['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'])need(id[key]===c.plan[key]);
  need(id.actor===(technicalProfiles.planProfile(c.plan)?.owner??'jiangkong')&&id.sessionActor===id.actor&&id.version>=160000&&id.version<170000&&Number.isInteger(id.version)&&id.encoding==='UTF8'&&id.replication==='origin'&&id.readOnly===(phase!=='staged')&&Number.isInteger(id.backendPid)&&id.backendPid>0&&id.backendPid<=2147483647&&typeof id.backendStart==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(id.backendStart)&&Number.isFinite(Date.parse(id.backendStart))&&new Date(Date.parse(id.backendStart)).toISOString().slice(0,19)===id.backendStart.slice(0,19));
+ reason='LEDGER';
  need(Array.isArray(row.ledger));const completed=[];
  for(const item of row.ledger){keys(item,['name','sha256','finished','rolledBack']);if(item.finished===true&&item.rolledBack===false)completed.push(item);else need(item.name===c.ledger[114].name&&item.sha256===c.ledger[114].sha256&&item.finished===false&&item.rolledBack===true);}
  need(equal(completed,c.ledger.slice(0,stage)));
+ reason='PENDING';
  const p=row.pending;keys(p,['appOid','fileCallerOids','databaseOid','namespaceOid','ownerOid','relationOid','sha256']);
  need(p.appOid===c.setup.appOid&&equal(p.fileCallerOids,c.setup.fileCallerOids.map(String))&&p.databaseOid===c.plan.databaseOid&&p.namespaceOid===c.plan.namespaceOid&&p.ownerOid===c.plan.actorOid&&oid(p.relationOid)&&digest(p.sha256));
+ reason='APP';
  need(equal(row.app,{oid:c.setup.appOid,name:c.plan.appName,login:true,limit:0,passwordAbsent:true,superuser:false,inherit:false,createRole:false,createDb:false,replication:false,bypassRls:false,memberships:0,createSchema:false}));
+ reason='ROUTINES';
  need(Array.isArray(row.routines)&&row.routines.length===cfg.routines.length&&Array.isArray(row.triggers)&&row.triggers.length===cfg.triggers.length);
  const routineOids=new Map();
  row.routines.forEach((r,i)=>{
   const expected={...cfg.routines[i],oid:r.oid,ownerOid:c.plan.actorOid,namespaceOid:c.plan.namespaceOid};
+  const slot=String(i+1).padStart(2,'0');
+  for(const [group,fields] of [
+   ['OWNER',['ownerOid','namespaceOid']],
+   ['ATTRIBUTES',['kind','language','returnTypeOid','securityDefiner','volatility','parallel','strict','returnsSet','leakproof']],
+   ['ARGUMENTS',['inputTypes','inputNames','inputModes','allTypes','defaults','variadicOid','supportOid']],
+   ['CONFIG',['config']],['BODY',['bodySha256']]
+  ]){reason=`ROUTINE_${slot}_${group}`;need(fields.every(key=>equal(r[key],expected[key])));}
+  reason=`ROUTINE_${slot}_SHAPE`;
   need(oid(r.oid)&&equal(r,expected));routineOids.set(r.signature,r.oid);
  });
+ reason='TRIGGERS';
  row.triggers.forEach((t,i)=>{
   const expected={...cfg.triggers[i],oid:t.oid,relationOid:t.relationOid,routineOid:routineOids.get(cfg.triggers[i].signature)};
+  const slot=String(i+1).padStart(2,'0');
+  for(const [group,fields] of [
+   ['BINDING',['table','name','signature','routineOid']],
+   ['ATTRIBUTES',['type','enabled','deferrable','initiallyDeferred','internal']],
+   ['CONDITION',['condition','args','columns']]
+  ]){reason=`TRIGGER_${slot}_${group}`;need(fields.every(key=>equal(t[key],expected[key])));}
+  reason=`TRIGGER_${slot}_SHAPE`;
   need(oid(t.oid)&&oid(t.relationOid)&&oid(t.routineOid)&&equal(t,expected));
  });
+ reason='DIGESTS';
  for(const key of ['roleSha256','catalogSha256','protectedAclSha256'])need(digest(row[key]));
+ reason='BINDINGS';
  const sortedBindings=cfg.bindings.slice().sort((a,b)=>a.name<b.name?-1:1);need(Array.isArray(row.bindings)&&row.bindings.length===sortedBindings.length);
  row.bindings.forEach((b,i)=>{keys(b,['name','oid','owner','kind','persistence','rls','forceRls','rows']);need(b.name===sortedBindings[i].name&&oid(b.oid)&&b.owner===c.plan.actorOid&&b.kind==='r'&&b.persistence==='p'&&b.rls===false&&b.forceRls===false&&Array.isArray(b.rows)&&b.rows.length===sortedBindings[i].count);for(const r of b.rows){keys(r,['sha256','xmin']);need(digest(r.sha256)&&txid(r.xmin)&&BigInt(r.xmin)<=0xffffffffn);}});
  const pendingBinding=row.bindings.find(b=>b.name==='jg_contract_direct_pending_binding_v1');
  need(p.relationOid===pendingBinding.oid&&p.sha256===pendingBinding.rows[0].sha256);
+ reason='APP_TABLE_ACL';
  const tableReads=row.bindings.filter(b=>b.name!=='jg_contract_direct_pending_binding_v1'&&(b.rows.length===1||b.name==='jg_contract_direct_archive_generation_v1')).map(b=>({kind:'table',object:b.name,objectOid:b.oid,privilege:'SELECT',grantable:false}));
  need(equal(row.appTablePrivileges,tableReads));
+ reason='TARGETS';
  const expectedTargets=[];for(const t of cfg.targets){const roles=t.recipients==='file'?[...cfg.fileCallerOids,c.setup.appOid]:[c.setup.appOid];for(const roleOid of new Set(roles))if(roleOid!==c.plan.actorOid)expectedTargets.push({kind:t.kind,object:t.table,member:t.member,privilege:t.privilege,roleOid});}
  const key=t=>JSON.stringify([t.kind,t.object,t.member,t.privilege,Number(t.roleOid)]);
  const unique=[...new Map(expectedTargets.map(t=>[key(t),t])).values()].sort((a,b)=>{for(const k of ['kind','object','member','privilege'])if(a[k]!==b[k])return a[k]<b[k]?-1:1;return Number(a.roleOid)-Number(b.roleOid);});
  need(Array.isArray(row.targets)&&row.targets.length===unique.length);
  row.targets.forEach((t,i)=>{keys(t,['kind','object','member','privilege','roleOid','objectOid','attnum','typeOid','catalogXmin','effective','grantable','direct']);need(equal(Object.fromEntries(['kind','object','member','privilege','roleOid'].map(k=>[k,t[k]])),unique[i])&&oid(t.objectOid)&&Number.isInteger(t.attnum)&&(t.kind==='column'?t.attnum>0&&t.attnum<=32767&&oid(t.typeOid):t.attnum===0&&t.typeOid==='0')&&txid(t.catalogXmin)&&BigInt(t.catalogXmin)<=0xffffffffn&&typeof t.effective==='boolean'&&t.grantable===false&&Array.isArray(t.direct)&&t.direct.every(a=>equal(a,[c.plan.actorOid,t.roleOid,t.privilege,false]))&&t.direct.length<=1);if(phase!=='before')need(t.effective===true);});
+ reason='REQUIRED_COLUMNS';
  const required=cfg.required.slice().sort();need(Array.isArray(row.required)&&row.required.length===required.length);
  row.required.forEach((r,i)=>{keys(r,['key','objectOid','attnum','typeOid','effective']);need(r.key===required[i]&&oid(r.objectOid)&&Number.isInteger(r.attnum)&&r.attnum>0&&r.attnum<=32767&&oid(r.typeOid)&&typeof r.effective==='boolean'&&(r.effective===true||phase==='before'&&matrix.windows[stage].eligible.includes(r.key)));});
+ reason='LOCKS';
  need(equal(row.locks,cfg.locks.slice().sort().map(table=>({table,effective:true}))));
+ reason='TRANSACTION';
  if(phase==='before')need(row.writeXid===null&&row.commitStatus===null&&prior===undefined);
  else{
+  reason='CONTINUITY';
   need(prior&&equal(prior.scope,{...row.scope,phase:phase==='staged'?'before':'staged'}));
   need(Array.isArray(row.routines)&&row.routines.length===cfg.routines.length&&Array.isArray(row.triggers)&&row.triggers.length===cfg.triggers.length);
  const routineOids=new Map();
@@ -186,6 +218,7 @@ function validateRow(input,c,stage,phase,prior){
   }
  }
  return row;
+ }catch(error){if(error&&typeof error==='object'&&!types.isProxy(error))validationReasons.set(error,reason);throw error;}
 }
 function normalizePreimage(value){return {...value,identity:Object.fromEntries(Object.entries(value.identity).filter(([key])=>!['backendPid','backendStart','readOnly'].includes(key))),writeXid:null};}
 function renderSupply(c,stage,before){
@@ -235,15 +268,15 @@ function createLocalTailQualification(input,ports){
  const read=ds.read.value,write=ds.write.value;let next=0,stopped=false,busy=false;
  return Object.freeze({async qualify(stage){
   if(stopped||busy||WINDOWS[next]!==stage){stopped=true;throw new Error('LOCAL_MIGRATION_TAIL_QUALIFICATION');}busy=true;
-  let phase='BEFORE',kind='NODE_PROOF';
+  let phase='BEFORE',kind='NODE_PROOF',reason='READ_PREPARE';
   try{
-   const beforeSql=readSql(c,stage,'before');kind='RESOURCE_PORT';const beforeData=await read(`tail${stage}-before`,beforeSql);kind='NODE_PROOF';need(!stopped);
-   const before=validateRow(beforeData,c,stage,'before');
+   const beforeSql=readSql(c,stage,'before');reason='READ_RESULT';kind='RESOURCE_PORT';const beforeData=await read(`tail${stage}-before`,beforeSql);kind='NODE_PROOF';need(!stopped);
+   reason='BEFORE_VALIDATE';const before=validateRow(beforeData,c,stage,'before');
    if(stage===213&&ds.recordMaterial)ds.recordMaterial.value({...technicalProfiles.projectTechnicalSql(c.plan,fs.readFileSync(path.join(__dirname,'local-staged-tail-post213.sql'),'utf8'),'post213'),kind:'post213'});
-   phase='SUPPLY';const supplySql=renderSupply(c,stage,before);kind='RESOURCE_PORT';const stagedData=await write(`tail${stage}-supply`,supplySql);kind='NODE_PROOF';need(!stopped);
-   const staged=validateRow(stagedData,c,stage,'staged',before);
-   phase='READBACK';const afterSql=readSql(c,stage,'committed',staged.writeXid);kind='RESOURCE_PORT';const afterData=await read(`tail${stage}-readback`,afterSql);kind='NODE_PROOF';need(!stopped);
-   const after=validateRow(afterData,c,stage,'committed',staged);
+   phase='SUPPLY';reason='SUPPLY_PREPARE';const supplySql=renderSupply(c,stage,before);reason='SUPPLY_RESULT';kind='RESOURCE_PORT';const stagedData=await write(`tail${stage}-supply`,supplySql);kind='NODE_PROOF';need(!stopped);
+   reason='SUPPLY_VALIDATE';const staged=validateRow(stagedData,c,stage,'staged',before);
+   phase='READBACK';reason='READ_PREPARE';const afterSql=readSql(c,stage,'committed',staged.writeXid);reason='READ_RESULT';kind='RESOURCE_PORT';const afterData=await read(`tail${stage}-readback`,afterSql);kind='NODE_PROOF';need(!stopped);
+   reason='READBACK_VALIDATE';const after=validateRow(afterData,c,stage,'committed',staged);
    next++;return Object.freeze({status:'LOCAL_TECHNICAL_TAIL_COMMIT_READBACK',stage,writeXid:staged.writeXid,readerPid:after.identity.backendPid,executionAllowed:false,nativeAdmission:false});
   }catch(error){
    stopped=true;
@@ -252,7 +285,9 @@ function createLocalTailQualification(input,ports){
     const declared=Object.getOwnPropertyDescriptor(error,'localMigrationFailureKind');
     if(declared&&Object.hasOwn(declared,'value')&&['RESOURCE_PORT','NODE_PROOF'].includes(declared.value))kind=declared.value;
    }
-   const diagnostic=Object.freeze({stage:`TAIL${stage}_${phase}`,kind});
+   const category=validationReasons.get(error);
+   if(category)reason=`${phase}_VALIDATE_${category}`;
+   const diagnostic=Object.freeze({stage:`TAIL${stage}_${phase}`,kind,reason});
    const failure=new Error(`LOCAL_MIGRATION_${diagnostic.stage}_${kind}`);failures.set(failure,diagnostic);throw failure;
   }finally{busy=false;}
  }});

@@ -468,8 +468,10 @@ for (const [phase, change, forbidden] of [
   try {
     const fake=await fakeFixture(dir,(current,row)=>{if(current===phase)change(row);return row;});
     await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
-      assert.deepEqual(require("./local-staged-tail-qualification.cjs").localTailFailureDiagnostic(error),
+      const diagnostic=require("./local-staged-tail-qualification.cjs").localTailFailureDiagnostic(error);
+      assert.deepEqual({stage:diagnostic.stage,kind:diagnostic.kind},
         {stage:phase.toUpperCase().replaceAll("-","_"),kind:"NODE_PROOF"});
+      assert.match(diagnostic.reason,/^(BEFORE|SUPPLY|READBACK)_VALIDATE_[A-Z0-9_]+$/u);
       assert.equal(error.message.includes("e".repeat(64)),false);
       return true;
     });
@@ -485,7 +487,7 @@ test("tail SQL resource errors carry a fixed safe phase without exposing their e
  try{
   const fake=await fakeFixture(dir,(phase,row)=>{if(phase==='tail215-supply')throw new Error('SELECT synthetic-secret-role');return row;});
   await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
-   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),{stage:'TAIL215_SUPPLY',kind:'RESOURCE_PORT'});
+   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),{stage:'TAIL215_SUPPLY',kind:'RESOURCE_PORT',reason:'SUPPLY_RESULT'});
    assert.equal(error.message.includes('SELECT'),false);assert.equal(error.message.includes('synthetic-secret'),false);return true;
   });
   assert.equal(fake.calls.includes('tail215-readback'),false);assert.equal(fake.calls.includes('deploy-218'),false);
@@ -838,4 +840,74 @@ test("tail column privileges resolve the PG16 attnum overload through every qual
     await fake.fixture.migrate({ databaseUrl });
     assert.equal(observations, 12);
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+
+test("tail before proof reports a fixed routine category without exposing observed metadata", async () => {
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(), 'local-tail-proof-reason-'));
+ try {
+  const fake=await fakeFixture(dir,(phase,row)=>{if(phase==='tail213-before')row.routines[0].securityDefiner=!row.routines[0].securityDefiner;return row;});
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),
+    {stage:'TAIL213_BEFORE',kind:'NODE_PROOF',reason:'BEFORE_VALIDATE_ROUTINE_01_ATTRIBUTES'});
+   return true;
+  });
+  assert.equal(fake.calls.includes('tail213-supply'),false);
+ } finally { await fs.rm(dir,{recursive:true,force:true}); }
+});
+
+
+for(const [label,change,reason] of [
+ ['owner',row=>{row.routines[0].ownerOid='999';},'ROUTINE_01_OWNER'],
+ ['configuration',row=>{row.routines[0].config=['search_path=untrusted'];},'ROUTINE_01_CONFIG'],
+ ['arguments',row=>{row.routines[0].inputTypes=['25'];},'ROUTINE_01_ARGUMENTS'],
+ ['body',row=>{row.routines[0].bodySha256='e'.repeat(64);},'ROUTINE_01_BODY'],
+ ['trigger binding',row=>{row.triggers[0].routineOid='999';},'TRIGGER_01_BINDING'],
+ ['trigger attributes',row=>{row.triggers[0].enabled='D';},'TRIGGER_01_ATTRIBUTES'],
+ ['trigger condition',row=>{row.triggers[0].condition=!row.triggers[0].condition;},'TRIGGER_01_CONDITION'],
+ ['ledger',row=>{row.ledger[0].sha256='e'.repeat(64);},'LEDGER'],
+ ['pending binding',row=>{row.pending.appOid='999';},'PENDING'],
+ ['binding rows',row=>{row.bindings[0].rows.push({sha256:'e'.repeat(64),xmin:'1'});},'BINDINGS'],
+ ['app table ACL',row=>{row.appTablePrivileges.push({secret:'not-logged'});},'APP_TABLE_ACL']
+])test(`tail first proof identifies fixed ${label} category and permanently stops`,async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail-proof-category-'));
+ try{
+  const fake=await fakeFixture(dir,(phase,row)=>{if(phase==='tail213-before')change(row);return row;});
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+   const diagnostic=require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error);
+   assert.deepEqual(diagnostic,{stage:'TAIL213_BEFORE',kind:'NODE_PROOF',reason:'BEFORE_VALIDATE_'+reason});
+   assert.equal(JSON.stringify(diagnostic).includes('not-logged'),false);
+   return true;
+  });
+  assert.equal(fake.calls.includes('tail213-supply'),false);
+  const count=fake.calls.length;
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),/LOCAL_MIGRATION_STOPPED/u);
+  assert.equal(fake.calls.length,count);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('tail invalid resource JSON is distinguished from validation and caller reason cannot override it',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail-proof-json-'));
+ try{
+  const fake=await fakeFixture(dir,(phase,row)=>phase==='tail213-before'?undefined:row);
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),
+    {stage:'TAIL213_BEFORE',kind:'NODE_PROOF',reason:'READ_RESULT'});return true;
+  });
+  assert.equal(fake.calls.includes('tail213-supply'),false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('tail caller exception cannot supply a proof reason',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail-proof-spoof-'));
+ try{
+  const fake=await fakeFixture(dir,(phase,row)=>{
+   if(phase==='tail213-before'){const error=new Error('private-untrusted');error.reason='BEFORE_VALIDATE_OWNER';throw error;}return row;
+  });
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),
+    {stage:'TAIL213_BEFORE',kind:'RESOURCE_PORT',reason:'READ_RESULT'});return true;
+  });
+  assert.equal(fake.calls.includes('tail213-supply'),false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
