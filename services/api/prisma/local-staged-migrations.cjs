@@ -158,11 +158,6 @@ function createLocalMigrationFixture(input) {
   }
 
   async function prefixRoots(source, targetLength) {
-    // Recheck after the awaited database preflight, at the original copy boundary.
-    if (phaseRoot) {
-      try { await verifyPrefixes(source); }
-      catch { need(false, "PREFIX_CACHE"); }
-    }
     if (!phaseRoot) {
       phaseRoot = await mkdtemp(path.join(options.temporaryRoot, "staged-migrations-"));
       const stat = await lstat(phaseRoot);
@@ -319,6 +314,9 @@ function createLocalMigrationFixture(input) {
             recovery.ledger.filter(row => row.name !== expected[114].name)), "RECOVERY_NOT_RESOLVED");
         pendingRecovery.delete(database);
       }
+      // Recheck after awaited preflight, including its no-pending deployment path.
+      try { await verifyPrefixes(source); }
+      catch { need(false, "PREFIX_CACHE"); }
       if (count >= target.length) return await deploy(request);
       need(count < 205, "PARTIAL_TAIL_QUALIFICATION");
       need(count <= 203, "PARTIAL_QUALIFICATION");

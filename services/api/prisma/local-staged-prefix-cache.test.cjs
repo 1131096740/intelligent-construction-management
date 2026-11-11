@@ -285,7 +285,8 @@ for (const kind of ["schema", "lock", "sql"]) {
   });
 }
 
-test("a preflight port cannot change a previously checked prefix before reuse", async () => {
+for (const targetDatabase of ["same", "different"]) {
+test("a preflight port cannot change a checked prefix before " + targetDatabase + " database deployment", async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-prefix-await-"));
   try {
     let cachedSql;
@@ -299,8 +300,9 @@ test("a preflight port cannot change a previously checked prefix before reuse", 
     cachedSql = path.join(prefix, "migrations", (await canonicalRows())[0].name, "migration.sql");
     tamper = true;
     const deployments = harness.deploymentRequests.length;
-    await assert.rejects(harness.fixture.migrate({ databaseUrl: databaseUrl.replace(database, harness.databaseNames[1]) }), /LOCAL_MIGRATION_PREFIX_CACHE/u);
+    await assert.rejects(harness.fixture.migrate({ databaseUrl: targetDatabase === "same" ? databaseUrl : databaseUrl.replace(database, harness.databaseNames[1]) }), /LOCAL_MIGRATION_PREFIX_CACHE/u);
     assert.equal(harness.deploymentRequests.length, deployments);
     await assert.rejects(harness.fixture.migrate({ databaseUrl }), /LOCAL_MIGRATION_STOPPED/u);
   } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
 });
+}
