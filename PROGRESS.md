@@ -1,8 +1,10 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 准确代码候选 `8354134af9909ce41d8c4f9541f07e63f1a8a086` 已本地集成 TARGETS 矩阵修复、前缀源码缓存、环境准备和固定 B7 安装控制器源码。矩阵按原16组 SQL VALUES 修正为87列，保留原供给 SQL 与强校验；缓存复核源码与文件身份，原30秒测试预算不变。冷自含副本920/920标准编排、57/57 API、类型/lint/构建、17批SQL静态、21项输入及根独立只读预查通过；原API超时在本候选已通过。新单次PFQ259方案已封存，计划摘要 `359472d817750c39d49952a0c92fb2d5c684116ad28d53000a486cad3bbd18bb`，尚待准确候选授权，未执行迁移、未创建资源。真实七库/259迁移/13并发仍待验收，新的原生控制器与应用入口不在本方案范围。 [封存交接](/private/tmp/jg-382-pfq259-functional-sealed.SfgaCTWM/RUN-HANDOFF.md) · [矩阵独审](/private/tmp/jg-382-targets-independent-G8vmruHR/REVIEW.md) · [缓存独审](/private/tmp/jg-382-prefix-cache-independent-qdlua0nq/REVIEW.md)
+
 - [~] 准确 `4a454301` 已按新单次授权执行本地诊断，退出码1并首错停止清理。首库完成213前缀，固定首因为 `TAIL213_BEFORE / NODE_PROOF / BEFORE_VALIDATE_TARGETS`，已定位读取后的权限目标清单分组；具体目标/字段仍未知。未进入供应、完整259、后六库及13并发未完成。独立按准确容器名无残留，许可已消耗，未重试或修复该门。 [诊断停止回执](/private/tmp/jg-382-pfq259-diagnostic-sealed.w23LVTXn/STOP-RECEIPT.md)
 
-- [~] 本地集成4a已含原生应用scoped入口（2cd）与固定脱敏诊断（4a），独立841项标准与108项关联、855项标准与57项API等对应检查通过，实际业务验收未进行。环境准备候选0a42独审两项已修，869标准/87关联/类型lint构建/纯装载通过；API同一mock旅程56过1超时，准确4a基线同例也触及原30秒预算，279复制文件及相关输入逐字相同。该候选尚未集成，不把API全门计绿，不调整预算。 [应用集成](/private/tmp/jg-398-native-app-integrate.Garpn3mr/HANDOFF.md) · [诊断复核](/private/tmp/jg-382-tail-proof-integrate.Q8aNMcrS/REVIEW.md) · [环境候选](/private/tmp/jg-382-app-env-merge.WyV8cGRn/MERGE-CANDIDATE.md) · [基线超时审计](/private/tmp/jg-382-pfq-baseline-audit-20261111/HANDOFF.md)
+- [~] 历史环境候选 `0a42` 的869标准/87关联/类型lint构建/纯装载通过；当时API同一mock旅程56过1超时，准确4a基线同例也触及原30秒预算，279复制文件及相关输入逐字相同。环境源码以b9fb7900本地集成；后继8354134a已通过原57项API预算门，此处历史失败记录保留，不能替代实际数据库与业务验收。 [环境候选](/private/tmp/jg-382-app-env-merge.WyV8cGRn/MERGE-CANDIDATE.md) · [基线超时审计](/private/tmp/jg-382-pfq-baseline-audit-20261111/HANDOFF.md)
 
 - [~] 准确 `2b1db8da` 已按本轮单次授权执行封存PFQ259验证，退出码1，首错停止并清理。首库完成213条前缀迁移，在 `TAIL213_BEFORE` 的 `NODE_PROOF` 校验失败，PostgreSQL记录为primary-not-retained，无可用SQLSTATE/具体字段原因；尚未进入该窗口供应、后续六库和13并发，完整259未完成。独立准确容器名查询无残留，原日志与结构化证据保留，未重试或修复。该单次许可已消耗，无其它组/GitHub/部署/生产。 [停止回执](/private/tmp/jg-382-pfq259-fixture-sealed.GUSMH3Su/STOP-RECEIPT.md)
 
