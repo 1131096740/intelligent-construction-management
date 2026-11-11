@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #398 真实竞办入口新增确认一处阻断：原 runtime ACL 写后 SQL 固定要求连接上限 1，真实两办理连接会在较外层 catalog 前停止。原作者并行修该固定竞办 profile 与先发生的 HTTP close 首因。A17 同轮凭证后补核到实际上传触发器和碰撞读闭包，必须沿原 ACL writer/B7/live 一致认证，无法旁路补权；独立源码片推进。#394 首 Q2 已按实际 Schema、DTO 与生产读回核定只种主数据的公开 HTTP 用例接缝。未执行实际迁移、凭证、文件、PG 或 COS。 [凭证权限复核](/private/tmp/jg-398-voucher-authority.IL9L4lSV/HANDOFF.md) · [Q2 用例接线](/private/tmp/jg-394-q2-native-case.o8iUZ84D/HANDOFF.md)
+
 - [~] #394 五登录、固定 HBA 和 TLS 资格源码已快进本地中央至准确 `5f508a22`。独审复现的 4 个负控通过修订复验，日志证据固定关联本轮普通角色、本库和明文拒绝，SDK 超时保首因及未知清理。独立 74 定向、1037 标准、147 API、类型/lint/构建与 PG16.1 静态均通过。真实角色、HBA/TLS、Nest 连接与私有 COS 待验。#398 竞办已补双应用关闭顺序，后继复核仍挡先发生的 close 错误可被后来的 abort 覆盖，作者继续窄修。 [五登录独审](/private/tmp/jg-394-five-login-BB50-review.iqo7Hk3t/REVIEW-BB50.md) · [竞办复核](/private/tmp/jg-398-pair-close-review.zRBxjORe/REVIEW-F80E.md)
 
 - [~] #394 文书后台隔离已快进本地中央至准确 `26eb4529`。公开合同模块保留原文书路由与服务，生产根仅注册一次原处理器，并通过直接导入 Auth 恢复原写冻结依赖注入。独立 53 项定向、API 类型/lint/构建通过。真实 Nest 与数据库仍待同轮验收。五登录初版独审确认 TLS 负控与 SDK 超时证据缺口，修复候选准备复核。 [文书独审](/private/tmp/jg-394-document-worker-26eb-review.XoOOnJBe/REVIEW-26EB.md) · [五登录独审](/private/tmp/jg-394-five-login-independent.cFFb76NJ/REVIEW.md)
