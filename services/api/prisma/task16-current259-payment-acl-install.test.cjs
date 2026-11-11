@@ -6,7 +6,8 @@ const { test } = require('node:test');
 
 function fixture(mode = '') {
   const calls = [];
-  const handle = {};
+  const handle = {}, token = Object.freeze({}), metadata = {parent:0};let forbidFull=false;
+  const full=()=>assert.equal(forbidFull,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);};
   const completion = { installXid: '451' };
   const profile = { schemaSha256: 'f'.repeat(64), ledger: [{ name: '20260101120000_schema', sha256: 'a'.repeat(64) }] };
   const source = { candidateSha: '1'.repeat(40), sourceSealSha256: 'a'.repeat(64), profile };
@@ -43,16 +44,17 @@ function fixture(mode = '') {
   };
   let claimed = false;
   const inject = {
+    './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
     './task16-current259-seven-install.cjs': {
       claimCurrent259SevenInstallation(input, actualHandle) {
         if (input !== completion || actualHandle !== handle || claimed) throw new Error('claim');
         claimed = true;
-        return { source, roleCompletion, completion, check() {} };
+        return { source, roleCompletion, completion, check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;} };
       }
     },
     './task16-current259-owned-resource.cjs': {
       claimCurrent259TechnicalResource() {
-        return { runId, source, resource, check() {}, verifyFull() {} };
+        return { runId, source, resource, check:full,checkLifetime(){}, verifyFull:full };
       },
       async closeCurrent259OwnedResource() { calls.push({ phase: 'cleanup' }); }
     },
@@ -85,7 +87,7 @@ function fixture(mode = '') {
   } finally {
     Module._load = originalLoad;
   }
-  return { api, calls, handle, completion, roleCompletion };
+  return { api, calls, handle, token,metadata,forbidFull(){forbidFull=true;}, completion, roleCompletion };
 }
 
 test('installs ACL once, then reads the exact committed result from another backend', async () => {
@@ -121,4 +123,10 @@ for (const [mode, expected] of [
   await assert.rejects(f.api.installCurrent259PaymentAcl(f.completion, f.handle),
     error => error.code === 'TASK16_CURRENT259_PAYMENT_ACL_COMMIT_UNCONFIRMED');
   assert.deepEqual(f.calls.map(row => row.phase), expected);
+});
+
+test('issued ACL continuity retains its original seven capability without full work',async()=>{
+ const f=fixture(),result=await f.api.installCurrent259PaymentAcl(f.completion,f.handle),lease=f.api.claimCurrent259PaymentAcl(result,f.handle);
+ f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
+ assert.throws(()=>lease.checkContinuity({...f.token}));
 });

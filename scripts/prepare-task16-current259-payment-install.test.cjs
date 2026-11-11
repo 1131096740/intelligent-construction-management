@@ -6,7 +6,7 @@ const file=path.join(__dirname,'prepare-task16-current259-payment-install.cjs');
 function fixture(t){
  const base=fs.mkdtempSync('/private/tmp/jg-259-payment-plan-model-'),runRoot=path.join(base,'run');fs.mkdirSync(runRoot,{mode:0o700});
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
- const state={captures:0,loads:0,stale:false};
+ const state={captures:0,loads:0,stale:false,fullCalls:0,lightCalls:0};
  const migrations=fs.readdirSync(path.join(__dirname,'../services/api/prisma/migrations')).sort().filter(name=>/^\d{14}_/u.test(name)).map(name=>{
   const relative='services/api/prisma/migrations/'+name+'/migration.sql';
   return {path:relative,sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'..',relative))).digest('hex')};
@@ -16,7 +16,7 @@ function fixture(t){
  const handle=Object.freeze({});
  const witness={source:{candidateSha:rawSource.candidateSha,tree:'c'.repeat(40),sourceSealSha256:rawSource.sealSha256,profile},
   build:{node:{path:process.execPath,sha256:'1'.repeat(64),version:process.version},trees:['node_modules','services/api/node_modules','packages/shared-domain/node_modules','services/api/dist','packages/shared-domain/dist'].map(root=>({root,digest:'2'.repeat(64),entries:1,bytes:10}))},host:process.platform+'-'+process.arch,engineCommit:'605197351a3c8bdd595af2d2a9bc3025bca48ea2'};
- const loader={verifyFull(){assert.equal(state.stale,false,'source drift');},witness(){return witness;}};
+ const loader={check(){state.lightCalls++;assert.equal(state.stale,false,'source drift');},verifyFull(){state.fullCalls++;assert.equal(state.stale,false,'source drift');},witness(){return witness;}};
  const toolHashes={'/Applications/Docker.app/Contents/Resources/bin/docker':'6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40','/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl':'103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c'};
  const ports={
   '../services/api/prisma/task16-current259-payment-run-authorization.cjs':{},
@@ -40,7 +40,7 @@ test('offline payment plan binds technical259, nine roles, seven originals and B
  assert.equal(fs.readdirSync(f.runRoot).length,0);assert.equal(f.state.loads,1);
 });
 test('an edited purpose or business scope is rejected even with its matching new digest',t=>{
- const f=fixture(t),saved=f.api.prepareCurrent259PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output}),original=fs.readFileSync(f.output);
+ const f=fixture(t);f.api.prepareCurrent259PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output});const original=fs.readFileSync(f.output);
  for(const change of [plan=>plan.purpose='old-owner-scope',plan=>plan.scope.businessWrites=true,plan=>plan.material.installation.readerBodySha256='0'.repeat(64)]){
   const plan=JSON.parse(original);change(plan);const bytes=Buffer.from(JSON.stringify(plan));fs.writeFileSync(f.output,bytes);
   assert.throws(()=>f.api.verifyCurrent259PaymentInstallPlan(f.output,createHash('sha256').update(bytes).digest('hex')));

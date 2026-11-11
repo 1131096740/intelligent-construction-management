@@ -13,7 +13,9 @@ function fixture(options={}){
  const before=parser(JSON.stringify(observed()),request);
  const stagedProof=parser(JSON.stringify(staged),{...request,phase:'staged'},before);
  const committedProof=parser(JSON.stringify(proofRow),{...request,phase:'committed',installXid:'1000'},stagedProof);
- let resourceClosed=0,claimed=false,cursor=0;
+ let resourceClosed=0,claimed=false,cursor=0,fulls=0;
+ const continuityToken=options.continuityToken??Object.freeze({});
+ const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId};
  const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2',serverPort:5432};
@@ -41,15 +43,17 @@ function fixture(options={}){
     sessions:rows.map(row=>Object.fromEntries(['database','databaseOid','loginRole','loginOid','pid','start','tls','clientAddress','clientPort'].map(key=>[key,row[key]])))};
    options.onOwner?.(value);return {stdout:JSON.stringify(value)};
   }};
- const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,verifyFull:check,credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
+ resource.getReceiptContinuity=token=>{continuity(token);return clone(receipt);};
+ const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
  const imports={
-  './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request,stagedProof,committedProof,check};}},
-  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;}},
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
+  './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request,stagedProof,committedProof,check,checkContinuity:continuity};}},
+  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,token){continuity(token,h);return view;},claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;}},
   './task16-runtime-inputs.cjs':{readQualifiedTask16File(){options.onRead?.();return {sha256:'c'.repeat(64),identity:{uid:process.getuid()}};}}
  };
  const api=new Function('require','module','setTimeout',fs.readFileSync(path.join(__dirname,'task16-current259-live-sessions.cjs'),'utf8')+'\nreturn module.exports;')(
-  name=>imports[name]??require(name),{exports:{}},options.fastTimeout?((fn,_ms)=>setTimeout(fn,1)):setTimeout);
- return {api,handle,completion,calls,clients,resourceClosed:()=>resourceClosed};
+  name=>imports[name]??require(name),{exports:{}},options.fastTimeout?(fn=>setTimeout(fn,1)):setTimeout);
+ return {api,handle,completion,calls,clients,resourceClosed:()=>resourceClosed,fulls:()=>fulls};
 }
 test('three scoped clients retain exact same-handle identities and expire after callback',async()=>{
  const f=fixture();let proof,session;
@@ -161,4 +165,28 @@ test('a caught concurrent verification permanently invalidates the scope',async(
  }),/FAILED_CLOSED/);
  assert.equal(invalidated,true);assert.equal(firstFailed,true);
  assert.equal(f.resourceClosed(),1);assert.deepEqual(f.clients.map(row=>row.disconnects),[1,1,1]);
+});
+test('genuine business continuity retains installed owner/observer and independent readback without a full tree scan or busy runtime probe',async()=>{
+ const continuityToken=Object.freeze({}),options={continuityToken,forbidFull:false},f=fixture(options);
+ await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);session.activateBusinessContinuity(continuityToken);
+  const from=f.calls.length,fulls=f.fulls();options.forbidFull=true;
+  await session.verifyInstalled259();
+  assert.equal(f.fulls(),fulls);
+  assert.deepEqual(f.calls.slice(from).filter(row=>row[0]==='identity').map(row=>row[1]),[0,2]);
+  assert.deepEqual(f.calls.slice(from).filter(row=>row[0]==='owner').map(row=>row[1]),['current259-live-independent','current259-live-catalog']);
+  options.forbidFull=false;session.deactivateBusinessContinuity(continuityToken);
+  await session.verifyFull();assert.ok(f.fulls()>fulls);
+ });
+ assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
+});
+test('business installed catalog rejection still permanently stops and closes all original clients',async()=>{
+ const continuityToken=Object.freeze({});let drift=false;
+ const f=fixture({continuityToken,onCatalog(row){if(drift)row.reader.oid='4000';}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);session.activateBusinessContinuity(continuityToken);drift=true;
+  await assert.rejects(session.verifyInstalled259());drift=false;
+  assert.throws(()=>session.checkContinuity(continuityToken));
+ }),/FAILED_CLOSED/);
+ assert.equal(f.resourceClosed(),1);assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
 });

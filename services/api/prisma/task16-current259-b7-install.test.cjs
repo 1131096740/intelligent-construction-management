@@ -21,20 +21,22 @@ function modelRow(phase){
  return row;
 }
 function fixture({change,permitMissing=false,denyWrite=false}={}){
- const handle=Object.freeze({}),permit=Object.freeze({}),calls=[],consumed=[];
+ const handle=Object.freeze({}),token=Object.freeze({}),metadata={parent:0},permit=Object.freeze({}),calls=[],consumed=[];let forbidFull=false;
+ const issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);};
  const catalogProof=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
  let closed=false,claimed=false;
- const check=()=>assert.equal(closed,false);
- const view={source:witness,runId:identity.runId,check,verifyFull:check,resource:{databaseName:identity.database,containerId:roleCompletion.containerId,
+ const check=()=>{assert.equal(closed,false);assert.equal(forbidFull,false);};
+ const view={source:witness,runId:identity.runId,check,checkLifetime(){assert.equal(closed,false);},verifyFull:check,resource:{databaseName:identity.database,containerId:roleCompletion.containerId,
   async execOwnerSql(sql,phase){
    const index=calls.length;calls.push({sql,phase});
    const row=modelRow(['before','staged','committed'][index]);change?.(row,index);
    return {stdout:JSON.stringify(row)+'\n'};
   }}};
  const imports={
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './task16-current259-payment-acl-install.cjs':{claimCurrent259PaymentAcl(result,provided){
    assert.equal(result,aclCompletion);assert.equal(provided,handle);assert.equal(claimed,false);claimed=true;
-   return Object.freeze({completion:result,source:witness,roleCompletion,request,catalogProof,check});
+   return Object.freeze({completion:result,source:witness,roleCompletion,request,catalogProof,check,checkContinuity(t){issuer(t,handle);metadata.parent++;}});
   }},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);check();return view;},
    async closeCurrent259OwnedResource(provided){assert.equal(provided,handle);closed=true;}},
@@ -50,7 +52,7 @@ function fixture({change,permitMissing=false,denyWrite=false}={}){
   if(name==='./task16-current259-payment-run-authorization.cjs'&&permitMissing)throw Object.assign(Error('missing fixed authority'),{code:'MODULE_NOT_FOUND'});
   return imports[name]??require(name);
  },holder);
- return {api:holder.exports,handle,permit,calls,consumed,closed:()=>closed,claimed:()=>claimed};
+ return {api:holder.exports,handle,token,metadata,forbidFull(){forbidFull=true;},permit,calls,consumed,closed:()=>closed,claimed:()=>claimed};
 }
 
 test('pure B7 preparation fixes the installed SQL digest without an execution or authority port',()=>{
@@ -130,4 +132,10 @@ test('an ordinary approval-shaped object is denied before the ACL claim',async()
  await assert.rejects(f.api.installCurrent259B7(aclCompletion,f.handle,{approved:true,planSha256}),/CURRENT259_B7_INSTALL_AUTHORITY_DENIED/u);
  assert.equal(f.claimed(),false);
  assert.deepEqual(f.calls,[]);
+});
+
+test('issued B7 continuity retains its original ACL capability and authority binding without full work',async()=>{
+ const f=fixture(),result=await f.api.installCurrent259B7(aclCompletion,f.handle,f.permit),lease=f.api.claimCurrent259B7Installation(result,f.handle);
+ f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
+ assert.throws(()=>lease.checkContinuity({...f.token}));
 });

@@ -1,4 +1,5 @@
 "use strict";
+const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 // Observes source/build bytes on this host. Never constructs a DB client, starts
 // a resource, invokes a supplied builder or issues native/business authority.
 const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
@@ -113,7 +114,14 @@ function observeCurrent259Build(){
   }catch{broken=true;throw fault('CURRENT259_BUILD_CHANGED');}
  }
  const summary=Object.freeze({node:Object.freeze({path:node.path,sha256:node.sha256,version:process.version,openssl:process.versions.openssl}),trees:Object.freeze(trees.map(t=>Object.freeze({root:t.relative,digest:t.digest,entries:t.entries.length,bytes:t.bytes}))),sdk:Object.freeze({clientVersion:config.clientVersion,engineVersion:config.engineVersion,copyEngineObserved:config.copyEngine,sourceSchemaSha256:SOURCE_SCHEMA,generatedSchemaSha256:generatedSchema.sha256,normalizedIndexSha256:'76f06d6bfbf598cc4a3189937f16684f0897d6d26312f48ca38d711b3a9b3f8f',engineSha256:engine.sha256})});
- const view=Object.freeze({root:ROOT,source:Object.freeze({candidateSha:initialSource.sha,tree:initialSource.tree,sourceSealSha256:initialSource.profile.sealSha256,profile:initialSource.profile}),summary,clientEntry,generatedIndex:index.path,engine,applicationEntries:Object.freeze(entries),keys:Object.freeze(KEYS.slice()),capture,checkLight,check});
+ function checkContinuity(token,ownedHandle){
+  try{
+   businessIssuer(token,ownedHandle);need(!broken,'CURRENT259_BUILD_CHANGED');environment();
+   for(const p of [clientEntry,generatedSchema.path,index.path,engine.path,toolEngine.path,...entries.map(r=>r.path)])checkCurrent259FileIdentity(p,members.get(p).identity);
+   checkCurrent259FileIdentity(node.path,node.identity);
+  }catch(error){broken=true;throw error;}
+ }
+ const view=Object.freeze({root:ROOT,source:Object.freeze({candidateSha:initialSource.sha,tree:initialSource.tree,sourceSealSha256:initialSource.profile.sealSha256,profile:initialSource.profile}),summary,clientEntry,generatedIndex:index.path,engine,applicationEntries:Object.freeze(entries),keys:Object.freeze(KEYS.slice()),capture,checkLight,check,checkContinuity});
  check();const handle=Object.freeze({kind:'OBSERVED_CURRENT259_HOST_BUILD',executionAllowed:false});handles.set(handle,view);return handle;
 }
 function claimCurrent259Build(handle){

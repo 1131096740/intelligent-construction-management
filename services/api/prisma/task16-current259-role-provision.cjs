@@ -1,4 +1,5 @@
 'use strict';
+const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 
 const fs=require('node:fs');
 const path=require('node:path');
@@ -230,6 +231,7 @@ async function provisionCurrent259Roles(technicalCompletion,handle){
  try{
   const view=claimCurrent259TechnicalResource(handle),{completion,source}=supply,{application:app,databaseIdentity:identity}=completion;
   const check=()=>{supply.check();view.verifyFull();};
+  const checkContinuity=token=>{businessIssuer(token,handle);supply.checkContinuity(token);view.checkLifetime();};
   check();
   need(completion===technicalCompletion&&completion.runId===view.runId&&completion.containerId===view.resource.containerId&&completion.sourceSha===source.candidateSha&&equal(view.source,source),'HANDLE');
   need(completion.status==='CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION'&&completion.database===view.resource.databaseName&&identity.database===completion.database&&/^jg_task01_[a-f0-9]{32}$/u.test(identity.database)&&identity.actor===OWNER&&identity.sessionActor===OWNER&&identity.ownerOid==='10'&&identity.actorOid==='10'&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&typeof identity.systemIdentifier==='string'&&/^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier)&&identity.tls===true&&identity.clientAddress==='127.0.0.1'&&identity.serverAddress==='127.0.0.1'&&identity.serverPort===5432,'HANDLE');
@@ -251,7 +253,7 @@ async function provisionCurrent259Roles(technicalCompletion,handle){
   const result=freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:view.runId,containerId:view.resource.containerId,
    databaseIdentity:{...identity},ordinary:{...state.app},roles:state.roles,commitXid:staged.writeXid,
    databaseAcl:{before:before.state.databases,after:state.databases,effective:committed.access},executionAllowed:false,nativeAdmission:false});
-  proofs.set(result,{handle,source,check});return result;
+  proofs.set(result,{handle,source,check,checkContinuity});return result;
  }catch{
   const error=fault(phase);
   try{await closeCurrent259OwnedResource(handle);}catch{Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});}
@@ -261,6 +263,6 @@ async function provisionCurrent259Roles(technicalCompletion,handle){
 function claimCurrent259ProvisionedRoles(result,handle){
  need(arguments.length===2&&result&&!types.isProxy(result)&&proofs.has(result),'HANDLE');
  const proof=proofs.get(result);need(proof.handle===handle,'HANDLE');proofs.delete(result);proof.check();
- return Object.freeze({source:proof.source,completion:result,check:proof.check});
+ return Object.freeze({source:proof.source,completion:result,check:proof.check,checkContinuity:proof.checkContinuity});
 }
 module.exports=Object.freeze({provisionCurrent259Roles,claimCurrent259ProvisionedRoles});

@@ -1,4 +1,5 @@
 'use strict';
+const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 
 const { randomBytes } = require('node:crypto');
 const { isDeepStrictEqual, types } = require('node:util');
@@ -110,6 +111,7 @@ async function installCurrent259PaymentAcl(sevenCompletion, handle) {
     const { source, completion, roleCompletion } = lease;
     const view = claimCurrent259TechnicalResource(handle);
     const check = () => { lease.check(); view.check(); view.verifyFull(); };
+    const checkContinuity = token => { businessIssuer(token, handle); lease.checkContinuity(token); view.checkLifetime(); };
     check();
     need(completion === sevenCompletion && xid(completion.installXid) &&
       isDeepStrictEqual(source, view.source) && roleCompletion.sourceSha === source.candidateSha &&
@@ -138,7 +140,7 @@ async function installCurrent259PaymentAcl(sevenCompletion, handle) {
     check();
     const result = Object.freeze({ status: RESULT, sourceSha: source.candidateSha, runId: view.runId,
       installXid: committed.aclXid, executionAllowed: false, nativeAdmission: false });
-    receipts.set(result, { handle, source, roleCompletion, request, catalogProof, check });
+    receipts.set(result, { handle, source, roleCompletion, request, catalogProof, check, checkContinuity });
     return result;
   } catch {
     const error = fail(writeAttempted ? 'COMMIT_UNCONFIRMED' : 'NOT_ATTEMPTED');
@@ -155,7 +157,7 @@ function claimCurrent259PaymentAcl(result, handle) {
   receipts.delete(result);
   proof.check();
   return Object.freeze({ source: proof.source, completion: result, roleCompletion: proof.roleCompletion,
-    request: proof.request, catalogProof: proof.catalogProof, check: proof.check });
+    request: proof.request, catalogProof: proof.catalogProof, check: proof.check, checkContinuity: proof.checkContinuity });
 }
 
 module.exports = Object.freeze({ installCurrent259PaymentAcl, claimCurrent259PaymentAcl });
