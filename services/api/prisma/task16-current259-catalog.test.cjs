@@ -122,6 +122,7 @@ test('fixed B7 installation qualifies one captured staged row before output and 
  assert.match(script,/BEGIN ISOLATION LEVEL SERIALIZABLE/u);
  assert.equal(script.includes('/private/tmp'),false);
  const capture=script.indexOf('CREATE TEMP TABLE pg_temp.jg_current259_b7_staged ON COMMIT DROP AS');
+ assert.ok(script.slice(script.indexOf('DO $current259_before$'),capture).includes("jsonb_set(observed,'{identity}',(observed->'identity')-'backendPid'-'backendStart'-'readOnly')-'writeXid'"));
  const guard=script.indexOf('DO $current259_staged$');
  const emit=script.indexOf('SELECT result FROM pg_temp.jg_current259_b7_staged;');
  assert.ok(capture>script.indexOf('$witness$;')&&guard>capture&&emit>guard&&script.indexOf('COMMIT;')>emit);

@@ -65,6 +65,7 @@ test('installs the pinned seven fragments in one write and issues only a same-re
  assert.match(write,/OR EXISTS\(SELECT 1 FROM public\.jg_contract_direct_archive_intent_binding_v1\)/u);
  assert.match(write,/OR EXISTS\(SELECT 1 FROM public\.jg_contract_direct_upward_execution_binding_v2\)/u);
  assert.doesNotMatch(write,/jg_install_contract_direct_archive_outside_v1|jg_install_contract_direct_upward_v2/u);
+ assert.ok(write.includes("((witness->'publicRoutine'->'definition')-'prosrc') IS DISTINCT FROM ((witness->'alias'->'definition')-'prosrc')"));
  assert.equal(result.nativeAdmission,false);
  assert.throws(()=>f.api.claimCurrent259SevenInstallation({...result},f.handle),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
  const lease=f.api.claimCurrent259SevenInstallation(result,f.handle);
