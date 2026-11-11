@@ -14,7 +14,7 @@ function fixture(){
  },holder);
  return {api:holder.exports,handle,root,resource,view};
 }
-function cleanEnvironment(){const prior={...process.env};for(const key of Object.keys(process.env))if(KEYS.includes(key)||/^(?:SMS_|APPROVAL_SMS_|COS_|TENCENT|WX_|PRISMA_)/u.test(key)||['DATABASE_URL','NODE_OPTIONS','NODE_PATH','HOST','PORT','WEB_ORIGIN','SKIP_DATABASE_CONNECT'].includes(key))delete process.env[key];return ()=>{for(const key of Object.keys(process.env))if(!Object.hasOwn(prior,key))delete process.env[key];Object.assign(process.env,prior);};}
+function cleanEnvironment(){const prior={...process.env};for(const key of Object.keys(process.env))if(KEYS.includes(key)||/^(?:SMS_|APPROVAL_SMS_|COS_|TENCENT|WX_|WECHAT_|PRISMA_)/u.test(key)||['DATABASE_URL','NODE_OPTIONS','NODE_PATH','HOST','PORT','WEB_ORIGIN','SKIP_DATABASE_CONNECT'].includes(key))delete process.env[key];return ()=>{for(const key of Object.keys(process.env))if(!Object.hasOwn(prior,key))delete process.env[key];Object.assign(process.env,prior);};}
 test('scoped environment uses private owned storage and restores every original setting',async()=>{
  const restore=cleanEnvironment();let f,guard,directory;
  try{
@@ -95,5 +95,24 @@ test('unknown application shutdown retains its environment and storage for the u
    directory=scope.storageRoot;throw applicationFailure;
   }),error=>error.code==='CURRENT259_APP_ENV_CLEANUP_UNKNOWN'&&error.environmentRestoration==='UNKNOWN'&&error.storageCleanup==='UNKNOWN'&&error.cause===applicationFailure);
   assert.equal(process.env.FILE_STORAGE_ROOT,directory);assert.equal(fs.existsSync(directory),true);
+ }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('actual WeChat credential aliases cannot be inherited into the isolated application',async()=>{
+ const restore=cleanEnvironment();let f;
+ try{
+  f=fixture();process.env.WECHAT_APP_ID='synthetic-id';process.env.WECHAT_APP_SECRET='synthetic-secret';
+  await assert.rejects(f.api.withCurrent259ApplicationEnvironment(f.handle,()=>assert.fail('no scope')),/CURRENT259_APP_ENV_OWNERSHIP/u);
+  assert.equal(process.env.WECHAT_APP_SECRET,'synthetic-secret');assert.deepEqual(fs.readdirSync(f.resource),[]);
+ }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
+});
+
+for(const key of ['DATABASE_URL','WECHAT_APP_SECRET'])test('new foreign '+key+' is rejected without deleting the caller value',async()=>{
+ const restore=cleanEnvironment();let f;
+ try{
+  f=fixture();await assert.rejects(f.api.withCurrent259ApplicationEnvironment(f.handle,scope=>{
+   process.env[key]='synthetic-caller-value';scope.check();
+  }),error=>error.code==='CURRENT259_APP_ENV_CLEANUP_UNKNOWN'&&error.environmentRestoration==='UNKNOWN');
+  assert.equal(process.env[key],'synthetic-caller-value');
  }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
 });

@@ -11,6 +11,7 @@ const BENIGN={NODE_ENV:'test',SMS_ENABLED:'false',APPROVAL_SMS_ENABLED:'false',F
 let busy=false;
 const fault=part=>Object.assign(new Error('CURRENT259_APP_ENV_'+part),{code:'CURRENT259_APP_ENV_'+part});
 const need=(ok,part)=>{if(!ok)throw fault(part);};
+function forbiddenEnvironment(env){return Object.keys(env).some(k=>/^(?:SMS_|APPROVAL_SMS_|COS_|TENCENT|WX_|WECHAT_|PRISMA_)/u.test(k)&&!['SMS_ENABLED','APPROVAL_SMS_ENABLED','PRISMA_HIDE_UPDATE_MESSAGE'].includes(k))||['DATABASE_URL','NODE_OPTIONS','NODE_PATH','HOST','PORT','WEB_ORIGIN','SKIP_DATABASE_CONNECT'].some(k=>Boolean(env[k]));}
 function identity(directory){
  const st=fs.lstatSync(directory);
  need(st.isDirectory()&&!st.isSymbolicLink()&&fs.realpathSync(directory)===directory&&st.uid===process.getuid()&&(st.mode&0o077)===0,'STORAGE');
@@ -28,7 +29,7 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
   need(active&&!broken,'CLOSED');
   try{
    view.check();need(claimCurrent259TechnicalResource(handle)===view,'CONTINUITY');
-   need(process.env===originalEnvironment&&KEYS.every(k=>process.env[k]===env[k]),'CONTINUITY');
+   need(process.env===originalEnvironment&&KEYS.every(k=>process.env[k]===env[k])&&!forbiddenEnvironment(process.env),'CONTINUITY');
    need(matches(parent,parentIdentity)&&matches(directory,directoryIdentity),'CONTINUITY');
   }catch{active=false;broken=true;throw fault('CONTINUITY');}
  };
@@ -37,7 +38,7 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
   need(process.env===originalEnvironment,'OWNERSHIP');
   prior=Object.fromEntries(KEYS.map(k=>[k,process.env[k]]));
   need(KEYS.every(k=>prior[k]===undefined||Object.hasOwn(BENIGN,k)&&prior[k]===BENIGN[k]),'OWNERSHIP');
-  need(!Object.keys(process.env).some(k=>/^(?:SMS_|APPROVAL_SMS_|COS_|TENCENT|WX_|PRISMA_)/u.test(k)&&!['SMS_ENABLED','APPROVAL_SMS_ENABLED','PRISMA_HIDE_UPDATE_MESSAGE'].includes(k))&&!['DATABASE_URL','NODE_OPTIONS','NODE_PATH','HOST','PORT','WEB_ORIGIN','SKIP_DATABASE_CONNECT'].some(k=>Boolean(process.env[k])),'OWNERSHIP');
+  need(!forbiddenEnvironment(process.env),'OWNERSHIP');
   need(typeof view.resource.caPath==='string'&&path.isAbsolute(view.resource.caPath)&&path.normalize(view.resource.caPath)===view.resource.caPath&&path.basename(view.resource.caPath)==='ca.crt'&&path.basename(path.dirname(view.resource.caPath))==='tls-private','STORAGE');
   parent=path.dirname(path.dirname(view.resource.caPath));parentIdentity=identity(parent);
   directory=fs.mkdtempSync(path.join(parent,'application-private-'));fs.chmodSync(directory,0o700);directoryIdentity=identity(directory);storageOutcome='CREATED';
@@ -57,8 +58,9 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
   active=false;
   if(prepared){
    if(!unresolvedApplication&&process.env===originalEnvironment&&KEYS.every(k=>process.env[k]===env[k])){
+    const foreign=forbiddenEnvironment(process.env);
     for(const k of KEYS)if(prior[k]===undefined)delete process.env[k];else process.env[k]=prior[k];
-    envOutcome='RESTORED';
+    envOutcome=foreign?'UNKNOWN':'RESTORED';
    }else envOutcome='UNKNOWN';
   }
   if(directory&&unresolvedApplication)storageOutcome='UNKNOWN';
