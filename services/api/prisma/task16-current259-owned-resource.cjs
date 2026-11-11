@@ -21,7 +21,7 @@ const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback
 const LEGACY_TOPOLOGY='UNVERIFIED_HOST_PUBLISHED_TLS';
 const paymentStartNames=Object.freeze(Object.fromEntries([
  ['cancel-commit','startCurrent259FirstRollbackPostgres'],['normal','startCurrent259NormalPaymentPostgres'],
- ['response-loss','startCurrent259ResponseLossPostgres'],['competition','startCurrent259CompetitionPostgres'],
+ ['response-loss','startCurrent259ResponseLossPostgres'],['competition','startCurrent259CompetitionPostgres'],['competition-voucher','startCurrent259VoucherPostgres'],
  ['disconnect-commit-recovery','startCurrent259DisconnectRecoveryPostgres'],['attribution-gap','startCurrent259AttributionGapPostgres']
 ].map(([scenario,name])=>[paymentLoopbackForScenario(scenario).topology,name])));
 const paymentStarters=Object.freeze(Object.fromEntries(Object.entries(paymentStartNames).map(([topology,name])=>
@@ -215,6 +215,10 @@ async function withCurrent259CompetitionResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('competition').topology);
 }
+async function withCurrent259VoucherResource(build,plan,signal,consume){
+ need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('competition-voucher').topology);
+}
 async function withCurrent259AttributionGapResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('attribution-gap').topology);
@@ -231,4 +235,4 @@ function claimCurrent259TechnicalResourceContinuity(handle,token){
  businessIssuer(token,handle);need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.view.checkLifetime();return owner.view;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});
+module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259VoucherResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});

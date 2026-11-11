@@ -201,7 +201,11 @@ function renderCurrent259RuntimeAcl(witness,provisioned,nonce){
 function renderCurrent259CompetitionRuntimeAcl(witness,provisioned,nonce){
  return renderRuntimeAcl(witness,provisioned,nonce,true);
 }
-function renderRuntimeAcl(witness,provisioned,nonce,competition){
+function renderCurrent259VoucherRuntimeAcl(witness,provisioned,nonce){
+ const {current259VoucherAcl,voucherAccessPlan,profileName}=require('./task16-current259-voucher-acl.cjs');
+ return renderRuntimeAcl(witness,provisioned,nonce,true,{profile:current259VoucherAcl(),voucherAccessPlan,profileName});
+}
+function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
  provisioned=snapshot(provisioned);witness=snapshot(witness);
  need(typeof nonce==='string'&&/^[a-f0-9]{64}$/u.test(nonce));
  const profile=witness.profile;
@@ -211,23 +215,27 @@ function renderRuntimeAcl(witness,provisioned,nonce,competition){
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))};
  const material=loadCurrent259CatalogMaterial(source);
  need(provisioned.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&provisioned.sourceSha===material.sourceSha&&Array.isArray(provisioned.roles));
- const plan=material.accessPlan;
+ const plan=voucher?voucher.voucherAccessPlan(material.accessPlan):material.accessPlan;
  const findRole=name=>{const matches=provisioned.roles.filter(role=>role.name===name);need(matches.length===1&&oid(matches[0].oid));return matches[0];};
  const runtime=findRole(plan.runtime.role),observer=findRole(plan.observer.role);
  if(competition)need(runtime.limit===2&&observer.limit===1);
  else need((runtime.limit===1||runtime.limit===undefined)&&(observer.limit===1||observer.limit===undefined));
  const {database,databaseOid,namespaceOid,ownerOid,systemIdentifier}=provisioned.databaseIdentity;
  const identity={runId:provisioned.runId,database,databaseOid,namespaceOid,ownerOid,systemIdentifier,
-  runtimeOid:runtime.oid,observerOid:observer.oid,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})};
+  runtimeOid:runtime.oid,observerOid:observer.oid,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),
+  ...(voucher?{voucherProfile:voucher.profileName}:{})};
  const databaseAcl=renderCurrent259DatabasePrivileges(provisioned);
  const legacy=fixedJson('task16-registered-access.json','d19fe664e58659b3008ab2ef2769c6d3e421cb8504d3f98b8fd332133291b5eb');
  const baseline=fixedJson('task16-baseline-access.json','6c2ec83b104694aa2de351ab6e81757d0a3c6528b5bf0687a546fae23b48976b');
  const expect=matrix(plan),proof=proofSql(plan,legacy,baseline),catalog=catalogQuery(source,identity,nonce);
  const verify=readOnly=>postSql(catalog,identity,expect,databaseAcl.expected,proof,material.ledger,legacy.legacyRelationOwners,readOnly);
  const setup="SET LOCAL search_path=pg_catalog,pg_temp;\nSET LOCAL standard_conforming_strings=on;";
- const sql=[setup,'LOCK TABLE public._prisma_migrations IN SHARE MODE NOWAIT;',beforeSql(identity,material,legacy,expect.direct),
-  databaseAcl.sql,guardSql(legacy.lockOnlyGuards),roleGrantSql(plan),verify(false)].join('\n');
+ const sql=[setup,...(voucher?[voucher.profile.preimageSql(legacy.functionProofs)]:
+  ['LOCK TABLE public._prisma_migrations IN SHARE MODE NOWAIT;']),
+  beforeSql(identity,material,legacy,expect.direct),databaseAcl.sql,guardSql(legacy.lockOnlyGuards),
+  ...(voucher?[voucher.profile.guardSql]:[]),roleGrantSql(plan),verify(false)].join('\n');
  const readbackSql=['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;',setup,verify(true),`${catalog};`,'ROLLBACK;'].join('\n');
- return Object.freeze({sql,witnessSql:`${catalog};`,readbackSql,publicAclStatus:'REQUIRES_FINAL_CATALOG',nativeAdmission:false});
+ return Object.freeze({sql,witnessSql:`${catalog};`,readbackSql,publicAclStatus:'REQUIRES_FINAL_CATALOG',nativeAdmission:false,
+  ...(voucher?{lockSql:voucher.profile.lockSql}:{})});
 }
-module.exports=Object.freeze({renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl});
+module.exports=Object.freeze({renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl,renderCurrent259VoucherRuntimeAcl});

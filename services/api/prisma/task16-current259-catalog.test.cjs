@@ -44,26 +44,26 @@ const plan=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-registered-acc
 // observation is independent of the historical permission matrix on disk.
 plan.runtime.tables.find(table=>table.table==='ContractVersion').select.push('originalSignedNumber');
 const sort=rows=>rows.sort((a,b)=>JSON.stringify(a)<JSON.stringify(b)?-1:JSON.stringify(a)>JSON.stringify(b)?1:0);
-function observed(phase='before'){
+function observed(phase='before',access=plan){
  const roles=[['owner','jg_task01_owner'],['runtime','jg_task01_runtime'],['observer','jg_task01_observer']].map(([key,name])=>{
   const management=key==='owner';return {oid:identity[key+'Oid'],name,superuser:management,inherit:management,
    canLogin:true,createRole:management,createDb:management,replication:management,bypassRls:management,
    connectionLimit:management?-1:1,memberships:0,createSchema:management,usageSchema:true,
    connectDatabase:true,createDatabaseSchema:management,temporary:management,otherDatabases:management?[["5","CONNECT"]]:[],readOnlyDefault:key==='observer'};
  }).sort((a,b)=>a.name<b.name?-1:1);
- const capabilities=[];for(const role of [plan.runtime,plan.observer]){
+ const capabilities=[];for(const role of [access.runtime,access.observer]){
   for(const table of role.tables)for(const privilege of ['select','insert','update','references'])
    for(const col of table[privilege]??[])capabilities.push([role.role,'column',table.table,col,privilege.toUpperCase(),false]);
   if(role.technicalAuthRateLimitDelete)capabilities.push([role.role,'table','AuthRateLimit','','DELETE',false]);
  }
- const functions=[];let i=2000;const ids=new Map();for(const role of [plan.runtime,plan.observer])for(const sig of [...role.functions].sort())functions.push([role.role,sig,ids.get(sig)??(ids.set(sig,String(i++)),ids.get(sig)),true,false]);
+ const functions=[];let i=2000;const ids=new Map();for(const role of [access.runtime,access.observer])for(const sig of [...role.functions].sort())functions.push([role.role,sig,ids.get(sig)??(ids.set(sig,String(i++)),ids.get(sig)),true,false]);
  if(phase!=='before')functions.push(['jg_task01_runtime','public.jg_read_registered_payment_impacts(text,text,text,text,text)','3000',true,false]);
- const tables=[...new Set([...plan.runtime.tables,...plan.observer.tables].map(x=>x.table).concat(['PaymentExecution','PaymentRequest','Contract','ContractVersion','OperatingFact','OperatingImpactEntry','RegisteredPaymentFunding','PaymentExecutionWagePayableBinding','HistoricalWageSummaryPaymentExecutionLink']))].sort();
+ const tables=[...new Set([...access.runtime.tables,...access.observer.tables].map(x=>x.table).concat(['PaymentExecution','PaymentRequest','Contract','ContractVersion','OperatingFact','OperatingImpactEntry','RegisteredPaymentFunding','PaymentExecutionWagePayableBinding','HistoricalWageSummaryPaymentExecutionLink']))].sort();
  const row={phase,nonce:request.nonce,sourceSha:source.candidateSha,sealSha256:source.sealSha256,schemaSha256:source.schemaSha256,
   identity:{database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,ownerOid:'10',systemIdentifier:identity.systemIdentifier,
    currentRole:'jg_task01_owner',sessionRole:'jg_task01_owner',backendPid:phase==='committed'?401:400,backendStart:phase==='committed'?'2026-11-11T01:00:01.000001Z':'2026-11-11T01:00:00.000001Z',tls:true,version:160015,replication:'origin',readOnly:phase!=='staged'},
   ledger:migrations.map(x=>({name:x.path.split('/').at(-2),sha256:x.sha256,finished:true,rolledBack:false})),roles,
-  capabilities:sort(capabilities),functions:sort(functions),relations:tables.map((table,n)=>({table,oid:String(4000+n),owner:plan.legacyRelationOwners[table]??'jg_task01_owner',kind:'r',rls:false,forceRls:false})),
+  capabilities:sort(capabilities),functions:sort(functions),relations:tables.map((table,n)=>({table,oid:String(4000+n),owner:access.legacyRelationOwners[table]??'jg_task01_owner',kind:'r',rls:false,forceRls:false})),
   readerColumns:JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8')).readerColumns,publicAclViolations:[],
   guardsVerified:true,extraFunctions:[],otherAclSha256:'d'.repeat(64),writeXid:phase==='staged'?'1000':null,commitStatus:phase==='committed'?'committed':null,reader:null};
  if(phase!=='before')row.reader={oid:'3000',ownerOid:'10',namespaceOid:'2200',kind:'f',language:'plpgsql',definer:true,
@@ -238,4 +238,51 @@ test('application manifest binding is the fixed qualified registered file bytes'
  const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8'));
  assert.equal(manifest.files[1].path,'services/api/prisma/task16-registered-access.json');
  assert.equal(material.registeredManifestSha256,manifest.files[1].sha256);
+});
+
+test('voucher catalog keeps the exact C0 binding and guards through B7 staged and independent committed read',()=>{
+ const manifest=require('./task16-current259-voucher-acl.requirements.json');
+ const extra=structuredClone(plan);
+ const tables=new Map(extra.runtime.tables.map(row=>[row.table,row]));
+ for(const [privilege,delta] of [['select',manifest.readDelta],['insert',manifest.insertDelta],['update',manifest.lockOnlyUpdate]]){
+  for(const [table,columns] of Object.entries(delta)){
+   if(!tables.has(table))tables.set(table,{table});
+   const row=tables.get(table);
+   row[privilege]=[...(row[privilege]??[]),...[columns].flat()];
+  }
+ }
+ extra.runtime.tables=[...tables.values()];
+ extra.runtime.functions.push(...manifest.routineSources.map(row=>row.signature));
+ const id={...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'};
+ const base={...request,identity:id};
+ function row(phase){
+  const r=observed(phase,extra);
+  r.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
+  r.voucherBindingSha256='7'.repeat(64);
+  return r;
+ }
+ function parse(observation,phase,prior){
+  return api.parseCurrent259CatalogRead(JSON.stringify(observation),
+   {...base,phase,...(phase==='committed'?{installXid:'1000'}:{})},prior);
+ }
+ const before=parse(row('before'),'before');
+ const staged=parse(row('staged'),'staged',before);
+ assert.equal(parse(row('committed'),'committed',staged).raw.voucherBindingSha256,'7'.repeat(64));
+ const installer=api.renderCurrent259B7Install({source,identity:id,nonce:request.nonce,before});
+ const ownerRead=api.renderCurrent259CatalogRead({...base,phase:'committed',installXid:'1000'});
+ const bindingLock=installer.indexOf('jg_contract_direct_pending_binding_v1 IN SHARE MODE NOWAIT;');
+ assert.ok(bindingLock>=0&&bindingLock<installer.indexOf('DO $current259_before$'));
+ assert.ok(installer.indexOf('voucherBindingSha256')<installer.indexOf('DO $current259_staged$'));
+ assert.match(ownerRead,/p\.proargnames IS NOT DISTINCT FROM/u);
+ assert.match(ownerRead,/fileCallerOids/u);
+ assert.match(ownerRead,/voucherBindingSha256/u);
+ assert.doesNotMatch(ownerRead,/IN SHARE MODE NOWAIT|CREATE TRIGGER/u);
+ assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:{...id,voucherProfile:'arbitrary'}}),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>api.renderCurrent259CatalogRead({...base,identity:{...identity,voucherProfile:id.voucherProfile}}),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...row('before'),guardsVerified:false},'before'),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...row('staged'),voucherBindingSha256:'8'.repeat(64)},'staged',before),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...row('committed'),voucherBindingSha256:'8'.repeat(64)},'committed',staged),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...row('committed'),capabilities:row('committed').capabilities.slice(1)},'committed',staged),/TASK16_CURRENT259_CATALOG/u);
+ const routines=row('committed').functions;
+ assert.throws(()=>parse({...row('committed'),functions:routines.slice(1)},'committed',staged),/TASK16_CURRENT259_CATALOG/u);
 });

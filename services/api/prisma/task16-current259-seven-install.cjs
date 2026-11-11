@@ -443,7 +443,8 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
   check();
   const completion=Object.freeze({status:'CURRENT259_SEVEN_INSTALLED_NOT_ADMISSION',sourceSha:input.roleCompletion.sourceSha,
    runId:input.roleCompletion.runId,containerId:input.roleCompletion.containerId,installXid:committed.installXid,catalogSha256:committed.catalogSha256,nativeAdmission:false});
-  installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion,competition:input.competition});
+  installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion,
+   competition:input.competition,...(input.competition?{input}:{})});
   return completion;
  }catch{
   const primary=error(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -452,10 +453,35 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
  }
 }
 function claimCurrent259SevenInstallation(completion,handle){
- need(arguments.length===2&&completion&&!types.isProxy(completion)&&installed.has(completion),'HANDLE');
- const receipt=installed.get(completion);need(receipt.handle===handle,'HANDLE');
+ need(arguments.length===2,'HANDLE');
+ return claimSevenInstallation(completion,handle,false);
+}
+function claimCurrent259VoucherSevenInstallation(completion,handle){
+ need(arguments.length===2,'HANDLE');
+ return claimSevenInstallation(completion,handle,true);
+}
+function claimSevenInstallation(completion,handle,voucher){
+ need(completion&&!types.isProxy(completion)&&installed.has(completion),'HANDLE');
+ const receipt=installed.get(completion);
+ need(receipt.handle===handle&&(!voucher||receipt.competition),'HANDLE');
  installed.delete(completion);receipt.check();
  const {check,checkContinuity,source,roleCompletion,competition}=receipt;
- return Object.freeze({completion,check,checkContinuity,source,roleCompletion,...(competition?{competition:true}:{})});
+ return Object.freeze({completion,check,checkContinuity,source,roleCompletion,...(competition?{competition:true}:{}),
+  ...(voucher?{voucherPreimageSql:voucherSevenPreimageSql(receipt.input,completion.catalogSha256)}:{})});
 }
-module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial});
+function voucherSevenPreimageSql(input,catalogSha256){
+ const {current259VoucherAcl}=require('./task16-current259-voucher-acl.cjs');
+ const {bindingSha256Sql}=current259VoucherAcl();
+ return `${SCHEMA205_DEPARSE_LOCAL}
+CREATE TEMP TABLE pg_temp.jg_c259_voucher_preimage ON COMMIT DROP AS
+ SELECT ${stableSql(input)} AS catalog_sha256, ${bindingSha256Sql} AS binding_sha256;
+DO $current259_voucher_seven_preimage$
+BEGIN
+ IF NOT EXISTS (SELECT FROM pg_temp.jg_c259_voucher_preimage
+   WHERE catalog_sha256=${quote(catalogSha256)} AND binding_sha256 IS NOT NULL)
+ THEN RAISE EXCEPTION '${CODE}_VOUCHER_PREIMAGE_DRIFT'; END IF;
+END $current259_voucher_seven_preimage$;
+SET LOCAL search_path=pg_catalog,pg_temp;`;
+}
+module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,
+ claimCurrent259VoucherSevenInstallation});

@@ -47,11 +47,21 @@ function loadCurrent259CatalogMaterial(source){
   accessPlan:{runtime:m.plan.runtime,observer:m.plan.observer},
   executionAllowed:false,nativeAdmission:false});
 }
+function materialForRequest(r){
+ const m=material(r.source);
+ if(r.identity.voucherProfile){
+  const {current259VoucherAcl,voucherAccessPlan}=require('./task16-current259-voucher-acl.cjs');
+  m.voucher=current259VoucherAcl();
+  m.plan=voucherAccessPlan(m.plan);
+ }
+ return m;
+}
 function request(input){
  const r=snapshot(input);need(equal(Object.keys(r).sort(),['identity','nonce','phase','source',...(Object.hasOwn(r,'installXid')?['installXid']:[])].sort()));
- const id=r.identity,competition=Object.hasOwn(id,'runtimeProfile');
- need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',...(competition?['runtimeProfile']:[])].sort())&&
-  (!competition||id.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES'));
+ const id=r.identity,competition=Object.hasOwn(id,'runtimeProfile'),voucher=Object.hasOwn(id,'voucherProfile');
+ need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',...(competition?['runtimeProfile']:[]),...(voucher?['voucherProfile']:[])].sort())&&
+  (!competition||id.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')&&
+  (!voucher||(competition&&id.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1')));
  need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(id.runId)&&id.database==='jg_task01_'+id.runId.replaceAll('-','')&&
   ['databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid'].every(k=>oid(id[k]))&&
   new Set([id.ownerOid,id.runtimeOid,id.observerOid]).size===3&&wide(id.systemIdentifier)&&
@@ -69,10 +79,15 @@ function config(r,m){
 function query(r,m){
  const template=m.files.find(f=>f.path==='services/api/prisma/task16-current259-catalog.sql').bytes.toString('utf8');
  need(template.split('__CONFIG__').length===2&&template.includes('__GUARDS__'));
- return template.replace('__CONFIG__',quote(JSON.stringify(config(r,m)))).replace('__GUARDS__','('+baselineGuardsSql()+') AND ('+referenceGuardSql(m.plan)+')');
+ const guards='('+baselineGuardsSql()+') AND ('+referenceGuardSql(m.plan)+')';
+ const voucher=m.voucher?' AND ('+m.voucher.continuitySql(m.plan.functionProofs)+')':'';
+ const sql=template.replace('__CONFIG__',quote(JSON.stringify(config(r,m)))).replace('__GUARDS__',guards+voucher);
+ if(!m.voucher)return sql;
+ return `SELECT q.result || pg_catalog.jsonb_build_object('voucherBindingSha256',${m.voucher.bindingSha256Sql}) AS result
+ FROM (${sql.trim().replace(/;$/u,'')}) q;\n`;
 }
 function renderCurrent259CatalogRead(input){
- const r=request(input);need(r.phase!=='staged');const m=material(r.source);
+ const r=request(input);need(r.phase!=='staged');const m=materialForRequest(r);
  return 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL search_path=pg_catalog,pg_temp;\n'+query(r,m)+'\nROLLBACK;\n';
 }
 
@@ -101,7 +116,7 @@ const stableIdentity=value=>Object.fromEntries(Object.entries(value).filter(([ke
 const keys=(value,expected)=>need(equal(Object.keys(value).sort(),expected.sort()));
 function validate(row,r,m,prior,checkLink=true){
  keys(row,['phase','nonce','sourceSha','sealSha256','schemaSha256','identity','ledger','roles','relations',
-  'capabilities','functions','extraFunctions','otherAclSha256','writeXid','commitStatus','reader','guardsVerified','readerColumns','publicAclViolations']);
+  'capabilities','functions','extraFunctions','otherAclSha256','writeXid','commitStatus','reader','guardsVerified','readerColumns','publicAclViolations',...(m.voucher?['voucherBindingSha256']:[])]);
  need(row.phase===r.phase&&row.nonce===r.nonce&&row.sourceSha===m.p.candidateSha&&row.sealSha256===m.p.sealSha256&&
   row.schemaSha256===m.p.schemaSha256&&equal(row.ledger,m.p.ledger)&&row.guardsVerified===true&&
   equal(row.readerColumns,m.manifest.readerColumns)&&equal(row.publicAclViolations,[]));
@@ -149,6 +164,7 @@ function validate(row,r,m,prior,checkLink=true){
   need(!signatures.has(f[2])||signatures.get(f[2])===f[1]);signatures.set(f[2],f[1]);
  });
  need(typeof row.otherAclSha256==='string'&&/^[a-f0-9]{64}$/u.test(row.otherAclSha256));
+ if(m.voucher)need(typeof row.voucherBindingSha256==='string'&&/^[a-f0-9]{64}$/u.test(row.voucherBindingSha256));
  if(r.phase==='before')need(row.reader===null&&row.writeXid===null&&row.commitStatus===null&&prior===undefined);
  else{
   const v=row.reader;need(v&&oid(v.oid));
@@ -164,7 +180,8 @@ function validate(row,r,m,prior,checkLink=true){
    const checked=validate(before.raw,previousRequest,m,undefined,false);need(equal(before,checked));
    need(equal(stableIdentity(before.raw.identity),stableIdentity(id))&&
     equal(before.raw.roles,row.roles)&&equal(before.raw.ledger,row.ledger)&&equal(before.raw.relations,row.relations)&&
-    equal(before.raw.capabilities,row.capabilities)&&before.raw.otherAclSha256===row.otherAclSha256);
+    equal(before.raw.capabilities,row.capabilities)&&before.raw.otherAclSha256===row.otherAclSha256&&
+    before.raw.voucherBindingSha256===row.voucherBindingSha256);
    const oldFunctions=row.functions.filter(f=>f[1]!==SIGNATURE);
    if(r.phase==='staged')need(equal(oldFunctions,before.raw.functions));
    else need(before.raw.writeXid===r.installXid&&equal(row.functions,before.raw.functions)&&
@@ -177,7 +194,7 @@ function validate(row,r,m,prior,checkLink=true){
 function parseCurrent259CatalogRead(stdout,input,prior){
  try{
   need(typeof stdout==='string'&&Buffer.byteLength(stdout)<=512*1024);
-  const r=request(input),m=material(r.source),row=snapshot(JSON.parse(stdout.trim()));
+  const r=request(input),m=materialForRequest(r),row=snapshot(JSON.parse(stdout.trim()));
   return validate(row,r,m,prior);
  }catch{fail();}
 }
@@ -218,7 +235,7 @@ END $current259_staged$;`;
 function renderCurrent259B7Install(input){
  try{
   const args=snapshot(input);keys(args,['source','identity','nonce','before']);
-  const r=request({source:args.source,identity:args.identity,nonce:args.nonce,phase:'before'}),m=material(r.source);
+  const r=request({source:args.source,identity:args.identity,nonce:args.nonce,phase:'before'}),m=materialForRequest(r);
   keys(args.before,['status','executionAllowed','nativeAdmission','raw']);
   const before=validate(args.before.raw,r,m);
   need(equal(before,args.before));
@@ -228,7 +245,7 @@ function renderCurrent259B7Install(input){
   const script=`BEGIN ISOLATION LEVEL SERIALIZABLE;
 SET LOCAL search_path=pg_catalog,pg_temp;
 SET LOCAL lock_timeout='5s';
-LOCK TABLE public._prisma_migrations IN SHARE MODE;
+${m.voucher?m.voucher.lockSql:'LOCK TABLE public._prisma_migrations IN SHARE MODE;'}
 DO $current259_before$ DECLARE observed jsonb; BEGIN
  SELECT q.result INTO STRICT observed FROM (${projection}) q;
  observed:=jsonb_set(observed,'{identity}',(observed->'identity')-'backendPid'-'backendStart'-'readOnly')-'writeXid';

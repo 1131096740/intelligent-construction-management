@@ -15,11 +15,12 @@ const FIRST_Q2_TOPOLOGY = "UNVERIFIED_FIRST_Q2_LOOPBACK_TLS";
 const NORMAL_LIFETIME = Symbol("current259 normal payment lifetime");
 const RESPONSE_LOSS_LIFETIME = Symbol("current259 response loss lifetime");
 const COMPETITION_LIFETIME = Symbol("current259 payment competition lifetime");
+const VOUCHER_LIFETIME = Symbol("current259 payment competition voucher lifetime");
 const DISCONNECT_RECOVERY_LIFETIME = Symbol("current259 disconnect recovery lifetime");
 const ATTRIBUTION_GAP_LIFETIME = Symbol("current259 payment attribution gap lifetime");
 const loopbackScenarios = new Map([
   [FIRST_ROLLBACK_LIFETIME, "cancel-commit"], [NORMAL_LIFETIME, "normal"], [RESPONSE_LOSS_LIFETIME, "response-loss"],
-  [COMPETITION_LIFETIME, "competition"], [DISCONNECT_RECOVERY_LIFETIME, "disconnect-commit-recovery"], [ATTRIBUTION_GAP_LIFETIME, "attribution-gap"]
+  [COMPETITION_LIFETIME, "competition"], [VOUCHER_LIFETIME, "competition-voucher"], [DISCONNECT_RECOVERY_LIFETIME, "disconnect-commit-recovery"], [ATTRIBUTION_GAP_LIFETIME, "attribution-gap"]
 ]);
 const TECHNICAL_PURPOSE = "CURRENT259_TECHNICAL_MIGRATIONS_V1";
 
@@ -872,6 +873,10 @@ async function startCurrent259CompetitionPostgres(options) {
   requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
   return startCurrent259FixedPostgres(options, COMPETITION_LIFETIME);
 }
+async function startCurrent259VoucherPostgres(options) {
+  requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
+  return startCurrent259FixedPostgres(options, VOUCHER_LIFETIME);
+}
 async function startCurrent259DisconnectRecoveryPostgres(options) {
   requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
   return startCurrent259FixedPostgres(options, DISCONNECT_RECOVERY_LIFETIME);
@@ -881,4 +886,4 @@ async function startCurrent259AttributionGapPostgres(options) {
   return startCurrent259FixedPostgres(options, ATTRIBUTION_GAP_LIFETIME);
 }
 module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, startCurrent259FirstRollbackPostgres,
-  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint };
+  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint };

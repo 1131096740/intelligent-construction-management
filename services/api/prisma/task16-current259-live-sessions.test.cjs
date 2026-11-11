@@ -4,13 +4,17 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const noop=()=>{};noop.test=noop;
-const catalog=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-catalog.test.cjs'),'utf8')+'\nreturn {source,identity,request,observed,api};')(name=>name==='node:test'?noop:require(name),__dirname);
+const catalog=new Function('require','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-catalog.test.cjs'),'utf8')+'\nreturn {source,identity,request,observed,api,plan};')(name=>name==='node:test'?noop:require(name),__dirname);
 const {source,identity,request,observed}=catalog;
 const clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(options={}){
- const handle=Object.freeze({}),completion=Object.freeze({installXid:'1000'}),calls=[],clients=[],proofRow=observed('committed');
- const staged=observed('staged'),parser=catalog.api.parseCurrent259CatalogRead;
- const initial=observed(),requested=options.competition?{...request,identity:{...request.identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}}:request;
+ const handle=Object.freeze({}),completion=Object.freeze({installXid:'1000'}),calls=[],clients=[];
+ let plan=catalog.plan;
+ if(options.voucher)plan=require('./task16-current259-voucher-acl.cjs').voucherAccessPlan(plan);
+ const proofRow=observed('committed',plan),staged=observed('staged',plan),parser=catalog.api.parseCurrent259CatalogRead;
+ const initial=observed('before',plan),requested=options.competition?{...request,identity:{...request.identity,
+  runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES',...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})}}:request;
+ if(options.voucher)for(const row of [initial,staged,proofRow])row.voucherBindingSha256='7'.repeat(64);
  if(options.competition)for(const row of [initial,staged,proofRow])row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
  const before=parser(JSON.stringify(initial),requested);
  const stagedProof=parser(JSON.stringify(staged),{...requested,phase:'staged'},before);
@@ -22,7 +26,7 @@ function fixture(options={}){
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId,...(options.recovery?{ordinary:{oid:'208'}}:{})};
  const relay=options.relay??Boolean(options.competition||options.recovery);
  const relayId='12345678-1234-4234-8234-123456789012',topology=options.topology??
-  (options.competition?'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS':options.recovery?'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS':
+  (options.voucher?'UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS':options.competition?'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS':options.recovery?'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS':
    'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS');
  const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,...(relay?{transport:topology,relayId,host:'127.0.0.1',port:52123,serverAddress:'127.0.0.1'}
    :{publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2'}),serverPort:5432};
@@ -537,3 +541,26 @@ for(const wrong of [{relay:false},{topology:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_
    ()=>assert.fail('wrong disconnect transport')),/FAILED_CLOSED/u);
   assert.deepEqual(f.clients,[]);assert.equal(f.resourceClosed(),1);
  });
+
+test('the A17 profile requires the named relay and preserves the C0 binding in live readback',async()=>{
+ const f=fixture({competition:true,voucher:true});
+ await f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,async proofs=>{
+  const [left,right]=proofs.map(proof=>f.api.claimCurrent259LiveSessions(proof,f.handle));
+  assert.equal(left.endpoint.transport,'UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS');
+  assert.equal(left.endpoint.relayId,right.endpoint.relayId);
+  assert.deepEqual(left.identity[2],right.identity[2]);
+  assert.deepEqual([left.identity[1].pid,right.identity[1].pid],[102,104]);
+  await right.verifyInstalled259();
+ });
+ assert.deepEqual(f.clients.map(row=>row.disconnects),[1,1,1,1]);
+});
+for(const options of [
+ {voucher:true,topology:'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'},
+ {voucher:false,topology:'UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'},
+ {voucher:true,onCatalog(row){row.voucherBindingSha256='8'.repeat(64);}}
+])test('the A17 relay/profile and C0 live witness cannot be substituted '+(options.topology??'C0'),async()=>{
+ const f=fixture({competition:true,...options});
+ await assert.rejects(f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,
+  ()=>assert.fail('wrong voucher qualification issued a session')),/FAILED_CLOSED/u);
+ assert.equal(f.resourceClosed(),1);
+});

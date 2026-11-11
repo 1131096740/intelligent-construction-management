@@ -1,0 +1,517 @@
+{
+  "readDelta": {
+    "AffiliateClearingAuthorityVersion": [
+      "evidenceFileId"
+    ],
+    "ApprovalActionLog": [
+      "signatureFileIdSnapshot"
+    ],
+    "ApprovalFormGenerationClaim": [
+      "uploadedFileId"
+    ],
+    "ArchiveRecord": [
+      "fileId"
+    ],
+    "CompanyTransfer": [
+      "evidenceFileId"
+    ],
+    "ContractArchiveEvidenceFile": [
+      "archiveFileId",
+      "contractVersionId",
+      "fileId"
+    ],
+    "ContractArchiveFile": [
+      "archiveProtocolVersion",
+      "archiveSource",
+      "contractVersionId",
+      "fileId",
+      "id"
+    ],
+    "ContractAuthorization": [
+      "fileId"
+    ],
+    "ContractBankVerificationRequest": [
+      "evidenceFileId",
+      "holderEvidenceFileId"
+    ],
+    "ContractBill": [
+      "sourceExcelFileId"
+    ],
+    "ContractBillImport": [
+      "fileId"
+    ],
+    "ContractDraftAttachment": [
+      "fileId"
+    ],
+    "ContractEconomicReviewFileReference": [
+      "fileId",
+      "objectKey"
+    ],
+    "ContractFormalFile": [
+      "fileId"
+    ],
+    "ContractGeneratedDocument": [
+      "docxFileId",
+      "pdfFileId"
+    ],
+    "ContractLayoutPreviewJob": [
+      "previewPdfFileId"
+    ],
+    "ContractLayoutTemplateVersion": [
+      "docxFileId",
+      "previewPdfFileId"
+    ],
+    "ContractOfflineRevision": [
+      "fileId",
+      "previewPdfFileId"
+    ],
+    "ContractProxyExecution": [
+      "evidenceFileId"
+    ],
+    "ContractTakeoverCorrection": [
+      "attachmentFileId",
+      "correctionType"
+    ],
+    "ContractTakeoverExcessEvidence": [
+      "fileId"
+    ],
+    "ContractTakeoverHistoricalPaymentVoucher": [
+      "fileId"
+    ],
+    "ContractTakeoverSettlementEvidence": [
+      "fileId"
+    ],
+    "ContractTaxFactRevision": [
+      "evidenceFileId"
+    ],
+    "EmployeeLoanRepayment": [
+      "voucherFileId"
+    ],
+    "EmployeeProjectLoanEntry": [
+      "voucherFileId"
+    ],
+    "ExpenseClaimAttachment": [
+      "fileId"
+    ],
+    "ExpenseClaimPaymentExecution": [
+      "voucherFileId"
+    ],
+    "FileObject": [
+      "bucket",
+      "contentSha256",
+      "createdAt",
+      "id",
+      "mimeType",
+      "objectKey",
+      "originalName",
+      "purgeReceiptId",
+      "sizeBytes",
+      "storageStatus",
+      "supersedesFileObjectId",
+      "uploadedByUserId"
+    ],
+    "GeneralProcurement": [
+      "archiveFileId"
+    ],
+    "HandwrittenSignatureVersion": [
+      "fileId"
+    ],
+    "InterEntityRelationshipEvidenceClaim": [
+      "fileId"
+    ],
+    "InvoiceEvidenceRepairResolution": [
+      "replacementFileId"
+    ],
+    "InvoiceExceptionConfirmation": [
+      "proofFileId"
+    ],
+    "InvoiceRecord": [
+      "fileId"
+    ],
+    "NoInvoiceConfirmation": [
+      "proofFileId"
+    ],
+    "OperatingTakeoverAttachmentLink": [
+      "fileId"
+    ],
+    "OperatingTakeoverBatch": [
+      "sourceFileId"
+    ],
+    "PaymentExecutionPayerAttestation": [
+      "proxyAuthorizationEvidenceFileId",
+      "verificationEvidenceFileId"
+    ],
+    "PaymentExecutionPayerVerification": [
+      "verificationEvidenceFileId"
+    ],
+    "PdfDocument": [
+      "fileId"
+    ],
+    "ProjectAffiliateBusinessEvidence": [
+      "fileId"
+    ],
+    "ProjectAffiliateCompanyContract": [
+      "confirmationSignatureFileId",
+      "fileId"
+    ],
+    "ProjectAffiliateContractFact": [
+      "confirmationSignatureFileId",
+      "evidenceFileId"
+    ],
+    "ProjectAffiliatePaymentFact": [
+      "confirmationSignatureFileId",
+      "evidenceFileId"
+    ],
+    "ProjectAffiliateSettlementFact": [
+      "confirmationSignatureFileId",
+      "evidenceFileId"
+    ],
+    "ProjectExpenseExecution": [
+      "voucherFileId"
+    ],
+    "ProjectExpenseRequest": [
+      "attachmentFileId"
+    ],
+    "ProjectFinancingQuota": [
+      "attachmentFileId",
+      "terminationSignatureFileId"
+    ],
+    "ProjectFundDisputeEntry": [
+      "evidenceFileId"
+    ],
+    "ProjectNecessaryExpenseReserveEntry": [
+      "evidenceFileId"
+    ],
+    "ProjectOwnerContract": [
+      "fileId"
+    ],
+    "ProjectProxyPayment": [
+      "voucherFileId"
+    ],
+    "ProjectReceipt": [
+      "voucherFileId"
+    ],
+    "ProjectSettlementExceptionQuota": [
+      "attachmentFileId"
+    ],
+    "ProjectUpstreamFundFact": [
+      "confirmationSignatureFileId",
+      "evidenceFileId"
+    ],
+    "ProjectUpstreamSettlement": [
+      "confirmationSignatureFileId",
+      "voucherFileId"
+    ],
+    "SettlementArchiveFile": [
+      "fileId"
+    ],
+    "SettlementImport": [
+      "fileId"
+    ],
+    "SettlementLineAttachment": [
+      "fileId"
+    ],
+    "SettlementRecoveryEntry": [
+      "evidenceFileId"
+    ],
+    "SettlementSignedDocument": [
+      "fileId"
+    ],
+    "SettlementSignedDocumentGenerationClaim": [
+      "uploadedFileId"
+    ],
+    "SettlementTemplatePreviewJob": [
+      "previewPdfFileId",
+      "previewXlsxFileId"
+    ],
+    "SettlementTemplateVersion": [
+      "previewPdfFileId",
+      "previewXlsxFileId",
+      "xlsxFileId"
+    ],
+    "SpotProcurementAttachment": [
+      "fileId"
+    ],
+    "SpotProcurementPayment": [
+      "merchantPaymentProofFileId",
+      "supportingAttachmentFileId"
+    ],
+    "SpotProcurementPaymentArchive": [
+      "generatedPackageFileId"
+    ],
+    "SpotProcurementPaymentArchiveFile": [
+      "fileId"
+    ],
+    "SpotProcurementPaymentAttachment": [
+      "fileId"
+    ],
+    "SpotProcurementPaymentExecution": [
+      "voucherFileId"
+    ],
+    "SpotProcurementPaymentExecutionVoucher": [
+      "fileId"
+    ],
+    "SpotProcurementPaymentInvoice": [
+      "fileId"
+    ],
+    "SpotProcurementReceiptPhoto": [
+      "id",
+      "originalFileId",
+      "watermarkedFileId"
+    ],
+    "SpotProcurementRefund": [
+      "voucherFileId"
+    ],
+    "UpwardContractAmountRevision": [
+      "evidenceFileId"
+    ],
+    "VerifiedBankTransactionObservation": [
+      "transactionEvidenceFileId",
+      "verificationEvidenceFileId"
+    ],
+    "WageApprovedSourceVersion": [
+      "evidenceFileId"
+    ]
+  },
+  "insertDelta": {
+    "FileObject": [
+      "bucket",
+      "contentSha256",
+      "id",
+      "mimeType",
+      "objectKey",
+      "originalName",
+      "sizeBytes",
+      "storageStatus",
+      "supersedesFileObjectId",
+      "uploadedByUserId"
+    ],
+    "RegisteredPaymentVoucher": [
+      "contentSha256",
+      "executionId",
+      "fileId",
+      "uploadedByUserId"
+    ]
+  },
+  "lockOnlyUpdate": {
+    "FileObject": "createdAt",
+    "PaymentExecution": "id"
+  },
+  "routineSources": [
+    {
+      "signature": "public.jg_file_business_binding_columns()",
+      "bodySha256": "46e6f6acb43b69175637009a272eec11a945928f055272aeea13ea86c384a4a3",
+      "searchPath": [
+        "pg_catalog",
+        "public",
+        "pg_temp"
+      ],
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_affiliate_company_contract()",
+      "bodySha256": "3829c2f025c6a293806249e9e6ccdf835b7e41be122dc9933b139dcff79dc7d2",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "i",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_bank_verification()",
+      "bodySha256": "84fe2c12bba4a725651e96cae2d8d1fcceb741b633c5b36e8c3b45b7151c00c5",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_company_transfer()",
+      "bodySha256": "f7d5ff5cc489348c171760579dc8558eb30cdcf3336a00c15416717bfe531fc3",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_contract_archive_v2()",
+      "bodySha256": "fb767ff29a7a4e2c3174ac8b97fd306b3ed7946cd1db31cb3fa6f6aba2270af3",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_contract_proxy()",
+      "bodySha256": "c4cfe12255775d52a074557bde16edf4b567928e2daaa198d1f4126973ecddad",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_general_procurement()",
+      "bodySha256": "11f8bb70d002a60d9d32e65ed9432d2dabe2e807d0e616e077741acc857b45c0",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_operating_takeover()",
+      "bodySha256": "67434ace8ef58c6fb4cb0f223e194e73f6a54c9053a6f02aeab07a2142c2c60f",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_payment_execution()",
+      "bodySha256": "fb1c1f94c2cabc5a2269bfda41c5a1cb436d34fcf51525b2819b3e84389722ce",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol13b()",
+      "bodySha256": "78f95dab983cbff5c465f2608eaef8ae363a21adedd321a8c8d4bfc74fe84fd3",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol13b_attestation()",
+      "bodySha256": "954c64ee3c644672e92b52c116c5756c950e5e21dabe134e6b83b2e925abe66e",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol13b_payer_authority()",
+      "bodySha256": "9adca11635cacf6606054cbbf875e0810e19ba5a34a366f9ec801e4113583d96",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol13d_fund_execution()",
+      "bodySha256": "1acf8d7063f3f6eeb00c5032c479af062a2f2e654188190f624ad2099f276336",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol214_affiliate_clearing_authority()",
+      "bodySha256": "77a8609e78c6400c7e2307d77760c71f2fcfeb07ccf4825478cb242964b07dbe",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol260_invoice_evidence_repair()",
+      "bodySha256": "d5e0cf16db18893191a279b31b7c13d5ac7e6721f21d5741fc4e5cac5962c79e",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol279_necessary_expense_reserve()",
+      "bodySha256": "6dc038aa23a8c8b30fbc81e39d46e63740dfa39786ef41b3714b1808eff391ec",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_pol280_project_fund_dispute()",
+      "bodySha256": "fa10ee02640bfcc97289534ce6b1cc6ff525b2c23ad5f5785f9a982b195edf45",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_project_expense_execution()",
+      "bodySha256": "2705ed0ade452177bf09d92be34cb69032b0dc17d6c08fc550c44ec8a3f26a7e",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_project_financing_quota_request()",
+      "bodySha256": "4e0c8631b174e41bad8709ea97ca3f3edb01bd77d8d9da4e66d3e6713d14f3da",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_registered_payment()",
+      "bodySha256": "d2a3171b76def6792d43f5cc37ede636f0f25e57b4dcf25625d3e4c91471080f",
+      "searchPath": [
+        "pg_catalog",
+        "public",
+        "pg_temp"
+      ],
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_upward_amount()",
+      "bodySha256": "72346a5ba2490a298affb2a438052098ec90d866ab83e0aba541c1ce1e71f8ce",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_binding_columns_before_wage_statement()",
+      "bodySha256": "221c2ae6614614ede5b9ca73537a3603b1d7e249881564c4078c37c225b851f8",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    },
+    {
+      "signature": "public.jg_file_business_collision_columns()",
+      "bodySha256": "59bcdff6d8e5026d8619a3fd7cf0d8796091e61f41ea4eb1543c9d1e0b530012",
+      "searchPath": null,
+      "language": "sql",
+      "volatility": "s",
+      "parallel": "s",
+      "strict": false
+    }
+  ]
+}

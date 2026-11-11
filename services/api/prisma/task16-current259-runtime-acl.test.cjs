@@ -6,7 +6,7 @@ const {createHash} = require('node:crypto');
 const {readFileSync, readdirSync} = require('node:fs');
 const path = require('node:path');
 const {qualifyCurrent259Source} = require('./task16-current259-profile.cjs');
-const {renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl} = require('./task16-current259-runtime-acl.cjs');
+const {renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl,renderCurrent259VoucherRuntimeAcl} = require('./task16-current259-runtime-acl.cjs');
 
 const nonce='d'.repeat(64);
 const database = 'jg_task01_12345678123442348234123456789012';
@@ -85,4 +85,25 @@ test('fixed competition ACL requires runtime two and observer one and leaves the
  assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,single,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,{...single,roles:[{...runtime,limit:2},{...observer,limit:2}]},nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,{...single,roles:[{...runtime,limit:3},{...observer,limit:1}]},nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+});
+
+test('voucher runtime takes the original shared locks and installs only the additive guards before its grants',()=>{
+ const roles={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ const voucher=renderCurrent259VoucherRuntimeAcl(source,roles,nonce);
+ const competition=renderCurrent259CompetitionRuntimeAcl(source,roles,nonce);
+ const newGrants=new Set(voucher.sql.match(/^GRANT .*;$/gmu));
+ const oldGrants=competition.sql.match(/^GRANT .*;$/gmu);
+ for(const grant of oldGrants.filter(line=>line.includes('"jg_task01_observer"')))assert.ok(newGrants.has(grant));
+ assert.match(voucher.lockSql,/^LOCK TABLE public\._prisma_migrations, .*jg_contract_direct_pending_binding_v1 IN SHARE MODE NOWAIT;/u);
+ const before=voucher.sql.indexOf('DO $voucher_before$');
+ const insertGuard=voucher.sql.indexOf('CREATE TRIGGER "jg_task16_runtime_voucher_file_insert"');
+ const insertGrant=voucher.sql.indexOf('GRANT INSERT ("contentSha256", "executionId", "fileId", "uploadedByUserId")');
+ const after=voucher.sql.indexOf('DO $current259_runtime_acl_after$');
+ assert.ok(before>=0&&insertGuard>before&&insertGrant>insertGuard&&after>insertGrant);
+ assert.equal((voucher.sql.match(/ENABLE ALWAYS TRIGGER/g)||[]).length,7);
+ assert.match(voucher.witnessSql,/CURRENT259_PAYMENT_VOUCHER_V1/u);
+ assert.match(voucher.witnessSql,/voucherBindingSha256/u);
+ assert.match(voucher.witnessSql,/p\.proargdefaults IS NULL/u);
+ assert.doesNotMatch(competition.witnessSql,/CURRENT259_PAYMENT_VOUCHER_V1|voucherBindingSha256/u);
+ assert.throws(()=>renderCurrent259VoucherRuntimeAcl(source,receipt(),nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });

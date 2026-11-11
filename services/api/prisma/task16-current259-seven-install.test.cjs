@@ -23,11 +23,12 @@ const registry={namespaceOid:'2200',ownerOid:'10',publicDefault:null,globalDefau
  definition:{pronamespace:'2200',proowner:'10',prosrc:oldBody},
 }};
 const roleCompletion=Object.freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:candidateSha,runId,containerId,databaseIdentity:identity,ordinary,roles,databaseAcl,commitXid:'201'});
-function fixture(mutate){
+function fixture(mutate,competition=false){
+ const suppliedRoles=competition?{...roleCompletion,roles:[{...roles[0],limit:2},roles[1]]}:roleCompletion;
  const token=Object.freeze({}),metadata={parent:0};let forbidFull=false;
  const full=()=>{assert.equal(forbidFull,false);};
  const issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);};
- const calls=[],handle=Object.freeze({}),secretClaim={source,completion:roleCompletion,check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
+ const calls=[],handle=Object.freeze({}),secretClaim={source,completion:suppliedRoles,competition,check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
  let closed=false,claimed=false;
  const view={source,runId,verifyFull:full,check:full,checkLifetime(){assert.equal(closed,false);},resource:{containerId,databaseName:database,async execOwnerSql(sql,phase){
   const index=calls.length;calls.push({sql,phase});
@@ -39,13 +40,13 @@ function fixture(mutate){
  }}};
  const imports={
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
-  './task16-current259-role-provision.cjs':{claimCurrent259ProvisionedRoles(completion,owned){assert.equal(completion,roleCompletion);assert.equal(owned,handle);assert.equal(claimed,false);claimed=true;return secretClaim;}},
+  './task16-current259-role-provision.cjs':{claimCurrent259ProvisionedRoles(completion,owned){assert.equal(completion,suppliedRoles);assert.equal(owned,handle);assert.equal(claimed,false);claimed=true;return secretClaim;}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(owned){assert.equal(owned,handle);assert.equal(closed,false);return view;},async closeCurrent259OwnedResource(owned){assert.equal(owned,handle);closed=true;}},
   'node:crypto':{...require('node:crypto'),randomBytes:()=>Buffer.from(nonce,'hex')},
  };
  const holder={exports:{}};
  new Function('require','module','__dirname',read('task16-current259-seven-install.cjs'))(name=>imports[name]??require(name),holder,__dirname);
- return {api:holder.exports,handle,token,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed};
+ return {api:holder.exports,handle,token,metadata,suppliedRoles,forbidFull(){forbidFull=true;},calls,closed:()=>closed};
 }
 
 test('installs the pinned seven fragments in one write and issues only a same-resource committed continuation',async()=>{
@@ -96,4 +97,28 @@ test('issued seven continuity retains the original role capability and rejects c
  const f=fixture(),result=await f.api.installCurrent259SevenFragments(roleCompletion,f.handle),lease=f.api.claimCurrent259SevenInstallation(result,f.handle);
  f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
  assert.throws(()=>lease.checkContinuity({...f.token}));
+});
+
+test('voucher seven claim supplies the exact installed stable catalog witness only once to the same handle',async()=>{
+ const f=fixture(undefined,true);
+ const result=await f.api.installCurrent259SevenFragments(f.suppliedRoles,f.handle);
+ const claim=f.api.claimCurrent259VoucherSevenInstallation;
+ assert.equal(typeof claim,'function');
+ assert.throws(()=>claim(result,{}),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
+ assert.throws(()=>claim({...result},f.handle),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
+ const lease=claim(result,f.handle);
+ assert.equal(lease.completion,result);
+ assert.match(lease.voucherPreimageSql,/SET LOCAL search_path=pg_catalog,public,pg_temp;/u);
+ assert.match(lease.voucherPreimageSql,/SET LOCAL quote_all_identifiers=off;/u);
+ const original=f.calls[2].sql.split("'catalogSha256',")[1].split(",'installXid'")[0];
+ assert.ok(lease.voucherPreimageSql.includes(original));
+ assert.ok(lease.voucherPreimageSql.includes(result.catalogSha256));
+ assert.match(lease.voucherPreimageSql,/pg_temp\.jg_c259_voucher_preimage/u);
+ assert.throws(()=>f.api.claimCurrent259SevenInstallation(result,f.handle),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
+ assert.throws(()=>claim(result,f.handle),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
+
+ const single=fixture();
+ const other=await single.api.installCurrent259SevenFragments(single.suppliedRoles,single.handle);
+ assert.throws(()=>single.api.claimCurrent259VoucherSevenInstallation(other,single.handle),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
+ assert.equal(single.api.claimCurrent259SevenInstallation(other,single.handle).voucherPreimageSql,undefined);
 });

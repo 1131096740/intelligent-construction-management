@@ -13,6 +13,10 @@ const profiles = Object.freeze({
     plan: 'PAYMENT_COMPETITION_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'
   }),
+  'competition-voucher': Object.freeze({
+    plan: 'PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS_V1',
+    topology: 'UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'
+  }),
   'disconnect-commit-recovery': Object.freeze({
     plan: 'PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS'

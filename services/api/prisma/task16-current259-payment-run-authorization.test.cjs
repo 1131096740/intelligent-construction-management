@@ -22,7 +22,7 @@ function fixture(t,options={}){
  const roles=Object.freeze({...technical,status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',roles:names.map((name,i)=>({name,oid:String(200+i)})),commitXid:'1000'});
  const seven=Object.freeze({sourceSha:source.candidateSha,runId:technical.runId,installXid:'1100'});
  const acl=Object.freeze({status:'CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:technical.runId,installXid:'1200'});
- const scopeIdentity={runId:technical.runId,...identity,runtimeOid:'208',observerOid:'207',...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})};
+ const scopeIdentity={runId:technical.runId,...identity,runtimeOid:'208',observerOid:'207',...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})};
  const module={exports:{},filename:file};const cache={[file]:module};
  const check=()=>{assert.ok(!signal?.aborted);options.onCheck?.();};
  const view={source,runId:technical.runId,resource:{containerId:technical.containerId,databaseName:identity.database,getReceipt(){return JSON.parse(JSON.stringify(manifest));}},check,checkLifetime:check,verifyFull:check};
@@ -57,6 +57,9 @@ function fixture(t,options={}){
    },
    async withCurrent259ResponseLossResource(build,plan,sig,consume){
     return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'response-loss');
+   },
+   async withCurrent259VoucherResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'competition-voucher');
    },
    async withCurrent259CompetitionResource(build,plan,sig,consume){
     return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'competition');
@@ -154,6 +157,12 @@ function fixture(t,options={}){
   new Function('require','module','__dirname',fs.readFileSync(childFile,'utf8'))(childRequire,childModule,__dirname);
   ports['./task16-current259-pfq-concurrency.cjs']=childModule.exports;
  }
+ if(options.voucher)ports['./task16-current259-payment-acl-install.cjs'].installCurrent259VoucherPaymentAcl=async(value,h,permit)=>{
+  state.calls.push('voucher-acl');assert.equal(value,seven);assert.equal(h,handle);
+  assert.equal(module.exports.claimCurrent259VoucherAclPermit(permit,h,options.wrongVoucherSeven?{...value}:value),true);
+  if(options.replayVoucher)module.exports.claimCurrent259VoucherAclPermit(permit,h,value);
+  return acl;
+ };
  if(options.competition)options.business=true;
  if(options.businessApi)ports['../../../scripts/prepare-task16-current259-payment-business.cjs']=options.businessApi;
  if(options.business){
@@ -161,7 +170,7 @@ function fixture(t,options={}){
   state.replaceBusinessLive=()=>{ports['./task16-current259-live-sessions.cjs'].withCurrent259LiveSessions=async()=>{state.calls.push('foreign-live');};};
   const liveProof=Object.freeze({}),application=Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
   ports['./task16-current259-live-sessions.cjs']={async withCurrent259LiveSessions(b7,h,consume){assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live');try{return await consume(liveProof);}finally{state.calls.push('pools-close');}}};
-  ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check});}finally{state.calls.push('env-close');}}};
+  ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
   ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{return await consume(application);}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
@@ -205,8 +214,18 @@ function fixture(t,options={}){
   ports['./task16-current259-application-factory.cjs'].consumeCurrent259PaymentCompetition=async(apps,h,permit)=>{
    state.calls.push('competition');assert.equal(apps,applications);assert.equal(h,handle);
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,apps,h);lease.check();
-   assert.equal(lease.scope.scenario,'competition');
-   return {caseId:lease.scope.caseId,passed:true,competitionObserved:true,winner:'comprehensive_director',executionId:'execution',rootId:'root'};
+   assert.equal(lease.scope.scenario,options.voucher?'competition-voucher':'competition');
+   if(options.voucher){
+    assert.equal(permit.kind,'CURRENT259_PRIVATE_VOUCHER_CASE');
+    assert.equal(lease.scope.voucherStorageRoot,'/private/tmp/model-resource/application-private-voucher');
+    if(options.voucherFailureStage){
+     lease.recordVoucherFailure('private upstream body');
+     lease.recordVoucherFailure(options.voucherFailureStage);
+     lease.recordVoucherFailure('FINAL_VERIFY');
+     throw new Error('private upstream body');
+    }
+   }
+   return {caseId:lease.scope.caseId,passed:true,competitionObserved:true,...(options.voucher&&!options.missingVoucherResult?{voucherVerified:true}:{}),winner:'comprehensive_director',executionId:'execution',rootId:'root'};
   };
   ports['./task16-current259-payment-competition.cjs']={executeCurrent259PaymentCompetition(){assert.fail('unexpected raw competition callback');}};
  }
@@ -262,7 +281,7 @@ function fixture(t,options={}){
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  new Function('require','module','__dirname','__filename','process',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc);
@@ -272,7 +291,7 @@ test('default verifies a fixed payment install plan without consuming an attempt
  const f=fixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit']);
 });
 test('fresh once follows technical259→roles→seven→ACL→B7 under one handle and immutable attempt',async t=>{
  const f=fixture(t),result=await f.done;
@@ -286,7 +305,7 @@ test('fresh once follows technical259→roles→seven→ACL→B7 under one handl
 
 test('an imported module exposes claim only and cannot mint from JSON or a native flag',t=>{
  const f=fixture(t,{imported:true});
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit']);
  assert.throws(()=>f.api.claimCurrent259B7WritePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionRolePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionLivePermit({native:true},f.handle,f.acl));
@@ -391,7 +410,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
   ['task16-current259-seven-install',['installCurrent259SevenFragments']],
   ['task16-current259-payment-acl-install',['installCurrent259PaymentAcl']],
   ['task16-current259-owned-resource',['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource',
-   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259AttributionGapResource',
+   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259VoucherResource','withCurrent259AttributionGapResource',
    'withCurrent259DisconnectRecoveryResource','claimCurrent259TechnicalResource']],
   ['task16-current259-catalog',['renderCurrent259CatalogRead']],
   ['task16-runtime-inputs',['readQualifiedTask16File']]
@@ -413,7 +432,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
 function competitionFixture(t,options={}){
  const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
  new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
- const s=holder.exports.fixture(t),plan=s.business.prepareCurrent259PaymentCompetitionPlan({
+ const s=holder.exports.fixture(t),plan=s.business[options.voucher?'prepareCurrent259PaymentVoucherPlan':'prepareCurrent259PaymentCompetitionPlan']({
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
  const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
@@ -622,6 +641,7 @@ function attributionGapFixture(t,options={}){
 test('the fixed attribution-gap publisher verifies without opening resources or an attempt',async t=>{
  const f=attributionGapFixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));
+ assert.equal(f.state.exit,0);
  assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
 });
@@ -670,5 +690,58 @@ for(const [stage,code] of [
   assert.equal(receipt.resource.cleanup.relayClosed,true);
   assert.ok(!JSON.stringify(receipt).includes('raw private failing response'));
   assert.deepEqual(f.state.calls.slice(-4),['case','app-close','env-close','pools-close']);
+ });
+}
+
+test('voucher alone claims its ACL permit and binds the fixed profile through B7 and the dual application',async t=>{
+ const f=competitionFixture(t,{voucher:true}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.deepEqual(f.state.calls,['start-competition-voucher','technical259','roles9-cap2','seven','voucher-acl','b7','live-two','env','app-two','competition','app-two-close','env-close','pools-two-close']);
+ assert.equal(f.state.consumed.identity.voucherProfile,'CURRENT259_PAYMENT_VOUCHER_V1');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.business.voucherVerified,true);
+});
+for(const mode of ['wrongVoucherSeven','replayVoucher'])test('voucher refuses '+mode+' before B7 and all application work',async t=>{
+ const f=competitionFixture(t,{voucher:true,[mode]:true}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ assert.ok(f.state.calls.includes('voucher-acl'));
+ assert.ok(!f.state.calls.includes('b7'));
+ assert.ok(!f.state.calls.includes('app-two'));
+});
+
+test('voucher verification mode does not consume the attempt or enter the resource',async t=>{
+ const f=competitionFixture(t,{voucher:true,default:true}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES');
+ assert.equal(f.state.exit,0);
+ assert.deepEqual(f.state.calls,[]);
+ assert.deepEqual(fs.readdirSync(f.s.runRoot),[]);
+});
+test('voucher refuses a case that never proved the file and keeps the original pair close order',async t=>{
+ const f=competitionFixture(t,{voucher:true,missingVoucherResult:true}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ assert.deepEqual(f.state.calls.slice(-4),['competition','app-two-close','env-close','pools-two-close']);
+});
+
+
+for(const [stage,code] of [
+ ['MULTIPART_UPLOAD','CURRENT259_PAYMENT_VOUCHER_MULTIPART_UPLOAD'],
+ ['ATTACH','CURRENT259_PAYMENT_VOUCHER_ATTACH'],
+ ['ORIGINAL_RESULT','CURRENT259_PAYMENT_VOUCHER_ORIGINAL_RESULT'],
+ ['OWNER_AFTER','CURRENT259_PAYMENT_VOUCHER_OWNER_READ'],
+ ['STORAGE_BYTES','CURRENT259_PAYMENT_VOUCHER_STORAGE_BYTES'],
+ ['LEDGER_AFTER','CURRENT259_PAYMENT_VOUCHER_LEDGER_DRIFT']
+]){
+ test('A17 publishes the first safe stage '+stage+' and keeps pair cleanup',async t=>{
+  const f=competitionFixture(t,{voucher:true,voucherFailureStage:stage}),result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+  assert.deepEqual(f.state.calls.slice(-4),['competition','app-two-close','env-close','pools-two-close']);
+  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+  assert.equal(receipt.failureStage,'seedAndSelectedCase');
+  assert.deepEqual(receipt.voucherFailure,{stage,code});
+  assert.equal(receipt.attributionGapFailure,undefined);
+  assert.equal(receipt.disconnectFailure,undefined);
+  assert.equal(receipt.resource.cleanup.relayClosed,true);
+  assert.ok(!JSON.stringify(receipt).includes('private upstream body'));
  });
 }

@@ -21,6 +21,7 @@ const paymentLoopbackImpactSessions = new WeakSet();
 const receipts = new WeakMap(), impactBoundaries = new WeakMap(), competitionPairs=new WeakMap(), used = new WeakSet();
 const ROLLBACK_TOPOLOGY = paymentLoopbackForScenario('cancel-commit').topology;
 const COMPETITION_TOPOLOGY = paymentLoopbackForScenario('competition').topology;
+const VOUCHER_TOPOLOGY = paymentLoopbackForScenario('competition-voucher').topology;
 const DISCONNECT_TOPOLOGY = paymentLoopbackForScenario('disconnect-commit-recovery').topology;
 const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
@@ -78,7 +79,8 @@ async function withCurrent259DisconnectLiveSessions(b7Completion,handle,permit,c
 }
 async function withLiveSessions(b7Completion, handle, consume, competition, recovery=false) {
   const lease = claimCurrent259B7Installation(b7Completion, handle);
-  need((lease.request.identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')===competition,'HANDLE');
+  const voucher=lease.request.identity.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1';
+  need((lease.request.identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')===competition&&(!voucher||competition),'HANDLE');
   const view = claimCurrent259TechnicalResource(handle);
   need(!used.has(handle), 'REUSED'); used.add(handle);
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
@@ -497,7 +499,8 @@ ROLLBACK;`;
   }
   let value, hasPrimary = false;
   try {
-    need((topology === COMPETITION_TOPOLOGY) === competition && (topology === DISCONNECT_TOPOLOGY) === recovery, 'PHYSICAL_ENDPOINT');
+    need((topology === COMPETITION_TOPOLOGY || topology === VOUCHER_TOPOLOGY) === competition &&
+      (topology === VOUCHER_TOPOLOGY) === voucher && (topology === DISCONNECT_TOPOLOGY) === recovery, 'PHYSICAL_ENDPOINT');
     methods = Object.fromEntries(['getReceipt', 'inspectConnectionEndpoint', 'execOwnerSql'].map(key => [key, own(resource, key)]));
     need(Object.values(methods).every(fn => typeof fn === 'function'));
     initial = methods.getReceipt();

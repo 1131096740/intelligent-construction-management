@@ -160,3 +160,31 @@ test('attribution gap refuses a valid normal plan and a recomputed wrong refusal
  assert.throws(()=>f.business.verifyCurrent259PaymentAttributionGapPlan(gap.file,digest));
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
+
+test('voucher seals only its fixed file set and cannot be verified as the earlier competition or business plans',t=>{
+ const f=fixture(t),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ assert.throws(()=>f.business.prepareCurrent259PaymentBusinessPlan({...options,scenario:'competition-voucher'}));
+ const saved=f.business.prepareCurrent259PaymentVoucherPlan(options);
+ const {plan}=f.business.verifyCurrent259PaymentVoucherPlan(f.output,saved.sha256);
+ assert.equal(plan.purpose,'current259-payment-owned-two-actor-voucher');
+ assert.equal(plan.case.scenario,'competition-voucher');
+ assert.equal(plan.scope.competition.runtimeSessions,2);
+ assert.equal(plan.scope.supplementaryVoucher,true);
+ assert.equal(plan.scope.databaseTransport,'PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS_V1');
+ assert.equal(plan.scope.voucher.uploadPostCount,1);
+ assert.equal(plan.scope.voucher.attachPostCount,1);
+ assert.ok(plan.voucherMaterials.some(row=>row.path.endsWith('task16-current259-voucher-acl.requirements.json')));
+ assert.ok(plan.voucherMaterials.every(row=>/^[0-9a-f]{64}$/u.test(row.sha256)));
+ assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256));
+ assert.throws(()=>f.business.verifyCurrent259PaymentCompetitionPlan(f.output,saved.sha256));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('voucher and attribution-gap plans cannot verify each other in the combined entry',t=>{
+ const f=fixture(t),options={runRoot:f.runRoot,daemonId:f.daemonId,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ const voucher=f.business.prepareCurrent259PaymentVoucherPlan({...options,output:f.output+'.voucher'});
+ const gap=f.business.prepareCurrent259PaymentAttributionGapPlan({...options,output:f.output+'.gap'});
+ assert.throws(()=>f.business.verifyCurrent259PaymentVoucherPlan(gap.file,gap.sha256));
+ assert.throws(()=>f.business.verifyCurrent259PaymentAttributionGapPlan(voucher.file,voucher.sha256));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

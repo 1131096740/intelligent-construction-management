@@ -55,6 +55,7 @@ function fixture(){
    },
    startCurrent259NormalPaymentPostgres:relayStart('normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'),
    startCurrent259AttributionGapPostgres:relayStart('gap-start','UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS'),
+   startCurrent259VoucherPostgres:relayStart('voucher-start','UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'),
    startCurrent259ResponseLossPostgres:relayStart('loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'),
    startCurrent259CompetitionPostgres:relayStart('competition-start','UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'),
    startCurrent259DisconnectRecoveryPostgres:relayStart('disconnect-start','UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS')}
@@ -357,6 +358,7 @@ test('Q2 cleanup binds the relay host and port in addition to its ID',async()=>{
 for(const [name,call,topology] of [
  ['withCurrent259NormalPaymentResource','normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'],
  ['withCurrent259AttributionGapResource','gap-start','UNVERIFIED_PAYMENT_ATTRIBUTION_GAP_LOOPBACK_TLS'],
+ ['withCurrent259VoucherResource','voucher-start','UNVERIFIED_PAYMENT_COMPETITION_VOUCHER_LOOPBACK_TLS'],
  ['withCurrent259ResponseLossResource','loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'],
  ['withCurrent259CompetitionResource','competition-start','UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'],
  ['withCurrent259DisconnectRecoveryResource','disconnect-start','UNVERIFIED_PAYMENT_DISCONNECT_RECOVERY_LOOPBACK_TLS']

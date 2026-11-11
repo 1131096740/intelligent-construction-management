@@ -626,3 +626,10 @@ export async function runRegisteredTwoActorPaymentCompetition(primary: Registere
   return { caseId: "registered.two-actor.payment-competition", passed: true, executionId: execution.id, rootId: root.id,
     winner: winner === 0 ? "finance_staff" : "comprehensive_director", competitionObserved: true } as const;
 }
+
+/** A17 uses the original independent canonical snapshot on the existing observer. */
+export async function observeRegisteredPaymentVoucherLedger(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgCompetition,
+  continuity: RegisteredPgSeedContinuity) {
+  continuity.checkLight();
+  return observe(context, fixture, continuity, true);
+}

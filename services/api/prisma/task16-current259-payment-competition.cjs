@@ -1,12 +1,12 @@
 'use strict';
 const { isDeepStrictEqual:equal }=require('node:util');
-const { randomBytes }=require('node:crypto');
+const { createHash,randomBytes,randomUUID }=require('node:crypto');
+const { readQualifiedTask16File }=require('./task16-runtime-inputs.cjs');
 const path=require('node:path');
 const { claimCurrent259TechnicalResourceContinuity }=require('./task16-current259-owned-resource.cjs');
 const { loadCurrent259CatalogMaterial }=require('./task16-current259-catalog.cjs');
 const { claimCurrent259PaymentBusinessPermit }=require('./task16-current259-payment-run-authorization.cjs');
 const { paymentLoopbackForScenario }=require('./task16-current259-payment-loopback.cjs');
-const COMPETITION_TOPOLOGY=paymentLoopbackForScenario('competition').topology;
 const fetchSlot=Object.getOwnPropertyDescriptor(globalThis,'fetch');
 const fetch=fetchSlot?.value;
 const builtin=process.binding('natives')['internal/bootstrap/web/exposed-window-or-worker'];
@@ -106,15 +106,143 @@ async function withSamePaymentLock(context, resource, observe, check, paymentId,
  check();need(responses?.length===2&&responses.every(row=>row.status==='fulfilled'));
  return responses.map(row=>row.value);
 }
+const competitionCase='registered.two-actor.payment-competition';
+const voucherCase='registered.two-actor.payment-voucher';
+const voucherName='payment-voucher.png';
+const voucherType='image/png';
+const voucherBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgCF0FAAFYAQDfZmccAAAAAElFTkSuQmCC','base64');
+const voucherHash=createHash('sha256').update(voucherBytes).digest('hex');
+
+function voucherObservationSql({paymentId,settlementId,executionId,fileId,actorId}){
+ need([paymentId,settlementId,executionId,fileId,actorId].every(uuid));
+ const financialRelations=[
+  ['RegisteredPaymentFunding','executionId'],['RegisteredFundPaymentAllocation','executionId'],
+  ['RegisteredPaymentEvent','executionId'],['InterEntityRelationshipEntry','paymentExecutionId']
+ ];
+ const fullRows=(relation,where)=>`(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(x) ORDER BY pg_catalog.to_jsonb(x)::text COLLATE "C"),'[]'::jsonb)
+   FROM public."${relation}" x WHERE ${where})`;
+ const effects=[...financialRelations.map(([table,key])=>fullRows(table,`x."${key}"='${executionId}'`)),
+  fullRows('AuditLog',`x.action='payment.execution.record' AND x."businessType"='payment_request' AND x."businessId"='${paymentId}'`)].join(',');
+ return `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL search_path=pg_catalog,pg_temp;
+SELECT pg_catalog.jsonb_build_object(
+ 'databaseOid',(SELECT oid::text FROM pg_catalog.pg_database WHERE datname=pg_catalog.current_database()),
+ 'systemIdentifier',(SELECT system_identifier::text FROM pg_catalog.pg_control_system()),
+ 'readerOid',current_user::regrole::oid::text,'readerPid',pg_catalog.pg_backend_pid(),
+ 'readerTls',(SELECT ssl FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid()),
+ 'ownerSession',current_user=session_user,'readOnly',pg_catalog.current_setting('transaction_read_only')='on',
+ 'paymentSha',(SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.to_jsonb(p)::text,'UTF8')),'hex')
+   FROM public."PaymentRequest" p WHERE p.id='${paymentId}' AND p."settlementId"='${settlementId}'),
+ 'settlementSha',(SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.to_jsonb(s)::text,'UTF8')),'hex')
+   FROM public."Settlement" s WHERE s.id='${settlementId}'),
+ 'executionSha',(SELECT pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.to_jsonb(e)::text,'UTF8')),'hex')
+   FROM public."PaymentExecution" e WHERE e.id='${executionId}' AND e."paymentRequestId"='${paymentId}'),
+ 'effectsSha',pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(${effects})::text,'UTF8')),'hex'),
+ 'files',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(f)-'createdAt'),'[]'::jsonb)
+   FROM public."FileObject" f WHERE f.id='${fileId}' OR f."uploadedByUserId"='${actorId}'),
+ 'vouchers',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(v)-'createdAt'),'[]'::jsonb)
+   FROM public."RegisteredPaymentVoucher" v WHERE v."executionId"='${executionId}' OR v."fileId"='${fileId}'),
+ 'audits',(SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('actorUserId',a."actorUserId",'metadata',a.metadata)),'[]'::jsonb)
+   FROM public."AuditLog" a WHERE a.action='payment.execution.voucher.attach' AND a."businessType"='payment_request' AND a."businessId"='${paymentId}'));
+ROLLBACK;`;
+}
+async function supplementCompetitionWinnerVoucher({result,prepared,contexts,lanes,storageRoot,resource,observe,known,readLedger,check,full,markFailureStage}){
+ const winner=result.winner==='finance_staff'?0:1;
+ const {plan,accessToken,contender}=prepared,{ids}=plan,{executionId}=result;
+ const {token,key,actorId}=winner===0?{token:accessToken,key:ids.requestKey,actorId:ids.actor}:
+  {token:contender.accessToken,key:contender.requestKey,actorId:contender.actorId};
+ const context=contexts[winner],base=new URL(context.proof.application.origin),fileId=randomUUID();
+ need([key,actorId,fileId].every(uuid)&&typeof storageRoot==='string'&&path.isAbsolute(storageRoot)&&
+  path.normalize(storageRoot)===storageRoot&&storageRoot.startsWith('/private/tmp/')&&
+  storageRoot===process.env.FILE_STORAGE_ROOT&&process.env.FILE_STORAGE_DRIVER==='local'&&
+  path.dirname(storageRoot)===path.dirname(path.dirname(resource.caPath))&&path.basename(storageRoot).startsWith('application-private-'));
+ const expectedFile={id:fileId,contentSha256:voucherHash,sizeBytes:voucherBytes.length,uploadedByUserId:actorId,
+  originalName:voucherName,mimeType:voucherType,bucket:'private-local',storageStatus:'active',purgeReceiptId:null,supersedesFileObjectId:null};
+ const sql=voucherObservationSql({paymentId:ids.payment,settlementId:ids.settlement,executionId,fileId,actorId});
+ need(base.protocol==='http:'&&base.hostname==='127.0.0.1'&&base.port!==''&&!base.username&&!base.password);
+ const [owner]=known;
+ async function observeVoucher(label){
+  check();
+  const result=await observe(sql,label);
+  check();
+  need(typeof result?.stdout==='string'&&Buffer.byteLength(result.stdout)<=8192);
+  const row=JSON.parse(result.stdout);
+  need(row.databaseOid===owner.databaseOid&&row.systemIdentifier===owner.systemIdentifier&&row.readerOid===owner.loginOid&&
+   row.readerTls===true&&row.ownerSession===true&&row.readOnly===true&&Number.isInteger(row.readerPid)&&row.readerPid>0&&
+   known.every(session=>session.pid!==row.readerPid)&&[row.paymentSha,row.settlementSha,row.executionSha,row.effectsSha].every(value=>typeof value==='string'&&/^[a-f0-9]{64}$/u.test(value)));
+  return row;
+ }
+ async function request(route,method,body,expectedStatus){
+  check();
+  const target=new URL(route,base);
+  const response=await fetch(target,{method,body,headers:{authorization:`Bearer ${token}`,
+   ...(typeof body==='string'?{'content-type':'application/json'}:{})},redirect:'error',signal:AbortSignal.timeout(5000)});
+  check();need(response.url===target.href&&response.redirected===false&&response.status===expectedStatus);
+  const value=await response.json();check();return value;
+ }
+ markFailureStage('LEDGER_BEFORE');
+ const ledgerBefore=await readLedger(contexts[0],prepared,lanes[0]);
+ markFailureStage('OWNER_BEFORE');
+ const before=await observeVoucher('current259-voucher-before');
+ need(equal(before.files,[])&&equal(before.vouchers,[])&&equal(before.audits,[]));
+ await full();
+ markFailureStage('MULTIPART_UPLOAD');
+ const form=new FormData();
+ form.set('idempotencyKey',fileId);
+ form.set('file',new Blob([voucherBytes],{type:voucherType}),voucherName);
+ const uploaded=await request(`/payment-executions/${executionId}/voucher-file-uploads`,'POST',form,201);
+ need(uploaded&&Object.entries(expectedFile).every(([key,value])=>own(uploaded,key)===value));
+ markFailureStage('ATTACH');
+ const attached=await request(`/payment-executions/${executionId}/voucher`,'POST',JSON.stringify({fileId}),201);
+ need(equal(attached,{executionId,voucherPending:false}));
+ markFailureStage('ORIGINAL_RESULT');
+ const recorded=await request(`/payment-executions/results/${key}`,'GET',undefined,200);
+ need(recorded?.status==='recorded'&&recorded.canSupplementVoucher===false&&
+  equal(recorded.execution,{executionId,paymentId:ids.payment,amountCents:'3000',paidAt:plan.paidAt,voucherPending:false})&&
+  equal(recorded.effects,[])&&recorded.intercompany?.length===1&&recorded.intercompany[0].entryId===result.rootId&&recorded.intercompany[0].voucherPending===false);
+ markFailureStage('RECORDED_ITEMS');
+ const items=await request(`/payment-executions/recorded-items?paymentId=${ids.payment}`,'GET',undefined,200);
+ need(items?.total===1&&items.items?.length===1&&
+  equal([items.items[0].executionId,items.items[0].paymentId,items.items[0].resultKey,items.items[0].amountCents,
+   items.items[0].voucherPending,items.items[0].canSupplementVoucher],[executionId,ids.payment,key,'3000',false,false]));
+ markFailureStage('OWNER_AFTER');
+ const after=await observeVoucher('current259-voucher-after');
+ need(after.readerPid!==before.readerPid&&Array.isArray(after.files)&&after.files.length===1&&
+  Object.entries(expectedFile).every(([key,value])=>own(after.files[0],key)===value)&&
+  equal(after.vouchers,[{executionId,fileId,uploadedByUserId:actorId,contentSha256:voucherHash}])&&
+  equal(after.audits,[{actorUserId:actorId,metadata:{executionId,fileId,contentSha256:voucherHash}}])&&
+  ['paymentSha','settlementSha','executionSha','effectsSha'].every(key=>before[key]===after[key]));
+ markFailureStage('STORAGE_BYTES');
+ const objectKey=own(after.files[0],'objectKey');
+ const parts=typeof objectKey==='string'?objectKey.split('/'):[];
+ const suffix=`-${voucherHash}-${voucherName}`;
+ need(parts.length===4&&parts[0]==='uploads'&&parts[1]==='idempotent'&&parts[2]===fileId&&
+  parts[3].endsWith(suffix)&&uuid(parts[3].slice(0,-suffix.length)));
+ await full();
+ const bytes=readQualifiedTask16File(path.join(storageRoot,objectKey),{privateFile:true,maxBytes:voucherBytes.length,code:'CURRENT259_PAYMENT_VOUCHER_FILE'});
+ need(bytes.sha256===voucherHash&&bytes.identity.size===voucherBytes.length);
+ markFailureStage('LEDGER_AFTER');
+ const ledgerAfter=await readLedger(contexts[0],prepared,lanes[0]);
+ check();need(equal(ledgerBefore,ledgerAfter));
+}
+
 async function executeCurrent259PaymentCompetition(applications, leases, permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(qualifiedFetch&&leases.length===2&&leases.every(factory.isCurrent259PaymentLease));
  const [first,second]=leases,{handle,loader,source}=first;
  const permission=claimCurrent259PaymentBusinessPermit(permit,applications,handle);
  const token=permission.continuityToken;
+ let voucherFailureStage;
  try{
+  const voucher=permission.scope.scenario==='competition-voucher';
+  if(voucher){
+   voucherFailureStage='COMPETITION';
+   need(typeof permission.recordVoucherFailure==='function');
+  }
+  const topology=paymentLoopbackForScenario(voucher?'competition-voucher':'competition').topology;
+  need(permission.scope.caseId===(voucher?voucherCase:competitionCase));
   need(first.session.owner===second.session.owner&&first.session.observer===second.session.observer&&first.session.runtime!==second.session.runtime&&
-   second.handle===handle&&second.loader===loader&&second.source===source&&permission.scope.scenario==='competition'&&
+   second.handle===handle&&second.loader===loader&&second.source===source&&(voucher||permission.scope.scenario==='competition')&&
    leases.every((lease,index)=>lease.application===applications[index])&&
    new URL(first.application.origin).origin!==new URL(second.application.origin).origin);
   for(const lease of leases)lease.activateContinuity(token);
@@ -122,12 +250,12 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   const getReceipt=own(resource,'getReceiptContinuity');
   need(typeof observe==='function'&&typeof getReceipt==='function'&&uuid(view.runId)&&typeof own(loader,'loadPaymentModules')==='function');
   const receipt=getReceipt.call(resource,token),relay=receipt.relay;
-  need(resource.topology===COMPETITION_TOPOLOGY&&receipt.topology===resource.topology&&receipt.runId===view.runId&&
+  need(resource.topology===topology&&receipt.topology===resource.topology&&receipt.runId===view.runId&&
    receipt.containerId===resource.containerId&&receipt.networkId===resource.networkId&&receipt.databaseName===resource.databaseName&&
    relay?.containerId===resource.containerId&&uuid(relay.id)&&relay.id===resource.relayId&&relay.host==='127.0.0.1'&&
    Number.isInteger(relay.port)&&relay.port>1024&&relay.port<=65535&&relay.port===resource.port&&receipt.port===relay.port);
   const sessions=leases.map(lease=>lease.session),endpoints=sessions.map(session=>session.endpoint);
-  need(endpoints.every(endpoint=>endpoint.transport===COMPETITION_TOPOLOGY&&endpoint.relayId===relay.id&&
+  need(endpoints.every(endpoint=>endpoint.transport===topology&&endpoint.relayId===relay.id&&
    endpoint.host===relay.host&&endpoint.port===relay.port&&endpoint.clientAddress==='127.0.0.1'&&
    endpoint.serverAddress==='127.0.0.1'&&endpoint.serverPort===5432&&
    Number.isInteger(endpoint.clientPort)&&endpoint.clientPort>0&&endpoint.clientPort<=65535)&&
@@ -138,6 +266,11 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
    owners.every(row=>row.database===resource.databaseName&&
    row.databaseOid===owner.databaseOid&&row.systemIdentifier===owner.systemIdentifier&&row.tls===true)&&
    new Set(owners.map(row=>row.pid)).size===3&&new Set(owners.map(row=>row.start)).size===3);
+  const observer=sessions[0].identity[2];
+  if(voucher)need(observer&&equal(observer,sessions[1].identity[2])&&observer.tls===true&&
+   observer.database===owner.database&&observer.databaseOid===owner.databaseOid&&observer.systemIdentifier===owner.systemIdentifier&&
+   observer.loginOid!==owner.loginOid&&observer.loginOid!==owners[1].loginOid&&Number.isInteger(observer.pid)&&observer.pid>0&&
+   owners.every(row=>row.pid!==observer.pid&&row.start!==observer.start));
   const check=()=>{
    permission.check();
    for(const lease of leases)lease.check();
@@ -150,6 +283,8 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   const modules=loader.loadPaymentModules();
   const names=['buildRegisteredPgFixturePlan','seedRegisteredPgCompetitionFixture','runRegisteredTwoActorPaymentCompetition'];
   const [build,seed,run]=names.map(name=>own(modules,name));need([build,seed,run].every(value=>typeof value==='function'));
+  const readLedger=voucher?own(modules,'observeRegisteredPaymentVoucherLedger'):undefined;
+  if(voucher)need(typeof readLedger==='function');
   const fixtureRunId=view.runId.replaceAll('-','').slice(0,12);
   const built=build(fixtureRunId,permission.scope.paidAt,permission.scope.openingDate);
   const plan=Object.freeze({...built,ids:Object.freeze({...built.ids})});
@@ -194,11 +329,22 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
    }
   }));
   await full();
-  need(used&&equal(posts,[1,1])&&result?.caseId===permission.scope.caseId&&result.passed===true&&result.competitionObserved===true&&
+  need(used&&equal(posts,[1,1])&&result?.caseId===competitionCase&&result.passed===true&&result.competitionObserved===true&&
    uuid(result.executionId)&&uuid(result.rootId)&&['finance_staff','comprehensive_director'].includes(result.winner));
+  if(voucher){
+   need(own(modules,'observeRegisteredPaymentVoucherLedger')===readLedger);
+   await supplementCompetitionWinnerVoucher({result,prepared,contexts,lanes,storageRoot:permission.scope.voucherStorageRoot,
+    resource,observe,known:[...owners,observer],readLedger,check,full,markFailureStage(stage){voucherFailureStage=stage;}});
+   voucherFailureStage='FINAL_VERIFY';
+   await full();
+  }
   for(const lease of leases)lease.finishContinuity(token);
   permission.check();
-  return Object.freeze({caseId:result.caseId,passed:true,executionId:result.executionId,rootId:result.rootId,winner:result.winner,competitionObserved:true,financialAcceptance:false});
- }catch{throw safe();}
+  return Object.freeze({caseId:permission.scope.caseId,passed:true,executionId:result.executionId,rootId:result.rootId,winner:result.winner,competitionObserved:true,
+   ...(voucher?{voucherVerified:true}:{}),financialAcceptance:false});
+ }catch{
+  if(voucherFailureStage)permission.recordVoucherFailure?.(voucherFailureStage);
+  throw safe();
+ }
 }
 module.exports=Object.freeze({executeCurrent259PaymentCompetition});
