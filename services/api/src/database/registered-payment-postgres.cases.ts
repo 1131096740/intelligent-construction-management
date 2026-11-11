@@ -109,11 +109,100 @@ async function prepareCrossCompanyCase(context: RegisteredPgExecutionContext, fi
   return { checked, identity, before, submit };
 }
 
+type CancellationOwnerFields = {
+  database: string; databaseOid: string; systemIdentifier: string;
+  effectiveRole: string; loginRole: string; ownerOid: string; pid: number; startedAt: string;
+  tls: boolean; readOnly: string; isolation: string;
+  settlementStatus: string; settlementUpdatedAt: string; requestUpdatedAt: string;
+};
+const preciseTimestamp = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u;
+const cancellationOwnerFieldsSql = `SELECT
+  pg_catalog.current_database() AS database, d.oid::pg_catalog.text AS "databaseOid",
+  (SELECT system_identifier::pg_catalog.text FROM pg_catalog.pg_control_system()) AS "systemIdentifier",
+  current_user::pg_catalog.text AS "effectiveRole", session_user::pg_catalog.text AS "loginRole",
+  current_user::pg_catalog.regrole::pg_catalog.oid::pg_catalog.text AS "ownerOid",
+  a.pid, pg_catalog.to_char(a.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "startedAt",
+  ssl.ssl AS tls, pg_catalog.current_setting('transaction_read_only') AS "readOnly",
+  pg_catalog.current_setting('transaction_isolation') AS isolation,
+  s."status" AS "settlementStatus",
+  pg_catalog.to_char(s."updatedAt",'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "settlementUpdatedAt",
+  pg_catalog.to_char(p."updatedAt",'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "requestUpdatedAt"
+FROM public."Settlement" s
+JOIN public."PaymentRequest" p ON p."settlementId"=s.id
+JOIN pg_catalog.pg_stat_activity a ON a.pid=pg_catalog.pg_backend_pid()
+JOIN pg_catalog.pg_database d ON d.oid=a.datid AND d.datname=pg_catalog.current_database()
+JOIN pg_catalog.pg_stat_ssl ssl ON ssl.pid=a.pid
+WHERE s.id=$1 AND p.id=$2`;
+
+function fixedCancellationMethod(target: object, key: "$transaction" | "$executeRawUnsafe" | "$queryRawUnsafe") {
+  const capture = () => {
+    for (let layer: object | null = target; layer; layer = Object.getPrototypeOf(layer) as object | null) {
+      const descriptor = Object.getOwnPropertyDescriptor(layer, key);
+      if (descriptor) {
+        check(Object.hasOwn(descriptor, "value"), "PG_CASE_CANCEL_OWNER_CHANGED");
+        return { layer, descriptor };
+      }
+    }
+    return null;
+  };
+  const original = capture();
+  return () => {
+    const current = capture();
+    check(current?.layer === original?.layer && isDeepStrictEqual(current?.descriptor, original?.descriptor),
+      "PG_CASE_CANCEL_OWNER_CHANGED");
+  };
+}
+
 /** The owned case executor provides the one-use commit cancellation gate. */
 export async function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
   fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
   cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  // The ordinary observer's fixed ACL omits these columns. Read them only
+  // through the already verified, independent owner on this one fixture.
+  const owner = context.owner;
+  const checkTransaction = fixedCancellationMethod(owner, "$transaction");
+  const transaction = owner.$transaction;
   const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true);
+  const checkOwner = () => {
+    checkTransaction();
+    check(context.owner === owner && owner.$transaction === transaction &&
+      owner !== context.runtime && owner !== context.observer && typeof transaction === "function",
+      "PG_CASE_CANCEL_OWNER_CHANGED");
+  };
+  const observeOwner = async () => {
+    checkOwner();
+    const row = await checked(() => owner.$transaction(async tx => {
+      const checkSet = fixedCancellationMethod(tx, "$executeRawUnsafe");
+      const checkRead = fixedCancellationMethod(tx, "$queryRawUnsafe");
+      const setReadOnly = tx.$executeRawUnsafe;
+      const read = tx.$queryRawUnsafe;
+      await checked(() => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
+      const checkMethods = () => {
+        checkSet();
+        checkRead();
+        check(tx.$executeRawUnsafe === setReadOnly && tx.$queryRawUnsafe === read,
+          "PG_CASE_CANCEL_OWNER_CHANGED");
+      };
+      checkMethods();
+      const rows = await checked(() => read.call(tx, cancellationOwnerFieldsSql, fixture.plan.ids.settlement,
+        fixture.plan.ids.payment)) as CancellationOwnerFields[];
+      checkMethods();
+      const observed = rows[0];
+      const proof = context.proof;
+      check(rows.length === 1 && observed && observed.database === proof.databaseName &&
+        observed.databaseOid === proof.databaseOid && observed.systemIdentifier === proof.systemIdentifier &&
+        observed.effectiveRole === proof.ownerRole && observed.loginRole === proof.ownerRole &&
+        observed.ownerOid === "10" && observed.pid === identity.ownerPid && observed.tls === true &&
+        observed.readOnly === "on" && observed.isolation === "repeatable read" &&
+        typeof observed.settlementStatus === "string" && observed.settlementStatus.length > 0 &&
+        [observed.startedAt, observed.settlementUpdatedAt, observed.requestUpdatedAt].every(
+          value => typeof value === "string" && preciseTimestamp.test(value)), "PG_CASE_CANCEL_OWNER_PROOF");
+      return observed;
+    }, { isolationLevel: "RepeatableRead" }));
+    checkOwner();
+    return row;
+  };
+  const ownerBefore = await observeOwner();
   let submitted = false;
   let status: number | undefined;
   await checked(() => cancelCommit(async () => {
@@ -122,8 +211,9 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
     status = (await checked(() => submit())).status;
   }));
   const after = await checked(() => observe(context, fixture, continuity, true));
+  const ownerAfter = await observeOwner();
   check(status === 409 || (status !== undefined && status >= 500 && status <= 599), "PG_CASE_CANCEL_HTTP_STATUS");
-  check(isDeepStrictEqual(after, before), "PG_CASE_CANCEL_LEDGER_CHANGED");
+  check(isDeepStrictEqual(after, before) && isDeepStrictEqual(ownerAfter, ownerBefore), "PG_CASE_CANCEL_LEDGER_CHANGED");
   return { caseId: "registered.null-cross-company.cancel-commit", database: identity.database,
     observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const };
 }
