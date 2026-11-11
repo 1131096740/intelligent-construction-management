@@ -108,7 +108,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "competition", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid"])(
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "competition", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias"])(
     "verifies the %s case through only the approved observer columns", async scenario => {
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
@@ -116,6 +116,7 @@ describe("registered PG original case: explicit observer projection protocol (no
     const prepared = { plan, accessToken: "synthetic-only", companyARegistrationId: "registration-a", companyBRegistrationId: "registration-b", companyBSourceId: "source-b" };
     const competition = scenario.startsWith("competition");
     const disconnect = scenario.startsWith("disconnect");
+    const equivalentOrigin = scenario === "disconnect-equivalent-origin" || scenario === "disconnect-ip-alias";
     let posts = 0;
     const total = competition ? 4000n : 10000n, paid = competition ? 3000n : 4000n;
     const contender = { actorId: randomUUID(), requestKey: randomUUID(), accessToken: "synthetic-contender-only" };
@@ -225,9 +226,9 @@ describe("registered PG original case: explicit observer projection protocol (no
       if (route.endsWith("/registrations") && init?.method === "POST") {
         if (disconnect) {
           posts++;
-          const oldApp = new URL(String(input)).port === "15433";
-          expect(oldApp).toBe(posts === 1);
-          if (oldApp) {
+          if (posts === 1 || !equivalentOrigin)
+            expect(new URL(String(input)).port).toBe(posts === 1 ? "15433" : "15434");
+          if (posts === 1) {
             submittedCancellation = true;
             return respond(scenario === "disconnect-first-succeeded" ? 201 : 503, {});
           }
@@ -284,13 +285,19 @@ describe("registered PG original case: explicit observer projection protocol (no
         const confirmed = await confirm;
         expect(Object.keys(confirmed)).toEqual([]);
         await expect(registeredCases.confirmRegisteredNullCrossCompanyDisconnectRollback(attempt, continuity)).rejects.toThrow("PG_CASE_DISCONNECT_ATTEMPT");
+        const replacementOrigin = scenario === "disconnect-equivalent-origin" ? "http://127.0.0.1:15433"
+          : scenario === "disconnect-ip-alias" ? "http://127.1:15433/" : "http://127.0.0.1:15434/";
         const second: RegisteredPgExecutionContext = {
-          ...f.context, proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } },
+          ...f.context, proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: replacementOrigin } },
           runtime: { $queryRawUnsafe: async () => [{ ...f.sessions[1], pid: scenario === "disconnect-same-pid" ? 101 : 103 }] } as unknown as RegisteredPgExecutionContext["runtime"]
         };
         await expect(registeredCases.runRegisteredNullCrossCompanyDisconnectRecovery({ ...confirmed }, second, continuity)).rejects.toThrow("PG_CASE_DISCONNECT_ROLLBACK_PROOF");
         const recovered = registeredCases.runRegisteredNullCrossCompanyDisconnectRecovery(confirmed, second, continuity);
-        if (scenario === "disconnect-recorded-key" || scenario === "disconnect-same-pid") {
+        if (equivalentOrigin) {
+          await expect(recovered).rejects.toThrow("PG_CASE_DISCONNECT_REPLACEMENT_SCOPE");
+          expect(posts).toBe(1);
+          expect(fetch.mock.calls.map(([, init]) => init?.method)).toEqual(["GET", "POST"]);
+        } else if (scenario === "disconnect-recorded-key" || scenario === "disconnect-same-pid") {
           await expect(recovered).rejects.toThrow(scenario === "disconnect-recorded-key" ? "PG_CASE_DISCONNECT_KEY_ALREADY_RESOLVED" : "PG_CASE_DISCONNECT_REPLACEMENT_IDENTITY");
           expect(posts).toBe(1);
         } else {

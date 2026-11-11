@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
-import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, registeredPgHttp } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, assertRegisteredPgResourceProof, registeredPgHttp } from "./registered-payment-postgres.fixture";
 import type { PreparedRegisteredPgCompetition, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
 
 /** Source-derived inventory, not an executable resource runner or a PG result. */
@@ -409,11 +409,13 @@ export async function runRegisteredNullCrossCompanyDisconnectRecovery(receipt: o
   disconnectRollbacks.delete(receipt);
   const { originalProof, fixture, registration, command } = attempt;
   const checked = checkedIn(continuity);
+  assertRegisteredPgResourceProof(replacement.proof);
   const { origin } = replacement.proof.application;
+  const differentEndpoint = new URL(origin).origin !== new URL(originalProof.application.origin).origin;
   const replacementRuntime = replacement.runtime;
   const checkReplacement = () => {
     checkOriginalDisconnectClients(attempt);
-    check(continuity.assertHttpRequest && origin !== originalProof.application.origin &&
+    check(continuity.assertHttpRequest && differentEndpoint &&
       isDeepStrictEqual(replacement.proof, { ...originalProof, application: { ...originalProof.application, origin } }) &&
       replacement.owner === attempt.owner && replacement.observer === attempt.observer &&
       replacement.runtime === replacementRuntime && replacementRuntime !== attempt.runtime &&
