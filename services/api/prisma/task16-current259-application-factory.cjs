@@ -2,6 +2,8 @@
 // Versioned259 factory. Same seven real application exports and lifecycle.
 // A connected transport is not admission; private session ownership is separate.
 const fs=require('node:fs'),path=require('node:path');
+const abortPrototype=AbortSignal.prototype,readAborted=Object.getOwnPropertyDescriptor(abortPrototype,'aborted').get;
+const addAbortListener=EventTarget.prototype.addEventListener,removeAbortListener=EventTarget.prototype.removeEventListener;
 const {types}=require('node:util');
 const {claimCurrent259LiveSessions}=require('./task16-current259-live-sessions.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
@@ -128,28 +130,30 @@ function bindSimulatedCurrent259Application(context,session){
  * Consumes a live session capability inside its original resource scope. The
  * environment and private local storage must already satisfy the real factory.
  */
-async function createCurrent259OwnedApplication(proof,handle,signal){
+async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
  const code='TASK16_APP_IMPACT_READER_PROOF';
- need(arguments.length===3&&signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===AbortSignal.prototype&&
+ need(arguments.length===4&&signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
- const aborted=Object.getOwnPropertyDescriptor(AbortSignal.prototype,'aborted').get;
+ const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
  const session=claimCurrent259LiveSessions(proof,handle);
  let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,shutdown,shutdownUnknown=false;
  const revoke=()=>{active=false;if(clients)admissions.delete(clients);};
- const terminate=()=>shutdown??=(async()=>{
+ const terminate=()=>shutdown??=Promise.resolve().then(async()=>{
   try{await own(session,'close').call(session);}catch{shutdownUnknown=true;}
   try{await closeCurrent259OwnedResource(handle);}catch{shutdownUnknown=true;}
- })();
+ });
  const close=()=>{
   revoke();
-  return closing??=(async()=>{
+  if(!app)return Promise.resolve();
+  return closing??=Promise.resolve().then(async()=>{
    let unknown=false;
    try{if(app)await appClose.call(app);}catch{unknown=true;}
    if(unknown||broken)await terminate();
    if(unknown||shutdownUnknown)throw fault('TASK16_APP_CLOSE_UNKNOWN');
-  })();
+  });
  };
+ onControl(Object.freeze({revoke,close,terminate,cleanupUnknown:()=>shutdownUnknown}));
  try{
   view=claimCurrent259TechnicalResource(handle);
   const loader=view.loader,Class=own(loader,'Class');
@@ -219,22 +223,74 @@ async function createCurrent259OwnedApplication(proof,handle,signal){
 }
 async function withCurrent259OwnedApplication(proof,handle,signal,consume){
  need(arguments.length===4&&typeof consume==='function','TASK16_APP_BOUNDARY');
- let owned,value,first,hasPrimary=false,cleanupUnknown=false;
+ need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
+  !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
+ const aborted=readAborted;
+ need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
+ let owned,control,value,first,hasPrimary=false,cleanupUnknown=false,abortObserved=false,creationSettled=false;
+ let resolveAbort,closingOutcome,closeSettled=false;
+ const outcome=promise=>Promise.resolve(promise).then(value=>({value}),error=>({failed:true,error}));
+ const beginClose=()=>{
+  if(!closingOutcome)closingOutcome=outcome(control.close()).then(result=>{closeSettled=true;return result;});
+  return closingOutcome;
+ };
+ const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
+ const onAbort=()=>{
+  abortObserved=true;
+  if(control){
+   control.revoke();
+   // Start HTTP closure before terminating the backing sessions. Neither a
+   // pending caller promise nor an unreturned startup can retain authority.
+   beginClose();
+   void control.terminate();
+  }
+  resolveAbort({aborted:true});
+ };
+ addAbortListener.call(signal,'abort',onAbort,{once:true});
  try{
-  owned=await createCurrent259OwnedApplication(proof,handle,signal);
-  value=await consume(owned.application);
+  if(aborted.call(signal))onAbort();
+  const creating=outcome(createCurrent259OwnedApplication(proof,handle,signal,scope=>{
+   control=scope;if(abortObserved){scope.revoke();void scope.terminate();}
+  })).then(async result=>{
+   creationSettled=true;
+   // The race retains handlers for late resolution or rejection. Late startup
+   // can only be cleaned up and never becomes the callback's application.
+   if(abortObserved&&!result.failed){
+    try{await result.value.close();}catch{cleanupUnknown=true;}
+    await result.value.terminate();
+   }
+   return result;
+  });
+  const created=await Promise.race([creating,cancellation]);
+  if(created.aborted)throw fault('TASK16_APP_ABORTED');
+  if(created.failed)throw created.error;
+  owned=created.value;
+  const completed=await Promise.race([outcome(Promise.resolve().then(()=>consume(owned.application))),cancellation]);
+  if(completed.aborted)throw fault('TASK16_APP_ABORTED');
+  if(completed.failed)throw completed.error;
+  value=completed.value;
   owned.application.inspect();
  }catch(error){first=error;hasPrimary=true;}
  finally{
-  if(owned){
-   try{await owned.close();}
-   catch(error){cleanupUnknown=true;if(!hasPrimary){first=error;hasPrimary=true;}}
-   if(hasPrimary)await owned.terminate();
-   cleanupUnknown=cleanupUnknown||owned.cleanupUnknown();
-  }
+  try{
+   if(control){
+    const closing=beginClose();
+    const closed=closeSettled?await closing:await Promise.race([closing,cancellation]);
+    if(closed.aborted){
+     // Cancellation ends the wait, never certifies the unreturned close.
+     if(!closeSettled)cleanupUnknown=true;
+     else if((await closing).failed)cleanupUnknown=true;
+     if(!hasPrimary){first=fault('TASK16_APP_ABORTED');hasPrimary=true;}
+    }else if(closed.failed){
+     cleanupUnknown=true;if(!hasPrimary){first=closed.error;hasPrimary=true;}
+    }
+    if(hasPrimary)await control.terminate();
+    cleanupUnknown=cleanupUnknown||control.cleanupUnknown()||abortObserved&&!creationSettled;
+   }
+  }finally{removeAbortListener.call(signal,'abort',onAbort);}
  }
  if(hasPrimary){
-  let code='TASK16_APP_FAILED_CLOSED',startup=owned?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED';
+  let code='TASK16_APP_FAILED_CLOSED',startup=owned||control?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED';
   let cleanup=owned?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED';
   if(first&&!types.isProxy(first)){
    const descriptors=Object.getOwnPropertyDescriptors(first),data=key=>descriptors[key]&&Object.hasOwn(descriptors[key],'value')?descriptors[key].value:undefined;

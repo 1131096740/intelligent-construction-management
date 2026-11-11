@@ -20,20 +20,20 @@ function fixture(t,options={}){
  let claimed=false,sessionActive=true,resourceActive=true,resourceCloses=0,reader;
  session.checkLight=()=>{assert.ok(sessionActive&&resourceActive);};
  session.close=async()=>{calls.push('sessions-close');sessionActive=false;};
- session.verifyFull=async()=>{session.checkLight();calls.push('sessions-full');options.onFull?.();};
+ session.verifyFull=async()=>{session.checkLight();calls.push('sessions-full');await options.onFull?.();};
  const providers=new Map(),token=Symbol('actual registered impact');
  const bundle={Task16RegisteredApplicationModule:class {},PrismaService:class {},
   configureApiSecurity(){calls.push('security');},configureProjectionExportJson(){calls.push('projection');},apiJsonReplacer(){},
   createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');},
   Task16ImpactReaderToken:token};
- const app={async close(){calls.push('app-close');options.onClose?.();},get(key){return providers.get(key);},
+ const app={async close(){calls.push('app-close');await options.onClose?.();},get(key){return providers.get(key);},
   getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
   enableCors(){calls.push('cors');},useGlobalPipes(){calls.push('validation');},
-  async init(){calls.push('init');options.onInit?.();},
+  async init(){calls.push('init');await options.onInit?.();},
   getHttpServer(){return {listening:true,address(){return {address:'127.0.0.1',family:'IPv4',port:52124};}};}};
  const server=app.getHttpServer();app.getHttpServer=()=>server;
  const moduleHandle={async close(){calls.push('module-close');},get(key){return providers.get(key);},createNestApplication(){calls.push('create-app');return app;}};
- const builder={overrideProvider(key){calls.push('override');return {useValue(value){providers.set(key,value);if(key===token)reader=value;return builder;}};},async compile(){calls.push('compile');options.onCompile?.();return moduleHandle;}};
+ const builder={overrideProvider(key){calls.push('override');return {useValue(value){providers.set(key,value);if(key===token)reader=value;return builder;}};},async compile(){calls.push('compile');await options.onCompile?.();return moduleHandle;}};
  const Class=function OriginalSdk(){throw new Error('native client construction forbidden in app model');};
  const loader={Class,check(){assert.ok(resourceActive);},loadApplicationModules(request){
   calls.push('load');assert.deepEqual(request.map(row=>row.name),['application','database','security','projection','json','validation','listen']);
@@ -173,4 +173,85 @@ for(const value of [undefined,null,0,false]) test('falsey callback throw preserv
  assert.equal(f.calls.filter(call=>call==='app-close').length,1);
  assert.ok(f.calls.indexOf('app-close')<f.calls.indexOf('sessions-close'));
  assert.equal(f.resourceCloses(),1);
+});
+
+test('abort exits a pending callback and starts HTTP, session and owned cleanup before callback settles',async t=>{
+ const f=fixture(t),controller=new AbortController();
+ let entered,lateReject,observed;
+ const ready=new Promise(resolve=>{entered=resolve;});
+ const pending=new Promise((_resolve,reject)=>{lateReject=reject;});
+ const running=f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,app=>{
+  observed=app;entered();return pending;
+ }).then(value=>({value}),error=>({error}));
+ t.after(async()=>{lateReject(new Error('late private callback failure'));await running;});
+ await ready;controller.abort();
+ const outcome=await Promise.race([running,new Promise(resolve=>setTimeout(()=>resolve({stillPending:true}),50))]);
+ assert.equal(outcome.stillPending,undefined,'abort must release with even while the callback remains pending');
+ assert.equal(outcome.error.code,'TASK16_APP_ABORTED');
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);
+ assert.equal(f.resourceCloses(),1);
+ assert.throws(()=>observed.inspect());
+});
+
+test('abort also cancels a still-pending application startup with UNKNOWN cleanup',async t=>{
+ let entered,finish;
+ const ready=new Promise(resolve=>{entered=resolve;}),pending=new Promise(resolve=>{finish=resolve;});
+ const f=fixture(t,{onFull(){entered();return pending;}}),controller=new AbortController();
+ const running=f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,()=>{throw new Error('callback must not run');}).then(()=>({success:true}),error=>({error}));
+ t.after(async()=>{finish();await running;});
+ await ready;controller.abort();
+ const result=await Promise.race([running,new Promise(resolve=>setTimeout(()=>resolve({stillPending:true}),50))]);
+ assert.equal(result.stillPending,undefined);assert.equal(result.error.code,'TASK16_APP_ABORTED');
+ assert.equal(result.error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+ assert.equal(f.calls.includes('compile'),false);assert.equal(f.resourceCloses(),1);
+});
+
+test('abort interrupts a pending HTTP close and reports UNKNOWN without a new time window',async t=>{
+ const controller=new AbortController();let closing,finish;
+ const ready=new Promise(resolve=>{closing=resolve;}),pending=new Promise(resolve=>{finish=resolve;});
+ const f=fixture(t,{onClose(){closing();return pending;}});
+ const running=f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,()=>{}).then(()=>({success:true}),error=>({error}));
+ t.after(async()=>{finish();await running;});
+ await ready;controller.abort();
+ const result=await Promise.race([running,new Promise(resolve=>setTimeout(()=>resolve({stillPending:true}),50))]);
+ assert.equal(result.stillPending,undefined,'abort must not wait forever for an unreturned close');
+ assert.equal(result.error.code,'TASK16_APP_ABORTED');assert.equal(result.error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);assert.equal(f.resourceCloses(),1);
+});
+
+test('the native abort listener is removed after successful scope completion',async t=>{
+ const {getEventListeners}=require('node:events'),controller=new AbortController(),baseline=getEventListeners(controller.signal,'abort').length;
+ const f=fixture(t);
+ await f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,()=>{
+  assert.equal(getEventListeners(controller.signal,'abort').length,baseline+1);
+ });
+ assert.equal(getEventListeners(controller.signal,'abort').length,baseline);
+});
+
+for(const stage of ['compile','init']) test('late '+stage+' handles retain their registered cleanup after startup abort',async t=>{
+ let entered,finish;
+ const ready=new Promise(resolve=>{entered=resolve;}),pending=new Promise(resolve=>{finish=resolve;});
+ const hook=()=>{entered();return pending;};
+ const f=fixture(t,stage==='compile'?{onCompile:hook}:{onInit:hook}),controller=new AbortController();let callbacks=0;
+ const running=f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,()=>{callbacks++;}).then(()=>({success:true}),error=>({error}));
+ t.after(async()=>{finish();await running;});
+ await ready;controller.abort();
+ const result=await Promise.race([running,new Promise(resolve=>setTimeout(()=>resolve({stillPending:true}),50))]);
+ assert.equal(result.stillPending,undefined);assert.equal(result.error.code,'TASK16_APP_ABORTED');
+ assert.equal(result.error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+ assert.equal(callbacks,0);assert.equal(f.resourceCloses(),1);
+ finish();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.calls.filter(call=>call===(stage==='compile'?'module-close':'app-close')).length,1);
+ assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);assert.equal(f.resourceCloses(),1);
+});
+
+test('abort raised by HTTP close cannot reenter cleanup or suppress UNKNOWN',async t=>{
+ const controller=new AbortController();
+ const f=fixture(t,{onClose(){controller.abort();throw new Error('private close failure');}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,()=>{}),error=>{
+  assert.equal(error.code,'TASK16_APP_ABORTED');assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');return true;
+ });
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);assert.equal(f.resourceCloses(),1);
 });
