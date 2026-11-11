@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
-import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, registeredPgHttp } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, assertRegisteredPgResourceProof, registeredPgHttp } from "./registered-payment-postgres.fixture";
 import type { PreparedRegisteredPgCompetition, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
 
 /** Source-derived inventory, not an executable resource runner or a PG result. */
@@ -106,7 +106,7 @@ async function prepareCrossCompanyCase(context: RegisteredPgExecutionContext, fi
   };
   const registration = `/payment-executions/${ids.payment}/registrations`;
   const submit = (transport = continuity) => registeredPgHttp(context, registration, "POST", command, fixture.accessToken, transport);
-  return { checked, identity, before, submit };
+  return { checked, identity, before, submit, command, registration };
 }
 
 type CancellationOwnerFields = {
@@ -153,23 +153,20 @@ function fixedCancellationMethod(target: object, key: "$transaction" | "$execute
   };
 }
 
-/** The owned case executor provides the one-use commit cancellation gate. */
-export async function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
-  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
-  cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
-  // The ordinary observer's fixed ACL omits these columns. Read them only
-  // through the already verified, independent owner on this one fixture.
+type CheckedOperation = <T>(operation: () => T | PromiseLike<T>) => Promise<T>;
+
+function captureOwnerRead(context: RegisteredPgExecutionContext) {
+  // These columns belong to the independently verified owner read.
   const owner = context.owner;
   const checkTransaction = fixedCancellationMethod(owner, "$transaction");
   const transaction = owner.$transaction;
-  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true);
   const checkOwner = () => {
     checkTransaction();
     check(context.owner === owner && owner.$transaction === transaction &&
       owner !== context.runtime && owner !== context.observer && typeof transaction === "function",
       "PG_CASE_CANCEL_OWNER_CHANGED");
   };
-  const observeOwner = async () => {
+  return async (fixture: PreparedRegisteredPgFixture, ownerPid: number, checked: CheckedOperation) => {
     checkOwner();
     const row = await checked(() => owner.$transaction(async tx => {
       const checkSet = fixedCancellationMethod(tx, "$executeRawUnsafe");
@@ -192,7 +189,7 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
       check(rows.length === 1 && observed && observed.database === proof.databaseName &&
         observed.databaseOid === proof.databaseOid && observed.systemIdentifier === proof.systemIdentifier &&
         observed.effectiveRole === proof.ownerRole && observed.loginRole === proof.ownerRole &&
-        observed.ownerOid === "10" && observed.pid === identity.ownerPid && observed.tls === true &&
+        observed.ownerOid === "10" && observed.pid === ownerPid && observed.tls === true &&
         observed.readOnly === "on" && observed.isolation === "repeatable read" &&
         typeof observed.settlementStatus === "string" && observed.settlementStatus.length > 0 &&
         [observed.startedAt, observed.settlementUpdatedAt, observed.requestUpdatedAt].every(
@@ -202,7 +199,15 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
     checkOwner();
     return row;
   };
-  const ownerBefore = await observeOwner();
+}
+
+/** The owned case executor provides the one-use commit cancellation gate. */
+export async function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  const observeOwner = captureOwnerRead(context);
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true);
+  const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
   let submitted = false;
   let status: number | undefined;
   await checked(() => cancelCommit(async () => {
@@ -211,18 +216,43 @@ export async function runRegisteredNullCrossCompanyCommitCancellation(context: R
     status = (await checked(() => submit())).status;
   }));
   const after = await checked(() => observe(context, fixture, continuity, true));
-  const ownerAfter = await observeOwner();
+  const ownerAfter = await observeOwner(fixture, identity.ownerPid, checked);
   check(status === 409 || (status !== undefined && status >= 500 && status <= 599), "PG_CASE_CANCEL_HTTP_STATUS");
   check(isDeepStrictEqual(after, before) && isDeepStrictEqual(ownerAfter, ownerBefore), "PG_CASE_CANCEL_LEDGER_CHANGED");
   return { caseId: "registered.null-cross-company.cancel-commit", database: identity.database,
     observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const };
 }
 
+function assertCommittedCrossCompany(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
+  after: Awaited<ReturnType<typeof observe>>) {
+  const { ids } = fixture.plan;
+  check(after.executions.length === 1 && after.funding.length === 1 && after.allocations.length === 1 && after.events.length === 1 && after.audits.length === 1 && after.roots.length === 1 && after.facts.length === 0 && after.impacts.length === 0, "PG_CASE_COMMITTED_GRAPH_COUNTS");
+  const execution = after.executions[0]!;
+  const funding = after.funding[0]!;
+  const root = after.roots[0]!;
+  check(execution.idempotencyKey === ids.requestKey && execution.amountCents === 4000n && execution.paymentRequestId === ids.payment && execution.voucherFileId === null && funding.executionId === execution.id && funding.operatingLedgerEffectiveDateAtRegistration === null && funding.actualPayerId === ids.companyB && funding.actualPayerKind === "participating_company", "PG_CASE_COMMITTED_EXECUTION_SCOPE");
+  check(root.paymentExecutionId === execution.id && root.sourceType === "registered_payment_execution" && root.entryKind === "proxy_payment" && root.direction === "increase" && root.status === "confirmed" && root.originalDebtorCompanyId === ids.companyA && root.creditorCompanyId === ids.companyB && root.amountCents === 4000n && root.projectId === ids.project, "PG_CASE_COMMITTED_A_OWES_B_ROOT");
+  check(after.allocations[0]?.amountCents === 4000n && after.allocations[0]?.sourceBatchId === fixture.companyBSourceId && after.request.paidAmountCents === 4000n && after.settlement.paidAmountCents === 4000n && after.request.status === "partially_paid" && after.balanceA === "100.0000" && after.balanceB === "60.0000", "PG_CASE_COMMITTED_CAPACITY_BALANCE");
+  const audit = after.audits[0]!;
+  const metadata = audit.metadata;
+  check(audit.actorUserId === ids.actor && metadata !== null && typeof metadata === "object" && !Array.isArray(metadata), "PG_CASE_COMMITTED_AUDIT_ACTOR");
+  const actualPayer = metadata.actualPayer;
+  check(metadata.voucherFileId === null && metadata.voucherPending === true && actualPayer !== null && typeof actualPayer === "object" && !Array.isArray(actualPayer) && actualPayer.kind === "participating_company" && actualPayer.id === ids.companyB && !JSON.stringify(metadata).includes(context.password), "PG_CASE_COMMITTED_AUDIT_FACTS");
+  return { execution, root };
+}
+
+async function assertRecordedOriginalResult(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
+  continuity: RegisteredPgSeedContinuity | undefined, checked: CheckedOperation, executionId: string) {
+  const { plan } = fixture;
+  const { ids } = plan;
+  const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`, "GET", undefined, fixture.accessToken, continuity));
+  const resultBody = result.body as { status?: unknown; execution?: { executionId?: unknown; amountCents?: unknown; paidAt?: unknown }; effects?: unknown[]; intercompany?: unknown[] };
+  check(result.status === 200 && resultBody.status === "recorded" && resultBody.execution?.executionId === executionId && resultBody.execution?.amountCents === "4000" && resultBody.execution?.paidAt === plan.paidAt && resultBody.effects?.length === 0 && resultBody.intercompany?.length === 1, "PG_CASE_PUBLIC_ORIGINAL_RESULT");
+}
+
 async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
   continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
   const { checked, identity, submit } = await prepareCrossCompanyCase(context, fixture, continuity);
-  const { plan } = fixture;
-  const { ids } = plan;
   if (scenario === "response-loss") {
     check(continuity?.assertHttpRequest, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
     const dropped = new Error("PG_CASE_RESPONSE_LOST_AFTER_UPSTREAM_HEADERS");
@@ -246,34 +276,173 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
     check(response.status === 201, "PG_CASE_REGISTRATION_HTTP_STATUS");
   }
   const after = await checked(() => observe(context, fixture, continuity));
-  check(after.executions.length === 1 && after.funding.length === 1 && after.allocations.length === 1 && after.events.length === 1 && after.audits.length === 1 && after.roots.length === 1 && after.facts.length === 0 && after.impacts.length === 0, "PG_CASE_COMMITTED_GRAPH_COUNTS");
-  const execution = after.executions[0]!;
-  const funding = after.funding[0]!;
-  const root = after.roots[0]!;
-  check(execution.idempotencyKey === ids.requestKey && execution.amountCents === 4000n && execution.paymentRequestId === ids.payment && execution.voucherFileId === null && funding.executionId === execution.id && funding.operatingLedgerEffectiveDateAtRegistration === null && funding.actualPayerId === ids.companyB && funding.actualPayerKind === "participating_company", "PG_CASE_COMMITTED_EXECUTION_SCOPE");
-  check(root.paymentExecutionId === execution.id && root.sourceType === "registered_payment_execution" && root.entryKind === "proxy_payment" && root.direction === "increase" && root.status === "confirmed" && root.originalDebtorCompanyId === ids.companyA && root.creditorCompanyId === ids.companyB && root.amountCents === 4000n && root.projectId === ids.project, "PG_CASE_COMMITTED_A_OWES_B_ROOT");
-  check(after.allocations[0]?.amountCents === 4000n && after.allocations[0]?.sourceBatchId === fixture.companyBSourceId && after.request.paidAmountCents === 4000n && after.settlement.paidAmountCents === 4000n && after.request.status === "partially_paid" && after.balanceA === "100.0000" && after.balanceB === "60.0000", "PG_CASE_COMMITTED_CAPACITY_BALANCE");
-  const audit = after.audits[0]!;
-  const metadata = audit.metadata;
-  check(audit.actorUserId === ids.actor && metadata !== null && typeof metadata === "object" && !Array.isArray(metadata), "PG_CASE_COMMITTED_AUDIT_ACTOR");
-  const actualPayer = metadata.actualPayer;
-  check(metadata.voucherFileId === null && metadata.voucherPending === true && actualPayer !== null && typeof actualPayer === "object" && !Array.isArray(actualPayer) && actualPayer.kind === "participating_company" && actualPayer.id === ids.companyB && !JSON.stringify(metadata).includes(context.password), "PG_CASE_COMMITTED_AUDIT_FACTS");
+  const { execution, root } = assertCommittedCrossCompany(context, fixture, after);
   const verifyOriginalResult = async () => {
-    const result = await checked(() => registeredPgHttp(context, `/payment-executions/results/${ids.requestKey}`, "GET", undefined, fixture.accessToken, continuity));
-    const resultBody = result.body as { status?: unknown; execution?: { executionId?: unknown; amountCents?: unknown; paidAt?: unknown }; effects?: unknown[]; intercompany?: unknown[] };
-    check(result.status === 200 && resultBody.status === "recorded" && resultBody.execution?.executionId === execution.id && resultBody.execution?.amountCents === "4000" && resultBody.execution?.paidAt === plan.paidAt && resultBody.effects?.length === 0 && resultBody.intercompany?.length === 1, "PG_CASE_PUBLIC_ORIGINAL_RESULT");
+    await assertRecordedOriginalResult(context, fixture, continuity, checked, execution.id);
   };
   if (scenario === "response-loss") await verifyOriginalResult();
   const replay = await checked(() => submit());
   check(replay.status === 201, "PG_CASE_ORIGINAL_KEY_REPLAY_HTTP");
   const final = await checked(() => observe(context, fixture, continuity));
   check(final.executions.length === 1 && final.executions[0]?.id === execution.id && final.roots.length === 1 && final.roots[0]?.id === root.id && final.events.length === 1 && final.audits.length === 1 && final.allocations.length === 1 && final.request.paidAmountCents === 4000n && final.settlement.paidAmountCents === 4000n && final.balanceA === "100.0000" && final.balanceB === "60.0000", "PG_CASE_REPLAY_NO_SECOND_FINANCIAL_EFFECT");
-  check(final.funding.length === 1 && final.funding[0]?.executionId === execution.id && final.funding[0]?.operatingLedgerEffectiveDateAtRegistration === null && final.funding[0]?.actualPayerId === ids.companyB && final.funding[0]?.actualPayerKind === "participating_company" && final.facts.length === 0 && final.impacts.length === 0, "PG_CASE_REPLAY_CANONICAL_SCOPE");
+  check(final.funding.length === 1 && final.funding[0]?.executionId === execution.id && final.funding[0]?.operatingLedgerEffectiveDateAtRegistration === null && final.funding[0]?.actualPayerId === fixture.plan.ids.companyB && final.funding[0]?.actualPayerKind === "participating_company" && final.facts.length === 0 && final.impacts.length === 0, "PG_CASE_REPLAY_CANONICAL_SCOPE");
   if (scenario === "commit") await verifyOriginalResult();
   return { caseId: scenario === "commit" ? registeredPaymentPostgresCases()[0]!.id : "registered.null-cross-company.response-loss",
     executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true,
     limits: scenario === "commit" ? ["Only the normal NULL-project commit/replay case", "No fault, concurrency, approval-path, TLS or deployment acceptance"]
       : ["Only the original-key recovery and replay after one lost HTTP response", "No database disconnect, rollback or concurrency acceptance"] };
+}
+
+
+type DisconnectOutcome = Readonly<{
+  mode: "disconnect-commit";
+  state: "commit-disconnected";
+  transactionId: string;
+  executionAllowed: false;
+  nativeAdmission: false;
+}>;
+
+type DisconnectAttempt = Readonly<{
+  context: RegisteredPgExecutionContext;
+  originalProof: RegisteredPgExecutionContext["proof"];
+  owner: RegisteredPgExecutionContext["owner"];
+  runtime: RegisteredPgExecutionContext["runtime"];
+  observer: RegisteredPgExecutionContext["observer"];
+  identity: Awaited<ReturnType<typeof assertRegisteredPgConnectedRoles>>;
+  fixture: PreparedRegisteredPgFixture;
+  before: Awaited<ReturnType<typeof observe>>;
+  ownerBefore: CancellationOwnerFields;
+  observeOwner: ReturnType<typeof captureOwnerRead>;
+  registration: string;
+  command: Awaited<ReturnType<typeof prepareCrossCompanyCase>>["command"];
+}>;
+
+const disconnectOwners = new WeakSet<RegisteredPgExecutionContext["owner"]>();
+const disconnectAttempts = new WeakMap<object, DisconnectAttempt>();
+const disconnectRollbacks = new WeakMap<object, DisconnectAttempt>();
+
+function checkedIn(continuity: RegisteredPgSeedContinuity): CheckedOperation {
+  return async operation => {
+    continuity.checkLight();
+    const value = await operation();
+    continuity.checkLight();
+    return value;
+  };
+}
+
+function checkOriginalDisconnectClients(attempt: DisconnectAttempt) {
+  const { context, originalProof, owner, runtime, observer, command } = attempt;
+  check(context.owner === owner && context.runtime === runtime && context.observer === observer &&
+    context.password === command.confirmationPassword && isDeepStrictEqual(context.proof, originalProof),
+  "PG_CASE_DISCONNECT_ORIGINAL_SCOPE");
+}
+
+/** The fixed owner fault runner owns actual COMMIT targeting and settlement. */
+export async function runRegisteredNullCrossCompanyDisconnectAttempt(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  disconnectCommit: (submit: () => Promise<void>) => Promise<DisconnectOutcome>) {
+  check(continuity.assertHttpRequest, "PG_CASE_DISCONNECT_REQUIRES_OWNED_TRANSPORT");
+  const { owner, runtime, observer } = context;
+  check(!disconnectOwners.has(owner), "PG_CASE_DISCONNECT_ATTEMPT_USED");
+  disconnectOwners.add(owner);
+  fixture = structuredClone(fixture);
+  const originalProof = { ...context.proof, preparedSqlSha256: { ...context.proof.preparedSqlSha256 },
+    application: { ...context.proof.application } };
+  const observeOwner = captureOwnerRead(context);
+  const { checked, identity, before, command, registration } = await prepareCrossCompanyCase(context, fixture, continuity, true);
+  for (const allocation of command.sourceAllocations) Object.freeze(allocation);
+  Object.freeze(command.sourceAllocations);
+  Object.freeze(command);
+  const ownerBefore = await observeOwner(fixture, identity.ownerPid, checked);
+  const attempt = Object.freeze({ context, originalProof, owner, runtime, observer, identity, fixture, before,
+    ownerBefore, observeOwner, registration, command });
+  checkOriginalDisconnectClients(attempt);
+
+  let armed = true, submissions = 0, status: number | undefined;
+  try {
+    const outcome = await checked(() => disconnectCommit(async () => {
+      check(armed && ++submissions === 1, "PG_CASE_DISCONNECT_DUPLICATE_POST");
+      status = (await checked(() => registeredPgHttp(context, registration, "POST", command, fixture.accessToken, continuity))).status;
+    }));
+    check(outcome?.mode === "disconnect-commit" && outcome.state === "commit-disconnected" &&
+      typeof outcome.transactionId === "string" && /^[1-9][0-9]{0,9}$/u.test(outcome.transactionId) &&
+      Number(outcome.transactionId) <= 0xffffffff && outcome.executionAllowed === false && outcome.nativeAdmission === false,
+    "PG_CASE_DISCONNECT_FAULT_OUTCOME");
+    check(submissions === 1 && (status === 409 || (status !== undefined && status >= 500 && status <= 599)),
+      "PG_CASE_DISCONNECT_HTTP_STATUS");
+  } finally { armed = false; }
+
+  checkOriginalDisconnectClients(attempt);
+  const receipt = Object.freeze({});
+  disconnectAttempts.set(receipt, attempt);
+  return receipt;
+}
+
+async function assertUnchangedDisconnectLedger(attempt: DisconnectAttempt, continuity: RegisteredPgSeedContinuity) {
+  const checked = checkedIn(continuity);
+  checkOriginalDisconnectClients(attempt);
+  const after = await checked(() => observe(attempt.context, attempt.fixture, continuity, true));
+  const ownerAfter = await attempt.observeOwner(attempt.fixture, attempt.identity.ownerPid, checked);
+  checkOriginalDisconnectClients(attempt);
+  check(isDeepStrictEqual(after, attempt.before) && isDeepStrictEqual(ownerAfter, attempt.ownerBefore),
+    "PG_CASE_DISCONNECT_LEDGER_CHANGED");
+}
+
+/** Call inside the same owned resource, after closing the original app and
+ * retiring its runtime. Both original readback clients remain available. */
+export async function confirmRegisteredNullCrossCompanyDisconnectRollback(receipt: object, continuity: RegisteredPgSeedContinuity) {
+  const attempt = disconnectAttempts.get(receipt);
+  check(attempt, "PG_CASE_DISCONNECT_ATTEMPT");
+  disconnectAttempts.delete(receipt);
+  await assertUnchangedDisconnectLedger(attempt, continuity);
+  const confirmed = Object.freeze({});
+  disconnectRollbacks.set(confirmed, attempt);
+  return confirmed;
+}
+
+/** The replacement app owns a separately qualified runtime for the original
+ * resource and bearer. A case receipt alone cannot issue a client or app. */
+export async function runRegisteredNullCrossCompanyDisconnectRecovery(receipt: object, replacement: RegisteredPgExecutionContext,
+  continuity: RegisteredPgSeedContinuity) {
+  const attempt = disconnectRollbacks.get(receipt);
+  check(attempt, "PG_CASE_DISCONNECT_ROLLBACK_PROOF");
+  disconnectRollbacks.delete(receipt);
+  const { originalProof, fixture, registration, command } = attempt;
+  const checked = checkedIn(continuity);
+  assertRegisteredPgResourceProof(replacement.proof);
+  const { origin } = replacement.proof.application;
+  const differentEndpoint = new URL(origin).origin !== new URL(originalProof.application.origin).origin;
+  const replacementRuntime = replacement.runtime;
+  const checkReplacement = () => {
+    checkOriginalDisconnectClients(attempt);
+    check(continuity.assertHttpRequest && differentEndpoint &&
+      isDeepStrictEqual(replacement.proof, { ...originalProof, application: { ...originalProof.application, origin } }) &&
+      replacement.owner === attempt.owner && replacement.observer === attempt.observer &&
+      replacement.runtime === replacementRuntime && replacementRuntime !== attempt.runtime &&
+      replacement.password === command.confirmationPassword,
+    "PG_CASE_DISCONNECT_REPLACEMENT_SCOPE");
+  };
+  checkReplacement();
+  const identity = await checked(() => assertRegisteredPgConnectedRoles(replacement, continuity));
+  check(identity.database === attempt.identity.database && identity.ownerPid === attempt.identity.ownerPid &&
+    identity.observerPid === attempt.identity.observerPid && identity.runtimePid !== attempt.identity.runtimePid,
+  "PG_CASE_DISCONNECT_REPLACEMENT_IDENTITY");
+  await assertUnchangedDisconnectLedger(attempt, continuity);
+  checkReplacement();
+  const original = await checked(() => registeredPgHttp(replacement, `/payment-executions/results/${fixture.plan.ids.requestKey}`,
+    "GET", undefined, fixture.accessToken, continuity));
+  const originalBody = original.body as { status?: unknown; execution?: unknown } | null;
+  check(original.status === 200 && originalBody?.status === "unconfirmed" && originalBody.execution === undefined,
+    "PG_CASE_DISCONNECT_KEY_ALREADY_RESOLVED");
+  checkReplacement();
+  const result = await checked(() => registeredPgHttp(replacement, registration, "POST", command, fixture.accessToken, continuity));
+  check(result.status === 201, "PG_CASE_DISCONNECT_RECOVERY_HTTP");
+  const after = await checked(() => observe(replacement, fixture, continuity, true));
+  const { execution, root } = assertCommittedCrossCompany(replacement, fixture, after);
+  await assertRecordedOriginalResult(replacement, fixture, continuity, checked, execution.id);
+  checkReplacement();
+  return { caseId: "registered.null-cross-company.disconnect-commit-recovery", passed: true as const,
+    rollbackObserved: true as const, executionId: execution.id, rootId: root.id };
 }
 
 
