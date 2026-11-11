@@ -488,6 +488,10 @@ for (const [display, catalog] of [
 }
 function postgresAmbiguityDiagnostic(sqlState, message) {
   if (sqlState !== "42725" || Buffer.byteLength(message) > 4096) return null;
+  // PG16's server formatter may append this position even in TERSE mode.
+  // Check the original byte budget above; discard only its bounded literal suffix.
+  const position = / at character ([1-9][0-9]{0,9})$/u.exec(message);
+  if (position && Number(position[1]) <= 2147483647) message = message.slice(0, position.index);
   const call = /^function (.+)\(([^()]*)\) is not unique$/u.exec(message);
   if (call) {
     const name = postgresDiagnosticNames.get(call[1]);

@@ -47,6 +47,27 @@ describe("project financing quota PostgreSQL runner", () => {
   };
   it.each<FirstFailureScenario>([
     {
+      name: "a PG16 server-position suffix on the controlled signature",
+      logs: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique at character 42\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: "sha256(unknown)" } }
+    },
+    ...[
+      ['function name "sha256" is not unique at character 1', "FUNCTION_NAME_AMBIGUOUS"],
+      ['more than one function named "public.digest" at character 2147483647', "REGPROC_NAME_AMBIGUOUS"]
+    ].map(([message, messageClass]) => ({
+      name: "a PG16 position-suffix name class " + messageClass,
+      logs: scopedPrefix + "42725|ERROR:  " + message + "\n",
+      postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
+        diagnostic: { messageClass, functionName: messageClass === "REGPROC_NAME_AMBIGUOUS" ? "public.digest" : "sha256" } }
+    })),
+    ...["0", "01", "+1", "-1", "2147483648", "99999999999", "１", "1 at character 2", "1 ", "1; SELECT secret"]
+      .map(position => ({
+        name: "rejects a malformed PG16 position-suffix " + JSON.stringify(position),
+        logs: scopedPrefix + "42725|ERROR:  function sha256(unknown) is not unique at character " + position + "\n",
+        postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR" }
+      })),
+    {
       name: "the PG16 maximum hundred standard arguments",
       logs: scopedPrefix + "42725|ERROR:  function " + hundredArgumentCall + " is not unique\n",
       postgres: { status: "captured", sqlState: "42725", reason: "POSTGRES_ERROR",
