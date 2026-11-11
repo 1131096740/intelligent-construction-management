@@ -1,4 +1,5 @@
 "use strict";
+const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 // Loads only this observation's sealed physical closure. No SDK instance, DB,
 // custom constructor, supplied resolver or application bootstrap is accepted.
 const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
@@ -33,7 +34,7 @@ function loadCurrent259Client(handle){
  need(coreHooksUnmodified()&&!process._preload_modules?.length,'CURRENT259_LOADER_HOOKS');
  const hooks={load:Module._load,resolve:Module._resolveFilename,find:Module._findPath,require:Module.prototype.require,extensions:{...Module._extensions}};
  const nodeBuiltins=new Set(Module.builtinModules.map(x=>x.replace(/^node:/u,''))),files=new Map();
- let failed=false,loading=false,applicationExports,reflection;
+ let failed=false,loading=false,reflection;
  const hooksMatch=()=>Module._resolveFilename===hooks.resolve&&Module._findPath===hooks.find&&Module.prototype.require===hooks.require&&['.js','.json','.node'].every(ext=>Module._extensions[ext]===hooks.extensions[ext]);
  function guardedOperation(action){
   try{need(!loading&&!failed&&coreHooksUnmodified()&&hooksMatch(),'CURRENT259_LOADER_HOOKS');}catch(error){failed=true;throw error;}loading=true;
@@ -69,6 +70,21 @@ function loadCurrent259Client(handle){
   if(i===0){const token=own(exports,'Task16ImpactReaderToken');need(typeof token==='symbol','CURRENT259_LOADER_EXPORT');records.push({module:mod,key:'Task16ImpactReaderToken',value:token});values.Task16ImpactReaderToken=token;}
  }
  const requireAt=Module.createRequire(path.join(root,'services/api/package.json'));
+ // Capture both original cases and their seed's lazy dependencies before the
+ // loader is returned. Same-object export replacement is not a fresh baseline.
+ const paymentValues={};
+ for(const [entry,keys,publish]of [
+  [requireAt.resolve('bcryptjs'),['hash'],false],
+  [path.join(root,'services/api/dist/company-entity/unified-social-credit-code.js'),['assertValidUnifiedSocialCreditCode'],false],
+  [path.join(root,'services/api/dist/database/registered-payment-postgres.fixture.js'),['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','assertRegisteredPgConnectedRoles','registeredPgHttp'],true],
+  [path.join(root,'services/api/dist/database/registered-payment-postgres.cases.js'),['registeredPaymentPostgresCases','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss'],true]
+ ]){
+  const file=fs.realpathSync(entry),exports=guardedRequire(file),mod=require.cache[file];
+  for(const key of keys){const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function','CURRENT259_PAYMENT_EXPORT');
+   records.push({module:mod,key,value:descriptor.value,descriptor});if(publish)paymentValues[key]=descriptor.value;
+  }
+ }
+ const paymentExports=Object.freeze(paymentValues);
  const framework={};
  for(const [name,entry]of [['TestingModule','@nestjs/testing/testing-module'],['NestContainer','@nestjs/core/injector/container'],['NestApplication','@nestjs/core/nest-application'],['ExpressAdapter','@nestjs/platform-express/adapters/express-adapter']]){
   const file=fs.realpathSync(requireAt.resolve(entry)),exports=guardedRequire(file);framework[name]=own(exports,name);need(typeof framework[name]==='function','CURRENT259_FRAMEWORK_CLASS');records.push({module:require.cache[file],key:name,value:framework[name]});
@@ -113,7 +129,7 @@ function loadCurrent259Client(handle){
  const classMethodsUnchanged=()=>methods.every(({key,descriptor})=>{const actual=Object.getOwnPropertyDescriptor(Class.prototype,key);return actual&&Object.hasOwn(actual,'value')&&['value','writable','enumerable','configurable'].every(field=>actual[field]===descriptor[field]);});
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
- applicationExports={records,checkMetadata};const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
+ const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
@@ -121,10 +137,36 @@ function loadCurrent259Client(handle){
    for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2'&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine,'CURRENT259_LOADER_CLASS');
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'TASK16_APP_REFLECTION_CHANGED');
-   for(const row of records)need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');
+   for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(key=>actual[key]===row.descriptor[key]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
    checkMetadata();
    for(const p of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,p)))need(files.has(p),'CURRENT259_LOADER_FOREIGN_CACHE');
+  }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
+ }
+ function checkContinuity(token,ownedHandle){
+  try{
+   businessIssuer(token,ownedHandle);
+   need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
+   material.checkContinuity(token,ownedHandle);
+   const seen=new Set();
+   const visitIdentity=mod=>{if(seen.has(mod))return;seen.add(mod);const row=files.get(mod?.filename);
+    need(row&&row.module===mod&&mod.loaded&&require.cache[row.path]===mod&&mod.exports===row.exports,'CURRENT259_LOADER_MODULE');
+    for(const child of mod.children)visitIdentity(child);
+   };
+   for(const mod of roots)visitIdentity(mod);
+   for(const row of files.values())need(require.cache[row.path]===row.module&&row.module.exports===row.exports,'CURRENT259_LOADER_MODULE');
+   need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2','CURRENT259_LOADER_CLASS');
+   for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(k=>actual[k]===row.descriptor[k]),'CURRENT259_PAYMENT_EXPORT');}}
+   need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define&&Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
+   checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
+  }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
+ }
+ function verifyBusinessFiles(token,ownedHandle){
+  checkContinuity(token,ownedHandle);
+  try{
+   // The in-memory graph is checked on every transition. At the fixed impact
+   // boundaries, each already-loaded file gets one physical identity check.
+   for(const row of files.values())checkCurrent259FileIdentity(row.path,row.identity);
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
  const expectedRequest=Object.freeze(['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'].map((p,i)=>Object.freeze({name:['application','database','security','projection','json','validation','listen'][i],path:'services/api/dist/'+p})));
@@ -201,7 +243,7 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,verifyFull:()=>{check();material.check();},loadApplicationModules,createTestingModule,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

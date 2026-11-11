@@ -783,7 +783,8 @@ test("owned current259 complete supply claim binds the original result and handl
  const supplied=model.api.claimCurrent259TechnicalSupply(result,model.handle);
  assert.equal(supplied.completion,result);assert.equal(supplied.source.candidateSha,'c'.repeat(40));
  assert.equal(supplied.completion.application.oid,result.application.oid);
- assert.deepEqual(Object.keys(supplied).sort(),['check','completion','source']);
+ assert.deepEqual(Object.keys(supplied).sort(),['check','checkContinuity','completion','source']);
+ assert.equal(typeof supplied.checkContinuity,'function');
  assert.ok(Object.isFrozen(supplied)&&Object.isFrozen(supplied.source)&&Object.isFrozen(supplied.source.profile));
  supplied.check();
  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(result,model.handle),/CURRENT259_TECHNICAL_PROFILE/);

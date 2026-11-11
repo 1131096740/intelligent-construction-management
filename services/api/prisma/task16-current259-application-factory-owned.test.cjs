@@ -46,13 +46,18 @@ function fixture(t,options={}){
    if(value!==proof||provided!==handle||claimed)throw new Error('CURRENT259_LIVE_SESSIONS_HANDLE');
    claimed=true;return session;
   }},
-  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer(token,h){assert.equal(typeof options.businessGuard,'function');options.businessGuard(token,h);}},
+  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(provided,token){assert.equal(provided,handle);options.businessGuard(token,provided);view.check();return view;},claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
   './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return false;},createCurrent259OwnedApplication(){throw new Error('wrong bridge');},takeCurrent259CreationFailure(){}},
   './run-task16-registered-pg-local.cjs':{ownsActiveTask16SimulationContext(){return false;}},
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value){const material=loadCurrent259CatalogMaterial(value);return options.material?options.material(material):material;}}
  };
  const module={exports:{}};
- new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(name=>imports[name]??require(name),module,__dirname);
+ const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
+ if(options.paymentModule)imports['./task16-current259-payment-case.cjs']=options.paymentModule;
+ const localRequire=name=>imports[name]??require(name);
+ localRequire.cache=options.paymentModule?{...require.cache,[paymentFile]:{exports:options.paymentModule}}:require.cache;
+ new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(localRequire,module,__dirname);
  return {...model,api:module.exports,proof,handle,session,view,loader,calls,environment,directory,resourceCloses:()=>resourceCloses,
   reader:()=>reader,providers,token,claimed:()=>claimed};
 }

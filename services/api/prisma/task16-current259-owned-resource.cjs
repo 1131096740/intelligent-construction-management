@@ -1,4 +1,5 @@
 "use strict";
+const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 // Physical resource lifetime only. No client, migration, role installation,
 // catalog qualification or business/session admission is issued by this module.
 const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
@@ -34,7 +35,7 @@ function hooksClean(){
  return typeof builtinLoader==='string'&&checks.every(([fn,marker])=>{const assignment=builtinLoader.indexOf(marker),begin=builtinLoader.indexOf('function',assignment),end=builtinLoader.indexOf('\n};',begin);return assignment>=0&&end>begin&&typeof fn==='function'&&Function.prototype.toString.call(fn)===builtinLoader.slice(begin,end+2);});
 }
 function importsCheck(technical=false){need(!preloaded&&hooksClean()&&require.cache[loaderPath]===loaderModule&&require.cache[resourcePath]===resourceModule&&loaderModule.exports===loaderExports&&resourceModule.exports===resourceExports&&own(loaderExports,'loadCurrent259Client')===loadCurrent259Client&&own(resourceExports,'startTask01Postgres')===startTask01Postgres&&(!technical||typeof startCurrent259TechnicalPostgres==='function'&&own(resourceExports,'startCurrent259TechnicalPostgres')===startCurrent259TechnicalPostgres),'CURRENT259_RESOURCE_PRODUCER_CHANGED');}
-function toolsCheck(){for(const key of ['docker','openssl']){const file=TOOLS[key];need(fs.realpathSync(file)===file,'CURRENT259_RESOURCE_TOOL_CHANGED');const before=fs.statSync(file);need(before.isFile()&&(before.mode&0o022)===0,'CURRENT259_RESOURCE_TOOL_CHANGED');fs.accessSync(file,fs.constants.X_OK);const hash=createHash('sha256').update(fs.readFileSync(file)).digest('hex'),after=fs.statSync(file);need(hash===HASHES[key]&&['uid','mode','dev','ino','size','mtimeMs','ctimeMs'].every(k=>before[k]===after[k]),'CURRENT259_RESOURCE_TOOL_CHANGED');}}
+function toolsCheck(){const identities={};for(const key of ['docker','openssl']){const file=TOOLS[key];need(fs.realpathSync(file)===file,'CURRENT259_RESOURCE_TOOL_CHANGED');const before=fs.statSync(file);need(before.isFile()&&(before.mode&0o022)===0,'CURRENT259_RESOURCE_TOOL_CHANGED');fs.accessSync(file,fs.constants.X_OK);const hash=createHash('sha256').update(fs.readFileSync(file)).digest('hex'),after=fs.statSync(file);need(hash===HASHES[key]&&['uid','mode','dev','ino','size','mtimeMs','ctimeMs'].every(k=>before[k]===after[k]),'CURRENT259_RESOURCE_TOOL_CHANGED');identities[key]=Object.fromEntries(['dev','ino','uid','gid','mode','size','mtimeMs','ctimeMs'].map(k=>[k,after[k]]));}return identities;}
 function planSnapshot(value){
  const plan=record(value,['artifactsDir','daemonId']);
  need(typeof plan.daemonId==='string'&&/^[A-Za-z0-9:-]{16,128}$/u.test(plan.daemonId),'CURRENT259_RESOURCE_PLAN');
@@ -58,10 +59,10 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
  importsCheck(technical);const loader=loadCurrent259Client(build);
  need(build&&!types.isProxy(build)&&!usedBuilds.has(build),'CURRENT259_RESOURCE_BUILD_REUSED');usedBuilds.add(build);
  importsCheck(technical);loader.verifyFull();const witness=loader.witness(),plan=planSnapshot(planInput);
- need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');toolsCheck();
+ need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');const toolIdentities=toolsCheck(),deadline=Date.now()+(technical?3600000:900000);
  const runId=randomUUID(),databaseName='jg_task01_'+runId.replaceAll('-','');
  let credentials=Object.freeze({owner:randomBytes(48).toString('hex'),runtime:randomBytes(48).toString('hex'),observer:randomBytes(48).toString('hex')});
- let resource,methods,fields,handle,active=false,broken=false,closing,primary,hasPrimary=false,value;
+ let view,resource,methods,fields,handle,active=false,broken=false,closing,primary,hasPrimary=false,value,businessToken;
  const invalidate=()=>{active=false;broken=true;if(handle)handles.delete(handle);credentials=undefined;};
  async function close(){
   invalidate();if(closing)return closing;
@@ -83,6 +84,30 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
    need(TLS_KEYS.every(key=>receipt.tls?.[key]===fields.serverCertHashes[key])&&['correctChainVerified','correctSanVerified','wrongCaChainRejected','wrongSanChainVerified','wrongSanMismatchVerified'].every(key=>receipt.tls?.[key]===true),'CURRENT259_RESOURCE_TLS');
   }catch(error){invalidate();void close().catch(()=>{});throw error;}
  }
+ function checkLifetime(){
+  try{
+   need(active&&!broken,'CURRENT259_RESOURCE_CLOSED');need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');importsCheck(technical);need(Date.now()<=deadline&&handles.get(handle)?.view===view,'CURRENT259_RESOURCE_CLOSED');
+   for(const key of METHODS)need(own(resource,key)===methods[key],'CURRENT259_RESOURCE_CHANGED');
+   for(const key of FIELDS)need(isDeepStrictEqual(own(resource,key),fields[key]),'CURRENT259_RESOURCE_CHANGED');
+   const receipt=methods.getReceipt.call(resource);
+   need(receipt.runId===runId&&receipt.sourceSha===witness.source.candidateSha&&receipt.endpoint===ENDPOINT&&receipt.daemonId===plan.daemonId&&receipt.imageId===IMAGE&&receipt.databaseName===databaseName&&receipt.containerId===fields.containerId&&receipt.networkId===fields.networkId&&receipt.port===fields.port&&receipt.status==='started-awaiting-driver-verification'&&receipt.cleanup?.status==='pending','CURRENT259_RESOURCE_IDENTITY');
+   if(technical)need(receipt.purpose===TECHNICAL_PURPOSE&&receipt.limits?.totalDeadlineMs===3600000,'CURRENT259_RESOURCE_PURPOSE');
+   need(receipt.hostOwnerCredentialFilesErased===true&&receipt.hostPrivateKeyFilesErased===true&&receipt.hostPrivateMaterialsErased===true&&receipt.topology==='UNVERIFIED_HOST_PUBLISHED_TLS','CURRENT259_RESOURCE_TLS');
+   need(TLS_KEYS.every(key=>receipt.tls?.[key]===fields.serverCertHashes[key])&&['correctChainVerified','correctSanVerified','wrongCaChainRejected','wrongSanChainVerified','wrongSanMismatchVerified'].every(key=>receipt.tls?.[key]===true),'CURRENT259_RESOURCE_TLS');
+  }catch(error){invalidate();void close().catch(()=>{});throw error;}
+ }
+ function checkContinuity(token){
+  try{businessIssuer(token,handle);checkLifetime();loader.checkContinuity(token,handle);for(const key of ['docker','openssl'])checkCurrent259FileIdentity(TOOLS[key],toolIdentities[key]);checkLifetime();}
+  catch(error){invalidate();void close().catch(()=>{});throw error;}
+ }
+ function verifyBusinessFiles(token){
+  try{businessIssuer(token,handle);need(businessToken===token,'CURRENT259_RESOURCE_CLOSED');checkLifetime();loader.verifyBusinessFiles(token,handle);checkLifetime();}
+  catch(error){invalidate();void close().catch(()=>{});throw error;}
+ }
+ function activateBusinessContinuity(token){try{checkContinuity(token);need(!businessToken||businessToken===token,'CURRENT259_RESOURCE_CLOSED');businessToken=token;}catch(error){invalidate();void close().catch(()=>{});throw error;}}
+ function deactivateBusinessContinuity(token){businessIssuer(token,handle);need(businessToken===token,'CURRENT259_RESOURCE_CLOSED');checkContinuity(token);businessToken=undefined;}
+ function checkOperation(){if(businessToken)checkContinuity(businessToken);else check();}
+
  try{
   resource=await (technical?startCurrent259TechnicalPostgres:startTask01Postgres)({runId,sourceSha:witness.source.candidateSha,artifactsDir:plan.artifactsDir,endpoint:ENDPOINT,daemonId:plan.daemonId,imageId:IMAGE,tools:TOOLS,ownerPassword:credentials.owner,...(technical?{}:{deadlineMs:900000}),signal});
   // These are actual original producer return values, never caller projections.
@@ -99,10 +124,11 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   loader.verifyFull();check();
   handle=Object.freeze({kind:'CURRENT259_OWNED_RESOURCE'});
   const resourceView={...fields,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
-  for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{check();try{const result=await methods[key].apply(resource,args);check();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
-  resourceView.getReceipt=()=>{check();return methods.getReceipt.call(resource);};
-  const view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
-  handles.set(handle,{check,view,close,technical});
+  for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
+  resourceView.getReceipt=()=>{checkOperation();return methods.getReceipt.call(resource);};
+  resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
+  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
+  handles.set(handle,{check,checkContinuity,view,close,technical});
   if(signal)EventTarget.prototype.addEventListener.call(signal,'abort',onAbort,{once:true});
   check();value=await consume(handle);check();loader.verifyFull();check();
  }catch(error){primary=error;hasPrimary=true;}
@@ -133,4 +159,8 @@ function claimCurrent259TechnicalResource(handle){
  need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.check();return owner.view;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,closeCurrent259OwnedResource});
+function claimCurrent259TechnicalResourceContinuity(handle,token){
+ businessIssuer(token,handle);need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
+ const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.view.checkLifetime();return owner.view;
+}
+module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});

@@ -23,7 +23,7 @@ function fixture(t,options={}){
  const scopeIdentity={runId:technical.runId,...identity,runtimeOid:'208',observerOid:'207'};
  const module={exports:{},filename:file};const cache={[file]:module};
  const check=()=>{assert.ok(!signal?.aborted);options.onCheck?.();};
- const view={source,runId:technical.runId,resource:{containerId:technical.containerId,databaseName:identity.database,getReceipt(){return JSON.parse(JSON.stringify(manifest));}},check,verifyFull:check};
+ const view={source,runId:technical.runId,resource:{containerId:technical.containerId,databaseName:identity.database,getReceipt(){return JSON.parse(JSON.stringify(manifest));}},check,checkLifetime:check,verifyFull:check};
  const ports={
   './task16-current259-b7-install.cjs':{async installCurrent259B7(value,h,permit){
    state.calls.push('b7');assert.equal(value,acl);assert.equal(h,handle);
@@ -46,22 +46,41 @@ function fixture(t,options={}){
     assert.equal(build,s.handle);assert.ok(fs.existsSync(path.join(s.runRoot,'attempt.json')));state.calls.push('start');signal=sig;
     fs.mkdirSync(plan.artifactsDir,{mode:0o700});
     manifest={runId:technical.runId,sourceSha:source.candidateSha,daemonId:s.daemonId,endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',imageId:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d',containerId:technical.containerId,networkId:'8'.repeat(64),databaseName:identity.database,port:32456,status:'started-awaiting-driver-verification',cleanup:{status:'pending'}};
-    try{return await consume(handle);}finally{
+    const finishResource=()=>{
      state.closes++;
      manifest.status=options.cleanupFailure?'cleanup_failed':'closed';manifest.cleanup={status:options.cleanupFailure?'failed':'completed',containerAbsent:!options.cleanupFailure,volumesAbsent:!options.cleanupFailure,networkAbsent:!options.cleanupFailure};
      fs.writeFileSync(path.join(plan.artifactsDir,'resource-manifest.json'),JSON.stringify(manifest),{mode:0o600});
      if(options.cleanupFailure)throw Object.assign(new Error('SECRET_SQL_PASSWORD'),{code:'CURRENT259_RESOURCE_CLEANUP_UNKNOWN'});
-    }
+    };
+    try{return await consume(handle);}finally{finishResource();}
    }},
   '../../../scripts/prepare-task16-current259-payment-install.cjs':s.api
  };
+ if(options.businessApi)ports['../../../scripts/prepare-task16-current259-payment-business.cjs']=options.businessApi;
+ if(options.business){
+  ports['./task16-current259-business-continuity.cjs']={captureCurrent259BusinessIssuer(){}};
+  state.replaceBusinessLive=()=>{ports['./task16-current259-live-sessions.cjs'].withCurrent259LiveSessions=async()=>{state.calls.push('foreign-live');};};
+  const liveProof=Object.freeze({}),application=Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
+  ports['./task16-current259-live-sessions.cjs']={async withCurrent259LiveSessions(b7,h,consume){assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live');try{return await consume(liveProof);}finally{state.calls.push('pools-close');}}};
+  ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check});}finally{state.calls.push('env-close');}}};
+  ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{return await consume(application);}finally{state.calls.push('app-close');}}};
+  ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
+   state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
+   const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,app,h);lease.check();
+   assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(saved.sha256));
+   options.onBusiness?.({api:module.exports,permit,application,handle,lease,s});
+   if(Object.hasOwn(options,'caseFailure'))throw options.caseFailure;
+   lease.check();return {caseId:lease.scope.caseId,passed:true,executionId:'public-execution',rootId:'public-root'};
+  }};
+ }
+
  const rq=name=>{
   if(!name.startsWith('.'))return require(name);
   const resolved=path.resolve(__dirname,name);
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const proc={argv:['node',file,...(options.default?[]:['--once']),'--plan',s.output,'--expected-plan-sha256',saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const proc={argv:['node',file,...(options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  new Function('require','module','__dirname','__filename','process',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc);
@@ -71,7 +90,7 @@ test('default verifies a fixed payment install plan without consuming an attempt
  const f=fixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity']);
 });
 test('fresh once follows technical259→roles→seven→ACL→B7 under one handle and immutable attempt',async t=>{
  const f=fixture(t),result=await f.done;
@@ -85,7 +104,7 @@ test('fresh once follows technical259→roles→seven→ACL→B7 under one handl
 
 test('an imported module exposes claim only and cannot mint from JSON or a native flag',t=>{
  const f=fixture(t,{imported:true});
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity']);
  assert.throws(()=>f.api.claimCurrent259B7WritePermit({native:true},f.handle,f.acl));
  assert.deepEqual(f.state.calls,[]);assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
 });
@@ -123,7 +142,7 @@ for(const change of [
 
 for(const invalid of [
  ({api,permit,h,value})=>api.claimCurrent259B7WritePermit({...permit},h,value),
- ({api,permit,h,value})=>api.claimCurrent259B7WritePermit(permit,{},value),
+ ({api,permit,value})=>api.claimCurrent259B7WritePermit(permit,{},value),
  ({api,permit,h,value})=>api.claimCurrent259B7WritePermit(permit,h,{...value}),
  ({api,permit,h,value})=>api.claimCurrent259B7WritePermit(permit,h,value)
 ]) test('copied permit, wrong handle/ACL and repeated claim invalidate the only issuer',async t=>{

@@ -5,8 +5,9 @@ const fs=require('node:fs'),path=require('node:path');
 const abortPrototype=AbortSignal.prototype,readAborted=Object.getOwnPropertyDescriptor(abortPrototype,'aborted').get;
 const addAbortListener=EventTarget.prototype.addEventListener,removeAbortListener=EventTarget.prototype.removeEventListener;
 const {types}=require('node:util');
+const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 const {claimCurrent259LiveSessions}=require('./task16-current259-live-sessions.cjs');
-const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
+const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtime.cjs');
@@ -86,6 +87,26 @@ async function createCurrent259Application(context,boundary,continuity){
 }
 
 const admissions=new WeakMap(),claims=new WeakSet(),opens=new WeakSet();
+const paymentApplications=new WeakMap(),paymentLeases=new WeakSet();
+const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
+const paymentModule=require('./task16-current259-payment-case.cjs');
+const paymentExecute=Object.getOwnPropertyDescriptor(paymentModule,'executeCurrent259PaymentCase');
+function checkPaymentModule(){
+ need(require.cache[paymentFile]?.exports===paymentModule&&paymentExecute&&
+  equalDescriptor(Object.getOwnPropertyDescriptor(paymentModule,'executeCurrent259PaymentCase'),paymentExecute),'TASK16_APP_HANDLE');
+}
+function equalDescriptor(a,b){return a&&b&&['value','writable','enumerable','configurable'].every(k=>a[k]===b[k]);}
+function isCurrent259PaymentLease(lease){
+ if(!lease||types.isProxy(lease)||!paymentLeases.has(lease))return false;
+ lease.check();return true;
+}
+function consumeCurrent259PaymentApplication(application,handle,permit){
+ need(arguments.length===3&&application&&!types.isProxy(application)&&paymentApplications.has(application),'TASK16_APP_HANDLE');
+ const lease=paymentApplications.get(application);
+ need(lease.handle===handle,'TASK16_APP_HANDLE');lease.check();checkPaymentModule();
+ paymentApplications.delete(application);paymentLeases.add(lease);
+ return paymentExecute.value(lease,permit);
+}
 const {ownsActiveTask16SimulationContext}=require('./run-task16-registered-pg-local.cjs');
 function peekCurrent259Application(context){
  const clients=context&&Object.getOwnPropertyDescriptor(context,'clients')?.value;
@@ -137,7 +158,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
  const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
  const session=claimCurrent259LiveSessions(proof,handle);
- let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,shutdown,shutdownUnknown=false;
+ let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,shutdown,shutdownUnknown=false,businessToken;
  const revoke=()=>{active=false;if(clients)admissions.delete(clients);};
  const terminate=()=>shutdown??=Promise.resolve().then(async()=>{
   try{await own(session,'close').call(session);}catch{shutdownUnknown=true;}
@@ -159,6 +180,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
   const loader=view.loader,Class=own(loader,'Class');
   const load=own(loader,'loadApplicationModules'),create=own(loader,'createTestingModule');
   const source=own(session,'source'),checkSession=own(session,'checkLight'),verifySession=own(session,'verifyFull');
+  const checkSessionContinuity=Object.getOwnPropertyDescriptor(session,'checkContinuity')?.value,activateSession=Object.getOwnPropertyDescriptor(session,'activateBusinessContinuity')?.value,deactivateSession=Object.getOwnPropertyDescriptor(session,'deactivateBusinessContinuity')?.value;
   need(typeof Class==='function'&&[load,create,checkSession,verifySession].every(fn=>typeof fn==='function'),code);
   const fields=['owner','runtime','observer','identity','verifyFull','verifyInstalled259'];
   const original=Object.fromEntries(fields.map(key=>[key,own(session,key)]));
@@ -172,8 +194,9 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
   const check=()=>{
    try{
     need(active&&!broken&&!aborted.call(signal),code);
-    checkSession.call(session);view.check();
-    need(claimCurrent259TechnicalResource(handle)===view&&view.loader===loader&&own(loader,'Class')===Class&&
+    if(businessToken){businessIssuer(businessToken,handle);need(typeof checkSessionContinuity==='function'&&own(session,'checkContinuity')===checkSessionContinuity&&own(session,'activateBusinessContinuity')===activateSession,code);checkSessionContinuity.call(session,businessToken);view.checkLifetime();}
+    else{checkSession.call(session);view.check();}
+    need((businessToken?claimCurrent259TechnicalResourceContinuity(handle,businessToken):claimCurrent259TechnicalResource(handle))===view&&view.loader===loader&&own(loader,'Class')===Class&&
      own(loader,'loadApplicationModules')===load&&own(loader,'createTestingModule')===create&&
      own(session,'source')===source&&own(session,'checkLight')===checkSession&&
      JSON.stringify(qualifyCurrent259Source(source))===sourceSnapshot&&
@@ -205,6 +228,14 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
     try{check();return appInspect.call(app);}
     catch{broken=true;revoke();void close().catch(()=>{});throw fault('TASK16_APP_FAILED_CLOSED');}
    }});
+  const getReceipt=Object.getOwnPropertyDescriptor(view.resource,'getReceipt')?.value,getReceiptContinuity=Object.getOwnPropertyDescriptor(view.resource,'getReceiptContinuity')?.value;
+  paymentApplications.set(application,Object.freeze({handle,application,session,loader,source,
+   check:()=>{checkPaymentModule();const inspected=appInspect.call(app);need(inspected.runtime===original.runtime&&inspected.origin===application.origin,code);},
+   activateContinuity(token){businessIssuer(token,handle);need(!businessToken||businessToken===token,code);need(typeof activateSession==='function'&&own(session,'activateBusinessContinuity')===activateSession,code);activateSession.call(session,token);businessToken=token;check();},
+   finishContinuity(token){businessIssuer(token,handle);need(businessToken===token&&typeof deactivateSession==='function'&&own(session,'deactivateBusinessContinuity')===deactivateSession,code);check();deactivateSession.call(session,token);businessToken=undefined;},
+   resourceIdentity(){checkPaymentModule();if(businessToken){businessIssuer(businessToken,handle);view.checkLifetime();need(typeof getReceiptContinuity==='function'&&own(view.resource,'getReceiptContinuity')===getReceiptContinuity,code);return getReceiptContinuity.call(view.resource,businessToken);}check();need(typeof getReceipt==='function'&&own(view.resource,'getReceipt')===getReceipt,'TASK16_APP_HANDLE');return getReceipt.call(view.resource);},
+   async failClosed(){broken=true;revoke();try{await close();}finally{await terminate();}}
+  }));
   return Object.freeze({application,close,terminate,cleanupUnknown:()=>shutdownUnknown});
  }catch(error){
   revoke();let cleanupUnknown=false;
@@ -303,4 +334,5 @@ async function withCurrent259OwnedApplication(proof,handle,signal,consume){
  }
  return value;
 }
-module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication};
+module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication,consumeCurrent259PaymentApplication,isCurrent259PaymentLease};
+for(const key of ['consumeCurrent259PaymentApplication','isCurrent259PaymentLease'])Object.defineProperty(module.exports,key,{writable:false,configurable:false});

@@ -1,4 +1,5 @@
 "use strict";
+const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 // Fixed technical migration recipe only. Its token is not session/business admission.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {types,isDeepStrictEqual}=require('node:util');
@@ -48,7 +49,7 @@ function frozenMetadata(value){
 function claimCurrent259TechnicalSupply(result,handle){
  need(arguments.length===2&&result&&!types.isProxy(result)&&supplies.has(result));
  const supply=supplies.get(result);need(supply.handle===handle);supplies.delete(result);
- supply.check();return Object.freeze({source:supply.source,completion:result,check:supply.check});
+ supply.check();return Object.freeze({source:supply.source,completion:result,check:supply.check,checkContinuity:supply.checkContinuity});
 }
 function createCurrent259TechnicalMigration(handle,signal){
  need(arguments.length===1||arguments.length===2);
@@ -92,6 +93,12 @@ function createCurrent259TechnicalMigration(handle,signal){
  function check(){try{
   need(!failed&&!aborted()&&!cancellation.signal.aborted);bindings();view.check();view.verifyFull();need(view.source===source&&view.build===build&&view.resource===resource);
   const r=resource.getReceipt();need(r.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&r.limits?.totalDeadlineMs===3600000);need(isDeepStrictEqual({runId:r.runId,containerId:r.containerId,networkId:r.networkId,database:r.databaseName,port:r.port,name:r.containerName},frozenIdentity));
+ }catch(error){void stop().catch(()=>{});throw error;}}
+ function checkContinuity(businessToken){try{
+  businessIssuer(businessToken,handle);need(!failed&&!aborted()&&!cancellation.signal.aborted);bindings();view.checkContinuity(businessToken);
+  need(view.source===source&&view.build===build&&view.resource===resource);
+  const r=resource.getReceiptContinuity(businessToken);need(r.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&r.limits?.totalDeadlineMs===3600000);
+  need(isDeepStrictEqual({runId:r.runId,containerId:r.containerId,networkId:r.networkId,database:r.databaseName,port:r.port,name:r.containerName},frozenIdentity));
  }catch(error){void stop().catch(()=>{});throw error;}}
  const token=Object.freeze({kind:ID});
  const profile={id:ID,owner:OWNER,database,runId,check,
@@ -137,7 +144,7 @@ function createCurrent259TechnicalMigration(handle,signal){
    const result=await fixture.migrate({databaseUrl:url.toString(),runtimeEnv:{}});check();
    const completion=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',executionAllowed:false,nativeAdmission:false,sourceSha:source.candidateSha,runId,containerId:resource.containerId,database,
     application:result.technicalApplication,databaseIdentity:Object.freeze({...physicalAnchor}),sqlMaterials:Object.freeze(sqlMaterials.slice())});
-   supplies.set(completion,{handle,source:frozenMetadata(source),check});supplied=true;return completion;
+   supplies.set(completion,{handle,source:frozenMetadata(source),check,checkContinuity});supplied=true;return completion;
   }catch(error){return await failedOutcome(error);}
   // The same once listener protects the completed result before and after claim.
   // The original owned scope still revokes and closes independently on exit.

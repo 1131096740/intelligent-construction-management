@@ -38,6 +38,18 @@ test('current259 transport binds the real transaction and fixed five-coordinate 
  assert.ok(f.calls[1].sql.includes('jg_read_registered_payment_impacts'));
  assert.equal(runtime.executionAllowed,undefined);
 });
+test('a plain session cannot select the private file scan or suppress the original readbacks',async()=>{
+ const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtime.cjs');
+ const {verifyCurrent259ImpactFileBoundary}=require('./task16-current259-live-sessions.cjs');
+ const f=fixture(),trace=[];let reads=0;
+ for(const key of ['verifyBusinessFiles','verifyCurrent259ImpactFileBoundary'])Object.defineProperty(f.session,key,{get(){reads++;return()=>{};}});
+ f.session.verifyFull=async()=>{trace.push('request');};
+ f.session.verifyInstalled259=async()=>{trace.push('installed');};
+ verifyCurrent259ImpactFileBoundary(f.session);
+ await createCurrent259ImpactRuntime(f.session,()=>{}).withTransaction(()=>{trace.push('operation');});
+ assert.equal(reads,0);
+ assert.deepEqual(trace,['request','operation','installed','request']);
+});
 test('current259 rejects a subnet-shaped identity row before the transaction operation',async()=>{
  const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtime.cjs');
  const f=fixture(),query=f.tx.$queryRawUnsafe;

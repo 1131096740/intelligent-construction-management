@@ -1,4 +1,5 @@
 'use strict';
+const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 
 const {createHash,randomBytes}=require('node:crypto');
 const {readFileSync}=require('node:fs');
@@ -363,6 +364,7 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
  try{
   const view=claimCurrent259TechnicalResource(handle);
   const check=()=>{lease.check();view.check();};
+ const checkContinuity=token=>{businessIssuer(token,handle);lease.checkContinuity(token);view.checkLifetime();};
   check();
   const input=inputOf(lease,view),nonce=randomBytes(32).toString('hex');
   const run=async(phase,prior)=>{
@@ -381,7 +383,7 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
   check();
   const completion=Object.freeze({status:'CURRENT259_SEVEN_INSTALLED_NOT_ADMISSION',sourceSha:input.roleCompletion.sourceSha,
    runId:input.roleCompletion.runId,containerId:input.roleCompletion.containerId,installXid:committed.installXid,catalogSha256:committed.catalogSha256,nativeAdmission:false});
-  installed.set(completion,{handle,check,source:input.source,roleCompletion:input.roleCompletion});
+  installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion});
   return completion;
  }catch{
   const primary=error(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -393,7 +395,7 @@ function claimCurrent259SevenInstallation(completion,handle){
  need(arguments.length===2&&completion&&!types.isProxy(completion)&&installed.has(completion),'HANDLE');
  const receipt=installed.get(completion);need(receipt.handle===handle,'HANDLE');
  installed.delete(completion);receipt.check();
- const {check,source,roleCompletion}=receipt;
- return Object.freeze({completion,check,source,roleCompletion});
+ const {check,checkContinuity,source,roleCompletion}=receipt;
+ return Object.freeze({completion,check,checkContinuity,source,roleCompletion});
 }
 module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation});

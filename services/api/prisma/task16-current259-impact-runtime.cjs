@@ -4,6 +4,7 @@
 const {types}=require('node:util');
 const {isIP}=require('node:net');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {verifyCurrent259ImpactFileBoundary}=require('./task16-current259-live-sessions.cjs');
 const txCode='TASK16_CLIENT_IMPACT_READER_TRANSACTION';
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const fault=code=>Object.assign(new Error(code),{code});
@@ -78,6 +79,9 @@ function createCurrent259ImpactRuntime(session,checkLight){
  const runtime=ownData(session,'runtime'),owner=ownData(session,'owner'),observer=ownData(session,'observer');
  need(runtime&&owner&&observer&&new Set([runtime,owner,observer]).size===3,txCode);
  const verifyFull=ownData(session,'verifyFull'),verifyInstalled259=ownData(session,'verifyInstalled259');
+ const boundaryDescriptor=Object.getOwnPropertyDescriptor(session,'verifyRequestBoundary');
+ const verifyRequestBoundary=boundaryDescriptor&&Object.hasOwn(boundaryDescriptor,'value')?boundaryDescriptor.value:undefined;
+ need(verifyRequestBoundary===undefined||typeof verifyRequestBoundary==='function',txCode);
  need(typeof verifyFull==='function'&&typeof verifyInstalled259==='function',txCode);
  const transaction=runtime.$transaction,identity=ownData(session,'identity'),b7=ownData(session,'b7'),endpoint=ownData(session,'endpoint');
  const privateIPv4=value=>typeof value==='string'&&isIP(value)===4&&(/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(value));
@@ -111,7 +115,7 @@ function createCurrent259ImpactRuntime(session,checkLight){
   try{
    checkLight();need(ownData(session,'source')===source&&JSON.stringify(qualifyCurrent259Source(source))===snapshot
     &&ownData(session,'runtime')===runtime&&ownData(session,'owner')===owner&&ownData(session,'observer')===observer&&runtime.$transaction===transaction
-    &&ownData(session,'verifyFull')===verifyFull&&ownData(session,'verifyInstalled259')===verifyInstalled259&&ownData(session,'identity')===identity&&ownData(session,'b7')===b7&&ownData(session,'endpoint')===endpoint
+    &&ownData(session,'verifyFull')===verifyFull&&ownData(session,'verifyInstalled259')===verifyInstalled259&&(!boundaryDescriptor||Object.getOwnPropertyDescriptor(session,'verifyRequestBoundary')?.value===verifyRequestBoundary)&&ownData(session,'identity')===identity&&ownData(session,'b7')===b7&&ownData(session,'endpoint')===endpoint
     &&Object.entries(endpointValues).every(([k,v])=>ownData(endpoint,k)===v),txCode);
    need(normalized.every((row,i)=>ownData(identity,String(i))===identities[i]&&Object.entries(row).every(([k,v])=>ownData(identities[i],k)===v))
     &&JSON.stringify(Object.fromEntries(['profile','xid','routineOid','bodySha256'].map(k=>[k,ownData(b7,k)])))===b7Snapshot,txCode);
@@ -119,15 +123,21 @@ function createCurrent259ImpactRuntime(session,checkLight){
  }
  check();
  async function full(){
-  check();try{await verifyFull.call(session);}catch{broken=true;throw fault(txCode);}check();
+  check();try{await (verifyRequestBoundary??verifyFull).call(session);}catch{broken=true;throw fault(txCode);}check();
+ }
+ function fileBoundary(){
+  try{verifyCurrent259ImpactFileBoundary(session);}catch{broken=true;throw fault(txCode);}
  }
  return Object.freeze({async withTransaction(operation){
   check();if(busy||typeof operation!=='function'){broken=true;throw fault(txCode);}busy=true;
   let entered=false,returned=false;
   try{
+   fileBoundary();
    await full();
+   fileBoundary();
    const result=await transaction.call(runtime,async tx=>{
     check();need(!entered&&tx&&typeof tx==='object'&&![runtime,owner,observer].includes(tx),txCode);entered=true;
+    fileBoundary();
     const query=tx.$queryRawUnsafe;need(typeof query==='function',txCode);
     let active=true,reading=false,reads=0,failed=false;
     const run=async(sql,args)=>{try{return await query.call(tx,sql,...args);}catch{failed=true;throw fault(txCode);}};
@@ -156,10 +166,10 @@ function createCurrent259ImpactRuntime(session,checkLight){
      need(await verify()===startedAt,txCode);
      // Owner/observer-only verification: never probe the busy runtime pool here.
      try{await verifyInstalled259.call(session);}catch{failed=true;throw fault(txCode);}
-     check();need(!failed,txCode);return value;
+     check();need(!failed,txCode);fileBoundary();return value;
     }finally{active=false;}
    },{isolationLevel:'Serializable'});
-   returned=true;await full();check();need(entered,txCode);return result;
+   returned=true;fileBoundary();await full();check();need(entered,txCode);fileBoundary();return result;
   }catch(error){
    if(returned)throw Object.assign(fault(txCode),{transactionOutcome:'RETURNED_READBACK_UNCONFIRMED'});
    throw error;

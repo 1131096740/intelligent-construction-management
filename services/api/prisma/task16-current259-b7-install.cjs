@@ -1,4 +1,5 @@
 'use strict';
+const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 
 const {createHash}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
@@ -56,6 +57,7 @@ async function installCurrent259B7(aclCompletion,handle,permit){
   const view=claimCurrent259TechnicalResource(handle);
   const {source,completion,roleCompletion,request,catalogProof}=lease;
   const check=()=>{lease.check();view.check();need(authority.check()===true,'AUTHORITY_DENIED');};
+  const checkContinuity=token=>{businessIssuer(token,handle);lease.checkContinuity(token);view.checkLifetime();need(authority.planSha256===binding.planSha256,'AUTHORITY_DENIED');};
   check();
   need(completion===aclCompletion&&completion.status==='CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION'&&xid(completion.installXid)&&
    equal(source,view.source)&&completion.sourceSha===source.candidateSha&&completion.runId===view.runId&&
@@ -89,7 +91,7 @@ async function installCurrent259B7(aclCompletion,handle,permit){
   const result=Object.freeze({status:'CURRENT259_B7_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:view.runId,
    installXid,readerOid:committedProof.raw.reader.oid,bodySha256:committedProof.raw.reader.bodySha256,
    planSha256:binding.planSha256,installSqlSha256:binding.installSqlSha256,executionAllowed:false,nativeAdmission:false});
-  committed.set(result,{handle,source,roleCompletion,request,stagedProof:staged,committedProof,check});
+  committed.set(result,{handle,source,roleCompletion,request,stagedProof:staged,committedProof,check,checkContinuity});
   return result;
  }catch{
   const error=fault(writeAttempted?'COMMIT_UNCONFIRMED':'NOT_ATTEMPTED');
@@ -103,8 +105,8 @@ function claimCurrent259B7Installation(completion,handle){
  const receipt=committed.get(completion);
  need(receipt.handle===handle,'HANDLE');
  committed.delete(completion);receipt.check();
- const {source,roleCompletion,request,stagedProof,committedProof,check}=receipt;
- return Object.freeze({completion,source,roleCompletion,request,stagedProof,committedProof,check});
+ const {source,roleCompletion,request,stagedProof,committedProof,check,checkContinuity}=receipt;
+ return Object.freeze({completion,source,roleCompletion,request,stagedProof,committedProof,check,checkContinuity});
 }
 
 module.exports=Object.freeze({prepareCurrent259B7,installCurrent259B7,claimCurrent259B7Installation});
