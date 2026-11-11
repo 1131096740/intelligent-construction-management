@@ -78,7 +78,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   let replacementRow, retiredRuntime, disconnectOutcome, directoryBefore, replacementUsed=false, recoveryComplete=false;
   const activeLanes=new Set();
   const applicationName=(kind,index)=>'task16_live_'+view.runId.replaceAll('-', '')+'_'+kind+
-    (competition&&kind==='runtime'?(index===1?'_a':'_b'):recovery&&index===3?'_replacement':'');
+    (competition&&kind==='runtime'?(index===1?'_a':'_b'):recovery&&index===3?'_repl':'');
   const committedRequest = { ...lease.request, phase: 'committed', installXid: b7Completion.installXid };
   const expected = {
     ...Object.fromEntries(['database', 'databaseOid', 'systemIdentifier', 'ownerOid', 'runtimeOid', 'observerOid'].map(key => [key, lease.request.identity[key]])),

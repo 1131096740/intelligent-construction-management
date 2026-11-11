@@ -55,7 +55,12 @@ function fixture(options={}){
     value.sessions=value.sessions.filter(row=>ids.includes(row.pid));
     if(_sql.includes('"retiredRuntimePresent"')){
      value.retiredRuntimePresent=options.keepOld===true;
-     value.runtimeLanes=ids.includes(104)?[[104,'task16_live_'+identity.runId.replaceAll('-','')+'_runtime_replacement']]:null;
+     if(ids.includes(104)){
+      const configured=new URL(clients[3].input.datasources.db.url).searchParams.get('application_name');
+      assert.match(configured,/^[\x20-\x7e]+$/u);
+      const actual=Buffer.from(configured,'ascii').subarray(0,63).toString('ascii');
+      value.runtimeLanes=[[104,options.replacementNameDrift?actual.slice(0,-1)+'x':actual]];
+     }else value.runtimeLanes=null;
     }
    }
    if(options.competition)value.runtimeLanes=(options.runtimePids??[102,104]).map((pid,i)=>[pid,
@@ -357,12 +362,12 @@ test('business installed catalog rejection still permanently stops and closes al
 });
 
 
-for(const mode of ['complete','old-backend','directory-drift','rollback-error'])test('A16 same-resource rotation '+mode,async()=>{
+for(const mode of ['complete','old-backend','directory-drift','rollback-error','replacement-name-drift'])test('A16 same-resource rotation '+mode,async()=>{
  const token=Object.freeze({}),closeProof=Object.freeze({}),attempt=Object.freeze({}),rollback=Object.freeze({});
  let proof,challenge,directoryReads=0,submitted=0,replacementCalls=0,completeOwner;
  const outcome=new Promise(resolve=>{completeOwner=resolve;});
  const owner={pid:812,startedAt:'2026-11-11T00:00:10.000001Z'};
- const f=fixture({recovery:true,continuityToken:token,closeProof,attempt,rollback,getOriginalProof:()=>proof,keepOld:mode==='old-backend',
+ const f=fixture({recovery:true,continuityToken:token,closeProof,attempt,rollback,getOriginalProof:()=>proof,keepOld:mode==='old-backend',replacementNameDrift:mode==='replacement-name-drift',
   onDirectory(){return mode==='directory-drift'&&directoryReads++>0?'b'.repeat(64):'a'.repeat(64);},
   confirm(){if(mode==='rollback-error')throw new Error('ledger drift');},
   onCancel(sql,phase){
@@ -411,7 +416,7 @@ for(const mode of ['complete','old-backend','directory-drift','rollback-error'])
  }else{
   await assert.rejects(run,/FAILED_CLOSED/u);
   assert.equal(replacementCalls,0);
-  assert.equal(f.clients.length,3);
+  assert.equal(f.clients.length,mode==='replacement-name-drift'?4:3);
   assert.equal(f.resourceClosed(),1);
  }
  assert.equal(submitted,1);
