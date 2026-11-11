@@ -1,0 +1,176 @@
+'use strict';
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
+const noop=()=>{};noop.test=noop;
+const holder={exports:{}};
+const runtimeModel=new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-impact-runtime.test.cjs'),'utf8')+'\nreturn module.exports;')(
+ name=>name==='node:test'?{test:noop}:name==='./run-task16-registered-pg-local.cjs'?{}:require(name),holder,__dirname);
+const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
+function fixture(t,options={}){
+ const model=runtimeModel.fixture(),session=model.session,calls=[],proof=Object.freeze({}),handle=Object.freeze({});
+ const directory=fs.mkdtempSync('/private/tmp/jg-259-owned-app-model-');fs.chmodSync(directory,0o700);
+ const storage=path.join(directory,'storage');fs.mkdirSync(storage,{mode:0o700});
+ t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const environment={NODE_ENV:'test',SMS_ENABLED:'false',APPROVAL_SMS_ENABLED:'false',FILE_STORAGE_DRIVER:'local',FILE_STORAGE_ROOT:storage,
+  JWT_ACCESS_SECRET:'1'.repeat(64),JWT_REFRESH_SECRET:'2'.repeat(64),FILE_DOWNLOAD_SECRET:'3'.repeat(64)};
+ const prior=Object.fromEntries(Object.keys(environment).map(key=>[key,process.env[key]]));
+ for(const [key,value]of Object.entries(environment))process.env[key]=value;
+ t.after(()=>{for(const [key,value]of Object.entries(prior))if(value===undefined)delete process.env[key];else process.env[key]=value;});
+ let claimed=false,sessionActive=true,resourceActive=true,resourceCloses=0,reader;
+ session.checkLight=()=>{assert.ok(sessionActive&&resourceActive);};
+ session.close=async()=>{calls.push('sessions-close');sessionActive=false;};
+ session.verifyFull=async()=>{session.checkLight();calls.push('sessions-full');options.onFull?.();};
+ const providers=new Map(),token=Symbol('actual registered impact');
+ const bundle={Task16RegisteredApplicationModule:class {},PrismaService:class {},
+  configureApiSecurity(){calls.push('security');},configureProjectionExportJson(){calls.push('projection');},apiJsonReplacer(){},
+  createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');},
+  Task16ImpactReaderToken:token};
+ const app={async close(){calls.push('app-close');options.onClose?.();},get(key){return providers.get(key);},
+  getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
+  enableCors(){calls.push('cors');},useGlobalPipes(){calls.push('validation');},
+  async init(){calls.push('init');options.onInit?.();},
+  getHttpServer(){return {listening:true,address(){return {address:'127.0.0.1',family:'IPv4',port:52124};}};}};
+ const server=app.getHttpServer();app.getHttpServer=()=>server;
+ const moduleHandle={async close(){calls.push('module-close');},get(key){return providers.get(key);},createNestApplication(){calls.push('create-app');return app;}};
+ const builder={overrideProvider(key){calls.push('override');return {useValue(value){providers.set(key,value);if(key===token)reader=value;return builder;}};},async compile(){calls.push('compile');options.onCompile?.();return moduleHandle;}};
+ const Class=function OriginalSdk(){throw new Error('native client construction forbidden in app model');};
+ const loader={Class,check(){assert.ok(resourceActive);},loadApplicationModules(request){
+  calls.push('load');assert.deepEqual(request.map(row=>row.name),['application','database','security','projection','json','validation','listen']);
+  options.onLoad?.(request);return bundle;
+ },createTestingModule(metadata){calls.push('builder');assert.deepEqual(metadata,{imports:[bundle.Task16RegisteredApplicationModule]});return builder;}};
+ const view={loader,source:{candidateSha:session.source.candidateSha,sourceSealSha256:session.source.sealSha256},resource:{caPath:path.join(directory,'tls-private/ca.crt')},
+  check(){assert.ok(resourceActive);},verifyFull(){assert.ok(resourceActive);}};
+ const imports={
+  './task16-current259-live-sessions.cjs':{claimCurrent259LiveSessions(value,provided){
+   if(value!==proof||provided!==handle||claimed)throw new Error('CURRENT259_LIVE_SESSIONS_HANDLE');
+   claimed=true;return session;
+  }},
+  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
+  './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return false;},createCurrent259OwnedApplication(){throw new Error('wrong bridge');},takeCurrent259CreationFailure(){}},
+  './run-task16-registered-pg-local.cjs':{ownsActiveTask16SimulationContext(){return false;}},
+  './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value){const material=loadCurrent259CatalogMaterial(value);return options.material?options.material(material):material;}}
+ };
+ const module={exports:{}};
+ new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(name=>imports[name]??require(name),module,__dirname);
+ return {...model,api:module.exports,proof,handle,session,view,loader,calls,environment,directory,resourceCloses:()=>resourceCloses,
+  reader:()=>reader,providers,token,claimed:()=>claimed};
+}
+
+
+test('genuine live proof binds the original loader, runtime and B7 provider and automatically closes HTTP',async t=>{
+ const f=fixture(t);let observed;
+ const result=await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  observed=app;
+  assert.equal(app.runtime,f.session.runtime);assert.equal(app.inspect().runtime,f.session.runtime);
+  assert.equal(f.providers.get(f.token),f.reader());
+  assert.equal(app.sourceBinding.registeredManifestSha256,loadCurrent259CatalogMaterial(f.session.source).registeredManifestSha256);
+  assert.equal(Object.hasOwn(app,'close'),false);
+  const impacts=await f.reader().withTransaction((tx,read)=>read(tx,f.scope,['fact']));
+  assert.equal(impacts[0].amountCents,23n);
+  return 'complete';
+ });
+ assert.equal(result,'complete');
+ assert.ok(f.calls.indexOf('load')<f.calls.indexOf('compile'));
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ assert.throws(()=>observed.inspect());
+ await assert.rejects(f.reader().withTransaction(()=>{}));
+ assert.equal(f.resourceCloses(),0);
+});
+
+test('plain proof, native flags and copied data cannot acquire application authority',async t=>{
+ const f=fixture(t);
+ for(const value of [{},{native:true},{...f.proof},{sourceBinding:{sourceSha:f.session.source.candidateSha}}]){
+  await assert.rejects(f.api.withCurrent259OwnedApplication(value,f.handle,new AbortController().signal,()=>{}));
+ }
+ assert.equal(f.claimed(),false);assert.deepEqual(f.calls,[]);assert.equal(f.resourceCloses(),0);
+ assert.equal(f.api.createCurrent259OwnedApplication,undefined);
+});
+
+test('the same handle is required and live proof is consumed only once',async t=>{
+ const f=fixture(t);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,{},new AbortController().signal,()=>{}));
+ await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{}));
+});
+
+test('missing actual environment fails before module loading or compilation',async t=>{
+ const f=fixture(t);delete process.env.JWT_ACCESS_SECRET;
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{}),/TASK16_APP_ENVIRONMENT_REQUIRED/);
+ assert.equal(f.calls.includes('load'),false);assert.equal(f.calls.includes('compile'),false);assert.equal(f.resourceCloses(),1);
+ assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);
+});
+
+test('a trusted loader rejection cannot be replaced by a caller boundary',async t=>{
+ const f=fixture(t);
+ f.loader.loadApplicationModules=()=>{throw new Error('changed before capture');};
+ f.view.check=()=>{throw new Error('CURRENT259_LOADER_CHANGED');};
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{}),/TASK16_APP_FAILED_CLOSED/);
+ assert.equal(f.calls.includes('compile'),false);assert.equal(f.resourceCloses(),1);
+});
+
+test('scope close UNKNOWN terminates sessions and physical resource without retry',async t=>{
+ const f=fixture(t,{onClose(){throw new Error('private close failure');}});
+ let observed;
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>{observed=app;}),error=>{
+  assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');return true;
+ });
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ assert.equal(f.resourceCloses(),1);assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);
+ assert.throws(()=>observed.inspect());
+});
+
+test('a failed startup preserves original unknown app cleanup',async t=>{
+ const f=fixture(t,{onInit(){throw undefined;},onClose(){throw new Error('private');}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{}),error=>{
+  assert.equal(error.code,'TASK16_APP_FAILED_CLOSED');
+  assert.equal(error.appStartupOutcome,'UNKNOWN_DO_NOT_RETRY');
+  assert.equal(error.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');return true;
+ });
+ assert.equal(f.resourceCloses(),1);
+});
+
+test('mismatched qualified material cannot reach module load or Nest compile',async t=>{
+ const f=fixture(t,{material(value){return {...value,sourceSha:'f'.repeat(40)};}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{}),/TASK16_APP_IMPACT_READER_PROOF/);
+ assert.equal(f.calls.includes('load'),false);assert.equal(f.resourceCloses(),1);
+});
+
+test('aborted signal reduces authority before claiming live proof',async t=>{
+ const f=fixture(t),controller=new AbortController();controller.abort();
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,controller.signal,()=>{}),/TASK16_APP_ABORTED/);
+ assert.equal(f.claimed(),false);assert.equal(f.resourceCloses(),0);
+});
+
+test('environment drift revokes the application even when the callback catches inspection error',async t=>{
+ const f=fixture(t);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  process.env.FILE_DOWNLOAD_SECRET='4'.repeat(64);
+  assert.throws(()=>app.inspect(),/TASK16_APP_FAILED_CLOSED/);
+ }),/TASK16_APP_FAILED_CLOSED/);
+ assert.equal(f.resourceCloses(),1);assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ await assert.rejects(f.reader().withTransaction(()=>{}));
+});
+
+test('source Class remains bound across asynchronous module loading',async t=>{
+ let f;
+ f=fixture(t,{onLoad(){f.loader.Class=function Replacement(){};}});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{}),/TASK16_APP_IMPACT_READER_PROOF/);
+ assert.equal(f.calls.includes('compile'),false);assert.equal(f.resourceCloses(),1);
+});
+
+test('enclosing live session scope remains the authority after startup',async t=>{
+ const f=fixture(t);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  await f.session.close();assert.throws(()=>app.inspect(),/TASK16_APP_FAILED_CLOSED/);
+ }),/TASK16_APP_FAILED_CLOSED/);
+ await assert.rejects(f.reader().withTransaction(()=>{}));assert.equal(f.resourceCloses(),1);
+});
+
+for(const value of [undefined,null,0,false]) test('falsey callback throw preserves failure and closes HTTP before sessions ('+String(value)+')',async t=>{
+ const f=fixture(t);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>{throw value;}),/TASK16_APP_FAILED_CLOSED/);
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+ assert.ok(f.calls.indexOf('app-close')<f.calls.indexOf('sessions-close'));
+ assert.equal(f.resourceCloses(),1);
+});

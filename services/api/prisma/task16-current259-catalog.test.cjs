@@ -217,3 +217,12 @@ test('fixed owner database capability projection rejects arbitrary payload shape
  const row=observed();row.roles.find(r=>r.name==='jg_task01_owner').otherDatabases=[['5','raw-payload']];
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row),request),/TASK16_CURRENT259_CATALOG/u);
 });
+
+test('application manifest binding is the fixed qualified registered file bytes',()=>{
+ const material=api.loadCurrent259CatalogMaterial(source);
+ const registered=fs.readFileSync(path.join(__dirname,'task16-registered-access.json'));
+ assert.equal(material.registeredManifestSha256,hash(registered));
+ const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'task16-current259-access.json'),'utf8'));
+ assert.equal(manifest.files[1].path,'services/api/prisma/task16-registered-access.json');
+ assert.equal(material.registeredManifestSha256,manifest.files[1].sha256);
+});

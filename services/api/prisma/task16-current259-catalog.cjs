@@ -40,8 +40,9 @@ function material(source){
 }
 function loadCurrent259CatalogMaterial(source){
  source=snapshot(source);const m=material(source);
+ need(m.files[1].path==='services/api/prisma/task16-registered-access.json');
  return snapshot({profile:m.manifest.profile,sourceSha:m.p.candidateSha,sealSha256:m.p.sealSha256,
-  ledger:m.p.ledger,ledgerSha256:m.p.ledgerSha256,prefix256Sha256:m.p.prefix256Sha256,
+  registeredManifestSha256:m.files[1].sha256,ledger:m.p.ledger,ledgerSha256:m.p.ledgerSha256,prefix256Sha256:m.p.prefix256Sha256,
   readerBodySha256:BODY,readerSqlSha256:hash(m.sql),sevenFragments:m.manifest.files.slice(2,9),
   accessPlan:{runtime:m.plan.runtime,observer:m.plan.observer},
   executionAllowed:false,nativeAdmission:false});
