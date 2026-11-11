@@ -23,7 +23,7 @@ const registry={namespaceOid:'2200',ownerOid:'10',publicDefault:null,globalDefau
  definition:{pronamespace:'2200',proowner:'10',prosrc:oldBody},
 }};
 const roleCompletion=Object.freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:candidateSha,runId,containerId,databaseIdentity:identity,ordinary,roles,databaseAcl,commitXid:'201'});
-function fixture(mutate,competition=false){
+function fixture(mutate,competition=false,migrationDrift){
  const suppliedRoles=competition?{...roleCompletion,roles:[{...roles[0],limit:2},roles[1]]}:roleCompletion;
  const token=Object.freeze({}),metadata={parent:0};let forbidFull=false;
  const full=()=>{assert.equal(forbidFull,false);};
@@ -43,6 +43,9 @@ function fixture(mutate,competition=false){
   './task16-current259-role-provision.cjs':{claimCurrent259ProvisionedRoles(completion,owned){assert.equal(completion,suppliedRoles);assert.equal(owned,handle);assert.equal(claimed,false);claimed=true;return secretClaim;}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(owned){assert.equal(owned,handle);assert.equal(closed,false);return view;},async closeCurrent259OwnedResource(owned){assert.equal(owned,handle);closed=true;}},
   'node:crypto':{...require('node:crypto'),randomBytes:()=>Buffer.from(nonce,'hex')},
+  'node:fs':{readFileSync(file){const bytes=readFileSync(file);
+   return migrationDrift&&file.includes(migrationDrift)?Buffer.concat([bytes,Buffer.from('-- drift')]):bytes;}},
+
  };
  const holder={exports:{}};
  new Function('require','module','__dirname',read('task16-current259-seven-install.cjs'))(name=>imports[name]??require(name),holder,__dirname);
@@ -121,4 +124,89 @@ test('voucher seven claim supplies the exact installed stable catalog witness on
  const other=await single.api.installCurrent259SevenFragments(single.suppliedRoles,single.handle);
  assert.throws(()=>single.api.claimCurrent259VoucherSevenInstallation(other,single.handle),/CURRENT259_SEVEN_INSTALL_HANDLE/u);
  assert.equal(single.api.claimCurrent259SevenInstallation(other,single.handle).voucherPreimageSql,undefined);
+});
+
+test('keeps the same before failure and seals only fixed SQL diagnostics through cleanup',async()=>{
+ const f=fixture((row,index)=>{
+  assert.equal(index,0);
+  const error=Object.assign(new Error('sensitive server detail'),{code:'TASK01_RESOURCE_COMMAND_FAILED'});
+  Object.defineProperty(error,'sevenOwnerFailure',{value:{sqlState:'42703',guard:'private detail',raw:'secret'}});
+  throw error;
+ });
+ await assert.rejects(f.api.installCurrent259SevenFragments(roleCompletion,f.handle),error=>{
+  assert.equal(error.code,'CURRENT259_SEVEN_INSTALL_PRESTATE_REJECTED');
+  assert.deepEqual(f.api.describeCurrent259SevenFailure(error),{
+   phase:'current259-seven-before',boundary:'OWNER_SQL',causeCode:'TASK01_RESOURCE_COMMAND_FAILED',sqlState:'42703'
+  });
+  assert.equal(f.api.describeCurrent259SevenFailure({...error}),undefined);
+  return true;
+ });
+ assert.equal(f.calls.length,1);
+ assert.equal(f.closed(),true);
+});
+
+test('the before transaction distinguishes the fixed scope reasons in predicate order',async()=>{
+ const f=fixture();
+ await f.api.installCurrent259SevenFragments(roleCompletion,f.handle);
+ const reasons=['OWNER_SESSION','DATABASE_IDENTITY','CLUSTER_IDENTITY','TLS_ENDPOINT','TLS_SESSION',
+  'SERVER_REPLICATION','TRANSACTION_MODE','ROLE_XID','ORDINARY_ROLE','RUNTIME_ROLE',
+  'OBSERVER_ROLE','ROLE_SETTINGS','DATABASE_ACL','MIGRATION_LEDGER','PENDING_BINDING',
+  'ARCHIVE_INTENT_BINDING','ARCHIVE_NATIVE_NONCE','UPWARD_ISSUER_BINDING','UPWARD_CLOSURE_BINDING','UPWARD_EXECUTION_BINDING',
+  'SCHEMA205_ROUTINE','OPERATING_FACT_ROUTINE','OPERATING_IMPACT_ROUTINE','FUND_IMMUTABLE_ROUTINE'];
+ assert.deepEqual([...f.calls[0].sql.matchAll(/USING DETAIL = 'CURRENT259_SEVEN_SCOPE_([A-Z0-9_]+)'/gu)].map(row=>row[1]),reasons);
+ assert.ok(f.calls.slice(1).every(call=>!call.sql.includes('USING DETAIL = \'CURRENT259_SEVEN_SCOPE_')));
+});
+
+const factBefore='26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975';
+const impactBefore='d6666bbad410b5f1cacc8e40fe29dbaea990e2e101f9857cb14585d6a6a9d92b';
+const factArchiveMiddle='a9f2052a70675effdd906929c1b3490c4f4f81867b65b29ea13c9e3a935f7434';
+const impactArchiveMiddle='e6d843c9d702ce00f88e79b1e7f83eac977df271c3962bb949b9299d78d9de3c';
+const factAfter='bff34d39844c0dad082ec64b068c221585a3ac8d6dbd783af2a152835ac8516c';
+const impactAfter='e54970be19b1d3d8a9dd58e4ed6d7f92777300a6b8fef6f8714ddd085f89ea7e';
+const factArchiveAfter='a59d505c02c2e0ff453ed0ccf29b25909449aa9cf1149f4a414844abc0541e1b';
+const impactArchiveAfter='78d1efbfb923ee5417b580e51e87dee29d33277fe510136c7f562e61007ae1da';
+function includesOnly(sql,expected,rejected){
+ assert.deepEqual(expected.filter(digest=>!sql.includes(digest)),[]);
+ assert.deepEqual(rejected.filter(digest=>sql.includes(digest)),[]);
+}
+
+test('standalone scope uses only the two M234 bodies and the real seven dynamic successors',async()=>{
+ const f=fixture();
+ await f.api.installCurrent259SevenFragments(roleCompletion,f.handle);
+ includesOnly(f.calls[0].sql,[factBefore,impactBefore],[factArchiveMiddle,impactArchiveMiddle]);
+ includesOnly(f.calls[1].sql,[factBefore,impactBefore,factAfter,impactAfter],
+  [factArchiveMiddle,impactArchiveMiddle,factArchiveAfter,impactArchiveAfter]);
+});
+
+test('registered archive switches the two exact bodies only inside its proven writer middle',()=>{
+ const f=fixture();
+ const executor={name:'jg_c259_outside_executor_owner',oid:'220',login:false};
+ const lease={source,completion:{...roleCompletion,roles:[...roles,executor]}};
+ const view={source,runId,resource:{containerId,databaseName:database}};
+ const bundle=f.api.archiveSevenMaterial(lease,view,nonce);
+ const {writerBefore,writerMiddle}=bundle.readBefore({stdout:JSON.stringify({nonce,phase:'current259-seven-before',
+  backendPid:11,backendStart:'2026-11-11T04:00:00.000000Z',pre:model(),registry,fileRoles:['10','100'],
+  catalogSha256:'5'.repeat(64),installXid:null,commitStatus:null})});
+ for(const sql of [bundle.beforeSql,writerBefore])includesOnly(sql,[factBefore,impactBefore],[factArchiveMiddle,impactArchiveMiddle]);
+ includesOnly(writerMiddle,[factArchiveMiddle,impactArchiveMiddle,factArchiveAfter,impactArchiveAfter],
+  [factAfter,impactAfter]);
+ const binding=writerMiddle.indexOf('FROM public.jg_contract_direct_archive_intent_binding_v1) IS DISTINCT FROM true');
+ assert.ok(binding>=0&&binding<writerMiddle.indexOf(factArchiveMiddle));
+ assert.match(writerMiddle,/jsonb_set\(to_jsonb\(p\),'\{prosrc\}',to_jsonb\(/u);
+ assert.ok(writerMiddle.indexOf(factArchiveMiddle)<writerMiddle.indexOf('CURRENT259_SEVEN_INSTALL_ARCHIVE_PREIMAGE_DRIFT'));
+});
+
+test('does not render owner SQL when either exact migration source changes',async()=>{
+ for(const migration of ['20261110140000','20261111082000']){
+  const f=fixture(undefined,false,migration);
+  await assert.rejects(f.api.installCurrent259SevenFragments(roleCompletion,f.handle),error=>{
+   assert.equal(error.code,'CURRENT259_SEVEN_INSTALL_PRESTATE_REJECTED');
+   assert.deepEqual(f.api.describeCurrent259SevenFailure(error),{
+    phase:'current259-seven-before',boundary:'INPUT',causeCode:'CURRENT259_SEVEN_INSTALL_ROUTINE_SOURCE'
+   });
+   return true;
+  });
+  assert.equal(f.calls.length,0);
+  assert.equal(f.closed(),true);
+ }
 });

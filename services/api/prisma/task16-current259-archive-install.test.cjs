@@ -328,3 +328,23 @@ test('database ACL provenance crosses only the same-handle archive continuation'
   assert.equal(continuation.roleCompletion.databaseAcl.after[0].oid, '16384');
   assert.ok(Object.isFrozen(continuation.roleCompletion.databaseAcl.after[0].acl));
 });
+
+test('the registered archive prestate retains the common fixed owner diagnostic before closing',async()=>{
+ const f=model((row,phase)=>{
+  if(phase==='current259-seven-before'){
+   throw Object.assign(Error('private database message'),{code:'TASK01_RESOURCE_COMMAND_FAILED',
+    sevenOwnerFailure:{sqlState:'P0001',guard:'CURRENT259_SEVEN_INSTALL_SCOPE',section:'SCOPE_GUARD',scopeReason:'OPERATING_IMPACT_ROUTINE',raw:'private field'}});
+  }
+  return row;
+ });
+ await assert.rejects(f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle),error=>{
+  assert.equal(error.code,'CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED');
+  assert.equal(error.phase,'current259-seven-before');
+  assert.deepEqual(error.sevenFailure,{phase:'current259-seven-before',boundary:'OWNER_SQL',causeCode:'TASK01_RESOURCE_COMMAND_FAILED',
+   sqlState:'P0001',guard:'CURRENT259_SEVEN_INSTALL_SCOPE',section:'SCOPE_GUARD',scopeReason:'OPERATING_IMPACT_ROUTINE'});
+  assert.doesNotMatch(JSON.stringify(error),/private/u);
+  return true;
+ });
+ assert.deepEqual(f.calls.map(x=>x.phase),['archive-install-before','current259-seven-before']);
+ assert.equal(f.closed(),1);
+});

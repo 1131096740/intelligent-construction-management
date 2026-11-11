@@ -700,7 +700,7 @@
         "resourceHelper": "services/api/prisma/enterprise-task01-resources.cjs",
         "imageId": "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
         "sourceSha256": "7eaa6c921a54aa8e0ccd44fc75011c20feb35c711fffd1e46018de48e2ad1dea",
-        "resourceHelperSha256": "86209983fdd6690f6f5c5f589f5f7793fdee9b75a913012bcb532c8fd2d9b27f"
+        "resourceHelperSha256": "8cd252c6133085eab67ffa5ab989217bd91177279ae38a8eae528b8cb96678f1"
       },
       "state": "executable_local_runner",
       "issue": 383,

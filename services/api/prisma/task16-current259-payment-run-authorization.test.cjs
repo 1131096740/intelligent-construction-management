@@ -43,7 +43,9 @@ function fixture(t,options={}){
    assert.equal(h,handle);assert.equal(provided,signal);return {async migrate(){state.calls.push('technical259');if(Object.hasOwn(options,'technicalFailure'))throw options.technicalFailure;await options.onTechnical?.(state);return technical;}};
   }},
   './task16-current259-role-provision.cjs':{async provisionCurrent259Roles(value,h){state.calls.push('roles9');assert.equal(value,technical);assert.equal(h,handle);return roles;}},
-  './task16-current259-seven-install.cjs':{async installCurrent259SevenFragments(value,h){state.calls.push('seven');assert.equal(value,roles);assert.equal(h,handle);return seven;}},
+  './task16-current259-seven-install.cjs':{describeCurrent259SevenFailure(error){return error===options.sevenFailure?options.sevenDetail:undefined;},
+  async installCurrent259SevenFragments(value,h){state.calls.push('seven');assert.equal(value,roles);assert.equal(h,handle);
+   if(Object.hasOwn(options,'sevenFailure'))throw options.sevenFailure;return seven;} },
   './task16-current259-payment-acl-install.cjs':{async installCurrent259PaymentAcl(value,h){state.calls.push('acl');assert.equal(value,seven);assert.equal(h,handle);return acl;}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},async closeCurrent259OwnedResource(){state.closes++;},
    async withCurrent259FirstRollbackResource(build,plan,sig,consume){
@@ -407,7 +409,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
   ['task16-current259-b7-install',['installCurrent259B7']],
   ['local-staged-current259-profile',['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']],
   ['task16-current259-role-provision',['provisionCurrent259Roles']],
-  ['task16-current259-seven-install',['installCurrent259SevenFragments']],
+  ['task16-current259-seven-install',['installCurrent259SevenFragments','describeCurrent259SevenFailure']],
   ['task16-current259-payment-acl-install',['installCurrent259PaymentAcl']],
   ['task16-current259-owned-resource',['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource',
    'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259VoucherResource','withCurrent259AttributionGapResource',
@@ -745,3 +747,17 @@ for(const [stage,code] of [
   assert.ok(!JSON.stringify(receipt).includes('private upstream body'));
  });
 }
+
+test('main retains the fixed seven prestate reason after cleanup without raw output or another stage',async t=>{
+ const sevenFailure=Object.assign(Error('private detail'),{code:'CURRENT259_SEVEN_INSTALL_PRESTATE_REJECTED'});
+ const sevenDetail={phase:'current259-seven-before',boundary:'OWNER_SQL',causeCode:'TASK01_RESOURCE_COMMAND_FAILED',sqlState:'P0001',
+  guard:'CURRENT259_SEVEN_INSTALL_SCOPE',section:'SCOPE_GUARD',scopeReason:'FUND_IMMUTABLE_ROUTINE'};
+ const f=fixture(t,{sevenFailure,sevenDetail}),result=await f.done;
+ assert.equal(result.failureCode,sevenFailure.code);
+ assert.deepEqual(f.state.calls,['start','technical259','roles9','seven']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.failureStage,'sevenFragments');
+ assert.deepEqual(receipt.sevenFailure,sevenDetail);
+ assert.doesNotMatch(JSON.stringify(receipt),/private detail/u);
+ assert.equal(receipt.resource.cleanup.status,'completed');
+});

@@ -36,6 +36,43 @@ const CONTRACT_LOGINS = [
   "jg_c259_upward_issuer_login", "jg_c259_upward_runtime_login"
 ];
 const HBA_PATH = "/jg-task01/pg_hba.conf";
+const SEVEN_PRESTATE_PHASE = "current259-seven-before";
+const SEVEN_PRESTATE_SQLSTATES = new Set(["P0001", "55000", "55P03", "57014", "22023", "42501",
+  "42601", "42702", "42703", "42704", "42725", "42804", "42883", "42P01"]);
+const SEVEN_PRESTATE_GUARDS = new Set(["CURRENT259_SEVEN_INSTALL_SCOPE", "CURRENT259_SEVEN_INSTALL_FRESH_OBJECTS",
+  "TASK16_CURRENT259_SEVEN_PREIMAGE"]);
+const SEVEN_SCOPE_REASONS = new Set(['OWNER_SESSION','DATABASE_IDENTITY','CLUSTER_IDENTITY','TLS_ENDPOINT','TLS_SESSION',
+  'SERVER_REPLICATION','TRANSACTION_MODE','ROLE_XID','ORDINARY_ROLE','RUNTIME_ROLE',
+  'OBSERVER_ROLE','ROLE_SETTINGS','DATABASE_ACL','MIGRATION_LEDGER','PENDING_BINDING',
+  'ARCHIVE_INTENT_BINDING','ARCHIVE_NATIVE_NONCE','UPWARD_ISSUER_BINDING','UPWARD_CLOSURE_BINDING','UPWARD_EXECUTION_BINDING',
+  'SCHEMA205_ROUTINE','OPERATING_FACT_ROUTINE','OPERATING_IMPACT_ROUTINE','FUND_IMMUTABLE_ROUTINE']);
+const SEVEN_PRESTATE_SECTIONS = new Map([
+  ["LOCK TABLE public._prisma_migrations", "OWNED_SCOPE_LOCK"],
+  ["DO $current259_seven_scope$", "SCOPE_GUARD"],
+  ["DO $current259_seven_fresh$", "FRESH_OBJECTS"],
+  ["DO $jg_current259_seven$", "REFERENCE_SETUP"],
+  ["SELECT jsonb_build_object('nonce',", "CATALOG_READBACK"],
+  ["DROP TABLE pg_temp.", "REFERENCE_CLEANUP"],
+  ["ROLLBACK;", "ROLLBACK"]
+]);
+function sevenPrestateDiagnostic(stderr, sql) {
+  const output = stderr.toString("utf8").split("\n");
+  const first = output.findIndex(value => /^psql:<stdin>:[1-9][0-9]*: ERROR:/u.test(value));
+  if (first === -1) return undefined;
+  const match = /^psql:<stdin>:([1-9][0-9]{0,7}): ERROR: +([0-9A-Z]{5}): +([^\r]*)\r?$/u.exec(output[first]);
+  if (!match || !SEVEN_PRESTATE_SQLSTATES.has(match[2])) return undefined;
+  let section;
+  const lines = sql.split("\n"), stop = Number(match[1]);
+  if (stop <= lines.length) for (const inputLine of lines.slice(0, stop)) {
+    for (const [marker, fixedSection] of SEVEN_PRESTATE_SECTIONS)
+      if (inputLine.startsWith(marker)) section = fixedSection;
+  }
+  const guard = SEVEN_PRESTATE_GUARDS.has(match[3]) ? match[3] : undefined;
+  const scopeReason = guard === "CURRENT259_SEVEN_INSTALL_SCOPE" && match[2] === "P0001" && section === "SCOPE_GUARD"
+    ? /^DETAIL: +CURRENT259_SEVEN_SCOPE_([A-Z0-9_]+)\r?$/u.exec(output[first + 1])?.[1] : undefined;
+  return Object.freeze({ sqlState: match[2], ...(guard ? { guard } : {}), ...(section ? { section } : {}),
+    ...(SEVEN_SCOPE_REASONS.has(scopeReason) ? { scopeReason } : {}) });
+}
 function hbaRules(database, roles, loopback = false) {
   return [
     ["local", "all", OWNER, null, "peer", ["map=jg_task01_init"]],
@@ -464,6 +501,10 @@ async function prepareTask01Postgres(options = {}, lifetime) {
           if (relayCode === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" || relayCode === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT")
             copyRelayCloseState(failure, error);
         }
+        if (operation === execOwnerSql && args[1] === SEVEN_PRESTATE_PHASE) {
+          const detail = ownErrorField(error, "sevenOwnerFailure");
+          if (detail) Object.defineProperty(failure, "sevenOwnerFailure", { value: detail });
+        }
         throw failure;
       }
     };
@@ -598,7 +639,17 @@ async function prepareTask01Postgres(options = {}, lifetime) {
   async function execOwnerSql(sql, phase) {
     requireThat(!closePromise && typeof sql === "string" && Buffer.byteLength(sql) <= 16 * 1024 * 1024 && typeof phase === "string" && /^[A-Za-z0-9._-]{1,128}$/u.test(phase), "TASK01_RESOURCE_SQL_INPUT_INVALID");
     await inspectOwned();
-    const result = await mutate(["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1", "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"], { input: sql, timeoutMs: 120000 });
+    const sevenPrestate = technical && phase === SEVEN_PRESTATE_PHASE;
+    const result = await mutate(["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
+      ...(sevenPrestate ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"],
+    { input: sql, timeoutMs: 120000, ...(sevenPrestate ? { allowFailure: true } : {}) });
+    if (result.code !== 0) {
+      const failure = fault("TASK01_RESOURCE_COMMAND_FAILED");
+      failure.commandKind = result.code === null ? "signal-exit" : "nonzero-exit";
+      const detail = result.code === 3 ? sevenPrestateDiagnostic(result.stderr, sql) : undefined;
+      if (detail) Object.defineProperty(failure, "sevenOwnerFailure", { value: detail });
+      throw failure;
+    }
     return { stdout: result.stdout.toString("utf8") };
   }
   let contractHbaAttempted = false, contractOrdinary, contractPlaintextStarted = false, contractPlaintextCursor;

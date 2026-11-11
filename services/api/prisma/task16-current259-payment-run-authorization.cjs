@@ -160,7 +160,8 @@ const {describeCurrent259DisconnectFailure,captureCurrent259DisconnectFailure,ca
  './task16-current259-disconnect-failure.cjs',
  ['describeCurrent259DisconnectFailure','captureCurrent259DisconnectFailure','carryCurrent259DisconnectFailure']);
 const {provisionCurrent259Roles}=original('./task16-current259-role-provision.cjs',['provisionCurrent259Roles']);
-const {installCurrent259SevenFragments}=original('./task16-current259-seven-install.cjs',['installCurrent259SevenFragments']);
+const {installCurrent259SevenFragments,describeCurrent259SevenFailure}=original('./task16-current259-seven-install.cjs',
+ ['installCurrent259SevenFragments','describeCurrent259SevenFailure']);
 const {installCurrent259PaymentAcl}=original('./task16-current259-payment-acl-install.cjs',['installCurrent259PaymentAcl']);
 const {withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259NormalPaymentResource,
  withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259VoucherResource,
@@ -512,6 +513,8 @@ async function run(args){
       hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
       const technicalFailure=stage==='technical259'?describeCurrent259TechnicalFailure(error):undefined;
       if(technicalFailure)receipt.technicalFailure=technicalFailure;
+      const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
+      if(sevenFailure)receipt.sevenFailure=sevenFailure;
       const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
       if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
       // The case records this before application and live-session cleanup can mask the error.

@@ -114,7 +114,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   existsSync:v=>files.has(v),accessSync(){},mkdirSync(){},chmodSync(){},rmdirSync(){},
   renameSync(from,to){files.set(to,files.get(from));files.delete(from);},unlinkSync(v){files.delete(v);},
   readFileSync:v=>Buffer.from(files.get(v)),writeFileSync(v,b){files.set(v,b);written.set(v,b);}};
- let network=false,container=false,running=false,relayOpen=false,log='',tmpfs={},logReadFailure=false,relayFailure;
+ let network=false,container=false,running=false,relayOpen=false,log='',tmpfs={},logReadFailure=false,relayFailure,ownerSqlFailure;
  const output=(args,tool,input)=>{
   if(tool!==docker){
    const write=args.indexOf('-out');if(write>=0)files.set(args[write+1],path.basename(args[write+1]));
@@ -150,6 +150,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
     if(args.includes('sha256sum'))return [0,`${appliedHbaSha}  ${hbaPath}\n`];
     return [0,'accepting connections'];
    case 'exec --interactive':
+    if(args.includes('psql')&&ownerSqlFailure)return [3,'',ownerSqlFailure];
     assert.equal(firstQ2,true,'only Q2 runs contract HBA installation in this model');
     if(args.includes('sh')){
      assert.equal(args.at(-2),digest(written.get(config.artifactsDir+'/tls-private/bundle/pg_hba.conf')));
@@ -172,8 +173,9 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin=new PassThrough();
   let input='';child.stdin.on('data',chunk=>{input+=chunk.toString();});
   queueMicrotask(()=>{
-   const [status,text]=output(args,tool,input);
+   const [status,text,err]=output(args,tool,input);
    if(text)child.stdout.emit('data',Buffer.from(text));
+   if(err)child.stderr.emit('data',Buffer.from(err));
    child.emit('close',status);
   });
   return child;
@@ -218,7 +220,7 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   log+=`2026-11-12T03:00:00.000000001Z 2026-11-12 03:00:00.000 UTC [40] user=${logins[0]} db=${database} FATAL:  pg_hba.conf rejects connection for host "${peer}", user "${logins[0]}", database "${database}", no encryption\n`;
  };
  return {start:extra=>holder.exports[firstQ2?'startCurrent259FirstQ2LoopbackPostgres':starter]({...config,...extra}),
-  written,calls,config,networkId,containerId,database,logRejection,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;}};
+  written,calls,config,networkId,containerId,database,logRejection,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;},failOwnerSql:detail=>{ownerSqlFailure=detail;}};
 }
 
 test('first-rollback startup checks no Docker publish, validates TLS and HBA, and joins relay and Docker cleanup',async()=>{
@@ -369,5 +371,48 @@ test('the first-rollback resource opens a Prisma relay wait and maps its fixed f
   return true;
  });
  assert.deepEqual(f.calls.filter(([name])=>name.startsWith('relay-drain')), [['relay-drain-open'],['relay-drain-wait']]);
+ await resource.close();
+});
+
+test('a failed fixed seven prestate retains only the adjacent allowlisted detail of the first scope error',async()=>{
+ const f=rollbackResourceModel('healthy'),resource=await f.start();
+ const sql='DO $current259_seven_scope$\nBEGIN\nEND $current259_seven_scope$;';
+ const scopeError='psql:<stdin>:3: ERROR:  P0001: CURRENT259_SEVEN_INSTALL_SCOPE\n';
+ const fixedDetail='DETAIL:  CURRENT259_SEVEN_SCOPE_OPERATING_FACT_ROUTINE\n';
+ const common={sqlState:'P0001',guard:'CURRENT259_SEVEN_INSTALL_SCOPE',section:'SCOPE_GUARD'};
+ for(const [stderr,expected] of [
+  [scopeError+fixedDetail+'CONTEXT: private material\npsql:<stdin>:4: ERROR:  42501: private later detail\n',
+   {...common,scopeReason:'OPERATING_FACT_ROUTINE'}],
+  [scopeError+'DETAIL:  CURRENT259_SEVEN_SCOPE_PRIVATE\n',common],
+  [scopeError+'CONTEXT: private first error\npsql:<stdin>:3: ERROR:  P0001: CURRENT259_SEVEN_INSTALL_SCOPE\n'+fixedDetail,common],
+  [scopeError.replace('P0001','42703')+fixedDetail,{...common,sqlState:'42703'}],
+  [scopeError.replace('SCOPE','FRESH_OBJECTS')+fixedDetail,{...common,guard:'CURRENT259_SEVEN_INSTALL_FRESH_OBJECTS'}],
+ ]){
+  f.failOwnerSql(stderr);
+  await assert.rejects(resource.execOwnerSql(sql,'current259-seven-before'),error=>{
+   assert.equal(error.code,'TASK01_RESOURCE_COMMAND_FAILED');
+   assert.deepEqual(error.sevenOwnerFailure,expected);
+   assert.doesNotMatch(String(error)+JSON.stringify(error.sevenOwnerFailure),/private/i);
+   return true;
+  });
+ }
+ const probe=f.calls.filter(row=>row[0]==='exec'&&row.includes('psql')).at(-1);
+ assert.ok(probe.includes('VERBOSITY=verbose'));
+ await resource.close();
+});
+
+test('seven prestate maps a fixed input section without retaining input, line or server detail',async()=>{
+ const f=rollbackResourceModel('healthy'),resource=await f.start();
+ f.failOwnerSql('psql:<stdin>:3: ERROR:  42883: private PostgreSQL message\n');
+ await assert.rejects(resource.execOwnerSql("DO $current259_seven_scope$\nBEGIN\nEND;\nROLLBACK;",'current259-seven-before'),error=>{
+  assert.deepEqual(error.sevenOwnerFailure,{sqlState:'42883',section:'SCOPE_GUARD'});
+  assert.doesNotMatch(JSON.stringify(error.sevenOwnerFailure),/private|BEGIN/u);
+  return true;
+ });
+ f.failOwnerSql('psql:<stdin>:1: ERROR:  ZZZZZ: private first error\npsql:<stdin>:2: ERROR:  P0001: CURRENT259_SEVEN_INSTALL_SCOPE\n');
+ await assert.rejects(resource.execOwnerSql('SELECT 1;','current259-seven-before'),error=>error.sevenOwnerFailure===undefined);
+ f.failOwnerSql('psql:<stdin>:1: ERROR:  P0001: CURRENT259_SEVEN_INSTALL_SCOPE\n');
+ await assert.rejects(resource.execOwnerSql('SELECT 1;','current259-seven-install'),error=>error.sevenOwnerFailure===undefined);
+ assert.ok(!f.calls.filter(row=>row[0]==='exec'&&row.includes('psql')).at(-1).includes('VERBOSITY=verbose'));
  await resource.close();
 });

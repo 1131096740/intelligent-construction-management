@@ -32,6 +32,7 @@ const newTables=['RegisteredPaymentFunding','RegisteredFundPaymentAllocation','R
 const archiveBindings=['jg_contract_direct_archive_intent_binding_v1','jg_contract_direct_archive_native_nonce_v1','jg_contract_direct_upward_issuer_binding_v2','jg_contract_direct_upward_closure_v2','jg_contract_direct_upward_execution_binding_v2'];
 const installed=new WeakMap();
 const attempted=new WeakSet();
+const sevenFailures=new WeakMap();
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const hex=(value,n)=>typeof value==='string'&&value.length===n&&/^[0-9a-f]+$/u.test(value);
 const bounded=(value,max)=>typeof value==='string'&&/^[1-9][0-9]{0,19}$/u.test(value)&&BigInt(value)<=max;
@@ -43,8 +44,7 @@ const shaSql=value=>`encode(sha256(convert_to((${value})::text,'UTF8')),'hex')`;
 const error=part=>Object.assign(new Error(`${CODE}_${part}`),{code:`${CODE}_${part}`});
 const need=(ok,part='QUALIFICATION')=>{if(!ok)throw error(part);};
 
-// Recover the three other dynamically rewritten predecessors by undoing the
-// literal deltas in the pinned fragments. The new function proofs remain fixed.
+// Recover the legacy predecessors from the pinned seven fragment postimages.
 function priorRewriteBodies(rows){
  const rewind=(body,after,before,count=1)=>{need(body.split(after).length===count+1);return body.replaceAll(after,()=>before);};
  return rows.filter(row=>!row.signature.includes('guard_inter_entity_relationship_')).map(row=>{
@@ -69,8 +69,65 @@ function priorRewriteBodies(rows){
  `;
    body=rewind(body,added,'');
   }
-  return [row.signature,hash(body)];
+  return [row.signature,body];
  });
+}
+const currentRewriteMigrations=[
+ ['20261110140000_contract_generated_outside_assignment_instant_v1','112730295233ceec97131d9b8d86a49cdc452a729e287fd62cb432d557837dcd'],
+ ['20261111082000_contract_direct_outside_operating_reference_clock_v2','c6362d1f1dc687cbbe30440d72750028d68ed6e37e17c1e4f127c8100a8d4bfa'],
+];
+const currentRewriteProofs={
+ fact:{signature:'public."validateOperatingFactReferences"()',legacy:'e098668fa9795944775b1eff529d462d6c284aaa6cc400a2f169acd147ee2590',
+  before:'26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975',archiveMiddle:'a9f2052a70675effdd906929c1b3490c4f4f81867b65b29ea13c9e3a935f7434',
+  after:'bff34d39844c0dad082ec64b068c221585a3ac8d6dbd783af2a152835ac8516c',archiveAfter:'a59d505c02c2e0ff453ed0ccf29b25909449aa9cf1149f4a414844abc0541e1b',
+  standalone:[['decl',1],['lookup',1],['interval',1]],archive:[['decl',1],['flag',1],['day',7],['instant',2]]},
+ impact:{signature:'public."validateOperatingImpactEntryReferences"()',legacy:'ae881290f233d871b20633b6b0bd01eaea779b51d112780389160814cda80ea8',
+  before:'d6666bbad410b5f1cacc8e40fe29dbaea990e2e101f9857cb14585d6a6a9d92b',archiveMiddle:'e6d843c9d702ce00f88e79b1e7f83eac977df271c3962bb949b9299d78d9de3c',
+  after:'e54970be19b1d3d8a9dd58e4ed6d7f92777300a6b8fef6f8714ddd085f89ea7e',archiveAfter:'78d1efbfb923ee5417b580e51e87dee29d33277fe510136c7f562e61007ae1da',
+  standalone:[['decl',1],['lookup',1],['interval',1]],archive:[['decl',1],['lookup',1],['day',1],['instant',2]]},
+};
+function currentRewriteBodies(ledger,changedRoutines){
+ const [assignmentSql,referenceSql]=currentRewriteMigrations.map(([name,digest])=>{
+  need(ledger.some(row=>row.name===name&&row.sha256===digest),'ROUTINE_SOURCE');
+  const bytes=readFileSync(path.join(__dirname,'migrations',name,'migration.sql'));
+  need(hash(bytes)===digest,'ROUTINE_SOURCE');
+  return bytes.toString('utf8');
+ });
+ const legacyBodies=new Map(priorRewriteBodies(changedRoutines));
+ const splice=(body,sql,kind,steps,labels)=>steps.reduce((text,[key,count])=>{
+  const [before,after]=labels.map(label=>{
+   const assignment=new RegExp(`\\b${kind}_${key}_${label}\\s+TEXT\\s*:=\\s*\\$(\\w+)\\$([\\s\\S]*?)\\$\\1\\$;`,'giu');
+   const matches=[...sql.matchAll(assignment)];
+   need(matches.length===1&&matches[0][2].length>0,'ROUTINE_SOURCE');
+   return matches[0][2];
+  });
+  need(text.split(before).length===count+1,'ROUTINE_SOURCE');
+  return text.replaceAll(before,()=>after);
+ },body);
+ const archiveRewrites=new Map();
+ const beforeBodies=new Map(legacyBodies),afterProofs=new Map(),archiveAfterProofs=new Map();
+ for(const [kind,proof] of Object.entries(currentRewriteProofs)){
+  const legacy=legacyBodies.get(proof.signature),legacyPost=changedRoutines.find(row=>row.signature===proof.signature);
+  need(typeof legacy==='string'&&legacyPost&&hash(legacy)===proof.legacy,'ROUTINE_SOURCE');
+  const applyAssignment=body=>splice(body,assignmentSql,kind,proof.standalone,['before','after']);
+  const applyReference=body=>splice(body,referenceSql,kind,proof.archive,['old','new']);
+  const before=applyAssignment(legacy),archiveMiddle=applyReference(before);
+  const after=applyAssignment(legacyPost.body),archiveAfter=applyReference(after);
+  need(hash(before)===proof.before&&hash(archiveMiddle)===proof.archiveMiddle&&
+   hash(after)===proof.after&&hash(archiveAfter)===proof.archiveAfter,'ROUTINE_SOURCE');
+  beforeBodies.set(proof.signature,before);
+  archiveRewrites.set(proof.signature,{before,archiveMiddle:proof.archiveMiddle});
+  afterProofs.set(proof.signature,{...legacyPost,body:after,bodySha256:proof.after});
+  archiveAfterProofs.set(proof.signature,{...legacyPost,body:archiveAfter,bodySha256:proof.archiveAfter});
+ }
+ const prior=[...beforeBodies].map(([signature,body])=>[signature,hash(body)]);
+ return {
+  priorRoutines:prior,
+  archivePriorRoutines:prior.map(([signature,digest])=>[signature,archiveRewrites.get(signature)?.archiveMiddle??digest]),
+  archiveRewrites,
+  changedRoutines:changedRoutines.map(row=>afterProofs.get(row.signature)??row),
+  archiveChangedRoutines:changedRoutines.map(row=>archiveAfterProofs.get(row.signature)??row),
+ };
 }
 function material(witness){
  const profile=witness.profile;
@@ -92,8 +149,8 @@ function material(witness){
  const intercompany=files.get('intercompany');
  const constraintEdit=intercompany.match(/ALTER TABLE public\."InterEntityRelationshipEntry" ALTER COLUMN "evidenceFileId" DROP NOT NULL;\nDO \$\$\nDECLARE constraint_name[\s\S]+?\nEND \$\$;/u)?.[0];
  need(constraintEdit&&constraintEdit.split(RELATION).length===4);
- return {ledger:catalog.ledger,fragments:fragmentNames.map(name=>files.get(name)),newRoutines,changedRoutines,
-  priorRoutines:priorRewriteBodies(changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3);\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
+ return {ledger:catalog.ledger,fragments:fragmentNames.map(name=>files.get(name)),newRoutines,
+  ...currentRewriteBodies(catalog.ledger,changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3);\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
 }
 function inputOf(lease,view){
  const {completion:roleCompletion,source}=lease;
@@ -124,38 +181,71 @@ function scopeGuards(input,phase,archiveXid){
    'acl',coalesce((SELECT jsonb_agg(jsonb_build_array(a.grantor::text,a.grantee::text,a.privilege_type,a.is_grantable)
     ORDER BY a.grantor,a.grantee,a.privilege_type COLLATE "C",a.is_grantable) FROM aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a),'[]'::jsonb))
    ORDER BY d.datname COLLATE "C") FROM pg_database d)`;
- return `DO $current259_seven_scope$
-BEGIN
- IF current_user IS DISTINCT FROM '${OWNER}' OR session_user IS DISTINCT FROM current_user OR current_user::regrole::oid<>10
-  OR current_database() IS DISTINCT FROM ${quote(id.database)} OR to_regnamespace('public')::oid IS DISTINCT FROM ${id.namespaceOid}::oid
-  OR NOT EXISTS(SELECT 1 FROM pg_database WHERE datname=current_database() AND oid=${id.databaseOid}::oid AND datdba=10)
-  OR (SELECT system_identifier::text FROM pg_control_system()) IS DISTINCT FROM ${quote(id.systemIdentifier)}
-  OR host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432
-  OR NOT EXISTS(SELECT 1 FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
-  OR current_setting('server_version_num')::integer NOT BETWEEN 160000 AND 169999 OR current_setting('session_replication_role')<>'origin'
-  OR current_setting('transaction_isolation')<>'${phase===2?'repeatable read':'serializable'}' OR current_setting('transaction_read_only')<>'${phase===2?'on':'off'}'
-  OR pg_xact_status(${quote(roleCompletion.commitXid)}::xid8) IS DISTINCT FROM 'committed'
-  OR EXISTS(SELECT 1 FROM jsonb_to_recordset(${json(checkedRoles)}) e(name text,oid text,login boolean,"limit" integer,password text,xmin text)
+ const archivePredicates=archiveBindings.map((table,index)=>archiveXid&&index<2
+    ?`(SELECT count(*)=1 AND bool_and(xmin::text::numeric=mod((${archiveXid})::text::numeric,4294967296)) FROM public.${table}) IS DISTINCT FROM true`
+    :`EXISTS(SELECT 1 FROM public.${table})`);
+ const roleMismatch=roles=>`EXISTS(SELECT 1 FROM jsonb_to_recordset(${json(roles)}) e(name text,oid text,login boolean,"limit" integer,password text,xmin text)
     WHERE NOT EXISTS(SELECT 1 FROM pg_authid r WHERE r.oid=e.oid::oid AND r.rolname::text=e.name AND r.rolcanlogin=e.login AND r.rolconnlimit=e."limit"
        AND NOT (r.rolsuper OR r.rolinherit OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls)
        AND r.rolvaliduntil IS NULL AND (e.xmin IS NULL OR r.xmin::text=e.xmin)
        AND CASE e.password WHEN 'absent' THEN r.rolpassword IS NULL ELSE r.rolpassword LIKE 'SCRAM-SHA-256$%' END
        AND NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid)
-       AND NOT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.usesysid=r.oid)))
-  OR (SELECT coalesce(jsonb_agg(jsonb_build_array(s.setrole::text,s.setdatabase::text,s.setconfig) ORDER BY s.setrole,s.setdatabase),'[]'::jsonb)
-       FROM pg_db_role_setting s WHERE s.setrole IN (${runtime.oid}::oid,${observer.oid}::oid)) IS DISTINCT FROM ${json([[observer.oid,'0',['default_transaction_read_only=on']]])}
-  OR ${databaseAcl} IS DISTINCT FROM ${json(roleCompletion.databaseAcl.after)}
-  OR (SELECT jsonb_agg(jsonb_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL)
-    ORDER BY migration_name COLLATE "C") FROM public._prisma_migrations) IS DISTINCT FROM ${json(input.material.ledger)}
-  OR (SELECT count(*) FROM ${PENDING} b WHERE b."protocolVersion"=1 AND b."applicationRoleOid"=${ordinary.oid}::oid
-    AND b."databaseOid"=${id.databaseOid}::oid AND b."anchorNamespaceOid"=${id.namespaceOid}::oid AND b."anchorOwnerOid"=10)<>1
-  ${archiveBindings.map((table,index)=>archiveXid&&index<2
-    ?`OR (SELECT count(*)=1 AND bool_and(xmin::text::numeric=mod((${archiveXid})::text::numeric,4294967296)) FROM public.${table}) IS DISTINCT FROM true`
-    :`OR EXISTS(SELECT 1 FROM public.${table})`).join('\n  ')}
-  ${phase===2?'':`OR NOT (${schema205EnforceConfigSql(false)})
-   OR EXISTS(SELECT 1 FROM (VALUES ${input.material.priorRoutines.map(([signature,digest])=>`(${quote(signature)},${quote(digest)})`).join(',')}) e(signature,body_sha)
+       AND NOT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.usesysid=r.oid)))`;
+ const priorBodyMismatch=routines=>`EXISTS(SELECT 1 FROM (VALUES ${routines.map(([signature,digest])=>`(${quote(signature)},${quote(digest)})`).join(',')}) e(signature,body_sha)
      WHERE NOT EXISTS(SELECT 1 FROM pg_proc p WHERE p.oid=to_regprocedure(e.signature) AND p.proowner=10 AND p.pronamespace=to_regnamespace('public')
-       AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')=e.body_sha))`} THEN RAISE EXCEPTION '${CODE}_SCOPE'; END IF;
+       AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')=e.body_sha))`;
+ const priorRoutines=archiveXid?input.material.archivePriorRoutines:input.material.priorRoutines;
+ const scopeGroups=[
+  ['OWNER_SESSION',`current_user IS DISTINCT FROM '${OWNER}' OR session_user IS DISTINCT FROM current_user OR current_user::regrole::oid<>10`],
+  ['DATABASE_IDENTITY',`current_database() IS DISTINCT FROM ${quote(id.database)} OR to_regnamespace('public')::oid IS DISTINCT FROM ${id.namespaceOid}::oid
+  OR NOT EXISTS(SELECT 1 FROM pg_database WHERE datname=current_database() AND oid=${id.databaseOid}::oid AND datdba=10)`],
+  ['CLUSTER_IDENTITY',`(SELECT system_identifier::text FROM pg_control_system()) IS DISTINCT FROM ${quote(id.systemIdentifier)}`],
+  ['TLS_ENDPOINT',`host(inet_client_addr()) IS DISTINCT FROM '127.0.0.1' OR host(inet_server_addr()) IS DISTINCT FROM '127.0.0.1' OR inet_server_port() IS DISTINCT FROM 5432`],
+  ['TLS_SESSION',`NOT EXISTS(SELECT 1 FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)`],
+  ['SERVER_REPLICATION',`current_setting('server_version_num')::integer NOT BETWEEN 160000 AND 169999 OR current_setting('session_replication_role')<>'origin'`],
+  ['TRANSACTION_MODE',`current_setting('transaction_isolation')<>'${phase===2?'repeatable read':'serializable'}' OR current_setting('transaction_read_only')<>'${phase===2?'on':'off'}'`],
+  ['ROLE_XID',`pg_xact_status(${quote(roleCompletion.commitXid)}::xid8) IS DISTINCT FROM 'committed'`],
+  ['CURRENT_ROLES',roleMismatch(checkedRoles)],
+  ['ROLE_SETTINGS',`(SELECT coalesce(jsonb_agg(jsonb_build_array(s.setrole::text,s.setdatabase::text,s.setconfig) ORDER BY s.setrole,s.setdatabase),'[]'::jsonb)
+       FROM pg_db_role_setting s WHERE s.setrole IN (${runtime.oid}::oid,${observer.oid}::oid)) IS DISTINCT FROM ${json([[observer.oid,'0',['default_transaction_read_only=on']]])}`],
+  ['DATABASE_ACL',`${databaseAcl} IS DISTINCT FROM ${json(roleCompletion.databaseAcl.after)}`],
+  ['MIGRATION_LEDGER',`(SELECT jsonb_agg(jsonb_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL)
+    ORDER BY migration_name COLLATE "C") FROM public._prisma_migrations) IS DISTINCT FROM ${json(input.material.ledger)}`],
+  ['PENDING_BINDING',`(SELECT count(*) FROM ${PENDING} b WHERE b."protocolVersion"=1 AND b."applicationRoleOid"=${ordinary.oid}::oid
+    AND b."databaseOid"=${id.databaseOid}::oid AND b."anchorNamespaceOid"=${id.namespaceOid}::oid AND b."anchorOwnerOid"=10)<>1`],
+  ['ARCHIVE_BINDINGS',archivePredicates.join('\n  OR ')],
+  ...(phase===2?[]:[['SCHEMA205_ROUTINE',`NOT (${schema205EnforceConfigSql(false)})`],
+   ['PRIOR_ROUTINE_BODIES',priorBodyMismatch(priorRoutines)]]),
+ ];
+ if(phase===0){
+  const roleReasons=['ORDINARY_ROLE','RUNTIME_ROLE','OBSERVER_ROLE'];
+  const archiveReasons=['ARCHIVE_INTENT_BINDING','ARCHIVE_NATIVE_NONCE','UPWARD_ISSUER_BINDING','UPWARD_CLOSURE_BINDING','UPWARD_EXECUTION_BINDING'];
+  const routineReasons=new Map([
+   ['public."validateOperatingFactReferences"()','OPERATING_FACT_ROUTINE'],
+   ['public."validateOperatingImpactEntryReferences"()','OPERATING_IMPACT_ROUTINE'],
+   ['public."jg_registered_fund_immutable"()','FUND_IMMUTABLE_ROUTINE'],
+  ]);
+  need(input.material.priorRoutines.length===routineReasons.size&&
+   new Set(input.material.priorRoutines.map(([signature])=>signature)).size===routineReasons.size&&
+   input.material.priorRoutines.every(([signature])=>routineReasons.has(signature)));
+  const prestateGroups=scopeGroups.flatMap(([reason,predicate])=>{
+   if(reason==='CURRENT_ROLES')return checkedRoles.map((role,index)=>[roleReasons[index],roleMismatch([role])]);
+   if(reason==='ARCHIVE_BINDINGS')return archivePredicates.map((expression,index)=>[archiveReasons[index],expression]);
+   if(reason==='PRIOR_ROUTINE_BODIES')return input.material.priorRoutines.map(routine=>[routineReasons.get(routine[0]),priorBodyMismatch([routine])]);
+   return [[reason,predicate]];
+  });
+  return `DO $current259_seven_scope$
+BEGIN
+ ${prestateGroups.map(([reason,predicate],i)=>`${i?'ELSIF':'IF'} ${predicate}
+  THEN RAISE EXCEPTION '${CODE}_SCOPE' USING DETAIL = 'CURRENT259_SEVEN_SCOPE_${reason}';`).join('\n ')}
+ END IF;
+END $current259_seven_scope$;`;
+ }
+ const predicates=scopeGroups.map(([reason,predicate],index)=>index===0?predicate:
+  (reason==='PRIOR_ROUTINE_BODIES'?'\n   OR ':'\n  OR ')+predicate).join('');
+ return `DO $current259_seven_scope$
+BEGIN
+ IF ${predicates}${phase===2?'\n  ':''} THEN RAISE EXCEPTION '${CODE}_SCOPE'; END IF;
 END $current259_seven_scope$;`;
 }
 function newObjects(input){
@@ -171,11 +261,18 @@ END $current259_seven_fresh$;`;
 const fileRolesSql=input=>`(SELECT jsonb_agg(allowed::text ORDER BY allowed) FROM (
  SELECT unnest(b."fileCallerOids") AS allowed FROM ${PENDING} b WHERE b."protocolVersion"=1
  UNION SELECT ${input.ordinary.oid}::oid UNION SELECT 10::oid) role_ids)`;
-function stableSql(input,registry=schema205RegistrySql(),schemaWitness=schema205WitnessSql()){
+function stableSql(input,registry=schema205RegistrySql(),schemaWitness=schema205WitnessSql(),archiveMiddle=false){
  const routines=[...input.material.newRoutines,...input.material.changedRoutines].map(row=>`to_regprocedure(${quote(row.signature)})`).join(',');
+ // Scope already proves the exact archive middle bodies. Reconstruct only
+ // their original prosrc in the midstate digest; all other row fields stay live.
+ const routineRow=archiveMiddle?`CASE
+  ${[...input.material.archiveRewrites].map(([signature,{before,archiveMiddle}])=>
+   `WHEN p.oid=to_regprocedure(${quote(signature)}) AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')=${quote(archiveMiddle)}
+   THEN jsonb_set(to_jsonb(p),'{prosrc}',to_jsonb(${quote(before)}::text))`).join('\n  ')}
+  ELSE to_jsonb(p) END`:'to_jsonb(p)';
  return shaSql(`jsonb_build_array(${registeredObjectWitnessSql()},${schema205ScopeSql()},${schemaWitness},${registry},
   (SELECT to_jsonb(b) FROM ${PENDING} b WHERE b."protocolVersion"=1),
-  (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.oid) FROM pg_proc p WHERE p.oid IN (${routines})),
+  (SELECT jsonb_agg(${routineRow} ORDER BY p.oid) FROM pg_proc p WHERE p.oid IN (${routines})),
   (SELECT c.relacl FROM pg_class c WHERE c.oid=to_regclass(${quote(VOUCHER)})),
   (SELECT jsonb_agg(jsonb_build_array(a.attnum,a.attacl) ORDER BY a.attnum) FROM pg_attribute a
     WHERE a.attrelid=to_regclass(${quote(VOUCHER)}) AND a.attnum>0 AND NOT a.attisdropped))`);
@@ -246,10 +343,11 @@ BEGIN
   THEN RAISE EXCEPTION '${CODE}_VOUCHER_ACL'; END IF;
 END $current259_seven_bridge$;`;
 }
-function checkTransition(input,prior,reference){
+function checkTransition(input,prior,reference,archiveMiddle){
  const priorActual=prior.pre.actual;
  const columns=priorActual.columns.map(column=>column.name==='evidenceFileId'?{...column,notNull:false}:column);
- const postBodies=functionProofSql({functionProofs:[...input.material.newRoutines,...input.material.changedRoutines]});
+ const changedRoutines=archiveMiddle?input.material.archiveChangedRoutines:input.material.changedRoutines;
+ const postBodies=functionProofSql({functionProofs:[...input.material.newRoutines,...changedRoutines]});
  return `DO $current259_seven_postimage$
 DECLARE observation jsonb; item jsonb; original jsonb; compiled jsonb; actual_scope jsonb; prior_scope jsonb; delta jsonb;
 BEGIN
@@ -334,7 +432,7 @@ function applyFragments(input,prior,reference,executorOid){
   `CREATE TEMP TABLE jg_current259_seven_scope ON COMMIT DROP AS SELECT ${schema205ScopeSql()} AS payload,${schema205WitnessSql()} AS witness;`,
   'ALTER DEFAULT PRIVILEGES FOR ROLE jg_task01_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;',
   `DO $current259_seven_runtime$ BEGIN PERFORM pg_catalog.set_config('jg.task16_runtime_role',${quote(input.runtime.name)},true); END $current259_seven_runtime$;`,
-  ...input.material.fragments,input.material.referenceEdit,checkTransition(input,prior,reference),bridgeSql(input,prior,executorOid),
+  ...input.material.fragments,input.material.referenceEdit,checkTransition(input,prior,reference,Boolean(executorOid)),bridgeSql(input,prior,executorOid),
   installedCheckSql(input,'pg_current_xact_id()'),
  ];
 }
@@ -399,7 +497,7 @@ DECLARE observed jsonb;
 BEGIN
  SELECT registry INTO STRICT observed FROM pg_temp.jg_current259_seven_archive_registry;
  IF jsonb_set(observed,'{publicRoutine,rawAcl}',${json(oldRegistry.rawAcl)}) IS DISTINCT FROM ${json(expectedMiddle)}
-  OR ${stableSql(input,json(prior.registry),historicWitness)} IS DISTINCT FROM ${quote(prior.catalogSha256)}
+  OR ${stableSql(input,json(prior.registry),historicWitness,true)} IS DISTINCT FROM ${quote(prior.catalogSha256)}
   OR ${fileRolesSql(input)} IS DISTINCT FROM ${json(prior.fileRoles)}
  THEN RAISE EXCEPTION '${CODE}_ARCHIVE_PREIMAGE_DRIFT'; END IF;
 END $current259_seven_archive_mid$;`;
@@ -416,22 +514,47 @@ END $current259_seven_archive_mid$;`;
   },
  });
 }
+const SEVEN_SCOPE_REASONS = new Set(['OWNER_SESSION','DATABASE_IDENTITY','CLUSTER_IDENTITY','TLS_ENDPOINT','TLS_SESSION',
+  'SERVER_REPLICATION','TRANSACTION_MODE','ROLE_XID','ORDINARY_ROLE','RUNTIME_ROLE',
+  'OBSERVER_ROLE','ROLE_SETTINGS','DATABASE_ACL','MIGRATION_LEDGER','PENDING_BINDING',
+  'ARCHIVE_INTENT_BINDING','ARCHIVE_NATIVE_NONCE','UPWARD_ISSUER_BINDING','UPWARD_CLOSURE_BINDING','UPWARD_EXECUTION_BINDING',
+  'SCHEMA205_ROUTINE','OPERATING_FACT_ROUTINE','OPERATING_IMPACT_ROUTINE','FUND_IMMUTABLE_ROUTINE']);
+const ownFailureField=(value,key)=>value&&typeof value==='object'&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
+function describeCurrent259SevenFailure(failure){
+ return sevenFailures.get(failure);
+}
+function sevenFailureDetail(failure,phase,boundary){
+ const code=ownFailureField(failure,'code'),postgres=ownFailureField(failure,'sevenOwnerFailure');
+ const sqlState=ownFailureField(postgres,'sqlState'),guard=ownFailureField(postgres,'guard'),section=ownFailureField(postgres,'section');
+ const scopeReason=ownFailureField(postgres,'scopeReason');
+ const beforeSql=phase===phases[0]&&boundary==='OWNER_SQL'&&code==='TASK01_RESOURCE_COMMAND_FAILED';
+ return Object.freeze({phase,boundary,
+  ...(typeof code==='string'&&/^(?:CURRENT259_SEVEN_INSTALL_(?:QUALIFICATION|ROUTINE_SOURCE|OUTPUT|BEFORE|REGISTRY|FILE_CALLERS|STAGED|COMMITTED)|TASK01_RESOURCE_(?:COMMAND_FAILED|COMMAND_TIMEOUT|ABORTED|ABORTED_OR_TIMEOUT|OUTPUT_LIMIT|LOOPBACK_FORWARD_FAILED))$/u.test(code)?{causeCode:code}:{}),
+  ...(beforeSql&&typeof sqlState==='string'&&/^(?:P0001|55000|55P03|57014|22023|42501|42601|42702|42703|42704|42725|42804|42883|42P01)$/u.test(sqlState)?{sqlState}:{}),
+  ...(beforeSql&&['CURRENT259_SEVEN_INSTALL_SCOPE','CURRENT259_SEVEN_INSTALL_FRESH_OBJECTS','TASK16_CURRENT259_SEVEN_PREIMAGE'].includes(guard)?{guard}:{}),
+  ...(beforeSql&&['OWNED_SCOPE_LOCK','SCOPE_GUARD','FRESH_OBJECTS','REFERENCE_SETUP','CATALOG_READBACK','REFERENCE_CLEANUP','ROLLBACK'].includes(section)?{section}:{}),
+  ...(beforeSql&&sqlState==='P0001'&&guard==='CURRENT259_SEVEN_INSTALL_SCOPE'&&section==='SCOPE_GUARD'&&SEVEN_SCOPE_REASONS.has(scopeReason)?{scopeReason}:{})});
+}
+function describeCurrent259SevenPrestateCommandFailure(failure){
+ return sevenFailureDetail(failure,phases[0],'OWNER_SQL');
+}
 async function installCurrent259SevenFragments(roleCompletion,handle){
  need(arguments.length===2&&handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
  const lease=claimCurrent259ProvisionedRoles(roleCompletion,handle);
  attempted.add(handle);
- let writing=false;
+ let writing=false,phase=phases[0],boundary='INPUT';
  try{
   const view=claimCurrent259TechnicalResource(handle);
   const check=()=>{lease.check();view.check();};
  const checkContinuity=token=>{businessIssuer(token,handle);lease.checkContinuity(token);view.checkLifetime();};
   check();
   const input=inputOf(lease,view),nonce=randomBytes(32).toString('hex');
-  const run=async(phase,prior)=>{
-   check();const sql=render(input,phase,nonce,prior);check();
-   if(phase===1)writing=true;
-   const result=await view.resource.execOwnerSql(sql,phases[phase]);check();
-   return readResult(result,input,phase,nonce);
+  const run=async(index,prior)=>{
+   phase=phases[index];boundary='RENDER';check();const sql=render(input,index,nonce,prior);check();
+   if(index===1)writing=true;
+   boundary='OWNER_SQL';
+   const result=await view.resource.execOwnerSql(sql,phase);
+   boundary='READBACK';check();return readResult(result,input,index,nonce);
   };
   const before=await run(0);
   const staged=await run(1,before);
@@ -446,8 +569,9 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
   installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion,
    competition:input.competition,...(input.competition?{input}:{})});
   return completion;
- }catch{
+ }catch(cause){
   const primary=error(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
+  sevenFailures.set(primary,sevenFailureDetail(cause,phase,boundary));
   try{await closeCurrent259OwnedResource(handle);}catch{Object.defineProperty(primary,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});}
   throw primary;
  }
@@ -484,4 +608,4 @@ END $current259_voucher_seven_preimage$;
 SET LOCAL search_path=pg_catalog,pg_temp;`;
 }
 module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial,
- claimCurrent259VoucherSevenInstallation});
+ claimCurrent259VoucherSevenInstallation,describeCurrent259SevenFailure,describeCurrent259SevenPrestateCommandFailure});

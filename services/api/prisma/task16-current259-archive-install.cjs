@@ -8,7 +8,7 @@ const { claimCurrent259ProvisionedRoles } = require('./task16-current259-role-pr
 const {
   claimCurrent259TechnicalResource, closeCurrent259OwnedResource,
 } = require('./task16-current259-owned-resource.cjs');
-const { archiveSevenMaterial } = require('./task16-current259-seven-install.cjs');
+const { archiveSevenMaterial, describeCurrent259SevenPrestateCommandFailure } = require('./task16-current259-seven-install.cjs');
 
 const OWNER = 'jg_task01_owner';
 const LEDGER = 'd3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
@@ -498,7 +498,7 @@ async function installArchive(provisionResult, handle, registered) {
   need(handle && typeof handle === 'object' && !types.isProxy(handle) && !attempted.has(handle));
   const lease = claimCurrent259ProvisionedRoles(provisionResult, handle);
   attempted.add(handle);
-  let writing = false, phase = STAGES[0];
+  let writing = false, phase = STAGES[0], sevenFailure;
   try {
     const view = claimCurrent259TechnicalResource(handle);
     const check = () => { lease.check(); view.check(); view.verifyFull(); };
@@ -520,7 +520,9 @@ async function installArchive(provisionResult, handle, registered) {
       phase = 'current259-seven-before';
       const plan = archiveSevenMaterial(lease, view, randomBytes(32).toString('hex'));
       check();
-      const beforeSeven = await view.resource.execOwnerSql(plan.beforeSql, phase);
+      let beforeSeven;
+      try { beforeSeven = await view.resource.execOwnerSql(plan.beforeSql, phase); }
+      catch (error) { sevenFailure = describeCurrent259SevenPrestateCommandFailure(error); throw error; }
       check();
       const material = plan.readBefore(beforeSeven);
       sevenCatalogSql = material.finalCatalog;
@@ -564,9 +566,10 @@ async function installArchive(provisionResult, handle, registered) {
       ...(registered ? { ordinaryAclWitness: ordinaryAclWitness(input, completion, sevenCatalogSql) } : {}) });
     return completion;
   } catch {
+    const context = { phase, ...(sevenFailure ? { sevenFailure } : {}) };
     try { await closeCurrent259OwnedResource(handle); }
-    catch { throw Object.assign(fault(writing ? 'CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED' : 'CURRENT259_ARCHIVE_INSTALL_CLEANUP_UNCONFIRMED'), { phase }); }
-    throw Object.assign(fault(writing ? 'CURRENT259_ARCHIVE_INSTALL_COMMIT_UNCONFIRMED' : 'CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED'), { phase });
+    catch { throw Object.assign(fault(writing ? 'CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED' : 'CURRENT259_ARCHIVE_INSTALL_CLEANUP_UNCONFIRMED'), context); }
+    throw Object.assign(fault(writing ? 'CURRENT259_ARCHIVE_INSTALL_COMMIT_UNCONFIRMED' : 'CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED'), context);
   }
 }
 
