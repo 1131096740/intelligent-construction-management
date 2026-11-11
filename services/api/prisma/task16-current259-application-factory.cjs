@@ -183,11 +183,13 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
  const session=claimCurrent259LiveSessions(proof,handle);
  let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,httpClosing,shutdown,shutdownUnknown=false,businessToken;
  const revoke=()=>{active=false;if(clients)admissions.delete(clients);};
- const terminate=()=>shutdown??=Promise.resolve().then(async()=>{
-  if(pair){pair.startHttpClosures();await Promise.resolve();}
+ const closeBacking=async()=>{
   try{await own(session,'close').call(session);}catch{shutdownUnknown=true;}
   try{await closeCurrent259OwnedResource(handle);}catch{shutdownUnknown=true;}
- });
+  return shutdownUnknown;
+ };
+ const terminate=()=>pair?pair.terminate(closeBacking):shutdown??=Promise.resolve().then(closeBacking);
+ const cleanupIsUnknown=()=>shutdownUnknown||pair?.cleanupUnknown()===true;
  const closeHttp=()=>{
   revoke();
   if(!app)return Promise.resolve();
@@ -200,10 +202,10 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    let unknown=false;
    try{await closeHttp();}catch{unknown=true;}
    if(unknown||broken)await terminate();
-   if(unknown||shutdownUnknown)throw fault('TASK16_APP_CLOSE_UNKNOWN');
+   if(unknown||cleanupIsUnknown())throw fault('TASK16_APP_CLOSE_UNKNOWN');
   });
  };
- const control=Object.freeze({revoke,close,closeHttp,terminate,cleanupUnknown:()=>shutdownUnknown});
+ const control=Object.freeze({revoke,close,closeHttp,terminate,cleanupUnknown:cleanupIsUnknown});
  pair?.register(control);
  onControl(control);
  try{
@@ -273,11 +275,12 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
    resourceIdentity(){checkPaymentModule();if(businessToken){businessIssuer(businessToken,handle);view.checkLifetime();need(typeof getReceiptContinuity==='function'&&own(view.resource,'getReceiptContinuity')===getReceiptContinuity,code);return getReceiptContinuity.call(view.resource,businessToken);}check();need(typeof getReceipt==='function'&&own(view.resource,'getReceipt')===getReceipt,'TASK16_APP_HANDLE');return getReceipt.call(view.resource);},
    async failClosed(){broken=true;revoke();try{await close();}finally{await terminate();}}
   }));
-  return Object.freeze({application,close,terminate,cleanupUnknown:()=>shutdownUnknown});
+  return Object.freeze({application,close,terminate,cleanupUnknown:cleanupIsUnknown});
  }catch(error){
+  pair?.rememberFailure(error);
   revoke();let cleanupUnknown=false;
   try{await close();}catch{cleanupUnknown=true;}
-  await terminate();cleanupUnknown=cleanupUnknown||shutdownUnknown;
+  await terminate();cleanupUnknown=cleanupUnknown||cleanupIsUnknown();
   let failure='TASK16_APP_FAILED_CLOSED',startup='NOT_ATTEMPTED';
   if(error&&!types.isProxy(error)){
    const descriptor=Object.getOwnPropertyDescriptor(error,'code'),state=Object.getOwnPropertyDescriptor(error,'appStartupOutcome'),cleanup=Object.getOwnPropertyDescriptor(error,'appCleanupOutcome');
@@ -296,9 +299,24 @@ async function withCurrent259OwnedApplication(proof,handle,signal,consume){
 async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&assertCurrent259CompetitionLivePair(proofs,handle),'TASK16_APP_BOUNDARY');
  const controls=new Set();
+ let shutdown,unknown=false,failed=false,first,stopWaiting;
+ const cancellation=new Promise(resolve=>{stopWaiting=resolve;});
  const pair=Object.freeze({
   register(control){controls.add(control);},
-  startHttpClosures(){for(const control of controls)void control.closeHttp().catch(()=>{});},
+  rememberFailure(error){if(!failed){failed=true;first=error;}},
+  failure(){return first;},
+  cleanupUnknown(){return unknown;},
+  abort(){stopWaiting(null);},
+  terminate(closeBacking){
+   return shutdown??=Promise.resolve().then(async()=>{
+    // Wait for HTTP only. The controls' full close paths can also await
+    // this shared shutdown, so waiting on them here would deadlock.
+    const http=Promise.allSettled([...controls].map(control=>control.closeHttp()));
+    const results=await Promise.race([http,cancellation]);
+    if(!results||results.some(result=>result.status==='rejected'))unknown=true;
+    if(await closeBacking())unknown=true;
+   });
+  },
  });
  return withOwnedApplication(proofs[0],handle,signal,left=>withOwnedApplication(proofs[1],handle,signal,right=>{
   const applications=Object.freeze([left,right]);competitionApplications.set(applications,handle);
@@ -319,7 +337,7 @@ async function withOwnedApplication(proof,handle,signal,consume,pair){
  };
  const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
  const onAbort=()=>{
-  abortObserved=true;
+  abortObserved=true;pair?.abort();
   if(control){
    control.revoke();
    // Start HTTP closure before terminating the backing sessions. Neither a
@@ -353,10 +371,11 @@ async function withOwnedApplication(proof,handle,signal,consume,pair){
   if(completed.failed)throw completed.error;
   value=completed.value;
   owned.application.inspect();
- }catch(error){first=error;hasPrimary=true;}
+ }catch(error){first=error;hasPrimary=true;pair?.rememberFailure(error);}
  finally{
   try{
    if(control){
+    if(pair&&hasPrimary)void control.terminate();
     const closing=beginClose();
     const closed=closeSettled?await closing:await Promise.race([closing,cancellation]);
     if(closed.aborted){
@@ -367,12 +386,13 @@ async function withOwnedApplication(proof,handle,signal,consume,pair){
     }else if(closed.failed){
      cleanupUnknown=true;if(!hasPrimary){first=closed.error;hasPrimary=true;}
     }
-    if(hasPrimary)await control.terminate();
+    if(hasPrimary){pair?.rememberFailure(first);await control.terminate();}
     cleanupUnknown=cleanupUnknown||control.cleanupUnknown()||abortObserved&&!creationSettled;
    }
   }finally{removeAbortListener.call(signal,'abort',onAbort);}
  }
  if(hasPrimary){
+  if(pair)first=pair.failure();
   let code='TASK16_APP_FAILED_CLOSED',startup=owned||control?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED';
   let cleanup=owned?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED';
   if(first&&!types.isProxy(first)){

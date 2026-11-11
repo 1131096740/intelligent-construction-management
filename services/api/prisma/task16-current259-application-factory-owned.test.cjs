@@ -29,7 +29,7 @@ function fixture(t,options={}){
   Task16ImpactReaderToken:token};
  function framework(lane,entries){
   const server={listening:true,address(){return {address:'127.0.0.1',family:'IPv4',port:52124+lane};}};
-  const app={async close(){calls.push('app-close');await options.onClose?.();},get(key){providerReads[lane]++;return entries.get(key);},
+  const app={async close(){calls.push('app-close');await options.onClose?.(lane);},get(key){providerReads[lane]++;return entries.get(key);},
    getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
    enableCors(){calls.push('cors');},useGlobalPipes(){calls.push('validation');},
    async init(){calls.push('init');await options.onInit?.();},
@@ -304,4 +304,45 @@ for(const fault of [null,'server-address','runtime-provider','token'])test('comp
  const closeIndices=f.calls.flatMap((call,index)=>call==='app-close'?[index]:[]);
  assert.equal(closeIndices.length,2);
  if(fault)assert.ok(closeIndices.every(index=>index<f.calls.indexOf('sessions-close')));
+});
+
+
+for(const mode of ['complete','abort','close-rejected'])test('competition failure waits for the outer HTTP close ('+mode+')',async t=>{
+ let beginOuter,finishOuter;
+ const started=new Promise(resolve=>{beginOuter=resolve;});
+ const hold=new Promise(resolve=>{finishOuter=resolve;});
+ const controller=new AbortController();
+ const f=fixture(t,{
+  competitionModule:{},
+  async onClose(lane){
+   if(lane===0){beginOuter();await hold;}
+   f.calls.push('http-finished-'+lane);
+   if(lane===0&&mode==='close-rejected')throw new Error('outer HTTP close failed');
+  }
+ });
+ t.after(finishOuter);
+ const failure=Object.assign(new Error('first application failure'),{code:'TASK16_APP_RUNTIME_PROVIDER'});
+ const running=f.api.withCurrent259OwnedApplicationPair(f.pair,f.handle,controller.signal,async()=>{throw failure;});
+ const outcome=running.then(()=>assert.fail('expected failure'),error=>error);
+ await started;
+ await new Promise(resolve=>setImmediate(resolve));
+ try{
+  assert.ok(f.calls.includes('http-finished-1'));
+  assert.ok(!f.calls.includes('sessions-close'));
+  assert.equal(f.resourceCloses(),0);
+  if(mode==='abort'){
+   controller.abort();
+   const stopped=await Promise.race([outcome,new Promise(resolve=>setImmediate(()=>resolve(null)))]);
+   assert.ok(stopped,'abort must finish without waiting for a pending HTTP close');
+   assert.equal(stopped.code,'TASK16_APP_RUNTIME_PROVIDER');
+   assert.equal(stopped.appCleanupOutcome,'UNKNOWN_DO_NOT_CONTINUE');
+   assert.ok(!f.calls.includes('http-finished-0'));
+  }
+ }finally{finishOuter();}
+ const stopped=await outcome;
+ assert.equal(stopped.code,'TASK16_APP_RUNTIME_PROVIDER');
+ assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);
+ assert.equal(f.resourceCloses(),1);
+ assert.equal(stopped.appCleanupOutcome,mode==='complete'?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'UNKNOWN_DO_NOT_CONTINUE');
+ if(mode!=='abort')assert.ok(f.calls.indexOf('http-finished-0')<f.calls.indexOf('sessions-close'));
 });
