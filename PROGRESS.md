@@ -1,5 +1,9 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #398 准确 `5530da1e` 已快进本地集成。六处文件核验边界已独审，974 标准、147 API、23 支付、类型/lint/构建、两项 SDK 纯装载和离线 HOLD 检查通过。真实 PostgreSQL 和 HTTP 5 秒预算待验。A16 复核已定位固定空经营日期实付的延迟约束路径，提交取消接线在独立树推进。 [组合回执](/private/tmp/jg-398-six-fd-composition.ZGg2E3ky/HANDOFF-5530.md) · [A16 审计](/private/tmp/jg-398-a16-5530-seam.dLS0NUxJ/HANDOFF.md)
+
+- [~] #394 已核真实首条 Q2 文件接口需要付款预备 SQL 声明的两张关系。现有归档和付款安装器直接串接会触发原守卫。独立源码实现按同事务先 M232 和原经营安装、再装七片、最后首次采集 M259 快照推进，保留原绑定并安排独立提交读回。组合真实目录和普通角色 ACL/HBA/TLS/COS 验收待完成。 [兼容复核](/private/tmp/jg-394-ordinary-acl-D6nANk93/MIDSTATE-HANDOFF.md)
+
 - [~] 准确 `516d3a4f` 已合入原前像比较的括号修复。PG16.1 AST 确认旧式在 `->` 右侧计算未定字符串减法，新式先取 `identity` JSONB，再删除三个会话键。独立定向3/3，冷920/147、类型/lint/构建、17批静态、21输入及独立只读预检均通过。13批渲染逐字同31a，四个供给批次各仅增加一对括号。新封存单次验证等待对准确方案授权。 [独审](/private/tmp/jg-382-pfq-jsonb-preimage-merge.7MIDKMK6/HANDOFF-516D.md) · [封包](/private/tmp/jg-382-pfq259-functional-516d.71lv6dhk/RUN-HANDOFF.md)
 
 - [~] 准确 `31a51e6f` 冷920/147、类型/lint/构建、17批静态、21输入和独立只读预检通过；按用户明确单次授权执行一次后终态1，仍在首库 `TAIL213_SUPPLY / RESOURCE_PORT / SUPPLY_RESULT` 停止。真实PG `42725` 已保留固定脱敏 `OPERATOR_AMBIGUOUS / unknown - unknown`，定位为两个未定类型操作数的二元减号歧义，具体语句尚未确认。本次完整259、后六库、13并发未完成；脚本清理及根准确容器查询空0，许可消耗，不重试、不修复或跑后继门。无其他组、原生业务、COS、GitHub、部署或生产。 [停止回执](/private/tmp/jg-382-pfq259-diagnostic-31a5-cold.308yurs9/STOP-RECEIPT.md)
