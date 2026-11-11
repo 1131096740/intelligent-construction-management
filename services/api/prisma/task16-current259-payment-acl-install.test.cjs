@@ -6,6 +6,7 @@ const { test } = require('node:test');
 
 function fixture(mode = '') {
   const calls = [];
+  const competition = mode === 'competition';
   const handle = {}, token = Object.freeze({}), metadata = {parent:0};let forbidFull=false;
   const full=()=>assert.equal(forbidFull,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);};
   const completion = { installXid: '451' };
@@ -16,7 +17,8 @@ function fixture(mode = '') {
     databaseOid: '16384', namespaceOid: '2200', ownerOid: '10', systemIdentifier: '7540000000000000000' };
   const roleCompletion = {
     sourceSha: source.candidateSha, runId, containerId: 'c'.repeat(64), databaseIdentity: identity,
-    roles: [{ name: 'jg_task01_runtime', oid: '25004' }, { name: 'jg_task01_observer', oid: '25005' }]
+    roles: [{ name: 'jg_task01_runtime', oid: '25004', limit: competition || mode === 'wrong-lane-mode' ? 2 : 1 },
+      { name: 'jg_task01_observer', oid: '25005', limit: 1 }]
   };
   const projection = { phase: 'before', otherAclSha256: 'e'.repeat(64) };
   const resource = {
@@ -49,7 +51,8 @@ function fixture(mode = '') {
       claimCurrent259SevenInstallation(input, actualHandle) {
         if (input !== completion || actualHandle !== handle || claimed) throw new Error('claim');
         claimed = true;
-        return { source, roleCompletion, completion, check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;} };
+        return { source, roleCompletion, completion, check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;},
+          ...(competition ? { competition: true } : {}) };
       }
     },
     './task16-current259-owned-resource.cjs': {
@@ -59,7 +62,16 @@ function fixture(mode = '') {
       async closeCurrent259OwnedResource() { calls.push({ phase: 'cleanup' }); }
     },
     './task16-current259-runtime-acl.cjs': {
-      renderCurrent259RuntimeAcl() { return { sql: 'SELECT 1 /* runtime acl */;', witnessSql: 'SELECT 1 AS result;' }; }
+      renderCurrent259RuntimeAcl(_, input) {
+        assert.equal(input, roleCompletion);
+        assert.equal(input.roles[0].limit, 1);
+        return { sql: 'SELECT 1 /* runtime acl */;', witnessSql: 'SELECT 1 AS result;' };
+      },
+      renderCurrent259CompetitionRuntimeAcl(_, input) {
+        assert.equal(input, roleCompletion);
+        assert.deepEqual(input.roles.map(role => role.limit), [2, 1]);
+        return { sql: 'SELECT 1 /* competition runtime acl */;', witnessSql: 'SELECT 1 AS result;' };
+      }
     },
     './task16-current259-public-access.cjs': {
       renderCurrent259PublicAccess() { return 'SELECT 1 /* public acl */;'; }
@@ -67,6 +79,7 @@ function fixture(mode = '') {
     './task16-current259-catalog.cjs': {
       parseCurrent259CatalogRead(stdout, request) {
         assert.equal(request.phase, 'before');
+        assert.equal(request.identity.runtimeProfile, competition ? 'CURRENT259_TWO_RUNTIME_LANES' : undefined);
         const raw = JSON.parse(stdout);
         assert.equal(raw.nonce, request.nonce);
         assert.equal(raw.identity.readOnly, true);
@@ -129,4 +142,19 @@ test('issued ACL continuity retains its original seven capability without full w
  const f=fixture(),result=await f.api.installCurrent259PaymentAcl(f.completion,f.handle),lease=f.api.claimCurrent259PaymentAcl(result,f.handle);
  f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
  assert.throws(()=>lease.checkContinuity({...f.token}));
+});
+
+
+test('claimed competition uses only the fixed two-lane ACL and carries the same profile into catalog readback', async () => {
+  const f = fixture('competition');
+  const installed = await f.api.installCurrent259PaymentAcl(f.completion, f.handle);
+  assert.equal(installed.status, 'CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION');
+  assert.match(f.calls[0].sql, /competition runtime acl/u);
+  assert.equal(f.api.claimCurrent259PaymentAcl(installed, f.handle).request.identity.runtimeProfile, 'CURRENT259_TWO_RUNTIME_LANES');
+});
+
+test('a two-lane receipt without the genuine competition claim stops before owner SQL', async () => {
+  const f = fixture('wrong-lane-mode');
+  await assert.rejects(f.api.installCurrent259PaymentAcl(f.completion, f.handle), { code: 'TASK16_CURRENT259_PAYMENT_ACL_NOT_ATTEMPTED' });
+  assert.deepEqual(f.calls, [{ phase: 'cleanup' }]);
 });

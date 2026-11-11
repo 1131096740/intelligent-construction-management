@@ -6,7 +6,7 @@ const {createHash} = require('node:crypto');
 const {readFileSync, readdirSync} = require('node:fs');
 const path = require('node:path');
 const {qualifyCurrent259Source} = require('./task16-current259-profile.cjs');
-const {renderCurrent259RuntimeAcl} = require('./task16-current259-runtime-acl.cjs');
+const {renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl} = require('./task16-current259-runtime-acl.cjs');
 
 const nonce='d'.repeat(64);
 const database = 'jg_task01_12345678123442348234123456789012';
@@ -67,4 +67,22 @@ test('transaction includes exact directory read checks and does not accept a rep
  assert.match(result.sql,/TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE/u);
  assert.match(result.readbackSql,/TASK16_CURRENT259_RUNTIME_ACL_POSTIMAGE/u);
  assert.doesNotMatch(result.sql,/REVOKE USAGE|GRANT USAGE[^\n]+jg_fixture_app/u);
+});
+
+
+test('fixed competition ACL requires runtime two and observer one and leaves the original single lane SQL unchanged',()=>{
+ const single=receipt();
+ single.roles=[{...runtime,limit:1},{...observer,limit:1}];
+ const competition={...single,roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ const original=renderCurrent259RuntimeAcl(source,single,nonce);
+ assert.deepEqual(original,renderCurrent259RuntimeAcl(source,receipt(),nonce));
+ assert.throws(()=>renderCurrent259RuntimeAcl(source,competition,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ const rendered=renderCurrent259CompetitionRuntimeAcl(source,competition,nonce);
+ for(const sql of [rendered.sql,rendered.readbackSql]){
+  const tested=[...sql.matchAll(/jsonb_array_elements\(report->'roles'\) r WHERE r @> '([^']+)'::jsonb/gu)].map(match=>JSON.parse(match[1]));
+  assert.deepEqual(tested.map(role=>[role.name,role.connectionLimit]),[[observer.name,1],[runtime.name,2]]);
+ }
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,single,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,{...single,roles:[{...runtime,limit:2},{...observer,limit:2}]},nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(source,{...single,roles:[{...runtime,limit:3},{...observer,limit:1}]},nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
 });

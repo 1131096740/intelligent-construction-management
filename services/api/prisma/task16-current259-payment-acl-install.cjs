@@ -5,7 +5,7 @@ const { randomBytes } = require('node:crypto');
 const { isDeepStrictEqual, types } = require('node:util');
 const { claimCurrent259SevenInstallation } = require('./task16-current259-seven-install.cjs');
 const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
-const { renderCurrent259RuntimeAcl } = require('./task16-current259-runtime-acl.cjs');
+const { renderCurrent259RuntimeAcl, renderCurrent259CompetitionRuntimeAcl } = require('./task16-current259-runtime-acl.cjs');
 const { renderCurrent259PublicAccess } = require('./task16-current259-public-access.cjs');
 const { parseCurrent259CatalogRead } = require('./task16-current259-catalog.cjs');
 
@@ -119,8 +119,10 @@ async function installCurrent259PaymentAcl(sevenCompletion, handle) {
       roleCompletion.runId === view.runId && roleCompletion.containerId === view.resource.containerId &&
       roleCompletion.databaseIdentity.database === view.resource.databaseName);
     const nonce = randomBytes(32).toString('hex');
-    const request = catalogRequest(source, roleCompletion, nonce, lease.competition === true);
-    const runtime = renderCurrent259RuntimeAcl(source, roleCompletion, nonce);
+    const competition = lease.competition === true;
+    const request = catalogRequest(source, roleCompletion, nonce, competition);
+    const renderRuntime = competition ? renderCurrent259CompetitionRuntimeAcl : renderCurrent259RuntimeAcl;
+    const runtime = renderRuntime(source, roleCompletion, nonce);
     const publicSql = renderCurrent259PublicAccess(roleCompletion);
     const witness = runtime.witnessSql.trim();
     need(witness.endsWith(';'));

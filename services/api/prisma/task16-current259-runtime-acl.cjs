@@ -167,7 +167,7 @@ function helperAclSql(identity){
 function postSql(query,identity,expect,dbExpected,proof,ledger,relationOwners,readOnly){
  const functionPairs=expect.functions.map(([role,,signature])=>[role,signature]);
  const roleTests=[['jg_task01_observer',identity.observerOid,true],['jg_task01_runtime',identity.runtimeOid,false]].map(([name,id,readOnlyDefault])=>
-  `EXISTS(SELECT 1 FROM jsonb_array_elements(report->'roles') r WHERE r @> ${json({oid:id,name,superuser:false,inherit:false,canLogin:true,createRole:false,createDb:false,replication:false,bypassRls:false,connectionLimit:1,memberships:0,createSchema:false,usageSchema:true,connectDatabase:true,createDatabaseSchema:false,temporary:false,otherDatabases:[],readOnlyDefault})})`).join(' AND ');
+  `EXISTS(SELECT 1 FROM jsonb_array_elements(report->'roles') r WHERE r @> ${json({oid:id,name,superuser:false,inherit:false,canLogin:true,createRole:false,createDb:false,replication:false,bypassRls:false,connectionLimit:name==='jg_task01_runtime'&&identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES'?2:1,memberships:0,createSchema:false,usageSchema:true,connectDatabase:true,createDatabaseSchema:false,temporary:false,otherDatabases:[],readOnlyDefault})})`).join(' AND ');
  return `DO $current259_runtime_acl_after$
 DECLARE report jsonb;
 BEGIN
@@ -196,6 +196,12 @@ END $current259_runtime_acl_after$;`;
 // The future caller owns the role claim, seven-fragment completion and the
 // SERIALIZABLE owner transaction. This renderer has no execution authority.
 function renderCurrent259RuntimeAcl(witness,provisioned,nonce){
+ return renderRuntimeAcl(witness,provisioned,nonce,false);
+}
+function renderCurrent259CompetitionRuntimeAcl(witness,provisioned,nonce){
+ return renderRuntimeAcl(witness,provisioned,nonce,true);
+}
+function renderRuntimeAcl(witness,provisioned,nonce,competition){
  provisioned=snapshot(provisioned);witness=snapshot(witness);
  need(typeof nonce==='string'&&/^[a-f0-9]{64}$/u.test(nonce));
  const profile=witness.profile;
@@ -206,9 +212,13 @@ function renderCurrent259RuntimeAcl(witness,provisioned,nonce){
  const material=loadCurrent259CatalogMaterial(source);
  need(provisioned.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&provisioned.sourceSha===material.sourceSha&&Array.isArray(provisioned.roles));
  const plan=material.accessPlan;
- const findRole=name=>{const matches=provisioned.roles.filter(role=>role.name===name);need(matches.length===1&&oid(matches[0].oid));return matches[0].oid;};
+ const findRole=name=>{const matches=provisioned.roles.filter(role=>role.name===name);need(matches.length===1&&oid(matches[0].oid));return matches[0];};
+ const runtime=findRole(plan.runtime.role),observer=findRole(plan.observer.role);
+ if(competition)need(runtime.limit===2&&observer.limit===1);
+ else need((runtime.limit===1||runtime.limit===undefined)&&(observer.limit===1||observer.limit===undefined));
  const {database,databaseOid,namespaceOid,ownerOid,systemIdentifier}=provisioned.databaseIdentity;
- const identity={runId:provisioned.runId,database,databaseOid,namespaceOid,ownerOid,systemIdentifier,runtimeOid:findRole(plan.runtime.role),observerOid:findRole(plan.observer.role)};
+ const identity={runId:provisioned.runId,database,databaseOid,namespaceOid,ownerOid,systemIdentifier,
+  runtimeOid:runtime.oid,observerOid:observer.oid,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})};
  const databaseAcl=renderCurrent259DatabasePrivileges(provisioned);
  const legacy=fixedJson('task16-registered-access.json','d19fe664e58659b3008ab2ef2769c6d3e421cb8504d3f98b8fd332133291b5eb');
  const baseline=fixedJson('task16-baseline-access.json','6c2ec83b104694aa2de351ab6e81757d0a3c6528b5bf0687a546fae23b48976b');
@@ -220,4 +230,4 @@ function renderCurrent259RuntimeAcl(witness,provisioned,nonce){
  const readbackSql=['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;',setup,verify(true),`${catalog};`,'ROLLBACK;'].join('\n');
  return Object.freeze({sql,witnessSql:`${catalog};`,readbackSql,publicAclStatus:'REQUIRES_FINAL_CATALOG',nativeAdmission:false});
 }
-module.exports=Object.freeze({renderCurrent259RuntimeAcl});
+module.exports=Object.freeze({renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl});
