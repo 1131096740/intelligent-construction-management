@@ -151,6 +151,23 @@ test('the combined writer rejects an executor already present in the original se
  assert.equal(f.closed(),1);
 });
 
+test('the registered-file postimages never require the now-installed voucher relation to be absent',async()=>{
+ const f=model();
+ await f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle);
+ const [archiveBefore,,writer,committed]=f.calls.map(call=>call.sql);
+ const originalOnly=/to_regclass\('public\."RegisteredPaymentVoucher"'\) IS NOT NULL/u;
+ const before=writer.match(/DO \$archive_registered_before\$([\s\S]+?)\$archive_registered_before\$;/u)[1];
+ assert.match(archiveBefore,originalOnly);
+ assert.match(before,originalOnly);
+ for(const sql of [writer,committed]){
+  const after=sql.match(/DO \$archive_registered_final\$([\s\S]+?)\$archive_registered_final\$;/u)[1];
+  assert.doesNotMatch(after,originalOnly);
+  assert.match(after,/transaction_read_only[\s\S]+CURRENT259_ARCHIVE_INSTALL_LEDGER[\s\S]+CURRENT259_ARCHIVE_INSTALL_ROUTINES/u);
+  assert.match(after,/jg_file_business_binding_columns_before_registered_payment\(\)[\s\S]+CURRENT259_ARCHIVE_INSTALL_COLLISION_POSTIMAGE/u);
+  assert.match(after,/'proname','jg_file_business_binding_columns','proconfig',NULL::text\[\]/u);
+ }
+});
+
 for(const [phase,key,value,calls] of [
  ['archive-registered-write','originalRegistrySha256','0'.repeat(64),3],
  ['archive-registered-write','registrySha256','3'.repeat(64),3],

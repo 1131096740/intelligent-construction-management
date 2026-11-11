@@ -185,8 +185,11 @@ function backendGuards(input, write) {
        AND (SELECT count(*)=1 AND bool_and(a.grantee=p.proowner AND a.grantor=p.proowner AND a.privilege_type='EXECUTE')
          FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a))) THEN
    RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_ROUTINES';
- END IF;
- IF NOT EXISTS(SELECT 1 FROM ${PENDING} b JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(${literal(REGISTRY)})
+ END IF;`;
+}
+
+function originalRegistryGuard(input) {
+  return `IF NOT EXISTS(SELECT 1 FROM ${PENDING} b JOIN pg_catalog.pg_proc p ON p.oid=pg_catalog.to_regprocedure(${literal(REGISTRY)})
    WHERE b."protocolVersion"=1 AND b."applicationRoleOid"::text=${literal(input.ordinary.oid)} AND b."databaseOid"::text=${literal(input.databaseOid)}
      AND b."anchorOwnerOid"::text=${literal(input.ownerOid)} AND b."anchorNamespaceOid"::text=${literal(input.namespaceOid)}
      AND p.oid::text=b."bindings"->'routines'->${literal(REGISTRY)}->>'oid'
@@ -345,6 +348,7 @@ DO $archive_install$
 DECLARE upward jsonb; install_nonce uuid;
 BEGIN
  ${backendGuards(input, write)}
+ ${originalRegistryGuard(input)}
  ${!committed ? beforeGuards() : ''}
  ${write ? `IF ${catalogSql} IS DISTINCT FROM ${literal(prior.catalogSha256)} THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_DRIFT'; END IF;` : ''}
  ${!committed ? collisionGuards(input, write ? 'grant' : 'before') : ''}
@@ -388,6 +392,7 @@ function renderRegistered(input, phase, challenge, before, material, staged) {
 ${write ? `DO $archive_registered_before$
 BEGIN
  ${backendGuards(input, true)}
+ ${originalRegistryGuard(input)}
  ${beforeGuards()}
  IF ${catalogSql} IS DISTINCT FROM ${literal(before.catalogSha256)}
    OR ${registrySql} IS DISTINCT FROM ${literal(before.registrySha256)}
