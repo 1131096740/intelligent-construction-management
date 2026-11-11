@@ -552,21 +552,14 @@
     },
     {
       "kind": "column",
-      "table": "ContractVersion",
-      "member": "Contract",
-      "privilege": "SELECT",
-      "recipients": "app"
-    },
-    {
-      "kind": "column",
-      "table": "ContractVersion",
+      "table": "Contract",
       "member": "id",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractVersion",
+      "table": "Contract",
       "member": "projectId",
       "privilege": "SELECT",
       "recipients": "app"
@@ -636,21 +629,14 @@
     },
     {
       "kind": "column",
-      "table": "ProjectAffiliateAssignment",
-      "member": "OperatingFact",
-      "privilege": "SELECT",
-      "recipients": "app"
-    },
-    {
-      "kind": "column",
-      "table": "ProjectAffiliateAssignment",
+      "table": "OperatingFact",
       "member": "sourceType",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ProjectAffiliateAssignment",
+      "table": "OperatingFact",
       "member": "sourceBusinessId",
       "privilege": "SELECT",
       "recipients": "app"
@@ -713,14 +699,7 @@
     },
     {
       "kind": "column",
-      "table": "PaymentTermsVersion",
-      "member": "PaymentTermsStage",
-      "privilege": "SELECT",
-      "recipients": "app"
-    },
-    {
-      "kind": "column",
-      "table": "PaymentTermsVersion",
+      "table": "PaymentTermsStage",
       "member": "paymentTermsVersionId",
       "privilege": "SELECT",
       "recipients": "app"
@@ -776,77 +755,63 @@
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
-      "member": "FileObject",
-      "privilege": "SELECT",
-      "recipients": "app"
-    },
-    {
-      "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "id",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "storageStatus",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "purgeReceiptId",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "supersedesFileObjectId",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "mimeType",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "sizeBytes",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "FileObject",
       "member": "contentSha256",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
-      "member": "ContractDraftAttachment",
-      "privilege": "SELECT",
-      "recipients": "app"
-    },
-    {
-      "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "ContractDraftAttachment",
       "member": "contractVersionId",
       "privilege": "SELECT",
       "recipients": "app"
     },
     {
       "kind": "column",
-      "table": "ContractArchiveEvidenceFile",
+      "table": "ContractDraftAttachment",
       "member": "slotKey",
       "privilege": "SELECT",
       "recipients": "app"

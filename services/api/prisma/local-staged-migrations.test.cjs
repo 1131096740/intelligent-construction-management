@@ -911,3 +911,50 @@ test('tail caller exception cannot supply a proof reason',async()=>{
   assert.equal(fake.calls.includes('tail213-supply'),false);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+
+test('post213 public qualification requests the original fixed SQL column tuples without crossing relation boundaries',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail-source-targets-'));
+ try{
+  const sql=await fs.readFile(path.join(__dirname,'local-staged-tail-post213.sql'),'utf8');
+  const start=sql.indexOf('-- Only columns actually selected');
+  const end=sql.indexOf(') expected(table_name,cols,recipients) LOOP',start);
+  assert.ok(start>=0&&end>start);
+  // Each ARRAY terminates before its own recipient expression. Neither later
+  // relation names nor recipient arrays are column names in this source recipe.
+  const tuples=[...sql.slice(start,end).matchAll(/\('([A-Za-z0-9_]+)',ARRAY\[([^\]]*)\],\s*(file_readers|ARRAY\[snapshot\.application_oid\])\)/gu)];
+  assert.equal(tuples.length,16);
+  const expected=tuples.flatMap(([,table,columns,recipients])=>[...columns.matchAll(/'([^']+)'/gu)]
+   .map(([,member])=>({kind:'column',table,member,privilege:'SELECT',recipients:recipients==='file_readers'?'file':'app'})));
+  let observed;
+  const fake=await fakeFixture(dir,(phase,row,request)=>{
+   if(phase==='tail213-before')observed=require('./testdata/local-staged-tail-model.cjs').config(request).targets.filter(t=>t.kind==='column');
+   return row;
+  });
+  await fake.fixture.migrate({databaseUrl});
+  assert.deepEqual(observed,expected);
+  assert.equal(fake.calls.includes(`deploy-${canonicalBaseline.expectedDirectoryCount}`),true);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test('post213 still refuses a missing physical target column before any supply',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'local-tail-missing-column-'));
+ try{
+  const fake=await fakeFixture(dir,(phase,row)=>{
+   if(phase==='tail213-before'){
+    const target=row.targets.find(t=>t.kind==='column'&&t.object==='Contract'&&t.member==='projectId');
+    assert.ok(target);
+    // PG16's pg_attribute LEFT JOIN has no row for a missing column; the
+    // projected attribute number, type and catalog tuple are SQL NULL.
+    target.attnum=null;target.typeOid=null;target.catalogXmin=null;target.effective=null;
+   }
+   return row;
+  });
+  await assert.rejects(fake.fixture.migrate({databaseUrl}),error=>{
+   assert.deepEqual(require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error),
+    {stage:'TAIL213_BEFORE',kind:'NODE_PROOF',reason:'BEFORE_VALIDATE_TARGETS'});
+   return true;
+  });
+  assert.equal(fake.calls.includes('tail213-supply'),false);
+  assert.equal(fake.calls.includes('deploy-215'),false);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
