@@ -8,21 +8,25 @@ const { claimCurrent259ProvisionedRoles } = require('./task16-current259-role-pr
 const {
   claimCurrent259TechnicalResource, closeCurrent259OwnedResource,
 } = require('./task16-current259-owned-resource.cjs');
+const { archiveSevenMaterial } = require('./task16-current259-seven-install.cjs');
 
 const OWNER = 'jg_task01_owner';
 const LEDGER = 'd3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
 const STAGES = ['archive-install-before', 'archive-install-write', 'archive-install-committed'];
+const REGISTERED_STAGES = ['archive-registered-write', 'archive-registered-committed'];
 const OUTSIDE_ROLES = ['issuer_login', 'issuer_owner', 'executor_login', 'executor_owner'].map(role => `jg_c259_outside_${role}`);
 const UPWARD_ROLES = ['issuer_login', 'issuer_owner', 'runtime_login'].map(role => `jg_c259_upward_${role}`);
 const ROLE_NAMES = [...OUTSIDE_ROLES, ...UPWARD_ROLES, 'jg_task01_observer', 'jg_task01_runtime'].sort();
 const OUTSIDE = 'jg_install_contract_direct_archive_outside_v1';
 const UPWARD = 'jg_install_contract_direct_upward_v2';
 const REGISTRY = 'public.jg_file_business_binding_columns()';
+const REGISTERED_ALIAS = 'public.jg_file_business_binding_columns_before_registered_payment()';
+const ENFORCER = 'public.jg_enforce_exclusive_file_business_binding()';
 const PENDING = 'public.jg_contract_direct_pending_binding_v1';
 const COLLISION_ROOTS = [
   'public.jg_file_business_collision_columns()',
   'public.jg_has_exclusive_file_business_binding(pg_catalog.text)',
-  'public.jg_enforce_exclusive_file_business_binding()',
+  ENFORCER,
 ];
 const EXECUTOR = 'jg_c259_outside_executor_owner';
 const TABLES = {
@@ -194,6 +198,9 @@ function backendGuards(input, write) {
 }
 
 const registrySql = `(SELECT ${digestSql("pg_catalog.to_jsonb(p)-'proacl'")} FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure(${literal(REGISTRY)}))`;
+const registeredOriginalRegistrySql = `(SELECT ${digestSql(`(pg_catalog.to_jsonb(p)-'proacl') || pg_catalog.jsonb_build_object(
+  'proname','jg_file_business_binding_columns','proconfig',NULL::text[])`)}
+  FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure(${literal(REGISTERED_ALIAS)}))`;
 const pendingSql = `(SELECT ${digestSql('pg_catalog.to_jsonb(b)')} FROM ${PENDING} b WHERE b."protocolVersion"=1)`;
 const catalogSql = digestSql(`pg_catalog.jsonb_build_array(
   (SELECT pg_catalog.jsonb_build_array(n.oid,n.nspowner,n.nspacl::text) FROM pg_catalog.pg_namespace n WHERE n.nspname='public'),
@@ -214,13 +221,15 @@ function beforeGuards() {
 function collisionGuards(input, phase) {
   const executor = input.roles.find(role => role.name === EXECUTOR).oid;
   const unavailable = input.roles.filter(role => role.name.startsWith('jg_task01_')).map(role => role.oid);
-  const stage = phase === 'post' ? 'POSTIMAGE' : 'PREIMAGE';
+  const registered = phase === 'registered';
+  const post = phase === 'post' || registered;
+  const stage = post ? 'POSTIMAGE' : 'PREIMAGE';
   const faultSql = `RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_COLLISION_${stage}';`;
   const specs = json(input.collision);
   const liveAcl = `(SELECT COALESCE(pg_catalog.jsonb_agg(grant_row ORDER BY grant_row),'[]'::jsonb)
    FROM (SELECT pg_catalog.jsonb_build_array(a.grantor::text,a.grantee::text,a.privilege_type,a.is_grantable) grant_row
      FROM pg_catalog.aclexplode(live.proacl) a) observed)`;
-  const compare = phase === 'post' ? `IF ${liveAcl} IS DISTINCT FROM (
+  const compare = post ? `IF ${liveAcl} IS DISTINCT FROM (
     SELECT pg_catalog.jsonb_agg(entry ORDER BY entry) FROM pg_catalog.jsonb_array_elements(
       old_acl || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_array(${literal(input.ownerOid)},${literal(executor)},'EXECUTE',false))) grants(entry))
     OR NOT pg_catalog.has_function_privilege(${literal(executor)}::oid,live.oid,'EXECUTE')
@@ -246,9 +255,12 @@ function collisionGuards(input, phase) {
      'returnType',t.typname,'volatility',p.provolatile,'parallel',p.proparallel,'strict',p.proisstrict,'returnsSet',p.proretset) AS metadata
     INTO STRICT live FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang
      JOIN pg_catalog.pg_type t ON t.oid=p.prorettype
-    WHERE p.oid=pg_catalog.to_regprocedure(collision.signature) AND p.proowner=${literal(input.ownerOid)}::oid
+    WHERE p.oid=pg_catalog.to_regprocedure(${registered ? `CASE WHEN collision.signature=${literal(REGISTRY)} THEN ${literal(REGISTERED_ALIAS)} ELSE collision.signature END` : 'collision.signature'}) AND p.proowner=${literal(input.ownerOid)}::oid
       AND p.pronamespace=${literal(input.namespaceOid)}::oid AND p.prokind='f' AND NOT p.prosecdef;
-   IF historical->>'bodySha256' IS DISTINCT FROM collision."bodySha256" OR live.metadata IS DISTINCT FROM historical-'acl'
+   IF historical->>'bodySha256' IS DISTINCT FROM collision."bodySha256" OR live.metadata IS DISTINCT FROM ${registered
+     ? `(CASE WHEN collision.signature IN (${[REGISTRY, ENFORCER].map(literal).join(',')})
+       THEN jsonb_set(historical-'acl','{configuration}',${json(['search_path=pg_catalog, public, pg_temp'])}) ELSE historical-'acl' END)`
+     : "historical-'acl'"}
      OR pg_catalog.jsonb_typeof(historical->'acl') IS DISTINCT FROM 'array' THEN ${faultSql} END IF;
    SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(a.grantor::text,a.grantee::text,a.privilege_type,a.is_grantable)) INTO old_acl
     FROM pg_catalog.aclexplode(ARRAY(SELECT raw::aclitem FROM pg_catalog.jsonb_array_elements_text(historical->'acl') h(raw))) a;
@@ -286,21 +298,23 @@ function installedGuards(input, writeXid, write) {
  RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_POSTSTATE'; END IF;`;
 }
 
-function render(input, phase, challenge, prior) {
-  const write = phase === STAGES[1], committed = phase === STAGES[2];
-  const installXid = write ? 'pg_catalog.pg_current_xact_id()' : committed ? `${literal(prior.installXid)}::xid8` : 'NULL::xid8';
-  const closure = write || committed ? `(SELECT "sourceClosureSha256" FROM public.${TABLES.execution})` : 'NULL::text';
-  const binding = write || committed ? digestSql(`pg_catalog.jsonb_build_array(${Object.values(TABLES).map(table => `(SELECT pg_catalog.to_jsonb(b) FROM public.${table} b)`).join(',')})`) : 'NULL::text';
-  const upwardRuntime = input.roles.find(role => role.name === UPWARD_ROLES[2]);
-  const calls = write ? [
+const closureSql = `(SELECT "sourceClosureSha256" FROM public.${TABLES.execution})`;
+const bindingSql = digestSql(`pg_catalog.jsonb_build_array(${Object.values(TABLES).map(table => `(SELECT pg_catalog.to_jsonb(b) FROM public.${table} b)`).join(',')})`);
+const outsideCalls = input => [
     `PERFORM public.${OUTSIDE}(${OUTSIDE_ROLES.map(role => `${literal(role)}::name`).join(',')});`,
     ...INSTALLERS.slice(1, -1).map(([name]) => `PERFORM public.${name}();`),
+  ].join('\n ');
+function upwardCall(input) {
+  const upwardRuntime = input.roles.find(role => role.name === UPWARD_ROLES[2]);
+  return [
     'install_nonce := pg_catalog.gen_random_uuid();',
     `upward := public.${UPWARD}(${UPWARD_ROLES.map(role => `${literal(role)}::text`).join(',')},install_nonce);`,
-    `IF upward IS DISTINCT FROM pg_catalog.jsonb_build_object('protocolVersion',2,'sourceClosureSha256',${closure},
+    `IF upward IS DISTINCT FROM pg_catalog.jsonb_build_object('protocolVersion',2,'sourceClosureSha256',${closureSql},
        'databaseOid',${literal(input.databaseOid)},'applicationRoleOid',${literal(input.ordinary.oid)},'runtimeRoleOid',${literal(upwardRuntime.oid)})
       THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_UPWARD_RESULT'; END IF;`,
-  ].join('\n ') : '';
+  ].join('\n ');
+}
+function beginArchive(write) {
   return `\\set VERBOSITY terse
 SET log_min_error_statement TO 'panic';
 SET log_error_verbosity TO 'terse';
@@ -318,7 +332,15 @@ BEGIN ISOLATION LEVEL ${write ? 'SERIALIZABLE' : 'REPEATABLE READ READ ONLY'};
 SET LOCAL search_path TO pg_catalog, pg_temp;
 SET LOCAL lock_timeout TO '4s';
 SET LOCAL statement_timeout TO '100s';
-${write ? 'LOCK TABLE public._prisma_migrations IN SHARE MODE;\nLOCK TABLE '+Object.values(TABLES).map(table => `public.${table}`).join(',')+' IN ACCESS EXCLUSIVE MODE NOWAIT;' : ''}
+${write ? 'LOCK TABLE public._prisma_migrations IN SHARE MODE;\nLOCK TABLE '+Object.values(TABLES).map(table => `public.${table}`).join(',')+' IN ACCESS EXCLUSIVE MODE NOWAIT;' : ''}`;
+}
+function render(input, phase, challenge, prior) {
+  const write = phase === STAGES[1], committed = phase === STAGES[2];
+  const installXid = write ? 'pg_catalog.pg_current_xact_id()' : committed ? `${literal(prior.installXid)}::xid8` : 'NULL::xid8';
+  const closure = write || committed ? closureSql : 'NULL::text';
+  const binding = write || committed ? bindingSql : 'NULL::text';
+  const calls = write ? outsideCalls(input)+'\n '+upwardCall(input) : '';
+  return `${beginArchive(write)}
 DO $archive_install$
 DECLARE upward jsonb; install_nonce uuid;
 BEGIN
@@ -343,20 +365,111 @@ COMMIT;
 `;
 }
 
+function registeredMidstate(input) {
+  const ids = Object.fromEntries(input.roles.map(role => [role.name, literal(role.oid)]));
+  return `IF NOT COALESCE(${[TABLES.outside,TABLES.nativeNonce].map(table =>
+    `(SELECT count(*)=1 AND bool_and(xmin::text::numeric=mod(pg_catalog.pg_current_xact_id()::text::numeric,4294967296)) FROM public.${table})`).join(' AND ')},false)
+  OR NOT EXISTS(SELECT 1 FROM public.${TABLES.outside} o JOIN public.${TABLES.nativeNonce} n ON n."protocolVersion"=1
+   AND n."intentBindingSha256"=${digestSql('pg_catalog.to_jsonb(o)')} AND n."nonce" IS NOT NULL
+   JOIN public.jg_contract_direct_archive_completion_binding_v1 c ON c.tableoid=o."completionRelationOid"
+     AND c."protocolVersion"=1 AND ${digestSql('pg_catalog.to_jsonb(c)')}=o."completionSha256"
+   WHERE o."protocolVersion"=1 AND o."databaseOid"::text=${literal(input.databaseOid)} AND o."namespaceOid"::text=${literal(input.namespaceOid)}
+    AND o."anchorOwnerOid"::text=${literal(input.ownerOid)} AND o."ordinaryApplicationRoleOid"::text=${literal(input.ordinary.oid)}
+    AND o."issuerSessionOid"::text=${ids[OUTSIDE_ROLES[0]]} AND o."issuerOwnerOid"::text=${ids[OUTSIDE_ROLES[1]]}
+    AND o."runtimeSessionOid"::text=${ids[OUTSIDE_ROLES[2]]} AND o."executorOwnerOid"::text=${ids[OUTSIDE_ROLES[3]]})
+  OR ${[TABLES.issuer,TABLES.closure,TABLES.execution].map(table=>`EXISTS(SELECT 1 FROM public.${table})`).join(' OR ')}
+  OR public.jg_direct_outside_operating_basis_catalog_v2() IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_REGISTERED_MIDSTATE'; END IF;`;
+}
+function renderRegistered(input, phase, challenge, before, material, staged) {
+  const write = phase === REGISTERED_STAGES[0];
+  const installXid = write ? 'pg_catalog.pg_current_xact_id()' : `${literal(staged.installXid)}::xid8`;
+  return `${beginArchive(write)}
+${write ? `DO $archive_registered_before$
+BEGIN
+ ${backendGuards(input, true)}
+ ${beforeGuards()}
+ IF ${catalogSql} IS DISTINCT FROM ${literal(before.catalogSha256)}
+   OR ${registrySql} IS DISTINCT FROM ${literal(before.registrySha256)}
+   OR ${pendingSql} IS DISTINCT FROM ${literal(before.pendingSha256)}
+ THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_DRIFT'; END IF;
+ ${collisionGuards(input, 'before')}
+END;
+$archive_registered_before$;
+${material.writerBefore}
+SET LOCAL search_path TO pg_catalog, pg_temp;
+DO $archive_registered_middle$
+BEGIN
+ ${collisionGuards(input, 'grant')}
+ ${outsideCalls(input)}
+ ${registeredMidstate(input)}
+ ${collisionGuards(input, 'post')}
+ IF ${registrySql} IS DISTINCT FROM ${literal(before.registrySha256)}
+   OR ${pendingSql} IS DISTINCT FROM ${literal(before.pendingSha256)}
+ THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_REGISTERED_DRIFT'; END IF;
+END;
+$archive_registered_middle$;
+${material.writerMiddle}
+SET LOCAL search_path TO pg_catalog, pg_temp;` : ''}
+DO $archive_registered_final$
+DECLARE upward jsonb; install_nonce uuid;
+BEGIN
+ ${backendGuards(input, write)}
+ ${write ? upwardCall(input) : `IF pg_catalog.pg_xact_status(${installXid}) IS DISTINCT FROM 'committed'
+   THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_REGISTERED_NOT_COMMITTED'; END IF;`}
+ ${write ? roleGuards(input) : ''}
+ ${installedGuards(input, installXid, write)}
+ ${collisionGuards(input, 'registered')}
+ IF ${registeredOriginalRegistrySql} IS DISTINCT FROM ${literal(before.registrySha256)}
+   OR ${pendingSql} IS DISTINCT FROM ${literal(before.pendingSha256)}
+ THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_REGISTERED_DRIFT'; END IF;
+END;
+$archive_registered_final$;
+SET LOCAL search_path TO pg_catalog, public, pg_temp;
+SET LOCAL quote_all_identifiers TO off;
+SET LOCAL standard_conforming_strings TO on;
+${!write ? `${material.committedCheck(staged.installXid)}
+DO $archive_registered_committed$
+BEGIN
+ IF ${catalogSql} IS DISTINCT FROM ${literal(staged.catalogSha256)}
+   OR ${registrySql} IS DISTINCT FROM ${literal(staged.registrySha256)}
+   OR ${material.finalCatalog} IS DISTINCT FROM ${literal(staged.sevenCatalogSha256)}
+ THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_REGISTERED_COMMITTED_DRIFT'; END IF;
+END;
+$archive_registered_committed$;` : ''}
+SELECT pg_catalog.jsonb_build_object('challenge','${challenge}','phase',${literal(phase)},
+ 'backendPid',pg_catalog.pg_backend_pid(),'backendStart',pg_catalog.to_char(a.backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+ 'catalogSha256',${catalogSql},'registrySha256',${registrySql},'pendingSha256',${pendingSql},'installXid',(${installXid})::text,
+ 'commitStatus',${write ? 'NULL::text' : `pg_catalog.pg_xact_status(${installXid})`},'closureSha256',${closureSql},'bindingSha256',${bindingSql},
+ 'originalRegistrySha256',${registeredOriginalRegistrySql},'sevenCatalogSha256',${material.finalCatalog})
+ FROM pg_catalog.pg_stat_activity a WHERE a.pid=pg_catalog.pg_backend_pid();
+COMMIT;
+`;
+}
 function readResult(result, phase, challenge) {
   need(result && typeof result.stdout === 'string' && Buffer.byteLength(result.stdout) <= 8192);
   const row = JSON.parse(result.stdout);
-  need(row && Object.keys(row).length === 11 && row.phase === phase && row.challenge === challenge &&
+  const registered = REGISTERED_STAGES.includes(phase);
+  need(row && Object.keys(row).length === (registered ? 13 : 11) && row.phase === phase && row.challenge === challenge &&
     Number.isInteger(row.backendPid) && row.backendPid > 0 && row.backendPid <= 0x7fffffff &&
     typeof row.backendStart === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(row.backendStart) &&
     hex(row.catalogSha256, 64) && hex(row.registrySha256, 64) && hex(row.pendingSha256, 64));
   if (phase === STAGES[0]) need(row.installXid === null && row.commitStatus === null && row.closureSha256 === null && row.bindingSha256 === null);
-  else need(xid(row.installXid) && hex(row.closureSha256, 64) && hex(row.bindingSha256, 64) && row.commitStatus === (phase === STAGES[2] ? 'committed' : null));
+  else need(xid(row.installXid) && hex(row.closureSha256, 64) && hex(row.bindingSha256, 64) && row.commitStatus === (phase === STAGES[2] || phase === REGISTERED_STAGES[1] ? 'committed' : null));
+  if (registered) need(hex(row.originalRegistrySha256, 64) && hex(row.sevenCatalogSha256, 64));
   return row;
 }
 
 async function installCurrent259ArchiveAuthorities(provisionResult, handle) {
-  need(arguments.length === 2 && handle && typeof handle === 'object' && !types.isProxy(handle) && !attempted.has(handle));
+  need(arguments.length === 2);
+  return installArchive(provisionResult, handle, false);
+}
+async function installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(provisionResult, handle) {
+  need(arguments.length === 2);
+  return installArchive(provisionResult, handle, true);
+}
+async function installArchive(provisionResult, handle, registered) {
+  need(handle && typeof handle === 'object' && !types.isProxy(handle) && !attempted.has(handle));
   const lease = claimCurrent259ProvisionedRoles(provisionResult, handle);
   attempted.add(handle);
   let writing = false, phase = STAGES[0];
@@ -376,10 +489,39 @@ async function installCurrent259ArchiveAuthorities(provisionResult, handle) {
       return readResult(result, phase, challenge);
     };
     const before = await read(STAGES[0]);
-    const staged = await read(STAGES[1], before);
-    need(staged.registrySha256 === before.registrySha256 && staged.pendingSha256 === before.pendingSha256 &&
-      staged.catalogSha256 !== before.catalogSha256 && staged.installXid !== input.commitXid);
-    const committed = await read(STAGES[2], staged);
+    let staged, committed;
+    if (registered) {
+      phase = 'current259-seven-before';
+      const plan = archiveSevenMaterial(lease, view, randomBytes(32).toString('hex'));
+      check();
+      const beforeSeven = await view.resource.execOwnerSql(plan.beforeSql, phase);
+      check();
+      const material = plan.readBefore(beforeSeven);
+      const distinct = (a, b) => a.backendPid !== b.backendPid && a.backendStart !== b.backendStart;
+      need(distinct(before, material));
+      const runRegistered = async (next, prior) => {
+        phase = next;
+        const challenge = randomBytes(32).toString('hex');
+        const sql = renderRegistered(input, phase, challenge, before, material, prior);
+        check();
+        if (next === REGISTERED_STAGES[0]) writing = true;
+        const result = await view.resource.execOwnerSql(sql, phase);
+        check();
+        return readResult(result, phase, challenge);
+      };
+      staged = await runRegistered(REGISTERED_STAGES[0]);
+      need(staged.originalRegistrySha256 === before.registrySha256 && staged.registrySha256 !== before.registrySha256 &&
+        staged.pendingSha256 === before.pendingSha256 && staged.catalogSha256 !== before.catalogSha256 &&
+        staged.installXid !== input.commitXid && distinct(staged, before) && distinct(staged, material));
+      committed = await runRegistered(REGISTERED_STAGES[1], staged);
+      need(committed.originalRegistrySha256 === staged.originalRegistrySha256 && committed.sevenCatalogSha256 === staged.sevenCatalogSha256 &&
+        distinct(committed, before) && distinct(committed, material));
+    } else {
+      staged = await read(STAGES[1], before);
+      need(staged.registrySha256 === before.registrySha256 && staged.pendingSha256 === before.pendingSha256 &&
+        staged.catalogSha256 !== before.catalogSha256 && staged.installXid !== input.commitXid);
+      committed = await read(STAGES[2], staged);
+    }
     need(committed.backendPid !== staged.backendPid && committed.backendStart !== staged.backendStart &&
       ['installXid', 'bindingSha256', 'closureSha256', 'registrySha256', 'pendingSha256', 'catalogSha256'].every(key => committed[key] === staged[key]));
     check();
@@ -388,6 +530,8 @@ async function installCurrent259ArchiveAuthorities(provisionResult, handle) {
       ordinary: input.ordinary, roles: input.roles, installXid: committed.installXid, upwardClosureSha256: committed.closureSha256,
       bindingSha256: committed.bindingSha256, registrySha256: committed.registrySha256, pendingSha256: committed.pendingSha256,
       catalogSha256: committed.catalogSha256,
+      ...(registered ? { registeredFileSource: true, nativeAdmission: false, executionAllowed: false,
+        originalRegistrySha256: committed.originalRegistrySha256, sevenCatalogSha256: committed.sevenCatalogSha256 } : {}),
     });
     receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check });
     return completion;
@@ -407,4 +551,4 @@ function claimCurrent259ArchiveInstallation(completion, handle) {
   return Object.freeze({ source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check });
 }
 
-module.exports = Object.freeze({ installCurrent259ArchiveAuthorities, claimCurrent259ArchiveInstallation });
+module.exports = Object.freeze({ installCurrent259ArchiveAuthorities, installCurrent259ArchiveAuthoritiesWithRegisteredFileSource, claimCurrent259ArchiveInstallation });

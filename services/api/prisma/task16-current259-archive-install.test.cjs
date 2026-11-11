@@ -35,11 +35,12 @@ function model(alter = row => row, alterClaim = () => {}) {
     ['jg_c259_outside_issuer_login', true], ['jg_c259_outside_issuer_owner', false],
     ['jg_c259_upward_issuer_login', true], ['jg_c259_upward_issuer_owner', false],
     ['jg_c259_upward_runtime_login', true], ['jg_task01_observer', true], ['jg_task01_runtime', true],
-  ].map(([name, login], index) => ({ name, login, oid: String(17001 + index), xmin: '701', unlimitedValidity: true }));
+  ].map(([name, login], index) => ({ name, login, oid: String(17001 + index), xmin: '701', unlimitedValidity: true,
+    limit: login ? 1 : 0, password: name.startsWith('jg_task01_') ? 'scram' : 'absent' }));
   const completion = {
     status: 'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION', executionAllowed: false, nativeAdmission: false,
     sourceSha: 'a'.repeat(40), runId, containerId: 'b'.repeat(64), databaseIdentity,
-    ordinary: { name: 'jg_fixture_app_' + 'c'.repeat(24), oid: '16390', login: true },
+    ordinary: { name: 'jg_fixture_app_' + 'c'.repeat(24), oid: '16390', login: true, limit: 0, password: 'absent' },
     roles, commitXid: '701', databaseAcl: { before: [], after: [{
       name: databaseIdentity.database, oid: databaseIdentity.databaseOid, owner: '10',
       acl: [['10', '0', 'CONNECT', false], ['10', '0', 'TEMPORARY', false]],
@@ -50,9 +51,10 @@ function model(alter = row => row, alterClaim = () => {}) {
   const { createHash } = require('node:crypto');
   const ledger = fs.readdirSync(root, { withFileTypes: true }).filter(item => item.isDirectory())
     .map(item => item.name).sort().map(name => ({ name, sha256: createHash('sha256').update(readFileSync(join(root, name, 'migration.sql'))).digest('hex'), finished: true, rolledBack: false }));
-  const source = { candidateSha: completion.sourceSha, tree: 'd'.repeat(40), sourceSealSha256: 'e'.repeat(64),
-    profile: { ledger, ledgerSha256: 'd3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952' },
-  };
+  const source = { candidateSha: completion.sourceSha, tree: 'd'.repeat(40), sourceSealSha256: 'e'.repeat(64) };
+  source.profile = structuredClone(require('./task16-current259-profile.cjs').qualifyCurrent259Source({ candidateSha: source.candidateSha,
+    sealSha256: source.sourceSealSha256, schemaSha256: createHash('sha256').update(readFileSync(join(__dirname, 'schema.prisma'))).digest('hex'),
+    migrations: ledger.map(row => ({ path: `services/api/prisma/migrations/${row.name}/migration.sql`, sha256: row.sha256 })) }));
   alterClaim({ source, completion });
   function freeze(value) {
     if (value && typeof value === 'object') {
@@ -66,17 +68,29 @@ function model(alter = row => row, alterClaim = () => {}) {
   const check = () => { if (expired) throw Error('expired'); };
   const resource = {
     containerId: completion.containerId,
+    databaseName: databaseIdentity.database,
     async execOwnerSql(sql, phase) {
       calls.push({ sql, phase });
+      if (phase === 'current259-seven-before') {
+        const read = name => readFileSync(join(__dirname, name), 'utf8');
+        const original = new Function('require','__dirname',read('task16-current259-seven-install.test.cjs')+'\nreturn {model,registry};')(name => name==='node:test'?{test(){}}:require(name),__dirname);
+        const registry = structuredClone(original.registry);
+        registry.publicRoutine.acl[1][1] = completion.ordinary.oid;
+        const nonce = /'nonce','([a-f0-9]{64})'/u.exec(sql)?.[1];
+        return { stdout: JSON.stringify(alter({ nonce, phase,
+          backendPid: 703, backendStart: '2026-11-11T00:00:00.000004Z', pre: {...original.model(),nonce}, registry,
+          fileRoles: ['10', completion.ordinary.oid], catalogSha256: '9'.repeat(64), installXid: null, commitStatus: null }, phase)) };
+      }
       const nonce = /'challenge','([0-9a-f]{64})'/u.exec(sql)?.[1];
       assert.ok(nonce);
-      const pre = phase === 'archive-install-before', write = phase === 'archive-install-write';
+      const pre = phase === 'archive-install-before', write = phase.endsWith('-write'), combined = phase.includes('-registered-');
       return { stdout: JSON.stringify(alter({
         challenge: nonce, phase, backendPid: pre ? 700 : write ? 701 : 702,
         backendStart: pre ? '2026-11-11T00:00:00.000001Z' : write ? '2026-11-11T00:00:00.000002Z' : '2026-11-11T00:00:00.000003Z',
-        catalogSha256: (pre ? '1' : '2').repeat(64), registrySha256: '3'.repeat(64), pendingSha256: '6'.repeat(64),
+        catalogSha256: (pre ? '1' : '2').repeat(64), registrySha256: (combined ? '8' : '3').repeat(64), pendingSha256: '6'.repeat(64),
         installXid: pre ? null : '702', commitStatus: write || pre ? null : 'committed',
         closureSha256: pre ? null : '4'.repeat(64), bindingSha256: pre ? null : '5'.repeat(64),
+        ...(combined ? { originalRegistrySha256: '3'.repeat(64), sevenCatalogSha256: '7'.repeat(64) } : {}),
       }, phase)) };
     },
   };
@@ -104,6 +118,55 @@ function model(alter = row => row, alterClaim = () => {}) {
   return { ...module.exports, calls, handle, provisionResult, suppliedRoles: completion,
     expire: () => { expired = true; }, closed: () => closed };
 }
+
+test('the qualified archive and registered-file chain preserves both before contracts and installs once before the new backend', async () => {
+  const f = model();
+  const result = await f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle);
+  assert.deepEqual(f.calls.map(x=>x.phase),['archive-install-before','current259-seven-before','archive-registered-write','archive-registered-committed']);
+  assert.match(f.calls[0].sql,/REPEATABLE READ READ ONLY/u);
+  assert.match(f.calls[1].sql,/SERIALIZABLE READ WRITE[\s\S]+ROLLBACK;/u);
+  const sql=f.calls[2].sql;
+  const markers=['CURRENT259_SEVEN_INSTALL_PREIMAGE_DRIFT','PERFORM public.jg_install_contract_direct_archive_outside_v1',
+    'PERFORM public.jg_install_direct_outside_operating_basis_bridge_v2','CURRENT259_ARCHIVE_INSTALL_REGISTERED_MIDSTATE',
+    'CREATE TABLE public."RegisteredPaymentFunding"','RENAME TO jg_file_business_binding_columns_before_registered_payment',
+    'upward := public.jg_install_contract_direct_upward_v2','CURRENT259_ARCHIVE_INSTALL_POSTSTATE'];
+  let previous=-1;for(const marker of markers){const at=sql.indexOf(marker,previous+1);assert.ok(at>previous,marker);previous=at;}
+  assert.equal([...sql.matchAll(/^COMMIT;/gmu)].length,1);
+  assert.match(f.calls[3].sql,/pg_xact_status\('702'::xid8\)/u);
+  assert.equal(result.registeredFileSource,true);
+  assert.equal(result.nativeAdmission,false);
+  const lease=f.claimCurrent259ArchiveInstallation(result,f.handle);
+  assert.equal(lease.completion,result);
+  assert.throws(()=>f.claimCurrent259ArchiveInstallation(result,f.handle));
+});
+
+test('the combined writer rejects an executor already present in the original seven-file closure',async()=>{
+ const f=model((row,phase)=>{
+  if(phase==='current259-seven-before')row.fileRoles.push('17002');
+  return row;
+ });
+ await assert.rejects(f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle),
+  error=>error.code==='CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED'&&error.phase==='current259-seven-before');
+ assert.deepEqual(f.calls.map(x=>x.phase),['archive-install-before','current259-seven-before']);
+ assert.equal(f.closed(),1);
+});
+
+for(const [phase,key,value,calls] of [
+ ['archive-registered-write','originalRegistrySha256','0'.repeat(64),3],
+ ['archive-registered-write','registrySha256','3'.repeat(64),3],
+ ['archive-registered-write','installXid','701',3],
+ ['archive-registered-committed','sevenCatalogSha256','0'.repeat(64),4],
+ ['archive-registered-committed','backendPid',703,4],
+ ['archive-registered-committed','commitStatus','in progress',4],
+])test('combined '+phase+' rejects changed '+key+' and never issues a continuation',async()=>{
+ const f=model((row,current)=>current===phase?{...row,[key]:value}:row);
+ await assert.rejects(f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle),
+  error=>error.code==='CURRENT259_ARCHIVE_INSTALL_COMMIT_UNCONFIRMED'&&error.phase===phase);
+ assert.equal(f.calls.length,calls);
+ assert.equal(f.closed(),1);
+ await assert.rejects(f.installCurrent259ArchiveAuthorities(f.provisionResult,f.handle));
+ assert.equal(f.calls.length,calls);
+});
 
 test('qualified owned roles install the fixed archive chain and require a new backend commit readback', async () => {
   const f = model();
