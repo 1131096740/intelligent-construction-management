@@ -1,5 +1,9 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 准确 `4a454301` 已按新单次授权执行本地诊断，退出码1并首错停止清理。首库完成213前缀，固定首因为 `TAIL213_BEFORE / NODE_PROOF / BEFORE_VALIDATE_TARGETS`，已定位读取后的权限目标清单分组；具体目标/字段仍未知。未进入供应、完整259、后六库及13并发未完成。独立按准确容器名无残留，许可已消耗，未重试或修复该门。 [诊断停止回执](/private/tmp/jg-382-pfq259-diagnostic-sealed.w23LVTXn/STOP-RECEIPT.md)
+
+- [~] 本地集成4a已含原生应用scoped入口（2cd）与固定脱敏诊断（4a），独立841项标准与108项关联、855项标准与57项API等对应检查通过，实际业务验收未进行。环境准备候选0a42独审两项已修，869标准/87关联/类型lint构建/纯装载通过；API同一mock旅程56过1超时，准确4a基线同例也触及原30秒预算，279复制文件及相关输入逐字相同。该候选尚未集成，不把API全门计绿，不调整预算。 [应用集成](/private/tmp/jg-398-native-app-integrate.Garpn3mr/HANDOFF.md) · [诊断复核](/private/tmp/jg-382-tail-proof-integrate.Q8aNMcrS/REVIEW.md) · [环境候选](/private/tmp/jg-382-app-env-merge.WyV8cGRn/MERGE-CANDIDATE.md) · [基线超时审计](/private/tmp/jg-382-pfq-baseline-audit-20261111/HANDOFF.md)
+
 - [~] 准确 `2b1db8da` 已按本轮单次授权执行封存PFQ259验证，退出码1，首错停止并清理。首库完成213条前缀迁移，在 `TAIL213_BEFORE` 的 `NODE_PROOF` 校验失败，PostgreSQL记录为primary-not-retained，无可用SQLSTATE/具体字段原因；尚未进入该窗口供应、后续六库和13并发，完整259未完成。独立准确容器名查询无残留，原日志与结构化证据保留，未重试或修复。该单次许可已消耗，无其它组/GitHub/部署/生产。 [停止回执](/private/tmp/jg-382-pfq259-fixture-sealed.GUSMH3Su/STOP-RECEIPT.md)
 
 - [~] 当前代码候选 `2b1db8da` 已集成测试复制依赖补修，独立817项标准编排、57项API及类型lint通过，原所有断言与故障路径保持。新自含PFQ259封包已封存，冷817/57/构建/类型lint、17SQL静态检查、21项输入与根独立只读预查通过；准确计划摘要 `23bbe484…`，执行尚待本候选明确授权，无attempt/run。原6b73预查失败包保持HOLD。 [独审](/private/tmp/jg-382-pfq-spec-independent.TTc2GeBB/REVIEW.md) · [封存计划](/private/tmp/jg-382-pfq259-fixture-sealed.GUSMH3Su/RUN-PLAN.json)
