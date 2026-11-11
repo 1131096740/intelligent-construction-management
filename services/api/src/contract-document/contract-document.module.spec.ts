@@ -1,7 +1,10 @@
 import type { ForwardReference, Provider, Type } from "@nestjs/common";
 import { MODULE_METADATA } from "@nestjs/common/constants";
 import { AppModule } from "../app.module";
+import { AuthModule } from "../auth/auth.module";
 import { ContractModule } from "../contract/contract.module";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
+import { ContractDocumentWorkerModule } from "./contract-document-worker.module";
 import { ContractDocumentController } from "./contract-document.controller";
 import { ContractDocumentModule } from "./contract-document.module";
 import { ContractDocumentProcessor } from "./contract-document.processor";
@@ -42,5 +45,11 @@ describe("contract document worker module wiring", () => {
 
   it("registers the original document processor exactly once in the production application", () => {
     expect(processorRegistrations(moduleGraph(AppModule))).toEqual([ContractDocumentProcessor]);
+  });
+
+  it("provides the original write freeze dependency to the worker", () => {
+    expect(Reflect.getMetadata("design:paramtypes", ContractDocumentProcessor)).toContain(OperationalWriteFreezeService);
+    expect(Reflect.getMetadata(MODULE_METADATA.EXPORTS, AuthModule)).toContain(OperationalWriteFreezeService);
+    expect(Reflect.getMetadata(MODULE_METADATA.IMPORTS, ContractDocumentWorkerModule)).toContain(AuthModule);
   });
 });
