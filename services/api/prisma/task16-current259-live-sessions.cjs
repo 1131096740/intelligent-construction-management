@@ -9,8 +9,8 @@ const { isDeepStrictEqual: equal, types } = require('node:util');
 const { claimCurrent259B7Installation } = require('./task16-current259-b7-install.cjs');
 const { claimCurrent259TechnicalResource, claimCurrent259TechnicalResourceContinuity, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { current259ClientIdentitySql, parseCurrent259ClientSessions } = require('./task16-current259-session-identity.cjs');
-const { renderCurrent259CatalogRead, parseCurrent259CatalogRead } = require('./task16-current259-catalog.cjs');
-const { registeredObjectWitnessSql, schema205WitnessSql, schema205RegistrySql } = require('./task16-registered-object-witness.cjs');
+const { renderCurrent259CatalogRead, parseCurrent259CatalogRead, current259Schema205WitnessSql } = require('./task16-current259-catalog.cjs');
+const { registeredObjectWitnessSql, schema205RegistrySql } = require('./task16-registered-object-witness.cjs');
 const { schema205ScopeSql } = require('./task16-schema205-scope.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
 
@@ -427,7 +427,7 @@ SELECT pg_catalog.jsonb_build_object('nonce','${nonce}','valid',(
   AND EXISTS(SELECT FROM pg_catalog.pg_authid r WHERE r.oid=${ordinary}::oid AND r.rolcanlogin AND r.rolconnlimit=0 AND r.rolpassword IS NULL)
   AND ${bindings.map(name=>`NOT EXISTS(SELECT FROM public.${name})`).join(' AND ')}
  ) IS TRUE,'sha256',pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
-  pg_catalog.jsonb_build_array(${registeredObjectWitnessSql()},${schema205ScopeSql()},${schema205WitnessSql()},
+  pg_catalog.jsonb_build_array(${registeredObjectWitnessSql()},${schema205ScopeSql()},${current259Schema205WitnessSql()},
     ${schema205RegistrySql()},(${pending}))::text,'UTF8')),'hex'));
 ROLLBACK;`;
     const output=await settled(()=>methods.execOwnerSql(sql,'current259-live-recovery-directory'));

@@ -9,10 +9,10 @@ const {isDeepStrictEqual:equal,types}=require('node:util');
 // profile rejects any earlier resource load in the same process.
 const {claimCurrent259ProvisionedRoles}=require('./task16-current259-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
-const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
+const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql}=require('./task16-current259-catalog.cjs');
 const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage}=require('./task16-current259-seven-preimage.cjs');
 const {functionProofSql}=require('./task16-registered-access-check.cjs');
-const {registeredObjectWitnessSql,schema205RegistrySql,schema205RegistryValid,schema205EnforceConfigSql,schema205WitnessSql,SCHEMA205_DEPARSE_LOCAL}=require('./task16-registered-object-witness.cjs');
+const {registeredObjectWitnessSql,schema205RegistrySql,schema205RegistryValid,schema205EnforceConfigSql,SCHEMA205_DEPARSE_LOCAL}=require('./task16-registered-object-witness.cjs');
 const {schema205ScopeSql,schema205SevenDeltaSql}=require('./task16-schema205-scope.cjs');
 
 const CODE='CURRENT259_SEVEN_INSTALL';
@@ -261,7 +261,7 @@ END $current259_seven_fresh$;`;
 const fileRolesSql=input=>`(SELECT jsonb_agg(allowed::text ORDER BY allowed) FROM (
  SELECT unnest(b."fileCallerOids") AS allowed FROM ${PENDING} b WHERE b."protocolVersion"=1
  UNION SELECT ${input.ordinary.oid}::oid UNION SELECT 10::oid) role_ids)`;
-function stableSql(input,registry=schema205RegistrySql(),schemaWitness=schema205WitnessSql(),archiveMiddle=false){
+function stableSql(input,registry=schema205RegistrySql(),schemaWitness=current259Schema205WitnessSql(),archiveMiddle=false){
  const routines=[...input.material.newRoutines,...input.material.changedRoutines].map(row=>`to_regprocedure(${quote(row.signature)})`).join(',');
  // Scope already proves the exact archive middle bodies. Reconstruct only
  // their original prosrc in the midstate digest; all other row fields stay live.
@@ -362,7 +362,7 @@ BEGIN
    OR (SELECT coalesce(jsonb_agg(row ORDER BY ord),'[]'::jsonb) FROM jsonb_array_elements(actual_scope->'constraints') WITH ORDINALITY q(row,ord) WHERE row->>'id'<>delta->>'foreignKey') IS DISTINCT FROM prior_scope->'constraints'
    OR (SELECT coalesce(jsonb_agg(row ORDER BY ord),'[]'::jsonb) FROM jsonb_array_elements(actual_scope->'triggers') WITH ORDINALITY q(row,ord)
        WHERE row->>'id' NOT IN (delta->>'voucherGuard',delta->>'restrictDelete',delta->>'restrictUpdate')) IS DISTINCT FROM prior_scope->'triggers'
-   OR ${schema205WitnessSql()} IS DISTINCT FROM (SELECT witness FROM pg_temp.jg_current259_seven_scope)
+   OR ${current259Schema205WitnessSql()} IS DISTINCT FROM (SELECT witness FROM pg_temp.jg_current259_seven_scope)
    OR NOT (${schema205EnforceConfigSql(true)}) OR NOT (${postBodies}) THEN RAISE EXCEPTION '${CODE}_POSTIMAGE'; END IF;
  FOR item IN SELECT value FROM jsonb_array_elements(observation->'actual'->'checks') LOOP
   SELECT x INTO STRICT original FROM jsonb_array_elements(${json(priorActual.checks)}) x WHERE x->>'name'=item->>'name';
@@ -429,7 +429,7 @@ function installedCheckSql(input,xidSql){
 }
 function applyFragments(input,prior,reference,executorOid){
  return [
-  `CREATE TEMP TABLE jg_current259_seven_scope ON COMMIT DROP AS SELECT ${schema205ScopeSql()} AS payload,${schema205WitnessSql()} AS witness;`,
+  `CREATE TEMP TABLE jg_current259_seven_scope ON COMMIT DROP AS SELECT ${schema205ScopeSql()} AS payload,${current259Schema205WitnessSql()} AS witness;`,
   'ALTER DEFAULT PRIVILEGES FOR ROLE jg_task01_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;',
   `DO $current259_seven_runtime$ BEGIN PERFORM pg_catalog.set_config('jg.task16_runtime_role',${quote(input.runtime.name)},true); END $current259_seven_runtime$;`,
   ...input.material.fragments,input.material.referenceEdit,checkTransition(input,prior,reference,Boolean(executorOid)),bridgeSql(input,prior,executorOid),
@@ -480,7 +480,7 @@ function archiveSevenMaterial(lease,view,nonce){
    need(!prior.fileRoles.includes(executor.oid)&&!prior.registry.publicRoutine.acl.some(row=>row[1]===executor.oid),'ARCHIVE_EXECUTOR');
    const oldRegistry=prior.registry.publicRoutine;
    const enforcer="pg_catalog.to_regprocedure('public.jg_enforce_exclusive_file_business_binding()')";
-   const witness=schema205WitnessSql(),acl="coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))";
+   const witness=current259Schema205WitnessSql(),acl="coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))";
    need(witness.split(acl).length===2,'ARCHIVE_WITNESS');
    // The archive stage has already proved the exact 24-grant overlay. Remove
    // its one enforcer grant from the witness projection only, never the catalog.

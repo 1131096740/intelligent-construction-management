@@ -36,7 +36,7 @@ function fixture(options={}) {
   const calls = [];
   let claimed=false, closes=0;
   const check = () => { assert.equal(closes,0); options.check?.(); };
-  const anchor = options.witness ?? (() => Object.freeze({guardSql: 'PERFORM 1;', sevenCatalogSql: "pg_catalog.repeat('2',64) /* pg_catalog.aclexplode(coalesce(a.attacl,'{}'::aclitem[])) jsonb_build_array(a.attnum,a.attacl) */", catalogSql: 'pg_catalog.repeat(\'a\',64) /* c.relacl::text a.attacl::text */'}));
+  const anchor = options.witness ?? (() => Object.freeze({guardSql: 'PERFORM 1;', sevenCatalogSql: "pg_catalog.repeat('2',64) /* pg_catalog.aclexplode(CASE WHEN pg_catalog.cardinality(coalesce(a.attacl,'{}'::aclitem[]))>0 THEN coalesce(a.attacl,'{}'::aclitem[]) END) jsonb_build_array(a.attnum,a.attacl) */", catalogSql: 'pg_catalog.repeat(\'a\',64) /* c.relacl::text a.attacl::text */'}));
   const view = {source,runId:completion.runId,check,resource:{containerId:completion.containerId,databaseName:scope.databaseIdentity.database,
     async execOwnerSql(sql,phase){
       calls.push({sql,phase});
@@ -210,6 +210,11 @@ test('the next-stage protection restores exactly the allowed seven-fragment ACL 
   assert.match(lease.protectedSql,/p\.relation='ContractVersion' AND p\."column" IN \('originalSignedNumber'\)/u);
   assert.match(lease.protectedSql,/p\.relation='RegisteredPaymentVoucher' AND p\."column" IN \('contentSha256','executionId','fileId'\)/u);
   assert.match(lease.protectedSql,/p\."rawAcl"::aclitem\[\]/u);
+  assert.match(lease.protectedSql,/pg_catalog\.aclexplode\(CASE WHEN pg_catalog\.cardinality\(coalesce\(CASE WHEN EXISTS\(SELECT 1 FROM prior p WHERE p.relation='ContractVersion'/u);
+  assert.match(lease.protectedSql,/jsonb_build_array\(a\.attnum,CASE WHEN EXISTS\(SELECT 1 FROM prior p WHERE p.relation='RegisteredPaymentVoucher'/u);
+  assert.match(f.calls[0].sql,/pg_catalog\.aclexplode\(CASE WHEN pg_catalog\.cardinality\(g\.effective_acl::aclitem\[\]\)>0 THEN g\.effective_acl::aclitem\[\] END\)/u);
+  assert.match(f.calls[2].sql,/pg_catalog\.aclexplode\(CASE WHEN pg_catalog\.cardinality\(o\.actual_acl\)>0 THEN o\.actual_acl END\)/u);
+  assert.match(f.calls[0].sql,/'rawAcl',g.raw_acl::text/u);
   assert.ok(f.calls[2].sql.includes(lease.protectedSql+' IS DISTINCT FROM'));
 });
 

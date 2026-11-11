@@ -3,6 +3,7 @@
 const path=require('node:path'),{createHash}=require('node:crypto');
 const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
+const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
@@ -12,6 +13,21 @@ const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,t
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const fail=()=>{throw Object.assign(new Error('TASK16_CURRENT259_CATALOG'),{code:'TASK16_CURRENT259_CATALOG'});};
 const need=x=>{if(!x)fail();};
+// PostgreSQL 16 aclexplode rejects SQL's zero-dimensional empty array.
+// NULL produces no rows and leaves every nonempty ACL to the original check.
+const current259AclRowsSql=acl=>`pg_catalog.aclexplode(CASE WHEN pg_catalog.cardinality(${acl})>0 THEN ${acl} END)`;
+const current259SignedNumberAclSql=(acl='a.attacl')=>current259AclRowsSql(`coalesce(${acl},'{}'::aclitem[])`);
+function current259Schema205WitnessSql(){
+ let sql=schema205WitnessSql();
+ const column="coalesce(a.attacl,'{}'::aclitem[])";
+ const defaults="coalesce(d.defaclacl,CASE WHEN scope.namespace=0 THEN pg_catalog.acldefault(scope.kind,owner.oid) ELSE '{}'::aclitem[] END)";
+ for(const acl of [column,defaults]){
+  const prior=`pg_catalog.aclexplode(${acl})`;
+  need(sql.split(prior).length===2);
+  sql=sql.replace(prior,()=>current259AclRowsSql(acl));
+ }
+ return sql;
+}
 function snapshot(value){
  if(value===null||['string','boolean','number'].includes(typeof value))return value;
  need(value&&typeof value==='object'&&!types.isProxy(value));
@@ -263,4 +279,4 @@ COMMIT;
   return script;
  }catch{fail();}
 }
-module.exports={loadCurrent259CatalogMaterial,renderCurrent259CatalogRead,parseCurrent259CatalogRead,renderCurrent259B7Install};
+module.exports={loadCurrent259CatalogMaterial,renderCurrent259CatalogRead,parseCurrent259CatalogRead,renderCurrent259B7Install,current259Schema205WitnessSql,current259AclRowsSql,current259SignedNumberAclSql};

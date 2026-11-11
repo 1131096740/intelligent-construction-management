@@ -7,6 +7,7 @@ const { isDeepStrictEqual: equal, types } = require('node:util');
 // Preserve the technical profile's original load order.
 const { claimCurrent259ArchiveInstallation } = require('./task16-current259-archive-install.cjs');
 const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
+const { current259AclRowsSql, current259SignedNumberAclSql } = require('./task16-current259-catalog.cjs');
 
 const CODE = 'CURRENT259_ORDINARY_ARCHIVE_ACL';
 const phases = ['current259-ordinary-acl-before','current259-ordinary-acl-write','current259-ordinary-acl-committed'];
@@ -119,7 +120,7 @@ const candidateShape = (completion,view,lease) => {
 function rawEntries(acl) {
  return `(SELECT COALESCE(jsonb_agg(acl_row ORDER BY acl_row),'[]'::jsonb)
   FROM (SELECT jsonb_build_array(grantor::text,grantee::text,privilege_type,is_grantable) AS acl_row
-    FROM pg_catalog.aclexplode(${acl})) acl_rows)`;
+    FROM ${current259AclRowsSql(acl)}) acl_rows)`;
 }
 
 function targets(ordinary,profile){
@@ -197,7 +198,7 @@ function normalizedSevenCatalog(sevenSql,delta){
  // These are the only two ACL-bearing coordinates of the original seven
  // fragment digest that the ordinary grants can change. Keep the rest of its
  // projection (including defaults, identity/generated and indexes) verbatim.
- const signed = "pg_catalog.aclexplode(coalesce(a.attacl,'{}'::aclitem[]))";
+ const signed = current259SignedNumberAclSql();
  const voucher = "jsonb_build_array(a.attnum,a.attacl)";
  need(sevenSql.split(signed).length===2 && sevenSql.split(voucher).length===2,'SEVEN_WITNESS');
  const signedName='originalSignedNumber',voucherColumns=['contentSha256','executionId','fileId'];
@@ -212,7 +213,7 @@ function normalizedSevenCatalog(sevenSql,delta){
     THEN (SELECT p."rawAcl"::aclitem[] FROM prior p WHERE ${prior}) ELSE a.attacl END`;
  };
  const restored=sevenSql
-  .replace(signed,()=>`pg_catalog.aclexplode(coalesce(${restore('ContractVersion',[signedName])},'{}'::aclitem[]))`)
+  .replace(signed,()=>current259SignedNumberAclSql(restore('ContractVersion',[signedName])))
   .replace(voucher,()=>`jsonb_build_array(a.attnum,${restore('RegisteredPaymentVoucher',voucherColumns)})`);
  return `(${aclBefore(changes)} SELECT ${restored})`;
 }

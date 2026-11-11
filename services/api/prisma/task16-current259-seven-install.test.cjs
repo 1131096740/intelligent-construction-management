@@ -210,3 +210,14 @@ test('does not render owner SQL when either exact migration source changes',asyn
   assert.equal(f.closed(),true);
  }
 });
+
+test('all current259 seven catalog readbacks skip empty ACL inputs without changing raw Voucher ACL',async()=>{
+ const f=fixture();
+ await f.api.installCurrent259SevenFragments(roleCompletion,f.handle);
+ for(const {sql} of f.calls){
+  assert.match(sql,/pg_catalog\.aclexplode\(CASE WHEN pg_catalog\.cardinality\(coalesce\(a\.attacl,'\{\}'::aclitem\[\]\)\)>0 THEN coalesce\(a\.attacl,'\{\}'::aclitem\[\]\) END\)/u);
+  assert.match(sql,/pg_catalog\.aclexplode\(CASE WHEN pg_catalog\.cardinality\(coalesce\(d\.defaclacl,CASE WHEN scope\.namespace=0 THEN pg_catalog\.acldefault\(scope\.kind,owner\.oid\) ELSE '\{\}'::aclitem\[\] END\)\)>0 THEN/u);
+  assert.doesNotMatch(sql,/pg_catalog\.aclexplode\(coalesce\((?:a\.attacl|d\.defaclacl),/u);
+  assert.match(sql,/jsonb_build_array\(a\.attnum,a\.attacl\)/u);
+ }
+});
