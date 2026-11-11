@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394首条Q2公开链的源码/ORM列闭包已封存，包含真实登录guard与跨业务文件冲突探针；这是所需列并集，不是实际ACL差量或GRANT。正常链需要AuthRateLimit及ContractDraftAttachment两表DELETE，纠正此前单表遗漏。205/213技术阶段禁止提前上传ACL；后续应仅列级补齐并保原整表ACL/绑定行/调用者/触发器/C0不变，FileObject保既有UPDATE(createdAt)满足行锁，不增UPDATE(id)。RegisteredPaymentVoucher另有永久列ACL特许，不能扩大。真实目录、登录/HBA/TLS、COS及业务仍未执行。 [列闭包](/private/tmp/jg-394-firstq2-column-closure.n0wkf6qe/HANDOFF.md) · [阶段与永久绑定边界](/private/tmp/jg-394-file-acl-stage-boundary.gni3qvot/HANDOFF.md)
+
 - [~] 准确 `8354134a` 已按本次明确授权执行封存PFQ259一次，终态退出码1并首错停止。首库经过213前缀及原 `TAIL213_BEFORE` 目标核验，在 `TAIL213_SUPPLY / RESOURCE_PORT / SUPPLY_RESULT` 捕获 PostgreSQL `42725 / POSTGRES_ERROR`；结构化记录未提供具体函数/语句原因。完整259、后续资格、后六库及13并发未完成。脚本清理完成，根独立准确容器名查询无残留；许可已消耗，不重试、不修复该门或执行后继门，无其他组/新业务入口/COS/GitHub/部署/生产。 [停止回执](/private/tmp/jg-382-pfq259-functional-sealed.SfgaCTWM/STOP-RECEIPT.md)
 
 - [~] 当前GitHub全45票回读仍为14项按既定阶段关闭、31项开放，只有#394/#398满足前置；关闭阶段不代表全部业务或真实资源验收。#398贯通审计定位新loader缺原fixture/case入口及同会话内部交接，正在独立源码树接原正常付款/响应丢失consumer与独立business执行模式；旧B7安装scope不扩大，新模式尚未授权或执行。#394真实Contract服务和版本化COS读链已有，尚缺普通应用/四专用身份的实际登录、HBA、最小ACL及合同Nest/COS验收装配；登录、草稿、上传所需DML不在旧只读清单，须逐调用链核对冻结边界，不能直接扩权或以本地存储代验。 [任务图回读](/private/tmp/jg-382-frontier-20261111-root.json) · [实付贯通审计](/private/tmp/jg-398-business-chain-audit-sf1q9cb3/HANDOFF.md) · [业务模式独审](/private/tmp/jg-398-chain-design-review.pjUDrQ/REVIEW-V2.md) · [归档贯通审计](/private/tmp/jg-394-native-seam-audit-4b24-20261111/HANDOFF.md)
