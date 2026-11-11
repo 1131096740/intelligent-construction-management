@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 本地中央 `00490441` 已合入有限42725诊断补修：只输出固定白名单函数/二元运算符及标准类型，兼容受限末尾字符位置；原首错归属、日志限制、SQL/迁移/预算/清理不变，真实835根因仍未知。其与#398私有业务接线的组合 `0ab7bc5b` 标准964/964、API147/147、支付23/23、类型/lint/构建通过，但SDK纯装载在文件方法描述符校验失败，已停USCC/HOLD后继且未合该组合。已锁定依赖graceful-fs正常包装closeSync的兼容性待真实纯装载闭环，不采纳任意后置方法。无新的SQL/资源/业务once。 [诊断独审合并](/private/tmp/jg-382-pfq-diagnostic-merge.carefb_y/MERGE-004904.md) · [组合停止回执](/private/tmp/jg-398-light-diagnostic-composition.8n1Ih0Tj/HANDOFF-0AB7.md)
+
 - [~] #394首条Q2公开链的源码/ORM列闭包已封存，包含真实登录guard与跨业务文件冲突探针；这是所需列并集，不是实际ACL差量或GRANT。正常链需要AuthRateLimit及ContractDraftAttachment两表DELETE，纠正此前单表遗漏。205/213技术阶段禁止提前上传ACL；后续应仅列级补齐并保原整表ACL/绑定行/调用者/触发器/C0不变，FileObject保既有UPDATE(createdAt)满足行锁，不增UPDATE(id)。RegisteredPaymentVoucher另有永久列ACL特许，不能扩大。真实目录、登录/HBA/TLS、COS及业务仍未执行。 [列闭包](/private/tmp/jg-394-firstq2-column-closure.n0wkf6qe/HANDOFF.md) · [阶段与永久绑定边界](/private/tmp/jg-394-file-acl-stage-boundary.gni3qvot/HANDOFF.md)
 
 - [~] 准确 `8354134a` 已按本次明确授权执行封存PFQ259一次，终态退出码1并首错停止。首库经过213前缀及原 `TAIL213_BEFORE` 目标核验，在 `TAIL213_SUPPLY / RESOURCE_PORT / SUPPLY_RESULT` 捕获 PostgreSQL `42725 / POSTGRES_ERROR`；结构化记录未提供具体函数/语句原因。完整259、后续资格、后六库及13并发未完成。脚本清理完成，根独立准确容器名查询无残留；许可已消耗，不重试、不修复该门或执行后继门，无其他组/新业务入口/COS/GitHub/部署/生产。 [停止回执](/private/tmp/jg-382-pfq259-functional-sealed.SfgaCTWM/STOP-RECEIPT.md)
