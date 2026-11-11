@@ -72,6 +72,24 @@ for(const scenario of ['normal','response-loss'])test('one owned seed reaches th
  assert.equal(JSON.stringify(result).includes(m.captured().execution.password),false);
  assert.equal(JSON.stringify(result).includes('private-model-token'),false);
 });
+test('the owned cancellation case uses the original session gate and publishes no committed IDs',async t=>{
+ const f=caseFixture(t),m=paymentModel(f),trace=[];
+ f.session.cancelCommit=async(token,submit)=>{f.session.checkContinuity(token);trace.push('ready');await submit();trace.push('owner-settled');};
+ m.modules.runRegisteredNullCrossCompanyCommitCancellation=async(execution,fixture,continuity,cancel)=>{
+  assert.equal(execution,m.captured().execution);
+  assert.equal(fixture.accessToken,'private-model-token');
+  await cancel(async()=>{
+   continuity.assertHttpRequest('/payment-executions/'+m.plan.ids.payment+'/registrations','POST');
+   trace.push('post');
+  });
+  trace.push('observer');
+  return {caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true};
+ };
+ const result=await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'cancel-commit',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
+ assert.deepEqual(trace,['ready','post','owner-settled','observer']);
+ assert.deepEqual(result,{caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true,financialAcceptance:false});
+});
 for(const failure of [undefined,null,0,false])test('a falsey seed failure is permanently unknown and shuts the app before resource cleanup: '+String(failure),async t=>{
  const f=caseFixture(t),m=paymentModel(f,{onSeed(){throw failure;}}),api=f.caseApi;
  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{

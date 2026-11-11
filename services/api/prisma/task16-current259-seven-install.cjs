@@ -115,7 +115,7 @@ function inputOf(lease,view){
  return {source,id,ordinary,runtime,observer,roleCompletion,material:material(source)};
 }
 
-function scopeGuards(input,phase){
+function scopeGuards(input,phase,archiveXid){
  const {roleCompletion,id,runtime,observer,ordinary}=input;
  const checkedRoles=[{...ordinary,xmin:null},runtime,observer];
  const databaseAcl=`(SELECT jsonb_agg(jsonb_build_object('oid',d.oid::text,'name',d.datname,'owner',d.datdba::text,
@@ -147,7 +147,9 @@ BEGIN
     ORDER BY migration_name COLLATE "C") FROM public._prisma_migrations) IS DISTINCT FROM ${json(input.material.ledger)}
   OR (SELECT count(*) FROM ${PENDING} b WHERE b."protocolVersion"=1 AND b."applicationRoleOid"=${ordinary.oid}::oid
     AND b."databaseOid"=${id.databaseOid}::oid AND b."anchorNamespaceOid"=${id.namespaceOid}::oid AND b."anchorOwnerOid"=10)<>1
-  ${archiveBindings.map(table=>`OR EXISTS(SELECT 1 FROM public.${table})`).join('\n  ')}
+  ${archiveBindings.map((table,index)=>archiveXid&&index<2
+    ?`OR (SELECT count(*)=1 AND bool_and(xmin::text::numeric=mod((${archiveXid})::text::numeric,4294967296)) FROM public.${table}) IS DISTINCT FROM true`
+    :`OR EXISTS(SELECT 1 FROM public.${table})`).join('\n  ')}
   ${phase===2?'':`OR NOT (${schema205EnforceConfigSql(false)})
    OR EXISTS(SELECT 1 FROM (VALUES ${input.material.priorRoutines.map(([signature,digest])=>`(${quote(signature)},${quote(digest)})`).join(',')}) e(signature,body_sha)
      WHERE NOT EXISTS(SELECT 1 FROM pg_proc p WHERE p.oid=to_regprocedure(e.signature) AND p.proowner=10 AND p.pronamespace=to_regnamespace('public')
@@ -167,9 +169,9 @@ END $current259_seven_fresh$;`;
 const fileRolesSql=input=>`(SELECT jsonb_agg(allowed::text ORDER BY allowed) FROM (
  SELECT unnest(b."fileCallerOids") AS allowed FROM ${PENDING} b WHERE b."protocolVersion"=1
  UNION SELECT ${input.ordinary.oid}::oid UNION SELECT 10::oid) role_ids)`;
-function stableSql(input){
+function stableSql(input,registry=schema205RegistrySql(),schemaWitness=schema205WitnessSql()){
  const routines=[...input.material.newRoutines,...input.material.changedRoutines].map(row=>`to_regprocedure(${quote(row.signature)})`).join(',');
- return shaSql(`jsonb_build_array(${registeredObjectWitnessSql()},${schema205ScopeSql()},${schema205WitnessSql()},${schema205RegistrySql()},
+ return shaSql(`jsonb_build_array(${registeredObjectWitnessSql()},${schema205ScopeSql()},${schemaWitness},${registry},
   (SELECT to_jsonb(b) FROM ${PENDING} b WHERE b."protocolVersion"=1),
   (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.oid) FROM pg_proc p WHERE p.oid IN (${routines})),
   (SELECT c.relacl FROM pg_class c WHERE c.oid=to_regclass(${quote(VOUCHER)})),
@@ -200,17 +202,19 @@ BEGIN
    THEN RAISE EXCEPTION '${CODE}_PREIMAGE_DRIFT'; END IF;
 END $current259_seven_preimage$;`;
 }
-function bridgeSql(input,prior){
- const {fileRoles,registry}=prior;
+function bridgeSql(input,prior,executorOid){
+ const {registry}=prior;
+ const fileRoles=executorOid?[...prior.fileRoles,executorOid].sort((a,b)=>Number(a)-Number(b)):prior.fileRoles;
  const expectedOwner=[['10','10','EXECUTE',false]];
  const expectedAcl=fileRoles.map(id=>['10',id,'EXECUTE',false]);
- const alias={...registry.publicRoutine,name:'jg_file_business_binding_columns_before_registered_payment',config};
+ const alias=executorOid?`((SELECT registry->'publicRoutine' FROM pg_temp.jg_current259_seven_archive_registry)||${json({name:'jg_file_business_binding_columns_before_registered_payment',config})})`
+  :json({...registry.publicRoutine,name:'jg_file_business_binding_columns_before_registered_payment',config});
  const grantRoles=fileRoles.filter(id=>id!=='10');
  return `DO $current259_seven_bridge$
 DECLARE witness jsonb; role_name text; item text;
 BEGIN
  witness := ${schema205RegistrySql()};
- IF witness->'alias' IS DISTINCT FROM ${json(alias)} OR witness->'publicDefault' IS DISTINCT FROM ${json(registry.publicDefault)}
+ IF witness->'alias' IS DISTINCT FROM ${alias} OR witness->'publicDefault' IS DISTINCT FROM ${json(registry.publicDefault)}
   OR witness->'globalDefault'->'acl' IS DISTINCT FROM ${json(expectedOwner)}
   OR witness->'publicRoutine'->>'oid'=witness->'alias'->>'oid' OR witness->'publicRoutine'->'shapeVerified' IS DISTINCT FROM 'true'::jsonb
   OR witness->'publicRoutine'->'config' IS DISTINCT FROM ${json(config)}
@@ -224,7 +228,7 @@ BEGIN
   EXECUTE format('GRANT SELECT ("fileId") ON TABLE ${VOUCHER} TO %I',role_name);
  END LOOP;
  witness := ${schema205RegistrySql()};
- IF witness->'alias' IS DISTINCT FROM ${json(alias)} OR witness->'publicRoutine'->'acl' IS DISTINCT FROM ${json(expectedAcl)}
+ IF witness->'alias' IS DISTINCT FROM ${alias} OR witness->'publicRoutine'->'acl' IS DISTINCT FROM ${json(expectedAcl)}
   OR EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
     WHERE p.oid=${quote(VOUCHER_GUARD)}::regprocedure AND (a.grantee<>10 OR a.grantor<>10 OR a.is_grantable))
   OR NOT EXISTS(SELECT 1 FROM pg_class c WHERE c.oid=${quote(VOUCHER)}::regclass AND c.relowner=10 AND c.relkind='r' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
@@ -319,6 +323,19 @@ function installObjectsSql(input){
    (${[REGISTRY,...input.material.newRoutines.map(row=>row.signature)].map(signature=>`to_regprocedure(${quote(signature)})`).join(',')}))
  AND (${newConstraintSql()})`;
 }
+function installedCheckSql(input,xidSql){
+ const predicate=installObjectsSql(input).replaceAll('__INSTALL_XID__',`(${xidSql})`);
+ return `DO $current259_seven_objects$ BEGIN IF (${predicate}) IS DISTINCT FROM true THEN RAISE EXCEPTION '${CODE}_XMIN'; END IF; END $current259_seven_objects$;`;
+}
+function applyFragments(input,prior,reference,executorOid){
+ return [
+  `CREATE TEMP TABLE jg_current259_seven_scope ON COMMIT DROP AS SELECT ${schema205ScopeSql()} AS payload,${schema205WitnessSql()} AS witness;`,
+  'ALTER DEFAULT PRIVILEGES FOR ROLE jg_task01_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;',
+  `DO $current259_seven_runtime$ BEGIN PERFORM pg_catalog.set_config('jg.task16_runtime_role',${quote(input.runtime.name)},true); END $current259_seven_runtime$;`,
+  ...input.material.fragments,input.material.referenceEdit,checkTransition(input,prior,reference),bridgeSql(input,prior,executorOid),
+  installedCheckSql(input,'pg_current_xact_id()'),
+ ];
+}
 function render(input,phase,nonce,prior){
  const before=phase===0,write=phase===1;
  const start=phase===2?'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;':'BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;';
@@ -328,14 +345,8 @@ function render(input,phase,nonce,prior){
  const ref=pre?.witnessSql.trim().slice(0,-1);
  if(before)return [...common,newObjects(input),pre.setupSql,readbackSql(input,phase,nonce,prior,ref),pre.cleanupSql,'ROLLBACK;'].join('\n');
  const xidSql=write?'pg_current_xact_id()':`${quote(prior.installXid)}::xid8`;
- const predicate=installObjectsSql(input).replaceAll('__INSTALL_XID__',`(${xidSql})`);
- const installedCheck=`DO $current259_seven_objects$ BEGIN IF (${predicate}) IS DISTINCT FROM true THEN RAISE EXCEPTION '${CODE}_XMIN'; END IF; END $current259_seven_objects$;`;
- if(!write)return [...common,installedCheck,readbackSql(input,phase,nonce,prior),'ROLLBACK;'].join('\n');
- return [...common,newObjects(input),pre.setupSql,preimageGuard(input,prior,ref),
-  `CREATE TEMP TABLE jg_current259_seven_scope ON COMMIT DROP AS SELECT ${schema205ScopeSql()} AS payload,${schema205WitnessSql()} AS witness;`,
-  'ALTER DEFAULT PRIVILEGES FOR ROLE jg_task01_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;',
-  `DO $current259_seven_runtime$ BEGIN PERFORM pg_catalog.set_config('jg.task16_runtime_role',${quote(input.runtime.name)},true); END $current259_seven_runtime$;`,
-  ...input.material.fragments,input.material.referenceEdit,checkTransition(input,prior,ref),bridgeSql(input,prior),installedCheck,
+ if(!write)return [...common,installedCheckSql(input,xidSql),readbackSql(input,phase,nonce,prior),'ROLLBACK;'].join('\n');
+ return [...common,newObjects(input),pre.setupSql,preimageGuard(input,prior,ref),...applyFragments(input,prior,ref),
   readbackSql(input,phase,nonce,prior),pre.cleanupSql,'COMMIT;'].join('\n');
 }
 function readResult(result,input,phase,nonce){
@@ -355,6 +366,52 @@ function readResult(result,input,phase,nonce){
  need(Array.isArray(fileRoles)&&fileRoles.length>=2&&fileRoles.every((id,i)=>oid(id)&&(!i||Number(id)>Number(fileRoles[i-1])))&&
   ['10',input.ordinary.oid].every(id=>fileRoles.includes(id))&&![input.runtime.oid,input.observer.oid].some(id=>fileRoles.includes(id)),'FILE_CALLERS');
  return {...row,pre:parseCurrent259SevenPreimage(JSON.stringify(row.pre),'10',nonce)};
+}
+function archiveSevenMaterial(lease,view,nonce){
+ const input=inputOf(lease,view);
+ const executor=input.roleCompletion.roles.find(role=>role.name==='jg_c259_outside_executor_owner');
+ need(hex(nonce,64)&&executor?.login===false&&oid(executor.oid)&&![input.ordinary.oid,input.runtime.oid,input.observer.oid,'10'].includes(executor.oid));
+ const pre=renderCurrent259SevenPreimage(nonce),reference=pre.witnessSql.trim().slice(0,-1);
+ return Object.freeze({
+  beforeSql:render(input,0,nonce),
+  readBefore(result){
+   const prior=readResult(result,input,0,nonce);
+   need(!prior.fileRoles.includes(executor.oid)&&!prior.registry.publicRoutine.acl.some(row=>row[1]===executor.oid),'ARCHIVE_EXECUTOR');
+   const oldRegistry=prior.registry.publicRoutine;
+   const enforcer="pg_catalog.to_regprocedure('public.jg_enforce_exclusive_file_business_binding()')";
+   const witness=schema205WitnessSql(),acl="coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))";
+   need(witness.split(acl).length===2,'ARCHIVE_WITNESS');
+   // The archive stage has already proved the exact 24-grant overlay. Remove
+   // its one enforcer grant from the witness projection only, never the catalog.
+   const historicEnforcerAcl=`CASE WHEN p.oid=${enforcer} THEN ARRAY(
+    SELECT u.entry FROM pg_catalog.unnest(p.proacl) u(entry)
+    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(ARRAY[u.entry]) a WHERE a.grantee=${executor.oid}::oid))
+    ELSE ${acl} END`;
+   const historicWitness=witness.replace(acl,()=>historicEnforcerAcl);
+   const overlay=[...oldRegistry.acl,['10',executor.oid,'EXECUTE',false]].sort((a,b)=>Number(a[0])-Number(b[0])||Number(a[1])-Number(b[1])||a[2].localeCompare(b[2])||Number(a[3])-Number(b[3]));
+   const expectedMiddle={...prior.registry,publicRoutine:{...oldRegistry,acl:overlay}};
+   const midGuard=`CREATE TEMP TABLE jg_current259_seven_archive_registry ON COMMIT DROP AS SELECT ${schema205RegistrySql()} AS registry;
+DO $current259_seven_archive_mid$
+DECLARE observed jsonb;
+BEGIN
+ SELECT registry INTO STRICT observed FROM pg_temp.jg_current259_seven_archive_registry;
+ IF jsonb_set(observed,'{publicRoutine,rawAcl}',${json(oldRegistry.rawAcl)}) IS DISTINCT FROM ${json(expectedMiddle)}
+  OR ${stableSql(input,json(prior.registry),historicWitness)} IS DISTINCT FROM ${quote(prior.catalogSha256)}
+  OR ${fileRolesSql(input)} IS DISTINCT FROM ${json(prior.fileRoles)}
+ THEN RAISE EXCEPTION '${CODE}_ARCHIVE_PREIMAGE_DRIFT'; END IF;
+END $current259_seven_archive_mid$;`;
+   return Object.freeze({
+    backendPid:prior.backendPid,backendStart:prior.backendStart,
+    writerBefore:[SCHEMA205_DEPARSE_LOCAL,'SET LOCAL standard_conforming_strings=on;',scopeGuards(input,1),
+     newObjects(input),pre.setupSql,preimageGuard(input,prior,reference)].join('\n'),
+    writerMiddle:[SCHEMA205_DEPARSE_LOCAL,scopeGuards(input,1,'pg_current_xact_id()'),midGuard,
+     ...applyFragments(input,prior,reference,executor.oid),pre.cleanupSql].join('\n'),
+    committedCheck(installXid){need(xid(installXid));return installedCheckSql(input,`${quote(installXid)}::xid8`);},
+    // Render with the same deparse settings after M259 on both backends.
+    finalCatalog:stableSql(input),
+   });
+  },
+ });
 }
 async function installCurrent259SevenFragments(roleCompletion,handle){
  need(arguments.length===2&&handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
@@ -398,4 +455,4 @@ function claimCurrent259SevenInstallation(completion,handle){
  const {check,checkContinuity,source,roleCompletion}=receipt;
  return Object.freeze({completion,check,checkContinuity,source,roleCompletion});
 }
-module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation});
+module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial});

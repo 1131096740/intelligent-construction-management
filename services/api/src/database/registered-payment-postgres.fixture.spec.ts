@@ -106,13 +106,42 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 });
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
-  it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact"])(
+  it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter"])(
     "verifies the %s case through only the approved observer columns", async scenario => {
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
     const { ids } = plan;
     const prepared = { plan, accessToken: "synthetic-only", companyARegistrationId: "registration-a", companyBRegistrationId: "registration-b", companyBSourceId: "source-b" };
     let recorded = false;
+    let orphanImpact = false;
+    let submittedCancellation = false;
+    let ownerReads = 0;
+    let ownerGetterReads = 0;
+    Object.assign(f.context.owner, { $transaction: async (operation: (client: unknown) => Promise<unknown>, options: unknown) => {
+      expect(options).toEqual({ isolationLevel: "RepeatableRead" });
+      let readOnly = false;
+      return operation({
+        $executeRawUnsafe: async (sql: string) => { expect(sql).toBe("SET TRANSACTION READ ONLY"); readOnly = true; },
+        $queryRawUnsafe: async (sql: string, ...values: unknown[]) => {
+          expect(readOnly).toBe(true);
+          expect(sql).toContain('s."status"');
+          expect(values).toEqual([ids.settlement, ids.payment]);
+          ownerReads++;
+          const after = (name: string) => submittedCancellation && scenario === name;
+          return [{
+            database: f.proof.databaseName, databaseOid: f.proof.databaseOid, systemIdentifier: f.proof.systemIdentifier,
+            effectiveRole: after("cancel-owner-role") ? f.proof.runtimeRole : f.proof.ownerRole,
+            loginRole: f.proof.ownerRole, ownerOid: "10", pid: after("cancel-owner-pid") ? 999 : 100,
+            startedAt: after("cancel-owner-start") ? "2026-11-07T00:00:00.000002Z" : "2026-11-07T00:00:00.000001Z",
+            tls: true, readOnly: "on", isolation: "repeatable read",
+            settlementStatus: after("cancel-settlement-status") ? "paid" : "approved",
+            settlementUpdatedAt: after("cancel-settlement-updated-at") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z",
+            requestUpdatedAt: after("cancel-request-updated-at") ? "2026-11-07T00:00:00.001000Z" : "2026-11-07T00:00:00.000000Z"
+          }];
+        }
+      });
+    } });
     const reads = new Set<string>();
     const allowed: Record<string, string[]> = {
       paymentRequest: ["approvedAmountCents", "paidAmountCents", "status"],
@@ -130,6 +159,7 @@ describe("registered PG original case: explicit observer projection protocol (no
       if (model === "paymentRequest") return [{ approvedAmountCents: 10000n, paidAmountCents: recorded ? 4000n : 0n, status: recorded ? "partially_paid" : "approved_pending_payment" }];
       if (model === "settlement") return [{ payableAmountCents: 10000n, paidAmountCents: recorded ? 4000n : 0n }];
       if (model === "fundAccountBalanceRegistration") return [{ accountId: where.id === "registration-a" ? "account-a" : "account-b", balanceYuan: new Prisma.Decimal("100"), coveredExecutionIds: [] }];
+      if (model === "operatingImpactEntry" && orphanImpact && where.sourceBusinessId === undefined) return [{ id: "orphan-impact" }];
       if (!recorded) return [];
       if (model === "paymentExecution") return [{ id: "execution-one", idempotencyKey: ids.requestKey, amountCents: 4000n, paymentRequestId: ids.payment, voucherFileId: null }];
       if (model === "registeredPaymentFunding") return [{ executionId: "execution-one", operatingLedgerEffectiveDateAtRegistration: null, actualPayerId: ids.companyB, actualPayerKind: "participating_company" }];
@@ -162,6 +192,19 @@ describe("registered PG original case: explicit observer projection protocol (no
       if (route.endsWith("/registration-options")) return respond(200, { expectedPaymentUpdatedAt: "2026-11-07T00:00:00.000Z", remainingAmountCents: "10000", accounts: [{ scopeKey: `company:${ids.companyB}`, eligible: true }] });
       if (route.endsWith("/registrations") && init?.method === "POST") {
         if (scenario === "upstream-failure") return respond(503, {});
+        if (scenario.startsWith("cancel-")) {
+          submittedCancellation = true;
+          if (scenario === "cancel-owner-method") {
+            Object.assign(f.context.owner, { $transaction() { throw new Error("unexpected replaced owner method"); } });
+          }
+          if (scenario === "cancel-owner-getter") {
+            const transaction = f.context.owner.$transaction;
+            Object.defineProperty(f.context.owner, "$transaction", { get() { ownerGetterReads++; return transaction; } });
+          }
+          recorded = scenario === "cancel-changed-ledger";
+          orphanImpact = scenario === "cancel-orphan-impact";
+          return respond(scenario === "cancel-fake-success" ? 201 : 500, {});
+        }
         recorded = scenario !== "absent-db-fact";
         const response = respond(201, {});
         responseCancellations.push(jest.spyOn(response.body!, "cancel"));
@@ -172,6 +215,31 @@ describe("registered PG original case: explicit observer projection protocol (no
     });
     try {
       const continuity = { checkLight: jest.fn(), fetch: globalThis.fetch, assertHttpRequest: jest.fn() };
+      if (scenario.startsWith("cancel-")) {
+        const cancel = jest.fn(async (submit: () => Promise<void>) => {
+          expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET"]);
+          expect(reads.has("auditLog")).toBe(true);
+          await submit();
+        });
+        const run = registeredCases.runRegisteredNullCrossCompanyCommitCancellation(f.context, prepared, continuity, cancel);
+        if (scenario === "cancel-commit") {
+          await expect(run).resolves.toMatchObject({caseId: "registered.null-cross-company.cancel-commit", passed: true, rollbackObserved: true});
+        } else {
+          const errors: Record<string, string> = {
+            "cancel-fake-success": "PG_CASE_CANCEL_HTTP_STATUS",
+            "cancel-owner-method": "PG_CASE_CANCEL_OWNER_CHANGED",
+            "cancel-owner-getter": "PG_CASE_CANCEL_OWNER_CHANGED",
+            "cancel-owner-role": "PG_CASE_CANCEL_OWNER_PROOF",
+            "cancel-owner-pid": "PG_CASE_CANCEL_OWNER_PROOF"
+          };
+          await expect(run).rejects.toThrow(errors[scenario] ?? "PG_CASE_CANCEL_LEDGER_CHANGED");
+        }
+        expect(cancel).toHaveBeenCalledTimes(1);
+        expect(ownerReads).toBe(["cancel-owner-method", "cancel-owner-getter"].includes(scenario) ? 1 : 2);
+        expect(ownerGetterReads).toBe(0);
+        expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
+        return;
+      }
       const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared)
         : registeredCases.runRegisteredNullCrossCompanyResponseLoss(f.context, prepared, continuity);
       if (scenario === "upstream-failure" || scenario === "absent-db-fact") {
@@ -187,6 +255,7 @@ describe("registered PG original case: explicit observer projection protocol (no
         expect(JSON.parse(String(original)).idempotencyKey).toBe(ids.requestKey);
         expect(replay).toBe(original);
       }
+      expect(ownerReads).toBe(0);
     } finally { fetch.mockRestore(); }
   });
 });

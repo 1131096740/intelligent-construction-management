@@ -18,13 +18,33 @@ test('new business default verifies both materials without any resource or consu
  assert.equal(result.status,'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES');assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
 });
-for(const scenario of ['normal','response-loss'])test('fresh business '+scenario+' preserves the B7 issuer and adds only the fixed scoped consumer',async t=>{
+for(const scenario of ['normal','response-loss','cancel-commit'])test('fresh business '+scenario+' preserves the B7 issuer and adds only the fixed scoped consumer',async t=>{
  const f=runFixture(t,{scenario}),result=await f.done;
  assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
  assert.deepEqual(f.state.calls,['start','technical259','roles9','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
  assert.equal(receipt.business.scenario,scenario);assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+ if(scenario==='cancel-commit'){
+  assert.equal(receipt.scope.registrationPostCount,1);
+  assert.equal(receipt.scope.commitFaults,'CANCEL_EXACT_COMMIT_ONCE');
+  assert.equal(receipt.business.rollbackObserved,true);
+  assert.equal('executionId' in receipt.business,false);
+  assert.equal('rootId' in receipt.business,false);
+ }
  assert.equal(receipt.nativeAdmission,false);assert.equal(receipt.financialAcceptance,false);assert.equal(f.state.closes,1);
+});
+test('only the actual cancellation business token can authorize a commit barrier',async t=>{
+ const f=runFixture(t,{scenario:'cancel-commit',onBusiness({api,lease,handle}){
+  assert.equal(api.assertCurrent259PaymentBusinessContinuity(lease.continuityToken,handle,'cancel-commit'),true);
+ }});
+ assert.equal((await f.done).status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+});
+test('a normal token attempting to authorize cancellation revokes the run before successful publication',async t=>{
+ const f=runFixture(t,{onBusiness({api,lease,handle}){
+  assert.throws(()=>api.assertCurrent259PaymentBusinessContinuity(lease.continuityToken,handle,'cancel-commit'));
+ }});
+ assert.equal((await f.done).status,'STOPPED');
+ assert.equal(f.state.closes,1);
 });
 for(const error of [undefined,null,0,false])test('falsey consumer failure never publishes success or refunds the shared attempt: '+String(error),async t=>{
  const f=runFixture(t,{caseFailure:error}),result=await f.done;

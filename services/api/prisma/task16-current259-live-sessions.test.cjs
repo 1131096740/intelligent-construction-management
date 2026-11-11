@@ -38,6 +38,7 @@ function fixture(options={}){
  const resource={...endpoint,port:endpoint.publishedPort,caPath:'/fixed/ca.crt',getReceipt(){check();return clone(receipt);},
   async inspectConnectionEndpoint(){check();calls.push(['inspect']);const value={...endpoint};options.onInspect?.(value);return value;},
   async execOwnerSql(_sql,phase){check();calls.push(['owner',phase]);
+   if(phase.startsWith('current259-a16-cancel-'))return options.onCancel(_sql,phase);
    if(phase==='current259-live-catalog'){const row=clone(proofRow);row.identity.backendPid=500+(cursor++);row.identity.backendStart='2026-11-11T04:00:'+String(cursor).padStart(2,'0')+'.000001Z';options.onCatalog?.(row);return {stdout:JSON.stringify(row)};}
    const value={nonce:_sql.match(/'([a-f0-9]{64})'::pg_catalog.text AS nonce/)[1],database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',readerPid:900,readerRole:'jg_task01_owner',readerOid:'10',readerTls:true,readerStart:'2026-11-11T04:00:00.000001Z',
     sessions:rows.map(row=>Object.fromEntries(['database','databaseOid','loginRole','loginOid','pid','start','tls','clientAddress','clientPort'].map(key=>[key,row[key]])))};
@@ -46,9 +47,9 @@ function fixture(options={}){
  resource.getReceiptContinuity=token=>{continuity(token);return clone(receipt);};
  const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyBusinessFiles(token){continuity(token);calls.push(['scan',++scans]);options.onScan?.(scans);},verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
  const imports={
-  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,assertCurrent259CommitCancellationIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
   './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request,stagedProof,committedProof,check,checkContinuity:continuity};}},
-  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,token){continuity(token,h);return view;},claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;}},
+  './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,token){continuity(token,h);return view;},claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;options.onClose?.();}},
   './task16-runtime-inputs.cjs':{readQualifiedTask16File(){options.onRead?.();return {sha256:'c'.repeat(64),identity:{uid:process.getuid()}};}}
  };
  const api=new Function('require','module','setTimeout',fs.readFileSync(path.join(__dirname,'task16-current259-live-sessions.cjs'),'utf8')+'\nreturn module.exports;')(
@@ -67,6 +68,61 @@ test('three scoped clients retain exact same-handle identities and expire after 
  assert.equal(f.clients.length,3);assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
  assert.throws(()=>session.checkLight());assert.throws(()=>f.api.claimCurrent259LiveSessions(proof,f.handle));
  assert.equal(f.resourceClosed(),0);
+});
+
+test('commit cancellation observes the original backend and pairs its own READY with one public submission',async()=>{
+ const token=Object.freeze({}),marks=[];let outcome,nonce;
+ const owner={pid:812,startedAt:'2026-11-11T00:00:10.000001Z'};
+ const f=fixture({continuityToken:token,onCancel(sql,phase){
+  if(phase==='current259-a16-cancel-owner'){
+   assert.match(sql,/pg_catalog.pg_cancel_backend\(102\)/u);
+   assert.match(sql,/host\(a.client_addr\)='172\.19\.0\.1' AND a.client_port=53101/u);
+   assert.match(sql,/00:00:02\.000001Z/u);
+   nonce=sql.match(/'nonce','([a-f0-9]{64})'/u)[1];
+   marks.push('owner');
+   return new Promise(resolve=>{outcome=()=>resolve({stdout:JSON.stringify({nonce,mode:'cancel-commit',state:'commit-cancelled',owner,runtimePid:102,
+    runtimeStartedAt:'2026-11-11T00:00:02.000001Z',transactionId:'9101',commitStartedAt:'2026-11-11T00:00:12.000001Z'})});});
+  }
+  assert.equal(phase,'current259-a16-cancel-ready');
+  assert.match(sql,/BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY/u);
+  assert.ok(sql.includes(nonce));marks.push('ready');
+  return {stdout:JSON.stringify({nonce,state:'ready',owner})};
+ }});
+ await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+  session.activateBusinessContinuity(token);
+  await session.cancelCommit(token,async()=>{marks.push('submit');outcome();});
+  assert.deepEqual(marks,['owner','ready','submit']);
+  await assert.rejects(session.cancelCommit(token,()=>assert.fail('duplicate submit')));
+  await session.verifyFull();
+ });
+ assert.equal(f.resourceClosed(),0);
+});
+
+for(const bad of ['owner-ended','foreign-ready','foreign-outcome','http-timeout'])test('commit cancellation closes on '+bad+' and never retries',async()=>{
+ const token=Object.freeze({}),owner={pid:812,startedAt:'2026-11-11T00:00:10.000001Z'};
+ let submitted=0,resolveOwner,nonce,phaseCalls=[];
+ const f=fixture({continuityToken:token,onClose(){resolveOwner?.({stdout:''});},onCancel(sql,phase){
+  phaseCalls.push(phase);
+  if(phase==='current259-a16-cancel-owner'){
+   nonce=sql.match(/'nonce','([a-f0-9]{64})'/u)[1];
+   if(bad==='owner-ended')return {stdout:''};
+   return new Promise(resolve=>{resolveOwner=resolve;});
+  }
+  return {stdout:JSON.stringify({nonce:bad==='foreign-ready'?'0'.repeat(64):nonce,state:'ready',owner})};
+ }});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);session.activateBusinessContinuity(token);
+  await session.cancelCommit(token,async()=>{
+   submitted++;
+   if(bad==='http-timeout')throw new Error('synthetic HTTP timeout');
+   resolveOwner({stdout:JSON.stringify({nonce,mode:'cancel-commit',state:'commit-cancelled',owner,runtimePid:500,
+    runtimeStartedAt:'2026-11-11T00:00:02.000001Z',transactionId:'9101',commitStartedAt:'2026-11-11T00:00:12.000001Z'})});
+  });
+ }),/FAILED_CLOSED/u);
+ assert.equal(submitted,['owner-ended','foreign-ready'].includes(bad)?0:1);
+ assert.equal(phaseCalls.filter(phase=>phase==='current259-a16-cancel-owner').length,1);
+ assert.equal(f.resourceClosed(),1);
 });
 
 function businessProvider(options={}){

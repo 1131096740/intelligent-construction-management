@@ -1,6 +1,9 @@
 'use strict';
-const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
+const {assertCurrent259BusinessIssuer:businessIssuer,assertCurrent259CommitCancellationIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 const { randomBytes } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
+const { setTimeout: delay } = require('node:timers/promises');
+const { createCurrent259A16FaultPlan } = require('./task16-current259-a16-fault.cjs');
 const { isDeepStrictEqual: equal, types } = require('node:util');
 // Load the genuine technical lineage before the original physical producer.
 const { claimCurrent259B7Installation } = require('./task16-current259-b7-install.cjs');
@@ -47,7 +50,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
   let active = true, broken = false, checking = false, closing, resourceClosing;
   let cleanup = 'DISCONNECTED', resourceCleanup = 'NOT_NEEDED', proof, initialRows, session, ca;
-  let methods, initial, businessToken;
+  let methods, initial, businessToken, cancelUsed = false;
   const committedRequest = { ...lease.request, phase: 'committed', installXid: b7Completion.installXid };
   const expected = {
     ...Object.fromEntries(['database', 'databaseOid', 'systemIdentifier', 'ownerOid', 'runtimeOid', 'observerOid'].map(key => [key, lease.request.identity[key]])),
@@ -124,6 +127,44 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     catch {
       broken = true; active = false; void closeResource();
       throw fail('CONTINUITY');
+    }
+  }
+  async function cancelCommit(token, submit) {
+    assertCurrent259CommitCancellationIssuer(token, handle);
+    checkContinuity(token);
+    need(businessToken === token && !cancelUsed && typeof submit === 'function', 'CANCEL_SCOPE');
+    cancelUsed = true;
+    await verify(false, true);
+    const runtime = initialRows[1], identity = committedRequest.identity;
+    const fault = createCurrent259A16FaultPlan({ mode: 'cancel-commit', nonce: randomBytes(32).toString('hex'),
+      database: { name: identity.database, oid: identity.databaseOid, namespaceOid: identity.namespaceOid, systemIdentifier: identity.systemIdentifier },
+      runtime: { oid: runtime.loginOid, pid: runtime.pid, startedAt: runtime.start, clientAddress: runtime.clientAddress, clientPort: runtime.clientPort } });
+    const run = (sql, phase) => settled(() => methods.execOwnerSql(sql, phase));
+    const readyDeadline = performance.now() + 5000;
+    let ownerPending = true, probe, request;
+    const owner = run(fault.ownerSql, 'current259-a16-cancel-owner').finally(() => { ownerPending = false; });
+    const prematureExit = owner.then(() => { throw fail('CANCEL_OWNER_EXIT'); });
+    // Rejection remains observed if the other side wins a readiness race.
+    void prematureExit.catch(() => {});
+    try {
+      let witness;
+      do {
+        need(ownerPending && performance.now() < readyDeadline, 'CANCEL_READY');
+        probe = run(fault.readySql, 'current259-a16-cancel-ready');
+        const output = await Promise.race([probe, prematureExit]);
+        checkContinuity(token);
+        witness = fault.parseReady(own(output, 'stdout'));
+        if (!witness) await Promise.race([delay(25), prematureExit]);
+      } while (!witness);
+      checkContinuity(token);
+      need(ownerPending && performance.now() < readyDeadline, 'CANCEL_READY');
+      request = Promise.resolve(submit());
+      await Promise.all([request, owner.then(output => fault.parseOutcome(own(output, 'stdout'), witness))]);
+      checkContinuity(token);
+    } catch (error) {
+      broken = true; active = false;
+      await Promise.allSettled([closeResource(), owner, probe, request]);
+      throw error;
     }
   }
   async function settled(action, disconnect = false) {
@@ -266,7 +307,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     session = Object.freeze({ source: lease.request.source, owner: clients[0].client, runtime: clients[1].client, observer: clients[2].client,
       identity: parsed.identity, endpoint: parsed.endpoint,
       b7: Object.freeze({ profile: 'B7_ORIGINAL', xid: b7Completion.installXid, routineOid: lease.committedProof.raw.reader.oid, bodySha256: lease.committedProof.raw.reader.bodySha256 }),
-      checkLight, checkContinuity, activateBusinessContinuity, deactivateBusinessContinuity, verifyFull: () => verify(false), verifyRequestBoundary: () => verify(false,true), verifyInstalled259: () => verify(true), close });
+      checkLight, checkContinuity, activateBusinessContinuity, deactivateBusinessContinuity, cancelCommit, verifyFull: () => verify(false), verifyRequestBoundary: () => verify(false,true), verifyInstalled259: () => verify(true), close });
     checkLight(); proof = Object.freeze({ kind: 'CURRENT259_LIVE_SESSIONS' });
     receipts.set(proof, { handle, session });
     impactBoundaries.set(session, verifyImpactFiles);
