@@ -191,6 +191,7 @@ describe("project financing quota PostgreSQL runner", () => {
         "local-staged-migration-controls.cjs",
         "local-staged-migration-acl.sql",
         "local-staged-migration-qualification.json",
+        "local-staged-technical-profile-policy.cjs",
         "local-staged-tail-qualification.cjs", "local-staged-tail-qualification.json", "local-staged-tail-post213.sql", "testdata",
         "migration-baseline.cjs",
         "schema.prisma",
@@ -321,6 +322,7 @@ describe("project financing quota PostgreSQL runner", () => {
       for (const filename of ["run-project-financing-quota-concurrency-local.cjs", "money-bigint-runner-runtime.cjs",
         "local-staged-migrations.cjs", "local-staged-migration-controls.cjs", "local-staged-migration-acl.sql",
         "local-staged-migration-qualification.json",
+        "local-staged-technical-profile-policy.cjs",
         "local-staged-tail-qualification.cjs", "local-staged-tail-qualification.json", "local-staged-tail-post213.sql", "testdata", "migration-baseline.cjs", "schema.prisma",
         "database-dynamic-gate-manifest.json", "migrations"]) {
         cpSync(join(process.cwd(), "prisma", filename), join(prismaRoot, filename), { recursive: true });
@@ -391,6 +393,7 @@ describe("project financing quota PostgreSQL runner", () => {
       for (const filename of ["run-project-financing-quota-concurrency-local.cjs", "money-bigint-runner-runtime.cjs",
         "local-staged-migrations.cjs", "local-staged-migration-controls.cjs", "local-staged-migration-acl.sql",
         "local-staged-migration-qualification.json",
+        "local-staged-technical-profile-policy.cjs",
         "local-staged-tail-qualification.cjs", "local-staged-tail-qualification.json", "local-staged-tail-post213.sql", "testdata", "migration-baseline.cjs", "schema.prisma",
         "database-dynamic-gate-manifest.json", "migrations"]) {
         cpSync(join(process.cwd(), "prisma", filename), join(prismaRoot, filename), { recursive: true });
@@ -463,6 +466,7 @@ describe("project financing quota PostgreSQL runner", () => {
       for (const filename of ["run-project-financing-quota-concurrency-local.cjs", "money-bigint-runner-runtime.cjs",
         "local-staged-migrations.cjs", "local-staged-migration-controls.cjs", "local-staged-migration-acl.sql",
         "local-staged-migration-qualification.json",
+        "local-staged-technical-profile-policy.cjs",
         "local-staged-tail-qualification.cjs", "local-staged-tail-qualification.json", "local-staged-tail-post213.sql", "testdata", "migration-baseline.cjs", "schema.prisma",
         "database-dynamic-gate-manifest.json", "migrations"]) {
         cpSync(join(process.cwd(), "prisma", filename), join(prismaRoot, filename), { recursive: true });
