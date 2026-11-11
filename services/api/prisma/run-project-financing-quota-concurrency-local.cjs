@@ -439,6 +439,93 @@ async function capturePostgresLogs(dockerCommand, options = {}) {
   };
 }
 
+// Diagnostic spellings only: neither a selected callee nor database qualification.
+// Every emitted name/type comes from these literals, never an arbitrary identifier.
+const postgresDiagnosticNames = new Map();
+for (const name of [
+  "acldefault", "aclexplode", "convert_to", "count", "current_database", "current_setting",
+  "encode", "format", "has_any_column_privilege", "has_column_privilege", "has_function_privilege",
+  "has_parameter_privilege", "has_schema_privilege", "has_table_privilege", "jsonb_agg", "jsonb_build_object",
+  "jsonb_each", "jsonb_object_agg", "jsonb_object_keys", "jsonb_set", "pg_backend_pid",
+  "pg_get_constraintdef", "pg_has_role", "string_agg", "to_jsonb", "to_regclass", "to_regnamespace",
+  "to_regprocedure", "to_regrole", "unnest", "array_agg", "cardinality", "getdatabaseencoding",
+  "has_sequence_privilege", "jsonb_array_elements", "jsonb_array_elements_text", "jsonb_build_array",
+  "pg_control_system", "pg_current_xact_id", "pg_current_xact_id_if_assigned", "pg_xact_status",
+  "set_config", "sha256", "split_part", "to_char"
+]) {
+  for (const spelling of [name, "pg_catalog." + name]) postgresDiagnosticNames.set(spelling, spelling);
+}
+for (const name of [
+  "digest", "jg_assert_contract_direct_review_files_complete_v1", "jg_contract_archive_v2_complete_guard",
+  "jg_contract_direct_archive_binding_guard_v1", "jg_contract_direct_archive_proof_v1",
+  "jg_contract_direct_archive_request_sha_v1", "jg_contract_direct_pending_binding_guard_v1",
+  "jg_enforce_file_replacement_exclusive_binding", "jg_guard_contract_direct_archive_retention_binding_v1",
+  "jg_guard_contract_direct_review_file_reference_v1", "jg_guard_contract_direct_review_v1",
+  "jg_materialize_contract_direct_review_files_v1", "jg_protect_contract_direct_archive_file_v1",
+  "jg_protect_contract_direct_review_file_v1", "jg_require_contract_direct_archive_complete_v1",
+  "guard_payment_execution_payer_evidence_immutable", "guard_verified_bank_transaction_observation_evidence_immutable",
+  "jg_contract_direct_pending_file_guard_v1", "protectContractEconomicReview"
+]) {
+  for (const spelling of [name, "public." + name, '"' + name + '"', 'public."' + name + '"']) {
+    postgresDiagnosticNames.set(spelling, spelling);
+  }
+}
+const postgresDiagnosticTypes = new Map();
+for (const [display, catalog] of [
+  ["unknown", "unknown"], ["oid", "oid"], ["text", "text"], ["name", "name"],
+  ["smallint", "int2"], ["integer", "int4"], ["bigint", "int8"], ["boolean", "bool"],
+  ["bytea", "bytea"], ["json", "json"], ["jsonb", "jsonb"], ["record", "record"],
+  ["cstring", "cstring"], ["regclass", "regclass"], ["regproc", "regproc"],
+  ["regprocedure", "regprocedure"], ["regnamespace", "regnamespace"], ["regrole", "regrole"],
+  ['"char"', '"char"'], ["aclitem", "aclitem"], ["xid", "xid"], ["xid8", "xid8"],
+  ["oidvector", "oidvector"], ["int2vector", "int2vector"],
+  ["timestamp without time zone", "timestamp"], ["timestamp with time zone", "timestamptz"]
+]) {
+  for (const spelling of [display, "pg_catalog." + catalog]) {
+    postgresDiagnosticTypes.set(spelling, spelling);
+    postgresDiagnosticTypes.set(spelling + "[]", spelling + "[]");
+  }
+}
+const postgresDiagnosticOperators = new Map([
+  "=", "<>", ">", "->", "->>", "#>", "#>>", "-", "||", "~"
+].map(operator => [operator, operator]));
+function postgresAmbiguityDiagnostic(sqlState, message) {
+  if (sqlState !== "42725" || Buffer.byteLength(message) > 4096) return null;
+  // PG16's server formatter may append this position even in TERSE mode.
+  // Check the original byte budget above; discard only its bounded literal suffix.
+  const position = / at character ([1-9][0-9]{0,9})$/u.exec(message);
+  if (position && Number(position[1]) <= 2147483647) message = message.slice(0, position.index);
+  const operatorPrefix = "operator is not unique: ";
+  if (message.startsWith(operatorPrefix)) {
+    const signature = message.slice(operatorPrefix.length), candidates = [];
+    for (const operator of postgresDiagnosticOperators.values()) {
+      const operands = signature.split(" " + operator + " ");
+      if (operands.length !== 2) continue;
+      const left = postgresDiagnosticTypes.get(operands[0]), right = postgresDiagnosticTypes.get(operands[1]);
+      if (left !== undefined && right !== undefined) candidates.push(left + " " + operator + " " + right);
+    }
+    return candidates.length === 1 ? { messageClass: "OPERATOR_AMBIGUOUS", operatorCall: candidates[0] } : null;
+  }
+  const call = /^function (.+)\(([^()]*)\) is not unique$/u.exec(message);
+  if (call) {
+    const name = postgresDiagnosticNames.get(call[1]);
+    const argumentsList = call[2] === "" ? [] : call[2].split(", ");
+    if (!name || argumentsList.length > 100) return null;
+    const types = argumentsList.map(type => postgresDiagnosticTypes.get(type));
+    if (types.some(type => type === undefined)) return null;
+    return { messageClass: "FUNCTION_CALL_AMBIGUOUS", functionCall: name + "(" + types.join(", ") + ")" };
+  }
+  for (const [prefix, suffix, messageClass] of [
+    ['function name "', '" is not unique', "FUNCTION_NAME_AMBIGUOUS"],
+    ['more than one function named "', '"', "REGPROC_NAME_AMBIGUOUS"]
+  ]) {
+    if (!message.startsWith(prefix) || !message.endsWith(suffix)) continue;
+    const name = postgresDiagnosticNames.get(message.slice(prefix.length, -suffix.length));
+    if (name) return { messageClass, functionName: name };
+  }
+  return null;
+}
+
 function firstPostgresFailure(logs, applicationName) {
   // The unredirected postgres:16 process writes server records to stderr.
   // Reject a saturated tail rather than label a later error as the first.
@@ -472,12 +559,14 @@ function firstPostgresFailure(logs, applicationName) {
       "local fixture file caller column ACL changed": "FIXTURE_FILE_CALLER_COLUMN_ACL_CHANGED",
       "local fixture readback too large": "FIXTURE_READBACK_TOO_LARGE"
     };
+    const diagnostic = postgresAmbiguityDiagnostic(match[2], match[3]);
     return {
       status: "captured",
       sqlState: match[2],
       reason: match[2] === "P0001" && Object.hasOwn(reasons, match[3])
         ? reasons[match[3]]
-        : "POSTGRES_ERROR"
+        : "POSTGRES_ERROR",
+      ...(diagnostic ? { diagnostic } : {})
     };
   }
   return { status: "primary-not-retained" };
