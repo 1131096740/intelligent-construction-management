@@ -19,21 +19,28 @@ test('owned application exposes no raw owner/session claim',async t=>{
  });
 });
 function caseFixture(t,options={}){
- let factory;const permissions=new WeakMap(),holder={exports:{}};
+ let factory,f;const permissions=new WeakMap(),continuities=new WeakSet(),holder={exports:{}};
+ const businessGuard=(token,h)=>{assert.ok(continuities.has(token));assert.equal(h,f.handle);};
  const authorization={claimCurrent259PaymentBusinessPermit(permit,application,handle){
   const record=permissions.get(permit);permissions.delete(permit);
   assert.ok(record&&record.application===application&&record.handle===handle,'untrusted business token');
-  return {scope:record.scope,check(){if(record.closed)throw new Error('closed permission');record.application.inspect();}};
+  const continuityToken=Object.freeze({});continuities.add(continuityToken);
+  return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();}};
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
   name=>name==='./task16-current259-application-factory.cjs'?factory:name==='./task16-current259-payment-run-authorization.cjs'?authorization:require(name),holder);
- const f=owned(t,{...options,paymentModule:holder.exports});factory=f.api;
+ f=owned(t,{...options,businessGuard,paymentModule:holder.exports});factory=f.api;
+ f.view.checkLifetime=f.view.check;
+ f.session.activateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('activate-continuity');};
+ f.session.deactivateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('finish-continuity');};
+ f.session.checkContinuity=token=>{businessGuard(token,f.handle);f.session.checkLight();};
  return {...f,caseApi:holder.exports,issue(application,scope){const token=Object.freeze({});permissions.set(token,{application,handle:f.handle,scope:Object.freeze({...scope,authorizationReference:'synthetic-approved-model-only'})});return token;}};
 }
 
 function paymentModel(f,options={}){
  const runId='01234567-89ab-cdef-0123-456789abcdef';
  f.view.resource.getReceipt=()=>({runId,databaseName:f.session.identity[0].database,port:f.session.endpoint.publishedPort});
+ f.view.resource.getReceiptContinuity=()=>f.view.resource.getReceipt();
  let builds=0,seeds=0,consumers=0,captured;
  const plan={runId:runId.replaceAll('-','').slice(0,12),paidAt:'2026-11-10',openingDate:'2026-11-09',ids:{payment:'0afc53ef-c7d6-4cca-aa7b-f0f10ff629c2',requestKey:'12345678-1234-4234-8234-123456789abc'}};
  const modules={
@@ -91,4 +98,23 @@ test('a case cannot route the fixed owned transport to another payment or method
   await f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}));
  }));
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});assert.equal(f.resourceCloses(),1);
+});
+test('full checks occur at the three quiet boundaries and never inside original seed or case continuity',async t=>{
+ let busy=false;
+ const f=caseFixture(t,{onFull(){assert.equal(busy,false,'full material check during a transaction/request');}});
+ let m;
+ m=paymentModel(f,{async onSeed(){
+  busy=true;
+  try{const c=m.captured().continuity;c.checkLight();await Promise.resolve();c.checkLight();
+   assert.equal(f.calls.filter(x=>x==='permission-full').length,1);assert.equal(f.calls.filter(x=>x==='sessions-full').length,3);
+  }finally{busy=false;}
+ },async onCase(c){
+  busy=true;
+  try{c.checkLight();await Promise.resolve();c.checkLight();
+   assert.equal(f.calls.filter(x=>x==='permission-full').length,2);assert.equal(f.calls.filter(x=>x==='sessions-full').length,4);
+  }finally{busy=false;}
+ }});
+ await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
+ assert.equal(f.calls.filter(x=>x==='permission-full').length,3);assert.equal(f.calls.filter(x=>x==='sessions-full').length,5);
+ assert.deepEqual(f.calls.filter(x=>['activate-continuity','finish-continuity'].includes(x)),['activate-continuity','finish-continuity']);
 });

@@ -60,8 +60,9 @@ function verifyCurrent259PaymentBusinessPlan(file,digest){
  need(arguments.length===2);const saved=readCurrent259PaymentBusinessPlan(file,digest),p=saved.plan;
  const original=base.verifyCurrent259PaymentInstallPlan(p.installation.path,p.installation.sha256);
  let broken=false;
- function check(){try{need(!broken);original.check();const again=readCurrent259PaymentBusinessPlan(file,digest);need(equal(again,saved)&&equal(parent(file),saved.file.parentIdentity));capture(file,saved.file.identity);capture(p.installation.path,p.installation.identity);}catch(error){broken=true;throw error;}}
- check();return Object.freeze({...saved,buildHandle:original.buildHandle,loader:original.loader,check});
+ function checkInputs(){try{need(!broken);const again=readCurrent259PaymentBusinessPlan(file,digest);need(equal(again,saved)&&equal(parent(file),saved.file.parentIdentity));capture(file,saved.file.identity);capture(p.installation.path,p.installation.identity);}catch(error){broken=true;throw error;}}
+ function check(){try{need(!broken);original.check();checkInputs();}catch(error){broken=true;throw error;}}
+ check();return Object.freeze({...saved,buildHandle:original.buildHandle,loader:original.loader,checkInputs,check});
 }
 function parse(args){
  if(args.length===13&&args[0]==='--prepare'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--scenario'&&args[9]==='--paid-at'&&args[11]==='--opening-date')return prepareCurrent259PaymentBusinessPlan({runRoot:args[2],daemonId:args[4],output:args[6],scenario:args[8],paidAt:args[10],openingDate:args[12]});

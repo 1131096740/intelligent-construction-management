@@ -57,3 +57,9 @@ test('business functions replaced during an installation await are rejected rath
  assert.equal(result.status,'STOPPED');assert.equal(f.state.calls.includes('foreign-live'),false);assert.equal(f.state.calls.includes('case'),false);
  assert.equal(f.state.closes,1);
 });
+test('a business continuity check never reaches the full source/tree/tool verifier',async t=>{
+ const f=runFixture(t,{onBusiness:({s,lease})=>{
+  const full=s.state.fullCalls;lease.check();lease.check();assert.equal(s.state.fullCalls,full);lease.verifyFull();assert.ok(s.state.fullCalls>full);
+ }}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+});

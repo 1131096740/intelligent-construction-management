@@ -46,25 +46,27 @@ function modelRow(index){
    settings:after?[{oid:'117',database:'0',config:['default_transaction_read_only=on']}]:[],violations:0}};
 }
 function fixture(change,cleanup){
- const handle=Object.freeze({}),calls=[];
+ const handle=Object.freeze({}),token=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
  let taken=false,closed=false;
- const check=()=>{if(closed)throw Error('fixture closed');};
+ const check=()=>{if(closed)throw Error('fixture closed');if(forbidFull)throw Error('full forbidden');};
+ const lifetime=()=>assert.equal(closed,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);lifetime();};
  const resource={containerId:completion.containerId,databaseName:database,async execOwnerSql(sql,phase){
   check();const index=calls.length;calls.push({phase,sql});const row=structuredClone(modelRow(index));
   change?.(row,index);
   return {stdout:JSON.stringify(row)+'\n'};
  }};
- const view={runId:completion.runId,source,resource,check,verifyFull:check,credentials:()=>({runtime:'f'.repeat(96),observer:'e'.repeat(96)})};
+ const view={runId:completion.runId,source,resource,check,checkLifetime:lifetime,verifyFull:check,credentials:()=>({runtime:'f'.repeat(96),observer:'e'.repeat(96)})};
  const imports={
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './local-staged-current259-profile.cjs':Object.freeze({claimCurrent259TechnicalSupply(result,provided){
    assert.equal(result,completion);assert.equal(provided,handle);assert.equal(taken,false);taken=true;
-   return {source,completion,check};
+   return {source,completion,check,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
   }}),
   './task16-current259-owned-resource.cjs':Object.freeze({claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);check();return view;},async closeCurrent259OwnedResource(provided){assert.equal(provided,handle);closed=true;cleanup?.();}}),
  };
  const holder={exports:{}};
  new Function('require','module','__dirname',fs.readFileSync(modulePath,'utf8'))(name=>imports[name]??require(name),holder,__dirname);
- return {api:holder.exports,handle,calls,closed:()=>closed,stop(){closed=true;}};
+ return {api:holder.exports,handle,token,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
 }
 test('role supply commits once, verifies a new owner backend and admits only the original private result',async()=>{
  const f=fixture();
@@ -147,4 +149,10 @@ test('credential-bearing SQL follows the fixed transaction-local logging control
  const beforeCredentials=statements.slice(0,firstCredential);
  for(const control of ["SET LOCAL log_statement='none';", "SET LOCAL log_min_error_statement='panic';", "SET LOCAL log_error_verbosity='terse';", 'SET LOCAL log_parameter_max_length_on_error=0;', 'SET LOCAL log_min_duration_sample=-1;', 'SET LOCAL debug_print_parse=off;', 'SET LOCAL debug_print_rewritten=off;', 'SET LOCAL debug_print_plan=off;'])assert.ok(beforeCredentials.includes(control),control);
  assert.ok(f.calls.every(c=>c.phase==='current259-roles-install'||!c.sql.includes('e'.repeat(96))));
+});
+
+test('the issued role continuity recursively checks its original technical capability without full work',async()=>{
+ const f=fixture(),result=await f.api.provisionCurrent259Roles(completion,f.handle),lease=f.api.claimCurrent259ProvisionedRoles(result,f.handle);
+ f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
+ assert.throws(()=>lease.checkContinuity({...f.token}));
 });

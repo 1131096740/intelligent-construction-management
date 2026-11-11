@@ -24,9 +24,12 @@ const registry={namespaceOid:'2200',ownerOid:'10',publicDefault:null,globalDefau
 }};
 const roleCompletion=Object.freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:candidateSha,runId,containerId,databaseIdentity:identity,ordinary,roles,databaseAcl,commitXid:'201'});
 function fixture(mutate){
- const calls=[],handle=Object.freeze({}),secretClaim={source,completion:roleCompletion,check(){}};
+ const token=Object.freeze({}),metadata={parent:0};let forbidFull=false;
+ const full=()=>{assert.equal(forbidFull,false);};
+ const issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);};
+ const calls=[],handle=Object.freeze({}),secretClaim={source,completion:roleCompletion,check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
  let closed=false,claimed=false;
- const view={source,runId,verifyFull(){},check(){},resource:{containerId,databaseName:database,async execOwnerSql(sql,phase){
+ const view={source,runId,verifyFull:full,check:full,checkLifetime(){assert.equal(closed,false);},resource:{containerId,databaseName:database,async execOwnerSql(sql,phase){
   const index=calls.length;calls.push({sql,phase});
   const row={nonce,phase,backendPid:11+index,backendStart:`2026-11-11T04:00:0${index}.000000Z`,
    pre:index===0?model():null,registry:index===0?registry:null,fileRoles:index===0?['10','100']:null,
@@ -35,13 +38,14 @@ function fixture(mutate){
   return {stdout:JSON.stringify(row)+'\n'};
  }}};
  const imports={
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './task16-current259-role-provision.cjs':{claimCurrent259ProvisionedRoles(completion,owned){assert.equal(completion,roleCompletion);assert.equal(owned,handle);assert.equal(claimed,false);claimed=true;return secretClaim;}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(owned){assert.equal(owned,handle);assert.equal(closed,false);return view;},async closeCurrent259OwnedResource(owned){assert.equal(owned,handle);closed=true;}},
   'node:crypto':{...require('node:crypto'),randomBytes:()=>Buffer.from(nonce,'hex')},
  };
  const holder={exports:{}};
  new Function('require','module','__dirname',read('task16-current259-seven-install.cjs'))(name=>imports[name]??require(name),holder,__dirname);
- return {api:holder.exports,handle,calls,closed:()=>closed};
+ return {api:holder.exports,handle,token,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed};
 }
 
 test('installs the pinned seven fragments in one write and issues only a same-resource committed continuation',async()=>{
@@ -85,4 +89,10 @@ for(const [name,index,mutate,calls] of [
  await assert.rejects(f.api.installCurrent259SevenFragments(roleCompletion,f.handle),new RegExp(`CURRENT259_SEVEN_INSTALL_${code}`));
  assert.equal(f.calls.length,calls);
  assert.equal(f.closed(),true);
+});
+
+test('issued seven continuity retains the original role capability and rejects copied tokens without full work',async()=>{
+ const f=fixture(),result=await f.api.installCurrent259SevenFragments(roleCompletion,f.handle),lease=f.api.claimCurrent259SevenInstallation(result,f.handle);
+ f.forbidFull();lease.checkContinuity(f.token);assert.equal(f.metadata.parent,1);assert.throws(()=>lease.check());
+ assert.throws(()=>lease.checkContinuity({...f.token}));
 });

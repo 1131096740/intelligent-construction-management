@@ -78,6 +78,9 @@ function createCurrent259ImpactRuntime(session,checkLight){
  const runtime=ownData(session,'runtime'),owner=ownData(session,'owner'),observer=ownData(session,'observer');
  need(runtime&&owner&&observer&&new Set([runtime,owner,observer]).size===3,txCode);
  const verifyFull=ownData(session,'verifyFull'),verifyInstalled259=ownData(session,'verifyInstalled259');
+ const boundaryDescriptor=Object.getOwnPropertyDescriptor(session,'verifyRequestBoundary');
+ const verifyRequestBoundary=boundaryDescriptor&&Object.hasOwn(boundaryDescriptor,'value')?boundaryDescriptor.value:undefined;
+ need(verifyRequestBoundary===undefined||typeof verifyRequestBoundary==='function',txCode);
  need(typeof verifyFull==='function'&&typeof verifyInstalled259==='function',txCode);
  const transaction=runtime.$transaction,identity=ownData(session,'identity'),b7=ownData(session,'b7'),endpoint=ownData(session,'endpoint');
  const privateIPv4=value=>typeof value==='string'&&isIP(value)===4&&(/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(value));
@@ -111,7 +114,7 @@ function createCurrent259ImpactRuntime(session,checkLight){
   try{
    checkLight();need(ownData(session,'source')===source&&JSON.stringify(qualifyCurrent259Source(source))===snapshot
     &&ownData(session,'runtime')===runtime&&ownData(session,'owner')===owner&&ownData(session,'observer')===observer&&runtime.$transaction===transaction
-    &&ownData(session,'verifyFull')===verifyFull&&ownData(session,'verifyInstalled259')===verifyInstalled259&&ownData(session,'identity')===identity&&ownData(session,'b7')===b7&&ownData(session,'endpoint')===endpoint
+    &&ownData(session,'verifyFull')===verifyFull&&ownData(session,'verifyInstalled259')===verifyInstalled259&&(!boundaryDescriptor||Object.getOwnPropertyDescriptor(session,'verifyRequestBoundary')?.value===verifyRequestBoundary)&&ownData(session,'identity')===identity&&ownData(session,'b7')===b7&&ownData(session,'endpoint')===endpoint
     &&Object.entries(endpointValues).every(([k,v])=>ownData(endpoint,k)===v),txCode);
    need(normalized.every((row,i)=>ownData(identity,String(i))===identities[i]&&Object.entries(row).every(([k,v])=>ownData(identities[i],k)===v))
     &&JSON.stringify(Object.fromEntries(['profile','xid','routineOid','bodySha256'].map(k=>[k,ownData(b7,k)])))===b7Snapshot,txCode);
@@ -119,7 +122,7 @@ function createCurrent259ImpactRuntime(session,checkLight){
  }
  check();
  async function full(){
-  check();try{await verifyFull.call(session);}catch{broken=true;throw fault(txCode);}check();
+  check();try{await (verifyRequestBoundary??verifyFull).call(session);}catch{broken=true;throw fault(txCode);}check();
  }
  return Object.freeze({async withTransaction(operation){
   check();if(busy||typeof operation!=='function'){broken=true;throw fault(txCode);}busy=true;

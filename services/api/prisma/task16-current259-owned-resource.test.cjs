@@ -11,23 +11,25 @@ test('plain resource proof cannot create or claim an owned259 resource',async()=
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const sourceFile=path.join(__dirname,'task16-current259-owned-resource.cjs');
 function fixture(){
- const build=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
+ const build=Object.freeze({}),continuityToken=Object.freeze({}),calls=[],state={closeCount:0,alive:true,toolChanged:false},id='12345678-1234-4234-8234-123456789012';
  const source={candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:{ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24'}};
- const loader=Object.freeze({check(){if(!state.alive)throw new Error('STALE_BUILD');},verifyFull(){if(!state.alive)throw new Error('STALE_BUILD');if(state.fullInvalid)throw new Error('STALE_FULL_MATERIAL');},witness(){return {source,build:{trees:Array.from({length:5},(_,i)=>({root:String(i),digest:'d'.repeat(64)}))}};}});
+ const issuer=(token,handle)=>{assert.equal(token,continuityToken);assert.equal(handle,state.continuityHandle);};
+ const loader=Object.freeze({check(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');},checkContinuity(token,handle){issuer(token,handle);state.metadataChecks=(state.metadataChecks??0)+1;if(!state.alive)throw new Error('STALE_METADATA');},verifyFull(){if(state.forbidFull)throw new Error('FULL_SOURCE_FORBIDDEN');if(!state.alive)throw new Error('STALE_BUILD');if(state.fullInvalid)throw new Error('STALE_FULL_MATERIAL');},witness(){return {source,build:{trees:Array.from({length:5},(_,i)=>({root:String(i),digest:'d'.repeat(64)}))}};}});
  const hashes={caSha256:'1'.repeat(64),wrongCaSha256:'2'.repeat(64),correctCertificateSha256:'3'.repeat(64),wrongSanCertificateSha256:'4'.repeat(64),correctCertificateDerSha256:'5'.repeat(64),wrongSanCertificateDerSha256:'6'.repeat(64)};
  const receipt={runId:id,sourceSha:source.candidateSha,endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',daemonId:'synthetic-daemon-12345',imageId:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d',databaseName:'jg_task01_'+id.replaceAll('-',''),containerId:'7'.repeat(64),networkId:'8'.repeat(64),port:32456,status:'started-awaiting-driver-verification',cleanup:{status:'pending'},tls:{...hashes,correctChainVerified:true,correctSanVerified:true,wrongCaChainRejected:true,wrongSanChainVerified:true,wrongSanMismatchVerified:true},requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:hashes.correctCertificateDerSha256},hostOwnerCredentialFilesErased:true,hostPrivateKeyFilesErased:true,hostPrivateMaterialsErased:true,topology:'UNVERIFIED_HOST_PUBLISHED_TLS'};
  const resource={containerId:receipt.containerId,networkId:receipt.networkId,port:receipt.port,databaseName:receipt.databaseName,caPath:'/private/tmp/model/run/tls-private/ca.crt',wrongCaPath:'/private/tmp/model/run/tls-private/wrong-ca.crt',serverCertHashes:hashes,getReceipt(){return structuredClone(receipt);},async close(){state.closeCount++;if(state.closeFailure)throw new Error('CLOSE_PRIVATE_DETAIL');receipt.status='closed';receipt.cleanup={status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true};},async captureLogCursor(){calls.push('inspect');if(state.inspectFailure)throw new Error('INSPECT_FAILED');if(state.inspectFullInvalid)state.fullInvalid=true;return {runId:id,containerId:resource.containerId};},async execOwnerSql(...args){calls.push(['owner',...args]);return {stdout:'fixed-result'};},async observePresentedCertificate(){},async setServerCertificate(){},async readPlaintextRejectionEvidence(){},async inspectConnectionEndpoint(){return {serverAddress:"172.29.0.2"};}};
  const tools=new Map([['/Applications/Docker.app/Contents/Resources/bin/docker','6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40'],['/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl','103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c']]);
- const mockFs={constants:{X_OK:1},realpathSync:p=>p,existsSync:()=>false,lstatSync:()=>({uid:process.getuid(),mode:0o40700,isDirectory:()=>true,isSymbolicLink:()=>false}),statSync:()=>({uid:501,mode:0o100755,dev:1,ino:2,size:3,mtimeMs:4,ctimeMs:5,isFile:()=>true}),accessSync(){},readFileSync:p=>Buffer.from(p)};
+ const mockFs={constants:{X_OK:1},realpathSync:p=>p,existsSync:()=>false,lstatSync:()=>({uid:process.getuid(),mode:0o40700,isDirectory:()=>true,isSymbolicLink:()=>false}),statSync:()=>({uid:501,gid:20,mode:0o100755,dev:1,ino:2,size:3,mtimeMs:4,ctimeMs:5,isFile:()=>true}),accessSync(){},readFileSync:p=>Buffer.from(p)};
  const mockCrypto={randomUUID:()=>id,randomBytes:()=>Buffer.alloc(48,9),createHash:()=>({update(bytes){this.bytes=String(bytes);return this;},digest(){return state.toolChanged?'0'.repeat(64):tools.get(this.bytes)||crypto.createHash('sha256').update(this.bytes).digest('hex');}})};
  const entries={},fixed={
+  './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer,checkCurrent259FileIdentity(file,identity){assert.ok(tools.has(file));assert.equal(identity.ctimeMs,5);}},
   './task16-current259-client-loader.cjs':Object.freeze({loadCurrent259Client(handle){calls.push('load');if(handle!==build)throw new Error('CURRENT259_BUILD_HANDLE');return loader;}}),
   './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},async startCurrent259TechnicalPostgres(options){calls.push('technical-start');state.options=options;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;}}
  };
  function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
  privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
  const instance={exports:{}};new Function('require','module','__dirname',fs.readFileSync(sourceFile,'utf8'))(privateRequire,instance,__dirname);
- return {api:instance.exports,build,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
+ return {api:instance.exports,build,continuityToken,calls,state,receipt,resource,loader,plan:{artifactsDir:'/private/tmp/model/run',daemonId:'synthetic-daemon-12345'}};
 }
 test('a completed actual-shaped start owns one resource and the original loader only within its callback',async()=>{
  const f=fixture();let retained,view;
@@ -230,4 +232,16 @@ test('the original inspected endpoint is fetched afresh and revoked with its own
  });
  await assert.rejects(retained.inspectConnectionEndpoint(),/CURRENT259_RESOURCE_CLOSED/u);
  assert.equal(count,2);
+});
+test('only an active business token switches the original resource wrapper to bounded metadata and full remains explicit',async()=>{
+ const f=fixture();let retained;
+ await assert.rejects(f.api.withCurrent259TechnicalResource(f.build,f.plan,undefined,async handle=>{
+  f.state.continuityHandle=handle;const view=f.api.claimCurrent259TechnicalResource(handle);retained=view;f.state.forbidFull=true;
+  view.activateBusinessContinuity(f.continuityToken);
+  assert.equal(f.api.claimCurrent259TechnicalResourceContinuity(handle,f.continuityToken),view);
+  assert.equal(view.resource.getReceipt().runId,f.receipt.runId);
+  await view.resource.execOwnerSql('SELECT 1','current259-live-catalog');
+  assert.ok(f.state.metadataChecks>0);assert.throws(()=>view.verifyFull(),/FULL_SOURCE_FORBIDDEN/);
+ }));
+ f.state.forbidFull=false;assert.throws(()=>retained.checkContinuity(f.continuityToken));assert.equal(f.state.closeCount,1);
 });

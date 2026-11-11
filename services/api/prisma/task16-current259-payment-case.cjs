@@ -26,7 +26,7 @@ async function executeCurrent259PaymentCase(lease,permit){
  let attempted=false,permission;
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
-  permission.check();lease.check();
+  permission.check();lease.activateContinuity(permission.continuityToken);lease.check();
   const {session,loader,source}=lease,load=Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value;
   need(typeof load==='function'&&qualifiedFetch);
   const original={...Object.fromEntries(['owner','runtime','observer','verifyFull','checkLight'].map(k=>[k,session[k]]))};
@@ -39,7 +39,7 @@ async function executeCurrent259PaymentCase(lease,permit){
     Object.keys(original).every(k=>session[k]===original[k])&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
     Object.getOwnPropertyDescriptor(globalThis,'fetch')?.value===originalFetch);
   };
-  check();await original.verifyFull.call(session);check();
+  check();await permission.verifyFull();await original.verifyFull.call(session);check();
   const modules=load.call(loader);check();
   const names=['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss'];
   const methods=Object.fromEntries(names.map(k=>{const d=Object.getOwnPropertyDescriptor(modules,k);need(d&&Object.hasOwn(d,'value')&&typeof d.value==='function');return [k,d.value];}));
@@ -55,7 +55,7 @@ async function executeCurrent259PaymentCase(lease,permit){
   attempted=true;
   const prepared=await methods.seedRegisteredPgFixture(execution,plan,Object.freeze({checkLight:check,fetch:transport}));check();
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
-  await original.verifyFull.call(session);check();
+  await permission.verifyFull();await original.verifyFull.call(session);check();
   const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
   const assertHttpRequest=(route,method)=>{
    checkPrepared();const ids=plan.ids;
@@ -65,9 +65,10 @@ async function executeCurrent259PaymentCase(lease,permit){
   const handler=scope.scenario==='normal'?methods.runRegisteredNullCrossCompanyCommit:methods.runRegisteredNullCrossCompanyResponseLoss;
   need(['normal','response-loss'].includes(scope.scenario));
   const result=await handler(execution,frozen,Object.freeze({checkLight:checkPrepared,fetch:transport,assertHttpRequest}));checkPrepared();
-  await original.verifyFull.call(session);checkPrepared();
+  await permission.verifyFull();await original.verifyFull.call(session);checkPrepared();
   const caseId=scope.scenario==='normal'?'registered.null-cross-company.commit':'registered.null-cross-company.response-loss';
   need(result&&result.caseId===caseId&&result.passed===true&&[result.executionId,result.rootId].every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value)));
+  lease.finishContinuity(permission.continuityToken);permission.check();
   return Object.freeze({caseId,passed:true,executionId:result.executionId,rootId:result.rootId,financialAcceptance:false});
  }catch{
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';

@@ -1,9 +1,10 @@
 'use strict';
+const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 const { randomBytes } = require('node:crypto');
 const { isDeepStrictEqual: equal, types } = require('node:util');
 // Load the genuine technical lineage before the original physical producer.
 const { claimCurrent259B7Installation } = require('./task16-current259-b7-install.cjs');
-const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
+const { claimCurrent259TechnicalResource, claimCurrent259TechnicalResourceContinuity, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { current259ClientIdentitySql, parseCurrent259ClientSessions } = require('./task16-current259-session-identity.cjs');
 const { renderCurrent259CatalogRead, parseCurrent259CatalogRead } = require('./task16-current259-catalog.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
@@ -41,7 +42,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
   let active = true, broken = false, checking = false, closing, resourceClosing;
   let cleanup = 'DISCONNECTED', resourceCleanup = 'NOT_NEEDED', proof, initialRows, session, ca;
-  let methods, initial;
+  let methods, initial, businessToken;
   const committedRequest = { ...lease.request, phase: 'committed', installXid: b7Completion.installXid };
   const expected = {
     ...Object.fromEntries(['database', 'databaseOid', 'systemIdentifier', 'ownerOid', 'runtimeOid', 'observerOid'].map(key => [key, lease.request.identity[key]])),
@@ -55,6 +56,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     return resourceClosing;
   }
   function checkLight() {
+    if(businessToken)return checkContinuity(businessToken);
     need(active && !broken, 'CLOSED');
     try {
       lease.check(); view.check();
@@ -80,6 +82,37 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       throw fail('CONTINUITY');
     }
   }
+  function checkContinuity(token) {
+    businessIssuer(token,handle);need(active && !broken, 'CLOSED');
+    try {
+      lease.checkContinuity(token); view.checkLifetime();
+      need(claimCurrent259TechnicalResourceContinuity(handle,token) === view && view.loader === loader && loader.Class === Class &&
+        lease.completion === b7Completion && equal(view.source, lease.source) &&
+        b7Completion.installXid === committedRequest.installXid &&
+        view.runId === lease.request.identity.runId && resource.databaseName === expected.database);
+      need(Object.keys(methods).every(key => own(resource, key) === methods[key]));
+      const current = own(resource,'getReceiptContinuity')(token);
+      need(['runId', 'containerId', 'networkId', 'databaseName', 'port'].every(key => current[key] === initial[key]) &&
+        current.requestedCertificateMode === 'correct' && current.reloadState === 'OBSERVED_PEER_CERTIFICATE_MATCHED' &&
+        current.presentedCertificate?.mode === 'correct' &&
+        current.presentedCertificate.derSha256 === initial.tls.correctCertificateDerSha256 &&
+        current.tls.caSha256 === initial.tls.caSha256);
+      if(ca)checkCurrent259FileIdentity(resource.caPath,ca.identity);
+      for (const entry of clients) {
+        need(entry.registered, 'CLIENT_REGISTRATION_UNKNOWN');
+        need(METHOD_NAMES.every(key => entry.client[key] === entry.methods[key]), 'METHOD_CHANGED');
+      }
+    } catch {
+      broken = true; active = false;
+      void closeResource();
+      throw fail('CONTINUITY');
+    }
+  }
+  function activateBusinessContinuity(token){
+    businessIssuer(token,handle);need(!businessToken||businessToken===token,'CONTINUITY');
+    view.activateBusinessContinuity(token);checkContinuity(token);businessToken=token;
+  }
+  function deactivateBusinessContinuity(token){businessIssuer(token,handle);need(businessToken===token,'CONTINUITY');checkContinuity(token);view.deactivateBusinessContinuity(token);businessToken=undefined;}
   async function settled(action, disconnect = false) {
     if (!disconnect) checkLight();
     let timer;
@@ -164,10 +197,10 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       typeof row.readerStart === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(row.readerStart) &&
       equal(own(row, 'sessions'), projection.slice().sort((a, b) => a.pid - b.pid)), 'INDEPENDENT_IDENTITY');
   }
-  async function verify(installedOnly = false) {
+  async function verify(installedOnly = false, sourceContinuityOnly = false) {
     try {
       checkLight(); need(!checking, 'CONCURRENT_VERIFY'); checking = true;
-      view.verifyFull(); checkLight();
+      if((installedOnly||sourceContinuityOnly)&&businessToken)view.checkContinuity(businessToken);else view.verifyFull(); checkLight();
       const physical = await endpoint(), nonce = randomBytes(32).toString('hex');
       const indices = installedOnly ? [0, 2] : [0, 1, 2];
       const observed = await observe(indices, nonce);
@@ -180,7 +213,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       }
       need(initialRows.every(row => row.serverAddress === physical.serverAddress), 'PHYSICAL_ENDPOINT');
       await independentlyObserve(initialRows, nonce);
-      await catalog(); view.verifyFull(); checkLight();
+      await catalog(); if((installedOnly||sourceContinuityOnly)&&businessToken)view.checkContinuity(businessToken);else view.verifyFull(); checkLight();
     } catch {
       broken = true; active = false; await closeResource(); throw fail('VERIFICATION');
     } finally { checking = false; }
@@ -218,7 +251,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     session = Object.freeze({ source: lease.request.source, owner: clients[0].client, runtime: clients[1].client, observer: clients[2].client,
       identity: parsed.identity, endpoint: parsed.endpoint,
       b7: Object.freeze({ profile: 'B7_ORIGINAL', xid: b7Completion.installXid, routineOid: lease.committedProof.raw.reader.oid, bodySha256: lease.committedProof.raw.reader.bodySha256 }),
-      checkLight, verifyFull: () => verify(false), verifyInstalled259: () => verify(true), close });
+      checkLight, checkContinuity, activateBusinessContinuity, deactivateBusinessContinuity, verifyFull: () => verify(false), verifyRequestBoundary: () => verify(false,true), verifyInstalled259: () => verify(true), close });
     checkLight(); proof = Object.freeze({ kind: 'CURRENT259_LIVE_SESSIONS' });
     receipts.set(proof, { handle, session });
     value = await consume(proof); checkLight();

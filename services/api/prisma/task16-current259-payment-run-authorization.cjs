@@ -3,7 +3,7 @@
 // This sole fresh-main entry owns installation and the in-memory B7 permission.
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
-const permissions=new WeakMap(),businessPermissions=new WeakMap();
+const permissions=new WeakMap(),businessPermissions=new WeakMap(),businessContinuities=new WeakMap();
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
 const need=(ok,suffix='INVALID')=>{if(!ok)throw fault(suffix);};
@@ -43,18 +43,29 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
   }});
  }catch(error){revoke(entry||currentRun);throw error;}
 }
+function assertCurrent259PaymentBusinessContinuity(token,handle){
+ const entry=token&&!types.isProxy(token)&&businessContinuities.get(token),state=currentRun;
+ try{
+  need(arguments.length===2&&entry&&entry===state?.business&&entry.active&&entry.claimed&&entry.handle===handle&&state.handle===handle&&
+   state.active&&!state.controller.signal.aborted&&Date.now()<=state.endAt&&state.source===entry.source&&
+   state.checkedBuild===entry.build&&state.businessB7===entry.b7&&state.businessLive===entry.liveProof&&state.businessApplication===entry.application&&state.businessScope===entry.scope&&state.view.loader===entry.loader&&data(state.view,'checkLifetime')===entry.lifetime,'BUSINESS_CONTINUITY');
+  importsCheck();state.checkedInputs();entry.lifetime.call(state.view);
+  const now=read(state.plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,expectedIdentity:state.attempt.identity,code:'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED'});
+  need(now.sha256===state.attempt.sha256,'BUSINESS_CONTINUITY');return true;
+ }catch(error){if(entry)entry.active=false;revoke(state);throw error;}
+}
 function claimCurrent259PaymentBusinessPermit(permit,application,handle){
  const entry=permit&&!types.isProxy(permit)&&businessPermissions.get(permit);
  if(entry)businessPermissions.delete(permit);
  try{
   need(arguments.length===3&&entry&&entry===currentRun?.business&&entry.active&&!entry.claimed&&
    entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
-  entry.claimed=true;entry.check();
-  return Object.freeze({scope:entry.scope,check:entry.check});
+  entry.claimed=true;const token=Object.freeze({kind:'CURRENT259_PRIVATE_BUSINESS_CONTINUITY'});entry.continuityToken=token;businessContinuities.set(token,entry);entry.check();
+  return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull});
  }catch(error){revoke(currentRun);throw error;}
 }
 // Publish the only export before the fixed consumer can require it in main.
-const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit});
+const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity});
 module.exports=moduleApi;
 // B7's original lineage imports the technical owner before loader/core caches.
 const records=[];
@@ -125,7 +136,7 @@ function parse(args){
 async function run(args){
  const requestedOnce=Array.isArray(args)&&['--once','--business-once'].includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
- let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow;
+ let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
   const planModule=request.business?original('../../../scripts/prepare-task16-current259-payment-business.cjs',['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']):original('../../../scripts/prepare-task16-current259-payment-install.cjs',['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan']);
@@ -145,6 +156,7 @@ async function run(args){
    executionAllowed:false,nativeAdmission:false,financialAcceptance:false,liveSessionAdmission:false};
   // Capture the fixed business closure before the first installation await,
   // never adopt a cache/export replacement after B7 has already been written.
+  if(request.business)original('./task16-current259-business-continuity.cjs',['captureCurrent259BusinessIssuer']).captureCurrent259BusinessIssuer();
   businessFlow=request.business?Object.freeze({
    withCurrent259LiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259LiveSessions']).withCurrent259LiveSessions,
    withCurrent259ApplicationEnvironment:original('./task16-current259-application-environment.cjs',['withCurrent259ApplicationEnvironment']).withCurrent259ApplicationEnvironment,
@@ -157,12 +169,12 @@ async function run(args){
    checked=plans.verifyCurrent259PaymentInstallPlan(request.file,request.sha256);
    need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();receipt.sourceMaterialVerified=true;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
-   controller=new AbortController();process.once('SIGINT',abort);process.once('SIGTERM',abort);timer=setTimeout(abort,plan.limits.resourceMs);
+   controller=new AbortController();endAt=Date.now()+plan.limits.resourceMs;process.once('SIGINT',abort);process.once('SIGTERM',abort);timer=setTimeout(abort,plan.limits.resourceMs);
    started=true;
    await withCurrent259TechnicalResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt());
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,handle,view,source,planSha256:request.sha256,claimed:false,writeUsed:false};
+    state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -217,15 +229,16 @@ async function run(args){
          state.check();environment.check();
          const inspect=data(application,'inspect'),runtime=data(application,'runtime');
          need(typeof inspect==='function'&&inspect.call(application).runtime===runtime,'BUSINESS_APPLICATION');
-         const business={active:true,claimed:false,application,handle,liveProof,b7,scope:Object.freeze({...plan.case,
+         const business={active:true,claimed:false,application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId})};
-         state.business=business;
-         business.check=()=>{
+         state.business=business;state.businessB7=b7;state.businessLive=liveProof;state.businessApplication=application;state.businessScope=business.scope;
+         business.verifyFull=()=>{
           try{state.check();environment.check();need(business.active&&state.business===business&&currentRun===state&&
            business.handle===handle&&business.b7===b7&&business.liveProof===liveProof&&data(application,'inspect')===inspect&&
            data(application,'runtime')===runtime&&inspect.call(application).runtime===runtime,'BUSINESS_SCOPE');}
           catch(error){business.active=false;revoke(state);throw error;}
          };
+         business.check=()=>assertCurrent259PaymentBusinessContinuity(business.continuityToken,handle);
          const businessPermit=Object.freeze({kind:'CURRENT259_PRIVATE_PAYMENT_CASE'});businessPermissions.set(businessPermit,business);
          stage='seedAndSelectedCase';
          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
