@@ -7,10 +7,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
-const container = {
-  id: "a".repeat(64), name: "jiangkong-pfq-concurrency-fixture",
-  runId: "01234567-89ab-cdef-0123-456789abcdef"
-};
 const database = "jiangkong_project_financing_quota_concurrency";
 const databaseUrl = "postgresql://jiangkong:local@127.0.0.1:55432/" + database +
   "?application_name=jg-pfq-first-01234567-89ab-cdef-0123-456789abcdef";
