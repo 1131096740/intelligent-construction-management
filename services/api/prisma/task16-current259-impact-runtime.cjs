@@ -4,6 +4,7 @@
 const {types}=require('node:util');
 const {isIP}=require('node:net');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {verifyCurrent259ImpactFileBoundary}=require('./task16-current259-live-sessions.cjs');
 const txCode='TASK16_CLIENT_IMPACT_READER_TRANSACTION';
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const fault=code=>Object.assign(new Error(code),{code});
@@ -124,13 +125,19 @@ function createCurrent259ImpactRuntime(session,checkLight){
  async function full(){
   check();try{await (verifyRequestBoundary??verifyFull).call(session);}catch{broken=true;throw fault(txCode);}check();
  }
+ function fileBoundary(){
+  try{verifyCurrent259ImpactFileBoundary(session);}catch{broken=true;throw fault(txCode);}
+ }
  return Object.freeze({async withTransaction(operation){
   check();if(busy||typeof operation!=='function'){broken=true;throw fault(txCode);}busy=true;
   let entered=false,returned=false;
   try{
+   fileBoundary();
    await full();
+   fileBoundary();
    const result=await transaction.call(runtime,async tx=>{
     check();need(!entered&&tx&&typeof tx==='object'&&![runtime,owner,observer].includes(tx),txCode);entered=true;
+    fileBoundary();
     const query=tx.$queryRawUnsafe;need(typeof query==='function',txCode);
     let active=true,reading=false,reads=0,failed=false;
     const run=async(sql,args)=>{try{return await query.call(tx,sql,...args);}catch{failed=true;throw fault(txCode);}};
@@ -159,10 +166,10 @@ function createCurrent259ImpactRuntime(session,checkLight){
      need(await verify()===startedAt,txCode);
      // Owner/observer-only verification: never probe the busy runtime pool here.
      try{await verifyInstalled259.call(session);}catch{failed=true;throw fault(txCode);}
-     check();need(!failed,txCode);return value;
+     check();need(!failed,txCode);fileBoundary();return value;
     }finally{active=false;}
    },{isolationLevel:'Serializable'});
-   returned=true;await full();check();need(entered,txCode);return result;
+   returned=true;fileBoundary();await full();check();need(entered,txCode);fileBoundary();return result;
   }catch(error){
    if(returned)throw Object.assign(fault(txCode),{transactionOutcome:'RETURNED_READBACK_UNCONFIRMED'});
    throw error;

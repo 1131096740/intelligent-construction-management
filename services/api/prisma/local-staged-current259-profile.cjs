@@ -97,7 +97,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  function checkContinuity(businessToken){try{
   businessIssuer(businessToken,handle);need(!failed&&!aborted()&&!cancellation.signal.aborted);bindings();view.checkContinuity(businessToken);
   need(view.source===source&&view.build===build&&view.resource===resource);
-  const r=resource.getReceipt();need(r.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&r.limits?.totalDeadlineMs===3600000);
+  const r=resource.getReceiptContinuity(businessToken);need(r.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&r.limits?.totalDeadlineMs===3600000);
   need(isDeepStrictEqual({runId:r.runId,containerId:r.containerId,networkId:r.networkId,database:r.databaseName,port:r.port,name:r.containerName},frozenIdentity));
  }catch(error){void stop().catch(()=>{});throw error;}}
  const token=Object.freeze({kind:ID});

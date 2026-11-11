@@ -13,9 +13,9 @@ function fixture(options={}){
  const before=parser(JSON.stringify(observed()),request);
  const stagedProof=parser(JSON.stringify(staged),{...request,phase:'staged'},before);
  const committedProof=parser(JSON.stringify(proofRow),{...request,phase:'committed',installXid:'1000'},stagedProof);
- let resourceClosed=0,claimed=false,cursor=0,fulls=0;
+ let resourceClosed=0,claimed=false,cursor=0,fulls=0,scans=0;
  const continuityToken=options.continuityToken??Object.freeze({});
- const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();};
+ const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();options.onContinuity?.();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId};
  const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2',serverPort:5432};
@@ -31,7 +31,7 @@ function fixture(options={}){
   async $connect(){calls.push(['connect',this.index]);await options.onConnect?.(this);}
   async $queryRawUnsafe(_sql,nonce){calls.push(['identity',this.index]);const row={...rows[this.index],nonce};options.onIdentity?.(row,this.index);return [row];}
   async $disconnect(){this.disconnects++;calls.push(['disconnect',this.index]);options.onDisconnect?.(this);}
-  async $transaction(){throw new Error('not part of identity phase');}
+  async $transaction(callback,opts){assert.equal(this.index,1);assert.ok(options.onTransaction);return options.onTransaction(callback,opts);}
  }
  const receipt={runId:identity.runId,containerId:endpoint.containerId,networkId:endpoint.networkId,databaseName:identity.database,port:endpoint.publishedPort,
   requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:'d'.repeat(64)},tls:{caSha256:'c'.repeat(64),correctCertificateDerSha256:'d'.repeat(64)}};
@@ -44,7 +44,7 @@ function fixture(options={}){
    options.onOwner?.(value);return {stdout:JSON.stringify(value)};
   }};
  resource.getReceiptContinuity=token=>{continuity(token);return clone(receipt);};
- const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
+ const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyBusinessFiles(token){continuity(token);calls.push(['scan',++scans]);options.onScan?.(scans);},verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
  const imports={
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
   './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request,stagedProof,committedProof,check,checkContinuity:continuity};}},
@@ -67,6 +67,69 @@ test('three scoped clients retain exact same-handle identities and expire after 
  assert.equal(f.clients.length,3);assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
  assert.throws(()=>session.checkLight());assert.throws(()=>f.api.claimCurrent259LiveSessions(proof,f.handle));
  assert.equal(f.resourceClosed(),0);
+});
+
+function businessProvider(options={}){
+ const continuityToken=Object.freeze({});let f;
+ const tx={$queryRawUnsafe:async sql=>{
+  assert.ok(!sql.includes('jg_read_registered_payment_impacts'));
+  f.calls.push(['runtime-identity']);
+  return [{startedAt:'2026-11-11T04:00:00.000001Z',clientAddress:'172.19.0.1',clientPort:53101,serverAddress:'172.19.0.2',serverPort:5432}];
+ }};
+ f=fixture({...options,continuityToken,async onTransaction(callback,opts){
+  assert.deepEqual(opts,{isolationLevel:'Serializable'});
+  f.calls.push(['transaction']);const value=await callback(tx);f.calls.push(['commit']);return value;
+ }});
+ const importImpact=name=>name==='./task16-current259-live-sessions.cjs'?f.api:require(name);
+ const impact=new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-impact-runtime.cjs'),'utf8')+'\nreturn module.exports;')(importImpact,{exports:{}});
+ const run=consume=>f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);session.activateBusinessContinuity(continuityToken);
+  const provider=impact.createCurrent259ImpactRuntime(session,session.checkLight);
+  f.calls.length=0;options.onProvider?.();
+  return consume(provider,tx);
+ });
+ return {...f,run};
+}
+test('the original provider scans the branded runtime files at six fixed boundaries without dropping real observation order',async()=>{
+ const f=businessProvider();let trace;
+ await f.run(async(provider,tx)=>{
+  assert.equal(await provider.withTransaction(actual=>{assert.equal(actual,tx);f.calls.push(['operation']);return 'done';}),'done');
+  trace=f.calls.slice();
+ });
+ const observe=indices=>[['inspect'],...indices.map(index=>['identity',index]),['owner','current259-live-independent'],['owner','current259-live-catalog']];
+ assert.deepEqual(trace,[['scan',1],...observe([0,1,2]),['scan',2],['transaction'],['scan',3],['runtime-identity'],['operation'],['runtime-identity'],
+  ...observe([0,2]),['scan',4],['commit'],['scan',5],...observe([0,1,2]),['scan',6]]);
+});
+for(const boundary of [1,2,3,4,5,6])test('a failed file boundary stops a provider transaction at scan '+boundary,async()=>{
+ const f=businessProvider({onScan(n){if(n===boundary)throw new Error('file changed');}});
+ let failure,secondFailed=false,secondEntered=false;
+ const scopeFailure=await f.run(async provider=>{
+  try{await provider.withTransaction(()=>undefined);}catch(error){failure=error;}
+  try{await provider.withTransaction(()=>{secondEntered=true;});}catch{secondFailed=true;}
+ }).catch(error=>error);
+ assert.ok(failure);
+ assert.equal(failure.transactionOutcome,boundary<=4?undefined:'RETURNED_READBACK_UNCONFIRMED');
+ assert.deepEqual(f.calls.filter(row=>row[0]==='scan').map(row=>row[1]),Array.from({length:boundary},(_,i)=>i+1));
+ assert.equal(f.calls.some(row=>row[0]==='commit'),boundary>4);
+ assert.equal(secondFailed,true);assert.equal(secondEntered,false);
+ assert.match(scopeFailure?.message??'',/FAILED_CLOSED/u);
+});
+test('each of the original 17 verification actions rechecks authority after settlement',async()=>{
+ for(let target=1;target<=17;target++){
+  let active=false,actions=0,revoked=false,failure;
+  const observed=()=>{if(active&&++actions===target)revoked=true;};
+  const f=businessProvider({
+   onProvider(){active=true;},onInspect:observed,onIdentity:observed,onOwner:observed,onCatalog:observed,
+   onContinuity(){assert.equal(revoked,false,'original authority was revoked');},
+  });
+  const scopeFailure=await f.run(async provider=>{
+   try{await provider.withTransaction(()=>undefined);}catch(error){failure=error;}
+  }).catch(error=>error);
+  assert.ok(failure,'revocation after original verification action '+target);
+  assert.equal(actions,target);
+  assert.equal(failure.transactionOutcome,target>11?'RETURNED_READBACK_UNCONFIRMED':undefined);
+  assert.match(scopeFailure?.message??'',/FAILED_CLOSED/u);
+ }
 });
 
 test('busy-runtime verification only queries owner and observer while independently checking all three',async()=>{

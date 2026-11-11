@@ -9,7 +9,7 @@ const { current259ClientIdentitySql, parseCurrent259ClientSessions } = require('
 const { renderCurrent259CatalogRead, parseCurrent259CatalogRead } = require('./task16-current259-catalog.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
 
-const receipts = new WeakMap(), used = new WeakSet();
+const receipts = new WeakMap(), impactBoundaries = new WeakMap(), used = new WeakSet();
 const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
 const METHOD_NAMES = ['$disconnect', '$connect', '$queryRawUnsafe', '$transaction'];
@@ -32,6 +32,11 @@ function claimCurrent259LiveSessions(proof, handle) {
   receipts.delete(proof);
   record.session.checkLight();
   return record.session;
+}
+function verifyCurrent259ImpactFileBoundary(session) {
+  // The installed-session scope is the only producer of this check. Plain
+  // sessions and the old inactive business path retain their original checks.
+  impactBoundaries.get(session)?.();
 }
 
 async function withCurrent259LiveSessions(b7Completion, handle, consume) {
@@ -113,6 +118,14 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     view.activateBusinessContinuity(token);checkContinuity(token);businessToken=token;
   }
   function deactivateBusinessContinuity(token){businessIssuer(token,handle);need(businessToken===token,'CONTINUITY');checkContinuity(token);view.deactivateBusinessContinuity(token);businessToken=undefined;}
+  function verifyImpactFiles() {
+    if (!businessToken) return;
+    try { checkContinuity(businessToken); view.verifyBusinessFiles(businessToken); }
+    catch {
+      broken = true; active = false; void closeResource();
+      throw fail('CONTINUITY');
+    }
+  }
   async function settled(action, disconnect = false) {
     if (!disconnect) checkLight();
     let timer;
@@ -200,7 +213,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   async function verify(installedOnly = false, sourceContinuityOnly = false) {
     try {
       checkLight(); need(!checking, 'CONCURRENT_VERIFY'); checking = true;
-      if((installedOnly||sourceContinuityOnly)&&businessToken)view.checkContinuity(businessToken);else view.verifyFull(); checkLight();
+      if (!((installedOnly || sourceContinuityOnly) && businessToken)) { view.verifyFull(); checkLight(); }
       const physical = await endpoint(), nonce = randomBytes(32).toString('hex');
       const indices = installedOnly ? [0, 2] : [0, 1, 2];
       const observed = await observe(indices, nonce);
@@ -213,7 +226,9 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       }
       need(initialRows.every(row => row.serverAddress === physical.serverAddress), 'PHYSICAL_ENDPOINT');
       await independentlyObserve(initialRows, nonce);
-      await catalog(); if((installedOnly||sourceContinuityOnly)&&businessToken)view.checkContinuity(businessToken);else view.verifyFull(); checkLight();
+      await catalog();
+      if (!((installedOnly || sourceContinuityOnly) && businessToken)) view.verifyFull();
+      checkLight();
     } catch {
       broken = true; active = false; await closeResource(); throw fail('VERIFICATION');
     } finally { checking = false; }
@@ -254,6 +269,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       checkLight, checkContinuity, activateBusinessContinuity, deactivateBusinessContinuity, verifyFull: () => verify(false), verifyRequestBoundary: () => verify(false,true), verifyInstalled259: () => verify(true), close });
     checkLight(); proof = Object.freeze({ kind: 'CURRENT259_LIVE_SESSIONS' });
     receipts.set(proof, { handle, session });
+    impactBoundaries.set(session, verifyImpactFiles);
     value = await consume(proof); checkLight();
     await verify();
   } catch {
@@ -265,4 +281,4 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   return value;
 }
 
-module.exports = Object.freeze({ withCurrent259LiveSessions, claimCurrent259LiveSessions });
+module.exports = Object.freeze({ withCurrent259LiveSessions, claimCurrent259LiveSessions, verifyCurrent259ImpactFileBoundary });

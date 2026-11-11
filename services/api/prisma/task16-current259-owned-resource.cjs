@@ -100,6 +100,10 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   try{businessIssuer(token,handle);checkLifetime();loader.checkContinuity(token,handle);for(const key of ['docker','openssl'])checkCurrent259FileIdentity(TOOLS[key],toolIdentities[key]);checkLifetime();}
   catch(error){invalidate();void close().catch(()=>{});throw error;}
  }
+ function verifyBusinessFiles(token){
+  try{businessIssuer(token,handle);need(businessToken===token,'CURRENT259_RESOURCE_CLOSED');checkLifetime();loader.verifyBusinessFiles(token,handle);checkLifetime();}
+  catch(error){invalidate();void close().catch(()=>{});throw error;}
+ }
  function activateBusinessContinuity(token){try{checkContinuity(token);need(!businessToken||businessToken===token,'CURRENT259_RESOURCE_CLOSED');businessToken=token;}catch(error){invalidate();void close().catch(()=>{});throw error;}}
  function deactivateBusinessContinuity(token){businessIssuer(token,handle);need(businessToken===token,'CURRENT259_RESOURCE_CLOSED');checkContinuity(token);businessToken=undefined;}
  function checkOperation(){if(businessToken)checkContinuity(businessToken);else check();}
@@ -123,7 +127,7 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical){
   for(const key of METHODS.filter(k=>!['close','getReceipt'].includes(k)))resourceView[key]=async(...args)=>{checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
   resourceView.getReceipt=()=>{checkOperation();return methods.getReceipt.call(resource);};
   resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
-  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,activateBusinessContinuity,deactivateBusinessContinuity,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
+  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,verifyFull:()=>{check();try{loader.verifyFull();check();}catch(error){invalidate();void close().catch(()=>{});throw error;}}});
   handles.set(handle,{check,checkContinuity,view,close,technical});
   if(signal)EventTarget.prototype.addEventListener.call(signal,'abort',onAbort,{once:true});
   check();value=await consume(handle);check();loader.verifyFull();check();
