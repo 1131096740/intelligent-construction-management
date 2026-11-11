@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394 五登录、固定 HBA 和 TLS 资格源码已快进本地中央至准确 `5f508a22`。独审复现的 4 个负控通过修订复验，日志证据固定关联本轮普通角色、本库和明文拒绝，SDK 超时保首因及未知清理。独立 74 定向、1037 标准、147 API、类型/lint/构建与 PG16.1 静态均通过。真实角色、HBA/TLS、Nest 连接与私有 COS 待验。#398 竞办已补双应用关闭顺序，后继复核仍挡先发生的 close 错误可被后来的 abort 覆盖，作者继续窄修。 [五登录独审](/private/tmp/jg-394-five-login-BB50-review.iqo7Hk3t/REVIEW-BB50.md) · [竞办复核](/private/tmp/jg-398-pair-close-review.zRBxjORe/REVIEW-F80E.md)
+
 - [~] #394 文书后台隔离已快进本地中央至准确 `26eb4529`。公开合同模块保留原文书路由与服务，生产根仅注册一次原处理器，并通过直接导入 Auth 恢复原写冻结依赖注入。独立 53 项定向、API 类型/lint/构建通过。真实 Nest 与数据库仍待同轮验收。五登录初版独审确认 TLS 负控与 SDK 超时证据缺口，修复候选准备复核。 [文书独审](/private/tmp/jg-394-document-worker-26eb-review.XoOOnJBe/REVIEW-26EB.md) · [五登录独审](/private/tmp/jg-394-five-login-independent.cFFb76NJ/REVIEW.md)
 
 - [~] #394 普通角色最小 ACL 源码已快进本地中央至准确 `257dd388`。补齐写后、独立提交读回和五登录后继的原七片结构核验，按实际差量仅还原原号及 Voucher 三列 ACL 前像。独立 1014 标准、83 定向、8 批 PG16.1 静态及 API 类型/lint/构建全过，旧归档七批及公开回执逐字不变。五登录准确作者候选 `6635754e` 独审中，涉及资源 helper 的三组 API 回归留准确组合重跑。真实 PostgreSQL 权限、HBA/TLS、Nest 和 COS 待验。 [独立回执](/private/tmp/jg-394-ordinary-acl-recheck.IUwIREjB/RESULT-257DD388.json) · [五登录作者交接](/private/tmp/jg-394-five-login-source.mpIn4ILh/HANDOFF.md)
