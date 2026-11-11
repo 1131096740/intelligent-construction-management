@@ -1,6 +1,6 @@
 "use strict";
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {projectCurrent259PhysicalEndpoint}=require('./task16-current259-physical-endpoint.cjs');
+const {projectCurrent259PhysicalEndpoint}=require('./enterprise-task01-resources.cjs');
 const expected=Object.freeze({containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:'jg_task01_12345678123442348234123456789012',publishedPort:32456});
 function observed(){return {Id:expected.containerId,State:{Running:true},NetworkSettings:{Ports:{'5432/tcp':[{HostIp:'127.0.0.1',HostPort:'32456'}]},Networks:{isolated:{NetworkID:expected.networkId,IPAddress:'172.29.0.2',GlobalIPv6Address:''}}}};}
 test('an inspected single owned bridge yields its private server address and exact loopback publication',()=>{

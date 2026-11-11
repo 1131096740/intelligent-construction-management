@@ -29,6 +29,30 @@ const fault = code => Object.assign(new Error(code), { code });
 const requireThat = (condition, code) => { if (!condition) throw fault(code); };
 const json = buffer => { try { return JSON.parse(buffer.toString("utf8")); } catch { throw fault("TASK01_RESOURCE_METADATA_INVALID"); } };
 
+// Pure endpoint projection. The owned producer calls this lexical function
+// after a fresh inspect; changing an exported function cannot replace it.
+const endpointInvalid=()=>{throw Object.assign(new Error('CURRENT259_PHYSICAL_ENDPOINT_INVALID'),{code:'CURRENT259_PHYSICAL_ENDPOINT_INVALID'});};
+const endpointNeed=ok=>{if(!ok)endpointInvalid();};
+function endpointOwn(value,key){
+ endpointNeed(value&&typeof value==='object'&&!types.isProxy(value));
+ const d=Object.getOwnPropertyDescriptor(value,key);endpointNeed(d&&Object.hasOwn(d,'value'));return d.value;
+}
+function projectCurrent259PhysicalEndpoint(state,expected){
+ endpointNeed(arguments.length===2);
+ const containerId=endpointOwn(expected,'containerId'),networkId=endpointOwn(expected,'networkId'),databaseName=endpointOwn(expected,'databaseName'),publishedPort=endpointOwn(expected,'publishedPort');
+ endpointNeed(/^[a-f0-9]{64}$/u.test(containerId)&&/^[a-f0-9]{64}$/u.test(networkId)&&/^jg_task01_[a-f0-9]{32}$/u.test(databaseName)&&Number.isInteger(publishedPort)&&publishedPort>1024&&publishedPort<=65535);
+ endpointNeed(endpointOwn(state,'Id')===containerId&&endpointOwn(endpointOwn(state,'State'),'Running')===true);
+ const settings=endpointOwn(state,'NetworkSettings'),ports=endpointOwn(settings,'Ports'),networks=endpointOwn(settings,'Networks');
+ endpointNeed(!types.isProxy(ports)&&!types.isProxy(networks)&&Reflect.ownKeys(ports).length===1&&Reflect.ownKeys(networks).length===1);
+ const published=endpointOwn(ports,'5432/tcp');endpointNeed(Array.isArray(published)&&!types.isProxy(published)&&published.length===1);
+ const binding=endpointOwn(published,'0');endpointNeed(endpointOwn(binding,'HostIp')==='127.0.0.1'&&endpointOwn(binding,'HostPort')===String(publishedPort));
+ const network=endpointOwn(networks,Reflect.ownKeys(networks)[0]),serverAddress=endpointOwn(network,'IPAddress');
+ endpointNeed(endpointOwn(network,'NetworkID')===networkId&&endpointOwn(network,'GlobalIPv6Address')==='');
+ endpointNeed(typeof serverAddress==='string'&&net.isIP(serverAddress)===4);
+ const [a,b]=serverAddress.split('.').map(Number);endpointNeed(a===10||a===172&&b>=16&&b<=31||a===192&&b===168);
+ return Object.freeze({containerId,networkId,databaseName,publishedHost:'127.0.0.1',publishedPort,serverAddress,serverPort:5432});
+}
+
 function literalDirectory(target, allowMissing = false) {
   requireThat(typeof target === "string" && path.isAbsolute(target) && path.normalize(target) === target, "TASK01_RESOURCE_PATH_INVALID");
   let current = path.parse(target).root;
@@ -396,7 +420,6 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     requireThat(arguments.length === 0 && !closePromise, "TASK01_RESOURCE_CLOSED");
     await verifyDaemon();
     const state = await inspectOwned();
-    const { projectCurrent259PhysicalEndpoint } = require("./task16-current259-physical-endpoint.cjs");
     return projectCurrent259PhysicalEndpoint(state, { containerId, networkId, databaseName, publishedPort: receipt.port });
   }
   async function captureLogCursor() {
@@ -501,4 +524,4 @@ async function startCurrent259TechnicalPostgres(options) {
     throw fault("TASK01_RESOURCE_INPUT_OR_PREPARATION_FAILED");
   }
 }
-module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres };
+module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, projectCurrent259PhysicalEndpoint };
