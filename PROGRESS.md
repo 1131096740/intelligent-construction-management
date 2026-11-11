@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394 普通角色最小 ACL 源码已快进本地中央至准确 `257dd388`。补齐写后、独立提交读回和五登录后继的原七片结构核验，按实际差量仅还原原号及 Voucher 三列 ACL 前像。独立 1014 标准、83 定向、8 批 PG16.1 静态及 API 类型/lint/构建全过，旧归档七批及公开回执逐字不变。五登录准确作者候选 `6635754e` 独审中，涉及资源 helper 的三组 API 回归留准确组合重跑。真实 PostgreSQL 权限、HBA/TLS、Nest 和 COS 待验。 [独立回执](/private/tmp/jg-394-ordinary-acl-recheck.IUwIREjB/RESULT-257DD388.json) · [五登录作者交接](/private/tmp/jg-394-five-login-source.mpIn4ILh/HANDOFF.md)
+
 - [~] #394 普通 ACL 作者候选 `fc4532f2` 暂未合入。作者和独审各跑 80 项窄测，6 批 PG16.1 静态解析通过，原七批渲染及公开回执逐字一致。独审定位写后和独立读回漏核原七片列默认值、identity/generated 和索引状态，标准 CI 入口也漏列新 19 项。正在补写后七片完整证据及标准入口。真实 SQL 和资源未执行。 [独立复核](/private/tmp/jg-394-ordinary-acl-independent.Jc9fSDgH/REVIEW.md)
 
 - [~] #394 首条 Q2 装配复核发现合同工作台递归加载文书处理器。应用启动后每秒触发四组后台回收 UPDATE，超出首条公开链的最小 ACL。已记录独立文书处理器生命周期、真实 Nest 五实例与专用 COS 上传前缀的接线边界，未启动服务或执行真实资源。普通 ACL、五类登录与 #398 双人竞办分别推进。 [装配复核](/private/tmp/jg-394-firstq2-nest.J5Ojh97B/HANDOFF.md)
