@@ -98,6 +98,96 @@ function createLocalMigrationFixture(input) {
   const applicationNames = new Set();
   const recoverableFailures = new WeakSet();
   const pendingRecovery = new Map();
+  // Only immutable migration files are shared across calls, never database evidence.
+  let prefixSource;
+  let phaseRoot;
+  let phaseIdentity;
+  const prefixCache = new Map();
+
+  function fileIdentity(stat) {
+    return [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs];
+  }
+
+  function directoryIdentity(stat) {
+    return [stat.dev, stat.ino, stat.mode];
+  }
+
+  async function capturePrefix(dir, rows) {
+    const directories = [dir, path.join(dir, "migrations"),
+      ...rows.map(row => path.join(dir, "migrations", row.name))];
+    const files = [path.join(dir, "schema.prisma"), path.join(dir, "migrations/migration_lock.toml"),
+      ...rows.map(row => path.join(dir, "migrations", row.name, "migration.sql"))];
+    const identities = [];
+    for (const name of directories) {
+      const stat = await lstat(name);
+      need(stat.isDirectory() && !stat.isSymbolicLink(), "PREFIX_CACHE");
+      identities.push({ name, directory: true, identity: directoryIdentity(stat) });
+    }
+    for (const name of files) {
+      const stat = await lstat(name);
+      need(stat.isFile() && !stat.isSymbolicLink(), "PREFIX_CACHE");
+      identities.push({ name, directory: false, identity: fileIdentity(stat) });
+    }
+    return { dir, identities };
+  }
+
+  async function verifyIdentities(identities) {
+    for (const item of identities) {
+      const stat = await lstat(item.name);
+      need(!stat.isSymbolicLink() && (item.directory ? stat.isDirectory() : stat.isFile()) &&
+        isDeepStrictEqual(item.directory ? directoryIdentity(stat) : fileIdentity(stat), item.identity),
+      "PREFIX_CACHE");
+    }
+  }
+
+  async function verifyPrefixes(source) {
+    if (!phaseRoot) return;
+    need(isDeepStrictEqual(source, prefixSource), "PREFIX_CACHE");
+    await verifyIdentities([phaseIdentity]);
+    need(isDeepStrictEqual((await readdir(phaseRoot)).sort(),
+      [...prefixCache.keys()].map(String).sort()), "PREFIX_CACHE");
+    for (const [size, cached] of prefixCache) {
+      await verifyIdentities(cached.identities);
+      need(isDeepStrictEqual((await readdir(cached.dir)).sort(), ["migrations", "schema.prisma"]), "PREFIX_CACHE");
+      need((await readFile(path.join(cached.dir, "schema.prisma"))).equals(source.schema) &&
+        (await readFile(path.join(cached.dir, "migrations/migration_lock.toml"))).equals(source.lock) &&
+        isDeepStrictEqual(await inventory(cached.dir), source.expected.slice(0, size)), "PREFIX_CACHE");
+      await verifyIdentities(cached.identities);
+    }
+    await verifyIdentities([phaseIdentity]);
+  }
+
+  async function prefixRoots(source, targetLength) {
+    // Recheck after the awaited database preflight, at the original copy boundary.
+    if (phaseRoot) {
+      try { await verifyPrefixes(source); }
+      catch { need(false, "PREFIX_CACHE"); }
+    }
+    if (!phaseRoot) {
+      phaseRoot = await mkdtemp(path.join(options.temporaryRoot, "staged-migrations-"));
+      const stat = await lstat(phaseRoot);
+      need(stat.isDirectory() && !stat.isSymbolicLink(), "PREFIX_CACHE");
+      phaseIdentity = { name: phaseRoot, directory: true, identity: directoryIdentity(stat) };
+      prefixSource = { schema: Buffer.from(source.schema), lock: Buffer.from(source.lock),
+        expected: structuredClone(source.expected) };
+    }
+    const roots = new Map();
+    for (const size of [203, 205, ...[213, 215, 218, 221].filter(size => size < targetLength)]) {
+      if (!prefixCache.has(size)) {
+        const dir = path.join(phaseRoot, String(size));
+        await mkdir(path.join(dir, "migrations"), { recursive: true });
+        await writeFile(path.join(dir, "schema.prisma"), source.schema);
+        await writeFile(path.join(dir, "migrations/migration_lock.toml"), source.lock);
+        for (const row of source.expected.slice(0, size)) {
+          await cp(path.join(canonicalRoot, row.name), path.join(dir, "migrations", row.name), { recursive: true });
+        }
+        need(isDeepStrictEqual(await inventory(dir), source.expected.slice(0, size)), "SOURCE");
+        prefixCache.set(size, await capturePrefix(dir, source.expected.slice(0, size)));
+      }
+      roots.set(size, prefixCache.get(size).dir);
+    }
+    return roots;
+  }
 
   async function assertContainer() {
     need(!stopped, "STOPPED");
@@ -189,6 +279,9 @@ function createLocalMigrationFixture(input) {
         target.length > 0, "SOURCE_PREFIX");
       const lock = await readFile(path.join(canonicalRoot, "migration_lock.toml"));
       need((await readFile(path.join(targetRoot, "migrations/migration_lock.toml"))).equals(lock), "SOURCE");
+      const source = { schema, lock, expected };
+      try { await verifyPrefixes(source); }
+      catch { need(false, "PREFIX_CACHE"); }
       const recovery = pendingRecovery.values().next().value;
       const recoveryContext = {
         databaseUrl: request.databaseUrl,
@@ -230,19 +323,7 @@ function createLocalMigrationFixture(input) {
       need(count < 205, "PARTIAL_TAIL_QUALIFICATION");
       need(count <= 203, "PARTIAL_QUALIFICATION");
 
-      const phaseRoot = await mkdtemp(path.join(options.temporaryRoot, "staged-migrations-"));
-      const roots = new Map();
-      for (const size of [203, 205, ...[213, 215, 218, 221].filter(size => size < target.length)]) {
-        const dir = path.join(phaseRoot, String(size));
-        await mkdir(path.join(dir, "migrations"), { recursive: true });
-        await writeFile(path.join(dir, "schema.prisma"), schema);
-        await writeFile(path.join(dir, "migrations/migration_lock.toml"), lock);
-        for (const row of expected.slice(0, size)) {
-          await cp(path.join(canonicalRoot, row.name), path.join(dir, "migrations", row.name), { recursive: true });
-        }
-        need(isDeepStrictEqual(await inventory(dir), expected.slice(0, size)), "SOURCE");
-        roots.set(size, dir);
-      }
+      const roots = await prefixRoots(source, target.length);
       const phaseOutput = [];
       try {
         const initial = await deploy({ ...request, schemaPath: path.join(roots.get(203), "schema.prisma") });
