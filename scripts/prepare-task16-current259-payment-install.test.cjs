@@ -60,3 +60,8 @@ test('repeated verification retains the original build and source drift cannot r
  assert.equal(first.buildHandle,second.buildHandle);assert.equal(f.state.captures,1);
  f.state.stale=true;assert.throws(()=>second.check());assert.equal(fs.readdirSync(f.runRoot).length,0);
 });
+for(const child of ['resource','attempt.json','receipt.json','receipt.json.pending'])test('prepare cannot occupy reserved once child '+child,t=>{
+ const f=fixture(t);
+ assert.throws(()=>f.api.prepareCurrent259PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:path.join(f.runRoot,child)}),/PAYMENT_INSTALL_PLAN_/);
+ assert.equal(fs.readdirSync(f.runRoot).length,0);
+});

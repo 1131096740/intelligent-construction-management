@@ -68,6 +68,7 @@ function expectedPlan(runRoot,daemonId,observed){
 function prepareCurrent259PaymentInstallPlan(options){
  need(arguments.length===1,'PAYMENT_INSTALL_PLAN_ARGUMENTS');const o=keys(options,['runRoot','daemonId','output']);outsideFile(o.output);
  const captured=material(),plan=expectedPlan(o.runRoot,o.daemonId,captured.observed);
+ need(![plan.run.resourceDir,plan.run.attemptFile,plan.run.receiptFile,plan.run.receiptFile+'.pending'].includes(o.output),'PAYMENT_INSTALL_PLAN_OUTPUT_RESERVED');
  need(![plan.run.resourceDir,plan.run.attemptFile,plan.run.receiptFile].some(p=>fs.existsSync(p)),'PAYMENT_INSTALL_PLAN_RUN_ALREADY_USED');
  captured.loader.verifyFull();const bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');writeNew(o.output,bytes);
  return Object.freeze({status:'PAYMENT_INSTALL_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:plan.material.source.candidateSha});
