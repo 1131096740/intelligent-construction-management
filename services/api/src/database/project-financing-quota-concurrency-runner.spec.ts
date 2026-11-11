@@ -15,6 +15,49 @@ const runnerPath = join(
   "prisma/run-project-financing-quota-concurrency-local.cjs"
 );
 
+function installContainerInspectFixture(fixture: string, bin: string, fakeSource: string) {
+  const model = join(fixture, "model");
+  mkdirSync(model);
+  // The runner checks the same immutable synthetic container before each SQL call.
+  // Replay only an exact repeat and retain each command in the original event order.
+  const journaledSource = fakeSource
+    .replace('const args = process.argv.slice(2);', [
+      'const journal = path.join(path.dirname(statePath), "inspect-events");',
+      'if (fs.existsSync(journal)) {',
+      '  for (const line of fs.readFileSync(journal, "utf8").trimEnd().split("\\n")) state.events.push(JSON.parse(line));',
+      '  fs.unlinkSync(journal);',
+      '}',
+      'const args = process.argv.slice(2);'
+    ].join("\n"))
+    .replace('state.events.push(event);\nfs.writeFileSync(statePath', [
+      'const cache = path.join(path.dirname(statePath), "inspect-response");',
+      'if (tool === "docker" && args.length === 6 && args[0] === "inspect" && args[1] === "--type" &&',
+      '    args[2] === "container" && args[3] === "--format" && exitCode === 0 && stderr === "" && !fs.existsSync(cache)) {',
+      '  fs.writeFileSync(cache, [args[4], args[5], stdout, JSON.stringify(event)].join("\\n") + "\\n");',
+      '}',
+      'state.events.push(event);',
+      'fs.writeFileSync(statePath'
+    ].join("\n"));
+  for (const executable of [join(model, "docker"), join(bin, "pnpm")]) {
+    writeFileSync(executable, "#!" + process.execPath + "\n" + journaledSource, { mode: 0o700 });
+  }
+  writeFileSync(join(bin, "docker"), [
+    "#!/bin/sh",
+    'fixture="${0%/*}/.."',
+    'if [ "$#" -eq 6 ] && [ "$1" = inspect ] && [ "$2" = --type ] &&',
+    '   [ "$3" = container ] && [ "$4" = --format ] && [ -f "$fixture/inspect-response" ]; then',
+    '  { IFS= read -r format && IFS= read -r id && IFS= read -r response && IFS= read -r event; } < "$fixture/inspect-response" || exit 1',
+    '  if [ "$5" = "$format" ] && [ "$6" = "$id" ]; then',
+    '    printf "%s\\n" "$event" >> "$fixture/inspect-events" || exit 1',
+    '    printf "%s" "$response"',
+    '    exit',
+    '  fi',
+    'fi',
+    'exec "$fixture/model/docker" "$@"',
+    ""
+  ].join("\n"), { mode: 0o700 });
+}
+
 describe("project financing quota PostgreSQL runner", () => {
 
   const firstFailure = {
@@ -682,7 +725,8 @@ describe("project financing quota PostgreSQL runner", () => {
       const fakeSource = readFileSync(join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8")
         .replace('if (tool === "pnpm") {', failurePort + '\nif (tool === "pnpm") {')
         .replace('else if (args[0] === "logs") stdout = state.serverLog;', 'else if (args[0] === "logs") stderr = state.serverLog;');
-      for (const name of ["docker", "pnpm"]) writeFileSync(join(bin, name), "#!" + process.execPath + "\n" + fakeSource, { mode: 0o700 });
+      if (setup) installContainerInspectFixture(fixture, bin, fakeSource);
+      else for (const name of ["docker", "pnpm"]) writeFileSync(join(bin, name), "#!" + process.execPath + "\n" + fakeSource, { mode: 0o700 });
       const evidencePath = join(artifacts, "project_financing_quota-evidence.json");
       const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
         env: { PATH: bin, HOME: fixture, TMPDIR: artifacts, NODE_ENV: "test", PNPM_BIN: join(bin, "pnpm"),

@@ -130,7 +130,7 @@ function loadCurrent259Client(handle){
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
- let contract;
+ let contract,document,ordinaryTestingUsed=false;
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
@@ -140,7 +140,7 @@ function loadCurrent259Client(handle){
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'TASK16_APP_REFLECTION_CHANGED');
    for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(key=>actual[key]===row.descriptor[key]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
-   checkMetadata();contract?.checkMetadata();
+   checkMetadata();contract?.checkMetadata();document?.checkMetadata();
    for(const p of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,p)))need(files.has(p),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
@@ -159,7 +159,7 @@ function loadCurrent259Client(handle){
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2','CURRENT259_LOADER_CLASS');
    for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(k=>actual[k]===row.descriptor[k]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define&&Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
-   checkMetadata();contract?.checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
+   checkMetadata();contract?.checkMetadata();document?.checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
  function verifyBusinessFiles(token,ownedHandle){
@@ -174,7 +174,7 @@ function loadCurrent259Client(handle){
  const loadApplicationModules=request=>{check();need(JSON.stringify(request)===JSON.stringify(expectedRequest),'TASK16_APP_FIXED_ENTRIES');return exportedValues;};
  function collect(){for(const mod of roots)visit(mod,new Set());check();}
  function loadContractApplicationModules(){
-  need(arguments.length===0,'CURRENT259_CONTRACT_FIXED_ENTRIES');check();
+  need(arguments.length===0&&!document,'CURRENT259_CONTRACT_FIXED_ENTRIES');check();
   if(contract)return contract.exports;
   try{
    const dist=path.join(root,'services/api/dist');
@@ -214,7 +214,7 @@ function loadCurrent259Client(handle){
  }
  let generatedDraftAdmission;
  function loadGeneratedContractDraftAdmission(){
-  need(arguments.length===0,'CURRENT259_GENERATED_DRAFT_FIXED_ENTRY');
+  need(arguments.length===0&&!document,'CURRENT259_GENERATED_DRAFT_FIXED_ENTRY');
   check();
   if(generatedDraftAdmission)return generatedDraftAdmission;
   try{
@@ -232,11 +232,76 @@ function loadCurrent259Client(handle){
    collect();return generatedDraftAdmission;
   }catch(error){failed=true;throw error;}
  }
+ function loadGeneratedContractDocumentModules(){
+  const code='CURRENT259_GENERATED_DOCUMENT_FIXED_ENTRY';
+  need(arguments.length===0&&!contract&&!generatedDraftAdmission&&!ordinaryTestingUsed,code);
+  check();
+  if(document)return document.exports;
+  try{
+   const dist=path.join(root,'services/api/dist');
+   const documentValues={};
+   for(const [relative,names]of [
+    ['database/task12-generated-document-application.module.js',['Task12GeneratedDocumentApplicationModule']],
+    ['contract/contract.module.js',['ContractModule']],
+    ['contract-template/contract-template.module.js',['ContractTemplateModule']],
+    ['contract-template/contract-template.controller.js',['ContractTemplateController']],
+    ['contract-template/contract-template.service.js',['ContractTemplateService']],
+    ['contract-template/contract-scenario.service.js',['ContractScenarioService']],
+    ['contract-template/layout-template.service.js',['LayoutTemplateService']],
+    ['contract-document/contract-document-worker.module.js',['ContractDocumentWorkerModule']],
+    ['contract-document/contract-document.processor.js',['ContractDocumentProcessor']],
+    ['database/task12-generated-document-seam.js',['verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument']],
+    ['database/task12-generated-document-role-services.js',['withTask12PreownedDocumentRoleServices']],
+   ]){
+    const file=path.join(dist,relative),exports=guardedRequire(file),mod=require.cache[file];
+    need(mod?.loaded===true&&mod.exports===exports,code);
+    roots.push(mod);
+    for(const key of names){
+     const descriptor=Object.getOwnPropertyDescriptor(exports,key),value=own(exports,key);
+     need(typeof value==='function',code);
+     records.push({module:mod,key,value,descriptor});
+     documentValues[key]=value;
+    }
+   }
+   const {Task12GeneratedDocumentApplicationModule:rootClass,ContractModule,ContractTemplateModule,
+    ContractTemplateController,ContractTemplateService,ContractScenarioService,LayoutTemplateService,
+    ContractDocumentWorkerModule,ContractDocumentProcessor}=documentValues;
+   const hooks=['onApplicationBootstrap','onModuleDestroy','onApplicationShutdown','processNext']
+    .map(key=>[key,dataMethod(ContractDocumentProcessor.prototype,key)]);
+   const rootImports=[imports[0],ContractModule,ContractTemplateModule,ContractDocumentWorkerModule];
+   const workerImports=[imports[2],imports[1],imports[0],imports[3]];
+   const templateImports=[imports[0],imports[2],imports[3]];
+   const templateProviders=[ContractTemplateService,ContractScenarioService,LayoutTemplateService];
+   const exact=(key,Class,expected)=>{
+    const actual=metadata(key,Class);
+    return Array.isArray(actual)&&actual.length===expected.length&&expected.every((value,index)=>value===actual[index]);
+   };
+   const exports=Object.freeze(Object.fromEntries([
+    'verifyTask12MaterialTemplate','bindTask12PublishedMaterialTemplate','runTask12GeneratedDocument','withTask12PreownedDocumentRoleServices'
+   ].map(key=>[key,documentValues[key]])));
+   document=Object.freeze({exports,checkMetadata(){
+    const rootProviders=metadata('providers',rootClass);
+    need(exact('imports',rootClass,rootImports)&&exact('imports',ContractDocumentWorkerModule,workerImports)&&
+     exact('providers',ContractDocumentWorkerModule,[ContractDocumentProcessor])&&
+     exact('imports',ContractTemplateModule,templateImports)&&exact('providers',ContractTemplateModule,templateProviders)&&
+     exact('exports',ContractTemplateModule,templateProviders)&&exact('controllers',ContractTemplateModule,[ContractTemplateController])&&
+     Array.isArray(rootProviders)&&rootProviders.length===1&&own(rootProviders[0],'provide')==='APP_FILTER'&&
+     own(rootProviders[0],'useClass')===filter&&
+     hooks.every(([key,value])=>dataMethod(ContractDocumentProcessor.prototype,key)===value)&&
+     ['app.module.js','main.js'].every(file=>!files.has(path.join(dist,file))),code);
+   }});
+   collect();
+   return exports;
+  }catch(error){failed=true;throw error;}
+ }
  function createContractTestingModule(){
   need(arguments.length===0&&contract,'CURRENT259_CONTRACT_FIXED_ENTRIES');
   return createOwnedTestingModule({imports:[contract.root]},contract);
  }
- function createTestingModule(metadata){return createOwnedTestingModule(metadata);}
+ function createTestingModule(metadata){
+  need(!document,'CURRENT259_GENERATED_DOCUMENT_FIXED_ENTRY');
+  const builder=createOwnedTestingModule(metadata);ordinaryTestingUsed=true;return builder;
+ }
  function createOwnedTestingModule(metadata,contractMode){
   check();need(metadata&&!types.isProxy(metadata)&&Reflect.ownKeys(metadata).length===1,'CURRENT259_FRAMEWORK_METADATA');
   const imports=own(metadata,'imports');need(Array.isArray(imports)&&!types.isProxy(imports)&&(contractMode?
@@ -311,7 +376,7 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

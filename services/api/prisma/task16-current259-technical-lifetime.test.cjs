@@ -89,7 +89,7 @@ test('the fixed first-rollback starter claims its own transport without arbitrar
  assert.equal(f.receipts[0].limits.totalDeadlineMs,3600000);
 });
 
-function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres"}={}){
+function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false}={}){
  const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),crypto=require('node:crypto');
  const docker='/Applications/Docker.app/Contents/Resources/bin/docker';
  const config={...options(),tools:{docker,openssl:'/synthetic/openssl'},signal:new AbortController().signal};
@@ -99,7 +99,12 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  const files=new Map(),written=new Map(),calls=[];
  const owner='jg_task01_owner',logins=['jg_fixture_app_'+'1'.repeat(24),'jg_c259_outside_issuer_login','jg_c259_outside_executor_login',
   'jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
- const addedRoles=[owner,'jg_task01_runtime','jg_task01_observer',...logins],hbaPath='/jg-task01/pg_hba.conf';
+ const fixedRoles=[owner,'jg_task01_runtime','jg_task01_observer'],documentRoles=['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue'];
+ const addedRoles=[...fixedRoles,...(document?documentRoles:logins)],hbaPath='/jg-task01/pg_hba.conf';
+ const docHandle=Object.freeze({}),docProof=Object.freeze({sourceSha:config.sourceSha,runId:mode==='document-foreign-scope'?'00000000-0000-4000-8000-000000000001':config.runId,containerId,installXid:'903',
+  roleOids:Object.freeze(['17000','17001','17002']),roleXmins:Object.freeze(['903','903','903'])});
+ let docScopeActive=true,reloadObserved=false,ownerReads=0;
+ const documentProbes=[],documentRenders=[];
  const digest=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
  const entries=[
   ['local','all',owner,null,null,'peer',['map=jg_task01_init']],['local','all','all',null,null,'reject',[]],
@@ -125,7 +130,9 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
   const [kind,operation]=args.slice(2);
   calls.push(args.slice(2));
   switch(kind+' '+operation){
-   case 'info --format':return [0,config.daemonId];
+   case 'info --format':
+    if(mode==='document-scope-before-spawn'&&ownerReads===1&&!appliedHbaSha)docScopeActive=false;
+    return [0,config.daemonId];
    case 'image inspect':return [0,JSON.stringify({Id:config.imageId,Config:{Env:['PG_MAJOR=16','PGDATA=/var/lib/postgresql/data']}})];
    case 'network create':
     assert.ok(args.includes('--internal'));network=true;return [0,networkId];
@@ -160,8 +167,23 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
       addedRoles.map(role=>`hostssl ${database} ${role} 127.0.0.1/32 scram-sha-256`));
      return [0,appliedHbaSha+'\n'];
     }
+    if(document&&input.includes("configuredAt")){
+     documentRenders.push(input);ownerReads++;
+     assert.ok(args.includes('PGSSLMODE=verify-full'));
+     assert.match(input,/pg_xact_status\('903'::xid8\)='committed'/u);
+     assert.ok(docProof.roleOids.every(oid=>input.includes(`'${oid}'::oid`)));
+     const observed=entries.filter(entry=>appliedHbaSha||!documentRoles.includes(entry[2]));
+     const rows=observed.map(([type,db,role,address,mask,auth,options],i)=>
+      [i+1,i+1,hbaPath,type,[db],[role],address,mask,auth,options,null]);
+     if(mode==='document-old-rule-drift'&&!appliedHbaSha)rows[6][7]='255.255.255.0';
+     if(mode==='document-post-rule-drift'&&appliedHbaSha)rows[8][7]='255.255.255.0';
+     const roles=documentRoles.map((name,i)=>[name,docProof.roleOids[i],mode==='document-role-drift'&&i===1?'902':'903']);
+     if(mode==='document-scope-drift'&&appliedHbaSha)docScopeActive=false;
+     return [0,JSON.stringify({pid:800+ownerReads,start:`2026-11-12T03:00:00.00000${ownerReads}Z`,
+      configuredAt:reloadObserved?'2026-11-12T03:00:00.000002Z':'2026-11-12T03:00:00.000001Z',scope:true,roles,rules:rows})];
+    }
     if(input.includes('pg_authid'))return [0,JSON.stringify(logins)];
-    if(input==='SELECT pg_catalog.pg_reload_conf();')return [0,'t'];
+    if(input==='SELECT pg_catalog.pg_reload_conf();'){reloadObserved=mode!=='document-reload-stale';return [0,'t'];}
     assert.match(input,/FROM pg_catalog.pg_hba_file_rules/u);
     return [0,JSON.stringify(entries.map(([type,db,role,address,mask,auth,options],i)=>
      [i+1,i+1,hbaPath,type,[db],[role],address,mask,auth,options,null]))];
@@ -189,8 +211,13 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
    if(request.readUInt32BE(4)===80877103)queueMicrotask(()=>socket.emit('data',Buffer.from('S')));
    else {
     assert.equal(request.readUInt32BE(4),196608);
-    assert.equal(request.subarray(8).toString(),`user\0jg_task01_owner\0database\0${database}\0\0`);
-    log=`FATAL: pg_hba.conf rejects connection for host "${mode==='wrong-log-peer'?'172.17.0.2':'127.0.0.1'}", user "jg_task01_owner", database "${database}", no encryption\n`;
+    const role=document?documentRoles[documentProbes.length]:owner;
+    assert.equal(request.subarray(8).toString(),`user\0${role}\0database\0${database}\0\0`);
+    if(document){
+     documentProbes.push(role);
+     const peer=mode==='document-plaintext-peer'?'172.17.0.2':'127.0.0.1';
+     if(mode!=='document-plaintext-stale')log+=`2026-11-12T03:00:00.000000001Z 2026-11-12 03:00:00.000 UTC [40] user=${role} db=${database} FATAL:  pg_hba.conf rejects connection for host "${peer}", user "${role}", database "${database}", no encryption\n`;
+    }else log=`FATAL: pg_hba.conf rejects connection for host "${mode==='wrong-log-peer'?'172.17.0.2':'127.0.0.1'}", user "jg_task01_owner", database "${database}", no encryption\n`;
     queueMicrotask(()=>{
      socket.emit('data',Buffer.from([69,0,0]));
      socket.emit('data',Buffer.from([0,5,0]));
@@ -213,14 +240,17 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
    };},async close(){relayOpen=false;calls.push(['relay-close']);if(mode==='relay-close-unknown')throw Error('synthetic');}};
  }};
  const imports={'node:fs':fsModel,'node:crypto':{...crypto,X509Certificate:class{constructor(raw){this.raw=raw;}}},
-  'node:child_process':{spawn},'node:net':net,'node:tls':tls,'./task16-current259-loopback-forward.cjs':relay};
+  'node:child_process':{spawn},'node:net':net,'node:tls':tls,'./task16-current259-loopback-forward.cjs':relay,
+  ...(document?{'./task12-current259-document-login.cjs':{assertCurrent259GeneratedDocumentLoginScope(proof,handle){
+   assert.ok(docScopeActive&&proof===docProof&&handle===docHandle);
+  }}}:{})};
  const holder={exports:{}};
  new Function('require','module',fs.readFileSync(source,'utf8'))(id=>imports[id]??require(id),holder);
  const logRejection=peer=>{
   log+=`2026-11-12T03:00:00.000000001Z 2026-11-12 03:00:00.000 UTC [40] user=${logins[0]} db=${database} FATAL:  pg_hba.conf rejects connection for host "${peer}", user "${logins[0]}", database "${database}", no encryption\n`;
  };
  return {start:extra=>holder.exports[firstQ2?'startCurrent259FirstQ2LoopbackPostgres':starter]({...config,...extra}),
-  written,calls,config,networkId,containerId,database,logRejection,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;},failOwnerSql:detail=>{ownerSqlFailure=detail;}};
+  written,calls,config,networkId,containerId,database,logRejection,docHandle,docProof,documentProbes,documentRenders,failLogRead:()=>{logReadFailure=true;},failRelay:error=>{relayFailure=error;},failOwnerSql:detail=>{ownerSqlFailure=detail;}};
 }
 
 test('first-rollback startup checks no Docker publish, validates TLS and HBA, and joins relay and Docker cleanup',async()=>{
@@ -415,4 +445,50 @@ test('seven prestate maps a fixed input section without retaining input, line or
  await assert.rejects(resource.execOwnerSql('SELECT 1;','current259-seven-install'),error=>error.sevenOwnerFailure===undefined);
  assert.ok(!f.calls.filter(row=>row[0]==='exec'&&row.includes('psql')).at(-1).includes('VERBOSITY=verbose'));
  await resource.close();
+});
+
+test('first-Q2 document HBA rejects an unbranded role list without any HBA write',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true}),resource=await f.start();
+ await assert.rejects(resource.applyCurrent259DocumentHbaV1({},Object.freeze({roleOids:['17000','17001','17002']})),
+  /TASK01_RESOURCE_DOCUMENT_HBA_SCOPE/u);
+ assert.ok(!f.calls.some(args=>args.includes('document-hba')));
+ await resource.close();
+});
+
+
+test('the live document login scope installs only three local TLS rules and proves all fresh plaintext denials',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true,document:true}),resource=await f.start();
+ const old=resource.getReceipt().configuration.hbaSha256;
+ const result=await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);
+ assert.deepEqual(result,resource.getReceipt().documentHba);
+ assert.equal(result.beforeSha256,old);assert.notEqual(result.afterSha256,old);
+ assert.equal(result.rules,12);assert.equal(result.loginInstallXid,'903');
+ assert.equal(result.plaintextNoEncryptionRejected,true);
+ assert.deepEqual(f.documentProbes,['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
+ assert.equal(f.documentRenders.length,2);
+ assert.equal(resource.getReceipt().contractHba,undefined);
+ await assert.rejects(resource.applyCurrent259ContractHbaV1(),/TASK01_RESOURCE_CONTRACT_HBA_UNAVAILABLE/u);
+ await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),/TASK01_RESOURCE_DOCUMENT_HBA_SCOPE/u);
+ await resource.close();
+ assert.equal(resource.getReceipt().cleanup.relayClosed,true);
+});
+
+test('document HBA stops on wrong old rules or role xmin, with no file mutation',async()=>{
+ for(const [mode,reason] of [['document-old-rule-drift','PREIMAGE'],['document-role-drift','PREIMAGE'],['document-foreign-scope','SCOPE'],['document-scope-before-spawn','SCOPE']]){
+  const f=rollbackResourceModel(mode,{firstQ2:true,document:true}),resource=await f.start();
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),new RegExp('TASK01_RESOURCE_DOCUMENT_HBA_'+reason,'u'));
+  assert.ok(!f.calls.some(args=>args.includes('document-hba')));
+  assert.equal(resource.getReceipt().documentHba,undefined);await resource.close();
+ }
+});
+
+test('document HBA does not issue on post-image or scope drift or on an unproven plaintext rejection',async()=>{
+ for(const [mode,reason] of [['document-post-rule-drift','READBACK'],['document-scope-drift','SCOPE'],
+  ['document-plaintext-peer','PLAINTEXT'],['document-plaintext-stale','PLAINTEXT'],['document-reload-stale','RELOAD']]){
+  const f=rollbackResourceModel(mode,{firstQ2:true,document:true}),resource=await f.start();
+  await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof),new RegExp('TASK01_RESOURCE_DOCUMENT_HBA_'+reason,'u'));
+  assert.ok(f.calls.some(args=>args.includes('document-hba')));
+  if(mode==='document-reload-stale')assert.equal(f.documentProbes.length,0);
+  assert.equal(resource.getReceipt().documentHba,undefined);await resource.close();
+ }
 });

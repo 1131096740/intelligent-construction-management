@@ -45,6 +45,10 @@ function fixture(){
     receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};
     receipt.topology=state.topologyOverride??q2Topology;
     receipt.relay={id:q2Id,containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
+    resource.applyCurrent259DocumentHbaV1=async function(handle,proof){
+     assert.equal(this,resource);assert.equal(arguments.length,2);state.documentHbaInput={handle,proof};
+     return 'document-transition';
+    };
     resource.relayId=q2Id;resource.checkRelay=()=>{if(state.relayDrift)throw new Error('MODEL_RELAY_DRIFT');};
     resource.beginPrismaRelayDrain=()=>async()=>{calls.push('drained');};
     const close=resource.close;resource.close=async()=>{
@@ -325,6 +329,12 @@ test('Q2 owned wrapper keeps technical lineage, a unique relay identity and the 
   assert.equal(view.resource.topology,'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS');
   assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
   assert.equal(typeof view.resource.applyCurrent259ContractHbaV1,'function');
+  assert.equal(typeof view.resource.applyCurrent259DocumentHbaV1,'function');
+  const proof=Object.freeze({});
+  await assert.rejects(view.resource.applyCurrent259DocumentHbaV1(handle,proof),/CURRENT259_RESOURCE_DESCRIPTOR/u);
+  assert.equal(f.state.documentHbaInput,undefined);
+  assert.equal(await view.resource.applyCurrent259DocumentHbaV1(proof),'document-transition');
+  assert.deepEqual(f.state.documentHbaInput,{handle,proof});
   assert.equal(view.resource.checkRelay,undefined);
   assert.equal(view.resource.beginPrismaRelayDrain,undefined);
   assert.throws(()=>view.beginPrismaRelayDrain('unexpected'),/CURRENT259_RESOURCE_CLOSED/u);
@@ -370,6 +380,7 @@ for(const [name,call,topology] of [
    assert.equal(view.resource.topology,topology);
    assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
    assert.equal(view.resource.applyCurrent259ContractHbaV1,undefined);
+   assert.equal(view.resource.applyCurrent259DocumentHbaV1,undefined);
    assert.equal(view.resource.beginPrismaRelayDrain,undefined);
    await view.beginPrismaRelayDrain()();
   });

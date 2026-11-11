@@ -1,0 +1,819 @@
+{
+  "version": 1,
+  "roles": {
+    "jg_c259_doc_template": {
+      "ContractLayoutTemplate": {
+        "select": [
+          "contractTypeKey",
+          "createdAt",
+          "createdByUserId",
+          "id",
+          "name",
+          "updatedAt"
+        ],
+        "insert": [
+          "contractTypeKey",
+          "createdByUserId",
+          "id",
+          "name",
+          "updatedAt"
+        ]
+      },
+      "ContractLayoutTemplateVersion": {
+        "select": [
+          "changeSummary",
+          "createdAt",
+          "discardReason",
+          "discardedAt",
+          "discardedByUserId",
+          "docxFileId",
+          "draftRevision",
+          "id",
+          "inspectionReport",
+          "inspectionRevision",
+          "layoutTemplateId",
+          "placeholderSchema",
+          "previewPdfFileId",
+          "publishedAt",
+          "publishedByUserId",
+          "revokedAt",
+          "status",
+          "stoppedAt",
+          "submittedByUserId",
+          "updatedAt",
+          "versionNo"
+        ],
+        "insert": [
+          "docxFileId",
+          "id",
+          "layoutTemplateId",
+          "placeholderSchema",
+          "status",
+          "updatedAt",
+          "versionNo"
+        ],
+        "update": [
+          "changeSummary",
+          "draftRevision",
+          "inspectionReport",
+          "inspectionRevision",
+          "placeholderSchema",
+          "previewPdfFileId",
+          "publishedAt",
+          "publishedByUserId",
+          "status",
+          "submittedByUserId",
+          "updatedAt"
+        ]
+      },
+      "ContractLayoutPreviewJob": {
+        "select": [
+          "completedAt",
+          "createdAt",
+          "createdByUserId",
+          "errorMessage",
+          "id",
+          "layoutTemplateVersionId",
+          "previewPdfFileId",
+          "sampleData",
+          "sourceRevision",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ],
+        "insert": [
+          "createdByUserId",
+          "id",
+          "layoutTemplateVersionId",
+          "sampleData",
+          "sourceRevision",
+          "status",
+          "updatedAt"
+        ],
+        "update": [
+          "status",
+          "updatedAt"
+        ]
+      },
+      "FileObject": {
+        "select": [
+          "bucket",
+          "contentSha256",
+          "createdAt",
+          "id",
+          "mimeType",
+          "objectKey",
+          "originalName",
+          "purgeReceiptId",
+          "sizeBytes",
+          "storageStatus",
+          "supersedesFileObjectId",
+          "uploadedByUserId"
+        ]
+      },
+      "User": {
+        "select": [
+          "id",
+          "isActive"
+        ]
+      },
+      "UserPosition": {
+        "select": [
+          "positionId",
+          "projectId",
+          "userId"
+        ]
+      },
+      "Position": {
+        "select": [
+          "id",
+          "key"
+        ]
+      },
+      "AuditLog": {
+        "select": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "createdAt",
+          "id",
+          "ipAddress",
+          "metadata",
+          "userAgent"
+        ],
+        "insert": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "id",
+          "metadata"
+        ]
+      }
+    },
+    "jg_c259_doc_worker": {
+      "AuditLog": {
+        "select": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "createdAt",
+          "id",
+          "ipAddress",
+          "metadata",
+          "userAgent"
+        ],
+        "insert": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "id",
+          "metadata"
+        ]
+      },
+      "FileObject": {
+        "select": [
+          "bucket",
+          "contentSha256",
+          "createdAt",
+          "id",
+          "mimeType",
+          "objectKey",
+          "originalName",
+          "purgeReceiptId",
+          "sizeBytes",
+          "storageStatus",
+          "supersedesFileObjectId",
+          "uploadedByUserId"
+        ],
+        "insert": [
+          "bucket",
+          "contentSha256",
+          "id",
+          "mimeType",
+          "objectKey",
+          "originalName",
+          "sizeBytes",
+          "storageStatus",
+          "supersedesFileObjectId",
+          "uploadedByUserId"
+        ]
+      },
+      "ContractLayoutTemplateVersion": {
+        "select": [
+          "changeSummary",
+          "createdAt",
+          "discardReason",
+          "discardedAt",
+          "discardedByUserId",
+          "docxFileId",
+          "draftRevision",
+          "id",
+          "inspectionReport",
+          "inspectionRevision",
+          "layoutTemplateId",
+          "placeholderSchema",
+          "previewPdfFileId",
+          "publishedAt",
+          "publishedByUserId",
+          "revokedAt",
+          "status",
+          "stoppedAt",
+          "submittedByUserId",
+          "updatedAt",
+          "versionNo"
+        ]
+      },
+      "ContractLayoutPreviewJob": {
+        "select": [
+          "completedAt",
+          "createdAt",
+          "createdByUserId",
+          "errorMessage",
+          "id",
+          "layoutTemplateVersionId",
+          "previewPdfFileId",
+          "sampleData",
+          "sourceRevision",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ],
+        "update": [
+          "completedAt",
+          "errorMessage",
+          "previewPdfFileId",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ]
+      },
+      "ContractGeneratedDocument": {
+        "select": [
+          "completedAt",
+          "contractVersionId",
+          "createdAt",
+          "createdByUserId",
+          "docxFileId",
+          "engineVersion",
+          "errorMessage",
+          "id",
+          "idempotencyKey",
+          "inputSnapshot",
+          "layoutTemplateVersionId",
+          "pdfFileId",
+          "purpose",
+          "sourceRevision",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ],
+        "update": [
+          "completedAt",
+          "docxFileId",
+          "engineVersion",
+          "errorMessage",
+          "inputSnapshot",
+          "pdfFileId",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ]
+      },
+      "ContractOfflineRevision": {
+        "select": [
+          "completedAt",
+          "confirmedAt",
+          "confirmedByUserId",
+          "contractVersionId",
+          "createdAt",
+          "errorMessage",
+          "fileId",
+          "id",
+          "label",
+          "negotiationRoundId",
+          "note",
+          "previewPdfFileId",
+          "sourceGeneratedDocumentId",
+          "sourceRevision",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ],
+        "update": [
+          "completedAt",
+          "errorMessage",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ]
+      },
+      "ContractDocumentComparison": {
+        "select": [
+          "startedAt",
+          "status"
+        ],
+        "update": [
+          "completedAt",
+          "errorMessage",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ]
+      },
+      "Contract": {
+        "select": [
+          "businessScenarioId",
+          "code",
+          "companyEntityId",
+          "companyEntityName",
+          "contractTypeKey",
+          "counterparty",
+          "createdAt",
+          "finalSettlementId",
+          "id",
+          "name",
+          "ownerUserId",
+          "projectId",
+          "scenarioSnapshot",
+          "scenarioTemplateMappingId",
+          "settlementClosedAt",
+          "source",
+          "temporaryCode",
+          "updatedAt",
+          "voidedAt",
+          "voidedReason"
+        ],
+        "update": [
+          "updatedAt"
+        ]
+      },
+      "ContractVersion": {
+        "select": [
+          "abandonReason",
+          "abandonedAt",
+          "abandonedByUserId",
+          "affiliateAssignmentId",
+          "affiliateBusinessPartyVersionId",
+          "affiliateCreditCodeSnapshot",
+          "affiliateNameSnapshot",
+          "amountAdjustmentReason",
+          "amountCents",
+          "amountLimitType",
+          "amountSource",
+          "amountYuan",
+          "baseVersionId",
+          "businessTemplateVersionId",
+          "changeAmountCents",
+          "changeDirection",
+          "changeReason",
+          "changeType",
+          "clauseSnapshot",
+          "companyEntityCreditCodeSnapshot",
+          "companyEntityIdSnapshot",
+          "companyEntityNameSnapshot",
+          "companyEntityRegisteredAddressSnapshot",
+          "companyEntityVersionId",
+          "contractGovernanceVersion",
+          "contractId",
+          "copiedFromContractVersionId",
+          "createdAt",
+          "cumulativeDecreaseCents",
+          "cumulativeIncreaseCents",
+          "defaultTaxRatePercent",
+          "documentContentFingerprint",
+          "documentContentRevision",
+          "draftData",
+          "draftRevision",
+          "effectiveAt",
+          "endedAt",
+          "estimatedAmountCents",
+          "firstSubmittedAt",
+          "id",
+          "invoiceType",
+          "latestDraftPreviewDocumentId",
+          "layoutTemplateVersionId",
+          "numericProtocolVersion",
+          "originalBaseAmountCents",
+          "originalSignedNumber",
+          "pricingNature",
+          "readinessSnapshot",
+          "settlementMode",
+          "settlementModeConfirmedAt",
+          "settlementModeConfirmedByUserId",
+          "settlementModeSource",
+          "signingSubjectType",
+          "status",
+          "supersedesVersionId",
+          "taxFactEvidenceFileId",
+          "taxFactExplanation",
+          "taxFactRevision",
+          "taxFactSource",
+          "taxFactStatus",
+          "taxFactsFrozenAt",
+          "taxMode",
+          "templateSnapshot",
+          "updatedAt",
+          "versionNo"
+        ],
+        "update": [
+          "latestDraftPreviewDocumentId",
+          "updatedAt"
+        ]
+      },
+      "CompanyEntity": {
+        "select": [
+          "createdAt",
+          "currentVersionNo",
+          "dataStatus",
+          "id",
+          "isActive",
+          "name",
+          "registeredAddress",
+          "unifiedSocialCreditCode",
+          "updatedAt"
+        ],
+        "update": [
+          "updatedAt"
+        ]
+      },
+      "ContractTakeover": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "ContractFormalFile": {
+        "select": [
+          "contractVersionId",
+          "purpose",
+          "status"
+        ]
+      },
+      "ContractSealTask": {
+        "select": [
+          "contractVersionId",
+          "status"
+        ]
+      },
+      "ContractArchiveFile": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "Settlement": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "PaymentRequest": {
+        "select": [
+          "contractVersionId"
+        ]
+      }
+    },
+    "jg_c259_doc_queue": {
+      "ContractGeneratedDocument": {
+        "select": [
+          "completedAt",
+          "contractVersionId",
+          "createdAt",
+          "createdByUserId",
+          "docxFileId",
+          "engineVersion",
+          "errorMessage",
+          "id",
+          "idempotencyKey",
+          "inputSnapshot",
+          "layoutTemplateVersionId",
+          "pdfFileId",
+          "purpose",
+          "sourceRevision",
+          "startedAt",
+          "status",
+          "updatedAt"
+        ],
+        "insert": [
+          "contractVersionId",
+          "createdByUserId",
+          "engineVersion",
+          "id",
+          "idempotencyKey",
+          "inputSnapshot",
+          "layoutTemplateVersionId",
+          "purpose",
+          "sourceRevision",
+          "status",
+          "updatedAt"
+        ],
+        "update": [
+          "status",
+          "updatedAt"
+        ]
+      },
+      "ContractPartySnapshot": {
+        "select": [
+          "businessPartyVersionId",
+          "contractVersionId",
+          "createdAt",
+          "displayOrder",
+          "id",
+          "roleKey",
+          "snapshot"
+        ]
+      },
+      "ContractBill": {
+        "select": [
+          "amountRole",
+          "billKey",
+          "contractVersionId",
+          "createdAt",
+          "id",
+          "name",
+          "numericProtocolVersion",
+          "pricingMode",
+          "quantityScale",
+          "revision",
+          "schemaSnapshot",
+          "sourceExcelFileId",
+          "taxAmountCents",
+          "taxAmountYuan",
+          "taxExclusiveAmountCents",
+          "taxExclusiveAmountYuan",
+          "taxInclusiveAmountCents",
+          "taxInclusiveAmountYuan",
+          "unitPriceScale",
+          "updatedAt"
+        ]
+      },
+      "ContractBillRow": {
+        "select": [
+          "contractBillId",
+          "createdAt",
+          "customData",
+          "id",
+          "isProvisional",
+          "itemCode",
+          "itemName",
+          "lineageId",
+          "numericProtocolVersion",
+          "numericReviewStatus",
+          "numericSource",
+          "precisionPolicy",
+          "pricingFactStatus",
+          "quantity",
+          "remainderDisposition",
+          "remainderDispositionAt",
+          "remainderDispositionByUserId",
+          "remainderDispositionReason",
+          "rowKey",
+          "settlementBasis",
+          "sortOrder",
+          "specification",
+          "taxAmountCents",
+          "taxAmountYuan",
+          "taxExclusiveAmountCents",
+          "taxExclusiveAmountYuan",
+          "taxExclusiveUnitPrice",
+          "taxInclusiveAmountCents",
+          "taxInclusiveAmountYuan",
+          "taxRate",
+          "taxRateSource",
+          "unit",
+          "unitPrice",
+          "updatedAt"
+        ]
+      },
+      "ContractDraftAttachment": {
+        "select": [
+          "contractVersionId",
+          "displayOrder",
+          "fileId",
+          "slotKey"
+        ]
+      },
+      "Contract": {
+        "select": [
+          "businessScenarioId",
+          "code",
+          "companyEntityId",
+          "companyEntityName",
+          "contractTypeKey",
+          "counterparty",
+          "createdAt",
+          "finalSettlementId",
+          "id",
+          "name",
+          "ownerUserId",
+          "projectId",
+          "scenarioSnapshot",
+          "scenarioTemplateMappingId",
+          "settlementClosedAt",
+          "source",
+          "temporaryCode",
+          "updatedAt",
+          "voidedAt",
+          "voidedReason"
+        ],
+        "update": [
+          "updatedAt"
+        ]
+      },
+      "ContractVersion": {
+        "select": [
+          "abandonReason",
+          "abandonedAt",
+          "abandonedByUserId",
+          "affiliateAssignmentId",
+          "affiliateBusinessPartyVersionId",
+          "affiliateCreditCodeSnapshot",
+          "affiliateNameSnapshot",
+          "amountAdjustmentReason",
+          "amountCents",
+          "amountLimitType",
+          "amountSource",
+          "amountYuan",
+          "baseVersionId",
+          "businessTemplateVersionId",
+          "changeAmountCents",
+          "changeDirection",
+          "changeReason",
+          "changeType",
+          "clauseSnapshot",
+          "companyEntityCreditCodeSnapshot",
+          "companyEntityIdSnapshot",
+          "companyEntityNameSnapshot",
+          "companyEntityRegisteredAddressSnapshot",
+          "companyEntityVersionId",
+          "contractGovernanceVersion",
+          "contractId",
+          "copiedFromContractVersionId",
+          "createdAt",
+          "cumulativeDecreaseCents",
+          "cumulativeIncreaseCents",
+          "defaultTaxRatePercent",
+          "documentContentFingerprint",
+          "documentContentRevision",
+          "draftData",
+          "draftRevision",
+          "effectiveAt",
+          "endedAt",
+          "estimatedAmountCents",
+          "firstSubmittedAt",
+          "id",
+          "invoiceType",
+          "latestDraftPreviewDocumentId",
+          "layoutTemplateVersionId",
+          "numericProtocolVersion",
+          "originalBaseAmountCents",
+          "originalSignedNumber",
+          "pricingNature",
+          "readinessSnapshot",
+          "settlementMode",
+          "settlementModeConfirmedAt",
+          "settlementModeConfirmedByUserId",
+          "settlementModeSource",
+          "signingSubjectType",
+          "status",
+          "supersedesVersionId",
+          "taxFactEvidenceFileId",
+          "taxFactExplanation",
+          "taxFactRevision",
+          "taxFactSource",
+          "taxFactStatus",
+          "taxFactsFrozenAt",
+          "taxMode",
+          "templateSnapshot",
+          "updatedAt",
+          "versionNo"
+        ],
+        "update": [
+          "updatedAt"
+        ]
+      },
+      "CompanyEntity": {
+        "select": [
+          "createdAt",
+          "currentVersionNo",
+          "dataStatus",
+          "id",
+          "isActive",
+          "name",
+          "registeredAddress",
+          "unifiedSocialCreditCode",
+          "updatedAt"
+        ],
+        "update": [
+          "updatedAt"
+        ]
+      },
+      "FileObject": {
+        "select": [
+          "bucket",
+          "contentSha256",
+          "createdAt",
+          "id",
+          "mimeType",
+          "objectKey",
+          "originalName",
+          "purgeReceiptId",
+          "sizeBytes",
+          "storageStatus",
+          "supersedesFileObjectId",
+          "uploadedByUserId"
+        ]
+      },
+      "ContractLayoutTemplateVersion": {
+        "select": [
+          "changeSummary",
+          "createdAt",
+          "discardReason",
+          "discardedAt",
+          "discardedByUserId",
+          "docxFileId",
+          "draftRevision",
+          "id",
+          "inspectionReport",
+          "inspectionRevision",
+          "layoutTemplateId",
+          "placeholderSchema",
+          "previewPdfFileId",
+          "publishedAt",
+          "publishedByUserId",
+          "revokedAt",
+          "status",
+          "stoppedAt",
+          "submittedByUserId",
+          "updatedAt",
+          "versionNo"
+        ]
+      },
+      "ContractTakeover": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "ContractFormalFile": {
+        "select": [
+          "contractVersionId",
+          "purpose",
+          "status"
+        ]
+      },
+      "ContractSealTask": {
+        "select": [
+          "contractVersionId",
+          "status"
+        ]
+      },
+      "ContractArchiveFile": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "Settlement": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "PaymentRequest": {
+        "select": [
+          "contractVersionId"
+        ]
+      },
+      "ContractLayoutTemplate": {
+        "select": [
+          "contractTypeKey",
+          "createdAt",
+          "createdByUserId",
+          "id",
+          "name",
+          "updatedAt"
+        ]
+      },
+      "AuditLog": {
+        "select": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "createdAt",
+          "id",
+          "ipAddress",
+          "metadata",
+          "userAgent"
+        ],
+        "insert": [
+          "action",
+          "actorUserId",
+          "businessId",
+          "businessType",
+          "id",
+          "metadata"
+        ]
+      }
+    }
+  }
+}

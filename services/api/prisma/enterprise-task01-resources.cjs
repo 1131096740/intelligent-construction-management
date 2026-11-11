@@ -35,6 +35,7 @@ const CONTRACT_LOGINS = [
   "jg_c259_outside_issuer_login", "jg_c259_outside_executor_login",
   "jg_c259_upward_issuer_login", "jg_c259_upward_runtime_login"
 ];
+const DOCUMENT_LOGINS = Object.freeze(["jg_c259_doc_template", "jg_c259_doc_worker", "jg_c259_doc_queue"]);
 const HBA_PATH = "/jg-task01/pg_hba.conf";
 const SEVEN_PRESTATE_PHASE = "current259-seven-before";
 const SEVEN_PRESTATE_SQLSTATES = new Set(["P0001", "55000", "55P03", "57014", "22023", "42501",
@@ -637,12 +638,17 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     throw fault("TASK01_RESOURCE_CERTIFICATE_NOT_OBSERVED");
   }
   async function execOwnerSql(sql, phase) {
+    return runOwnerSql(sql, phase);
+  }
+  async function runOwnerSql(sql, phase, documentScope) {
     requireThat(!closePromise && typeof sql === "string" && Buffer.byteLength(sql) <= 16 * 1024 * 1024 && typeof phase === "string" && /^[A-Za-z0-9._-]{1,128}$/u.test(phase), "TASK01_RESOURCE_SQL_INPUT_INVALID");
     await inspectOwned();
     const sevenPrestate = technical && phase === SEVEN_PRESTATE_PHASE;
-    const result = await mutate(["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
-      ...(sevenPrestate ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"],
-    { input: sql, timeoutMs: 120000, ...(sevenPrestate ? { allowFailure: true } : {}) });
+    const args = ["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
+      ...(sevenPrestate ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"];
+    const control = { input: sql, timeoutMs: 120000, ...(sevenPrestate ? { allowFailure: true } : {}) };
+    if (documentScope) { await verifyDaemon(); documentScope(); }
+    const result = await (documentScope ? docker(args, control) : mutate(args, control));
     if (result.code !== 0) {
       const failure = fault("TASK01_RESOURCE_COMMAND_FAILED");
       failure.commandKind = result.code === null ? "signal-exit" : "nonzero-exit";
@@ -652,9 +658,9 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     }
     return { stdout: result.stdout.toString("utf8") };
   }
-  let contractHbaAttempted = false, contractOrdinary, contractPlaintextStarted = false, contractPlaintextCursor;
+  let contractHbaAttempted = false, documentHbaAttempted = false, contractOrdinary, contractPlaintextStarted = false, contractPlaintextCursor;
   async function applyCurrent259ContractHbaV1() {
-    requireThat(technical && !paymentLoopback && arguments.length === 0 && !contractHbaAttempted && !closePromise, "TASK01_RESOURCE_CONTRACT_HBA_UNAVAILABLE");
+    requireThat(technical && !paymentLoopback && arguments.length === 0 && !contractHbaAttempted && !documentHbaAttempted && !closePromise, "TASK01_RESOURCE_CONTRACT_HBA_UNAVAILABLE");
     contractHbaAttempted = true;
     const read = await execOwnerSql(hbaLoginSql, "contract-hba-roles");
     const logins = JSON.parse(read.stdout);
@@ -717,12 +723,11 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     const matching = lines.some(line => (!loopback || line.includes('host "127.0.0.1"')) && line.includes("FATAL:") && line.includes("pg_hba.conf") && line.includes("no encryption") && line.includes(`user "${target.role}"`) && line.includes(`database "${databaseName}"`));
     return Object.freeze({ hbaNoEncryptionRejected: matching, roleMatched: matching, databaseMatched: matching });
   }
-  async function verifyPaymentLoopbackPlaintextHba() {
-    const cursor = await captureLogCursor();
+  async function sendLoopbackPlaintextStartup(role) {
     checkRelay();
     const remaining = Math.min(2000, endAt - Date.now());
     requireThat(remaining > 0 && !signal.aborted && !closePromise, "TASK01_RESOURCE_ABORTED_OR_TIMEOUT");
-    const payload = Buffer.from(`user\0${OWNER}\0database\0${databaseName}\0\0`);
+    const payload = Buffer.from(`user\0${role}\0database\0${databaseName}\0\0`);
     const request = Buffer.alloc(8 + payload.length);
     request.writeUInt32BE(request.length); request.writeUInt32BE(196608, 4); payload.copy(request, 8);
     await new Promise((resolve, reject) => {
@@ -755,12 +760,111 @@ async function prepareTask01Postgres(options = {}, lifetime) {
         }
       });
     });
+  }
+  async function verifyPaymentLoopbackPlaintextHba() {
+    const cursor = await captureLogCursor();
+    await sendLoopbackPlaintextStartup(OWNER);
     const evidence = await readPlaintextRejectionEvidence(cursor, { role: OWNER, databaseName });
     checkRelay();
     requireThat(evidence.hbaNoEncryptionRejected && evidence.roleMatched && evidence.databaseMatched,
       "TASK01_RESOURCE_LOOPBACK_PLAINTEXT_HBA");
     receipt.loopbackPlaintextHba = { sourceAddress: "127.0.0.1", role: OWNER, databaseName, noEncryptionRejected: true };
     persist();
+  }
+  async function applyCurrent259DocumentHbaV1(handle, proof) {
+    const scopeError = "TASK01_RESOURCE_DOCUMENT_HBA_SCOPE";
+    requireThat(firstQ2 && arguments.length === 2 && !contractHbaAttempted && !documentHbaAttempted && !closePromise, scopeError);
+    const { assertCurrent259GeneratedDocumentLoginScope } = require("./task12-current259-document-login.cjs");
+    const checkScope = () => {
+      requireThat(!closePromise && !signal.aborted, scopeError);
+      try { assertCurrent259GeneratedDocumentLoginScope(proof, handle); }
+      catch { throw fault(scopeError); }
+      requireThat(proof.runId === runId && proof.containerId === containerId && proof.sourceSha === sourceSha, scopeError);
+      checkRelay();
+    };
+    checkScope();
+    const ids = proof.roleOids, xmins = proof.roleXmins, xid = proof.installXid;
+    const oid = value => typeof value === "string" && /^[1-9][0-9]{0,9}$/u.test(value) && Number(value) <= 0xffffffff;
+    requireThat(ids.length === 3 && ids.every(value => oid(value) && value !== "10") && new Set(ids).size === 3 &&
+      typeof xid === "string" && /^[1-9][0-9]{0,19}$/u.test(xid) && BigInt(xid) <= 0xffffffffffffffffn &&
+      xmins.length === 3 && xmins.every(value => oid(value) && value === String(BigInt(xid) % 0x100000000n)), scopeError);
+    documentHbaAttempted = true;
+
+    const readSql = `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL search_path TO pg_catalog, pg_temp;
+SELECT jsonb_build_object('pid',pg_backend_pid(),'start',
+ (SELECT to_char(backend_start AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') FROM pg_stat_activity WHERE pid=pg_backend_pid()),
+ 'configuredAt',to_char(pg_conf_load_time() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+ 'scope',current_database()='${databaseName}' AND current_user::regrole::oid=10 AND session_user=current_user
+  AND host(inet_client_addr())='127.0.0.1' AND host(inet_server_addr())='127.0.0.1' AND inet_server_port()=5432
+  AND EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl) AND pg_xact_status('${xid}'::xid8)='committed',
+ 'roles',(SELECT jsonb_agg(jsonb_build_array(r.rolname,r.oid::text,r.xmin::text) ORDER BY e.pos)
+  FROM unnest(ARRAY[${ids.map(id => `'${id}'::oid`).join(",")}]) WITH ORDINALITY e(id,pos)
+  JOIN pg_authid r ON r.oid=e.id WHERE r.rolcanlogin AND r.rolconnlimit=1 AND r.rolvaliduntil IS NULL
+   AND NOT (r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
+   AND r.rolpassword LIKE 'SCRAM-SHA-256$%'),
+ 'rules',(${hbaProjectionSql.slice(0, -1)}));
+ROLLBACK;`;
+    const timestamp = value => typeof value === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(value);
+    const read = async (rules, phase) => {
+      checkScope();
+      const result = await runOwnerSql(readSql, phase, checkScope);
+      checkScope();
+      const code = "TASK01_RESOURCE_DOCUMENT_HBA_" + (phase === "document-hba-before" ? "PREIMAGE" : "READBACK");
+      const expectedRules = rules.map(([type, database, role, address, auth, options], index) =>
+        [index + 1, index + 1, HBA_PATH, type, [database], [role], address, address === "127.0.0.1" ? "255.255.255.255" : address, auth, options, null]);
+      let row;
+      try { if (Buffer.byteLength(result.stdout) <= 8192) row = JSON.parse(result.stdout); }
+      catch { throw fault(code); }
+      requireThat(row?.scope === true && Number.isInteger(row.pid) && row.pid > 0 && row.pid <= 2147483647 &&
+        timestamp(row.start) && timestamp(row.configuredAt) &&
+        JSON.stringify(row.roles) === JSON.stringify(DOCUMENT_LOGINS.map((name, i) => [name, ids[i], xmins[i]])) &&
+        JSON.stringify(row.rules) === JSON.stringify(expectedRules), code);
+      return row;
+    };
+    const original = hbaRules(databaseName, ROLES, true), rules = hbaRules(databaseName, [...ROLES, ...DOCUMENT_LOGINS], true);
+    const contents = renderHba(rules), beforeSha256 = sha(renderHba(original)), afterSha256 = sha(contents);
+    requireThat(receipt.configuration.hbaSha256 === beforeSha256, "TASK01_RESOURCE_DOCUMENT_HBA_PREIMAGE");
+    const before = await read(original, "document-hba-before");
+    await inspectOwned(); await verifyDaemon();
+    checkScope();
+    const written = await docker(["exec", "--interactive", "--user", "postgres", containerId, "sh", "-ceu", hbaWrite,
+      "document-hba", beforeSha256, afterSha256], { input: contents, timeoutMs: 10000 });
+    checkScope();
+    requireThat(written.stdout.toString("utf8") === afterSha256 + "\n", "TASK01_RESOURCE_DOCUMENT_HBA_FILE");
+    const reload = await runOwnerSql("SELECT pg_catalog.pg_reload_conf();", "document-hba-reload", checkScope);
+    checkScope();
+    requireThat(reload.stdout.trim() === "t", "TASK01_RESOURCE_DOCUMENT_HBA_RELOAD");
+    let after;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt) await new Promise(resolve => setTimeout(resolve, 250));
+      after = await read(rules, "document-hba-committed");
+      if (after.configuredAt > before.configuredAt) break;
+    }
+    requireThat(after.configuredAt > before.configuredAt && after.pid !== before.pid && after.start !== before.start,
+      "TASK01_RESOURCE_DOCUMENT_HBA_RELOAD");
+    for (const role of DOCUMENT_LOGINS) {
+      const cursor = await captureLogCursor();
+      checkScope();
+      try { await sendLoopbackPlaintextStartup(role); }
+      catch { throw fault("TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT"); }
+      checkScope();
+      await verifyDaemon(); await inspectOwned();
+      checkScope();
+      const logs = await docker(["logs", "--timestamps", containerId], { timeoutMs: 10000 });
+      checkScope();
+      requireThat(contractPlaintextReadback(logs, cursor, role, databaseName, true), "TASK01_RESOURCE_DOCUMENT_HBA_PLAINTEXT");
+    }
+    await verifyDaemon();
+    checkScope();
+    const file = await docker(["exec", "--user", "postgres", containerId, "sha256sum", HBA_PATH], { timeoutMs: 10000 });
+    checkScope();
+    requireThat(file.stdout.toString("utf8") === `${afterSha256}  ${HBA_PATH}\n`, "TASK01_RESOURCE_DOCUMENT_HBA_FILE");
+    const transition = Object.freeze({ beforeSha256, afterSha256, rules: rules.length, loginInstallXid: xid,
+      plaintextNoEncryptionRejected: true });
+    receipt.documentHba = transition;
+    persist();
+    return transition;
   }
   async function beginCurrent259ContractPlaintextProbe() {
     requireThat(technical && arguments.length === 0 && contractOrdinary && !contractPlaintextStarted && !closePromise,
@@ -869,7 +973,8 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     return { containerId, networkId, port, databaseName,
       ...(loopback ? { relayId: receipt.relay.id, checkRelay, beginPrismaRelayDrain } : {}), caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical && !paymentLoopback ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1),
       beginCurrent259ContractPlaintextProbe: safeOperation(beginCurrent259ContractPlaintextProbe),
-      verifyCurrent259ContractPlaintextRejection: safeOperation(verifyCurrent259ContractPlaintextRejection) } : {}), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
+      verifyCurrent259ContractPlaintextRejection: safeOperation(verifyCurrent259ContractPlaintextRejection) } : {}),
+      ...(firstQ2 ? { applyCurrent259DocumentHbaV1: safeOperation(applyCurrent259DocumentHbaV1) } : {}), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
   } catch (error) {
     receipt.phase = "failed"; receipt.status = "failed";
     const commandKind = ownErrorField(error, "commandKind");
