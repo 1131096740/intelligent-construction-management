@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394 首条 Q2 装配复核发现合同工作台递归加载文书处理器。应用启动后每秒触发四组后台回收 UPDATE，超出首条公开链的最小 ACL。已记录独立文书处理器生命周期、真实 Nest 五实例与专用 COS 上传前缀的接线边界，未启动服务或执行真实资源。普通 ACL、五类登录与 #398 双人竞办分别推进。 [装配复核](/private/tmp/jg-394-firstq2-nest.J5Ojh97B/HANDOFF.md)
+
 - [~] 准确组合 `410dfb9c` 已合入本地中央。#398 A16 固定取消接入原实付 POST 与独立查账，后继补结算状态及申请/结算更新时间。#394 组合入口按原两份前像、M232/经营、正式七片、M259 首次快照及独立读回排序，阶段守卫修复独审通过。14 项串行检查全绿（992 标准、147 API、35 支付、类型/lint/构建、两 SDK 纯加载及离线 HOLD 三步）。真实 PostgreSQL、5 秒预算及归档全链待验。独立源码继续普通 ACL 和双人竞办；断连恢复接缝已审待实现。 [组合回执](/private/tmp/jg-382-cancel-archive-composition.Kbezkk34/HANDOFF-410D.md) · [断连设计](/private/tmp/jg-398-a16-disconnect-design.b6nyBd4U/HANDOFF.md)
 
 - [~] #398 准确 `5530da1e` 已快进本地集成。六处文件核验边界已独审，974 标准、147 API、23 支付、类型/lint/构建、两项 SDK 纯装载和离线 HOLD 检查通过。真实 PostgreSQL 和 HTTP 5 秒预算待验。A16 复核已定位固定空经营日期实付的延迟约束路径，提交取消接线在独立树推进。 [组合回执](/private/tmp/jg-398-six-fd-composition.ZGg2E3ky/HANDOFF-5530.md) · [A16 审计](/private/tmp/jg-398-a16-5530-seam.dLS0NUxJ/HANDOFF.md)
