@@ -29,3 +29,46 @@ test('named technical entry rejects caller deadlines/purpose/max flags before pr
   assert.deepEqual(f.writes,[]);assert.deepEqual(f.commands,[]);
  }
 });
+
+test('the fixed contract rules extend the original bytes only before the two final TLS rejects',()=>{
+ const raw={exports:{}};
+ const body=fs.readFileSync(source,'utf8')+'\nmodule.exports={hbaRules,renderHba,ROLES,CONTRACT_LOGINS};';
+ new Function('require','module',body)(require,raw);
+ const {hbaRules,renderHba,ROLES,CONTRACT_LOGINS}=raw.exports;
+ const database='jg_task01_'+'1'.repeat(32);
+ const fixedRoles=['jg_task01_owner','jg_task01_runtime','jg_task01_observer'];
+ assert.deepEqual(ROLES,fixedRoles);
+ const original=[
+  'local all jg_task01_owner peer map=jg_task01_init','local all all reject',
+  'hostnossl all all 0.0.0.0/0 reject','hostnossl all all ::/0 reject',
+  ...fixedRoles.flatMap(role=>[`hostssl ${database} ${role} 0.0.0.0/0 scram-sha-256`,`hostssl ${database} ${role} ::/0 scram-sha-256`]),
+  'hostssl all all 0.0.0.0/0 reject','hostssl all all ::/0 reject',
+ ];
+ assert.equal(renderHba(hbaRules(database,ROLES)),original.join('\n')+'\n');
+ const five=['jg_fixture_app_'+'a'.repeat(24),...CONTRACT_LOGINS];
+ const extended=hbaRules(database,[...ROLES,...five]);
+ assert.equal(extended.length,22);
+ assert.equal(renderHba([...extended.slice(0,10),...extended.slice(20)]),original.join('\n')+'\n');
+ assert.deepEqual(extended.slice(10,20),five.flatMap(role=>['0.0.0.0','::'].map(ip=>['hostssl',database,role,ip,'scram-sha-256',[]])));
+});
+
+test('fixed plaintext evidence only counts fresh complete explicit FATAL lines for the bound role and database',()=>{
+ const raw={exports:{}};
+ new Function('require','module',fs.readFileSync(source,'utf8')+'\nmodule.exports={contractPlaintextReadback,sha};')(require,raw);
+ const {contractPlaintextReadback,sha}=raw.exports;
+ const role='jg_fixture_app_'+'a'.repeat(24),db='jg_task01_'+'1'.repeat(32);
+ const prefix='2026-11-11T14:47:23.804940290Z 2026-11-11 14:47:23.804 UTC [58] ';
+ const good=`${prefix}user=${role} db=${db} FATAL:  pg_hba.conf rejects connection for host "172.29.0.1", user "${role}", database "${db}", no encryption\n`;
+ const before={stdout:Buffer.alloc(0),stderr:Buffer.from(good)};
+ const cursor={stdoutBytes:before.stdout.length,stderrBytes:before.stderr.length,stdoutSha256:sha(before.stdout),stderrSha256:sha(before.stderr)};
+ const check=(tail,initial=before.stderr)=>contractPlaintextReadback({stdout:before.stdout,stderr:Buffer.concat([initial,Buffer.from(tail)])},cursor,role,db);
+ assert.equal(check(good),true);
+ for(const tail of ['',good.trimEnd(),good.replace('FATAL:','DETAIL:'),good.replace('rejects connection for host','no entry for host'),
+  good.replace('no encryption','SSL encryption'),good.replace(db,'wrong_db'),good.replace(role,'wrong_role'),
+  good.replace(`user "${role}"`,'user "another"'),good.replace(`database "${db}"`,'database "another"'),
+  good.replace('172.29.0.1','invalid'),good.replace('[58]','[0]'),good.replace('no encryption','no encryption extra')]){
+  assert.equal(check(tail),false);
+ }
+ const changed=Buffer.from(before.stderr);changed[0]=0;
+ assert.throws(()=>check(good,changed),/TASK01_RESOURCE_CONTRACT_PLAINTEXT_WINDOW/u);
+});
