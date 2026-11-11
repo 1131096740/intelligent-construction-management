@@ -231,7 +231,7 @@ SET LOCAL lock_timeout='5s';
 LOCK TABLE public._prisma_migrations IN SHARE MODE;
 DO $current259_before$ DECLARE observed jsonb; BEGIN
  SELECT q.result INTO STRICT observed FROM (${projection}) q;
- observed:=jsonb_set(observed,'{identity}',observed->'identity'-'backendPid'-'backendStart'-'readOnly')-'writeXid';
+ observed:=jsonb_set(observed,'{identity}',(observed->'identity')-'backendPid'-'backendStart'-'readOnly')-'writeXid';
  IF observed IS DISTINCT FROM ${quote(JSON.stringify(expected))}::jsonb
  THEN RAISE EXCEPTION 'current259 B7 preimage changed'; END IF;
 END $current259_before$;

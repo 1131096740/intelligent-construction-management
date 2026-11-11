@@ -222,7 +222,7 @@ BEGIN
   OR witness->'publicRoutine'->'config' IS DISTINCT FROM ${json(config)}
   OR encode(sha256(convert_to(witness->'publicRoutine'->'definition'->>'prosrc','UTF8')),'hex') IS DISTINCT FROM '46e6f6acb43b69175637009a272eec11a945928f055272aeea13ea86c384a4a3'
   OR witness->'publicRoutine'->'acl' IS DISTINCT FROM ${json(expectedOwner)}
-  OR (witness->'publicRoutine'->'definition'-'prosrc') IS DISTINCT FROM (witness->'alias'->'definition'-'prosrc')
+  OR ((witness->'publicRoutine'->'definition')-'prosrc') IS DISTINCT FROM ((witness->'alias'->'definition')-'prosrc')
   THEN RAISE EXCEPTION '${CODE}_REGISTRY_INTERMEDIATE'; END IF;
  FOR item IN SELECT value FROM jsonb_array_elements_text(${json(grantRoles)}) LOOP
   SELECT rolname INTO STRICT role_name FROM pg_roles WHERE oid=item::oid;

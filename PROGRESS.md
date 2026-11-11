@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394/#398 共用七片、B7 的 JSONB 运算优先级修复已快进本地至准确 `2f67ca9f`。两份实际渲染只增三对括号，独立 78 定向、PG16.1 整批 SQL 与 DO AST 通过，未执行真实 SQL。#394 首 Q2 九步公开用例 `9101a321` 独审发现经营开启项目不能以非空生效日直接 INSERT，须先建挂靠与参与公司再按实际约束启用，后继窄修中。COS 旧235表外锁与当前259对上源不匹配，已核同轮新资格和固定代观测接缝。 [共同修复](/private/tmp/jg-398-2f67-independent.ByMPLnxb/REVIEW-2F67.md) · [Q2 独审](/private/tmp/jg-394-q2-http-review.WebQGQzZ/REVIEW-9101.md) · [COS 接缝](/private/tmp/jg-394-q2-cos-seam.oUyoIKE6/HANDOFF.md)
+
 - [~] #394 首条 Q2 Nest 装配和 #398 双人竞办源码已快进本地中央到准确 `47087db2`。新隔离树在准确根重生成 Prisma 后，16 项离线门全过（112 窄、1070 标准、147 API、38 付款、17 Q2、纯加载、类型/lint/构建）。首次复制的生成客户端指向旧树，原纯加载首错与未运行后继记录保留。双竞办真实锁、5 秒、Q2 公开 HTTP/COS 均待实测。A16 精确 `8b7a7fda` 独立45绿，仍待真实旧监听/旧连接退出与同库替代发行；A17 `db3c9079` 独审固定权限和守卫，待与原 writer/B7/live 连续接线。 [组合回执](/private/tmp/jg-382-47087-offline-clean.yuYa4SEQ/HANDOFF-47087.md) · [首次停止](/private/tmp/jg-398-competition-43f4-review.fzhZUSos/STOP-47087.md) · [A16 独审](/private/tmp/jg-398-a16-origin-review.09zIi9ux/REVIEW-8B7A.md) · [A17 独审](/private/tmp/jg-398-voucher-DB3C-review.mg52aUUA/REVIEW-DB3C.md)
 
 - [~] #398 真实竞办入口新增确认一处阻断：原 runtime ACL 写后 SQL 固定要求连接上限 1，真实两办理连接会在较外层 catalog 前停止。原作者并行修该固定竞办 profile 与先发生的 HTTP close 首因。A17 同轮凭证后补核到实际上传触发器和碰撞读闭包，必须沿原 ACL writer/B7/live 一致认证，无法旁路补权；独立源码片推进。#394 首 Q2 已按实际 Schema、DTO 与生产读回核定只种主数据的公开 HTTP 用例接缝。未执行实际迁移、凭证、文件、PG 或 COS。 [凭证权限复核](/private/tmp/jg-398-voucher-authority.IL9L4lSV/HANDOFF.md) · [Q2 用例接线](/private/tmp/jg-394-q2-native-case.o8iUZ84D/HANDOFF.md)
