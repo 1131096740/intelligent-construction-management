@@ -36,7 +36,7 @@ function fixture(options={}) {
   const calls = [];
   let claimed=false, closes=0;
   const check = () => { assert.equal(closes,0); options.check?.(); };
-  const anchor = options.witness ?? (() => Object.freeze({guardSql: 'PERFORM 1;', sevenCatalogSql: 'pg_catalog.repeat(\'2\',64)', catalogSql: 'pg_catalog.repeat(\'a\',64) /* c.relacl::text a.attacl::text */'}));
+  const anchor = options.witness ?? (() => Object.freeze({guardSql: 'PERFORM 1;', sevenCatalogSql: "pg_catalog.repeat('2',64) /* pg_catalog.aclexplode(coalesce(a.attacl,'{}'::aclitem[])) jsonb_build_array(a.attnum,a.attacl) */", catalogSql: 'pg_catalog.repeat(\'a\',64) /* c.relacl::text a.attacl::text */'}));
   const view = {source,runId:completion.runId,check,resource:{containerId:completion.containerId,databaseName:scope.databaseIdentity.database,
     async execOwnerSql(sql,phase){
       calls.push({sql,phase});
@@ -134,14 +134,18 @@ for(const [label,step,alter,attempts] of [
   assert.equal(f.calls.length,attempts);
 });
 
-test('only the registered archive claim carries fixed source guards into the new stages',async()=>{
+function archiveModel() {
   const filename=path.join(__dirname,'task16-current259-archive-install.test.cjs');
   const load=new Function('require','__dirname',fs.readFileSync(filename,'utf8')+'\nreturn model;')(
     name=>name==='node:test'?{test(){}}:require(name),__dirname);
-  const plain=load();
+  return load();
+}
+
+test('only the registered archive claim carries fixed source guards into the new stages',async()=>{
+  const plain=archiveModel();
   const old=await plain.installCurrent259ArchiveAuthorities(plain.provisionResult,plain.handle);
   assert.equal(plain.claimCurrent259ArchiveInstallation(old,plain.handle).ordinaryAclWitness,undefined);
-  const archive=load();
+  const archive=archiveModel();
   const result=await archive.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(archive.provisionResult,archive.handle);
   const claim=archive.claimCurrent259ArchiveInstallation(result,archive.handle);
   assert.equal(typeof claim.ordinaryAclWitness,'function');
@@ -165,4 +169,46 @@ test('a qualified already-present privilege vector emits no grants',async()=>{
   assert.deepEqual(f.calls.map(row=>row.phase),phases);
   assert.doesNotMatch(f.calls[1].sql,/^GRANT /mu);
   assert.equal(result.catalogSha256,catalogSha256);
+});
+
+for(const [label,step,required] of [
+  ['changed default during ordinary ACL writer',1,['pg_catalog.pg_attrdef','attidentity','attgenerated']],
+  ['changed index after ACL commit',2,['pg_catalog.pg_index','indisvalid','indisready']],
+])test(label+' cannot acquire the next phase claim',async()=>{
+  const archive=archiveModel();
+  const result=await archive.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(archive.provisionResult,archive.handle);
+  const claim=archive.claimCurrent259ArchiveInstallation(result,archive.handle);
+  const f=fixture({witness:claim.ordinaryAclWitness,observe(_row,n,sql){
+    if(n!==step)return;
+    const post=Array.from(sql.matchAll(/DO \$ordinary_archive_acl\$([\s\S]+?)\$ordinary_archive_acl\$;/gu)).at(-1)?.[1]??'';
+    // Model only a structural drift detected by the executed postimage guard.
+    // Earlier guards, and fields only included in a final SELECT, cannot stop it.
+    if(required.every(field=>post.includes(field)))throw new Error('synthetic seven-fragment drift');
+  }});
+  await assert.rejects(f.api.installCurrent259OrdinaryArchiveAcl(f.completion,f.handle), /COMMIT_UNCONFIRMED/u);
+  assert.equal(f.calls.length,step+1);
+  assert.equal(f.closes(),1);
+});
+
+test('the next-stage protection restores exactly the allowed seven-fragment ACL coordinates',async()=>{
+  const archive=archiveModel();
+  const result=await archive.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(archive.provisionResult,archive.handle);
+  const claim=archive.claimCurrent259ArchiveInstallation(result,archive.handle);
+  const aclChanges=[
+    {relation:'ContractVersion',column:'originalSignedNumber',relationOid:'17030',attnum:19,
+      privileges:['INSERT'],rawAcl:'{jg_fixture_app_abcdefabcdefabcdefabcdef=r/jg_task01_owner}',acl:[['10',ordinary.oid,'SELECT',false]]},
+    {relation:'RegisteredPaymentVoucher',column:'executionId',relationOid:'17031',attnum:3,
+      privileges:['SELECT'],rawAcl:null,acl:[]},
+  ];
+  const f=fixture({witness:claim.ordinaryAclWitness,observe(row,n){if(n===0)row.changes.push(...aclChanges);}});
+  const completion=await f.api.installCurrent259OrdinaryArchiveAcl(f.completion,f.handle);
+  const lease=f.api.claimCurrent259OrdinaryArchiveAcl(completion,f.handle);
+  const prior=lease.protectedSql.match(/WITH prior AS \(SELECT \* FROM pg_catalog.jsonb_to_recordset\('([^']+)'::jsonb\)/u)?.[1];
+  assert.ok(prior);
+  assert.deepEqual(JSON.parse(prior),aclChanges);
+  assert.match(lease.protectedSql,/pg_catalog\.pg_attrdef[\s\S]+pg_catalog\.pg_index/u);
+  assert.match(lease.protectedSql,/p\.relation='ContractVersion' AND p\."column" IN \('originalSignedNumber'\)/u);
+  assert.match(lease.protectedSql,/p\.relation='RegisteredPaymentVoucher' AND p\."column" IN \('contentSha256','executionId','fileId'\)/u);
+  assert.match(lease.protectedSql,/p\."rawAcl"::aclitem\[\]/u);
+  assert.ok(f.calls[2].sql.includes(lease.protectedSql+' IS DISTINCT FROM'));
 });

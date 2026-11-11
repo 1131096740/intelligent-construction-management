@@ -66,11 +66,13 @@ const protectedBindings=[
 ];
 const lockRelations=[...new Set([...relations,...protectedBindings,...manifest.privateTablesDenied,
  '_prisma_migrations','jg_contract_direct_archive_intent_binding_v1','jg_contract_direct_archive_native_nonce_v1'])].sort();
-const protectedSql=`pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
+const protectedRowsSql=`pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
  ${protectedBindings.map(name=>`(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(b.xmin::text,pg_catalog.to_jsonb(b))
    ORDER BY pg_catalog.to_jsonb(b)::text COLLATE "C",b.xmin::text COLLATE "C") FROM public.${name} b)`).join(', ')},
  (SELECT pg_catalog.jsonb_agg(pg_catalog.to_jsonb(t) ORDER BY t.oid) FROM pg_catalog.pg_type t
    WHERE t.typnamespace=pg_catalog.to_regnamespace('public')))::text,'UTF8')),'hex')`;
+const protectSeven = sevenSql => `pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
+ pg_catalog.jsonb_build_array(${protectedRowsSql},${sevenSql})::text,'UTF8')),'hex')`;
 const distinct=(a,b)=>a.backendPid!==b.backendPid && a.backendStart!==b.backendStart;
 const literalList=values=>values.map(quote).join(',');
 const ownerRoleSql = ordinary => `${quote(ordinary.oid)}::oid`;
@@ -164,6 +166,29 @@ function normalizedCatalog(catalogSql,delta) {
  return `(${aclBefore(delta)} SELECT ${replace(replace(catalogSql,'c.relacl::text','c.oid','0'),
   'a.attacl::text','a.attrelid','a.attnum')})`;
 }
+function normalizedSevenCatalog(sevenSql,delta){
+ // These are the only two ACL-bearing coordinates of the original seven
+ // fragment digest that the ordinary grants can change. Keep the rest of its
+ // projection (including defaults, identity/generated and indexes) verbatim.
+ const signed = "pg_catalog.aclexplode(coalesce(a.attacl,'{}'::aclitem[]))";
+ const voucher = "jsonb_build_array(a.attnum,a.attacl)";
+ need(sevenSql.split(signed).length===2 && sevenSql.split(voucher).length===2,'SEVEN_WITNESS');
+ const signedName='originalSignedNumber',voucherColumns=['contentSha256','executionId','fileId'];
+ const known=(row,relation,columns)=>row.relation===relation&&columns.includes(row.column);
+ const changes=delta.filter(row=>known(row,'ContractVersion',[signedName])||known(row,'RegisteredPaymentVoucher',voucherColumns));
+ if(!changes.length)return sevenSql;
+ const restore=(relation,columns)=>{
+  const prior=`p.relation=${quote(relation)} AND p."column" IN (${literalList(columns)})
+   AND p."relationOid"=a.attrelid::text AND p.attnum=a.attnum AND p."column"=a.attname::text
+   AND a.attrelid=pg_catalog.to_regclass(${quote('public.'+identifier(relation))})::oid`;
+  return `CASE WHEN EXISTS(SELECT 1 FROM prior p WHERE ${prior})
+    THEN (SELECT p."rawAcl"::aclitem[] FROM prior p WHERE ${prior}) ELSE a.attacl END`;
+ };
+ const restored=sevenSql
+  .replace(signed,()=>`pg_catalog.aclexplode(coalesce(${restore('ContractVersion',[signedName])},'{}'::aclitem[]))`)
+  .replace(voucher,()=>`jsonb_build_array(a.attnum,${restore('RegisteredPaymentVoucher',voucherColumns)})`);
+ return `(${aclBefore(changes)} SELECT ${restored})`;
+}
 function exactPostimage(ordinary,delta){
  const app=ownerRoleSql(ordinary);
  return `EXISTS (${aclBefore(delta)}, observed AS (
@@ -195,10 +220,10 @@ function grants(ordinary,delta){
  return [...byTable].map(([table,ops])=>`GRANT ${[...ops].sort().map(([op,columns])=>op+
    (columns.length?` (${columns.join(', ')})`:'')).join(', ')} ON TABLE public.${identifier(table)} TO ${identifier(ordinary.name)};`).join('\n');
 }
-function observeRow(phase,challenge,catalog,changes,installXid,commitStatus){
+function observeRow(phase,challenge,catalog,protection,changes,installXid,commitStatus){
  return `SELECT jsonb_build_object('phase',${quote(phase)},'challenge',${quote(challenge)},
  'backendPid',pg_catalog.pg_backend_pid(),'backendStart',${startStamp},'catalogSha256',${catalog},
- 'protectedSha256',${protectedSql},
+ 'protectedSha256',${protection},
  'changes',${changes},'installXid',${installXid},'commitStatus',${commitStatus})
  FROM pg_catalog.pg_stat_activity WHERE pid=pg_catalog.pg_backend_pid();`;
 }
@@ -208,27 +233,29 @@ function render(lease,ordinary,phase,challenge,before,staged){
  const delta=before?.changes;
  const targetSql=targets(ordinary);
  const archive=quote(lease.completion.catalogSha256);
+ const preProtection=protectSeven(sevenCatalogSql);
+ const postProtection=first?null:protectSeven(normalizedSevenCatalog(sevenCatalogSql,delta));
  const guard=(body)=>`DO $ordinary_archive_acl$ BEGIN\n${body}\nEND $ordinary_archive_acl$;`;
  const pre=guard(`${guardSql}
  ${limits(ordinary)}
  IF ${catalogSql} IS DISTINCT FROM ${archive}
   OR ${sevenCatalogSql} IS DISTINCT FROM ${quote(lease.completion.sevenCatalogSha256)}
-  ${write?`OR ${protectedSql} IS DISTINCT FROM ${quote(before.protectedSha256)}`:''}
+  ${write?`OR ${preProtection} IS DISTINCT FROM ${quote(before.protectedSha256)}`:''}
   OR (${targetSql}) ${write?`IS DISTINCT FROM ${json(delta)}`:'IS NULL'}
  THEN RAISE EXCEPTION '${CODE}_PREIMAGE'; END IF;`);
  const post=first?'':guard(`${guardSql}
  ${limits(ordinary)}
  IF ${normalizedCatalog(catalogSql,delta)} IS DISTINCT FROM ${archive}
-  OR ${protectedSql} IS DISTINCT FROM ${quote(before.protectedSha256)}
+  OR ${postProtection} IS DISTINCT FROM ${quote(before.protectedSha256)}
   OR ${exactPostimage(ordinary,delta)} OR (${targetSql}) IS DISTINCT FROM '[]'::jsonb
   ${write?'':`OR ${catalogSql} IS DISTINCT FROM ${quote(staged.catalogSha256)}
    OR pg_catalog.pg_xact_status(${quote(staged.installXid)}::xid8) IS DISTINCT FROM 'committed'`}
  THEN RAISE EXCEPTION '${CODE}_POSTIMAGE'; END IF;`);
- if(first)return [readOnly,setup,pre,observeRow(phase,challenge,catalogSql,`(${targetSql})`,'NULL::text','NULL::text'),'ROLLBACK;'].join('\n');
+ if(first)return [readOnly,setup,pre,observeRow(phase,challenge,catalogSql,preProtection,`(${targetSql})`,'NULL::text','NULL::text'),'ROLLBACK;'].join('\n');
  if(write)return [writer,setup,
   `LOCK TABLE ${lockRelations.map(name=>'public.'+identifier(name)).join(', ')} IN SHARE ROW EXCLUSIVE MODE NOWAIT;`,
-  pre,grants(ordinary,delta),post,observeRow(phase,challenge,catalogSql,'NULL::jsonb','pg_catalog.pg_current_xact_id()::text','NULL::text'),'COMMIT;'].join('\n');
- return [readOnly,setup,post,observeRow(phase,challenge,catalogSql,'NULL::jsonb',quote(staged.installXid),
+  pre,grants(ordinary,delta),post,observeRow(phase,challenge,catalogSql,postProtection,'NULL::jsonb','pg_catalog.pg_current_xact_id()::text','NULL::text'),'COMMIT;'].join('\n');
+ return [readOnly,setup,post,observeRow(phase,challenge,catalogSql,postProtection,'NULL::jsonb',quote(staged.installXid),
   `pg_catalog.pg_xact_status(${quote(staged.installXid)}::xid8)`),'ROLLBACK;'].join('\n');
 }
 
@@ -303,7 +330,8 @@ async function installCurrent259OrdinaryArchiveAcl(archiveCompletion,handle){
     containerId:archiveCompletion.containerId,installXid:committed.installXid,archiveInstallXid:archiveCompletion.installXid,
     catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256,executionAllowed:false,nativeAdmission:false});
   proofs.set(completion,{handle,check,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
-    catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql});
+    catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
+    protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))});
   return completion;
  }catch{
   const error=Object.assign(fault(writeAttempted?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED'),{phase});
@@ -317,7 +345,7 @@ function claimCurrent259OrdinaryArchiveAcl(completion,handle){
  const receipt=proofs.get(completion);
  need(receipt.handle===handle,'HANDLE');
  proofs.delete(completion);receipt.check();
- const {check,archiveCompletion,roleCompletion,source,catalogSql}=receipt;
+ const {check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
  return Object.freeze({completion,check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql});
 }
 
