@@ -71,7 +71,7 @@ function projection(c,stage,phase,xid=null){
   CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN x.v->>'recipients'='file' THEN (p->'fileCallerOids')||jsonb_build_array(p->>'appOid') ELSE jsonb_build_array(p->>'appOid') END) roles(value)
   WHERE roles.value::oid<>(p->'identity'->>'actorOid')::oid),
  target_objects AS (SELECT t.*,CASE WHEN kind='function' THEN to_regprocedure(object)::oid ELSE to_regclass(format('public.%I',object))::oid END AS object_oid FROM target_specs t),
- target_columns AS (SELECT t.*,CASE WHEN kind='column' THEN a.attnum ELSE 0 END AS attnum,CASE WHEN kind='column' THEN a.atttypid::text ELSE '0' END AS type_oid,
+ target_columns AS (SELECT t.*,CASE WHEN kind='column' THEN a.attnum ELSE 0::smallint END AS attnum,CASE WHEN kind='column' THEN a.atttypid::text ELSE '0' END AS type_oid,
   CASE WHEN kind='column' THEN a.xmin::text WHEN kind='function' THEN f.xmin::text ELSE c.xmin::text END AS catalog_xmin
   FROM target_objects t LEFT JOIN pg_attribute a ON kind='column' AND a.attrelid=t.object_oid AND a.attname=member AND a.attnum>0 AND NOT a.attisdropped
   LEFT JOIN pg_proc f ON kind='function' AND f.oid=t.object_oid LEFT JOIN pg_class c ON kind='table' AND c.oid=t.object_oid),

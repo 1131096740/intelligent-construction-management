@@ -98,7 +98,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
         result = require("./testdata/local-staged-tail-model.cjs").observe(sql, phase);
         result.ledger = readback().ledger;
         result.identity.actor = actor.name; result.identity.sessionActor = actor.name;
-        if (mutate) result = mutate(phase, result);
+        if (mutate) result = mutate(phase, result, sql);
         return { stdout: JSON.stringify(result), stderr: "" };
       }
       if (phase === "qualification-setup") {
@@ -814,4 +814,28 @@ test("owned current259 partial final readback cannot issue technical supply",asy
  await assert.rejects(partial,/LOCAL_MIGRATION_COMPLETION/);assert.equal(model.deploymentRequests.at(-1).count,259);
  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(partial,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
  assert.equal(model.counts().closes,1);
+});
+
+
+test("tail column privileges resolve the PG16 attnum overload through every qualification window", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "local-tail-column-signature-"));
+  let observations = 0;
+  try {
+    const fake = await fakeFixture(dir, (phase, row, sql) => {
+      if (!phase.startsWith("tail")) return row;
+      // PG16.1 pg_proc OID3019 takes oid,oid,int2,text. Its int4->int2
+      // pg_cast entry is assignment-only, so a bare integer arm cannot bind.
+      const expression = /CASE WHEN kind='column' THEN a\.attnum ELSE (0(?:::(?:smallint|integer|int2|int4))?) END AS attnum/u.exec(sql);
+      assert.ok(expression, "the synthetic PG16 boundary needs the projected column number");
+      const fallbackType = expression[1].includes("::") ? expression[1].split("::")[1] : "integer";
+      const columnType = ["smallint", "int2"].includes(fallbackType) ? "int2" : "int4";
+      if (columnType !== "int2") {
+        throw Object.assign(new Error("function has_column_privilege(oid, oid, integer, text) does not exist"), { code: "42883" });
+      }
+      observations++;
+      return row;
+    });
+    await fake.fixture.migrate({ databaseUrl });
+    assert.equal(observations, 12);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });
