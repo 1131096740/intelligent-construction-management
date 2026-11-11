@@ -438,7 +438,8 @@ describe("project financing quota PostgreSQL runner", () => {
       const receiptText = readFileSync(evidencePath, "utf8");
       expect(JSON.parse(receiptText).postgres).toEqual(tailFailureKind === "RESOURCE_PORT"
         ? { status: "captured", sqlState: "P0001", reason: "POSTGRES_ERROR" } : { status: "primary-not-retained" });
-      expect(JSON.parse(receiptText).localMigration).toEqual({ stage, kind: tailFailureKind });
+      expect(JSON.parse(receiptText).localMigration).toEqual({ stage, kind: tailFailureKind,
+        reason: tailFailureKind === "NODE_PROOF" ? "READBACK_VALIDATE_CONTINUITY" : "SUPPLY_RESULT" });
       for (const event of state.events.filter(event => event.action?.startsWith("tail-"))) {
         expect(event.args).toEqual(expect.arrayContaining(["PGOPTIONS=-c log_min_error_statement=panic -c log_error_verbosity=terse", "VERBOSITY=terse"]));
         if (event.action === "tail-supply") {
