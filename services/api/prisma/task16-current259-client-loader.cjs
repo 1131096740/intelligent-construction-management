@@ -130,6 +130,7 @@ function loadCurrent259Client(handle){
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
+ let contract;
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
@@ -139,7 +140,7 @@ function loadCurrent259Client(handle){
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'TASK16_APP_REFLECTION_CHANGED');
    for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(key=>actual[key]===row.descriptor[key]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
-   checkMetadata();
+   checkMetadata();contract?.checkMetadata();
    for(const p of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,p)))need(files.has(p),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
@@ -158,7 +159,7 @@ function loadCurrent259Client(handle){
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2','CURRENT259_LOADER_CLASS');
    for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(k=>actual[k]===row.descriptor[k]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define&&Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
-   checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
+   checkMetadata();contract?.checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
  function verifyBusinessFiles(token,ownedHandle){
@@ -172,13 +173,60 @@ function loadCurrent259Client(handle){
  const expectedRequest=Object.freeze(['database/task16-registered-application.module.js','database/prisma.service.js','api-security.js','operating-projection/projection-export-json.js','api-json-replacer.js','validation/api-validation.js','api-listen.js'].map((p,i)=>Object.freeze({name:['application','database','security','projection','json','validation','listen'][i],path:'services/api/dist/'+p})));
  const loadApplicationModules=request=>{check();need(JSON.stringify(request)===JSON.stringify(expectedRequest),'TASK16_APP_FIXED_ENTRIES');return exportedValues;};
  function collect(){for(const mod of roots)visit(mod,new Set());check();}
- function createTestingModule(metadata){
+ function loadContractApplicationModules(){
+  need(arguments.length===0,'CURRENT259_CONTRACT_FIXED_ENTRIES');check();
+  if(contract)return contract.exports;
+  try{
+   const dist=path.join(root,'services/api/dist');
+   const contractValues={};
+   for(const [relative,names]of [
+    ['database/task12-first-q2-application.module.js',['Task12FirstQ2ApplicationModule']],
+    ['contract/contract.module.js',['ContractModule']],
+    ['contract/contract-direct-archive-runtime.js',['ContractDirectArchiveRuntime','ContractUpwardDirectArchiveRuntime']],
+   ]){
+    const file=path.join(dist,relative),exports=guardedRequire(file),mod=require.cache[file];
+    need(mod?.loaded===true&&mod.exports===exports,'CURRENT259_CONTRACT_FIXED_ENTRIES');
+    roots.push(mod);
+    for(const key of names){
+     const descriptor=Object.getOwnPropertyDescriptor(exports,key),value=own(exports,key);
+     need(typeof value==='function','CURRENT259_CONTRACT_FIXED_ENTRIES');
+     records.push({module:mod,key,value,descriptor});contractValues[key]=value;
+    }
+   }
+   const {Task12FirstQ2ApplicationModule,ContractModule,ContractDirectArchiveRuntime,ContractUpwardDirectArchiveRuntime}=contractValues;
+   const tokens=Object.freeze([values.PrismaService,ContractDirectArchiveRuntime,ContractUpwardDirectArchiveRuntime]);
+   const shutdown=tokens.slice(1).map(token=>dataMethod(token.prototype,'onApplicationShutdown'));
+   const inactive=['app.module.js','main.js','contract-document/contract-document-worker.module.js',
+    'contract-document/contract-document.processor.js'].map(file=>path.join(dist,file));
+   const published=Object.freeze({...contractValues,...Object.fromEntries(['PrismaService','configureApiSecurity',
+    'configureProjectionExportJson','apiJsonReplacer','createApiValidationPipe','listenApi'].map(key=>[key,values[key]]))});
+   contract=Object.freeze({root:Task12FirstQ2ApplicationModule,tokens,exports:published,checkMetadata(){
+    const rootImports=metadata('imports',Task12FirstQ2ApplicationModule),rootProviders=metadata('providers',Task12FirstQ2ApplicationModule);
+    const contractImports=metadata('imports',ContractModule),contractProviders=metadata('providers',ContractModule);
+    need(Array.isArray(rootImports)&&rootImports.length===2&&rootImports[0]===imports[0]&&rootImports[1]===ContractModule&&
+     Array.isArray(rootProviders)&&rootProviders.length===1&&own(rootProviders[0],'provide')==='APP_FILTER'&&own(rootProviders[0],'useClass')===filter&&
+     Array.isArray(contractImports)&&contractImports.filter(value=>value===imports[1]).length===1&&
+     Array.isArray(contractProviders)&&tokens.slice(1).every((token,i)=>contractProviders.filter(value=>value===token).length===1&&
+      dataMethod(token.prototype,'onApplicationShutdown')===shutdown[i])&&inactive.every(file=>!files.has(file)),'CURRENT259_CONTRACT_METADATA');
+   }});
+   collect();return published;
+  }catch(error){failed=true;throw error;}
+ }
+ function createContractTestingModule(){
+  need(arguments.length===0&&contract,'CURRENT259_CONTRACT_FIXED_ENTRIES');
+  return createOwnedTestingModule({imports:[contract.root]},contract);
+ }
+ function createTestingModule(metadata){return createOwnedTestingModule(metadata);}
+ function createOwnedTestingModule(metadata,contractMode){
   check();need(metadata&&!types.isProxy(metadata)&&Reflect.ownKeys(metadata).length===1,'CURRENT259_FRAMEWORK_METADATA');
-  const imports=own(metadata,'imports');need(Array.isArray(imports)&&!types.isProxy(imports)&&(imports.length===0||imports.length===1&&imports[0]===values.Task16RegisteredApplicationModule),'CURRENT259_FRAMEWORK_METADATA');
+  const imports=own(metadata,'imports');need(Array.isArray(imports)&&!types.isProxy(imports)&&(contractMode?
+   imports.length===1&&imports[0]===contractMode.root:
+   imports.length===0||imports.length===1&&imports[0]===values.Task16RegisteredApplicationModule),'CURRENT259_FRAMEWORK_METADATA');
   const builder=guardedOperation(()=>testMethod.call(Test,metadata));collect();
   const compile=dataMethod(builder,'compile'),override=dataMethod(builder,'overrideProvider');let compiled=false;
   const facade=Object.freeze({overrideProvider(token){
-   check();need(!compiled&&(token===values.PrismaService||token===values.Task16ImpactReaderToken),'CURRENT259_FRAMEWORK_OVERRIDE');
+   check();need(!compiled&&(contractMode?contractMode.tokens.includes(token):
+    token===values.PrismaService||token===values.Task16ImpactReaderToken),'CURRENT259_FRAMEWORK_OVERRIDE');
    const receiver=override.call(builder,token),use=dataMethod(receiver,'useValue');
    return Object.freeze({useValue(value){check();need(!compiled,'CURRENT259_FRAMEWORK_OVERRIDE');use.call(receiver,value);return facade;}});
   },async compile(){
@@ -243,7 +291,7 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;

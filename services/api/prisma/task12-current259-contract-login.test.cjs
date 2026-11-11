@@ -58,7 +58,7 @@ function fixture(preloaded = false) {
       if(name==='tls-live'){
         const challenge=sql.match(/'challenge','([a-f0-9]{64})'/u)?.[1];
         assert.ok(challenge);
-        assert.equal(activeClients,1);
+        assert.ok(activeClients>=1 && activeClients<=(control.applicationModel?5:1));
         const {challenge:previous,sessionRole,serverAddress,serverPort,...session}=clientRow;
         if(control.drift==='tls-live')session.oid='999';
         return sqlResult({identity,session,reader:next(),challenge});
@@ -73,7 +73,8 @@ function fixture(preloaded = false) {
         staged={...state,roles:state.roles.map(role=>writeIds.has(role.name)?{...role,limit:role.name===ordinary.name?4:1,
           password:'scram',xmin:'703',verifierSha256:sha(writeIds.get(role.name))}:role)};
       }
-      assert.ok(before||write||name.includes('committed'));
+      assert.ok(before||write||name.includes('committed')||name==='application-closed');
+      if(name==='application-closed')assert.equal(activeClients,0);
       const result={state:structuredClone(before?state:staged),backend:next(),readOnly:!write,
         isolation:write?'serializable':'repeatable read',writeXid:write?'703':null,commitStatus:before||write?null:'committed'};
       if(control.drift==='before'&&before)result.state.roles[0].xmin='999';
@@ -96,10 +97,11 @@ function fixture(preloaded = false) {
   };
   class Client {
     constructor({datasources}) {
-      assert.equal(activeClients++,0);
       this.url=new URL(datasources.db.url);
+      const application=this.url.searchParams.get('application_name')==='jg_394_contract_app';
+      assert.ok(activeClients++<(application?5:1));
       assert.equal(this.url.hostname,'127.0.0.1');
-      assert.equal(this.url.searchParams.get('connection_limit'),'1');
+      assert.equal(this.url.searchParams.get('connection_limit'),application && this.url.username===ordinary.name?'4':'1');
       assert.equal(this.url.searchParams.get('sslaccept'),'strict');
       this.role=targets.find(role=>role.name===this.url.username);
       assert.ok(this.role);
@@ -122,7 +124,7 @@ function fixture(preloaded = false) {
       this.backend=next();
       assert.equal(prefix,'SCRAM-SHA-256');
     }
-    async $disconnect(){assert.equal(activeClients--,1);calls.push('disconnect');if(control.drift==='disconnect')throw new Error('sensitive');}
+    async $disconnect(){assert.ok(activeClients-->0);calls.push('disconnect');if(control.drift==='disconnect')throw new Error('sensitive');}
     async $queryRawUnsafe(sql,challenge) {
       if(control.pending==='QUERY')return new Promise(()=>{});
       assert.match(sql,/pg_stat_ssl/u);
@@ -133,7 +135,28 @@ function fixture(preloaded = false) {
       return [clientRow];
     }
   }
-  const view={source,runId,resource,loader:{Class:Client},verifyFull:()=>assert.equal(control.closed,undefined)};
+  const keys=['DATABASE_URL','DIRECT_ARCHIVE_ISSUER_DATABASE_URL','DIRECT_ARCHIVE_RUNTIME_DATABASE_URL',
+    'UPWARD_DIRECT_ARCHIVE_ISSUER_DATABASE_URL','UPWARD_DIRECT_ARCHIVE_RUNTIME_DATABASE_URL'];
+  class AppPrisma extends Client {}
+  class Outside {
+    constructor(){
+      assert.ok(keys.every(key=>typeof process.env[key]==='string'));
+      if(control.constructorFailure)throw new Error('do not expose constructor errors');
+      this.issuer=new Client({datasources:{db:{url:process.env[keys[1]]}}});
+      this.executor=new Client({datasources:{db:{url:process.env[keys[2]]}}});
+    }
+  }
+  class Upward {
+    constructor(){
+      this.issuer=new Client({datasources:{db:{url:process.env[keys[3]]}}});
+      this.executor=new Client({datasources:{db:{url:process.env[keys[4]]}}});
+    }
+  }
+  const appModules=Object.freeze({PrismaService:AppPrisma,ContractDirectArchiveRuntime:Outside,ContractUpwardDirectArchiveRuntime:Upward});
+  const view={source,runId,resource,loader:{Class:Client,
+    loadContractApplicationModules(){assert.ok(control.applicationModel);return appModules;},createContractTestingModule(){}},
+    verifyFull:()=>assert.equal(control.closed,undefined)};
+  const module={exports:{}};
   const ports={
     './task16-current259-ordinary-archive-acl.cjs':{claimCurrent259OrdinaryArchiveAcl(candidate,actual){
       assert.equal(actual,handle);assert.equal(candidate,completion);assert.equal(claimed,false);claimed=true;return prior;
@@ -143,8 +166,23 @@ function fixture(preloaded = false) {
       async closeCurrent259OwnedResource(actual){assert.equal(actual,handle);control.closed=(control.closed??0)+1;if(control.closeUnknown)throw new Error('credential in foreign failure');},
     },
     './task16-runtime-inputs.cjs':{readQualifiedTask16File(file){return {identity:{uid:process.getuid()},sha256:file===resource.caPath?blob('a'):blob('b')};}},
+    './task12-current259-contract-application.cjs':Object.freeze({async runCurrent259FirstQ2Application(bridge){
+      module.exports.takeCurrent259FirstQ2Bridge(bridge);
+      assert.throws(()=>module.exports.takeCurrent259FirstQ2Bridge(bridge),/HANDLE/u);
+      assert.equal(bridge.loaded,appModules);
+      if(control.applicationWait)await control.applicationWait();
+      let providers;
+      try{providers=bridge.constructProviders();}
+      finally{assert.ok(keys.every(key=>Object.getOwnPropertyDescriptor(process.env,key)===undefined));}
+      const clients=[providers[0],providers[1].issuer,providers[1].executor,providers[2].issuer,providers[2].executor];
+      assert.deepEqual(clients.map(client=>client.role.oid),targets.map(role=>role.oid));
+      assert.ok(clients.every(client=>client.url.searchParams.get('sslcert')===resource.caPath && client.url.searchParams.get('sslmode')==='require'));
+      assert.equal(await bridge.verifyProviders(),5);
+      for(const client of clients)await client.$disconnect();
+      await bridge.verifyClosed();
+      return Object.freeze({verifiedClients:5});
+    }}),
   };
-  const module={exports:{}};
   const cache={};
   if(preloaded)Object.defineProperty(cache,'./task16-current259-ordinary-archive-acl.cjs',{
     get(){assert.fail('preloaded cache getter must never execute');}
@@ -264,4 +302,47 @@ for(const [operation,count] of [['CONNECT',1],['QUERY',4]])test('an unreturned '
   assert.equal(f.calls.filter(value=>value==='construct').length,count);
   assert.equal(f.calls.filter(value=>value==='disconnect').length,count);
   assert.equal(f.control.closed,1);
+});
+
+test('the live login proof constructs only the fixed same-resource provider clients, once',async()=>{
+  const f=fixture();
+  f.control.applicationModel=true;
+  await f.api.withCurrent259ContractLogin(f.completion,f.handle,async proof=>{
+    await assert.rejects(f.api.withCurrent259FirstQ2Application(proof,{}),/HANDLE/u);
+    assert.deepEqual(await f.api.withCurrent259FirstQ2Application(proof,f.handle),{verifiedClients:5});
+    await assert.rejects(f.api.withCurrent259FirstQ2Application(proof,f.handle),/HANDLE/u);
+    assert.throws(()=>f.api.claimCurrent259ContractLogin(proof,f.handle),/HANDLE/u);
+  });
+  assert.equal(f.calls.filter(value=>value==='tls-live').length,10);
+  assert.equal(f.calls.filter(value=>value==='disconnect').length,13);
+  assert.equal(f.calls.at(-1),'application-closed');
+});
+
+test('the fixed application provider constructor exception restores the five private URL slots',async()=>{
+  const f=fixture();
+  f.control.applicationModel=true;
+  f.control.constructorFailure=true;
+  await assert.rejects(f.api.withCurrent259ContractLogin(f.completion,f.handle,proof=>f.api.withCurrent259FirstQ2Application(proof,f.handle)),
+    {code:'CURRENT259_CONTRACT_LOGIN_CONSUMER',stageFailure:'APP_CONSTRUCT',clientCleanup:'UNKNOWN',roleCommit:'COMMITTED'});
+  assert.equal(f.control.closed,1);
+});
+
+test('returning from the consumer does not release the login scope before its fixed application closes',async()=>{
+  const f=fixture();
+  f.control.applicationModel=true;
+  let release,entered;
+  const held=new Promise(resolve=>{release=resolve;});
+  const running=new Promise(resolve=>{entered=resolve;});
+  f.control.applicationWait=()=>{entered();return held;};
+  let returned=false;
+  const scope=f.api.withCurrent259ContractLogin(f.completion,f.handle,proof=>{
+    void f.api.withCurrent259FirstQ2Application(proof,f.handle);
+    return 'consumer returned';
+  }).then(value=>{returned=true;return value;});
+  await running;
+  await Promise.resolve();
+  assert.equal(returned,false);
+  release();
+  assert.equal(await scope,'consumer returned');
+  assert.equal(f.calls.at(-1),'application-closed');
 });
