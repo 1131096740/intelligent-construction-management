@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394 文书后台隔离已快进本地中央至准确 `26eb4529`。公开合同模块保留原文书路由与服务，生产根仅注册一次原处理器，并通过直接导入 Auth 恢复原写冻结依赖注入。独立 53 项定向、API 类型/lint/构建通过。真实 Nest 与数据库仍待同轮验收。五登录初版独审确认 TLS 负控与 SDK 超时证据缺口，修复候选准备复核。 [文书独审](/private/tmp/jg-394-document-worker-26eb-review.XoOOnJBe/REVIEW-26EB.md) · [五登录独审](/private/tmp/jg-394-five-login-independent.cFFb76NJ/REVIEW.md)
+
 - [~] #394 普通角色最小 ACL 源码已快进本地中央至准确 `257dd388`。补齐写后、独立提交读回和五登录后继的原七片结构核验，按实际差量仅还原原号及 Voucher 三列 ACL 前像。独立 1014 标准、83 定向、8 批 PG16.1 静态及 API 类型/lint/构建全过，旧归档七批及公开回执逐字不变。五登录准确作者候选 `6635754e` 独审中，涉及资源 helper 的三组 API 回归留准确组合重跑。真实 PostgreSQL 权限、HBA/TLS、Nest 和 COS 待验。 [独立回执](/private/tmp/jg-394-ordinary-acl-recheck.IUwIREjB/RESULT-257DD388.json) · [五登录作者交接](/private/tmp/jg-394-five-login-source.mpIn4ILh/HANDOFF.md)
 
 - [~] #394 普通 ACL 作者候选 `fc4532f2` 暂未合入。作者和独审各跑 80 项窄测，6 批 PG16.1 静态解析通过，原七批渲染及公开回执逐字一致。独审定位写后和独立读回漏核原七片列默认值、identity/generated 和索引状态，标准 CI 入口也漏列新 19 项。正在补写后七片完整证据及标准入口。真实 SQL 和资源未执行。 [独立复核](/private/tmp/jg-394-ordinary-acl-independent.Jc9fSDgH/REVIEW.md)
