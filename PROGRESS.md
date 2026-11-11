@@ -1,5 +1,15 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] #394 文书后台隔离已快进本地中央至准确 `26eb4529`。公开合同模块保留原文书路由与服务，生产根仅注册一次原处理器，并通过直接导入 Auth 恢复原写冻结依赖注入。独立 53 项定向、API 类型/lint/构建通过。真实 Nest 与数据库仍待同轮验收。五登录初版独审确认 TLS 负控与 SDK 超时证据缺口，修复候选准备复核。 [文书独审](/private/tmp/jg-394-document-worker-26eb-review.XoOOnJBe/REVIEW-26EB.md) · [五登录独审](/private/tmp/jg-394-five-login-independent.cFFb76NJ/REVIEW.md)
+
+- [~] #394 普通角色最小 ACL 源码已快进本地中央至准确 `257dd388`。补齐写后、独立提交读回和五登录后继的原七片结构核验，按实际差量仅还原原号及 Voucher 三列 ACL 前像。独立 1014 标准、83 定向、8 批 PG16.1 静态及 API 类型/lint/构建全过，旧归档七批及公开回执逐字不变。五登录准确作者候选 `6635754e` 独审中，涉及资源 helper 的三组 API 回归留准确组合重跑。真实 PostgreSQL 权限、HBA/TLS、Nest 和 COS 待验。 [独立回执](/private/tmp/jg-394-ordinary-acl-recheck.IUwIREjB/RESULT-257DD388.json) · [五登录作者交接](/private/tmp/jg-394-five-login-source.mpIn4ILh/HANDOFF.md)
+
+- [~] #394 普通 ACL 作者候选 `fc4532f2` 暂未合入。作者和独审各跑 80 项窄测，6 批 PG16.1 静态解析通过，原七批渲染及公开回执逐字一致。独审定位写后和独立读回漏核原七片列默认值、identity/generated 和索引状态，标准 CI 入口也漏列新 19 项。正在补写后七片完整证据及标准入口。真实 SQL 和资源未执行。 [独立复核](/private/tmp/jg-394-ordinary-acl-independent.Jc9fSDgH/REVIEW.md)
+
+- [~] #394 首条 Q2 装配复核发现合同工作台递归加载文书处理器。应用启动后每秒触发四组后台回收 UPDATE，超出首条公开链的最小 ACL。已记录独立文书处理器生命周期、真实 Nest 五实例与专用 COS 上传前缀的接线边界，未启动服务或执行真实资源。普通 ACL、五类登录与 #398 双人竞办分别推进。 [装配复核](/private/tmp/jg-394-firstq2-nest.J5Ojh97B/HANDOFF.md)
+
+- [~] 准确组合 `410dfb9c` 已合入本地中央。#398 A16 固定取消接入原实付 POST 与独立查账，后继补结算状态及申请/结算更新时间。#394 组合入口按原两份前像、M232/经营、正式七片、M259 首次快照及独立读回排序，阶段守卫修复独审通过。14 项串行检查全绿（992 标准、147 API、35 支付、类型/lint/构建、两 SDK 纯加载及离线 HOLD 三步）。真实 PostgreSQL、5 秒预算及归档全链待验。独立源码继续普通 ACL 和双人竞办；断连恢复接缝已审待实现。 [组合回执](/private/tmp/jg-382-cancel-archive-composition.Kbezkk34/HANDOFF-410D.md) · [断连设计](/private/tmp/jg-398-a16-disconnect-design.b6nyBd4U/HANDOFF.md)
+
 - [~] #398 准确 `5530da1e` 已快进本地集成。六处文件核验边界已独审，974 标准、147 API、23 支付、类型/lint/构建、两项 SDK 纯装载和离线 HOLD 检查通过。真实 PostgreSQL 和 HTTP 5 秒预算待验。A16 复核已定位固定空经营日期实付的延迟约束路径，提交取消接线在独立树推进。 [组合回执](/private/tmp/jg-398-six-fd-composition.ZGg2E3ky/HANDOFF-5530.md) · [A16 审计](/private/tmp/jg-398-a16-5530-seam.dLS0NUxJ/HANDOFF.md)
 
 - [~] #394 已核真实首条 Q2 文件接口需要付款预备 SQL 声明的两张关系。现有归档和付款安装器直接串接会触发原守卫。独立源码实现按同事务先 M232 和原经营安装、再装七片、最后首次采集 M259 快照推进，保留原绑定并安排独立提交读回。组合真实目录和普通角色 ACL/HBA/TLS/COS 验收待完成。 [兼容复核](/private/tmp/jg-394-ordinary-acl-D6nANk93/MIDSTATE-HANDOFF.md)

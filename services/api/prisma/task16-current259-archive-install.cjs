@@ -465,6 +465,27 @@ function readResult(result, phase, challenge) {
   return row;
 }
 
+// SQL-only continuation for the claimed registered archive. The original
+// installer, public completion and independent readback keep their own shapes.
+function ordinaryAclWitness(input, completion, sevenCatalogSql) {
+  return function witness(phase) {
+    need(arguments.length === 1 && ['current259-ordinary-acl-before', 'current259-ordinary-acl-write',
+      'current259-ordinary-acl-committed'].includes(phase));
+    const write = phase === 'current259-ordinary-acl-write';
+    const installXid = `${literal(completion.installXid)}::xid8`;
+    return Object.freeze({ catalogSql, sevenCatalogSql, guardSql: `${backendGuards(input, write)}
+${installedGuards(input, installXid, false)}
+${collisionGuards(input, 'registered')}
+IF pg_catalog.pg_xact_status(${installXid}) IS DISTINCT FROM 'committed'
+ OR ${registrySql} IS DISTINCT FROM ${literal(completion.registrySha256)}
+ OR ${registeredOriginalRegistrySql} IS DISTINCT FROM ${literal(completion.originalRegistrySha256)}
+ OR ${pendingSql} IS DISTINCT FROM ${literal(completion.pendingSha256)}
+ OR ${bindingSql} IS DISTINCT FROM ${literal(completion.bindingSha256)}
+ OR ${closureSql} IS DISTINCT FROM ${literal(completion.upwardClosureSha256)}
+ THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_ORDINARY_ACL_DRIFT'; END IF;` });
+  };
+}
+
 async function installCurrent259ArchiveAuthorities(provisionResult, handle) {
   need(arguments.length === 2);
   return installArchive(provisionResult, handle, false);
@@ -494,7 +515,7 @@ async function installArchive(provisionResult, handle, registered) {
       return readResult(result, phase, challenge);
     };
     const before = await read(STAGES[0]);
-    let staged, committed;
+    let staged, committed, sevenCatalogSql;
     if (registered) {
       phase = 'current259-seven-before';
       const plan = archiveSevenMaterial(lease, view, randomBytes(32).toString('hex'));
@@ -502,6 +523,7 @@ async function installArchive(provisionResult, handle, registered) {
       const beforeSeven = await view.resource.execOwnerSql(plan.beforeSql, phase);
       check();
       const material = plan.readBefore(beforeSeven);
+      sevenCatalogSql = material.finalCatalog;
       const distinct = (a, b) => a.backendPid !== b.backendPid && a.backendStart !== b.backendStart;
       need(distinct(before, material));
       const runRegistered = async (next, prior) => {
@@ -538,7 +560,8 @@ async function installArchive(provisionResult, handle, registered) {
       ...(registered ? { registeredFileSource: true, nativeAdmission: false, executionAllowed: false,
         originalRegistrySha256: committed.originalRegistrySha256, sevenCatalogSha256: committed.sevenCatalogSha256 } : {}),
     });
-    receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check });
+    receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check,
+      ...(registered ? { ordinaryAclWitness: ordinaryAclWitness(input, completion, sevenCatalogSql) } : {}) });
     return completion;
   } catch {
     try { await closeCurrent259OwnedResource(handle); }
@@ -553,7 +576,8 @@ function claimCurrent259ArchiveInstallation(completion, handle) {
   need(receipt.handle === handle);
   receipts.delete(completion);
   receipt.check();
-  return Object.freeze({ source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check });
+  return Object.freeze({ source: receipt.source, completion, roleCompletion: receipt.roleCompletion, check: receipt.check,
+    ...(receipt.ordinaryAclWitness ? { ordinaryAclWitness: receipt.ordinaryAclWitness } : {}) });
 }
 
 module.exports = Object.freeze({ installCurrent259ArchiveAuthorities, installCurrent259ArchiveAuthoritiesWithRegisteredFileSource, claimCurrent259ArchiveInstallation });
