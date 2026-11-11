@@ -21,9 +21,14 @@ test('new business default verifies both materials without any resource or consu
 for(const scenario of ['normal','response-loss','cancel-commit'])test('fresh business '+scenario+' preserves the B7 issuer and adds only the fixed scoped consumer',async t=>{
  const f=runFixture(t,{scenario}),result=await f.done;
  assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
- assert.deepEqual(f.state.calls,['start','technical259','roles9','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
+ assert.deepEqual(f.state.calls,[scenario==='cancel-commit'?'start-first-rollback':'start-'+scenario,'technical259','roles9','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
  assert.equal(receipt.business.scenario,scenario);assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+ const transport=require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(scenario);
+ assert.equal(receipt.scope.databaseTransport,transport.plan);
+ assert.equal(receipt.resource.topology,transport.topology);
+ assert.equal(receipt.resource.loopbackPlaintextHba.sourceAddress,'127.0.0.1');
+ assert.equal(receipt.resource.cleanup.relayId,receipt.resource.relay.id);
  if(scenario==='cancel-commit'){
   assert.equal(receipt.scope.registrationPostCount,1);
   assert.equal(receipt.scope.commitFaults,'CANCEL_EXACT_COMMIT_ONCE');
@@ -82,4 +87,22 @@ test('a business continuity check never reaches the full source/tree/tool verifi
   const full=s.state.fullCalls;lease.check();lease.check();assert.equal(s.state.fullCalls,full);lease.verifyFull();assert.ok(s.state.fullCalls>full);
  }}),result=await f.done;
  assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+});
+
+for(const [scenario,otherTopology] of [
+ ['normal','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'],
+ ['response-loss','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS']
+])test('a matching plan rejects a different owned resource before technical or business stages: '+scenario,async t=>{
+ const f=runFixture(t,{scenario,resourceTopology:otherTopology}),result=await f.done;
+ assert.equal(result.status,'STOPPED');assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_RESOURCE_IDENTITY');
+ assert.deepEqual(f.state.calls,['start-'+scenario]);assert.equal(f.state.closes,1);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.business,undefined);assert.deepEqual(receipt.stages,[]);
+});
+for(const scenario of ['normal','response-loss'])test('a different cleanup relay ID cannot certify the selected case: '+scenario,async t=>{
+ const f=runFixture(t,{scenario,relayCleanupWrongId:true}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(receipt.resource.cleanup.relayClosed,false);assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
+ assert.equal(f.state.calls.filter(name=>name==='case').length,1);
 });

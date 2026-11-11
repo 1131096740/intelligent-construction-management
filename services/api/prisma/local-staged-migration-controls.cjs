@@ -1,6 +1,10 @@
 "use strict";
 
+const { createHash } = require("node:crypto");
 const { isDeepStrictEqual, types } = require("node:util");
+const readbackFrameBytes = 24 * 1024;
+const readbackPayloadLimit = 768 * 1024;
+const readbackWireLimit = 1025 * 1024;
 const need = ok => { if (!ok) throw new Error("LOCAL_MIGRATION_CONTROL"); };
 const oid = value => typeof value === "string" && /^[1-9][0-9]{0,9}$/u.test(value) &&
   Number(value) <= 0xffffffff;
@@ -67,16 +71,18 @@ function setupSql(plan) {
     plan.migrations[204].sha256 === "2ca118b29e8e75745a1ac7d6f8de3fbfa70fa5774b3d95c48c6119caff8b316a");
   return technicalProfiles.projectTechnicalSql(plan, fs.readFileSync(path.join(__dirname, "local-staged-migration-acl.sql"), "utf8"), "setup").sql
     .replaceAll("__SCHEMA__", plan.schemaName).replaceAll("__APP__", plan.appName)
-    .replaceAll("__PLAN__", literal(plan)).replaceAll("__MATRIX__", literal(matrix));
+    .replaceAll("__PLAN__", literal(plan)).replaceAll("__MATRIX__", literal(matrix))
+    .replaceAll("__READBACK_FRAME_BYTES__", String(readbackFrameBytes))
+    .replaceAll("__READBACK_PAYLOAD_LIMIT__", String(readbackPayloadLimit));
 }
 
-function inspectBody(extra = "'{}'::jsonb", bound = "") {
+function inspectBody(extra = "'{}'::jsonb") {
   // XMLTABLE executes a fixed query only when the ledger actually exists.
   // Merely wrapping a nonexistent relation in CASE would still fail PostgreSQL parse analysis.
   const ledgerQuery = `SELECT coalesce(jsonb_agg(jsonb_build_object('name',migration_name,'sha256',checksum,
     'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL)
     ORDER BY migration_name COLLATE "C",started_at,id),'[]'::jsonb) AS payload FROM public._prisma_migrations`;
-  return `SELECT ${bound ? bound + '(' : ''}jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,
+  return `SELECT jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,
     'namespaceOid',to_regnamespace('public')::oid::text,'actorOid',current_user::regrole::oid::text,
     'ownerOid',d.datdba::text,'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),
     'actor',current_user,'sessionActor',session_user,'version',current_setting('server_version_num')::integer,
@@ -91,7 +97,7 @@ function inspectBody(extra = "'{}'::jsonb", bound = "") {
       'memberships',(SELECT coalesce(jsonb_agg(jsonb_build_object('roleOid',m.roleid::text,
         'grantorOid',m.grantor::text,'set',m.set_option,'inherit',m.inherit_option,'admin',m.admin_option)
         ORDER BY m.roleid,m.grantor),'[]'::jsonb) FROM pg_auth_members m WHERE m.member=r.oid))
-      ORDER BY r.oid) FROM pg_roles r)) || ${extra}${bound ? ')' : ''}
+      ORDER BY r.oid) FROM pg_roles r)) || ${extra}
     FROM pg_database d WHERE datname=current_database();`;
 }
 function inspectSql() {
@@ -121,7 +127,37 @@ function readbackSql(plan, setup) {
     'fileCallerTransition',${plan.schemaName}.verify_file_callers())
     FROM ${plan.schemaName}.control)`;
   return `-- local-fixture readback\nBEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
-    SET LOCAL search_path=pg_catalog,pg_temp;\n${scope}\n${inspectBody(extra, plan.schemaName + ".bound_readback")}\nROLLBACK;\n`;
+    SET LOCAL search_path=pg_catalog,pg_temp;
+${scope}
+WITH evidence(payload) AS MATERIALIZED (${inspectBody(extra).slice(0, -1)})
+SELECT chunk.frame FROM evidence CROSS JOIN LATERAL ${plan.schemaName}.bound_readback(evidence.payload) AS chunk
+ORDER BY chunk.ordinal;
+ROLLBACK;
+`;
+}
+function parseReadback(stdout) {
+  const check = ok => { if (!ok) throw new Error("LOCAL_MIGRATION_STAGE205_FRAMING"); };
+  check(typeof stdout === "string" && Buffer.byteLength(stdout) <= readbackWireLimit && stdout.endsWith("\n"));
+  const lines = stdout.slice(0, -1).split("\n");
+  const header = /^JG-PFQ205\/1\|([1-9][0-9]?)\|([1-9][0-9]{0,5})\|([a-f0-9]{64})$/u.exec(lines[0]);
+  check(header);
+  const count = Number(header[1]), bytes = Number(header[2]);
+  check(bytes <= readbackPayloadLimit && count === Math.ceil(bytes / readbackFrameBytes) &&
+    lines.length === count + 1);
+  const chunks = lines.slice(1).map((line, index) => {
+    const prefix = (index + 1) + "|";
+    const expectedBytes = Math.min(readbackFrameBytes, bytes - index * readbackFrameBytes);
+    check(line.startsWith(prefix));
+    const encoded = line.slice(prefix.length);
+    check(encoded.length === 4 * Math.ceil(expectedBytes / 3) && /^[A-Za-z0-9+/]+={0,2}$/u.test(encoded));
+    const decoded = Buffer.from(encoded, "base64");
+    check(decoded.length === expectedBytes && decoded.toString("base64") === encoded);
+    return decoded;
+  });
+  const payload = Buffer.concat(chunks, bytes);
+  check(createHash("sha256").update(payload).digest("hex") === header[3]);
+  try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(payload)); }
+  catch { check(false); }
 }
 // Independent readback proof over the whole frozen file-trigger operation vector.
 function checkFileCallerTransition(input, setup, actorOid) {
@@ -247,4 +283,4 @@ function cleanReadSql(plan, setup) {
        NOT EXISTS(SELECT FROM pg_auth_members WHERE member='${setup.appOid}'::oid OR roleid='${setup.appOid}'::oid));
     ROLLBACK;\n`;
 }
-module.exports = { inspectSql, setupSql, checkSetup, readbackSql, checkCompletion, cleanupSql, cleanReadSql };
+module.exports = { inspectSql, setupSql, checkSetup, readbackSql, parseReadback, readbackWireLimit, checkCompletion, cleanupSql, cleanReadSql };

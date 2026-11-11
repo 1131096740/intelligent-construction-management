@@ -14,7 +14,11 @@ const { registeredObjectWitnessSql, schema205WitnessSql, schema205RegistrySql } 
 const { schema205ScopeSql } = require('./task16-schema205-scope.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
 
+const { paymentLoopbackForScenario, isCurrent259PaymentLoopbackTopology } = require('./task16-current259-payment-loopback.cjs');
+
+const paymentLoopbackImpactSessions = new WeakSet();
 const receipts = new WeakMap(), impactBoundaries = new WeakMap(), competitionPairs=new WeakMap(), used = new WeakSet();
+const ROLLBACK_TOPOLOGY = paymentLoopbackForScenario('cancel-commit').topology;
 const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
 const METHOD_NAMES = ['$disconnect', '$connect', '$queryRawUnsafe', '$transaction'];
@@ -37,6 +41,9 @@ function claimCurrent259LiveSessions(proof, handle) {
   receipts.delete(proof);
   record.session.checkLight();
   return record.session;
+}
+function isCurrent259PaymentLoopbackImpactSession(session) {
+  return paymentLoopbackImpactSessions.has(session);
 }
 function verifyCurrent259ImpactFileBoundary(session) {
   // The installed-session scope is the only producer of this check. Plain
@@ -72,6 +79,10 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   const view = claimCurrent259TechnicalResource(handle);
   need(!used.has(handle), 'REUSED'); used.add(handle);
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
+  const topology = resource.topology;
+  const paymentLoopback = isCurrent259PaymentLoopbackTopology(topology);
+  const firstRollback = topology === ROLLBACK_TOPOLOGY;
+  need(!paymentLoopback || !competition && !recovery, 'PHYSICAL_ENDPOINT');
   let active = true, broken = false, checking = false, closing, resourceClosing;
   let cleanup = 'DISCONNECTED', resourceCleanup = 'NOT_NEEDED', proofs = [], initialRows, ca;
   let methods, initial, businessToken, faultUsed = false;
@@ -82,7 +93,8 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   const committedRequest = { ...lease.request, phase: 'committed', installXid: b7Completion.installXid };
   const expected = {
     ...Object.fromEntries(['database', 'databaseOid', 'systemIdentifier', 'ownerOid', 'runtimeOid', 'observerOid'].map(key => [key, lease.request.identity[key]])),
-    publishedPort: resource.port
+    publishedPort: resource.port,
+    ...(paymentLoopback ? { transport: topology, relayId: resource.relayId } : {})
   };
   function closeResource() {
     if (!resourceClosing) resourceClosing = (async () => {
@@ -164,7 +176,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     }
   }
   async function commitFault(token, submit, disconnect) {
-    need(!competition&&disconnect===recovery,'CANCEL_SCOPE');
+    need(!competition&&disconnect===recovery&&(!paymentLoopback||firstRollback),'CANCEL_SCOPE');
     const authorize=disconnect?assertCurrent259CommitDisconnectIssuer:assertCurrent259CommitCancellationIssuer;
     authorize(token, handle);
     checkContinuity(token);
@@ -175,7 +187,8 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     const runtime = initialRows[1], identity = committedRequest.identity;
     const mode=disconnect?'disconnect-commit':'cancel-commit';
     const phase=disconnect?'current259-a16-disconnect':'current259-a16-cancel';
-    const fault = createCurrent259A16FaultPlan({ mode, nonce: randomBytes(32).toString('hex'),
+    const fault = createCurrent259A16FaultPlan({ mode,
+      ...(firstRollback ? { transport: ROLLBACK_TOPOLOGY } : {}), nonce: randomBytes(32).toString('hex'),
       database: { name: identity.database, oid: identity.databaseOid, namespaceOid: identity.namespaceOid, systemIdentifier: identity.systemIdentifier },
       runtime: { oid: runtime.loginOid, pid: runtime.pid, startedAt: runtime.start, clientAddress: runtime.clientAddress, clientPort: runtime.clientPort } });
     const run = (sql, phase) => settled(() => methods.execOwnerSql(sql, phase));
@@ -200,7 +213,8 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
       request = Promise.resolve(submit());
       const [,outcome]=await Promise.all([request, owner.then(output => fault.parseOutcome(own(output, 'stdout'), witness))]);
       checkContinuity(token);
-      if(disconnect){disconnectOutcome=outcome;return outcome;}
+      if(disconnect)disconnectOutcome=outcome;
+      return outcome;
     } catch (error) {
       broken = true; active = false;
       await Promise.allSettled([closeResource(), owner, probe, request]);
@@ -242,10 +256,16 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   }
   async function endpoint() {
     const value = await settled(() => methods.inspectConnectionEndpoint());
-    need(value && Reflect.ownKeys(value).length === 7 &&
+    need(value && Reflect.ownKeys(value).length === (paymentLoopback ? 9 : 7) &&
       ['containerId', 'networkId', 'databaseName'].every(key => own(value, key) === resource[key]) &&
-      own(value, 'publishedHost') === '127.0.0.1' && own(value, 'publishedPort') === resource.port &&
       own(value, 'serverPort') === 5432, 'PHYSICAL_ENDPOINT');
+    if (paymentLoopback) {
+      need(own(value, 'transport') === topology && own(value, 'relayId') === resource.relayId &&
+        own(value, 'host') === '127.0.0.1' && own(value, 'port') === resource.port &&
+        own(value, 'serverAddress') === '127.0.0.1', 'PHYSICAL_ENDPOINT');
+    } else {
+      need(own(value, 'publishedHost') === '127.0.0.1' && own(value, 'publishedPort') === resource.port, 'PHYSICAL_ENDPOINT');
+    }
     return value;
   }
   async function catalog() {
@@ -363,6 +383,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     checkLight(); const proof=Object.freeze({kind:'CURRENT259_LIVE_SESSIONS'});
     receipts.set(proof,{handle,session});
     impactBoundaries.set(session,()=>{guard();verifyImpactFiles();});
+    if (paymentLoopback) paymentLoopbackImpactSessions.add(session);
     return proof;
   }
 
@@ -483,4 +504,4 @@ ROLLBACK;`;
   return value;
 }
 
-module.exports = Object.freeze({ withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,withCurrent259DisconnectLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,verifyCurrent259ImpactFileBoundary });
+module.exports = Object.freeze({ withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,withCurrent259DisconnectLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,isCurrent259PaymentLoopbackImpactSession,verifyCurrent259ImpactFileBoundary });

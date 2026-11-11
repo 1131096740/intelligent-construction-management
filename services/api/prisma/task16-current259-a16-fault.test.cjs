@@ -98,3 +98,13 @@ test('stops at invalid readiness and spends the original receipt on a drifting c
     assert.throws(() => current.parseOutcome(JSON.stringify(result('cancel-commit')), ready), /TASK16_CURRENT259_A16_FAULT/u);
   }
 });
+
+test('only the fixed cancellation relay renders loopback runtime coordinates',()=>{
+ const {createCurrent259A16FaultPlan}=require(file);
+ const original=scope(),runtime={...original.runtime,clientAddress:'127.0.0.1'};
+ assert.throws(()=>createCurrent259A16FaultPlan({...original,runtime}),/TASK16_CURRENT259_A16_FAULT/u);
+ const relay={...original,mode:'cancel-commit',transport:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS',runtime};
+ assert.match(createCurrent259A16FaultPlan(relay).ownerSql,/pg_catalog.host\(a.client_addr\)='127\.0\.0\.1'/u);
+ assert.throws(()=>createCurrent259A16FaultPlan({...relay,mode:'disconnect-commit'}),/TASK16_CURRENT259_A16_FAULT/u);
+ assert.throws(()=>createCurrent259A16FaultPlan({...relay,runtime:original.runtime}),/TASK16_CURRENT259_A16_FAULT/u);
+});

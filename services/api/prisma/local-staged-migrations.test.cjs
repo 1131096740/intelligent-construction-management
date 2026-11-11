@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
 const { migrationBaseline: canonicalBaseline } = require("./database-dynamic-gate-manifest.json");
 
 test("an owned container ID mismatch stops before SQL or deployment", async () => {
@@ -139,7 +140,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase === "cleanup-readback") result = { schemaAbsent: true, eventAbsent: true,
         appOid: setup.appOid, applicationQualified: true };
       if (mutate) result = mutate(phase, result);
-      return { stdout: JSON.stringify(result), stderr: "" };
+      return { stdout: phase === "stage205-readback" ? frameStage205(result) : JSON.stringify(result), stderr: "" };
     },
     deploy: async request => {
       const url = new URL(request.databaseUrl);
@@ -534,18 +535,20 @@ for(const [name,alter] of [
 
 // The only replaced boundaries here are the original owned-resource claim and
 // bounded Prisma CLI process. No alternative issuer is registered in product.
-async function current259Model(temporaryRoot, mutate, technical = true) {
+async function current259Model(temporaryRoot, mutate, technical = true, commandFailure) {
   const model = await fakeFixture(temporaryRoot, mutate, [], false, true);
   const vm = require("node:vm"), nativeRequire = require("node:module").createRequire(__filename);
   const handle = Object.freeze({ simulation: "owned-current259-test" });
   let closed = false, checks = 0, commands = 0, closes = 0, observations = 0, observation = "valid", pauseSql = false, pendingReject, notifySql, closeFails = false, cliHash = "ff0102cdfadfecb884c5f0b6e43661f4ef2a31917dbfad3157236ba8e8532388";
+  let fullFailure, fullFailureAfter;
   const rows = await canonicalRows();
   const receipt = { runId: container.runId, containerId: container.id, networkId: "b".repeat(64),
     databaseName: "jg_task01_0123456789abcdef0123456789abcdef", port: 55432,
     containerName: "jg-task01-" + container.runId, purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",limits:{totalDeadlineMs:3600000} };
   const resource = { containerId: receipt.containerId, networkId: receipt.networkId, port: receipt.port,
     caPath: "/synthetic-immutable-ca.crt", getReceipt: () => ({ ...receipt }),
-    captureLogCursor: async () => { observations++; if(observation === "fail") throw Error("synthetic physical inspect failed");
+    captureLogCursor: async () => { observations++; if(observation instanceof Error)throw observation;
+      if(observation === "fail") throw Error("synthetic physical inspect failed");
       return {runId:receipt.runId,containerId:observation === "wrong-id" ? "e".repeat(64) : receipt.containerId}; },
     execOwnerSql: (sql, phase) => {
       if(pauseSql) { pauseSql=false; return new Promise((resolve,reject) => { pendingReject=reject; notifySql(); }); }
@@ -566,7 +569,10 @@ async function current259Model(temporaryRoot, mutate, technical = true) {
     build: { node: { path: process.execPath, sha256: crypto.createHash("sha256").update(require("node:fs").readFileSync(process.execPath)).digest("hex") } }, runId: container.runId, resource,
     credentials: () => ({ owner: "synthetic-non-secret" }),
     check: () => { checks++; assert.equal(closed, false, "synthetic resource closed"); },
-    verifyFull: () => { checks++; assert.equal(closed, false, "synthetic source closed"); } };
+    verifyFull: () => {
+      checks++; assert.equal(closed, false, "synthetic source closed");
+      if(fullFailure&&--fullFailureAfter===0)throw fullFailure;
+    } };
   const cache = new Map(), moduleCache = {};
   const replaced = new Set(["local-staged-current259-profile.cjs", "local-staged-migrations.cjs",
     "local-staged-migration-controls.cjs", "local-staged-tail-qualification.cjs"]);
@@ -603,6 +609,9 @@ async function current259Model(temporaryRoot, mutate, technical = true) {
         assert.equal(url.username, "jg_task01_owner"); assert.equal(url.searchParams.get("sslmode"), "require");
         assert.equal(url.searchParams.get("sslaccept"), "strict"); assert.equal(url.searchParams.get("sslcert"), resource.caPath);
         for (const key of ["schema", "connection_limit", "sslmode", "sslaccept", "sslcert", "connect_timeout", "pool_timeout"]) url.searchParams.delete(key);
+        const failure = typeof commandFailure === "function" ? commandFailure() : commandFailure;
+        if (failure instanceof Error) throw failure;
+        if (failure) return failure;
         const result = await model.ports.deploy({ databaseUrl: url.toString(), schemaPath: args.at(-1), runtimeEnv: {} });
         return { ...result, code: 0, timedOut: false, actualSettled: true };
       } };
@@ -628,7 +637,8 @@ async function current259Model(temporaryRoot, mutate, technical = true) {
       const map={core:["./local-staged-migrations.cjs","createLocalMigrationFixture"],owned:["./task16-current259-owned-resource.cjs","claimCurrent259TechnicalResource"],input:["./task16-runtime-inputs.cjs","readQualifiedTask16File"],command:["./task16-bounded-command.cjs","runTask16BoundedCommand"]};
       const [file,key]=map[field],owner=moduleCache[nativeRequire.resolve(file)].exports,value=owner[key];let reads=0;
       Object.defineProperty(owner,key,{get(){reads++;return value;},enumerable:true,configurable:true});return ()=>reads;
-    }, driftCli: () => { cliHash = "0".repeat(64); }, tamperCommand: () => { moduleCache[nativeRequire.resolve("./task16-bounded-command.cjs")].exports = {}; }, physicalFailure: value => { observation=value; }, pauseNextSql: () => { pauseSql=true; return new Promise(resolve=>{notifySql=resolve;}); }, releaseSql: () => pendingReject?.(Error("synthetic test release")), failClose:()=>{closeFails=true;}, counts: () => ({ checks, commands, closes, observations }) };
+    }, driftCli: () => { cliHash = "0".repeat(64); }, tamperCommand: () => { moduleCache[nativeRequire.resolve("./task16-bounded-command.cjs")].exports = {}; }, physicalFailure: value => { observation=value; },
+    scheduleFullFailure: (after,error) => {fullFailureAfter=after;fullFailure=error;}, pauseNextSql: () => { pauseSql=true; return new Promise(resolve=>{notifySql=resolve;}); }, releaseSql: () => pendingReject?.(Error("synthetic test release")), failClose:()=>{closeFails=true;}, counts: () => ({ checks, commands, closes, observations }) };
 }
 
 test("owned current259 technical recipe reuses all four atomic windows and independent readbacks", async () => {
@@ -968,4 +978,155 @@ test('post213 still refuses a missing physical target column before any supply',
   assert.equal(fake.calls.includes('tail213-supply'),false);
   assert.equal(fake.calls.includes('deploy-215'),false);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
+
+test("an altered stage205 frame stops the fixture before qualification cleanup and later deployments", async () => {
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-frame-altered-"));
+  try {
+    const { ports, calls } = await fakeFixture(temporaryRoot);
+    const fixture = createLocalMigrationFixture({ ...ports, async executeSql(request) {
+      const result = await ports.executeSql(request);
+      if (request.phase !== "stage205-readback") return result;
+      const [header, ...rows] = result.stdout.split("\n");
+      const altered = header.slice(0, -1) + (header.endsWith("a") ? "b" : "a");
+      return { ...result, stdout: [altered, ...rows].join("\n") };
+    } });
+    await assert.rejects(fixture.migrate({ databaseUrl }), /LOCAL_MIGRATION_STAGE205_FRAMING/u);
+    assert.deepEqual(calls, ["preflight", "deploy-203", "stage203-readback", "qualification-setup",
+      "deploy-205", "stage205-readback"]);
+    await assert.rejects(fixture.migrate({ databaseUrl }), /LOCAL_MIGRATION_STOPPED/u);
+    assert.equal(calls.at(-1), "stage205-readback");
+  } finally { await fs.rm(temporaryRoot, { recursive: true, force: true }); }
+});
+
+for (const [name, failure, reason] of [
+  ["TLS", {code:1,actualSettled:true,stdout:Buffer.from("private-database"),stderr:Buffer.from("Error: P1011: private-certificate-path\n")}, "P1011"],
+  ["SQLSTATE", {code:1,actualSettled:true,stdout:Buffer.alloc(0),stderr:Buffer.from("Error: P3018\nDatabase error code: 42501\nprivate-sql\n")}, "P3018_SQLSTATE_42501"],
+  ["opaque", {code:1,actualSettled:true,stdout:Buffer.from("not an error header P1011: private-output"),stderr:Buffer.from("Error: P9999: private-output")}, "NONZERO"],
+  ["timeout", Object.assign(new Error("private-timeout-output"),{code:"TASK16_MIGRATE_TIMEOUT"}), "TIMEOUT"]
+]) test("owned current259 reports the first bounded Prisma prefix failure without private output: " + name, async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "current259-deploy-failure-"));
+  t.after(() => fs.rm(root, {recursive:true,force:true}));
+  const f = await current259Model(root, undefined, true, failure);
+  if(name==="SQLSTATE")f.failClose();
+  const recipe = f.api.createCurrent259TechnicalMigration(f.handle);
+  await assert.rejects(recipe.migrate(), error => {
+    assert.equal(error.code, "CURRENT259_TECHNICAL_DEPLOY_203_" + reason);
+    const detail=f.api.describeCurrent259TechnicalFailure(error);
+    assert.equal(detail.stage,"PRISMA_DEPLOY");
+    assert.equal(detail.prefixMigrations,203);
+    assert.equal(detail.kind,reason.startsWith("P")?"PRISMA_REJECTED":reason);
+    assert.equal(detail.prismaCode,reason.startsWith("P")?reason.split("_")[0]:undefined);
+    assert.equal(detail.sqlState,name==="SQLSTATE"?"42501":undefined);
+    assert.equal(error.resourceCleanup?.status,name==="SQLSTATE"?"UNKNOWN":undefined);
+    assert.equal(f.api.describeCurrent259TechnicalFailure({...error}),undefined);
+    assert.doesNotMatch(String(error) + JSON.stringify(error) + JSON.stringify(detail), /private-/u);
+    return true;
+  });
+  assert.equal(f.counts().commands, 1);
+  assert.equal(f.counts().closes, 1);
+  assert.equal(f.calls.at(-1), "preflight");
+  await assert.rejects(recipe.migrate());
+  assert.equal(f.counts().commands, 1);
+});
+
+for (const childExit of [0,1]) test("owned current259 preserves first CLI outcome if exact CLI bytes drift after exit: "+childExit,async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-post-deploy-drift-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  let f;
+  f=await current259Model(root,undefined,true,()=>{
+    f.driftCli();
+    return {code:childExit,actualSettled:true,stdout:Buffer.alloc(0),stderr:Buffer.from("Error: P1000: private-user")};
+  });
+  const run=f.api.createCurrent259TechnicalMigration(f.handle);
+  await assert.rejects(run.migrate(),error=>{
+    const detail=f.api.describeCurrent259TechnicalFailure(error);
+    if(childExit===0){
+      assert.equal(detail.kind,"POST_SUCCESS_VERIFICATION");
+      assert.equal(error.code,"CURRENT259_TECHNICAL_DEPLOY_203_POST_SUCCESS_VERIFICATION");
+    }
+    else{assert.equal(detail.prismaCode,"P1000");assert.equal(error.code,"CURRENT259_TECHNICAL_DEPLOY_203_P1000");}
+    return true;
+  });
+  assert.equal(f.counts().commands,1);
+  assert.equal(f.counts().closes,1);
+  assert.equal(f.calls.at(-1),"preflight");
+});
+
+test("owned current259 distinguishes stage203 capture cursor failure from the earlier clean Prisma exit",async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-post-prefix-cursor-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  let f;
+  const diagnostic=Object.assign(new Error("private log data"),{code:"TASK01_RESOURCE_COMMAND_FAILED",
+    cursorStage:"CURSOR_LOG_READ",commandKind:"nonzero-exit"});
+  f=await current259Model(root,undefined,true,()=>{f.physicalFailure(diagnostic);});
+  await assert.rejects(f.api.createCurrent259TechnicalMigration(f.handle).migrate(),error=>{
+    assert.deepEqual(f.api.describeCurrent259TechnicalFailure(error),{
+      stage:"CONTAINER_LOG_CURSOR",controlPhase:"stage203-readback",controlBoundary:"BEFORE_READ",
+      causeCode:"TASK01_RESOURCE_COMMAND_FAILED",cursorStage:"CURSOR_LOG_READ",commandKind:"nonzero-exit",
+      lastSuccessfulDeployPrefix:203
+    });
+    assert.doesNotMatch(JSON.stringify(f.api.describeCurrent259TechnicalFailure(error)),/private log/u);
+    return true;
+  });
+  assert.equal(f.counts().commands,1);
+  assert.equal(f.counts().closes,1);
+  assert.equal(f.calls.at(-1),"deploy-203");
+});
+
+for(const [name,physicalMode,stage] of [
+ ["owner query","stopped","CONTAINER_OWNER_TLS_SQL"],["owner identity","wrong-server","CONTAINER_OWNER_TLS_IDENTITY"]
+]) test("owned current259 records the stage203 "+name+" boundary after the exact CLI prefix",async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-post-prefix-owner-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  let f;
+  f=await current259Model(root,undefined,true,()=>{f.physicalFailure(physicalMode);});
+  await assert.rejects(f.api.createCurrent259TechnicalMigration(f.handle).migrate(),error=>{
+    assert.deepEqual(f.api.describeCurrent259TechnicalFailure(error),{
+      stage,controlPhase:"stage203-readback",controlBoundary:"BEFORE_READ",lastSuccessfulDeployPrefix:203
+    });
+    return true;
+  });
+  assert.equal(f.counts().commands,1);
+  assert.equal(f.counts().closes,1);
+  assert.equal(f.calls.at(-1),"deploy-203");
+});
+test("owned current259 preserves a bounded relay cause from the first failed check after clean prefix",async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-post-prefix-check-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  let f;
+  f=await current259Model(root,undefined,true,()=>{f.scheduleFullFailure(2,Object.assign(new Error("private relay detail"),{
+    code:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",relayCode:"CURRENT259_LOOPBACK_FORWARD_STREAM"
+  }));});
+  f.failClose();
+  await assert.rejects(f.api.createCurrent259TechnicalMigration(f.handle).migrate(),error=>{
+    const detail=f.api.describeCurrent259TechnicalFailure(error);
+    assert.deepEqual(detail,{stage:"CONTROL_BEFORE_READ",controlPhase:"stage203-readback",controlBoundary:"BEFORE_READ",
+      checkGate:"FULL_SOURCE",causeCode:"TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED",relayCode:"CURRENT259_LOOPBACK_FORWARD_STREAM",
+      lastSuccessfulDeployPrefix:203});
+    assert.equal(error.resourceCleanup.status,"UNKNOWN");
+    assert.doesNotMatch(JSON.stringify(detail),/private relay/u);
+    return true;
+  });
+  assert.equal(f.counts().commands,1);
+  assert.equal(f.counts().closes,1);
+  assert.equal(f.calls.at(-1),"deploy-203");
+});
+test("owned current259 keeps the fixed stage203 readback guard separate from CLI success",async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),"current259-post-prefix-control-"));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const f=await current259Model(root,(phase,row)=>{
+    if(phase==="stage203-readback")row.ledger.pop();
+    return row;
+  });
+  await assert.rejects(f.api.createCurrent259TechnicalMigration(f.handle).migrate(),error=>{
+    assert.deepEqual(f.api.describeCurrent259TechnicalFailure(error),{
+      stage:"CONTROL_READBACK",controlPhase:"stage203-readback",controlBoundary:"READBACK",
+      lastSuccessfulDeployPrefix:203,localCode:"LOCAL_MIGRATION_STAGE203"
+    });
+    return true;
+  });
+  assert.equal(f.counts().commands,1);
+  assert.equal(f.counts().closes,1);
+  assert.equal(f.calls.at(-1),"stage203-readback");
 });

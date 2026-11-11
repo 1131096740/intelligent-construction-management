@@ -43,6 +43,27 @@ test("fixed setup includes independent effective application ACL verification be
   assert.equal(controls.cleanupSql(plan, setup).includes("CASCADE"), false);
 });
 
+test("stage205 SQL budgets the full seven-database role and trigger matrix without dropping denied routes", () => {
+  const sql = controls.setupSql(plan);
+  // At M203 the largest run binds 27 cluster roles to 93 triggers.
+  // Max-width OIDs, attribute numbers and all-false flags bound the JSONB text size.
+  const updates = [...Array(90).fill([[1600, false]]), [[1598, false], [1599, false], [1600, false]], [], []];
+  const rows = Array.from({ length: 27 }, () => updates.map(columns =>
+    ["4294967295", "4294967295", "4294967295", 127,
+      false, false, false, false, false, false, false, columns, false, false, false]
+  )).flat();
+  const jsonbBytes = Buffer.byteLength(JSON.stringify(rows).replaceAll(",", ", "));
+  assert.ok(jsonbBytes > 256 * 1024);
+  const cap = /octet_length\(before_vector::text\)>(\d+) OR octet_length\(actual_vector::text\)>(\d+)/u.exec(sql);
+  assert.ok(cap);
+  assert.equal(cap[1], cap[2]);
+  assert.ok(jsonbBytes <= Number(cap[1]));
+  assert.ok(2 * Number(cap[1]) + 64 * 1024 <= 768 * 1024);
+  assert.match(sql, /jsonb_array_length\(before_vector\)>4096/u);
+  assert.match(sql, /FROM pg_roles r CROSS JOIN pg_trigger t/u);
+  assert.match(sql, /IF actual_vector IS DISTINCT FROM expected_vector/u);
+});
+
 function completion() {
   const anchors = [
     [204, "ALTER TABLE", "pg_class", "ContractArchiveFile", null],
@@ -151,4 +172,54 @@ test("completed205 binds the unchanged caller proof to its actual CV anchor OID"
   const row = completion();
   row.events[2].objectOid = "32"; // Proof and every permission fact remain bound to CV31.
   assert.throws(() => controls.checkCompletion(row, plan, setup), /LOCAL_MIGRATION_CONTROL/u);
+});
+
+test("stage205 accepts complete frames above the old limit including UTF-8 split across frame bytes", () => {
+  const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
+  const payload = {
+    unicode: "a".repeat(24563) + "验🙂",
+    ledger: Array.from({ length: 205 }, (_, index) => ({ name: "migration_" + index, sha256: "a".repeat(64) })),
+    fileCallerTransition: { before: "b".repeat(251000), after: "c".repeat(251000) }
+  };
+  const bytes = Buffer.from(JSON.stringify(payload));
+  assert.ok(bytes.length > 512 * 1024);
+  assert.equal(bytes[24575], 0xe9);
+  assert.equal(bytes[24576] & 0xc0, 0x80);
+  assert.deepEqual(controls.parseReadback(frameStage205(payload)), payload);
+});
+
+test("stage205 rejects lost, reordered, altered or noncanonical frames", () => {
+  const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
+  const valid = frameStage205({ evidence: "x".repeat(60000) });
+  const [header, one, two, three] = valid.trimEnd().split("\n");
+  const wire = (...lines) => lines.join("\n") + "\n";
+  for (const malformed of [
+    wire(header, one, three),
+    wire(header, two, one, three),
+    wire(header, one, one, three),
+    wire(header, one, two, three, "4|YQ=="),
+    wire(header, one.replace(/.$/u, "A"), two, three),
+    wire(header, one, two, three + " "),
+    wire(header.replace("JG-PFQ205/1|3|", "JG-PFQ205/1|03|"), one, two, three),
+    wire(header, one, "", two, three),
+    valid.slice(0, -1),
+    valid.replaceAll("\n", "\r\n"),
+    JSON.stringify({ evidence: "x" }),
+    "x".repeat(1025 * 1024 + 1)
+  ]) {
+    assert.throws(() => controls.parseReadback(malformed), /LOCAL_MIGRATION_STAGE205_FRAMING/u);
+  }
+});
+
+test("stage205 enforces the byte ceiling and rejects even digest-consistent invalid UTF-8", () => {
+  const { createHash } = require("node:crypto");
+  const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
+  const max = { x: "a".repeat(768 * 1024 - 8) };
+  assert.equal(Buffer.byteLength(JSON.stringify(max)), 768 * 1024);
+  assert.deepEqual(controls.parseReadback(frameStage205(max)), max);
+  assert.throws(() => controls.parseReadback(frameStage205({ x: max.x + "b" })), /LOCAL_MIGRATION_STAGE205_FRAMING/u);
+  const invalid = Buffer.from([34, 0xff, 34]);
+  const sha = createHash("sha256").update(invalid).digest("hex");
+  assert.throws(() => controls.parseReadback("JG-PFQ205/1|1|3|" + sha + "\n1|" + invalid.toString("base64") + "\n"),
+    /LOCAL_MIGRATION_STAGE205_FRAMING/u);
 });

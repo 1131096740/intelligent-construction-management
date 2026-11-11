@@ -4,7 +4,8 @@
 const {types}=require('node:util');
 const {isIP}=require('node:net');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
-const {verifyCurrent259ImpactFileBoundary}=require('./task16-current259-live-sessions.cjs');
+const {isCurrent259PaymentLoopbackTopology}=require('./task16-current259-payment-loopback.cjs');
+const {isCurrent259PaymentLoopbackImpactSession,verifyCurrent259ImpactFileBoundary}=require('./task16-current259-live-sessions.cjs');
 const txCode='TASK16_CLIENT_IMPACT_READER_TRANSACTION';
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const fault=code=>Object.assign(new Error(code),{code});
@@ -85,12 +86,18 @@ function createCurrent259ImpactRuntime(session,checkLight){
  need(typeof verifyFull==='function'&&typeof verifyInstalled259==='function',txCode);
  const transaction=runtime.$transaction,identity=ownData(session,'identity'),b7=ownData(session,'b7'),endpoint=ownData(session,'endpoint');
  const privateIPv4=value=>typeof value==='string'&&isIP(value)===4&&(/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(value));
- need(endpoint&&!types.isProxy(endpoint)&&ownData(endpoint,'publishedHost')==='127.0.0.1'
-  &&Number.isInteger(ownData(endpoint,'publishedPort'))&&ownData(endpoint,'publishedPort')>1024&&ownData(endpoint,'publishedPort')<=65535
-  &&privateIPv4(ownData(endpoint,'clientAddress'))&&privateIPv4(ownData(endpoint,'serverAddress'))
-  &&Number.isInteger(ownData(endpoint,'clientPort'))&&ownData(endpoint,'clientPort')>0&&ownData(endpoint,'clientPort')<=65535
-  &&ownData(endpoint,'serverPort')===5432,txCode);
- const endpointValues=Object.fromEntries(['publishedHost','publishedPort','clientAddress','clientPort','serverAddress','serverPort'].map(k=>[k,ownData(endpoint,k)]));
+ need(endpoint&&!types.isProxy(endpoint),txCode);
+ const relay=Object.getOwnPropertyDescriptor(endpoint,'transport');
+ const coordinateKeys=['clientAddress','clientPort','serverAddress','serverPort'];
+ const addressCheck=relay?value=>value==='127.0.0.1':privateIPv4;
+ const listenKeys=relay?['host','port']:['publishedHost','publishedPort'];
+ const [hostKey,portKey]=listenKeys,endpointPort=ownData(endpoint,portKey),clientPort=ownData(endpoint,'clientPort');
+ need(ownData(endpoint,hostKey)==='127.0.0.1'&&Number.isInteger(endpointPort)&&endpointPort>1024&&endpointPort<=65535
+  &&addressCheck(ownData(endpoint,'clientAddress'))&&addressCheck(ownData(endpoint,'serverAddress'))
+  &&Number.isInteger(clientPort)&&clientPort>0&&clientPort<=65535&&ownData(endpoint,'serverPort')===5432,txCode);
+ if(relay)need(isCurrent259PaymentLoopbackImpactSession(session)&&isCurrent259PaymentLoopbackTopology(ownData(endpoint,'transport'))
+  &&typeof ownData(endpoint,'relayId')==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(ownData(endpoint,'relayId')),txCode);
+ const endpointValues=Object.fromEntries([...listenKeys,...coordinateKeys,...(relay?['transport','relayId']:[])].map(k=>[k,ownData(endpoint,k)]));
  const endpointArgs=['clientAddress','clientPort','serverAddress','serverPort'].map(k=>endpointValues[k]);
  need(typeof transaction==='function'&&Array.isArray(identity)&&!types.isProxy(identity)&&identity.length===3&&b7&&!types.isProxy(b7),txCode);
  const identities=Array.from({length:3},(_,i)=>ownData(identity,String(i)));

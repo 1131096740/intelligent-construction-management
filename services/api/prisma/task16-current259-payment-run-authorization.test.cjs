@@ -9,7 +9,9 @@ function planFixture(t){
 }
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 function fixture(t,options={}){
- const s=options.planFixture??planFixture(t),saved=options.saved??s.api.prepareCurrent259PaymentInstallPlan({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output});
+ const s=options.planFixture??planFixture(t);
+ const prepare=options.pfqPlan?s.api.prepareCurrent259PfqCompositionPlan:s.api.prepareCurrent259PaymentInstallPlan;
+ const saved=options.saved??prepare({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output});
  const state={calls:[],output:'',closes:0,signals:{},consumed:null},handle=Object.freeze({});
  let manifest,signal,finish;
  const done=new Promise(resolve=>{finish=resolve;});
@@ -35,20 +37,54 @@ function fixture(t,options={}){
    assert.equal(authority.check(),true);
    return Object.freeze({status:'CURRENT259_B7_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:technical.runId,installXid:'1300',readerOid:'3000',planSha256:options.selectedPlanSha??saved.sha256,installSqlSha256:binding.installSqlSha256,bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20'});
   }},
-  './local-staged-current259-profile.cjs':{createCurrent259TechnicalMigration(h,provided){
+  './local-staged-current259-profile.cjs':{describeCurrent259TechnicalFailure(error){
+   return error===options.technicalFailure?options.technicalDetail:undefined;
+  },createCurrent259TechnicalMigration(h,provided){
    assert.equal(h,handle);assert.equal(provided,signal);return {async migrate(){state.calls.push('technical259');if(Object.hasOwn(options,'technicalFailure'))throw options.technicalFailure;await options.onTechnical?.(state);return technical;}};
   }},
   './task16-current259-role-provision.cjs':{async provisionCurrent259Roles(value,h){state.calls.push('roles9');assert.equal(value,technical);assert.equal(h,handle);return roles;}},
   './task16-current259-seven-install.cjs':{async installCurrent259SevenFragments(value,h){state.calls.push('seven');assert.equal(value,roles);assert.equal(h,handle);return seven;}},
   './task16-current259-payment-acl-install.cjs':{async installCurrent259PaymentAcl(value,h){state.calls.push('acl');assert.equal(value,seven);assert.equal(h,handle);return acl;}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},async closeCurrent259OwnedResource(){state.closes++;},
-   async withCurrent259TechnicalResource(build,plan,sig,consume){
-    assert.equal(build,s.handle);assert.ok(fs.existsSync(path.join(s.runRoot,'attempt.json')));state.calls.push('start');signal=sig;
+   async withCurrent259FirstRollbackResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'cancel-commit');
+   },
+   async withCurrent259NormalPaymentResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'normal');
+   },
+   async withCurrent259ResponseLossResource(build,plan,sig,consume){
+    return ports['./task16-current259-owned-resource.cjs'].withCurrent259TechnicalResource(build,plan,sig,consume,'response-loss');
+   },
+   async withCurrent259TechnicalResource(build,plan,sig,consume,scenario){
+    const loopback=require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(scenario);
+    assert.equal(build,s.handle);assert.ok(fs.existsSync(path.join(s.runRoot,'attempt.json')));
+    state.calls.push(scenario==='cancel-commit'?'start-first-rollback':scenario?'start-'+scenario:'start');signal=sig;
     fs.mkdirSync(plan.artifactsDir,{mode:0o700});
     manifest={runId:technical.runId,sourceSha:source.candidateSha,daemonId:s.daemonId,endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',imageId:'sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d',containerId:technical.containerId,networkId:'8'.repeat(64),databaseName:identity.database,port:32456,status:'started-awaiting-driver-verification',cleanup:{status:'pending'}};
+    if(loopback){
+     manifest.topology=options.resourceTopology??loopback.topology;
+     manifest.relay={id:'ab49e313-e3da-407f-b279-3d09caecfc3e',containerId:manifest.containerId,host:'127.0.0.1',port:manifest.port};
+     manifest.loopbackPlaintextHba={sourceAddress:'127.0.0.1',role:'jg_task01_owner',databaseName:manifest.databaseName,noEncryptionRejected:true};
+    }
+    if(options.startupFailure){
+     const mode=options.startupFailure;
+     const failure=Object.assign(new Error('PRIVATE_STARTER_DETAIL'),{code:'TASK01_RESOURCE_START_FAILED'});
+     const failed={...manifest,purpose:'CURRENT259_TECHNICAL_MIGRATIONS_V1',phase:'failed',port:null,
+      attempts:{network:true,container:true},failureCode:'TASK01_RESOURCE_COMMAND_FAILED',
+      startupFailure:{stage:'published-port-probe',commandKind:'nonzero-exit'},
+      status:mode==='cleanup-unknown'?'cleanup_failed':'closed',
+      cleanup:mode==='cleanup-unknown'?{status:'failed'}:{status:'completed',containerAbsent:true,volumesAbsent:true,networkAbsent:true}};
+     if(mode==='wrong-daemon')failed.daemonId='unrelated-daemon-id';
+     if(mode==='missing-container-id')failed.containerId=null;
+     fs.writeFileSync(path.join(plan.artifactsDir,'resource-manifest.json'),JSON.stringify(failed),{mode:0o600});
+     if(mode!=='manifest-only')failure.resourceReceipt=mode==='different-receipt'?{...failed,networkId:'9'.repeat(64)}:failed;
+     throw failure;
+    }
     const finishResource=()=>{
      state.closes++;
      manifest.status=options.cleanupFailure?'cleanup_failed':'closed';manifest.cleanup={status:options.cleanupFailure?'failed':'completed',containerAbsent:!options.cleanupFailure,volumesAbsent:!options.cleanupFailure,networkAbsent:!options.cleanupFailure};
+     if(loopback)Object.assign(manifest.cleanup,{relayClosed:!options.relayCleanupUnknown,
+      relayId:options.relayCleanupWrongId?'00000000-0000-4000-8000-000000000000':manifest.relay.id});
      fs.writeFileSync(path.join(plan.artifactsDir,'resource-manifest.json'),JSON.stringify(manifest),{mode:0o600});
      if(options.cleanupFailure)throw Object.assign(new Error('SECRET_SQL_PASSWORD'),{code:'CURRENT259_RESOURCE_CLEANUP_UNKNOWN'});
     };
@@ -56,6 +92,59 @@ function fixture(t,options={}){
    }},
   '../../../scripts/prepare-task16-current259-payment-install.cjs':s.api
  };
+ if(options.pfqPlan){
+  const childFile=path.join(__dirname,'task16-current259-pfq-concurrency.cjs');
+  const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream');
+  const relayId='ab49e313-e3da-407f-b279-3d09caecfc3e';
+  const proof=Object.freeze({}),rows=[1,2,3,4].map(pid=>({pid,start:`2026-11-12T01:02:03.00000${pid}Z`}));
+  let packet;
+  Object.assign(view.resource,{port:32456,caPath:'/private/tmp/fake-resource/tls-private/ca.crt',relayId,
+   async inspectConnectionEndpoint(){return {transport:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS',relayId,host:'127.0.0.1',port:32456,databaseName:identity.database};}});
+  view.credentials=()=>({owner:'a'.repeat(96)});
+  const session={b7:{xid:'1300'},identity:[{...identity,effectiveOid:'10'}],checkLight:check,
+   async verifyInstalled259(){state.calls.push('verify-installed');},owner:{async $queryRawUnsafe(sql,...pids){
+    assert.match(sql,/pg_stat_activity/);assert.deepEqual(pids,[1,2,3,4]);state.calls.push('independent-sessions');
+    return rows.map((row,index)=>({...row,name:`jg_pfq_${packet.nonce}_${options.pfqIdentityDrift?0:index}`}));
+   }}};
+  const childPorts={
+   './task16-current259-live-sessions.cjs':{async withCurrent259LiveSessions(b7,h,consume){
+    assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('claim-B7');
+    try{return await consume(proof);}catch{
+     throw Object.assign(new Error('CURRENT259_LIVE_SESSIONS_FAILED_CLOSED'),{code:'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED',
+      clientCleanupOutcome:'DISCONNECTED',resourceCleanupOutcome:'CLOSED'});
+    }finally{state.calls.push('disconnect-live');}
+   },claimCurrent259LiveSessions(value,h){assert.equal(value,proof);assert.equal(h,handle);return session;}},
+   './task16-current259-owned-resource.cjs':ports['./task16-current259-owned-resource.cjs'],
+   'node:fs':{realpathSync(value){return value;}},
+   'node:child_process':{spawn(binary,args,config){
+    state.calls.push('jest');assert.equal(binary,process.execPath);
+    assert.deepEqual(args.slice(1),['--runInBand','--runTestsByPath','src/database/project-financing-quota-concurrency.spec.ts','--json']);
+    assert.equal(config.env.PFQ_NATIVE_COMPOSITION,'1');assert.equal(config.env.DATABASE_URL,undefined);
+    const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();
+    child.kill=()=>{child.stdout.end();queueMicrotask(()=>child.emit('close',null,'SIGTERM'));};
+    let admission=false;
+    child.stdin.on('data',bytes=>{
+     const line=bytes.toString().trim();
+     if(!packet){
+      packet=JSON.parse(line);assert.match(packet.url,/^postgresql:\/\/jg_task01_owner:/);assert.equal(packet.identity.databaseOid,identity.databaseOid);
+      child.stdout.write('JG_PFQ_SESSIONS '+JSON.stringify(rows)+'\n');
+     }else if(!admission){
+      assert.equal(line,`JG_PFQ_READY ${packet.nonce} 1`);state.calls.push('jest-admitted');admission=true;
+      child.stdout.write('JG_PFQ_SESSIONS '+JSON.stringify(options.pfqFinalDrift?rows.map(row=>({...row,pid:row.pid+10})):rows)+'\n');
+     }else{
+      assert.equal(line,`JG_PFQ_READY ${packet.nonce} 2`);
+      child.stdout.end(JSON.stringify({success:true,numTotalTests:14,numPassedTests:options.pfqPartial?13:14,numTotalTestSuites:1,
+       testResults:[{name:path.join(ROOT,'services/api/src/database/project-financing-quota-concurrency.spec.ts')}]} )+'\n');
+      queueMicrotask(()=>child.emit('close',0,null));
+     }
+    });return child;
+   }}
+  };
+  const childModule={exports:{}};const childRequire=name=>childPorts[name]??require(name);
+  childRequire.resolve=()=>path.join(ROOT,'node_modules/.pnpm/jest@29.7.0/node_modules/jest/bin/jest.js');
+  new Function('require','module','__dirname',fs.readFileSync(childFile,'utf8'))(childRequire,childModule,__dirname);
+  ports['./task16-current259-pfq-concurrency.cjs']=childModule.exports;
+ }
  if(options.competition)options.business=true;
  if(options.businessApi)ports['../../../scripts/prepare-task16-current259-payment-business.cjs']=options.businessApi;
  if(options.business){
@@ -68,11 +157,12 @@ function fixture(t,options={}){
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,app,h);lease.check();
-   assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(saved.sha256));
+   assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(options.selectedPlanSha??saved.sha256));
    options.onBusiness?.({api:module.exports,permit,application,handle,lease,s});
    if(Object.hasOwn(options,'caseFailure'))throw options.caseFailure;
    lease.check();return {caseId:lease.scope.caseId,passed:true,...(options.scenario==='cancel-commit'
-    ?{rollbackObserved:true}:{executionId:'public-execution',rootId:'public-root'})};
+    ?{rollbackObserved:true,...(options.omitOriginalResult?{}:{originalResultUnconfirmed:true}),
+      ...(options.omitRollbackEvidence?{}:{rollbackEvidence:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:'a'.repeat(64)}})}:{executionId:'public-execution',rootId:'public-root'})};
   }};
  }
 
@@ -148,7 +238,7 @@ function fixture(t,options={}){
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const proc={argv:['node',file,...(options.competition?[options.default?'--competition':'--competition-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.competition?[options.default?'--competition':'--competition-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  new Function('require','module','__dirname','__filename','process',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(rq,module,__dirname,file,proc);
@@ -268,19 +358,21 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  const entry=path.join(base,'services/api/prisma/task16-current259-payment-run-authorization.cjs');
  const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
  write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
+ write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
  for(const [name,keys]of [
   ['task16-current259-b7-install',['installCurrent259B7']],
-  ['local-staged-current259-profile',['createCurrent259TechnicalMigration']],
+  ['local-staged-current259-profile',['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']],
   ['task16-current259-role-provision',['provisionCurrent259Roles']],
   ['task16-current259-seven-install',['installCurrent259SevenFragments']],
   ['task16-current259-payment-acl-install',['installCurrent259PaymentAcl']],
-  ['task16-current259-owned-resource',['withCurrent259TechnicalResource','claimCurrent259TechnicalResource']],
+  ['task16-current259-owned-resource',['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource',
+   'withCurrent259NormalPaymentResource','withCurrent259ResponseLossResource','claimCurrent259TechnicalResource']],
   ['task16-current259-catalog',['renderCurrent259CatalogRead']],
   ['task16-runtime-inputs',['readQualifiedTask16File']]
  ])write('services/api/prisma/'+name+'.cjs','module.exports=Object.freeze({'+keys.map(key=>key+':()=>{throw new Error("resource calls forbidden in default model");}').join(',')+'});');
  write('scripts/prepare-task16-current259-payment-install.cjs',`
  require('../services/api/prisma/task16-current259-payment-run-authorization.cjs');
- const plan={material:{source:{candidateSha:'${'a'.repeat(40)}'}}};
+ const plan={material:{source:{candidateSha:'${'a'.repeat(40)}'}},scope:{}};
  module.exports=Object.freeze({
   readCurrent259PaymentInstallPlan(){return {plan};},
   verifyCurrent259PaymentInstallPlan(){return {check(){}};}
@@ -358,3 +450,95 @@ test('fresh A16 refuses an equivalent replacement listener before issuing the re
  assert.equal(f.state.calls.filter(call=>call==='first-post').length,1);
  assert.equal(f.state.closes,1);
 });
+
+for(const missing of [null,'original-result','fault-proof','relay-cleanup'])test('cancellation receipt requires original result and fault proof ('+missing+')',async t=>{
+ const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
+ new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
+ const s=holder.exports.fixture(t),plan=s.business.prepareCurrent259PaymentBusinessPlan({
+  runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,scenario:'cancel-commit',paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ const f=fixture(t,{omitOriginalResult:missing==='original-result',omitRollbackEvidence:missing==='fault-proof',business:true,scenario:'cancel-commit',relayCleanupUnknown:missing==='relay-cleanup',planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+ const result=await f.done,receipt=JSON.parse(fs.readFileSync(path.join(s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,missing?'STOPPED':'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+ assert.equal(f.state.calls[0],'start-first-rollback');
+ assert.equal(receipt.resource.relay.containerId,receipt.resource.containerId);
+ assert.equal(receipt.resource.cleanup.relayClosed,missing!=='relay-cleanup');
+ assert.equal(receipt.resource.loopbackPlaintextHba.sourceAddress,'127.0.0.1');
+ const businessMissing=missing==='original-result'||missing==='fault-proof';
+ assert.equal(receipt.business.originalResultUnconfirmed,businessMissing?undefined:true);
+ assert.equal(receipt.business.rollbackObserved,businessMissing?undefined:true);
+ assert.equal(receipt.business.executionId,undefined);
+ assert.deepEqual(receipt.business.rollbackEvidence,businessMissing?undefined:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:'a'.repeat(64)});
+ assert.deepEqual(f.state.calls.slice(-4),['case','app-close','env-close','pools-close']);
+});
+
+for(const mode of ['closed','cleanup-unknown','manifest-only','different-receipt','wrong-daemon','missing-container-id'])test('startup evidence binds only its original matched cleanup receipt ('+mode+')',async t=>{
+ const f=fixture(t,{startupFailure:mode}),result=await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.equal(result.status,'STOPPED');
+ assert.equal(receipt.failureCode,'TASK01_RESOURCE_START_FAILED');
+ assert.equal(receipt.failureStage,'resourceStartup');
+ assert.deepEqual(f.state.calls,['start']);
+ assert.equal(receipt.resource.cleanup.status,mode==='closed'?'completed':'UNKNOWN');
+ if(mode==='closed'){
+  assert.equal(receipt.resource.identityBinding,'ORIGINAL_STARTER_EXCEPTION_AND_FINAL_MANIFEST');
+  assert.deepEqual(receipt.resource.startupFailure,{stage:'published-port-probe',commandKind:'nonzero-exit'});
+  assert.equal(receipt.resource.startupFailureCode,'TASK01_RESOURCE_COMMAND_FAILED');
+  assert.equal(receipt.resource.port,null);
+ }
+ assert.ok(!JSON.stringify(receipt).includes('PRIVATE_STARTER_DETAIL'));
+});
+
+test('the once receipt retains the fixed Prisma prefix diagnostic and first failure despite cleanup UNKNOWN',async t=>{
+ const technicalDetail=Object.freeze({stage:'PRISMA_DEPLOY',prefixMigrations:203,kind:'PRISMA_REJECTED',prismaCode:'P3018',sqlState:'42501'});
+ const technicalFailure=Object.assign(new Error('PRIVATE_PRISMA_DIAGNOSTIC'),{code:'CURRENT259_TECHNICAL_DEPLOY_203_P3018_SQLSTATE_42501'});
+ const f=fixture(t,{technicalFailure,technicalDetail,cleanupFailure:true}),result=await f.done;
+ const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.equal(result.status,'STOPPED');assert.equal(receipt.failureCode,technicalFailure.code);assert.equal(receipt.failureStage,'technical259');
+ assert.deepEqual(receipt.technicalFailure,technicalDetail);assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
+ assert.doesNotMatch(text+f.state.output,/PRIVATE_PRISMA_DIAGNOSTIC/u);
+ assert.deepEqual(f.state.calls,['start','technical259']);
+});
+
+ test('PFQ composition verifies its own plan and cannot consume an installation-only plan',async t=>{
+  const rejected=fixture(t,{pfq:true}),result=await rejected.done;
+  assert.equal(result.failureCode,'PAYMENT_INSTALL_PLAN_SCOPE');
+  assert.equal(result.resourceCreationRequested,false);
+  assert.deepEqual(rejected.state.calls,[]);
+ });
+
+ test('PFQ composition consumes B7 and the owned TLS resource before the full original Jest file',async t=>{
+  const f=fixture(t,{pfq:true,pfqPlan:true}),result=await f.done;
+  assert.equal(result.status,'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+  assert.deepEqual(f.state.calls,['start-first-rollback','technical259','roles9','seven','acl','b7','claim-B7','verify-installed',
+   'jest','independent-sessions','jest-admitted','independent-sessions','verify-installed','disconnect-live']);
+  assert.equal(f.state.closes,1);
+ });
+ test('PFQ composition rejects a foreign session without admitting Jest business writes',async t=>{
+  const f=fixture(t,{pfq:true,pfqPlan:true,pfqIdentityDrift:true}),result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.equal(result.failureCode,'CURRENT259_PFQ_SESSION_ADMISSION');
+  assert.ok(f.state.calls.includes('independent-sessions'));
+  assert.ok(!f.state.calls.includes('jest-admitted'));
+  assert.equal(f.state.closes,1);
+ });
+ test('PFQ composition stops when the original suite reports incomplete business cases',async t=>{
+  const f=fixture(t,{pfq:true,pfqPlan:true,pfqPartial:true}),result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.equal(result.failureCode,'CURRENT259_PFQ_JEST_RESULT');
+  const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8');
+  assert.equal(JSON.parse(text).failureStage,'pfqConcurrency');
+  assert.doesNotMatch(text,/postgresql:|testResults|LIVE_SESSIONS_FAILED_CLOSED/);
+  assert.ok(f.state.calls.includes('jest-admitted'));
+  assert.equal(f.state.closes,1);
+ });
+
+ test('PFQ composition rejects a backend replacement before certifying the completed cases',async t=>{
+  const f=fixture(t,{pfq:true,pfqPlan:true,pfqFinalDrift:true}),result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.equal(result.failureCode,'CURRENT259_PFQ_SESSION_DRIFT');
+  assert.ok(f.state.calls.includes('jest-admitted'));
+  assert.equal(f.state.calls.filter(call=>call==='independent-sessions').length,1);
+  assert.equal(f.state.closes,1);
+ });

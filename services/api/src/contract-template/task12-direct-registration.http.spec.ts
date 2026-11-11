@@ -7,6 +7,7 @@ import { openDirectPendingDraft, seedPreparedDirectArchiveTransition } from "./t
 import { seedDirectArchiveDispatchCatalog } from "./task12-direct-archive-dispatch.oracle";
 import { observeDirectArchiveCompletionBody, seedDirectArchiveCompletionCatalog, seedDirectArchiveRetentionCatalog } from "./task12-direct-archive-retention.oracle";
 import { seedDirectReviewDatabaseBinding } from "./task12-direct-review-persistence.oracle";
+import { loginTemplateActor } from "./template-selection.test-support";
 
 describe("表外已签合同的正式登记", () => {
   it.each([false, true])("登记两份有序原件后可按原标识查回（经营账启用：%s）", async operating => {
@@ -286,12 +287,25 @@ describe("表外已签合同的正式登记", () => {
         expect(await server.store.table("operatingImpactEntry").count({ where: { projectId } })).toBe(0);
         rollBackOperating = false;
       }
+      const outsider = await loginTemplateActor(server, "employee");
+      const outsiderHeaders = { ...headers, authorization: `Bearer ${outsider}` };
+      const attemptsBeforeOutsider = { ...invocations };
+      const rejected = await fetch(`${base}/contracts/${version.id}/signed-archive`, {
+        method: "POST", headers: outsiderHeaders, body: JSON.stringify(request)
+      });
+      expect(rejected.status).toBe(403);
+      expect(invocations).toEqual(attemptsBeforeOutsider);
       const registered = await send();
       const result = await registered.json();
       expect({ status: registered.status, result }).toMatchObject({
         status: 201, result: { archiveId: expect.any(String), contractVersionId: version.id, status: "effective", fileIds: originals }
       });
       expect(await (await lookup()).json()).toMatchObject({ status: "archived", result });
+      expect((await fetch(`${base}/contracts/${version.id}/archive-requests/${key}`, { headers: outsiderHeaders })).status).toBe(403);
+      expect((await fetch(`${base}/files/${originals[1]}/download-ticket`, {
+        method: "POST", headers: outsiderHeaders,
+        body: JSON.stringify({ confirmationPassword: server.password, downloadReason: "核对直签原件" })
+      })).status).toBe(403);
       const generations = await server.store.table("directArchiveGenerationProof").findFirst();
       if (!generations) throw new Error("合成固定原件证明缺失");
       if (!operating) {

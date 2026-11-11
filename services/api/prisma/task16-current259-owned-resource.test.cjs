@@ -21,10 +21,38 @@ function fixture(){
  const tools=new Map([['/Applications/Docker.app/Contents/Resources/bin/docker','6c3c88771987b73d66d0664b22800f46c827f96db67579594d39163ab88e8c40'],['/opt/homebrew/Cellar/openssl@3/3.6.3/bin/openssl','103fc7706cf6646f226d96f29242d81890363499afc730e7ef1fadd64b3a123c']]);
  const mockFs={constants:{X_OK:1},realpathSync:p=>p,existsSync:()=>false,lstatSync:()=>({uid:process.getuid(),mode:0o40700,isDirectory:()=>true,isSymbolicLink:()=>false}),statSync:()=>({uid:501,gid:20,mode:0o100755,dev:1,ino:2,size:3,mtimeMs:4,ctimeMs:5,isFile:()=>true}),accessSync(){},readFileSync:p=>Buffer.from(p)};
  const mockCrypto={randomUUID:()=>id,randomBytes:()=>Buffer.alloc(48,9),createHash:()=>({update(bytes){this.bytes=String(bytes);return this;},digest(){return state.toolChanged?'0'.repeat(64):tools.get(this.bytes)||crypto.createHash('sha256').update(this.bytes).digest('hex');}})};
+ const q2Id='12345678-1234-4234-8234-123456789012',q2Topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
+ const relayStart=(name,topology)=>async options=>{
+  calls.push(name);state.options=options;
+  receipt.topology=state.topologyOverride??topology;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';
+  receipt.limits={totalDeadlineMs:3600000};
+  receipt.relay={id:'ab49e313-e3da-407f-b279-3d09caecfc3e',containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
+  receipt.loopbackPlaintextHba={sourceAddress:'127.0.0.1',role:'jg_task01_owner',databaseName:receipt.databaseName,noEncryptionRejected:true};
+  resource.relayId=receipt.relay.id;resource.checkRelay=()=>{};
+  const close=resource.close;resource.close=async()=>{
+   await close.call(resource);receipt.cleanup.relayId=resource.relayId;receipt.cleanup.relayClosed=true;
+   if(state.finalRelayPortDrift)receipt.relay.port++;
+  };
+  return resource;
+ };
  const entries={},fixed={
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer,checkCurrent259FileIdentity(file,identity){assert.ok(tools.has(file));assert.equal(identity.ctimeMs,5);}},
   './task16-current259-client-loader.cjs':Object.freeze({loadCurrent259Client(handle){calls.push('load');if(handle!==build)throw new Error('CURRENT259_BUILD_HANDLE');return loader;}}),
-  './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},async startCurrent259TechnicalPostgres(options){calls.push('technical-start');state.options=options;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;}}
+  './enterprise-task01-resources.cjs':{async startTask01Postgres(options){calls.push('start');state.options=options;if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},async startCurrent259TechnicalPostgres(options){calls.push('technical-start');state.options=options;receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};if(state.startFailure)throw state.startFailure;if(state.startWait)await state.startWait;return resource;},
+   async startCurrent259FirstQ2LoopbackPostgres(options){
+    calls.push('q2-start');state.options=options;
+    receipt.purpose='CURRENT259_TECHNICAL_MIGRATIONS_V1';receipt.limits={totalDeadlineMs:3600000};
+    receipt.topology=state.topologyOverride??q2Topology;
+    receipt.relay={id:q2Id,containerId:receipt.containerId,host:'127.0.0.1',port:receipt.port};
+    resource.relayId=q2Id;resource.checkRelay=()=>{if(state.relayDrift)throw new Error('MODEL_RELAY_DRIFT');};
+    const close=resource.close;resource.close=async()=>{
+     await close.call(resource);receipt.cleanup.relayId=q2Id;receipt.cleanup.relayClosed=!state.relayCleanupUnknown;
+     if(state.relayClosePortDrift)receipt.relay.port++;
+    };
+    return resource;
+   },
+   startCurrent259NormalPaymentPostgres:relayStart('normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'),
+   startCurrent259ResponseLossPostgres:relayStart('loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS')}
  };
  function privateRequire(name){if(Object.hasOwn(fixed,name)){const filename=privateRequire.resolve(name);entries[filename]||={exports:fixed[name],loaded:true};return entries[filename].exports;}if(name==='node:fs')return mockFs;if(name==='node:crypto')return mockCrypto;return require(name);}
  privateRequire.resolve=name=>path.join(__dirname,name);privateRequire.cache=entries;
@@ -281,3 +309,60 @@ test('contract plaintext has no caller-supplied cursor, target, path or legacy p
   assert.equal(f.state.closeCount,1);
  }
 });
+
+test('Q2 owned wrapper keeps technical lineage, a unique relay identity and the original five-login methods',async()=>{
+ const f=fixture(),controller=new AbortController();
+ await f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,controller.signal,async handle=>{
+  const view=f.api.claimCurrent259TechnicalResource(handle);
+  assert.equal(view.purpose,'CURRENT259_TECHNICAL_MIGRATIONS_V1');
+  assert.equal(view.deadlineMs,3600000);
+  assert.equal(view.resource.topology,'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS');
+  assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
+  assert.equal(typeof view.resource.applyCurrent259ContractHbaV1,'function');
+  assert.equal(view.resource.checkRelay,undefined);
+ });
+ assert.equal(f.calls.includes('technical-start'),false);
+ assert.equal(f.calls.includes('q2-start'),true);
+ assert.equal(f.state.closeCount,1);
+});
+test('Q2 refuses a rollback transport receipt and never grants a handle',async()=>{
+ const f=fixture();f.state.topologyOverride='UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';
+ await assert.rejects(f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,new AbortController().signal,
+  ()=>assert.fail('unmatched topology')),/CURRENT259_RESOURCE_TLS/u);
+ assert.equal(f.state.closeCount,1);
+});
+test('Q2 refuses to certify owned cleanup when the exact relay is unconfirmed',async()=>{
+ const f=fixture();f.state.relayCleanupUnknown=true;
+ await assert.rejects(f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,new AbortController().signal,()=>{}),
+  /CURRENT259_RESOURCE_CLEANUP_UNKNOWN/u);
+ assert.equal(f.state.closeCount,1);
+});
+
+test('Q2 cleanup binds the relay host and port in addition to its ID',async()=>{
+ const f=fixture();f.state.relayClosePortDrift=true;
+ await assert.rejects(f.api.withCurrent259FirstQ2LoopbackResource(f.build,f.plan,new AbortController().signal,()=>{}),
+  /CURRENT259_RESOURCE_CLEANUP_UNKNOWN/u);
+ assert.equal(f.state.closeCount,1);
+});
+
+for(const [name,call,topology] of [
+ ['withCurrent259NormalPaymentResource','normal-start','UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS'],
+ ['withCurrent259ResponseLossResource','loss-start','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS']
+]) {
+ test('owned payment relay binds the exact starter, topology, HBA and cleanup: '+name,async()=>{
+  const f=fixture(),signal=new AbortController().signal;
+  await f.api[name](f.build,f.plan,signal,async handle=>{
+   const view=f.api.claimCurrent259TechnicalResource(handle);
+   assert.equal(view.resource.topology,topology);
+   assert.equal(view.resource.relayId,view.resource.getReceipt().relay.id);
+   assert.equal(view.resource.applyCurrent259ContractHbaV1,undefined);
+  });
+  assert.deepEqual(f.calls,['load',call,'inspect']);
+  assert.equal(f.state.closeCount,1);
+ });
+ test('owned payment relay rejects final relay-coordinate drift: '+name,async()=>{
+  const f=fixture();f.state.finalRelayPortDrift=true;
+  await assert.rejects(f.api[name](f.build,f.plan,new AbortController().signal,()=>{}),/CURRENT259_RESOURCE_CLEANUP_UNKNOWN/u);
+  assert.equal(f.state.closeCount,1);
+ });
+}

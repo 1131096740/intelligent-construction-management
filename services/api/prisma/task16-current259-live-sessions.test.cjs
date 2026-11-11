@@ -20,13 +20,15 @@ function fixture(options={}){
  const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();options.onContinuity?.();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId,...(options.recovery?{ordinary:{oid:'208'}}:{})};
- const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2',serverPort:5432};
+ const relayId='12345678-1234-4234-8234-123456789012',topology=options.topology??'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';
+ const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,...(options.relay?{transport:topology,relayId,host:'127.0.0.1',port:52123,serverAddress:'127.0.0.1'}
+   :{publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2'}),serverPort:5432};
  const rows=['owner','runtime','observer',...(options.competition||options.recovery?['runtime']:[])].map((kind,i)=>({
   database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',
   effectiveRole:'jg_task01_'+kind,loginRole:'jg_task01_'+kind,effectiveOid:identity[kind+'Oid'],loginOid:identity[kind+'Oid'],
   pid:101+i,start:'2026-11-11T00:00:0'+(i+1)+'.000001Z',tls:true,version:160010,encoding:'UTF8',replication:'origin',
   readOnly:kind==='observer'?'on':'off',defaultReadOnly:kind==='observer'?'on':'off',
-  clientAddress:'172.19.0.1',clientPort:53100+i,serverAddress:'172.19.0.2',serverPort:5432,nonce:''
+  clientAddress:options.relay?'127.0.0.1':'172.19.0.1',clientPort:53100+i,serverAddress:endpoint.serverAddress,serverPort:5432,nonce:''
  }));
  class Client{
   constructor(input){this.index=clients.length;this.input=input;this.disconnects=0;clients.push(this);options.onConstruct?.(this);}
@@ -35,9 +37,9 @@ function fixture(options={}){
   async $disconnect(){this.disconnects++;calls.push(['disconnect',this.index]);options.onDisconnect?.(this);}
   async $transaction(callback,opts){assert.equal(this.index,1);assert.ok(options.onTransaction);return options.onTransaction(callback,opts);}
  }
- const receipt={runId:identity.runId,containerId:endpoint.containerId,networkId:endpoint.networkId,databaseName:identity.database,port:endpoint.publishedPort,
+ const receipt={runId:identity.runId,containerId:endpoint.containerId,networkId:endpoint.networkId,databaseName:identity.database,port:52123,
   requestedCertificateMode:'correct',reloadState:'OBSERVED_PEER_CERTIFICATE_MATCHED',presentedCertificate:{mode:'correct',derSha256:'d'.repeat(64)},tls:{caSha256:'c'.repeat(64),correctCertificateDerSha256:'d'.repeat(64)}};
- const resource={...endpoint,port:endpoint.publishedPort,caPath:'/fixed/ca.crt',getReceipt(){check();return clone(receipt);},
+ const resource={...endpoint,...(options.relay?{topology}:{}),port:52123,caPath:'/fixed/ca.crt',getReceipt(){check();return clone(receipt);},
   async inspectConnectionEndpoint(){check();calls.push(['inspect']);const value={...endpoint};options.onInspect?.(value);return value;},
   async execOwnerSql(_sql,phase){check();calls.push(['owner',phase]);
    if(phase.startsWith('current259-a16-cancel-')||phase.startsWith('current259-a16-disconnect-'))return options.onCancel(_sql,phase);
@@ -142,7 +144,8 @@ test('commit cancellation observes the original backend and pairs its own READY 
  await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
   const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
   session.activateBusinessContinuity(token);
-  await session.cancelCommit(token,async()=>{marks.push('submit');outcome();});
+  const cancellationProof=await session.cancelCommit(token,async()=>{marks.push('submit');outcome();});
+  assert.deepEqual(cancellationProof,{mode:'cancel-commit',state:'commit-cancelled',transactionId:'9101',executionAllowed:false,nativeAdmission:false});
   assert.deepEqual(marks,['owner','ready','submit']);
   await assert.rejects(session.cancelCommit(token,()=>assert.fail('duplicate submit')));
   await session.verifyFull();
@@ -421,3 +424,56 @@ for(const mode of ['complete','old-backend','directory-drift','rollback-error','
  }
  assert.equal(submitted,1);
 });
+
+test('first rollback qualifies three real-profile loopback identities against the same owned relay',async()=>{
+ const f=fixture({relay:true});
+ await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+  const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+  assert.deepEqual(session.endpoint,{transport:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS',
+   relayId:'12345678-1234-4234-8234-123456789012',host:'127.0.0.1',port:52123,
+   clientAddress:'127.0.0.1',clientPort:53101,serverAddress:'127.0.0.1',serverPort:5432});
+  assert.equal(f.api.isCurrent259PaymentLoopbackImpactSession(session),true);
+  assert.equal(f.api.isCurrent259PaymentLoopbackImpactSession({...session}),false);
+  await session.verifyRequestBoundary();
+ });
+ assert.equal(f.resourceClosed(),0);
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1]);
+});
+for(const onInspect of [
+ value=>{value.relayId='unrelated';}, value=>{value.serverAddress='172.19.0.2';},
+ value=>{value.transport='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';}
+])test('first rollback rejects an endpoint that does not match its owned relay',async()=>{
+ const f=fixture({relay:true,onInspect});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>assert.fail('relay was not proven')),
+  /CURRENT259_LIVE_SESSIONS_FAILED_CLOSED/u);
+ assert.equal(f.resourceClosed(),1);
+ assert.deepEqual(f.clients,[]);
+});
+test('loopback role observation cannot qualify as the original NAT profile',async()=>{
+ const f=fixture({onIdentity:row=>{row.clientAddress='127.0.0.1';row.serverAddress='127.0.0.1';}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>assert.fail('unexpected loopback')),
+  /CURRENT259_LIVE_SESSIONS_FAILED_CLOSED/u);
+ assert.equal(f.resourceClosed(),1);
+});
+
+for(const topology of ['UNVERIFIED_PAYMENT_NORMAL_LOOPBACK_TLS','UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS']) {
+ test('the selected payment relay qualifies exactly three pinned identities without granting A16: '+topology,async()=>{
+  const f=fixture({relay:true,topology});
+  await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
+   const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
+   assert.equal(session.endpoint.transport,topology);
+   assert.equal(session.endpoint.clientAddress,'127.0.0.1');
+   assert.equal(session.endpoint.serverAddress,'127.0.0.1');
+   assert.equal(f.api.isCurrent259PaymentLoopbackImpactSession(session),true);
+   await assert.rejects(session.cancelCommit(f.continuityToken,()=>assert.fail('fault must stay unarmed')),/CANCEL_SCOPE/u);
+   await session.verifyFull();
+  });
+  assert.equal(f.clients.length,3);
+  assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1]);
+ });
+ test('an endpoint from another payment profile does not issue a session: '+topology,async()=>{
+  const f=fixture({relay:true,topology,onInspect(value){value.transport='UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';}});
+  await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>assert.fail('crossed topology')),/FAILED_CLOSED/u);
+  assert.deepEqual(f.clients,[]);
+ });
+}

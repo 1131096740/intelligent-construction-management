@@ -1,8 +1,11 @@
 'use strict';
 const { createHash, createHmac, pbkdf2Sync, randomBytes } = require('node:crypto');
 const { isIP } = require('node:net');
+const fs = require('node:fs');
 const { isDeepStrictEqual: equal, types } = require('node:util');
 const { readQualifiedTask16File: readFile } = require('./task16-runtime-inputs.cjs');
+const { isCurrent259FirstQ2Fixture } = require('./task12-current259-q2-fixture.cjs');
+const { createCurrent259FirstQ2Seed, createCurrent259FirstQ2UploadReadback, createCurrent259FirstQ2ArchiveReadback } = require('./task12-current259-q2-seed.cjs');
 // A fixed controller loads this scope before the ACL producer, which loads the
 // genuine technical/physical lineage. A preloaded ACL export is never adopted.
 const aclPath = require.resolve('./task16-current259-ordinary-archive-acl.cjs');
@@ -13,6 +16,9 @@ const aclModule = Object.getOwnPropertyDescriptor(aclCache,aclPath)?.value;
 const { claimCurrent259TechnicalResource, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 
 const OWNER = 'jg_task01_owner';
+const CURRENT259_FIRST_Q2_TRANSPORT='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
+const LEGACY_TRANSPORT='UNVERIFIED_HOST_PUBLISHED_TLS';
+const relayIdShape=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const LOGIN_NAMES = ['jg_c259_outside_issuer_login', 'jg_c259_outside_executor_login',
   'jg_c259_upward_issuer_login', 'jg_c259_upward_runtime_login'];
 const BINDINGS = ['jg_contract_direct_archive_intent_binding_v1', 'jg_contract_direct_archive_native_nonce_v1',
@@ -278,6 +284,20 @@ function withCurrent259FirstQ2Application(proof, handle) {
   }catch(error){return Promise.reject(error);}
 }
 
+function withCurrent259FirstQ2NativeApplication(proof,handle,permit) {
+  try{
+    need(arguments.length===3 && proof && !types.isProxy(proof) && PROOFS.has(proof),'HANDLE');
+    const record=PROOFS.get(proof);
+    need(record.handle===handle && record.fixture,'HANDLE');
+    PROOFS.delete(proof);
+    record.check();
+    const {claimCurrent259FirstQ2ApplicationPermit}=require('./task12-current259-first-q2-once.cjs');
+    const native=claimCurrent259FirstQ2ApplicationPermit(permit,proof,handle,record.fixture);
+    need(native.fixture===record.fixture,'HANDLE');
+    return record.openApplication(native);
+  }catch(error){return Promise.reject(error);}
+}
+
 function takeCurrent259FirstQ2Bridge(bridge) {
   need(arguments.length===1 && APP_BRIDGES.delete(bridge),'HANDLE');
 }
@@ -298,11 +318,37 @@ SELECT jsonb_build_object('identity',${ownerIdentitySql},'reader',${backendSql},
  'challenge',${quote(challenge)});
 ROLLBACK;`;
 }
+function relayEndpointEvidence(endpoint,resource,getReceipt) {
+  const row=getReceipt.call(resource),relay=row?.relay;
+  need(row?.topology===CURRENT259_FIRST_Q2_TRANSPORT && row.containerId===resource.containerId &&
+    row.networkId===resource.networkId && row.databaseName===resource.databaseName &&
+    relay && typeof relay.id==='string' && relayIdShape.test(relay.id) &&
+    relay.id===endpoint.relayId && relay.containerId===resource.containerId &&
+    relay.host==='127.0.0.1' && relay.port===resource.port,'PHYSICAL_ENDPOINT');
+}
+function qualifyEndpoint(endpoint,resource,getReceipt) {
+  need(endpoint && !types.isProxy(endpoint) && endpoint.containerId===resource.containerId &&
+    endpoint.networkId===resource.networkId && endpoint.databaseName===resource.databaseName &&
+    Number.isInteger(resource.port) && resource.port>1024 && resource.port<=65535 && endpoint.serverPort===5432,'PHYSICAL_ENDPOINT');
+  if(resource.topology===CURRENT259_FIRST_Q2_TRANSPORT){
+    need(endpoint.transport===CURRENT259_FIRST_Q2_TRANSPORT && endpoint.host==='127.0.0.1' &&
+      endpoint.port===resource.port && endpoint.serverAddress==='127.0.0.1' &&
+      !Object.hasOwn(endpoint,'publishedHost') && !Object.hasOwn(endpoint,'publishedPort'),'PHYSICAL_ENDPOINT');
+    const check=()=>relayEndpointEvidence(endpoint,resource,getReceipt);
+    check();
+    return check;
+  }
+  need(resource.topology===LEGACY_TRANSPORT && !Object.hasOwn(endpoint,'transport') &&
+    endpoint.publishedHost==='127.0.0.1' && endpoint.publishedPort===resource.port &&
+    privateIPv4(endpoint.serverAddress),'PHYSICAL_ENDPOINT');
+  return undefined;
+}
 function clientIdentity(rows, challenge, scope, role, endpoint) {
   const row = Array.isArray(rows) && rows.length===1 && rows[0];
   need(row && row.challenge===challenge && row.database===scope.identity.database && row.databaseOid===scope.identity.databaseOid &&
     row.role===role.name && row.sessionRole===role.name && row.oid===role.oid && backend(row.pid,row.start) && row.tls===true &&
-    privateIPv4(row.clientAddress) && row.clientAddress!==endpoint.serverAddress && Number.isInteger(row.clientPort) && row.clientPort>0 && row.clientPort<=65535 &&
+    (endpoint.transport===CURRENT259_FIRST_Q2_TRANSPORT ? row.clientAddress==='127.0.0.1'
+      : privateIPv4(row.clientAddress) && row.clientAddress!==endpoint.serverAddress) && Number.isInteger(row.clientPort) && row.clientPort>0 && row.clientPort<=65535 &&
     row.serverAddress===endpoint.serverAddress && row.serverPort===endpoint.serverPort, 'TLS_IDENTITY');
   return row;
 }
@@ -361,12 +407,10 @@ async function readLiveClient(context, client, query, role, endpoint, check) {
 async function verifyTls(context) {
   const { check, run, resource, Class, methods, scope, secrets }=context;
   const cas=getCa(resource);
-  const full=()=>{ check(); verifyCa(cas); };
+  const full=()=>{ check(); verifyCa(cas); context.checkTransport?.(); };
   const endpoint=await methods.inspectConnectionEndpoint.call(resource);
   full();
-  need(endpoint.containerId===resource.containerId && endpoint.networkId===resource.networkId &&
-    endpoint.databaseName===resource.databaseName && endpoint.publishedHost==='127.0.0.1' &&
-    endpoint.publishedPort===resource.port && privateIPv4(endpoint.serverAddress) && endpoint.serverPort===5432,'PHYSICAL_ENDPOINT');
+  context.checkTransport=qualifyEndpoint(endpoint,resource,methods.getReceipt);
   const certificate=await methods.observePresentedCertificate.call(resource,'correct');
   full();
   need(certificate.mode==='correct' && certificate.derSha256===resource.serverCertHashes.correctCertificateDerSha256,'CERTIFICATE');
@@ -437,7 +481,31 @@ async function verifyTls(context) {
   return Object.freeze(accepted);
 }
 
-function openContractApplication(context, loader, originalSessions, verifyCommitted) {
+// The full loader verified this exact live cache immediately before capture.
+function captureHttpFiles(cache) {
+  const fields=['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'];
+  const identify=file=>{
+    const stat=fs.lstatSync(file,{bigint:true});
+    need(stat.isFile()&&!stat.isSymbolicLink(),'APP_CONTINUITY');
+    return fields.map(key=>stat[key]);
+  };
+  const files=Object.keys(cache).map(file=>{
+    const module=own(cache,file);
+    need(module.filename===file&&module.loaded===true,'APP_CONTINUITY');
+    return {file,module,exports:own(module,'exports'),children:module.children.slice(),identity:identify(file)};
+  });
+  return verifyFiles=>{
+    need(require.cache===cache&&Object.keys(cache).length===files.length,'APP_CONTINUITY');
+    for(const row of files){
+      const module=own(cache,row.file);
+      need(module===row.module&&own(module,'exports')===row.exports&&module.loaded===true&&
+        module.children.length===row.children.length&&row.children.every((child,i)=>module.children[i]===child),'APP_CONTINUITY');
+      if(verifyFiles)need(equal(identify(row.file),row.identity),'APP_CONTINUITY');
+    }
+  };
+}
+
+function openContractApplication(context, loader, originalSessions, verifyCommitted, native) {
   context.check();verifyCa(context.cas);
   const assemblyPath=require.resolve('./task12-current259-contract-application.cjs');
   const cache=require.cache;
@@ -448,8 +516,12 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
   need(entry && typeof run==='function' && Object.isFrozen(assembly),'APP_IMPORT');
   const load=own(loader,'loadContractApplicationModules');
   const create=own(loader,'createContractTestingModule');
+  let verifyHttpFiles;
   const check=()=>{
-    context.check();verifyCa(context.cas);
+    if(verifyHttpFiles){context.checkLifetime();verifyHttpFiles(false);}
+    else context.check();
+    verifyCa(context.cas);context.checkTransport?.();
+    if(native){native.check();native.cos.check();}
     need(require.cache===cache && Object.getOwnPropertyDescriptor(cache,assemblyPath)?.value===entry &&
       own(entry,'exports')===assembly && own(assembly,'runCurrent259FirstQ2Application')===run &&
       own(loader,'loadContractApplicationModules')===load && own(loader,'createContractTestingModule')===create,'APP_IMPORT');
@@ -467,8 +539,38 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
     need(CLIENT_METHODS.every(key=>typeof captured[key]==='function'),'APP_CLIENTS');
   };
   let providers, constructed=false;
+  const nativeBridge=native?Object.freeze({
+    check,signal:native.signal,fixture:native.fixture,cos:native.cos,
+    storageEnvironment(){check();return native.cos.environment();},
+    beginHttp(){
+      need(!verifyHttpFiles,'APP_CONTINUITY');
+      check();
+      verifyHttpFiles=captureHttpFiles(cache);
+      check();
+    },
+    checkHttpFiles(){check();need(verifyHttpFiles,'APP_CONTINUITY');verifyHttpFiles(true);},
+    endHttp(success){
+      if(success){check();verifyHttpFiles(true);}
+      verifyHttpFiles=undefined;
+      if(success)check();
+    },
+    async observeUpload(input){
+      check();
+      const readback=createCurrent259FirstQ2UploadReadback(native.fixture,context.scope.identity,native.cosPlan.bucket,input);
+      const raw=await context.runSql(readback.sql,'q2-upload',check);
+      check();
+      return readback.finish(raw);
+    },
+    async observeArchive(input){
+      check();
+      const readback=createCurrent259FirstQ2ArchiveReadback(native.fixture,context.scope.identity,input);
+      const raw=await context.runSql(readback.sql,'q2-archive',check);
+      check();
+      return readback.finish(raw);
+    },
+  }):undefined;
   const bridge=Object.freeze({
-    check, loaded, caPath:context.cas[0].file,
+    check, loaded, caPath:context.cas[0].file,...(nativeBridge?{native:nativeBridge}:{}),
     createTestingModule(){check();return create.call(loader);},
     constructProviders(){
       check();need(!constructed,'APP_CONSTRUCT');constructed=true;
@@ -537,19 +639,30 @@ function openContractApplication(context, loader, originalSessions, verifyCommit
 }
 
 async function withCurrent259ContractLogin(completion, handle, use) {
-  need(arguments.length===3 && typeof use==='function' && !types.isProxy(use) &&
+  need(arguments.length===3,'HANDLE');
+  return contractLogin(completion,handle,use);
+}
+
+async function withCurrent259FirstQ2SeededLogin(completion, handle, fixture, use) {
+  need(arguments.length===4 && isCurrent259FirstQ2Fixture(fixture),'HANDLE');
+  return contractLogin(completion,handle,use,fixture);
+}
+
+async function contractLogin(completion, handle, use, fixture) {
+  need(typeof use==='function' && !types.isProxy(use) &&
     completion && !types.isProxy(completion) && Object.isFrozen(completion) && handle && !types.isProxy(handle),'HANDLE');
   checkAclImport();
   let prior;
   try { prior=claimAcl(completion,handle); }
   catch { throw fail('HANDLE'); }
   let phase='BEFORE', proof, active=true, context, secrets, verifiers, roleCommit='NOT_ATTEMPTED';
-  let application, applicationFailure;
+  let application, applicationFailure, seedCommit='NOT_ATTEMPTED';
   try {
     const view=claimCurrent259TechnicalResource(handle);
     need(!USED.has(handle),'HANDLE');
     USED.add(handle);
     const { resource, loader }=view;
+    need(resource.topology===LEGACY_TRANSPORT || resource.topology===CURRENT259_FIRST_Q2_TRANSPORT,'PHYSICAL_ENDPOINT');
     const Class=own(loader,'Class');
     const methods=Object.fromEntries(METHODS.map(key=>[key,own(resource,key)]));
     need(typeof Class==='function' && METHODS.every(key=>typeof methods[key]==='function'),'METHOD');
@@ -561,16 +674,41 @@ async function withCurrent259ContractLogin(completion, handle, use) {
       need(claimCurrent259TechnicalResource(handle)===view && view.loader===loader && own(loader,'Class')===Class &&
         METHODS.every(key=>own(resource,key)===methods[key]),'METHOD');
     };
+    const checkLifetime=()=>{
+      need(active,'CLOSED');
+      checkAclImport();
+      view.checkLifetime();
+      need(view.loader===loader&&own(loader,'Class')===Class&&METHODS.every(key=>own(resource,key)===methods[key]),'METHOD');
+    };
     check();
     const scope=scopeOf(prior,view,completion);
-    const run=async(sql,label)=>{
-      check();
+    const runSql=async(sql,label,continuity=check)=>{
+      continuity();
       const output=await methods.execOwnerSql.call(resource,sql,'current259-contract-login-'+label);
-      check();
-      return parse(output?.stdout);
+      continuity();
+      return output?.stdout;
     };
-    const before=await run(readerSql(scope),'before');
+    const run=async(sql,label)=>parse(await runSql(sql,label));
+    let before=await run(readerSql(scope),'before');
     checkBefore(before,scope);
+    if(fixture){
+      phase='SEED_BEFORE';
+      const seed=createCurrent259FirstQ2Seed(fixture,scope.identity);
+      seed.verifyBefore(await runSql(seed.beforeSql(),'seed-before'));
+      phase='SEED_WRITE';
+      const sql=seed.writeSql();
+      seedCommit='UNKNOWN';
+      seed.verifyWritten(await runSql(sql,'seed-write'));
+      phase='SEED_COMMITTED';
+      const seeded=seed.finish(await runSql(seed.committedSql(),'seed-committed'));
+      seedCommit='COMMITTED';
+      need(![scope.role.commitXid,scope.archive.installXid,completion.installXid].includes(seeded.seedXid),'SEED_COMMITTED');
+      phase='SEED_CONTINUITY';
+      const after=await run(readerSql(scope),'before');
+      checkBefore(after,scope);
+      need(distinct(before.backend,after.backend) && equal(before.state,after.state),'SEED_CONTINUITY');
+      before=after;
+    }
     secrets=scope.targets.map(()=>randomBytes(48).toString('hex'));
     need(new Set(secrets).size===5,'SECRETS');
     verifiers=secrets.map(makeVerifier);
@@ -589,11 +727,14 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     phase='HBA';
     const hba=await methods.applyCurrent259ContractHbaV1.call(resource);
     check();
-    need(hba && sha(hba.beforeSha256) && sha(hba.afterSha256) && hba.beforeSha256!==hba.afterSha256 && hba.rules===22 &&
-      methods.getReceipt.call(resource).configuration.hbaSha256===hba.beforeSha256,'HBA');
+    const hbaReceipt=methods.getReceipt.call(resource);
+    const relay=resource.topology===CURRENT259_FIRST_Q2_TRANSPORT;
+    need(hba && sha(hba.beforeSha256) && sha(hba.afterSha256) && hba.beforeSha256!==hba.afterSha256 &&
+      hba.rules===(relay?14:22) && hbaReceipt.configuration.hbaSha256===hba.beforeSha256 &&
+      (!relay || equal(hbaReceipt.contractHba,hba)),'HBA');
     need(distinct(committed,await verifyCommitted('hba-committed')),'COMMITTED');
     phase='TLS';
-    context={check,run,resource,Class,methods,scope,secrets,cleanup:'DISCONNECTED'};
+    context={check,checkLifetime,run,runSql,resource,Class,methods,scope,secrets,cleanup:'DISCONNECTED'};
     const sessions=await verifyTls(context);
     const last=await verifyCommitted('tls-committed');
     need(distinct(committed,last) && sessions.every(row=>distinct(row,last)),'COMMITTED');
@@ -607,8 +748,8 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     });
     // A downstream source stage can extend this private record with a fixed
     // credential bridge. No untrusted callback receives its contents.
-    PROOFS.set(proof,{handle,source:prior.source,check,openApplication(){
-      application=Promise.resolve().then(()=>openContractApplication(context,loader,sessions,verifyCommitted));
+    PROOFS.set(proof,{handle,source:prior.source,check,fixture,openApplication(native){
+      application=Promise.resolve().then(()=>openContractApplication(context,loader,sessions,verifyCommitted,native));
       void application.catch(error=>{applicationFailure=error;});
       return application;
     }});
@@ -625,6 +766,7 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     active=false;
     const error=fail(phase);
     Object.defineProperty(error,'roleCommit',{value:roleCommit,enumerable:true});
+    if(fixture)Object.defineProperty(error,'seedCommit',{value:seedCommit,enumerable:true});
     const reason=ownFaults.get(primary);
     if(reason)Object.defineProperty(error,'stageFailure',{value:reason,enumerable:true});
     if(applicationFailure && !types.isProxy(applicationFailure)){
@@ -643,4 +785,4 @@ async function withCurrent259ContractLogin(completion, handle, use) {
     verifiers?.fill(null);
   }
 }
-module.exports=Object.freeze({withCurrent259ContractLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,takeCurrent259FirstQ2Bridge});
+module.exports=Object.freeze({CURRENT259_FIRST_Q2_TRANSPORT,withCurrent259ContractLogin,withCurrent259FirstQ2SeededLogin,claimCurrent259ContractLogin,withCurrent259FirstQ2Application,withCurrent259FirstQ2NativeApplication,takeCurrent259FirstQ2Bridge});

@@ -623,7 +623,13 @@ describe("project financing quota PostgreSQL runner", () => {
     }
   });
 
-  it("retains an owned control readback failure after205 before cleanup without entering later gates", () => {
+  it.each(["first", "pre115-recovery", "pre115-recovery-output-limit", "replacement-child-setup"])("retains the %s owned control failure before cleanup", (scope) => {
+    const recovered = scope !== "first";
+    const outputLimit = scope === "pre115-recovery-output-limit";
+    const setup = scope === "replacement-child-setup";
+    const firstDatabase = "jiangkong_project_financing_quota_concurrency";
+    const targetDatabase = setup ? "jiangkong_project_financing_quota_pre115_replacement_child"
+      : recovered ? "jiangkong_project_financing_quota_pre115_duplicate" : firstDatabase;
     const fixture = mkdtempSync(join(tmpdir(), "pfq-control-readback-error-"));
     try {
       const prismaRoot = join(fixture, "services/api/prisma");
@@ -652,13 +658,25 @@ describe("project financing quota PostgreSQL runner", () => {
       const failurePort = [
         'event.applicationName = tool === "pnpm" ? new URL(process.env.DATABASE_URL).searchParams.get("application_name") :',
         '  args.find(value => value.startsWith("PGAPPNAME="))?.slice("PGAPPNAME=".length) ?? "psql";',
-        'if (tool !== "pnpm" && args.includes("psql") && args[args.indexOf("-c")+1].startsWith("-- local-fixture readback")) {',
+        'if (tool !== "pnpm" && args.includes("psql") && args[args.indexOf("-d")+1] === ' + JSON.stringify(targetDatabase) +
+          ' && args[args.indexOf("-c")+1]?.startsWith(' +
+          JSON.stringify(setup ? "-- Local owned-container fixture only." : "-- local-fixture readback") + ')) {',
         '  event.action = "control-readback-failure";',
         '  event.database = args[args.indexOf("-d")+1];',
-        '  state.serverLog = "JG-PFQ|" + event.applicationName + "|" + event.database +',
-        '    "|202|P0001|ERROR:  local fixture old routine changed\\nSTATEMENT: SELECT bound-secret\\n";',
+        ...(recovered ? [
+          '  state.serverLog = "JG-PFQ|" + event.applicationName + "|' + firstDatabase + '|203|42702|ERROR:  first-database-secret\\n";',
+          '  state.serverLog += "JG-PFQ|jg-pfq-other-tag|" + event.database + "|204|23505|ERROR:  other-tag-secret\\n";'
+        ] : ['  state.serverLog = "";']),
+        ...(!outputLimit ? [
+          '  state.serverLog += "JG-PFQ|" + event.applicationName + "|" + event.database +',
+          '    "|202|P0001|ERROR:  ' +
+          (setup ? "local fixture file caller DML vector limit" : "local fixture old routine changed") +
+          '\\nSTATEMENT: SELECT bound-secret\\n";',
+        ] : []),
         '  state.events.push(event); fs.writeFileSync(statePath,JSON.stringify(state));',
-        '  process.stderr.write("control-port-failure SELECT bound-secret"); process.exit(23);',
+        outputLimit
+          ? '  process.stderr.write("output-limit-secret".repeat(80_000), () => process.exit(23)); return;'
+          : '  process.stderr.write("control-port-failure SELECT bound-secret"); process.exit(23);',
         '}'
       ].join("\n");
       const fakeSource = readFileSync(join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8")
@@ -671,26 +689,55 @@ describe("project financing quota PostgreSQL runner", () => {
           PROJECT_FINANCING_QUOTA_LOCAL_EVIDENCE_PATH: evidencePath }, encoding: "utf8", timeout: 15_000
       });
       expect({ status: run.status, error: run.error }).toEqual({ status: 1, error: undefined });
-      expect(run.stderr).toContain("LOCAL_MIGRATION_SQL_STAGE205_READBACK");
-      const state = JSON.parse(readFileSync(statePath, "utf8")) as { events: {
-        action?: string; tool: string; applicationName: string; database?: string; count?: number; args: string[]
-      }[] };
-      expect(state.events.filter(event => event.action === "deploy").map(event => event.count)).toEqual([203, 205]);
+      expect(run.stderr).toContain(setup ? "LOCAL_MIGRATION_SQL_QUALIFICATION_SETUP" : "LOCAL_MIGRATION_SQL_STAGE205_READBACK");
+      const state = JSON.parse(readFileSync(statePath, "utf8")) as {
+        databases: Record<string, { applied: number; failed: boolean; resolved: boolean; remediated: boolean }>;
+        events: { action?: string; tool: string; applicationName: string; database?: string; count?: number; args: string[] }[];
+      };
+      const receiptText = readFileSync(evidencePath, "utf8");
+      const receipt = JSON.parse(receiptText);
+      expect(receipt.phase).toBe(setup ? "qualification-setup" : recovered ? "pre115-recovery-stage205-readback" : "first-migrate-deploy");
+      expect(receipt.database).toBe(recovered ? targetDatabase : undefined);
+      expect(receipt.postgres).toEqual(outputLimit ? { status: "primary-not-retained" }
+        : { status: "captured", sqlState: "P0001", reason: setup ? "FIXTURE_FILE_CALLER_DML_VECTOR_LIMIT" : "FIXTURE_OLD_ROUTINE_CHANGED" });
+      expect(receipt.transport).toBe(outputLimit ? "OUTPUT_LIMIT" : undefined);
       const ownedApplicationName = state.events.find(event => event.tool === "pnpm")!.applicationName;
       expect(ownedApplicationName).toMatch(/^jg-pfq-first-[a-f0-9-]{36}$/u);
-      const controls = state.events.filter(event => event.args.includes("psql"));
-      expect(controls.length).toBeGreaterThan(2);
-      expect(controls.every(event => event.applicationName === ownedApplicationName &&
-        event.args.includes("a".repeat(64)) && event.database === "jiangkong_project_financing_quota_concurrency")).toBe(true);
       const failed = state.events.findIndex(event => event.action === "control-readback-failure");
-      const captured = state.events.findIndex(event => event.args[0] === "logs");
+      const failure = state.events[failed]!;
+      if (recovered) {
+        const priorDatabases = [firstDatabase, "jiangkong_project_financing_quota_pre115_clean"];
+        if (setup) priorDatabases.push("jiangkong_project_financing_quota_pre115_duplicate", "jiangkong_project_financing_quota_pre115_cross_business");
+        expect(Object.keys(state.databases)).toEqual([...priorDatabases, targetDatabase]);
+        expect(state.databases[firstDatabase]!.applied).toBe(migrations.length);
+        expect(state.databases["jiangkong_project_financing_quota_pre115_clean"]!.applied).toBe(migrations.length);
+        expect(state.databases[targetDatabase]).toMatchObject({ applied: setup ? 203 : 205, failed: true, resolved: true, remediated: true });
+        const targetEvents = state.events.filter(event => event.database === targetDatabase);
+        expect(targetEvents.filter(event => event.action === "masked-failure")).toHaveLength(1);
+        expect(targetEvents.findIndex(event => event.action === "resolve")).toBeLessThan(targetEvents.indexOf(failure));
+        expect(failure.applicationName).toMatch(setup ? /^jg-pfq-setup-[a-f0-9-]{36}$/u : /^jg-pfq-pre115-205-[a-f0-9-]{36}$/u);
+        expect(state.events.filter(event => event.applicationName === failure.applicationName)).toEqual([failure]);
+        expect(failure.args).toEqual(expect.arrayContaining([
+          "PGOPTIONS=-c log_min_error_statement=panic -c log_error_verbosity=terse", "VERBOSITY=terse",
+          "a".repeat(64), "-c", "<SQL>"
+        ]));
+      } else {
+        expect(state.events.filter(event => event.action === "deploy").map(event => event.count)).toEqual([203, 205]);
+        const controls = state.events.filter(event => event.args.includes("psql"));
+        expect(controls.length).toBeGreaterThan(2);
+        expect(controls.every(event => event.applicationName === ownedApplicationName &&
+          event.args.includes("a".repeat(64)) && event.database === firstDatabase)).toBe(true);
+      }
+      const captured = state.events.findIndex((event, index) => index > failed && event.args[0] === "logs" && event.args[1] === "--tail");
       const removed = state.events.findIndex(event => event.args[0] === "rm");
       expect(failed).toBeLessThan(captured); expect(captured).toBeLessThan(removed);
+      if (recovered) expect(state.events[captured]?.args.at(-1)).toBe("a".repeat(64));
       expect(state.events.some(event => event.action === "business-tests")).toBe(false);
-      const receiptText = readFileSync(evidencePath, "utf8");
-      expect(JSON.parse(receiptText).postgres).toEqual({ status: "captured", sqlState: "P0001", reason: "FIXTURE_OLD_ROUTINE_CHANGED" });
       expect(statSync(evidencePath).mode & 0o777).toBe(0o600);
-      for (const secret of ["SELECT", "bound-secret", "local fixture", "control-port-failure"]) expect(receiptText).not.toContain(secret);
+      for (const secret of ["SELECT", "bound-secret", "local fixture", "control-port-failure", "first-database-secret", "other-tag-secret", "output-limit-secret"]) {
+        expect(receiptText).not.toContain(secret);
+        expect(run.stderr).not.toContain(secret);
+      }
     } finally { rmSync(fixture, { recursive: true, force: true }); }
   });
 
@@ -790,6 +837,7 @@ describe("project financing quota PostgreSQL runner", () => {
           .update(readFileSync(join(prismaRoot, "migrations", name, "migration.sql"))).digest("hex") }));
       const statePath = join(fixture, "state.json");
       writeFileSync(statePath, JSON.stringify({ prismaRoot, migrations, databases: {}, events: [], appCount: 0, serverLog: "", retainExpectedReason,
+        ...(retainExpectedReason ? { oversizedStage205Database: "jiangkong_project_financing_quota_pre115_duplicate" } : {}),
         legacyNames: ["jg_payment_execution_payer_issuer", "jg_pol275_owner", "jg_pol275_runtime", "jg_pol279_runtime", "jg_pol280_runtime"],
         roles: [{ oid: "10", name: "jiangkong", superuser: true, createRole: false, createDb: true,
           replication: true, bypassRls: true, memberships: [] }] }));
@@ -802,7 +850,7 @@ describe("project financing quota PostgreSQL runner", () => {
       });
       const state = JSON.parse(readFileSync(statePath, "utf8")) as {
         databases: Record<string, { applied: number; failed: boolean; resolved: boolean; remediated: boolean }>;
-        events: { action?: string; database?: string; count?: number; args: string[] }[];
+        events: { action?: string; database?: string; count?: number; args: string[]; readbackWireBytes?: number }[];
       };
       if (!retainExpectedReason) {
         expect({ status: run.status, error: run.error }).toEqual({ status: 1, error: undefined });
@@ -819,6 +867,8 @@ describe("project financing quota PostgreSQL runner", () => {
       expect(run.stderr).not.toContain("project_financing_quota_cross_business_attachment");
       expect(Object.keys(state.databases)).toHaveLength(7);
       expect(Object.values(state.databases).every(database => database.applied === migrations.length)).toBe(true);
+      const oversizedReadbacks = state.events.filter(event => (event.readbackWireBytes ?? 0) > 512 * 1024);
+      expect(oversizedReadbacks.map(event => event.database)).toEqual(["jiangkong_project_financing_quota_pre115_duplicate"]);
       const failures = state.events.filter(event => event.action === "masked-failure");
       expect(failures).toHaveLength(4);
       for (const failure of failures) {

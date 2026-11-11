@@ -155,9 +155,12 @@ BEGIN
     INTO expected_vector FROM jsonb_array_elements(before_vector) WITH ORDINALITY x(v,n);
   expected_callers:=ARRAY(SELECT x FROM unnest(expected_callers||ctl.application_oid) x ORDER BY x);
  END IF;
+ -- The seven-database journey retains each prior application role. Allow
+ -- 352 KiB per complete matrix within the 768 KiB framed payload.
  IF before_vector IS NULL OR jsonb_array_length(before_vector)>4096
-  OR octet_length(before_vector::text)>262144 OR octet_length(actual_vector::text)>262144
-  OR actual_vector IS DISTINCT FROM expected_vector
+  OR octet_length(before_vector::text)>360448 OR octet_length(actual_vector::text)>360448
+ THEN RAISE EXCEPTION 'local fixture file caller DML vector limit'; END IF;
+ IF actual_vector IS DISTINCT FROM expected_vector
  THEN RAISE EXCEPTION 'local fixture file caller DML changed'; END IF;
  actual_callers:=__SCHEMA__.file_callers();
  IF actual_callers IS DISTINCT FROM expected_callers
@@ -167,13 +170,21 @@ BEGIN
 END $transition$;
 REVOKE ALL ON FUNCTION __SCHEMA__.verify_file_callers() FROM PUBLIC;
 
--- Preserve the existing whole control-port stdout budget, including metadata.
-CREATE FUNCTION __SCHEMA__.bound_readback(payload jsonb) RETURNS jsonb
+-- One complete payload and digest from the same read-only snapshot. Frame
+-- bytes before encoding so a multibyte character can span frame boundaries.
+CREATE FUNCTION __SCHEMA__.bound_readback(payload jsonb) RETURNS TABLE(ordinal integer, frame text)
 LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,pg_temp AS $bound$
+DECLARE payload_bytes bytea := convert_to(payload::text,'UTF8'); byte_count integer; frame_count integer;
 BEGIN
- IF payload IS NULL OR octet_length(payload::text)>520192
+ byte_count:=octet_length(payload_bytes);
+ IF byte_count IS NULL OR byte_count NOT BETWEEN 1 AND __READBACK_PAYLOAD_LIMIT__
  THEN RAISE EXCEPTION 'local fixture readback too large'; END IF;
- RETURN payload;
+ frame_count:=(byte_count + __READBACK_FRAME_BYTES__ - 1) / __READBACK_FRAME_BYTES__;
+ RETURN QUERY SELECT 0, 'JG-PFQ205/1|'||frame_count::text||'|'||byte_count::text||'|'||encode(sha256(payload_bytes),'hex')
+ UNION ALL
+ SELECT n, n::text||'|'||replace(encode(substring(payload_bytes FROM
+    ((n - 1) * __READBACK_FRAME_BYTES__ + 1) FOR __READBACK_FRAME_BYTES__),'base64'),chr(10),'')
+ FROM generate_series(1,frame_count) AS part(n);
 END $bound$;
 REVOKE ALL ON FUNCTION __SCHEMA__.bound_readback(jsonb) FROM PUBLIC;
 

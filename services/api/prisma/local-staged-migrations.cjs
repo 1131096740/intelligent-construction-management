@@ -198,7 +198,9 @@ function createLocalMigrationFixture(input) {
   }
 
   async function read(database, phase, sql, stdin = false) {
+    technical?.recordControlPhase(phase, "BEFORE_READ");
     await assertContainer();
+    technical?.recordControlPhase(phase, "SQL");
     let result;
     try {
       const execute = stdin ? options.executeSqlStdin : executeSql;
@@ -210,7 +212,10 @@ function createLocalMigrationFixture(input) {
       if (/^tail(213|215|218|221)-(before|supply|readback)$/u.test(phase)) failure.localMigrationFailureKind = "RESOURCE_PORT";
       throw failure;
     }
+    technical?.recordControlPhase(phase, "AFTER_READ");
     await assertContainer();
+    technical?.recordControlPhase(phase, "READBACK");
+    if (phase === "stage205-readback") return controls.parseReadback(result?.stdout);
     try {
       need(typeof result?.stdout === "string" && Buffer.byteLength(result.stdout) <= 512 * 1024, "READBACK");
       return JSON.parse(result.stdout.trim());

@@ -12,10 +12,12 @@ const path=require('node:path');
 const {createHash,createHmac,pbkdf2Sync}=require('node:crypto');
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const blob=n=>n.repeat(64);
+const Q2_RELAY='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
+const NAT='UNVERIFIED_HOST_PUBLISHED_TLS';
 const LOGIN_NAMES=['jg_c259_outside_issuer_login','jg_c259_outside_executor_login','jg_c259_upward_issuer_login','jg_c259_upward_runtime_login'];
 const apiSource=fs.readFileSync(path.join(__dirname,'task12-current259-contract-login.cjs'),'utf8');
 
-function fixture(preloaded = false) {
+function fixture(preloaded = false,transport=NAT) {
   const source=Object.freeze({candidateSha:'a'.repeat(40)}),handle=Object.freeze({}),control={},calls=[];
   const runId='12345678-1234-4234-8234-123456789012',containerId=blob('a'),networkId=blob('b');
   const database='jg_task01_'+runId.replaceAll('-','');
@@ -47,8 +49,9 @@ function fixture(preloaded = false) {
   let pid=100,claimed=false,staged,clientRow,activeClients=0;
   const next=()=>({pid:++pid,start:`2026-11-11T10:00:00.000${pid}Z`});
   const writeIds=new Map();
+  const loopback=transport!==NAT,relayId='12345678-1234-4234-8234-123456789099';
   const resource={
-    databaseName:database,containerId,networkId,port:32456,caPath:'/model/ca.crt',wrongCaPath:'/model/wrong.crt',
+    databaseName:database,containerId,networkId,port:32456,topology:transport,caPath:'/model/ca.crt',wrongCaPath:'/model/wrong.crt',
     serverCertHashes:{caSha256:blob('a'),wrongCaSha256:blob('b'),correctCertificateDerSha256:blob('c')},
     async execOwnerSql(sql,phase){
       const name=phase.replace('current259-contract-login-','');
@@ -62,6 +65,15 @@ function fixture(preloaded = false) {
         const {challenge:previous,sessionRole,serverAddress,serverPort,...session}=clientRow;
         if(control.drift==='tls-live')session.oid='999';
         return sqlResult({identity,session,reader:next(),challenge});
+      }
+      if(name.startsWith('seed-')){
+        const seedPhase=name.slice(5);
+        const nonce=sql.match(/'nonce','([a-f0-9]{64})'/u)?.[1];
+        assert.ok(nonce);
+        const write=seedPhase==='write';
+        return sqlResult({phase:seedPhase,nonce,identity,backend:next(),readOnly:!write,
+          isolation:write?'serializable':'repeatable read',writeXid:write?'704':null,
+          commitStatus:seedPhase==='committed'?'committed':null,matches:control.seedDrift!==seedPhase});
       }
       const before=name==='before',write=name==='write';
       if(write){
@@ -85,14 +97,23 @@ function fixture(preloaded = false) {
       if(control.drift==='protected'&&name==='hba-committed')result.state.protectedSha256=blob('f');
       return sqlResult(result);
     },
-    getReceipt(){return {configuration:{hbaSha256:blob('a')}};},
-    async applyCurrent259ContractHbaV1(){assert.equal(arguments.length,0);calls.push('hba');return {beforeSha256:blob('a'),afterSha256:blob('b'),rules:22};},
+    getReceipt(){
+      const relay=loopback?{id:control.drift==='relay-receipt'?'12345678-1234-4234-8234-123456789098':relayId,
+        containerId,host:'127.0.0.1',port:32456}:undefined;
+      return {configuration:{hbaSha256:blob('a')},topology:transport,containerId,networkId,databaseName:database,
+        ...(relay?{relay,contractHba:{beforeSha256:blob('a'),afterSha256:blob(control.drift==='relay-hba'?'e':'b'),rules:14}}:{})};
+    },
+    async applyCurrent259ContractHbaV1(){assert.equal(arguments.length,0);calls.push('hba');return {beforeSha256:blob('a'),afterSha256:blob('b'),rules:loopback?14:22};},
     async beginCurrent259ContractPlaintextProbe(){calls.push('plaintext-cursor');assert.equal(arguments.length,0);},
     async verifyCurrent259ContractPlaintextRejection(){
       calls.push('plaintext-readback');assert.equal(arguments.length,0);return !control.noPlaintextEvidence;
     },
-    async inspectConnectionEndpoint(){return {containerId,networkId,databaseName:database,publishedHost:'127.0.0.1',publishedPort:32456,
-      serverAddress:'172.29.0.2',serverPort:5432};},
+    async inspectConnectionEndpoint(){
+      if(loopback)return {containerId,networkId,databaseName:database,transport,relayId,host:'127.0.0.1',
+        port:control.drift==='relay-port'?32457:32456,serverAddress:'127.0.0.1',serverPort:5432};
+      return {containerId,networkId,databaseName:database,publishedHost:'127.0.0.1',publishedPort:32456,
+        serverAddress:'172.29.0.2',serverPort:5432};
+    },
     async observePresentedCertificate(){return {mode:'correct',derSha256:blob('c')};},
   };
   class Client {
@@ -130,7 +151,7 @@ function fixture(preloaded = false) {
       assert.match(sql,/pg_stat_ssl/u);
       if(process.env.JG_STATIC_PACKET_DIR)fs.writeFileSync(path.join(process.env.JG_STATIC_PACKET_DIR,'tls-host.sql'),sql);
       clientRow={database,databaseOid:identity.databaseOid,role:this.role.name,sessionRole:this.role.name,oid:this.role.oid,
-        ...this.backend,tls:true,clientAddress:'172.29.0.1',clientPort:35343,serverAddress:'172.29.0.2',serverPort:5432,challenge};
+        ...this.backend,tls:true,clientAddress:loopback&&control.drift!=='relay-client'?'127.0.0.1':'172.29.0.1',clientPort:35343,serverAddress:loopback?'127.0.0.1':'172.29.0.2',serverPort:5432,challenge};
       if(control.drift==='endpoint')clientRow.serverAddress='127.0.0.1';
       return [clientRow];
     }
@@ -345,4 +366,66 @@ test('returning from the consumer does not release the login scope before its fi
   release();
   assert.equal(await scope,'consumer returned');
   assert.equal(f.calls.at(-1),'application-closed');
+});
+
+
+test('the seeded login uses only the fixed owner seed stages and independently reads COMMIT before role writes',async()=>{
+  const build=require('./task12-current259-q2-fixture.cjs').buildCurrent259FirstQ2Fixture;
+  const seed=build('12345678-1234-4234-8234-123456789012','2026-11-11',true);
+  const good=fixture();
+  assert.equal(await good.api.withCurrent259FirstQ2SeededLogin(good.completion,good.handle,seed,()=> 'closed'), 'closed');
+  assert.deepEqual(good.calls.slice(0,6),['before','seed-before','seed-write','seed-committed','before','write']);
+  for(const phase of ['before','write','committed']){
+    const bad=fixture();
+    bad.control.seedDrift=phase;
+    await assert.rejects(bad.api.withCurrent259FirstQ2SeededLogin(bad.completion,bad.handle,seed,()=>assert.fail('consumer entered')),
+      error=>error.code==='CURRENT259_CONTRACT_LOGIN_SEED_'+phase.toUpperCase() && error.roleCommit==='NOT_ATTEMPTED' &&
+        error.seedCommit===(phase==='before'?'NOT_ATTEMPTED':'UNKNOWN'));
+    assert.ok(!bad.calls.includes('write') && !bad.calls.includes('hba'));
+  }
+  const forged=fixture();
+  await assert.rejects(forged.api.withCurrent259FirstQ2SeededLogin(forged.completion,forged.handle,{...seed},()=>{}),/HANDLE/u);
+  assert.deepEqual(forged.calls,[]);
+});
+
+
+test('the fixed Q2 relay binds receipt and endpoint and proves PostgreSQL peer and server loopback',async()=>{
+  const f=fixture(false,Q2_RELAY);
+  const value=await f.api.withCurrent259ContractLogin(f.completion,f.handle,proof=>{
+    assert.equal(proof.probes.verified,5);
+    return 'same scoped proof';
+  });
+  assert.equal(value,'same scoped proof');
+  assert.equal(f.calls.filter(call=>call==='tls-live').length,5);
+  assert.equal(f.calls.filter(call=>call==='plaintext-readback').length,1);
+});
+
+test('Q2 never accepts the rollback relay, a changed relay receipt/port or non-loopback PG peer',async()=>{
+  for(const [topology,drift,reason] of [
+    ['UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS',undefined,'PHYSICAL_ENDPOINT'],
+    [Q2_RELAY,'relay-receipt','PHYSICAL_ENDPOINT'],[Q2_RELAY,'relay-port','PHYSICAL_ENDPOINT'],
+    [Q2_RELAY,'relay-client','TLS_IDENTITY'],
+  ]){
+    const f=fixture(false,topology);
+    f.control.drift=drift;
+    await assert.rejects(f.api.withCurrent259ContractLogin(f.completion,f.handle,()=>assert.fail('unexpected lease')),
+      error=>error.code==='CURRENT259_CONTRACT_LOGIN_'+(topology===Q2_RELAY?'TLS':'BEFORE')&&error.stageFailure===reason);
+    assert.ok(!f.calls.includes('tls-committed'));
+    if(topology!==Q2_RELAY)assert.deepEqual(f.calls,[]);
+    assert.equal(f.control.closed,1);
+  }
+});
+
+
+test('Q2 loopback still needs the persisted HBA transition and fresh plaintext rejection',async()=>{
+  const brokenHba=fixture(false,Q2_RELAY);
+  brokenHba.control.drift='relay-hba';
+  await assert.rejects(brokenHba.api.withCurrent259ContractLogin(brokenHba.completion,brokenHba.handle,()=>assert.fail('unexpected lease')),
+    error=>error.code==='CURRENT259_CONTRACT_LOGIN_HBA'&&error.stageFailure==='HBA');
+  assert.ok(!brokenHba.calls.includes('construct'));
+  const noLog=fixture(false,Q2_RELAY);
+  noLog.control.noPlaintextEvidence=true;
+  await assert.rejects(noLog.api.withCurrent259ContractLogin(noLog.completion,noLog.handle,()=>assert.fail('unexpected lease')),
+    error=>error.code==='CURRENT259_CONTRACT_LOGIN_TLS'&&error.stageFailure==='TLS_PLAINTEXT_HBA');
+  assert.ok(!noLog.calls.includes('tls-live'));
 });

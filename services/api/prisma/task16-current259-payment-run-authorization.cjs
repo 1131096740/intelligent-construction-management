@@ -3,6 +3,7 @@
 // This sole fresh-main entry owns installation and the in-memory B7 permission.
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
+const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),businessContinuities=new WeakMap();
 const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap();
 let currentRun,onceAttempted=false;
@@ -103,11 +104,17 @@ function original(relative,names){
  records.push({file,exports,loaded,slots});return exports;
 }
 const {installCurrent259B7}=original('./task16-current259-b7-install.cjs',['installCurrent259B7']);
-const {createCurrent259TechnicalMigration}=original('./local-staged-current259-profile.cjs',['createCurrent259TechnicalMigration']);
+const {createCurrent259TechnicalMigration,describeCurrent259TechnicalFailure}=original('./local-staged-current259-profile.cjs',
+ ['createCurrent259TechnicalMigration','describeCurrent259TechnicalFailure']);
 const {provisionCurrent259Roles}=original('./task16-current259-role-provision.cjs',['provisionCurrent259Roles']);
 const {installCurrent259SevenFragments}=original('./task16-current259-seven-install.cjs',['installCurrent259SevenFragments']);
 const {installCurrent259PaymentAcl}=original('./task16-current259-payment-acl-install.cjs',['installCurrent259PaymentAcl']);
-const {withCurrent259TechnicalResource,claimCurrent259TechnicalResource}=original('./task16-current259-owned-resource.cjs',['withCurrent259TechnicalResource','claimCurrent259TechnicalResource']);
+const {withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259NormalPaymentResource,
+ withCurrent259ResponseLossResource,claimCurrent259TechnicalResource}=original('./task16-current259-owned-resource.cjs',
+ ['withCurrent259TechnicalResource','withCurrent259FirstRollbackResource','withCurrent259NormalPaymentResource',
+  'withCurrent259ResponseLossResource','claimCurrent259TechnicalResource']);
+const paymentResources=Object.freeze({normal:withCurrent259NormalPaymentResource,'response-loss':withCurrent259ResponseLossResource,
+ 'cancel-commit':withCurrent259FirstRollbackResource});
 const {renderCurrent259CatalogRead}=original('./task16-current259-catalog.cjs',['renderCurrent259CatalogRead']);
 const {readQualifiedTask16File:read}=original('./task16-runtime-inputs.cjs',['readQualifiedTask16File']);
 function importsCheck(){
@@ -119,7 +126,7 @@ function importsCheck(){
 }
 function safeCode(error){
  const code=data(error,'code');
- return typeof code==='string'&&/^(?:PAYMENT_INSTALL_(?:PLAN|ONCE)|PAYMENT_BUSINESS_PLAN|CURRENT259_(?:RESOURCE|BUILD|LOADER|B7_INSTALL|ROLE_PROVISION|SEVEN|TECHNICAL)|TASK16_CURRENT259_PAYMENT_ACL|TASK16_CURRENT259_CATALOG|TASK01_RESOURCE)_[A-Z0-9_]+$/u.test(code)?code:'PAYMENT_INSTALL_ONCE_FAILED_CLOSED';
+ return typeof code==='string'&&/^(?:PAYMENT_INSTALL_(?:PLAN|ONCE)|PAYMENT_BUSINESS_PLAN|CURRENT259_(?:RESOURCE|BUILD|LOADER|B7_INSTALL|ROLE_PROVISION|SEVEN|TECHNICAL)|TASK16_CURRENT259_PAYMENT_ACL|TASK16_CURRENT259_CATALOG|CURRENT259_PFQ|TASK01_RESOURCE)_[A-Z0-9_]+$/u.test(code)?code:'PAYMENT_INSTALL_ONCE_FAILED_CLOSED';
 }
 function checkRoot(plan){
  const root=plan.run.root;need(fs.realpathSync(root)===root,'DIRECTORY');const st=fs.lstatSync(root);
@@ -136,46 +143,96 @@ function publish(plan,receipt){
  writeNew(plan,pending,bytes);fs.linkSync(pending,file);fs.unlinkSync(pending);
  const dir=fs.openSync(plan.run.root,fs.constants.O_RDONLY);try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}return hash(bytes);
 }
-function resourceIdentity(raw){
+function resourceIdentity(raw,startup=false,topology){
  const keys=['runId','sourceSha','daemonId','endpoint','imageId','containerId','networkId','databaseName','port'];
  const row=Object.fromEntries(keys.map(key=>[key,data(raw,key)]));
  need(typeof row.runId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(row.runId)&&
-  ['containerId','networkId'].every(key=>hex(row[key],64))&&row.databaseName==='jg_task01_'+row.runId.replaceAll('-','')&&
-  Number.isInteger(row.port)&&row.port>1024&&row.port<=65535,'RESOURCE_IDENTITY');return Object.freeze(row);
+  ['containerId','networkId'].every(key=>hex(row[key],64)||startup&&row[key]===null)&&
+  row.databaseName==='jg_task01_'+row.runId.replaceAll('-','')&&
+  (Number.isInteger(row.port)&&row.port>1024&&row.port<=65535||startup&&row.port===null),'RESOURCE_IDENTITY');
+ if(topology){
+  need(data(raw,'topology')===topology,'RESOURCE_IDENTITY');
+  const relay=data(raw,'relay');
+  if(startup&&row.port===null)need(relay===null,'RESOURCE_IDENTITY');
+  else{
+   const witness=fixed(relay,['id','containerId','host','port']);
+   need(typeof witness.id==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(witness.id)&&
+    witness.containerId===row.containerId&&witness.host==='127.0.0.1'&&witness.port===row.port,'RESOURCE_IDENTITY');
+  }
+  row.topology=topology;row.relay=relay===null?null:Object.freeze({...relay});
+  const hba=data(raw,'loopbackPlaintextHba');
+  if(!startup||hba!==undefined){
+   const evidence=fixed(hba,['sourceAddress','role','databaseName','noEncryptionRejected']);
+   need(evidence.sourceAddress==='127.0.0.1'&&evidence.role==='jg_task01_owner'&&evidence.databaseName===row.databaseName&&evidence.noEncryptionRejected===true,'RESOURCE_IDENTITY');
+   row.loopbackPlaintextHba=Object.freeze(evidence);
+  }
+ }
+ return Object.freeze(row);
 }
-function finalResource(plan,created,started){
+function finalResource(plan,created,started,firstError,topology){
  if(!started)return {status:'not-attempted',cleanup:{status:'not-needed'}};
  checkRoot(plan);const file=path.join(plan.run.resourceDir,'resource-manifest.json');
  if(!fs.existsSync(file))return {status:'unconfirmed',cleanup:{status:'UNKNOWN'}};
  const capture=read(file,{privateFile:true,maxBytes:1048576,collect:true,code:'PAYMENT_INSTALL_ONCE_MANIFEST'});
  const final=JSON.parse(capture.bytes.toString('utf8'));
- if(!created)return {status:'unconfirmed',identityBinding:'UNCONFIRMED_MANIFEST_ONLY',cleanup:{status:'UNKNOWN'},manifestSha256:capture.sha256};
- need(Object.entries(created).every(([key,value])=>data(final,key)===value),'RESOURCE_CHANGED');
- const cleanup=data(final,'cleanup'),closed=data(final,'status')==='closed'&&data(cleanup,'status')==='completed'&&['containerAbsent','volumesAbsent','networkAbsent'].every(key=>data(cleanup,key)===true);
- return {...created,status:closed?'closed':'unconfirmed',identityBinding:'ORIGINAL_LIVE_HANDLE_AND_FINAL_MANIFEST',
-  cleanup:{status:closed?'completed':'UNKNOWN',containerAbsent:closed,volumesAbsent:closed,networkAbsent:closed},manifestSha256:capture.sha256,independentDockerChecker:false};
+ let identityBinding='ORIGINAL_LIVE_HANDLE_AND_FINAL_MANIFEST',identity=created,diagnostic={};
+ if(!created){
+  const starter=data(firstError,'resourceReceipt');
+  if(data(firstError,'code')!=='TASK01_RESOURCE_START_FAILED'||!starter||!equal(starter,final))
+   return {status:'unconfirmed',identityBinding:'UNCONFIRMED_MANIFEST_ONLY',cleanup:{status:'UNKNOWN'},manifestSha256:capture.sha256};
+  identity=resourceIdentity(final,true,topology);
+  const attempts=fixed(data(final,'attempts'),['network','container']);
+  need(data(final,'purpose')==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&data(final,'phase')==='failed'&&
+   identity.sourceSha===plan.material.source.candidateSha&&['daemonId','endpoint','imageId'].every(key=>identity[key]===plan.resource[key])&&
+   typeof attempts.network==='boolean'&&typeof attempts.container==='boolean'&&(!attempts.container||attempts.network)&&
+   (attempts.network||identity.networkId===null)&&(attempts.container||identity.containerId===null),'RESOURCE_CHANGED');
+  const observed=data(final,'startupFailure'),failureCode=data(final,'failureCode');
+  if(observed){
+   const startupFailure=fixed(observed,['stage','commandKind']);
+   need(['private-configuration','daemon-and-image','certificates','network-creation','container-creation','bundle-install',
+    'container-start','postgres-readiness','published-port-probe','published-port-inspect','loopback-forward-start','presented-certificate','loopback-plaintext-hba'].includes(startupFailure.stage)&&
+    [null,'timeout','aborted','output-limit','spawn-error','signal-exit','nonzero-exit'].includes(startupFailure.commandKind)&&
+    typeof failureCode==='string'&&/^TASK01_RESOURCE_[A-Z0-9_]+$/u.test(failureCode),'RESOURCE_CHANGED');
+   diagnostic={startupFailure,startupFailureCode:failureCode};
+  }
+  identityBinding='ORIGINAL_STARTER_EXCEPTION_AND_FINAL_MANIFEST';
+ }else need(equal(resourceIdentity(final,false,topology),created),'RESOURCE_CHANGED');
+ const cleanup=data(final,'cleanup'),closed=data(final,'status')==='closed'&&data(cleanup,'status')==='completed'&&['containerAbsent','volumesAbsent','networkAbsent'].every(key=>data(cleanup,key)===true)&&
+  (!topology||data(cleanup,'relayClosed')===true&&data(cleanup,'relayId')===(identity.relay?.id??null));
+ if(!created&&closed){
+  const attempts=data(final,'attempts');
+  need((!data(attempts,'network')||identity.networkId!==null)&&(!data(attempts,'container')||identity.containerId!==null),'RESOURCE_CHANGED');
+ }
+ const absence=Object.fromEntries(['containerAbsent','volumesAbsent','networkAbsent'].map(key=>[key,topology?data(cleanup,key)===true:closed]));
+ const relayCleanup=topology?{relayClosed:data(cleanup,'relayClosed')===true&&data(cleanup,'relayId')===(identity.relay?.id??null),relayId:identity.relay?.id??null}:{};
+ return {...identity,...diagnostic,status:closed?'closed':'unconfirmed',identityBinding,
+  cleanup:{status:closed?'completed':'UNKNOWN',...absence,...relayCleanup},manifestSha256:capture.sha256,independentDockerChecker:false};
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(value=>typeof value==='string'),'ARGUMENTS');
  const competition=args[0]==='--competition'||args[0]==='--competition-once';
- const business=competition||args[0]==='--business'||args[0]==='--business-once',once=['--once','--business-once','--competition-once'].includes(args[0]),rest=once||business?args.slice(1):args;
+ const pfq=args[0]==='--pfq-composition'||args[0]==='--pfq-composition-once';
+ const business=competition||args[0]==='--business'||args[0]==='--business-once',once=['--once','--business-once','--competition-once','--pfq-composition-once'].includes(args[0]),rest=once||business||pfq?args.slice(1):args;
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,competition,file:rest[1],sha256:rest[3]};
+ return {once,business,competition,pfq,file:rest[1],sha256:rest[3]};
 }
 async function run(args){
- const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once'].includes(args[0]);
+ const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once','--pfq-composition-once'].includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
  let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
-  const names=request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
+  const names=request.pfq?['readCurrent259PfqCompositionPlan','verifyCurrent259PfqCompositionPlan']:request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
    request.business?['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']:['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan'];
   const planModule=original(request.business?'../../../scripts/prepare-task16-current259-payment-business.cjs':'../../../scripts/prepare-task16-current259-payment-install.cjs',names);
   const [readPlan,verifyPlan]=names.map(name=>planModule[name]);
   const basic=readPlan(request.file,request.sha256);plan=basic.plan;
+  const loopbackScenario=request.pfq?'cancel-commit':request.business?plan.case.scenario:undefined;
+  const loopback=paymentLoopbackForScenario(loopbackScenario);
+  need(plan.scope.databaseTransport===loopback?.plan,'RESOURCE_PROFILE');
   if(!request.once){
    checked=verifyPlan(request.file,request.sha256);checked.check();importsCheck();
-   return {status:request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
+   return {status:request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
   }
   onceAttempted=true;
   try{writeNew(plan,plan.run.attemptFile,JSON.stringify({status:'STARTED',purpose:plan.purpose,planSha256:request.sha256,candidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true})+'\n');}
@@ -188,6 +245,7 @@ async function run(args){
   // Capture the fixed business closure before the first installation await,
   // never adopt a cache/export replacement after B7 has already been written.
   if(request.business)original('./task16-current259-business-continuity.cjs',['captureCurrent259BusinessIssuer']).captureCurrent259BusinessIssuer();
+  const withResource=loopback?paymentResources[loopbackScenario]:withCurrent259TechnicalResource;
   const disconnect=request.business&&plan.case.scenario==='disconnect-commit-recovery';
   if(request.business&&(plan.case.scenario==='cancel-commit'||disconnect))original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
   const provisionCompetition=request.competition?original('./task16-current259-role-provision.cjs',['provisionCurrent259CompetitionRoles']).provisionCurrent259CompetitionRoles:undefined;
@@ -207,6 +265,7 @@ async function run(args){
     withDisconnectOriginalApplication:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedDisconnectApplication','claimCurrent259DisconnectApplicationClose']).withCurrent259OwnedDisconnectApplication
    }:{})
   }):undefined;
+  const runPfq=request.pfq?original('./task16-current259-pfq-concurrency.cjs',['runCurrent259PfqConcurrency']).runCurrent259PfqConcurrency:undefined;
   const abort=()=>controller?.abort();
   try{
    need(!fs.existsSync(plan.run.receiptFile)&&!fs.existsSync(plan.run.receiptFile+'.pending'),'RECEIPT_EXISTS');
@@ -214,9 +273,9 @@ async function run(args){
    need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();receipt.sourceMaterialVerified=true;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
    controller=new AbortController();endAt=Date.now()+plan.limits.resourceMs;process.once('SIGINT',abort);process.once('SIGTERM',abort);timer=setTimeout(abort,plan.limits.resourceMs);
-   started=true;
-   await withCurrent259TechnicalResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
-    const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt());
+   stage='resourceStartup';started=true;
+   await withResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
+    const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt(),false,loopback?.topology);
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
     state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition,disconnect};
     currentRun=state;
@@ -268,6 +327,13 @@ async function run(args){
       b7.bodySha256===plan.material.installation.readerBodySha256&&b7.planSha256===request.sha256&&
       b7.installSqlSha256===state.binding.installSqlSha256,'B7_RESULT');
      receipt.b7Binding=state.binding;receipt.b7={installXid:b7.installXid,readerOid:b7.readerOid,bodySha256:b7.bodySha256};
+     if(request.pfq){
+      stage='pfqConcurrency';state.check();
+      const result=await runPfq(b7,handle,controller.signal,state.check);
+      state.check();
+      need(equal(result,{suite:'project-financing-quota-concurrency',businessCases:13,connectionCases:1}),'PFQ_RESULT');
+      receipt.pfq=Object.freeze(result);stage='ownedCleanup';
+     }
      if(request.business){
       const {withCurrent259LiveSessions,withCurrent259ApplicationEnvironment,withCurrent259OwnedApplication,runCurrent259PaymentCase}=businessFlow;
       const {withCompetitionLiveSessions,withCompetitionApplications,runCompetition,withDisconnectLiveSessions,withDisconnectOriginalApplication}=businessFlow;
@@ -325,9 +391,17 @@ async function run(args){
           need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
           const cancellation=plan.case.scenario==='cancel-commit';
           if(cancellation||disconnectPhase==='recovery')need(data(result,'rollbackObserved')===true,'BUSINESS_RESULT');
+          let rollbackEvidence;
+          if(cancellation){
+           need(data(result,'originalResultUnconfirmed')===true,'BUSINESS_RESULT');
+           const proof=fixed(data(result,'rollbackEvidence'),['fault','observedXid32','originalRequestKeySha256']);
+           need(proof.fault==='commit-cancelled'&&typeof proof.observedXid32==='string'&&/^[1-9][0-9]{0,9}$/u.test(proof.observedXid32)&&
+            Number(proof.observedXid32)<=0xffffffff&&hex(proof.originalRequestKeySha256,64),'BUSINESS_RESULT');
+           rollbackEvidence=Object.freeze(proof);
+          }
           if(request.competition)need(data(result,'competitionObserved')===true&&['finance_staff','comprehensive_director'].includes(data(result,'winner')),'BUSINESS_RESULT');
           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
-           ...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId}),
+           ...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:{executionId:result.executionId,rootId:result.rootId}),
            ...(request.competition?{competitionObserved:true,winner:result.winner}:{}),
            ...(disconnectPhase==='recovery'?{rollbackObserved:true,runtimeReplaced:true}:{})};
           return result;
@@ -347,15 +421,19 @@ async function run(args){
       state.check();stage='ownedCleanup';
      }
     }catch(error){
-     if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}
+     if(!hasFirst){
+      hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
+      const technicalFailure=stage==='technical259'?describeCurrent259TechnicalFailure(error):undefined;
+      if(technicalFailure)receipt.technicalFailure=technicalFailure;
+     }
      throw error;
     }finally{state.active=false;currentRun=undefined;EventTarget.prototype.removeEventListener.call(controller.signal,'abort',onAbort);}
    });
    checked.check();importsCheck();
   }catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}}
   finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);}
-  try{receipt.resource=finalResource(plan,created,started);}catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
-  if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
+  try{receipt.resource=finalResource(plan,created,started,first,loopback?.topology);}catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
+  if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.pfq||receipt.pfq)&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.pfq?'PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED':request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
   else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
   publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
   return {status:receipt.status,candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,resourceCreationRequested:started,
@@ -373,7 +451,7 @@ async function run(args){
 // The fresh-entry predicate above is captured before any dependency load.
 if(require.main===module)queueMicrotask(()=>{
  void run(process.argv.slice(2)).then(result=>{
-  const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
-  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once','--competition-once'].includes(process.argv[2]))process.exit(exit);});
+  const exit=result.status==='PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
+  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once','--competition-once','--pfq-composition-once'].includes(process.argv[2]))process.exit(exit);});
  });
 });

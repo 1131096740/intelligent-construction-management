@@ -2,10 +2,11 @@
 // Only the original factory's private lease and the fresh-main business issuer
 // can reach the fixed seed/cases. Importing does not construct/connect anything.
 const {types,isDeepStrictEqual:equal}=require('node:util');
-const {randomBytes}=require('node:crypto');
+const {createHash,randomBytes}=require('node:crypto');
 const path=require('node:path');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
 const authorization=require('./task16-current259-payment-run-authorization.cjs');
+const {paymentLoopbackForScenario,isCurrent259PaymentLoopbackTopology}=require('./task16-current259-payment-loopback.cjs');
 const fetchDescriptor=Object.getOwnPropertyDescriptor(globalThis,'fetch');
 const originalFetch=fetchDescriptor?.value;
 const builtin=process.binding('natives')['internal/bootstrap/web/exposed-window-or-worker'];
@@ -43,7 +44,15 @@ async function executeCurrent259PaymentCase(lease,permit){
   need(typeof load==='function'&&qualifiedFetch);
   const original={...Object.fromEntries(['owner','runtime','observer','verifyFull','checkLight'].map(k=>[k,session[k]]))};
   const resource=snapshot(lease.resourceIdentity()),identity=snapshot(session.identity[0]);
-  need(resource.databaseName===identity.database&&Number.isInteger(resource.port)&&resource.port===session.endpoint.publishedPort);
+  const loopback=paymentLoopbackForScenario(scope.scenario);
+  need(resource.databaseName===identity.database&&Number.isInteger(resource.port));
+  if(loopback){
+   const {endpoint}=session,relay=resource.relay;
+   need(resource.topology===loopback.topology&&endpoint.transport===loopback.topology&&
+    typeof endpoint.relayId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(endpoint.relayId)&&
+    endpoint.relayId===relay?.id&&relay.containerId===resource.containerId&&relay.host==='127.0.0.1'&&
+    endpoint.host===relay.host&&endpoint.port===resource.port&&relay.port===resource.port);
+  }else need(!isCurrent259PaymentLoopbackTopology(resource.topology)&&resource.port===session.endpoint.publishedPort);
   const material=loadCurrent259CatalogMaterial(source);
   const check=()=>{
    permission.check();lease.check();
@@ -72,7 +81,7 @@ async function executeCurrent259PaymentCase(lease,permit){
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
   await permission.verifyFull();await original.verifyFull.call(session);check();
   const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
-  let armed=false,barrierUsed=false,postCount=0,resultReads=0;
+  let armed=false,barrierUsed=false,faultSettled=false,postCount=0,resultReads=0,rollbackEvidence;
   const assertHttpRequest=(route,method)=>{
    checkPrepared();const ids=plan.ids;
    if(recovery){
@@ -84,7 +93,12 @@ async function executeCurrent259PaymentCase(lease,permit){
     postCount++;return;
    }
    if(faulting){
-    if(method==='GET'){need(!barrierUsed&&route===`/payment-executions/${ids.payment}/registration-options`);return;}
+    if(method==='GET'){
+     if(cancellation&&route===`/payment-executions/results/${ids.requestKey}`){
+      need(faultSettled&&postCount===1&&resultReads===0);resultReads++;return;
+     }
+     need(!barrierUsed&&route===`/payment-executions/${ids.payment}/registration-options`);return;
+    }
     need(armed&&postCount===0&&method==='POST'&&route===`/payment-executions/${ids.payment}/registrations`);
     postCount++;return;
    }
@@ -103,7 +117,16 @@ async function executeCurrent259PaymentCase(lease,permit){
      try{await submit();}finally{armed=false;}
     });
     checkPrepared();need(postCount===1);
-    return outcome;
+    if(cancellation){
+     const confirmed=snapshot(outcome);
+     const xid=confirmed.transactionId;
+     need(confirmed.mode==='cancel-commit'&&confirmed.state==='commit-cancelled'&&
+      confirmed.executionAllowed===false&&confirmed.nativeAdmission===false&&
+      typeof xid==='string'&&/^[1-9][0-9]{0,9}$/u.test(xid)&&Number(xid)<=0xffffffff);
+     rollbackEvidence=Object.freeze({fault:confirmed.state,observedXid32:xid,
+      originalRequestKeySha256:createHash('sha256').update(plan.ids.requestKey).digest('hex')});
+    }
+    faultSettled=true;return outcome;
    });
    if(disconnect){
     checkPrepared();need(result&&typeof result==='object'&&Reflect.ownKeys(result).length===0&&barrierUsed&&postCount===1);
@@ -121,10 +144,10 @@ async function executeCurrent259PaymentCase(lease,permit){
   checkPrepared();await permission.verifyFull();await original.verifyFull.call(session);checkPrepared();
   need(result&&result.caseId===caseId&&result.passed===true);
   if(recovery)need(postCount===1&&resultReads===2&&result.rollbackObserved===true);
-  if(cancellation)need(barrierUsed&&postCount===1&&result.rollbackObserved===true);
+  if(cancellation)need(barrierUsed&&faultSettled&&postCount===1&&resultReads===1&&result.rollbackObserved===true&&result.originalResultUnconfirmed===true);
   else need([result.executionId,result.rootId].every(value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value)));
   lease.finishContinuity(permission.continuityToken);permission.check();
-  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
+  return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
  }catch{
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';
   try{await lease.failClosed();cleanup='FIXED_CLOSE_RETURNED_NOT_FULL_PROOF';}catch{/* retain safe unknown */}

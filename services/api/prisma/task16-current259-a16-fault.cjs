@@ -3,6 +3,7 @@
 const { isIP } = require('node:net');
 const { types } = require('node:util');
 
+const ROLLBACK_TOPOLOGY = 'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS';
 const CODE = 'TASK16_CURRENT259_A16_FAULT';
 const TABLE = 'public."OperatingImpactEntry"';
 const OWNER = 'jg_task01_owner';
@@ -32,7 +33,9 @@ function data(record, keys) {
 }
 
 function snapshot(input) {
-  const { mode, nonce, database, runtime } = data(input, ['mode', 'nonce', 'database', 'runtime']);
+  const transport = input && !types.isProxy(input) && Object.getOwnPropertyDescriptor(input, 'transport');
+  const { mode, nonce, database, runtime } = data(input, ['mode', 'nonce', 'database', 'runtime', ...(transport ? ['transport'] : [])]);
+  if (transport) need(transport.value === ROLLBACK_TOPOLOGY && mode === 'cancel-commit');
   const db = data(database, ['name', 'oid', 'namespaceOid', 'systemIdentifier']);
   const target = data(runtime, ['oid', 'pid', 'startedAt', 'clientAddress', 'clientPort']);
   need((mode === 'cancel-commit' || mode === 'disconnect-commit') && hex(nonce));
@@ -40,7 +43,8 @@ function snapshot(input) {
     oid(db.namespaceOid) && wide(db.systemIdentifier));
   need(oid(target.oid) && target.oid !== '10' && integer(target.pid, 0x7fffffff) && stamp(target.startedAt));
   need(typeof target.clientAddress === 'string' && isIP(target.clientAddress) === 4 &&
-    /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(target.clientAddress) && integer(target.clientPort, 65535));
+    (transport ? target.clientAddress === '127.0.0.1' :
+      /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)/u.test(target.clientAddress)) && integer(target.clientPort, 65535));
   return { mode, nonce, db, target, app: 'jg_a16_' + nonce.slice(0, 48) };
 }
 

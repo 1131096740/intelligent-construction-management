@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createLocalMigrationFixture } = require("./local-staged-migrations.cjs");
+const { frameStage205 } = require("./testdata/local-stage205-readback-model.cjs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
@@ -106,7 +107,7 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
       if (phase === "cleanup-readback") result = { schemaAbsent: true, eventAbsent: true,
         appOid: setup.appOid, applicationQualified: true };
       if (mutate) result = mutate(phase, result);
-      return { stdout: JSON.stringify(result), stderr: "" };
+      return { stdout: phase === "stage205-readback" ? frameStage205(result) : JSON.stringify(result), stderr: "" };
     },
     deploy: async request => {
       const url = new URL(request.databaseUrl);

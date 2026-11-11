@@ -5,6 +5,7 @@ const fs=require('node:fs'),path=require('node:path');
 const {createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
 const base=require('./prepare-task16-current259-payment-install.cjs');
 const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
+const {paymentLoopbackForScenario}=require('../services/api/prisma/task16-current259-payment-loopback.cjs');
 const PURPOSE='current259-payment-owned-seed-and-case';
 const COMPETITION_PURPOSE='current259-payment-owned-two-actor-competition';
 const ENTRY='services/api/prisma/task16-current259-payment-run-authorization.cjs';
@@ -54,14 +55,16 @@ function scope(installation,selected){const cancellation=selected.scenario==='ca
   ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',ownerObservation:'FIXED_SAME_PAYMENT_ROW_LOCK_AND_TWO_TLS_BACKEND_WAITERS',
   observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',approvalPath:false,commitFaults:false,
   multiActorConcurrency:true,competition:{runtimeSessions:2,runtimePoolSize:1,httpTimeoutMs:5000,automaticRetry:false},supplementaryVoucher:false,corrections:false};
+ const loopback=paymentLoopbackForScenario(selected.scenario);
  return {...installation.scope,stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','selectedCase','ownedCleanup'],
  applications:true,environmentPreparation:true,fixtures:true,businessWrites:true,liveSessionAdmission:false,financialAcceptance:false,
  seedPostCount:3,registrationPostCount:cancellation?1:2,seedRoutes:['POST /auth/login','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
  caseRoutes:['GET /payment-executions/:paymentId/registration-options','POST /payment-executions/:paymentId/registrations (initial)',
-  ...(cancellation?[]:['POST /payment-executions/:paymentId/registrations (same-key replay)','GET /payment-executions/results/:idempotencyKey'])],
+  ...(cancellation?['GET /payment-executions/results/:idempotencyKey (original key after confirmed rollback)']:['POST /payment-executions/:paymentId/registrations (same-key replay)','GET /payment-executions/results/:idempotencyKey'])],
  ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',
  approvalPath:false,commitFaults:cancellation?'CANCEL_EXACT_COMMIT_ONCE':false,
- ...(cancellation?{commitCancellation:{owner:'ONE_FIXED_LOCK_TRANSACTION_AND_BOUNDED_READ_ONLY_READY',httpTimeoutMs:5000,readyBudgetMs:5000,waitSeconds:12,settleSeconds:3,automaticRetry:false,disconnect:false}}:{}),
+ ...(loopback?{databaseTransport:loopback.plan}:{}),
+ ...(cancellation?{commitCancellation:{owner:'ONE_FIXED_LOCK_TRANSACTION_AND_BOUNDED_READ_ONLY_READY',httpTimeoutMs:5000,readyBudgetMs:5000,waitSeconds:12,settleSeconds:3,automaticRetry:false,disconnect:false,originalResultReadCount:1}}:{}),
  multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};}
 function capture(file,expected){const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,...(expected?{expectedIdentity:expected}:{}),code:'PAYMENT_BUSINESS_PLAN_FILE'});need(data.identity.uid===process.getuid());return data;}
 function writeNew(file,bytes){parent(file);let fd;try{fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{if(fd!==undefined)fs.closeSync(fd);}const dir=fs.openSync(path.dirname(file),fs.constants.O_RDONLY);try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}}

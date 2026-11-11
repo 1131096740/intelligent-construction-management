@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-function assemblyFixture() {
+function assemblyFixture(nativeMode = false) {
   const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'jg-q2-model-'));
   const caPath = path.join(parent, 'tls-private', 'ca.crt');
   const events = [];
@@ -72,7 +72,23 @@ function assemblyFixture() {
     async verifyClosed() { assert.equal(server.listening, false); events.push('readback'); },
     async disconnectUnowned() { events.push('disconnect-unowned'); },
   };
+  const cosKeys=['FILE_STORAGE_DRIVER','COS_BUCKET','COS_REGION','COS_SECRET_ID','COS_SECRET_KEY','COS_SESSION_TOKEN'];
+  if(nativeMode)bridge.native={
+    fixture:Object.freeze({}),
+    beginHttp(){events.push('full-before-http');},
+    endHttp(success){events.push(success?'full-after-http':'end-failed-http');},
+    storageEnvironment(){return Object.fromEntries(cosKeys.map((key,i)=>[key,i===0?'cos':'synthetic-'+i]));}
+  };
   const ports = {
+    './task12-current259-first-q2-http.cjs':{async runCurrent259FirstQ2Http(value,target){
+      module.exports.takeCurrent259FirstQ2HttpBridge(value,target);
+      assert.equal(target,server);assert.equal(server.listening,true);
+      assert.equal(process.env.FILE_STORAGE_DRIVER,'cos');
+      assert.equal(process.env.COS_SESSION_TOKEN,'synthetic-5');
+      events.push('http');
+      if(nativeMode==='fail')throw new Error('sensitive remote error should not escape');
+      return Object.freeze({status:'CURRENT259_FIRST_Q2_PROTOCOL_MATCHED_NOT_ACCEPTANCE',httpSteps:9,proofSha256:'a'.repeat(64)});
+    }},
     './task12-current259-contract-login.cjs': { takeCurrent259FirstQ2Bridge(value) {
       assert.equal(value, bridge); assert.equal(claimed, false); claimed = true;
     } },
@@ -155,4 +171,26 @@ test('a rejected app close leaves the environment owned and never calls another 
     });
     fs.rmSync(model.parent, { recursive: true, force: true });
   }
+});
+
+
+test('genuine native bridge sets only its own STS environment until owned app and sessions close',async()=>{
+  const model=assemblyFixture(true);
+  try{
+    const result=await model.run(model.bridge);
+    assert.equal(result.status,'CURRENT259_FIRST_Q2_HTTP_AND_NEST_CLOSED');
+    assert.equal(result.httpSteps,9);
+    assert.equal(result.proofSha256,'a'.repeat(64));
+    assert.deepEqual(model.events.slice(-6),['listen','full-before-http','http','full-after-http','app-close','readback']);
+    for(const key of ['COS_BUCKET','COS_REGION','COS_SECRET_ID','COS_SECRET_KEY','COS_SESSION_TOKEN'])assert.equal(process.env[key],undefined);
+  }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
+});
+
+test('native request failure preserves its fixed stage and closes before restoring the private environment',async()=>{
+  const model=assemblyFixture('fail');
+  try{
+    await assert.rejects(model.run(model.bridge),{code:'CURRENT259_FIRST_Q2_APP_HTTP'});
+    assert.deepEqual(model.events.slice(-6),['listen','full-before-http','http','end-failed-http','app-close','readback']);
+    assert.equal(process.env.COS_SESSION_TOKEN,undefined);
+  }finally{fs.rmSync(model.parent,{recursive:true,force:true});}
 });

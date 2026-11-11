@@ -25,6 +25,7 @@ JOIN pg_catalog.pg_stat_ssl s ON s.pid=a.pid
 WHERE i."backendPid"=pg_catalog.pg_backend_pid() AND i."loginRole"=session_user
   AND i."databaseOid"=d.oid::pg_catalog.text AND i.tls IS TRUE AND s.ssl IS TRUE`;
 
+const { isCurrent259PaymentLoopbackTopology } = require('./task16-current259-payment-loopback.cjs');
 const CODE = 'TASK16_CURRENT259_SESSION_IDENTITY';
 const kinds = ['owner', 'runtime', 'observer'];
 const identityFields = ['database', 'databaseOid', 'systemIdentifier', 'effectiveRole', 'loginRole', 'effectiveOid',
@@ -66,7 +67,12 @@ function timestamp(x) {
 
 /** Coordinates only. Authenticity and continuity belong to the owning client producer. */
 function parseCurrent259ClientSessions(observations, expected) {
-  const scope = fixedRecord(expected, scopeFields);
+  const descriptor = expected && !types.isProxy(expected) && Object.getOwnPropertyDescriptor(expected, 'transport');
+  const loopback = Boolean(descriptor);
+  const scope = fixedRecord(expected, loopback ? [...scopeFields, 'transport', 'relayId'] : scopeFields);
+  if (loopback) need(isCurrent259PaymentLoopbackTopology(scope.transport) && typeof scope.relayId === 'string' &&
+    /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(scope.relayId));
+  const validAddress = loopback ? address => address === '127.0.0.1' : privateIPv4;
   const roleOids = kinds.map(kind => scope[kind + 'Oid']);
   need(typeof scope.database === 'string' && /^jg_task01_[a-f0-9]{32}$/u.test(scope.database) &&
     oid(scope.databaseOid) && wide(scope.systemIdentifier) && scope.ownerOid === '10' &&
@@ -83,7 +89,7 @@ function parseCurrent259ClientSessions(observations, expected) {
       timestamp(row.start) && row.tls === true && Number.isInteger(row.version) && row.version >= 160000 &&
       row.version < 170000 && row.encoding === 'UTF8' && row.replication === 'origin' &&
       row.readOnly === readOnly && row.defaultReadOnly === readOnly &&
-      privateIPv4(row.clientAddress) && port(row.clientPort) && privateIPv4(row.serverAddress) && row.serverPort === 5432);
+      validAddress(row.clientAddress) && port(row.clientPort) && validAddress(row.serverAddress) && row.serverPort === 5432);
     return row;
   });
   const runtime = rows[1];
@@ -92,7 +98,8 @@ function parseCurrent259ClientSessions(observations, expected) {
     new Set(rows.map(row => row.clientAddress + ':' + row.clientPort)).size === 3);
   const identity = rows.map(row => Object.freeze(Object.fromEntries(identityFields.map(key => [key, row[key]]))));
   const endpoint = Object.freeze({
-    publishedHost: '127.0.0.1', publishedPort: scope.publishedPort,
+    ...(loopback ? { transport: scope.transport, relayId: scope.relayId, host: '127.0.0.1', port: scope.publishedPort }
+      : { publishedHost: '127.0.0.1', publishedPort: scope.publishedPort }),
     ...Object.fromEntries(endpointFields.map(key => [key, runtime[key]]))
   });
   return Object.freeze({ identity: Object.freeze(identity), endpoint });

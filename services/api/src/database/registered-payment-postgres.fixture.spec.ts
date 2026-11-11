@@ -108,7 +108,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "competition", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias"])(
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias"])(
     "verifies the %s case through only the approved observer columns", async scenario => {
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
@@ -133,8 +133,11 @@ describe("registered PG original case: explicit observer projection protocol (no
         $queryRawUnsafe: async (sql: string, ...values: unknown[]) => {
           expect(readOnly).toBe(true);
           expect(sql).toContain('s."status"');
-          expect(values).toEqual([ids.settlement, ids.payment]);
+          const cancellation = scenario.startsWith("cancel-");
+          expect(values).toEqual([ids.settlement, ids.payment, ...(cancellation ? [ids.requestKey] : [])]);
+          if (cancellation) expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM public."PaymentExecution" e WHERE e."idempotencyKey"=$3)');
           ownerReads++;
+          if (submittedCancellation && scenario === "cancel-orphan-key") return [];
           const after = (name: string) => submittedCancellation && scenario === name;
           return [{
             database: f.proof.databaseName, databaseOid: f.proof.databaseOid, systemIdentifier: f.proof.systemIdentifier,
@@ -254,6 +257,14 @@ describe("registered PG original case: explicit observer projection protocol (no
         responseCancellations.push(jest.spyOn(response.body!, "cancel"));
         return response;
       }
+      if (scenario.startsWith("cancel-") && route === `/payment-executions/results/${ids.requestKey}`) {
+        expect(init?.method).toBe("GET");
+        expect((init?.headers as Record<string, string>).authorization).toBe(`Bearer ${prepared.accessToken}`);
+        expect(ownerReads).toBe(2);
+        if (scenario === "cancel-recorded-key") return respond(200, { status: "recorded", execution: { executionId: "execution-one" } });
+        if (scenario === "cancel-unconfirmed-execution") return respond(200, { status: "unconfirmed", execution: null });
+        return respond(scenario === "cancel-result-error" ? 503 : 200, { status: "unconfirmed" });
+      }
       if (disconnect && route === `/payment-executions/results/${ids.requestKey}` && !recorded && scenario !== "disconnect-recorded-key")
         return respond(200, { status: "unconfirmed" });
       if (route === `/payment-executions/results/${ids.requestKey}`) return respond(200, { status: "recorded", execution: { executionId: "execution-one", amountCents: "4000", paidAt: plan.paidAt }, effects: [], intercompany: [{}] });
@@ -336,21 +347,26 @@ describe("registered PG original case: explicit observer projection protocol (no
         });
         const run = registeredCases.runRegisteredNullCrossCompanyCommitCancellation(f.context, prepared, continuity, cancel);
         if (scenario === "cancel-commit") {
-          await expect(run).resolves.toMatchObject({caseId: "registered.null-cross-company.cancel-commit", passed: true, rollbackObserved: true});
+          await expect(run).resolves.toMatchObject({caseId: "registered.null-cross-company.cancel-commit", passed: true, rollbackObserved: true, originalResultUnconfirmed: true});
         } else {
           const errors: Record<string, string> = {
             "cancel-fake-success": "PG_CASE_CANCEL_HTTP_STATUS",
             "cancel-owner-method": "PG_CASE_CANCEL_OWNER_CHANGED",
             "cancel-owner-getter": "PG_CASE_CANCEL_OWNER_CHANGED",
             "cancel-owner-role": "PG_CASE_CANCEL_OWNER_PROOF",
-            "cancel-owner-pid": "PG_CASE_CANCEL_OWNER_PROOF"
+            "cancel-owner-pid": "PG_CASE_CANCEL_OWNER_PROOF",
+            "cancel-orphan-key": "PG_CASE_CANCEL_OWNER_PROOF",
+            "cancel-recorded-key": "PG_CASE_CANCEL_ORIGINAL_RESULT",
+            "cancel-unconfirmed-execution": "PG_CASE_CANCEL_ORIGINAL_RESULT",
+            "cancel-result-error": "PG_CASE_CANCEL_ORIGINAL_RESULT"
           };
           await expect(run).rejects.toThrow(errors[scenario] ?? "PG_CASE_CANCEL_LEDGER_CHANGED");
         }
         expect(cancel).toHaveBeenCalledTimes(1);
         expect(ownerReads).toBe(["cancel-owner-method", "cancel-owner-getter"].includes(scenario) ? 1 : 2);
         expect(ownerGetterReads).toBe(0);
-        expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST"]);
+        const resultRead = ["cancel-commit", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error"].includes(scenario);
+        expect(fetch.mock.calls.map(([, request]) => request?.method)).toEqual(["GET", "POST", ...(resultRead ? ["GET"] : [])]);
         return;
       }
       const run = scenario === "normal" ? registeredCases.runRegisteredNullCrossCompanyCommit(f.context, prepared)

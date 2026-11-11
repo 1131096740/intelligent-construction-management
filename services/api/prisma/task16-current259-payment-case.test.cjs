@@ -1,6 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const fs=require('node:fs'),path=require('node:path');
+const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
+const cancelOutcome=Object.freeze({mode:'cancel-commit',state:'commit-cancelled',transactionId:'9101',executionAllowed:false,nativeAdmission:false});
 const noop=()=>{};
 function owned(t,options={}){
  const module={exports:{}};
@@ -34,12 +35,23 @@ function caseFixture(t,options={}){
  f.session.activateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('activate-continuity');};
  f.session.deactivateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('finish-continuity');};
  f.session.checkContinuity=token=>{businessGuard(token,f.handle);f.session.checkLight();};
- return {...f,caseApi:holder.exports,issue(application,scope){const token=Object.freeze({});permissions.set(token,{application,handle:f.handle,scope:Object.freeze({...scope,authorizationReference:'synthetic-approved-model-only'})});return token;}};
+ return {...f,caseApi:holder.exports,issue(application,scope){
+  const profile=require('./task16-current259-payment-loopback.cjs').paymentLoopbackForScenario(options.transportScenario??scope.scenario);
+  if(profile){
+   const {publishedPort,port}=f.session.endpoint;
+   f.session.endpoint={transport:profile.topology,relayId:'12345678-1234-4234-8234-123456789012',host:'127.0.0.1',port:publishedPort??port};
+  }
+  const token=Object.freeze({});permissions.set(token,{application,handle:f.handle,scope:Object.freeze({...scope,authorizationReference:'synthetic-approved-model-only'})});return token;
+ }};
 }
 
 function paymentModel(f,options={}){
  const runId='01234567-89ab-cdef-0123-456789abcdef';
- f.view.resource.getReceipt=()=>({runId,databaseName:f.session.identity[0].database,port:f.session.endpoint.publishedPort});
+ f.view.resource.getReceipt=()=>{
+  const endpoint=f.session.endpoint,containerId='a'.repeat(64);
+  return {runId,containerId,databaseName:f.session.identity[0].database,port:endpoint.port??endpoint.publishedPort,
+   ...(endpoint.transport?{topology:endpoint.transport,relay:{id:endpoint.relayId,containerId,host:endpoint.host,port:endpoint.port}}:{})};
+ };
  f.view.resource.getReceiptContinuity=()=>f.view.resource.getReceipt();
  let builds=0,seeds=0,consumers=0,captured;
  const plan={runId:runId.replaceAll('-','').slice(0,12),paidAt:'2026-11-10',openingDate:'2026-11-09',ids:{payment:'0afc53ef-c7d6-4cca-aa7b-f0f10ff629c2',requestKey:'12345678-1234-4234-8234-123456789abc'}};
@@ -74,7 +86,7 @@ for(const scenario of ['normal','response-loss'])test('one owned seed reaches th
 });
 test('the owned cancellation case uses the original session gate and publishes no committed IDs',async t=>{
  const f=caseFixture(t),m=paymentModel(f),trace=[];
- f.session.cancelCommit=async(token,submit)=>{f.session.checkContinuity(token);trace.push('ready');await submit();trace.push('owner-settled');};
+ f.session.cancelCommit=async(token,submit)=>{f.session.checkContinuity(token);trace.push('ready');await submit();trace.push('owner-settled');return cancelOutcome;};
  m.modules.runRegisteredNullCrossCompanyCommitCancellation=async(execution,fixture,continuity,cancel)=>{
   assert.equal(execution,m.captured().execution);
   assert.equal(fixture.accessToken,'private-model-token');
@@ -83,12 +95,16 @@ test('the owned cancellation case uses the original session gate and publishes n
    trace.push('post');
   });
   trace.push('observer');
-  return {caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true};
+  continuity.assertHttpRequest('/payment-executions/results/'+m.plan.ids.requestKey,'GET');
+  trace.push('result');
+  return {caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true,originalResultUnconfirmed:true};
  };
  const result=await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'cancel-commit',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
- assert.deepEqual(trace,['ready','post','owner-settled','observer']);
- assert.deepEqual(result,{caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true,financialAcceptance:false});
+ assert.deepEqual(trace,['ready','post','owner-settled','observer','result']);
+ assert.deepEqual(result,{caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true,originalResultUnconfirmed:true,financialAcceptance:false,
+  rollbackEvidence:{fault:'commit-cancelled',observedXid32:'9101',originalRequestKeySha256:createHash('sha256').update(m.plan.ids.requestKey).digest('hex')}});
+ assert.ok(!JSON.stringify(result).includes(m.plan.ids.requestKey));
 });
 for(const failure of [undefined,null,0,false])test('a falsey seed failure is permanently unknown and shuts the app before resource cleanup: '+String(failure),async t=>{
  const f=caseFixture(t),m=paymentModel(f,{onSeed(){throw failure;}}),api=f.caseApi;
@@ -183,4 +199,33 @@ test('A16 recovery uses the replacement application with exactly the original se
  assert.deepEqual(trace,['fault-ready','original-post','recovery-post']);
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
  assert.equal(f.resourceCloses(),0);
+});
+
+for(const mode of ['early','foreign','duplicate','missing','missing-fault','wrong-fault'])test('cancellation refuses the '+mode+' original-key result read',async t=>{
+ const f=caseFixture(t),m=paymentModel(f);
+ f.session.cancelCommit=async(token,submit)=>{f.session.checkContinuity(token);await submit();return mode==='missing-fault'?undefined:mode==='wrong-fault'?{...cancelOutcome,state:'commit-disconnected'}:cancelOutcome;};
+ m.modules.runRegisteredNullCrossCompanyCommitCancellation=async(execution,fixture,continuity,cancel)=>{
+  const resultRoute='/payment-executions/results/'+m.plan.ids.requestKey;
+  if(mode==='early')continuity.assertHttpRequest(resultRoute,'GET');
+  await cancel(async()=>continuity.assertHttpRequest('/payment-executions/'+m.plan.ids.payment+'/registrations','POST'));
+  if(mode!=='missing')continuity.assertHttpRequest(mode==='foreign'?'/payment-executions/results/foreign':resultRoute,'GET');
+  if(mode==='duplicate')continuity.assertHttpRequest(resultRoute,'GET');
+  return {caseId:'registered.null-cross-company.cancel-commit',passed:true,rollbackObserved:true,originalResultUnconfirmed:true};
+ };
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  await assert.rejects(f.caseApi.runCurrent259PaymentCase(app,f.handle,
+   f.issue(app,{scenario:'cancel-commit',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})),
+   {code:'CURRENT259_PAYMENT_CASE_FAILED_CLOSED'});
+ }),{code:'TASK16_APP_FAILED_CLOSED'});
+ assert.equal(f.calls.filter(call=>call==='app-close').length,1);
+});
+
+for(const [scenario,transportScenario] of [['normal','response-loss'],['response-loss','normal']])
+ test('a mismatched issued payment transport fails before any fixture or case: '+scenario,async t=>{
+ const f=caseFixture(t,{transportScenario}),m=paymentModel(f);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  const permit=f.issue(app,{scenario,paidAt:m.plan.paidAt,openingDate:m.plan.openingDate});
+  await assert.rejects(f.caseApi.runCurrent259PaymentCase(app,f.handle,permit),/CURRENT259_PAYMENT_CASE_FAILED_CLOSED/u);
+ }));
+ assert.deepEqual(m.counts(),{builds:0,seeds:0,consumers:0});
 });

@@ -71,3 +71,37 @@ test('fixed disconnect recovery plan requires both separated application phases 
  assert.ok(plan.scope.stages.indexOf('confirmRollback')<plan.scope.stages.indexOf('replacementApplication'));
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
+
+test('cancellation authorizes one registration and one result read of the original key',t=>{
+ const f=fixture(t),saved=f.business.prepareCurrent259PaymentBusinessPlan({
+  runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,scenario:'cancel-commit',paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const {plan}=f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256);
+ assert.equal(plan.scope.registrationPostCount,1);
+ assert.equal(plan.scope.commitCancellation.originalResultReadCount,1);
+ assert.equal(plan.scope.commitCancellation.httpTimeoutMs,5000);
+ assert.equal(plan.scope.commitCancellation.automaticRetry,false);
+ assert.deepEqual(plan.scope.caseRoutes,[
+  'GET /payment-executions/:paymentId/registration-options',
+  'POST /payment-executions/:paymentId/registrations (initial)',
+  'GET /payment-executions/results/:idempotencyKey (original key after confirmed rollback)'
+ ]);
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+for(const [scenario,profile,other] of [
+ ['normal','PAYMENT_NORMAL_LOOPBACK_TLS_V1','PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS_V1'],
+ ['response-loss','PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS_V1','PAYMENT_NORMAL_LOOPBACK_TLS_V1']
+])test('business plan fixes a distinct loopback transport and rejects a cross-scenario profile: '+scenario,t=>{
+ const f=fixture(t),saved=f.business.prepareCurrent259PaymentBusinessPlan({runRoot:f.runRoot,daemonId:f.daemonId,
+  output:f.output,scenario,paidAt:'2026-11-10',openingDate:'2026-11-09'});
+ const verified=f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256);
+ assert.equal(verified.plan.scope.databaseTransport,profile);
+ assert.equal(verified.plan.scope.registrationPostCount,2);
+ assert.equal(verified.plan.scope.commitFaults,false);
+ const raw=JSON.parse(fs.readFileSync(f.output,'utf8'));raw.scope.databaseTransport=other;
+ const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');fs.writeFileSync(f.output,bytes);
+ const digest=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+ assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,digest));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

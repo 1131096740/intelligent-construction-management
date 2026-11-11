@@ -124,12 +124,23 @@ else if (args.includes("psql")) {
     const beforeRoutes = [...db.setup.fileCallerOids, Number(db.setup.appOid)].sort((a,b)=>a-b)
       .map(role => [String(role), "51", "52", 23, true, true, true, false,
         role !== Number(db.setup.appOid), false, null, [[8, false]], role !== Number(db.setup.appOid), false, false]);
+    if (state.oversizedStage205Database === name) {
+      let bytes = Buffer.byteLength(JSON.stringify(beforeRoutes));
+      for (let id = 50001; bytes < 256000; id++) {
+        const denied = ["30001", String(id), "53", 23, true, true, false, false, false, false,
+          null, [[8, false]], false, false, false];
+        beforeRoutes.push(denied);
+        bytes += Buffer.byteLength(JSON.stringify(denied)) + 1;
+      }
+      beforeRoutes.sort((left, right) => Number(left[0]) - Number(right[0]) || Number(left[1]) - Number(right[1]));
+    }
     const afterRoutes = JSON.parse(JSON.stringify(beforeRoutes));
     afterRoutes.find(row => row[0] === db.setup.appOid)[8] = true;
     const transition = { versionOid: "52", before: beforeRoutes, after: afterRoutes,
       callers: [...db.setup.fileCallerOids, Number(db.setup.appOid)].sort((a,b)=>a-b),
       acl: ["INSERT", "SELECT", "UPDATE"].map(p => ["10", db.setup.appOid, p, false]) };
-    stdout = JSON.stringify({ ...inspectDatabase(name, db), ...db.setup, readerPid: 202, fileCallerTransition: transition,
+    stdout = require(path.join(state.prismaRoot, "testdata/local-stage205-readback-model.cjs")).frameStage205({
+      ...inspectDatabase(name, db), ...db.setup, readerPid: 202, fileCallerTransition: transition,
       events: anchors.map(([stage, tag, catalog, anchorName, bodySha256], index) => ({ ordinal: index + 1,
         stage, tag, catalog, name: anchorName, bodySha256, objectOid: index === 2 ? "52" : String(40001 + index),
         querySha256: row(stage - 1).sha256, runId: db.plan.runId, nonce: db.plan.nonce,
@@ -138,6 +149,7 @@ else if (args.includes("psql")) {
         backendStart: "2026-11-10T12:00:00.123456Z", transactionId: index < 2 ? "1001" : "1002",
         preceding: { ...row(stage - 2), finished: true, rolledBack: false }
       })) });
+    event.readbackWireBytes = Buffer.byteLength(stdout);
   } else if (sql.startsWith("-- local-fixture cleanup-readback")) stdout = JSON.stringify({ schemaAbsent: true,
     eventAbsent: true, appOid: db.setup.appOid, applicationQualified: true });
   else if (sql.startsWith("-- local-fixture cleanup")) stdout = "{}";
