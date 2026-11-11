@@ -195,7 +195,11 @@ async function fakeFixture(temporaryRoot, mutate, failDatabases = [], masked = f
 test("full fixture deploys exact203 then qualified205, cleans independently and preserves the final no-pending path", async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "local-staged-test-"));
   try {
-    const { fixture, calls } = await fakeFixture(temporaryRoot);
+    const supplySql = new Map();
+    const { fixture, calls } = await fakeFixture(temporaryRoot, (phase, row, sql) => {
+      if (phase.endsWith("-supply")) supplySql.set(phase, sql);
+      return row;
+    });
     const result = await fixture.migrate({ databaseUrl, runtimeEnv: {} });
     assert.match(result.stdout, /20261108160000_operating_amount_protocol_v2/u);
     assert.match(result.stdout, /20261108220000_contract_archive_v2_authority|20261109100000_contract_direct_pending_input_v1/u);
@@ -207,6 +211,12 @@ test("full fixture deploys exact203 then qualified205, cleans independently and 
       ...[213, 215, 218, 221].flatMap(stage => [`deploy-${stage}`, `stage${stage}-readback`,
         `tail${stage}-before`, `tail${stage}-supply`, `tail${stage}-readback`]),
       `deploy-${canonicalBaseline.expectedDirectoryCount}`, "complete-readback"]);
+    for (const stage of [213, 215, 218, 221]) {
+      const phase = `tail${stage}-supply`;
+      const identityEdit = /^\s*tail_observed:=jsonb_set\(tail_observed,'\{identity\}',(.+)\);$/mu.exec(supplySql.get(phase))?.[1];
+      assert.match(identityEdit ?? "", /^\(tail_observed->'identity'\)-'backendPid'-'backendStart'-'readOnly'$/u,
+        `${phase} must extract the JSONB identity before deleting session-only keys`);
+    }
     const repeated = await fixture.migrate({ databaseUrl, runtimeEnv: {} });
     assert.equal(repeated.stdout, "No pending migrations to apply.");
     assert.deepEqual(calls.slice(-2), ["preflight", `deploy-${canonicalBaseline.expectedDirectoryCount}`]);

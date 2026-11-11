@@ -250,7 +250,7 @@ function renderSupply(c,stage,before){
  const script=`-- local-tail ${stage} supply\nBEGIN ISOLATION LEVEL SERIALIZABLE;\nSET LOCAL search_path=pg_catalog,pg_temp;\nSET LOCAL lock_timeout='5s';\nSET LOCAL statement_timeout='20s';\nLOCK TABLE public._prisma_migrations IN SHARE MODE;\n${locks}
  DO $tail_preimage$ DECLARE tail_observed jsonb; BEGIN
  SELECT q.result INTO STRICT tail_observed FROM (${observed}) q;
- tail_observed:=jsonb_set(tail_observed,'{identity}',tail_observed->'identity'-'backendPid'-'backendStart'-'readOnly');
+ tail_observed:=jsonb_set(tail_observed,'{identity}',(tail_observed->'identity')-'backendPid'-'backendStart'-'readOnly');
  tail_observed:=jsonb_set(tail_observed,'{writeXid}','null'::jsonb);
  IF tail_observed IS DISTINCT FROM ${quote(JSON.stringify(normalizePreimage(before)))}::jsonb THEN RAISE EXCEPTION 'local tail preimage changed'; END IF;
  PERFORM pg_current_xact_id();
