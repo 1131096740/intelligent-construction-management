@@ -23,7 +23,7 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
  need(!busy,'BUSY');busy=true;
  const originalEnvironment=process.env;
  let active=false,broken=false,directory,parent,parentIdentity,directoryIdentity,env,prior,prepared=false;
- let value,first,hasPrimary=false,envOutcome='NOT_CHANGED',storageOutcome='NOT_CREATED';
+ let value,first,hasPrimary=false,unresolvedApplication=false,envOutcome='NOT_CHANGED',storageOutcome='NOT_CREATED';
  const check=()=>{
   need(active&&!broken,'CLOSED');
   try{
@@ -46,16 +46,23 @@ async function withCurrent259ApplicationEnvironment(handle,consume){
   prepared=true;envOutcome='PREPARED';for(const k of KEYS)process.env[k]=env[k];
   active=true;check();
   value=await consume(Object.freeze({check,storageRoot:directory,executionAllowed:false,nativeAdmission:false}));check();
- }catch(error){first=error;hasPrimary=true;}
+ }catch(error){
+  first=error;hasPrimary=true;
+  if(error&&typeof error==='object'&&!types.isProxy(error)){
+   const d=Object.getOwnPropertyDescriptor(error,'appCleanupOutcome');
+   unresolvedApplication=Boolean(d&&Object.hasOwn(d,'value')&&d.value==='UNKNOWN_DO_NOT_CONTINUE');
+  }
+ }
  finally{
   active=false;
   if(prepared){
-   if(process.env===originalEnvironment&&KEYS.every(k=>process.env[k]===env[k])){
+   if(!unresolvedApplication&&process.env===originalEnvironment&&KEYS.every(k=>process.env[k]===env[k])){
     for(const k of KEYS)if(prior[k]===undefined)delete process.env[k];else process.env[k]=prior[k];
     envOutcome='RESTORED';
    }else envOutcome='UNKNOWN';
   }
-  if(directory){
+  if(directory&&unresolvedApplication)storageOutcome='UNKNOWN';
+  else if(directory){
    try{
     need(matches(parent,parentIdentity)&&matches(directory,directoryIdentity),'STORAGE');
     // Only this freshly created, same-inode root is removed; rm never follows

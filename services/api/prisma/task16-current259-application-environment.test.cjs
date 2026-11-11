@@ -86,3 +86,14 @@ test('owned storage removal never follows a descendant symlink outside its root'
   assert.equal(fs.readFileSync(path.join(outside,'evidence.txt'),'utf8'),'retained');
  }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
 });
+
+test('unknown application shutdown retains its environment and storage for the unresolved application',async()=>{
+ const restore=cleanEnvironment();let f,directory;
+ const applicationFailure=Object.assign(new Error('TASK16_APP_CLOSE_UNKNOWN'),{code:'TASK16_APP_CLOSE_UNKNOWN',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+ try{
+  f=fixture();await assert.rejects(f.api.withCurrent259ApplicationEnvironment(f.handle,scope=>{
+   directory=scope.storageRoot;throw applicationFailure;
+  }),error=>error.code==='CURRENT259_APP_ENV_CLEANUP_UNKNOWN'&&error.environmentRestoration==='UNKNOWN'&&error.storageCleanup==='UNKNOWN'&&error.cause===applicationFailure);
+  assert.equal(process.env.FILE_STORAGE_ROOT,directory);assert.equal(fs.existsSync(directory),true);
+ }finally{restore();if(f)fs.rmSync(f.root,{recursive:true,force:true});}
+});
