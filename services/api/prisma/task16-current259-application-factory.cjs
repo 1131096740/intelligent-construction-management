@@ -86,6 +86,26 @@ async function createCurrent259Application(context,boundary,continuity){
 }
 
 const admissions=new WeakMap(),claims=new WeakSet(),opens=new WeakSet();
+const paymentApplications=new WeakMap(),paymentLeases=new WeakSet();
+const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
+const paymentModule=require('./task16-current259-payment-case.cjs');
+const paymentExecute=Object.getOwnPropertyDescriptor(paymentModule,'executeCurrent259PaymentCase');
+function checkPaymentModule(){
+ need(require.cache[paymentFile]?.exports===paymentModule&&paymentExecute&&
+  equalDescriptor(Object.getOwnPropertyDescriptor(paymentModule,'executeCurrent259PaymentCase'),paymentExecute),'TASK16_APP_HANDLE');
+}
+function equalDescriptor(a,b){return a&&b&&['value','writable','enumerable','configurable'].every(k=>a[k]===b[k]);}
+function isCurrent259PaymentLease(lease){
+ if(!lease||types.isProxy(lease)||!paymentLeases.has(lease))return false;
+ lease.check();return true;
+}
+function consumeCurrent259PaymentApplication(application,handle,permit){
+ need(arguments.length===3&&application&&!types.isProxy(application)&&paymentApplications.has(application),'TASK16_APP_HANDLE');
+ const lease=paymentApplications.get(application);
+ need(lease.handle===handle,'TASK16_APP_HANDLE');lease.check();checkPaymentModule();
+ paymentApplications.delete(application);paymentLeases.add(lease);
+ return paymentExecute.value(lease,permit);
+}
 const {ownsActiveTask16SimulationContext}=require('./run-task16-registered-pg-local.cjs');
 function peekCurrent259Application(context){
  const clients=context&&Object.getOwnPropertyDescriptor(context,'clients')?.value;
@@ -205,6 +225,12 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
     try{check();return appInspect.call(app);}
     catch{broken=true;revoke();void close().catch(()=>{});throw fault('TASK16_APP_FAILED_CLOSED');}
    }});
+  const getReceipt=Object.getOwnPropertyDescriptor(view.resource,'getReceipt')?.value;
+  paymentApplications.set(application,Object.freeze({handle,application,session,loader,source,
+   check:()=>{checkPaymentModule();check();application.inspect();},
+   resourceIdentity(){check();need(typeof getReceipt==='function'&&own(view.resource,'getReceipt')===getReceipt,'TASK16_APP_HANDLE');return getReceipt.call(view.resource);},
+   async failClosed(){broken=true;revoke();try{await close();}finally{await terminate();}}
+  }));
   return Object.freeze({application,close,terminate,cleanupUnknown:()=>shutdownUnknown});
  }catch(error){
   revoke();let cleanupUnknown=false;
@@ -303,4 +329,5 @@ async function withCurrent259OwnedApplication(proof,handle,signal,consume){
  }
  return value;
 }
-module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication};
+module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication,consumeCurrent259PaymentApplication,isCurrent259PaymentLease};
+for(const key of ['consumeCurrent259PaymentApplication','isCurrent259PaymentLease'])Object.defineProperty(module.exports,key,{writable:false,configurable:false});

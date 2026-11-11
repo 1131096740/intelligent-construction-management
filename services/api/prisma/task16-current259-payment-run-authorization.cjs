@@ -3,7 +3,7 @@
 // This sole fresh-main entry owns installation and the in-memory B7 permission.
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
-const permissions=new WeakMap();
+const permissions=new WeakMap(),businessPermissions=new WeakMap();
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
 const need=(ok,suffix='INVALID')=>{if(!ok)throw fault(suffix);};
@@ -43,8 +43,18 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
   }});
  }catch(error){revoke(entry||currentRun);throw error;}
 }
+function claimCurrent259PaymentBusinessPermit(permit,application,handle){
+ const entry=permit&&!types.isProxy(permit)&&businessPermissions.get(permit);
+ if(entry)businessPermissions.delete(permit);
+ try{
+  need(arguments.length===3&&entry&&entry===currentRun?.business&&entry.active&&!entry.claimed&&
+   entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
+  entry.claimed=true;entry.check();
+  return Object.freeze({scope:entry.scope,check:entry.check});
+ }catch(error){revoke(currentRun);throw error;}
+}
 // Publish the only export before the fixed consumer can require it in main.
-const moduleApi=Object.freeze({claimCurrent259B7WritePermit});
+const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit});
 module.exports=moduleApi;
 // B7's original lineage imports the technical owner before loader/core caches.
 const records=[];
@@ -70,7 +80,7 @@ function importsCheck(){
 }
 function safeCode(error){
  const code=data(error,'code');
- return typeof code==='string'&&/^(?:PAYMENT_INSTALL_(?:PLAN|ONCE)|CURRENT259_(?:RESOURCE|BUILD|LOADER|B7_INSTALL|ROLE_PROVISION|SEVEN|TECHNICAL)|TASK16_CURRENT259_PAYMENT_ACL|TASK16_CURRENT259_CATALOG|TASK01_RESOURCE)_[A-Z0-9_]+$/u.test(code)?code:'PAYMENT_INSTALL_ONCE_FAILED_CLOSED';
+ return typeof code==='string'&&/^(?:PAYMENT_INSTALL_(?:PLAN|ONCE)|PAYMENT_BUSINESS_PLAN|CURRENT259_(?:RESOURCE|BUILD|LOADER|B7_INSTALL|ROLE_PROVISION|SEVEN|TECHNICAL)|TASK16_CURRENT259_PAYMENT_ACL|TASK16_CURRENT259_CATALOG|TASK01_RESOURCE)_[A-Z0-9_]+$/u.test(code)?code:'PAYMENT_INSTALL_ONCE_FAILED_CLOSED';
 }
 function checkRoot(plan){
  const root=plan.run.root;need(fs.realpathSync(root)===root,'DIRECTORY');const st=fs.lstatSync(root);
@@ -108,21 +118,22 @@ function finalResource(plan,created,started){
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(value=>typeof value==='string'),'ARGUMENTS');
- const once=args[0]==='--once',rest=once?args.slice(1):args;
+ const business=args[0]==='--business'||args[0]==='--business-once',once=args[0]==='--once'||args[0]==='--business-once',rest=once||business?args.slice(1):args;
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,file:rest[1],sha256:rest[3]};
+ return {once,business,file:rest[1],sha256:rest[3]};
 }
 async function run(args){
- const requestedOnce=Array.isArray(args)&&args[0]==='--once';
+ const requestedOnce=Array.isArray(args)&&['--once','--business-once'].includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
- let hasFirst=false,first,stage='preflight',state,controller,timer;
+ let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow;
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
-  const plans=original('../../../scripts/prepare-task16-current259-payment-install.cjs',['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan']);
+  const planModule=request.business?original('../../../scripts/prepare-task16-current259-payment-business.cjs',['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']):original('../../../scripts/prepare-task16-current259-payment-install.cjs',['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan']);
+  const plans=request.business?Object.freeze({readCurrent259PaymentInstallPlan:planModule.readCurrent259PaymentBusinessPlan,verifyCurrent259PaymentInstallPlan:planModule.verifyCurrent259PaymentBusinessPlan}):planModule;
   const basic=plans.readCurrent259PaymentInstallPlan(request.file,request.sha256);plan=basic.plan;
   if(!request.once){
    checked=plans.verifyCurrent259PaymentInstallPlan(request.file,request.sha256);checked.check();importsCheck();
-   return {status:'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
+   return {status:request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
   }
   onceAttempted=true;
   try{writeNew(plan,plan.run.attemptFile,JSON.stringify({status:'STARTED',purpose:plan.purpose,planSha256:request.sha256,candidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true})+'\n');}
@@ -132,6 +143,14 @@ async function run(args){
   receipt={schemaVersion:1,purpose:plan.purpose,expectedCandidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,
    status:'STOPPED',scope:plan.scope,limits:plan.limits,stages:[],sourceMaterialVerified:false,
    executionAllowed:false,nativeAdmission:false,financialAcceptance:false,liveSessionAdmission:false};
+  // Capture the fixed business closure before the first installation await,
+  // never adopt a cache/export replacement after B7 has already been written.
+  businessFlow=request.business?Object.freeze({
+   withCurrent259LiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259LiveSessions']).withCurrent259LiveSessions,
+   withCurrent259ApplicationEnvironment:original('./task16-current259-application-environment.cjs',['withCurrent259ApplicationEnvironment']).withCurrent259ApplicationEnvironment,
+   withCurrent259OwnedApplication:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedApplication']).withCurrent259OwnedApplication,
+   runCurrent259PaymentCase:original('./task16-current259-payment-case.cjs',['runCurrent259PaymentCase']).runCurrent259PaymentCase
+  }):undefined;
   const abort=()=>controller?.abort();
   try{
    need(!fs.existsSync(plan.run.receiptFile)&&!fs.existsSync(plan.run.receiptFile+'.pending'),'RECEIPT_EXISTS');
@@ -187,6 +206,40 @@ async function run(args){
       b7.bodySha256===plan.material.installation.readerBodySha256&&b7.planSha256===request.sha256&&
       b7.installSqlSha256===state.binding.installSqlSha256,'B7_RESULT');
      receipt.b7Binding=state.binding;receipt.b7={installXid:b7.installXid,readerOid:b7.readerOid,bodySha256:b7.bodySha256};
+     if(request.business){
+      const {withCurrent259LiveSessions,withCurrent259ApplicationEnvironment,withCurrent259OwnedApplication,runCurrent259PaymentCase}=businessFlow;
+      stage='liveSessions';state.check();
+      await settled(withCurrent259LiveSessions(b7,handle,async liveProof=>{
+       state.check();stage='applicationEnvironment';
+       return withCurrent259ApplicationEnvironment(handle,async environment=>{
+        state.check();environment.check();stage='ownedApplication';
+        return withCurrent259OwnedApplication(liveProof,handle,controller.signal,async application=>{
+         state.check();environment.check();
+         const inspect=data(application,'inspect'),runtime=data(application,'runtime');
+         need(typeof inspect==='function'&&inspect.call(application).runtime===runtime,'BUSINESS_APPLICATION');
+         const business={active:true,claimed:false,application,handle,liveProof,b7,scope:Object.freeze({...plan.case,
+          authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId})};
+         state.business=business;
+         business.check=()=>{
+          try{state.check();environment.check();need(business.active&&state.business===business&&currentRun===state&&
+           business.handle===handle&&business.b7===b7&&business.liveProof===liveProof&&data(application,'inspect')===inspect&&
+           data(application,'runtime')===runtime&&inspect.call(application).runtime===runtime,'BUSINESS_SCOPE');}
+          catch(error){business.active=false;revoke(state);throw error;}
+         };
+         const businessPermit=Object.freeze({kind:'CURRENT259_PRIVATE_PAYMENT_CASE'});businessPermissions.set(businessPermit,business);
+         stage='seedAndSelectedCase';
+         receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
+         try{
+          const result=await runCurrent259PaymentCase(application,handle,businessPermit);
+          business.check();need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
+          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
+           executionId:result.executionId,rootId:result.rootId};
+         }finally{business.active=false;businessPermissions.delete(businessPermit);}
+        });
+       });
+      }));
+      state.check();stage='ownedCleanup';
+     }
     }catch(error){
      if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}
      throw error;
@@ -196,7 +249,7 @@ async function run(args){
   }catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;}}
   finally{if(state)state.active=false;currentRun=undefined;if(timer)clearTimeout(timer);process.removeListener('SIGINT',abort);process.removeListener('SIGTERM',abort);}
   try{receipt.resource=finalResource(plan,created,started);}catch(error){if(!hasFirst){hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage='ownedCleanup';}receipt.resource={...(created??{}),status:'unconfirmed',cleanup:{status:'UNKNOWN'}};}
-  if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed')receipt.status='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
+  if(!hasFirst&&receipt.b7&&receipt.resource.cleanup.status==='completed'&&(!request.business||receipt.business?.permission==='CONSUMED_ONCE'&&receipt.business?.outcome==='CASE_RETURNED_NOT_FULL_ACCEPTANCE'&&receipt.business?.caseId===plan.case.caseId))receipt.status=request.business?'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED':'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED';
   else{receipt.status='STOPPED';receipt.failureCode??='PAYMENT_INSTALL_ONCE_CLEANUP_UNCONFIRMED';}
   publicationStarted=true;const receiptSha256=publish(plan,receipt);published=true;
   return {status:receipt.status,candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:true,resourceCreationRequested:started,
@@ -214,7 +267,7 @@ async function run(args){
 // The fresh-entry predicate above is captured before any dependency load.
 if(require.main===module)queueMicrotask(()=>{
  void run(process.argv.slice(2)).then(result=>{
-  const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'?0:1;
-  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(process.argv[2]==='--once')process.exit(exit);});
+  const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
+  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once'].includes(process.argv[2]))process.exit(exit);});
  });
 });

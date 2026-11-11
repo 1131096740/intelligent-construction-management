@@ -52,7 +52,11 @@ function fixture(t,options={}){
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value){const material=loadCurrent259CatalogMaterial(value);return options.material?options.material(material):material;}}
  };
  const module={exports:{}};
- new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(name=>imports[name]??require(name),module,__dirname);
+ const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
+ if(options.paymentModule)imports['./task16-current259-payment-case.cjs']=options.paymentModule;
+ const localRequire=name=>imports[name]??require(name);
+ localRequire.cache=options.paymentModule?{...require.cache,[paymentFile]:{exports:options.paymentModule}}:require.cache;
+ new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(localRequire,module,__dirname);
  return {...model,api:module.exports,proof,handle,session,view,loader,calls,environment,directory,resourceCloses:()=>resourceCloses,
   reader:()=>reader,providers,token,claimed:()=>claimed};
 }
