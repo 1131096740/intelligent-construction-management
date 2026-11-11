@@ -1,5 +1,13 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 当前代码候选 `2b1db8da` 已集成测试复制依赖补修，独立817项标准编排、57项API及类型lint通过，原所有断言与故障路径保持。新自含PFQ259封包已封存，冷817/57/构建/类型lint、17SQL静态检查、21项输入与根独立只读预查通过；准确计划摘要 `23bbe484…`，执行尚待本候选明确授权，无attempt/run。原6b73预查失败包保持HOLD。 [独审](/private/tmp/jg-382-pfq-spec-independent.TTc2GeBB/REVIEW.md) · [封存计划](/private/tmp/jg-382-pfq259-fixture-sealed.GUSMH3Su/RUN-PLAN.json)
+
+- [~] `94825fa2` 已合入原容器物理端点与三活会话发行源码，817项编排、157项关联及API类型lint通过，中央64项资源/会话定向通过。原端点模块缓存替换、空值异常被误成功、并发复核失败可恢复三项独审缺口已闭合；实际SQL、TLS与业务仍未执行。新6b73封包预查发现原API子进程复制清单遗漏固定policy依赖，57项中31项缺模块失败，原包保留HOLD且无attempt；四行复制补修已作者57/57，待独立组合及新封包。 [活会话组合](/private/tmp/jg-398-live-integrate.yconRzXw/HANDOFF.md) · [依赖补修](/private/tmp/jg-382-pfq-spec-dependency.q1pup6KI/HANDOFF.md)
+
+- [~] 本地单一集成分支已到 `6b73cf7b`：三会话身份、A16控制及B7安装源码组合787项编排/107项定向与API类型lint通过，中央107项通过；其后PFQ列号 `CASE` 显式smallint修复，经独审PG16签名和12批SQL逐字对照，仅类型转换变化，组合788项编排/121项资格与API类型lint通过。新PFQ封包准备中，未重跑实际数据库；原3c55失败不计通过。真实B7许可、活会话/应用及A16业务验收仍待对应接线与实测。 [三模块组合](/private/tmp/jg-current259-session-fault-combined.oMKLJfdB/HANDOFF.md) · [类型修复组合](/private/tmp/jg-current259-pfq-smallint-combined.bFGJlEk6/HANDOFF.md)
+
+- [~] 准确 `3c5557d7` 已按本轮授权执行封存259条迁移验证一次，退出码1并首错停止。首库完成213条前缀迁移，在 `TAIL213_BEFORE` 数据库读取捕获 `42883` / `RESOURCE_PORT`，尚未进入该资格窗口供应。完整259条、后六库及13项并发未完成；原记录未提供具体缺失函数或签名。脚本清理完成，独立按准确容器名查询无残留。单次授权已消耗，未重试、未修复，无GitHub、部署或生产操作。 [停止回执](/private/tmp/jg-382-tail259-independent.86sn3zgr/STOP-RECEIPT.md)
+
 - [~] `c2548acd` 已本地集成 B7 提交前目录核验。只允许已审 reader、其 runtime 执行权限和本次写入坐标变化；成功才输出同一行并提交，独立提交读回仍沿原入口。独立756项编排、99项定向、API类型/lint与PG16.1静态解析通过，合后中央99项通过。B7 实际执行和后继应用准入仍待同轮证据。 [集成记录](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-C254.md)
 
 - [~] `118cb4e3` 已本地集成独立 #398 七片及权限安装。七片写事务在第一片前固定 runtime 角色，五个归档激活绑定保持为空。ACL 安装仅从同句柄七片凭据继续，提交后另后端核写 XID、目录和权限。756项编排、合后34项定向、API类型/lint及五批SQL静态解析通过，未做真实资源。A16 提交失败与断连方案已定位真实 COMMIT 等待边界，同库归档和实付安装顺序另有源码复核。 [集成记录](/private/tmp/jg-382-local-f0-integration.dxBGonhX/MERGE-118CB.md) · [A16 方案](/private/tmp/jg-398-a16-pg-fault-design.O09fbL4a/HANDOFF.md) · [同库顺序](/private/tmp/jg-382-combined-live-order.nBp3SPWr/HANDOFF.md)
