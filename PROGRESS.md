@@ -1,5 +1,7 @@
 ## #382 目标模式接续（2026-11-11）
 
+- [~] 准确 `2b1db8da` 已按本轮单次授权执行封存PFQ259验证，退出码1，首错停止并清理。首库完成213条前缀迁移，在 `TAIL213_BEFORE` 的 `NODE_PROOF` 校验失败，PostgreSQL记录为primary-not-retained，无可用SQLSTATE/具体字段原因；尚未进入该窗口供应、后续六库和13并发，完整259未完成。独立准确容器名查询无残留，原日志与结构化证据保留，未重试或修复。该单次许可已消耗，无其它组/GitHub/部署/生产。 [停止回执](/private/tmp/jg-382-pfq259-fixture-sealed.GUSMH3Su/STOP-RECEIPT.md)
+
 - [~] 当前代码候选 `2b1db8da` 已集成测试复制依赖补修，独立817项标准编排、57项API及类型lint通过，原所有断言与故障路径保持。新自含PFQ259封包已封存，冷817/57/构建/类型lint、17SQL静态检查、21项输入与根独立只读预查通过；准确计划摘要 `23bbe484…`，执行尚待本候选明确授权，无attempt/run。原6b73预查失败包保持HOLD。 [独审](/private/tmp/jg-382-pfq-spec-independent.TTc2GeBB/REVIEW.md) · [封存计划](/private/tmp/jg-382-pfq259-fixture-sealed.GUSMH3Su/RUN-PLAN.json)
 
 - [~] `94825fa2` 已合入原容器物理端点与三活会话发行源码，817项编排、157项关联及API类型lint通过，中央64项资源/会话定向通过。原端点模块缓存替换、空值异常被误成功、并发复核失败可恢复三项独审缺口已闭合；实际SQL、TLS与业务仍未执行。新6b73封包预查发现原API子进程复制清单遗漏固定policy依赖，57项中31项缺模块失败，原包保留HOLD且无attempt；四行复制补修已作者57/57，待独立组合及新封包。 [活会话组合](/private/tmp/jg-398-live-integrate.yconRzXw/HANDOFF.md) · [依赖补修](/private/tmp/jg-382-pfq-spec-dependency.q1pup6KI/HANDOFF.md)
