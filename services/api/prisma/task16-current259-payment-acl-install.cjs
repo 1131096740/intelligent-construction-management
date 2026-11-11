@@ -23,7 +23,7 @@ function need(ok) {
   if (!ok) throw fail('INVALID');
 }
 
-function catalogRequest(source, provisioned, nonce) {
+function catalogRequest(source, provisioned, nonce, competition) {
   const { database, databaseOid, namespaceOid, ownerOid, systemIdentifier } = provisioned.databaseIdentity;
   const roleOid = name => {
     const roles = provisioned.roles.filter(role => role.name === name);
@@ -35,7 +35,8 @@ function catalogRequest(source, provisioned, nonce) {
     source: { candidateSha: source.candidateSha, sealSha256: source.sourceSealSha256, schemaSha256: profile.schemaSha256,
       migrations: profile.ledger.map(row => ({ path: `services/api/prisma/migrations/${row.name}/migration.sql`, sha256: row.sha256 })) },
     identity: { runId: provisioned.runId, database, databaseOid, namespaceOid, ownerOid, systemIdentifier,
-      runtimeOid: roleOid('jg_task01_runtime'), observerOid: roleOid('jg_task01_observer') },
+      runtimeOid: roleOid('jg_task01_runtime'), observerOid: roleOid('jg_task01_observer'),
+      ...(competition ? { runtimeProfile: 'CURRENT259_TWO_RUNTIME_LANES' } : {}) },
     nonce, phase: 'before'
   };
 }
@@ -118,7 +119,7 @@ async function installCurrent259PaymentAcl(sevenCompletion, handle) {
       roleCompletion.runId === view.runId && roleCompletion.containerId === view.resource.containerId &&
       roleCompletion.databaseIdentity.database === view.resource.databaseName);
     const nonce = randomBytes(32).toString('hex');
-    const request = catalogRequest(source, roleCompletion, nonce);
+    const request = catalogRequest(source, roleCompletion, nonce, lease.competition === true);
     const runtime = renderCurrent259RuntimeAcl(source, roleCompletion, nonce);
     const publicSql = renderCurrent259PublicAccess(roleCompletion);
     const witness = runtime.witnessSql.trim();

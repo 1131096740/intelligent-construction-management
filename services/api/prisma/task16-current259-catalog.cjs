@@ -49,7 +49,9 @@ function loadCurrent259CatalogMaterial(source){
 }
 function request(input){
  const r=snapshot(input);need(equal(Object.keys(r).sort(),['identity','nonce','phase','source',...(Object.hasOwn(r,'installXid')?['installXid']:[])].sort()));
- const id=r.identity;need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier'].sort()));
+ const id=r.identity,competition=Object.hasOwn(id,'runtimeProfile');
+ need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',...(competition?['runtimeProfile']:[])].sort())&&
+  (!competition||id.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES'));
  need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(id.runId)&&id.database==='jg_task01_'+id.runId.replaceAll('-','')&&
   ['databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid'].every(k=>oid(id[k]))&&
   new Set([id.ownerOid,id.runtimeOid,id.observerOid]).size===3&&wide(id.systemIdentifier)&&
@@ -120,7 +122,7 @@ function validate(row,r,m,prior,checkLink=true){
    'connectionLimit','memberships','createSchema','usageSchema','connectDatabase','createDatabaseSchema',
    'temporary','otherDatabases','readOnlyDefault']);
   need(role.name===roleNames[index]&&role.oid===r.identity[key+'Oid']&&role.canLogin===true&&
-   role.usageSchema===true&&role.connectDatabase===true&&role.connectionLimit===(owner?-1:1)&&role.memberships===0&&
+   role.usageSchema===true&&role.connectDatabase===true&&role.connectionLimit===(owner?-1:key==='runtime'&&r.identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES'?2:1)&&role.memberships===0&&
    ['superuser','inherit','createRole','createDb','replication','bypassRls','createSchema','createDatabaseSchema','temporary']
     .every(k=>role[k]===owner)&&role.readOnlyDefault===(key==='observer')&&Array.isArray(role.otherDatabases)&&
     (owner||role.otherDatabases.length===0));

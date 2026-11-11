@@ -73,6 +73,10 @@ export interface PreparedRegisteredPgFixture {
   companyBSourceId: string;
 }
 
+export interface PreparedRegisteredPgCompetition extends PreparedRegisteredPgFixture {
+  contender: { actorId: string; requestKey: string; accessToken: string };
+}
+
 function requireCondition(condition: unknown, code: string): asserts condition {
   if (!condition) throw new Error(code);
 }
@@ -140,6 +144,10 @@ export function assertRegisteredPgResourceProof(proof: RegisteredPgResourceProof
 }
 
 export async function assertRegisteredPgConnectedRoles(context: RegisteredPgExecutionContext, continuity?: RegisteredPgSeedContinuity) {
+  return connectedRoles(context, continuity, false);
+}
+
+async function connectedRoles(context: RegisteredPgExecutionContext, continuity: RegisteredPgSeedContinuity | undefined, competition: boolean) {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
@@ -159,7 +167,7 @@ export async function assertRegisteredPgConnectedRoles(context: RegisteredPgExec
   requireCondition([owner, runtime, observer].every((row, index) => row.effectiveRole === expectedRoles[index] && row.loginRole === expectedRoles[index] && Number.isInteger(row.pid) && row.pid > 0) && new Set([owner.pid, runtime.pid, observer.pid]).size === 3, "PG_RESOURCE_ROLE_PID_BINDING");
   requireCondition(observer.readOnly === "on", "PG_RESOURCE_OBSERVER_READ_ONLY");
   const roles = await checked(() => context.owner.$queryRawUnsafe<Array<{ role: string; unsafe: boolean; canWrite: boolean }>>(
-    `SELECT r.rolname AS role,(r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolinherit OR r.rolreplication OR r.rolbypassrls OR NOT r.rolcanlogin OR r.rolconnlimit<>1
+    `SELECT r.rolname AS role,(r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolinherit OR r.rolreplication OR r.rolbypassrls OR NOT r.rolcanlogin OR r.rolconnlimit<>${competition ? "CASE WHEN r.rolname=$1 THEN 2 ELSE 1 END" : "1"}
       OR EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members WHERE member=r.oid)
       OR pg_catalog.pg_has_role(r.oid,o.oid,'MEMBER') OR pg_catalog.has_schema_privilege(r.oid,'public','CREATE')
       OR EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE relowner=r.oid)
@@ -186,6 +194,14 @@ export async function assertRegisteredPgConnectedRoles(context: RegisteredPgExec
   // SQL correctness or the executor's approval. The installation receipt must
   // independently bind the seven exact source files before this is invoked.
   return { database: owner.database, ownerPid: owner.pid, runtimePid: runtime.pid, observerPid: observer.pid };
+}
+
+export async function assertRegisteredPgCompetitionRoles(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, continuity: RegisteredPgSeedContinuity) {
+  requireCondition(primary.owner === contender.owner && primary.observer === contender.observer && primary.runtime !== contender.runtime, "PG_COMPETITION_CLIENTS");
+  const a = await connectedRoles(primary, continuity, true);
+  const b = await connectedRoles(contender, continuity, true);
+  requireCondition(a.database === b.database && a.ownerPid === b.ownerPid && a.observerPid === b.observerPid && a.runtimePid !== b.runtimePid, "PG_COMPETITION_PID_BINDING");
+  return { primary: a, contender: b };
 }
 
 export async function registeredPgHttp(context: RegisteredPgExecutionContext, route: string, method: "GET" | "POST", body?: unknown, accessToken?: string, continuity?: RegisteredPgSeedContinuity) {
@@ -221,6 +237,18 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
 /** Executes nothing unless explicitly called with already connected resources.
  * No SQL installation, client construction, resource creation or cleanup here. */
 export async function seedRegisteredPgFixture(context: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan, continuity?: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgFixture> {
+  return seedFixture(context, plan, continuity);
+}
+
+export async function seedRegisteredPgCompetitionFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
+  primaryContinuity: RegisteredPgSeedContinuity, contenderContinuity: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgCompetition> {
+  const result = await seedFixture(primary, plan, primaryContinuity, { context: contender, continuity: contenderContinuity });
+  requireCondition("contender" in result, "PG_COMPETITION_FIXTURE");
+  return result;
+}
+
+async function seedFixture(context: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan, continuity?: RegisteredPgSeedContinuity,
+  contender?: { context: RegisteredPgExecutionContext; continuity: RegisteredPgSeedContinuity }): Promise<PreparedRegisteredPgFixture | PreparedRegisteredPgCompetition> {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   let ownerAttempted = false;
@@ -238,17 +266,31 @@ export async function seedRegisteredPgFixture(context: RegisteredPgExecutionCont
     requireCondition(Object.keys(plan.ids).length === 16 && identityKeys.every(key => typeof plan.ids[key] === "string"
       && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(plan.ids[key]))
       && new Set(identityKeys.map(key => plan.ids[key])).size === 16, "PG_FIXTURE_IDENTITIES");
-    await checked(() => assertRegisteredPgConnectedRoles(context, continuity));
+    if (contender && continuity) {
+      requireCondition(contender.context.password.length >= 12 && contender.context.password !== context.password, "PG_COMPETITION_PASSWORDS");
+      await checked(() => assertRegisteredPgCompetitionRoles(context, contender.context, continuity));
+    } else {
+      await checked(() => assertRegisteredPgConnectedRoles(context, continuity));
+    }
     requireCondition(plan.runId === context.proof.runId && context.password.length >= 12, "PG_FIXTURE_INPUT");
     const bcrypt = await checked(() => import("bcryptjs"));
     const { assertValidUnifiedSocialCreditCode } = await checked(() => import("../company-entity/unified-social-credit-code"));
     const passwordHash = await checked(() => bcrypt.hash(context.password, 12));
     const ids = plan.ids;
+    const second = contender ? { actorId: randomUUID(), requestKey: randomUUID(), phone: "198" + plan.phone.slice(3),
+      passwordHash: await checked(() => bcrypt.hash(contender.context.password, 12)) } : undefined;
+    const approved = second ? 4000n : 10000n;
     ownerAttempted = true;
     await checked(() => context.owner.$transaction(async tx => {
       await checked(() => tx.user.create({ data: { id: ids.actor, phone: plan.phone, name: `PG合成财务${plan.runId}`, passwordHash, isActive: true, mustChangePassword: false } }));
       const position = await checked(() => tx.position.findUnique({ where: { key: "finance_staff" } })) ?? await checked(() => tx.position.create({ data: { key: "finance_staff", name: "财务人员" } }));
       await checked(() => tx.userPosition.create({ data: { userId: ids.actor, positionId: position.id, projectId: null } }));
+      if (second) {
+        await checked(() => tx.user.create({ data: { id: second.actorId, phone: second.phone, name: `PG合成综合主管${plan.runId}`, passwordHash: second.passwordHash, isActive: true, mustChangePassword: false } }));
+        const director = await checked(() => tx.position.findUnique({ where: { key: "comprehensive_director" } }))
+          ?? await checked(() => tx.position.create({ data: { key: "comprehensive_director", name: "综合部主管" } }));
+        await checked(() => tx.userPosition.create({ data: { userId: second.actorId, positionId: director.id, projectId: null } }));
+      }
       for (const [id, versionId, suffix, creditCode] of [[ids.companyA, ids.companyVersionA, "AA", "91350211M000100Y46"], [ids.companyB, ids.companyVersionB, "BB", "91440300708461136T"]] as const) {
         const name = `PG合成公司${suffix}${plan.runId}`;
         // Reuse the repository's two checksum-valid unit-test vectors. They
@@ -294,8 +336,8 @@ export async function seedRegisteredPgFixture(context: RegisteredPgExecutionCont
       requireCondition(marker?.revision === 0n, "PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED");
       await checked(() => tx.contractVersion.create({ data: { id: ids.version, contractId: ids.contract, versionNo: 1, changeType: "original", status: "effective", effectiveAt: formalSeedInstant, amountCents: 10000n, signingSubjectType: "our_company", companyEntityIdSnapshot: company.id, companyEntityVersionId: ids.companyVersionA, companyEntityNameSnapshot: company.name, companyEntityCreditCodeSnapshot: company.unifiedSocialCreditCode, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} } }));
       await checked(() => tx.paymentTermsVersion.create({ data: { id: ids.terms, contractId: ids.contract, contractVersionId: ids.version, versionNo: 1, status: "effective", originalText: "按已确认结算分次付款" } }));
-      await checked(() => tx.settlement.create({ data: { id: ids.settlement, projectId: ids.project, contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-JS`, periodLabel: "合成第一期", status: "effective", createdAt: formalSeedInstant, amountCents: 10000n, payableAmountCents: 10000n, paidAmountCents: 0n } }));
-      await checked(() => tx.paymentRequest.create({ data: { id: ids.payment, projectId: ids.project, settlementId: ids.settlement, sourceType: "settlement", contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-FK`, status: "approved_pending_payment", requestedAmountCents: 10000n, approvedAmountCents: 10000n, paidAmountCents: 0n, paymentSubjectType: "our_company" } }));
+      await checked(() => tx.settlement.create({ data: { id: ids.settlement, projectId: ids.project, contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-JS`, periodLabel: "合成第一期", status: "effective", createdAt: formalSeedInstant, amountCents: approved, payableAmountCents: approved, paidAmountCents: 0n } }));
+      await checked(() => tx.paymentRequest.create({ data: { id: ids.payment, projectId: ids.project, settlementId: ids.settlement, sourceType: "settlement", contractId: ids.contract, contractVersionId: ids.version, paymentTermsVersionId: ids.terms, code: `T16-${plan.runId}-FK`, status: "approved_pending_payment", requestedAmountCents: approved, approvedAmountCents: approved, paidAmountCents: 0n, paymentSubjectType: "our_company" } }));
       // This is an explicitly pre-approved state fixture, not a simulated review
       // action or a claim that approval/signature/notification paths were tested.
       await checked(() => tx.approvalInstance.create({ data: { id: ids.approvedRound, flowType: "payment.approve", businessType: "payment_request", businessId: ids.payment, status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: ids.actor } }));
@@ -316,7 +358,13 @@ export async function seedRegisteredPgFixture(context: RegisteredPgExecutionCont
       requireCondition(response.status === 201 && typeof registration.id === "string" && registration.sources?.length === 1 && typeof registration.sources[0]?.id === "string", "PG_FIXTURE_REAL_HTTP_OPENING");
       registrations.push({ id: registration.id, sources: registration.sources });
     }
-    return { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
+    const prepared = { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
+    if (!contender || !second) return prepared;
+    const loginB = await checked(() => registeredPgHttp(contender.context, "/auth/login", "POST",
+      { phone: second.phone, password: contender.context.password }, undefined, contender.continuity));
+    const tokenB = (loginB.body as { tokens?: { accessToken?: unknown } }).tokens?.accessToken;
+    requireCondition(loginB.status === 201 && typeof tokenB === "string" && tokenB !== accessToken, "PG_COMPETITION_REAL_HTTP_LOGIN");
+    return { ...prepared, contender: { actorId: second.actorId, requestKey: second.requestKey, accessToken: tokenB } };
   } catch {
     // A rejected/unknown owner transaction or later HTTP write is never proof
     // of rollback. Do not retain raw SDK/HTTP errors, credentials or causes.

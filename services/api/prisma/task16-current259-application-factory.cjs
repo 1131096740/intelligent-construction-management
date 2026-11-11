@@ -6,7 +6,7 @@ const abortPrototype=AbortSignal.prototype,readAborted=Object.getOwnPropertyDesc
 const addAbortListener=EventTarget.prototype.addEventListener,removeAbortListener=EventTarget.prototype.removeEventListener;
 const {types}=require('node:util');
 const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
-const {claimCurrent259LiveSessions}=require('./task16-current259-live-sessions.cjs');
+const {claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair}=require('./task16-current259-live-sessions.cjs');
 const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
@@ -81,13 +81,27 @@ async function createCurrent259Application(context,boundary,continuity){
   await loaded.listenApi(helperTarget,0,'127.0.0.1');check();const server=appMethods.getHttpServer.call(appHandle),address=method(server,'address').call(server);need(address,'TASK16_APP_ADDRESS');const host=own(address,'address'),family=own(address,'family'),port=own(address,'port'),listening=server.listening;need(listening===true&&host==='127.0.0.1'&&family==='IPv4'&&Number.isInteger(port)&&port>1024&&port<=65535,'TASK16_APP_ADDRESS');
   verifyProviders(moduleHandle,moduleMethods);verifyProviders(appHandle,appMethods);check();
   const addressMethod=method(server,'address');
-  const inspect=()=>{check();need(appMethods.getHttpServer.call(appHandle)===server&&method(server,'address')===addressMethod,'TASK16_APP_ADDRESS');const current=addressMethod.call(server),live=server.listening;need(live===true&&own(current,'address')===host&&own(current,'family')===family&&own(current,'port')===port,'TASK16_APP_RUNTIME_PROVIDER');verifyProviders(appHandle,appMethods);verifyProviders(moduleHandle,moduleMethods);return Object.freeze({origin:`http://127.0.0.1:${port}/`,runtime});};
-  return{inspect,status:'CURRENT259_APPLICATION_PROTOCOL_RETURNED_NOT_NATIVE_PROOF',origin:`http://127.0.0.1:${port}/`,runtime,close,sourceBinding:{sourceSha,sourceSealSha256:seal,registeredManifestSha256:manifest},nativeProof:false,environmentPreparationImplemented:false,financialAcceptance:false};
+  const inspectServer=()=>{
+   need(method(server,'address')===addressMethod,'TASK16_APP_ADDRESS');
+   const current=addressMethod.call(server);
+   need(server.listening===true&&own(current,'address')===host&&own(current,'family')===family&&own(current,'port')===port,'TASK16_APP_RUNTIME_PROVIDER');
+   return Object.freeze({origin:`http://127.0.0.1:${port}/`,runtime});
+  };
+  const inspect=()=>{
+   check();need(appMethods.getHttpServer.call(appHandle)===server,'TASK16_APP_ADDRESS');
+   const result=inspectServer();
+   verifyProviders(appHandle,appMethods);verifyProviders(moduleHandle,moduleMethods);
+   return result;
+  };
+  const result={inspect,status:'CURRENT259_APPLICATION_PROTOCOL_RETURNED_NOT_NATIVE_PROOF',origin:`http://127.0.0.1:${port}/`,runtime,close,sourceBinding:{sourceSha,sourceSealSha256:seal,registeredManifestSha256:manifest},nativeProof:false,environmentPreparationImplemented:false,financialAcceptance:false};
+  if(readerAdmission&&continuity)competitionInspections.set(result,()=>{check();return inspectServer();});
+  return result;
  }catch(error){const orphan=takeCurrent259CreationFailure(error);if(orphan)registered.push({value:orphan.value,kind:'app',close:orphan.close});let unknown=false;try{await close();}catch{unknown=true;}let code='TASK16_APP_FAILED_CLOSED';try{const descriptor=error&&Object.getOwnPropertyDescriptor(error,'code');if(descriptor&&Object.hasOwn(descriptor,'value')&&CODES.has(descriptor.value))code=descriptor.value;}catch{/* Untrusted exception descriptors are never projected. */}throw Object.assign(new Error(code),{code,appStartupOutcome:attempted?'UNKNOWN_DO_NOT_RETRY':'NOT_ATTEMPTED',appCleanupOutcome:unknown?'UNKNOWN_DO_NOT_CONTINUE':registered.length?'APP_HANDLE_CLOSE_RETURNED_NOT_FULL_PROOF':'NOT_NEEDED'});}
 }
 
 const admissions=new WeakMap(),claims=new WeakSet(),opens=new WeakSet();
 const paymentApplications=new WeakMap(),paymentLeases=new WeakSet();
+const competitionApplications=new WeakMap(),competitionInspections=new WeakMap();
 const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
 const paymentModule=require('./task16-current259-payment-case.cjs');
 const paymentExecute=Object.getOwnPropertyDescriptor(paymentModule,'executeCurrent259PaymentCase');
@@ -106,6 +120,15 @@ function consumeCurrent259PaymentApplication(application,handle,permit){
  need(lease.handle===handle,'TASK16_APP_HANDLE');lease.check();checkPaymentModule();
  paymentApplications.delete(application);paymentLeases.add(lease);
  return paymentExecute.value(lease,permit);
+}
+function consumeCurrent259PaymentCompetition(applications,handle,permit){
+ need(arguments.length===3&&competitionApplications.get(applications)===handle,'TASK16_APP_HANDLE');
+ competitionApplications.delete(applications);
+ const leases=applications.map(application=>paymentApplications.get(application));
+ need(leases.every((lease,index)=>lease?.handle===handle&&lease.session.competitionLane===['a','b'][index]),'TASK16_APP_HANDLE');
+ for(const lease of leases){lease.check();paymentApplications.delete(lease.application);paymentLeases.add(lease);}
+ const competition=require('./task16-current259-payment-competition.cjs');
+ return own(competition,'executeCurrent259PaymentCompetition')(applications,Object.freeze(leases),permit);
 }
 const {ownsActiveTask16SimulationContext}=require('./run-task16-registered-pg-local.cjs');
 function peekCurrent259Application(context){
@@ -151,30 +174,38 @@ function bindSimulatedCurrent259Application(context,session){
  * Consumes a live session capability inside its original resource scope. The
  * environment and private local storage must already satisfy the real factory.
  */
-async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
+async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pair){
  const code='TASK16_APP_IMPACT_READER_PROOF';
- need(arguments.length===4&&signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
+ need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
  need(aborted.call(signal)===false,'TASK16_APP_ABORTED');
  const session=claimCurrent259LiveSessions(proof,handle);
- let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,shutdown,shutdownUnknown=false,businessToken;
+ let view,context,clients,app,appInspect,appClose,active=true,broken=false,closing,httpClosing,shutdown,shutdownUnknown=false,businessToken;
  const revoke=()=>{active=false;if(clients)admissions.delete(clients);};
  const terminate=()=>shutdown??=Promise.resolve().then(async()=>{
+  if(pair){pair.startHttpClosures();await Promise.resolve();}
   try{await own(session,'close').call(session);}catch{shutdownUnknown=true;}
   try{await closeCurrent259OwnedResource(handle);}catch{shutdownUnknown=true;}
  });
+ const closeHttp=()=>{
+  revoke();
+  if(!app)return Promise.resolve();
+  return httpClosing??=Promise.resolve().then(()=>appClose.call(app));
+ };
  const close=()=>{
   revoke();
   if(!app)return Promise.resolve();
   return closing??=Promise.resolve().then(async()=>{
    let unknown=false;
-   try{if(app)await appClose.call(app);}catch{unknown=true;}
+   try{await closeHttp();}catch{unknown=true;}
    if(unknown||broken)await terminate();
    if(unknown||shutdownUnknown)throw fault('TASK16_APP_CLOSE_UNKNOWN');
   });
  };
- onControl(Object.freeze({revoke,close,terminate,cleanupUnknown:()=>shutdownUnknown}));
+ const control=Object.freeze({revoke,close,closeHttp,terminate,cleanupUnknown:()=>shutdownUnknown});
+ pair?.register(control);
+ onControl(control);
  try{
   view=claimCurrent259TechnicalResource(handle);
   const loader=view.loader,Class=own(loader,'Class');
@@ -228,9 +259,15 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
     try{check();return appInspect.call(app);}
     catch{broken=true;revoke();void close().catch(()=>{});throw fault('TASK16_APP_FAILED_CLOSED');}
    }});
+  const inspectCompetition=pair?competitionInspections.get(app):undefined;
+  need(!pair||typeof inspectCompetition==='function',code);
   const getReceipt=Object.getOwnPropertyDescriptor(view.resource,'getReceipt')?.value,getReceiptContinuity=Object.getOwnPropertyDescriptor(view.resource,'getReceiptContinuity')?.value;
   paymentApplications.set(application,Object.freeze({handle,application,session,loader,source,
-   check:()=>{checkPaymentModule();const inspected=appInspect.call(app);need(inspected.runtime===original.runtime&&inspected.origin===application.origin,code);},
+   check:()=>{
+    checkPaymentModule();
+    const inspected=businessToken&&inspectCompetition?inspectCompetition():appInspect.call(app);
+    need(inspected.runtime===original.runtime&&inspected.origin===application.origin,code);
+   },
    activateContinuity(token){businessIssuer(token,handle);need(!businessToken||businessToken===token,code);need(typeof activateSession==='function'&&own(session,'activateBusinessContinuity')===activateSession,code);activateSession.call(session,token);businessToken=token;check();},
    finishContinuity(token){businessIssuer(token,handle);need(businessToken===token&&typeof deactivateSession==='function'&&own(session,'deactivateBusinessContinuity')===deactivateSession,code);check();deactivateSession.call(session,token);businessToken=undefined;},
    resourceIdentity(){checkPaymentModule();if(businessToken){businessIssuer(businessToken,handle);view.checkLifetime();need(typeof getReceiptContinuity==='function'&&own(view.resource,'getReceiptContinuity')===getReceiptContinuity,code);return getReceiptContinuity.call(view.resource,businessToken);}check();need(typeof getReceipt==='function'&&own(view.resource,'getReceipt')===getReceipt,'TASK16_APP_HANDLE');return getReceipt.call(view.resource);},
@@ -254,6 +291,21 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl){
 }
 async function withCurrent259OwnedApplication(proof,handle,signal,consume){
  need(arguments.length===4&&typeof consume==='function','TASK16_APP_BOUNDARY');
+ return withOwnedApplication(proof,handle,signal,consume);
+}
+async function withCurrent259OwnedApplicationPair(proofs,handle,signal,consume){
+ need(arguments.length===4&&typeof consume==='function'&&assertCurrent259CompetitionLivePair(proofs,handle),'TASK16_APP_BOUNDARY');
+ const controls=new Set();
+ const pair=Object.freeze({
+  register(control){controls.add(control);},
+  startHttpClosures(){for(const control of controls)void control.closeHttp().catch(()=>{});},
+ });
+ return withOwnedApplication(proofs[0],handle,signal,left=>withOwnedApplication(proofs[1],handle,signal,right=>{
+  const applications=Object.freeze([left,right]);competitionApplications.set(applications,handle);
+  return consume(applications);
+ },pair),pair);
+}
+async function withOwnedApplication(proof,handle,signal,consume,pair){
  need(signal&&!types.isProxy(signal)&&Object.getPrototypeOf(signal)===abortPrototype&&
   !Object.hasOwn(signal,'aborted'),'TASK16_APP_ABORTED');
  const aborted=readAborted;
@@ -282,7 +334,7 @@ async function withCurrent259OwnedApplication(proof,handle,signal,consume){
   if(aborted.call(signal))onAbort();
   const creating=outcome(createCurrent259OwnedApplication(proof,handle,signal,scope=>{
    control=scope;if(abortObserved){scope.revoke();void scope.terminate();}
-  })).then(async result=>{
+  },pair)).then(async result=>{
    creationSettled=true;
    // The race retains handlers for late resolution or rejection. Late startup
    // can only be cleaned up and never becomes the callback's application.
@@ -334,5 +386,6 @@ async function withCurrent259OwnedApplication(proof,handle,signal,consume){
  }
  return value;
 }
-module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication,consumeCurrent259PaymentApplication,isCurrent259PaymentLease};
-for(const key of ['consumeCurrent259PaymentApplication','isCurrent259PaymentLease'])Object.defineProperty(module.exports,key,{writable:false,configurable:false});
+module.exports={createCurrent259Application,bindSimulatedCurrent259Application,claimCurrent259Application,withCurrent259OwnedApplication,
+ withCurrent259OwnedApplicationPair,consumeCurrent259PaymentApplication,consumeCurrent259PaymentCompetition,isCurrent259PaymentLease};
+for(const key of ['consumeCurrent259PaymentApplication','consumeCurrent259PaymentCompetition','isCurrent259PaymentLease'])Object.defineProperty(module.exports,key,{writable:false,configurable:false});

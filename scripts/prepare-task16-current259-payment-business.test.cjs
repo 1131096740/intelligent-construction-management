@@ -10,6 +10,22 @@ function fixture(t){
  return {...original,business:module.exports};
 }
 module.exports={fixture};
+test('the fixed competition plan cannot be consumed by the normal business verifier or choose a role limit',t=>{
+ const f=fixture(t),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ assert.throws(()=>f.business.prepareCurrent259PaymentBusinessPlan({...options,scenario:'competition'}));
+ assert.throws(()=>f.business.prepareCurrent259PaymentCompetitionPlan({...options,runtimeConnectionLimit:3}));
+ const saved=f.business.prepareCurrent259PaymentCompetitionPlan(options);
+ const verified=f.business.verifyCurrent259PaymentCompetitionPlan(f.output,saved.sha256);
+ assert.equal(verified.plan.purpose,'current259-payment-owned-two-actor-competition');
+ assert.equal(verified.plan.case.scenario,'competition');
+ assert.equal(verified.plan.scope.multiActorConcurrency,true);
+ assert.deepEqual(verified.plan.scope.competition,{runtimeSessions:2,runtimePoolSize:1,httpTimeoutMs:5000,automaticRetry:false});
+ assert.equal(verified.plan.scope.seedPostCount,4);
+ assert.equal(verified.plan.scope.registrationPostCount,2);
+ assert.equal(verified.plan.scope.commitFaults,false);
+ assert.throws(()=>f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
 test('business plan is a distinct exact purpose/scenario and installation sidecar does not authorize business',t=>{
  const f=fixture(t),saved=f.business.prepareCurrent259PaymentBusinessPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,scenario:'response-loss',paidAt:'2026-11-10',openingDate:'2026-11-09'});
  const verified=f.business.verifyCurrent259PaymentBusinessPlan(f.output,saved.sha256);

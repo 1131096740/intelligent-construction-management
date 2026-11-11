@@ -10,16 +10,18 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(options={}){
  const handle=Object.freeze({}),completion=Object.freeze({installXid:'1000'}),calls=[],clients=[],proofRow=observed('committed');
  const staged=observed('staged'),parser=catalog.api.parseCurrent259CatalogRead;
- const before=parser(JSON.stringify(observed()),request);
- const stagedProof=parser(JSON.stringify(staged),{...request,phase:'staged'},before);
- const committedProof=parser(JSON.stringify(proofRow),{...request,phase:'committed',installXid:'1000'},stagedProof);
+ const initial=observed(),requested=options.competition?{...request,identity:{...request.identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}}:request;
+ if(options.competition)for(const row of [initial,staged,proofRow])row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
+ const before=parser(JSON.stringify(initial),requested);
+ const stagedProof=parser(JSON.stringify(staged),{...requested,phase:'staged'},before);
+ const committedProof=parser(JSON.stringify(proofRow),{...requested,phase:'committed',installXid:'1000'},stagedProof);
  let resourceClosed=0,claimed=false,cursor=0,fulls=0,scans=0;
  const continuityToken=options.continuityToken??Object.freeze({});
  const continuity=(token,h=handle)=>{assert.equal(token,continuityToken);assert.equal(h,handle);check();options.onContinuity?.();};
  const check=()=>assert.equal(resourceClosed,0,'resource closed');
  const roleCompletion={sourceSha:source.candidateSha,runId:identity.runId};
  const endpoint={containerId:'a'.repeat(64),networkId:'b'.repeat(64),databaseName:identity.database,publishedHost:'127.0.0.1',publishedPort:52123,serverAddress:'172.19.0.2',serverPort:5432};
- const rows=['owner','runtime','observer'].map((kind,i)=>({
+ const rows=['owner','runtime','observer',...(options.competition?['runtime']:[])].map((kind,i)=>({
   database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',
   effectiveRole:'jg_task01_'+kind,loginRole:'jg_task01_'+kind,effectiveOid:identity[kind+'Oid'],loginOid:identity[kind+'Oid'],
   pid:101+i,start:'2026-11-11T00:00:0'+(i+1)+'.000001Z',tls:true,version:160010,encoding:'UTF8',replication:'origin',
@@ -42,20 +44,45 @@ function fixture(options={}){
    if(phase==='current259-live-catalog'){const row=clone(proofRow);row.identity.backendPid=500+(cursor++);row.identity.backendStart='2026-11-11T04:00:'+String(cursor).padStart(2,'0')+'.000001Z';options.onCatalog?.(row);return {stdout:JSON.stringify(row)};}
    const value={nonce:_sql.match(/'([a-f0-9]{64})'::pg_catalog.text AS nonce/)[1],database:identity.database,databaseOid:identity.databaseOid,systemIdentifier:identity.systemIdentifier,ownerOid:'10',readerPid:900,readerRole:'jg_task01_owner',readerOid:'10',readerTls:true,readerStart:'2026-11-11T04:00:00.000001Z',
     sessions:rows.map(row=>Object.fromEntries(['database','databaseOid','loginRole','loginOid','pid','start','tls','clientAddress','clientPort'].map(key=>[key,row[key]])))};
+   if(options.competition)value.runtimeLanes=(options.runtimePids??[102,104]).map((pid,i)=>[pid,
+    'task16_live_'+identity.runId.replaceAll('-','')+'_runtime_'+(i===0?'a':'b')]);
    options.onOwner?.(value);return {stdout:JSON.stringify(value)};
   }};
  resource.getReceiptContinuity=token=>{continuity(token);return clone(receipt);};
  const view={source:{candidateSha:source.candidateSha,sourceSealSha256:source.sealSha256},runId:identity.runId,resource,loader:{Class:Client},check,checkLifetime:check,checkContinuity:continuity,activateBusinessContinuity:continuity,deactivateBusinessContinuity:continuity,verifyBusinessFiles(token){continuity(token);calls.push(['scan',++scans]);options.onScan?.(scans);},verifyFull(){fulls++;assert.notEqual(options.forbidFull,true,'full source/tree check during active transaction');check();},credentials:()=>({owner:'1'.repeat(96),runtime:'2'.repeat(96),observer:'3'.repeat(96)})};
  const imports={
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:continuity,assertCurrent259CommitCancellationIssuer:continuity,checkCurrent259FileIdentity(file,expected){assert.equal(file,'/fixed/ca.crt');assert.equal(expected.uid,process.getuid());}},
-  './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request,stagedProof,committedProof,check,checkContinuity:continuity};}},
+  './task16-current259-b7-install.cjs':{claimCurrent259B7Installation(result,h){assert.equal(result,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;return {completion,source:view.source,roleCompletion,request:requested,stagedProof,committedProof,check,checkContinuity:continuity};}},
+  './task16-current259-payment-run-authorization.cjs':Object.freeze({claimCurrent259CompetitionLivePermit(permit,h,b7){
+   assert.equal(permit,continuityToken);assert.equal(h,handle);assert.equal(b7,completion);return true;
+  }}),
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,token){continuity(token,h);return view;},claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;options.onClose?.();}},
   './task16-runtime-inputs.cjs':{readQualifiedTask16File(){options.onRead?.();return {sha256:'c'.repeat(64),identity:{uid:process.getuid()}};}}
  };
  const api=new Function('require','module','setTimeout',fs.readFileSync(path.join(__dirname,'task16-current259-live-sessions.cjs'),'utf8')+'\nreturn module.exports;')(
   name=>imports[name]??require(name),{exports:{}},options.fastTimeout?(fn=>setTimeout(fn,1)):setTimeout);
- return {api,handle,completion,calls,clients,resourceClosed:()=>resourceClosed,fulls:()=>fulls};
+ return {api,handle,completion,calls,clients,continuityToken,resourceClosed:()=>resourceClosed,fulls:()=>fulls};
 }
+test('two competition runtimes are independently qualified but each provider retains a fixed backend',async()=>{
+ const f=fixture({competition:true});
+ await f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,async proofs=>{
+  const [left,right]=proofs.map(p=>f.api.claimCurrent259LiveSessions(p,f.handle));
+  assert.notEqual(left.runtime,right.runtime);
+  assert.equal(left.identity[1].effectiveOid,right.identity[1].effectiveOid);
+  assert.deepEqual([left.identity[1].pid,right.identity[1].pid],[102,104]);
+  assert.notEqual(left.identity[1].start,right.identity[1].start);
+  const from=f.calls.length;await right.verifyRequestBoundary();
+  assert.deepEqual(f.calls.slice(from).filter(row=>row[0]==='identity').map(row=>row[1]),[0,3,2]);
+  const end=f.calls.length;await right.verifyInstalled259();
+  assert.deepEqual(f.calls.slice(end).filter(row=>row[0]==='identity').map(row=>row[1]),[0,2]);
+ });
+ assert.equal(f.clients.length,4);assert.deepEqual(f.clients.map(row=>row.disconnects),[1,1,1,1]);
+});
+test('an unexpected third role backend cannot qualify a competition pair',async()=>{
+ const f=fixture({competition:true,runtimePids:[102,104,105]});let proofs=0;
+ await assert.rejects(f.api.withCurrent259CompetitionLiveSessions(f.completion,f.handle,f.continuityToken,()=>{proofs++;}),/FAILED_CLOSED/u);
+ assert.equal(proofs,0);assert.equal(f.resourceClosed(),1);
+});
 test('three scoped clients retain exact same-handle identities and expire after callback',async()=>{
  const f=fixture();let proof,session;
  assert.equal(await f.api.withCurrent259LiveSessions(f.completion,f.handle,async result=>{

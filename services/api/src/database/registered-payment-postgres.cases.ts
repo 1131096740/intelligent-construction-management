@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, registeredPgHttp } from "./registered-payment-postgres.fixture";
-import type { PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, registeredPgHttp } from "./registered-payment-postgres.fixture";
+import type { PreparedRegisteredPgCompetition, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
 
 /** Source-derived inventory, not an executable resource runner or a PG result. */
 export function registeredPaymentPostgresCases() {
@@ -274,4 +274,84 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
     executed: true, database: identity.database, observerPid: identity.observerPid, executionId: execution.id, rootId: root.id, passed: true,
     limits: scenario === "commit" ? ["Only the normal NULL-project commit/replay case", "No fault, concurrency, approval-path, TLS or deployment acceptance"]
       : ["Only the original-key recovery and replay after one lost HTTP response", "No database disconnect, rollback or concurrency acceptance"] };
+}
+
+
+type CompetitionSubmission = () => ReturnType<typeof registeredPgHttp>;
+
+export async function runRegisteredTwoActorPaymentCompetition(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgCompetition, controls: {
+    lanes: readonly [RegisteredPgSeedContinuity, RegisteredPgSeedContinuity];
+    withSamePaymentLock: (paymentId: string, pids: readonly [number, number], submissions: readonly [CompetitionSubmission, CompetitionSubmission]) =>
+      Promise<readonly [Awaited<ReturnType<CompetitionSubmission>>, Awaited<ReturnType<CompetitionSubmission>>]>;
+  }) {
+  const { plan, accessToken, contender: other } = fixture;
+  const { ids } = plan;
+  const checkLight = () => controls.lanes.forEach(lane => lane.checkLight());
+  const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { checkLight(); const value = await operation(); checkLight(); return value; };
+  const identity = await checked(() => assertRegisteredPgCompetitionRoles(primary, contender, controls.lanes[0]));
+  const before = await checked(() => observe(primary, fixture, controls.lanes[0], true));
+  check(before.request.approvedAmountCents === 4000n && before.request.paidAmountCents === 0n &&
+    before.settlement.payableAmountCents === 4000n && before.settlement.paidAmountCents === 0n &&
+    before.balanceA === "100.0000" && before.balanceB === "100.0000" &&
+    [before.executions, before.funding, before.allocations, before.events, before.audits, before.roots, before.facts, before.impacts].every(rows => rows.length === 0),
+  "PG_COMPETITION_BEFORE");
+  check(other.actorId !== ids.actor && other.requestKey !== ids.requestKey && other.accessToken !== accessToken, "PG_COMPETITION_ACTORS");
+  const actors = [
+    { context: primary, key: ids.requestKey, actorId: ids.actor, token: accessToken, continuity: controls.lanes[0] },
+    { context: contender, key: other.requestKey, actorId: other.actorId, token: other.accessToken, continuity: controls.lanes[1] }
+  ] as const;
+  const get = (actor: typeof actors[number], route: string) => registeredPgHttp(actor.context, route, "GET", undefined, actor.token, actor.continuity);
+  const work = async (actor: typeof actors[number], paid: string, remaining: string) => {
+    const response = await checked(() => get(actor, "/payment-executions/work-items"));
+    const body = response.body as { total?: unknown; items?: Array<{ paymentId: string; projectId: string; paidAmountCents: string; remainingAmountCents: string; expectedPaymentUpdatedAt: string }> };
+    const item = body.items?.[0];
+    check(response.status === 200 && body.total === 1 && body.items?.length === 1 && item?.paymentId === ids.payment && item.projectId === ids.project &&
+      item.paidAmountCents === paid && item.remainingAmountCents === remaining && typeof item.expectedPaymentUpdatedAt === "string", "PG_COMPETITION_SHARED_WORK");
+    return item.expectedPaymentUpdatedAt;
+  };
+  const options = async (actor: typeof actors[number]) => {
+    const version = await work(actor, "0", "4000");
+    const response = await checked(() => get(actor, `/payment-executions/${ids.payment}/registration-options`));
+    const body = response.body as { paymentId?: unknown; expectedPaymentUpdatedAt?: unknown; remainingAmountCents?: unknown; accounts?: Array<{scopeKey: string; eligible: boolean}> };
+    check(response.status === 200 && body.paymentId === ids.payment && body.expectedPaymentUpdatedAt === version &&
+      body.remainingAmountCents === "4000" && body.accounts?.some(row => row.scopeKey === `company:${ids.companyB}` && row.eligible), "PG_COMPETITION_OPTIONS");
+    return version;
+  };
+  const initialVersion = await options(actors[0]);
+  check(await options(actors[1]) === initialVersion, "PG_COMPETITION_SAME_INITIAL_VERSION");
+  const submit = (actor: typeof actors[number]) => () => registeredPgHttp(actor.context, `/payment-executions/${ids.payment}/registrations`, "POST", {
+    idempotencyKey: actor.key, expectedPaymentUpdatedAt: initialVersion, amountCents: "3000", paidAt: plan.paidAt,
+    scopeKey: `company:${ids.companyB}`, expectedRegistrationId: fixture.companyBRegistrationId, openingTreatment: "not_included",
+    openingReason: "本次实付未计入核对期初", openingEvidence: "隔离PG合成竞办实付及期初依据",
+    sourceAllocations: [{ sourceBatchId: fixture.companyBSourceId, amountCents: "3000" }], confirmationPassword: actor.context.password
+  }, actor.token, actor.continuity);
+  const responses = await checked(() => controls.withSamePaymentLock(ids.payment,
+    [identity.primary.runtimePid, identity.contender.runtimePid], [submit(actors[0]), submit(actors[1])]));
+  const winner = responses[0].status === 201 ? 0 : 1, loser = winner === 0 ? 1 : 0;
+  check(responses[winner].status === 201 && responses[loser].status === 409, "PG_COMPETITION_ONE_HTTP_WINNER");
+  const after = await checked(() => observe(primary, fixture, controls.lanes[0], true));
+  check(after.executions.length === 1 && after.funding.length === 1 && after.allocations.length === 1 && after.events.length === 1 &&
+    after.audits.length === 1 && after.roots.length === 1 && after.facts.length === 0 && after.impacts.length === 0, "PG_COMPETITION_ONE_COMMIT");
+  const execution = after.executions[0]!, funding = after.funding[0]!, root = after.roots[0]!, allocation = after.allocations[0]!, audit = after.audits[0]!;
+  check(execution.idempotencyKey === actors[winner].key && execution.amountCents === 3000n && execution.paymentRequestId === ids.payment && execution.voucherFileId === null &&
+    funding.executionId === execution.id && funding.operatingLedgerEffectiveDateAtRegistration === null && funding.actualPayerId === ids.companyB && funding.actualPayerKind === "participating_company" &&
+    allocation.executionId === execution.id && allocation.sourceBatchId === fixture.companyBSourceId && allocation.amountCents === 3000n &&
+    after.events[0]?.executionId === execution.id && audit.actorUserId === actors[winner].actorId, "PG_COMPETITION_COMMIT_GRAPH");
+  check(root.paymentExecutionId === execution.id && root.sourceType === "registered_payment_execution" && root.entryKind === "proxy_payment" && root.direction === "increase" &&
+    root.status === "confirmed" && root.originalDebtorCompanyId === ids.companyA && root.creditorCompanyId === ids.companyB && root.amountCents === 3000n && root.projectId === ids.project &&
+    after.request.status === "partially_paid" && after.request.approvedAmountCents === 4000n && after.request.paidAmountCents === 3000n &&
+    after.settlement.payableAmountCents === 4000n && after.settlement.paidAmountCents === 3000n && after.balanceA === "100.0000" && after.balanceB === "70.0000", "PG_COMPETITION_CAPACITY_BALANCES");
+  for (const index of [winner, loser]) {
+    const actor = actors[index]!;
+    const response = await checked(() => get(actor, `/payment-executions/results/${actor.key}`));
+    const body = response.body as { status?: string; execution?: {executionId?: string; amountCents?: string; paidAt?: string}; effects?: unknown[]; intercompany?: unknown[] };
+    check(response.status === 200 && (index === winner ? body.status === "recorded" && body.execution?.executionId === execution.id &&
+      body.execution.amountCents === "3000" && body.execution.paidAt === plan.paidAt && body.effects?.length === 0 && body.intercompany?.length === 1 :
+      body.status === "unconfirmed" && body.execution === undefined), "PG_COMPETITION_ORIGINAL_KEY_RESULT");
+  }
+  const finalVersion = await work(actors[0], "3000", "1000");
+  check(finalVersion !== initialVersion && await work(actors[1], "3000", "1000") === finalVersion, "PG_COMPETITION_SHARED_AFTER_COMMIT");
+  return { caseId: "registered.two-actor.payment-competition", passed: true, executionId: execution.id, rootId: root.id,
+    winner: winner === 0 ? "finance_staff" : "comprehensive_director", competitionObserved: true } as const;
 }

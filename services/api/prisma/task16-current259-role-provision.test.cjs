@@ -46,7 +46,7 @@ function modelRow(index){
    settings:after?[{oid:'117',database:'0',config:['default_transaction_read_only=on']}]:[],violations:0}};
 }
 function fixture(change,cleanup){
- const handle=Object.freeze({}),token=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
+ const handle=Object.freeze({}),token=Object.freeze({}),permit=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
  let taken=false,closed=false;
  const check=()=>{if(closed)throw Error('fixture closed');if(forbidFull)throw Error('full forbidden');};
  const lifetime=()=>assert.equal(closed,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);lifetime();};
@@ -57,6 +57,9 @@ function fixture(change,cleanup){
  }};
  const view={runId:completion.runId,source,resource,check,checkLifetime:lifetime,verifyFull:check,credentials:()=>({runtime:'f'.repeat(96),observer:'e'.repeat(96)})};
  const imports={
+  './task16-current259-payment-run-authorization.cjs':Object.freeze({claimCurrent259CompetitionRolePermit(value,provided,technical){
+   assert.equal(value,permit);assert.equal(provided,handle);assert.equal(technical,completion);return true;
+  }}),
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './local-staged-current259-profile.cjs':Object.freeze({claimCurrent259TechnicalSupply(result,provided){
    assert.equal(result,completion);assert.equal(provided,handle);assert.equal(taken,false);taken=true;
@@ -66,8 +69,23 @@ function fixture(change,cleanup){
  };
  const holder={exports:{}};
  new Function('require','module','__dirname',fs.readFileSync(modulePath,'utf8'))(name=>imports[name]??require(name),holder,__dirname);
- return {api:holder.exports,handle,token,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
+ return {api:holder.exports,handle,token,permit,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
 }
+test('only the fixed competition permit can change the runtime capacity and its independent proof',async()=>{
+ const change=(row,index)=>{if(index)row.state.roles.find(role=>role.name==='jg_task01_runtime').limit=2;};
+ const denied=fixture(change);
+ await assert.rejects(denied.api.provisionCurrent259CompetitionRoles(completion,denied.handle,{}));
+ assert.equal(denied.calls.length,0);
+ await assert.rejects(denied.api.provisionCurrent259Roles(completion,denied.handle),/COMMIT_UNCONFIRMED/u);
+ const admitted=fixture(change);
+ const result=await admitted.api.provisionCurrent259CompetitionRoles(completion,admitted.handle,admitted.permit);
+ const writer=admitted.calls[1].sql;
+ assert.equal(writer.match(/CONNECTION LIMIT 2;/gu).length,1);
+ assert.match(writer,/CREATE ROLE jg_task01_runtime[^;]+CONNECTION LIMIT 2;/u);
+ assert.equal(result.roles.find(role=>role.name==='jg_task01_runtime').limit,2);
+ assert.equal(result.roles.find(role=>role.name==='jg_task01_observer').limit,1);
+ assert.equal(admitted.api.claimCurrent259ProvisionedRoles(result,admitted.handle).competition,true);
+});
 test('role supply commits once, verifies a new owner backend and admits only the original private result',async()=>{
  const f=fixture();
  const result=await f.api.provisionCurrent259Roles(completion,f.handle);

@@ -4,6 +4,7 @@
 const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArgv.length===0&&!process._preload_modules?.length&&!Object.hasOwn(process.env,'NODE_OPTIONS')&&!Object.hasOwn(process.env,'NODE_PATH')&&Object.keys(require.cache).every(file=>file===__filename);
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),businessContinuities=new WeakMap();
+const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap();
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
 const need=(ok,suffix='INVALID')=>{if(!ok)throw fault(suffix);};
@@ -26,7 +27,8 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
    try{
     need(available,'WRITE_REUSED');entry.check();
     const row=fixed(binding,['scope','planSha256','sourceSha','sourceSealSha256','runId','containerId','aclXid','nonce','identity','beforeCatalogSha256','beforeSqlSha256','installSqlSha256']);
-    const id=fixed(row.identity,['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier']);
+    const id=fixed(row.identity,['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',
+     ...(entry.competition?['runtimeProfile']:[])]);
     need(row.scope==='CURRENT259_DOCKER_B7_INSTALL'&&row.planSha256===entry.planSha256&&row.sourceSha===entry.source.candidateSha&&
      row.sourceSealSha256===entry.source.sourceSealSha256&&row.runId===entry.view.runId&&row.containerId===entry.view.resource.containerId&&
      row.aclXid===entry.acl.installXid&&equal(id,entry.identity)&&hex(row.nonce,64)&&
@@ -41,6 +43,22 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
     entry.check();return true;
    }catch(error){revoke(entry);throw error;}
   }});
+ }catch(error){revoke(entry||currentRun);throw error;}
+}
+function claimCurrent259CompetitionRolePermit(permit,handle,technical){
+ const entry=permit&&!types.isProxy(permit)&&competitionRolePermissions.get(permit);
+ if(entry)competitionRolePermissions.delete(permit);
+ try{
+  need(arguments.length===3&&entry&&entry===currentRun&&entry.active&&entry.competition&&entry.handle===handle&&entry.technical===technical,'COMPETITION_ROLE_AUTHORITY');
+  entry.check();return true;
+ }catch(error){revoke(entry||currentRun);throw error;}
+}
+function claimCurrent259CompetitionLivePermit(permit,handle,b7){
+ const entry=permit&&!types.isProxy(permit)&&competitionLivePermissions.get(permit);
+ if(entry)competitionLivePermissions.delete(permit);
+ try{
+  need(arguments.length===3&&entry&&entry===currentRun&&entry.active&&entry.competition&&entry.handle===handle&&entry.competitionB7===b7&&entry.claimed&&entry.writeUsed,'COMPETITION_LIVE_AUTHORITY');
+  entry.check();return true;
  }catch(error){revoke(entry||currentRun);throw error;}
 }
 function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario){
@@ -66,7 +84,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
  }catch(error){revoke(currentRun);throw error;}
 }
 // Publish the only export before the fixed consumer can require it in main.
-const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity});
+const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity,claimCurrent259CompetitionRolePermit,claimCurrent259CompetitionLivePermit});
 module.exports=moduleApi;
 // B7's original lineage imports the technical owner before loader/core caches.
 const records=[];
@@ -130,22 +148,25 @@ function finalResource(plan,created,started){
 }
 function parse(args){
  need(Array.isArray(args)&&args.every(value=>typeof value==='string'),'ARGUMENTS');
- const business=args[0]==='--business'||args[0]==='--business-once',once=args[0]==='--once'||args[0]==='--business-once',rest=once||business?args.slice(1):args;
+ const competition=args[0]==='--competition'||args[0]==='--competition-once';
+ const business=competition||args[0]==='--business'||args[0]==='--business-once',once=['--once','--business-once','--competition-once'].includes(args[0]),rest=once||business?args.slice(1):args;
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,file:rest[1],sha256:rest[3]};
+ return {once,business,competition,file:rest[1],sha256:rest[3]};
 }
 async function run(args){
- const requestedOnce=Array.isArray(args)&&['--once','--business-once'].includes(args[0]);
+ const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once'].includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
  let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
-  const planModule=request.business?original('../../../scripts/prepare-task16-current259-payment-business.cjs',['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']):original('../../../scripts/prepare-task16-current259-payment-install.cjs',['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan']);
-  const plans=request.business?Object.freeze({readCurrent259PaymentInstallPlan:planModule.readCurrent259PaymentBusinessPlan,verifyCurrent259PaymentInstallPlan:planModule.verifyCurrent259PaymentBusinessPlan}):planModule;
-  const basic=plans.readCurrent259PaymentInstallPlan(request.file,request.sha256);plan=basic.plan;
+  const names=request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
+   request.business?['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']:['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan'];
+  const planModule=original(request.business?'../../../scripts/prepare-task16-current259-payment-business.cjs':'../../../scripts/prepare-task16-current259-payment-install.cjs',names);
+  const [readPlan,verifyPlan]=names.map(name=>planModule[name]);
+  const basic=readPlan(request.file,request.sha256);plan=basic.plan;
   if(!request.once){
-   checked=plans.verifyCurrent259PaymentInstallPlan(request.file,request.sha256);checked.check();importsCheck();
-   return {status:request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
+   checked=verifyPlan(request.file,request.sha256);checked.check();importsCheck();
+   return {status:request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
   }
   onceAttempted=true;
   try{writeNew(plan,plan.run.attemptFile,JSON.stringify({status:'STARTED',purpose:plan.purpose,planSha256:request.sha256,candidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true})+'\n');}
@@ -159,16 +180,23 @@ async function run(args){
   // never adopt a cache/export replacement after B7 has already been written.
   if(request.business)original('./task16-current259-business-continuity.cjs',['captureCurrent259BusinessIssuer']).captureCurrent259BusinessIssuer();
   if(request.business&&plan.case.scenario==='cancel-commit')original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
+  const provisionCompetition=request.competition?original('./task16-current259-role-provision.cjs',['provisionCurrent259CompetitionRoles']).provisionCurrent259CompetitionRoles:undefined;
+  if(request.competition)original('./task16-current259-payment-competition.cjs',['executeCurrent259PaymentCompetition']);
   businessFlow=request.business?Object.freeze({
    withCurrent259LiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259LiveSessions']).withCurrent259LiveSessions,
    withCurrent259ApplicationEnvironment:original('./task16-current259-application-environment.cjs',['withCurrent259ApplicationEnvironment']).withCurrent259ApplicationEnvironment,
    withCurrent259OwnedApplication:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedApplication']).withCurrent259OwnedApplication,
-   runCurrent259PaymentCase:original('./task16-current259-payment-case.cjs',['runCurrent259PaymentCase']).runCurrent259PaymentCase
+   runCurrent259PaymentCase:original('./task16-current259-payment-case.cjs',['runCurrent259PaymentCase']).runCurrent259PaymentCase,
+   ...(request.competition?{
+    withCompetitionLiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259CompetitionLiveSessions']).withCurrent259CompetitionLiveSessions,
+    withCompetitionApplications:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedApplicationPair']).withCurrent259OwnedApplicationPair,
+    runCompetition:original('./task16-current259-application-factory.cjs',['consumeCurrent259PaymentCompetition']).consumeCurrent259PaymentCompetition
+   }:{})
   }):undefined;
   const abort=()=>controller?.abort();
   try{
    need(!fs.existsSync(plan.run.receiptFile)&&!fs.existsSync(plan.run.receiptFile+'.pending'),'RECEIPT_EXISTS');
-   checked=plans.verifyCurrent259PaymentInstallPlan(request.file,request.sha256);
+   checked=verifyPlan(request.file,request.sha256);
    need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();receipt.sourceMaterialVerified=true;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
    controller=new AbortController();endAt=Date.now()+plan.limits.resourceMs;process.once('SIGINT',abort);process.once('SIGTERM',abort);timer=setTimeout(abort,plan.limits.resourceMs);
@@ -176,7 +204,7 @@ async function run(args){
    await withCurrent259TechnicalResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt());
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false};
+    state={active:true,controller,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -202,7 +230,13 @@ async function run(args){
     try{
      state.check();stage='technical259';
      const technical=await settled(createCurrent259TechnicalMigration(handle,controller.signal).migrate());completed(stage,technical);
-     stage='roles9';const roles=await settled(provisionCurrent259Roles(technical,handle));completed(stage,roles);
+     stage='roles9';let roles;
+     if(request.competition){
+      state.technical=technical;
+      const rolePermit=Object.freeze({kind:'CURRENT259_PRIVATE_COMPETITION_ROLES'});competitionRolePermissions.set(rolePermit,state);
+      try{roles=await settled(provisionCompetition(technical,handle,rolePermit));}finally{competitionRolePermissions.delete(rolePermit);}
+     }else roles=await settled(provisionCurrent259Roles(technical,handle));
+     completed(stage,roles);
      stage='sevenFragments';const seven=await settled(installCurrent259SevenFragments(roles,handle));completed(stage,seven);
      stage='paymentAcl';const acl=await settled(installCurrent259PaymentAcl(seven,handle));completed(stage,acl);
      need(acl.status==='CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION'&&hex(acl.sourceSha,40)&&typeof acl.installXid==='string'&&/^[1-9][0-9]*$/u.test(acl.installXid),'ACL');
@@ -212,7 +246,7 @@ async function run(args){
      const roleOid=name=>{const found=roles.roles.filter(role=>role.name===name);need(found.length===1&&typeof found[0].oid==='string'&&/^[1-9][0-9]{0,9}$/u.test(found[0].oid),'ROLE');return found[0].oid;};
      const id=technical.databaseIdentity;
      need(technical.database===created.databaseName&&id.database===created.databaseName&&id.ownerOid==='10','DATABASE_IDENTITY');
-     state.identity=Object.freeze({runId:view.runId,...Object.fromEntries(['database','databaseOid','namespaceOid','ownerOid','systemIdentifier'].map(key=>[key,id[key]])),runtimeOid:roleOid('jg_task01_runtime'),observerOid:roleOid('jg_task01_observer')});
+     state.identity=Object.freeze({runId:view.runId,...Object.fromEntries(['database','databaseOid','namespaceOid','ownerOid','systemIdentifier'].map(key=>[key,id[key]])),runtimeOid:roleOid('jg_task01_runtime'),observerOid:roleOid('jg_task01_observer'),...(request.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{})});
      state.catalogSource={candidateSha:source.candidateSha,sealSha256:source.sourceSealSha256,schemaSha256:source.profile.schemaSha256,migrations:source.profile.ledger.map(row=>({path:'services/api/prisma/migrations/'+row.name+'/migration.sql',sha256:row.sha256}))};
      state.acl=acl;const permit=Object.freeze({kind:'CURRENT259_PRIVATE_B7_WRITE'});permissions.set(permit,state);
      stage='b7';const b7=await settled(installCurrent259B7(acl,handle,permit));completed(stage,b7);
@@ -222,22 +256,30 @@ async function run(args){
      receipt.b7Binding=state.binding;receipt.b7={installXid:b7.installXid,readerOid:b7.readerOid,bodySha256:b7.bodySha256};
      if(request.business){
       const {withCurrent259LiveSessions,withCurrent259ApplicationEnvironment,withCurrent259OwnedApplication,runCurrent259PaymentCase}=businessFlow;
+      const {withCompetitionLiveSessions,withCompetitionApplications,runCompetition}=businessFlow;
+      const livePermit=request.competition?Object.freeze({kind:'CURRENT259_PRIVATE_COMPETITION_LIVE'}):undefined;
+      if(livePermit){state.competitionB7=b7;competitionLivePermissions.set(livePermit,state);}
+      const withLive=livePermit?(completion,handle,consume)=>withCompetitionLiveSessions(completion,handle,livePermit,consume):withCurrent259LiveSessions;
+      const withApplication=request.competition?withCompetitionApplications:withCurrent259OwnedApplication;
+      const runCase=request.competition?runCompetition:runCurrent259PaymentCase;
       stage='liveSessions';state.check();
-      await settled(withCurrent259LiveSessions(b7,handle,async liveProof=>{
+      await settled(withLive(b7,handle,async liveProof=>{
        state.check();stage='applicationEnvironment';
        return withCurrent259ApplicationEnvironment(handle,async environment=>{
         state.check();environment.check();stage='ownedApplication';
-        return withCurrent259OwnedApplication(liveProof,handle,controller.signal,async application=>{
+        return withApplication(liveProof,handle,controller.signal,async application=>{
          state.check();environment.check();
-         const inspect=data(application,'inspect'),runtime=data(application,'runtime');
-         need(typeof inspect==='function'&&inspect.call(application).runtime===runtime,'BUSINESS_APPLICATION');
+         const applications=request.competition?application:[application];
+         const coordinates=applications.map(app=>({app,inspect:data(app,'inspect'),runtime:data(app,'runtime')}));
+         const sameApplications=()=>coordinates.every(({app,inspect,runtime})=>typeof inspect==='function'&&
+          data(app,'inspect')===inspect&&data(app,'runtime')===runtime&&inspect.call(app).runtime===runtime);
+         need(sameApplications()&&(!request.competition||coordinates.length===2&&coordinates[0].runtime!==coordinates[1].runtime),'BUSINESS_APPLICATION');
          const business={active:true,claimed:false,application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId})};
          state.business=business;state.businessB7=b7;state.businessLive=liveProof;state.businessApplication=application;state.businessScope=business.scope;
          business.verifyFull=()=>{
           try{state.check();environment.check();need(business.active&&state.business===business&&currentRun===state&&
-           business.handle===handle&&business.b7===b7&&business.liveProof===liveProof&&data(application,'inspect')===inspect&&
-           data(application,'runtime')===runtime&&inspect.call(application).runtime===runtime,'BUSINESS_SCOPE');}
+           business.handle===handle&&business.b7===b7&&business.liveProof===liveProof&&sameApplications(),'BUSINESS_SCOPE');}
           catch(error){business.active=false;revoke(state);throw error;}
          };
          business.check=()=>assertCurrent259PaymentBusinessContinuity(business.continuityToken,handle);
@@ -245,12 +287,14 @@ async function run(args){
          stage='seedAndSelectedCase';
          receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'ISSUED_NOT_YET_CONSUMED',outcome:'UNKNOWN_DO_NOT_RETRY'};
          try{
-          const result=await runCurrent259PaymentCase(application,handle,businessPermit);
+          const result=await runCase(application,handle,businessPermit);
           business.check();need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
           const cancellation=plan.case.scenario==='cancel-commit';
           if(cancellation)need(data(result,'rollbackObserved')===true,'BUSINESS_RESULT');
+          if(request.competition)need(data(result,'competitionObserved')===true&&['finance_staff','comprehensive_director'].includes(data(result,'winner')),'BUSINESS_RESULT');
           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
-           ...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId})};
+           ...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId}),
+           ...(request.competition?{competitionObserved:true,winner:result.winner}:{})};
          }finally{business.active=false;businessPermissions.delete(businessPermit);}
         });
        });
@@ -284,7 +328,7 @@ async function run(args){
 // The fresh-entry predicate above is captured before any dependency load.
 if(require.main===module)queueMicrotask(()=>{
  void run(process.argv.slice(2)).then(result=>{
-  const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
-  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once'].includes(process.argv[2]))process.exit(exit);});
+  const exit=result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
+  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once','--competition-once'].includes(process.argv[2]))process.exit(exit);});
  });
 });

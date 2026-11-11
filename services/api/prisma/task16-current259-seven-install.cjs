@@ -97,6 +97,7 @@ function material(witness){
 }
 function inputOf(lease,view){
  const {completion:roleCompletion,source}=lease;
+ const competition=lease.competition===true;
  need(roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===source.candidateSha&&equal(source,view.source));
  need(hex(roleCompletion.sourceSha,40)&&roleCompletion.runId===view.runId&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(roleCompletion.runId));
  const id=roleCompletion.databaseIdentity;
@@ -106,13 +107,14 @@ function inputOf(lease,view){
  const ordinary=roleCompletion.ordinary;
  need(oid(ordinary?.oid)&&typeof ordinary.name==='string'&&/^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name)&&ordinary.login===true&&ordinary.limit===0&&ordinary.password==='absent');
  const role=name=>{const matches=roleCompletion.roles.filter(r=>r.name===name);
-  need(matches.length===1&&oid(matches[0].oid)&&oid(matches[0].xmin)&&matches[0].login===true&&matches[0].limit===1&&matches[0].password==='scram');
+  const limit=competition&&name==='jg_task01_runtime'?2:1;
+  need(matches.length===1&&oid(matches[0].oid)&&oid(matches[0].xmin)&&matches[0].login===true&&matches[0].limit===limit&&matches[0].password==='scram');
   return matches[0];};
  const runtime=role('jg_task01_runtime'),observer=role('jg_task01_observer');
  need(new Set(['10',ordinary.oid,runtime.oid,observer.oid]).size===4);
  const xmin=String(BigInt(roleCompletion.commitXid)%4294967296n);
  need(runtime.xmin===xmin&&observer.xmin===xmin);
- return {source,id,ordinary,runtime,observer,roleCompletion,material:material(source)};
+ return {source,id,ordinary,runtime,observer,roleCompletion,competition,material:material(source)};
 }
 
 function scopeGuards(input,phase,archiveXid){
@@ -369,6 +371,7 @@ function readResult(result,input,phase,nonce){
 }
 function archiveSevenMaterial(lease,view,nonce){
  const input=inputOf(lease,view);
+ need(!input.competition,'ARCHIVE_EXECUTOR');
  const executor=input.roleCompletion.roles.find(role=>role.name==='jg_c259_outside_executor_owner');
  need(hex(nonce,64)&&executor?.login===false&&oid(executor.oid)&&![input.ordinary.oid,input.runtime.oid,input.observer.oid,'10'].includes(executor.oid));
  const pre=renderCurrent259SevenPreimage(nonce),reference=pre.witnessSql.trim().slice(0,-1);
@@ -440,7 +443,7 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
   check();
   const completion=Object.freeze({status:'CURRENT259_SEVEN_INSTALLED_NOT_ADMISSION',sourceSha:input.roleCompletion.sourceSha,
    runId:input.roleCompletion.runId,containerId:input.roleCompletion.containerId,installXid:committed.installXid,catalogSha256:committed.catalogSha256,nativeAdmission:false});
-  installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion});
+  installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion,competition:input.competition});
   return completion;
  }catch{
   const primary=error(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -452,7 +455,7 @@ function claimCurrent259SevenInstallation(completion,handle){
  need(arguments.length===2&&completion&&!types.isProxy(completion)&&installed.has(completion),'HANDLE');
  const receipt=installed.get(completion);need(receipt.handle===handle,'HANDLE');
  installed.delete(completion);receipt.check();
- const {check,checkContinuity,source,roleCompletion}=receipt;
- return Object.freeze({completion,check,checkContinuity,source,roleCompletion});
+ const {check,checkContinuity,source,roleCompletion,competition}=receipt;
+ return Object.freeze({completion,check,checkContinuity,source,roleCompletion,...(competition?{competition:true}:{})});
 }
 module.exports=Object.freeze({installCurrent259SevenFragments,claimCurrent259SevenInstallation,archiveSevenMaterial});

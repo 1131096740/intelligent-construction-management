@@ -12,7 +12,7 @@ const { current259ClientIdentitySql, parseCurrent259ClientSessions } = require('
 const { renderCurrent259CatalogRead, parseCurrent259CatalogRead } = require('./task16-current259-catalog.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
 
-const receipts = new WeakMap(), impactBoundaries = new WeakMap(), used = new WeakSet();
+const receipts = new WeakMap(), impactBoundaries = new WeakMap(), competitionPairs=new WeakMap(), used = new WeakSet();
 const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
 const METHOD_NAMES = ['$disconnect', '$connect', '$queryRawUnsafe', '$transaction'];
@@ -41,16 +41,33 @@ function verifyCurrent259ImpactFileBoundary(session) {
   // sessions and the old inactive business path retain their original checks.
   impactBoundaries.get(session)?.();
 }
+function assertCurrent259CompetitionLivePair(proofs,handle) {
+  need(arguments.length===2&&competitionPairs.get(proofs)===handle&&proofs.every(proof=>receipts.get(proof)?.handle===handle),'HANDLE');
+  return true;
+}
 
 async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   need(arguments.length === 3 && typeof consume === 'function', 'ARGUMENTS');
+  return withLiveSessions(b7Completion,handle,consume,false);
+}
+async function withCurrent259CompetitionLiveSessions(b7Completion,handle,permit,consume) {
+  need(arguments.length===4&&typeof consume==='function','ARGUMENTS');
+  const issuer=require('./task16-current259-payment-run-authorization.cjs');
+  const claim=Object.getOwnPropertyDescriptor(issuer,'claimCurrent259CompetitionLivePermit')?.value;
+  need(typeof claim==='function'&&claim(permit,handle,b7Completion)===true,'HANDLE');
+  return withLiveSessions(b7Completion,handle,consume,true);
+}
+async function withLiveSessions(b7Completion, handle, consume, competition) {
   const lease = claimCurrent259B7Installation(b7Completion, handle);
+  need((lease.request.identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')===competition,'HANDLE');
   const view = claimCurrent259TechnicalResource(handle);
   need(!used.has(handle), 'REUSED'); used.add(handle);
   const clients = [], resource = view.resource, loader = view.loader, Class = loader.Class;
   let active = true, broken = false, checking = false, closing, resourceClosing;
-  let cleanup = 'DISCONNECTED', resourceCleanup = 'NOT_NEEDED', proof, initialRows, session, ca;
+  let cleanup = 'DISCONNECTED', resourceCleanup = 'NOT_NEEDED', proofs = [], initialRows, ca;
   let methods, initial, businessToken, cancelUsed = false;
+  const activeLanes=new Set();
+  const applicationName=(kind,index)=>'task16_live_'+view.runId.replaceAll('-', '')+'_'+kind+(competition&&kind==='runtime'?(index===1?'_a':'_b'):'');
   const committedRequest = { ...lease.request, phase: 'committed', installXid: b7Completion.installXid };
   const expected = {
     ...Object.fromEntries(['database', 'databaseOid', 'systemIdentifier', 'ownerOid', 'runtimeOid', 'observerOid'].map(key => [key, lease.request.identity[key]])),
@@ -116,11 +133,17 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       throw fail('CONTINUITY');
     }
   }
-  function activateBusinessContinuity(token){
+  function activateBusinessContinuity(token,lane){
     businessIssuer(token,handle);need(!businessToken||businessToken===token,'CONTINUITY');
-    view.activateBusinessContinuity(token);checkContinuity(token);businessToken=token;
+    need(!activeLanes.has(lane),'CONTINUITY');
+    if(!businessToken)view.activateBusinessContinuity(token);
+    checkContinuity(token);businessToken=token;activeLanes.add(lane);
   }
-  function deactivateBusinessContinuity(token){businessIssuer(token,handle);need(businessToken===token,'CONTINUITY');checkContinuity(token);view.deactivateBusinessContinuity(token);businessToken=undefined;}
+  function deactivateBusinessContinuity(token,lane){
+    businessIssuer(token,handle);need(businessToken===token&&activeLanes.has(lane),'CONTINUITY');checkContinuity(token);
+    activeLanes.delete(lane);
+    if(!activeLanes.size){view.deactivateBusinessContinuity(token);businessToken=undefined;}
+  }
   function verifyImpactFiles() {
     if (!businessToken) return;
     try { checkContinuity(businessToken); view.verifyBusinessFiles(businessToken); }
@@ -130,6 +153,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     }
   }
   async function cancelCommit(token, submit) {
+    need(!competition,'CANCEL_SCOPE');
     assertCurrent259CommitCancellationIssuer(token, handle);
     checkContinuity(token);
     need(businessToken === token && !cancelUsed && typeof submit === 'function', 'CANCEL_SCOPE');
@@ -185,7 +209,7 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   }
   async function close() {
     active = false;
-    if (proof) receipts.delete(proof);
+    for(const proof of proofs)receipts.delete(proof);
     if (closing) return closing;
     closing = (async () => {
       for (const entry of clients) {
@@ -238,28 +262,36 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
  a.usename::pg_catalog.text AS "loginRole",a.usesysid::pg_catalog.text AS "loginOid",a.pid,${stamp('a.backend_start')} AS start,
  coalesce(s.ssl,false) AS tls,pg_catalog.host(a.client_addr) AS "clientAddress",a.client_port AS "clientPort"
  FROM pg_catalog.pg_stat_activity a JOIN pg_catalog.pg_database d ON d.oid=a.datid LEFT JOIN pg_catalog.pg_stat_ssl s ON s.pid=a.pid
- WHERE a.pid IN (${ids})) t) AS sessions
+ WHERE a.pid IN (${ids})) t) AS sessions${competition?`,
+ (SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(r.pid,r.application_name) ORDER BY r.pid)
+ FROM pg_catalog.pg_stat_activity r WHERE r.datid=d.oid AND r.usesysid=${expected.runtimeOid}::oid) AS "runtimeLanes"`:''}
  FROM pg_catalog.pg_database d WHERE d.datname=pg_catalog.current_database()) v`;
     const output = await settled(() => methods.execOwnerSql(sql, 'current259-live-independent'));
     need(typeof output?.stdout === 'string' && Buffer.byteLength(output.stdout) <= 1048576);
     const row = JSON.parse(output.stdout.trim());
-    need(row && Reflect.ownKeys(row).length === 11 &&
+    const lanes=competition?[1,3].map(index=>[rows[index].pid,applicationName('runtime',index)]).sort((a,b)=>a[0]-b[0]):null;
+    need(row && Reflect.ownKeys(row).length === (competition?12:11) &&
       ['database', 'databaseOid', 'systemIdentifier', 'ownerOid'].every(key => own(row, key) === expected[key]) &&
       own(row, 'nonce') === nonce && own(row, 'readerRole') === 'jg_task01_owner' && own(row, 'readerOid') === expected.ownerOid &&
       own(row, 'readerTls') === true && Number.isInteger(own(row, 'readerPid')) &&
       row.readerPid > 0 && row.readerPid <= 0x7fffffff && rows.every(r => r.pid !== row.readerPid && r.start !== row.readerStart) &&
       typeof row.readerStart === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(row.readerStart) &&
-      equal(own(row, 'sessions'), projection.slice().sort((a, b) => a.pid - b.pid)), 'INDEPENDENT_IDENTITY');
+      equal(own(row, 'sessions'), projection.slice().sort((a, b) => a.pid - b.pid))&&
+      (!competition||equal(own(row,'runtimeLanes'),lanes)), 'INDEPENDENT_IDENTITY');
   }
-  async function verify(installedOnly = false, sourceContinuityOnly = false) {
+  async function verify(installedOnly = false, sourceContinuityOnly = false, lane=1) {
     try {
       checkLight(); need(!checking, 'CONCURRENT_VERIFY'); checking = true;
       if (!((installedOnly || sourceContinuityOnly) && businessToken)) { view.verifyFull(); checkLight(); }
       const physical = await endpoint(), nonce = randomBytes(32).toString('hex');
-      const indices = installedOnly ? [0, 2] : [0, 1, 2];
+      const indices = installedOnly?[0,2]:!initialRows&&competition?[0,1,2,3]:[0,lane,2];
       const observed = await observe(indices, nonce);
       if (!initialRows) {
-        parseCurrent259ClientSessions(observed, { ...expected, nonce });
+        parseCurrent259ClientSessions(observed.slice(0,3), { ...expected, nonce });
+        if(competition){
+          parseCurrent259ClientSessions([observed[0],observed[3],observed[2]],{...expected,nonce});
+          need(observed[1][0].pid!==observed[3][0].pid&&observed[1][0].start!==observed[3][0].start,'SESSION_CHANGED');
+        }
         initialRows = observed.map(rows => Object.freeze({ ...rows[0] }));
       } else {
         need(observed.every((rows, i) => Array.isArray(rows) && rows.length === 1 &&
@@ -285,12 +317,12 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
     ca = read(resource.caPath, { privateFile: false, maxBytes: 1048576, code: CODE + '_CA' });
     need(ca.identity.uid === process.getuid() && ca.sha256 === initial.tls.caSha256, 'CA');
     const credentials = view.credentials();
-    for (const kind of KINDS) {
+    for (const kind of [...KINDS,...(competition?['runtime']:[])]) {
       checkLight(); view.verifyFull();
       const password = credentials[kind];
       need(typeof password === 'string' && /^[a-f0-9]{96}$/u.test(password));
       const url = new URL(`postgresql://jg_task01_${kind}:${password}@127.0.0.1:${resource.port}/${resource.databaseName}`);
-      for (const [key, val] of Object.entries({ schema: 'public', connection_limit: '1', sslmode: 'require', sslaccept: 'strict', sslcert: resource.caPath, application_name: 'task16_live_' + view.runId.replaceAll('-', '') + '_' + kind, connect_timeout: '5', pool_timeout: '5' })) url.searchParams.set(key, val);
+      for (const [key, val] of Object.entries({ schema: 'public', connection_limit: '1', sslmode: 'require', sslaccept: 'strict', sslcert: resource.caPath, application_name:applicationName(kind,clients.length), connect_timeout: '5', pool_timeout: '5' })) url.searchParams.set(key, val);
       let client;
       try { client = new Class({ datasources: { db: { url: url.toString() } }, log: [] }); }
       catch { cleanup = 'UNKNOWN'; throw fail('CONSTRUCTOR_UNKNOWN'); }
@@ -303,15 +335,21 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
       await settled(() => entry.methods.$connect.call(client));
     }
     await verify();
-    const parsed = parseCurrent259ClientSessions(initialRows.map(row => [row]), { ...expected, nonce: initialRows[0].nonce });
-    session = Object.freeze({ source: lease.request.source, owner: clients[0].client, runtime: clients[1].client, observer: clients[2].client,
+    proofs=(competition?[1,3]:[1]).map(lane=>{
+    const parsed = parseCurrent259ClientSessions([0,lane,2].map(i=>[initialRows[i]]), { ...expected, nonce: initialRows[0].nonce });
+    const session = Object.freeze({ source: lease.request.source, owner: clients[0].client, runtime: clients[lane].client, observer: clients[2].client,
       identity: parsed.identity, endpoint: parsed.endpoint,
       b7: Object.freeze({ profile: 'B7_ORIGINAL', xid: b7Completion.installXid, routineOid: lease.committedProof.raw.reader.oid, bodySha256: lease.committedProof.raw.reader.bodySha256 }),
-      checkLight, checkContinuity, activateBusinessContinuity, deactivateBusinessContinuity, cancelCommit, verifyFull: () => verify(false), verifyRequestBoundary: () => verify(false,true), verifyInstalled259: () => verify(true), close });
-    checkLight(); proof = Object.freeze({ kind: 'CURRENT259_LIVE_SESSIONS' });
+      checkLight, checkContinuity, activateBusinessContinuity:token=>activateBusinessContinuity(token,lane),deactivateBusinessContinuity:token=>deactivateBusinessContinuity(token,lane),
+      cancelCommit, verifyFull: () => verify(false,false,lane), verifyRequestBoundary: () => verify(false,true,lane), verifyInstalled259: () => verify(true,false,lane), close,
+      ...(competition?{competitionLane:lane===1?'a':'b'}:{}) });
+    checkLight(); const proof = Object.freeze({ kind: 'CURRENT259_LIVE_SESSIONS' });
     receipts.set(proof, { handle, session });
     impactBoundaries.set(session, verifyImpactFiles);
-    value = await consume(proof); checkLight();
+    return proof;
+    });
+    if(competition){Object.freeze(proofs);competitionPairs.set(proofs,handle);}
+    value = await consume(competition?proofs:proofs[0]); checkLight();
     await verify();
   } catch {
     hasPrimary = true; broken = true; active = false;
@@ -322,4 +360,4 @@ async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   return value;
 }
 
-module.exports = Object.freeze({ withCurrent259LiveSessions, claimCurrent259LiveSessions, verifyCurrent259ImpactFileBoundary });
+module.exports = Object.freeze({ withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,verifyCurrent259ImpactFileBoundary });

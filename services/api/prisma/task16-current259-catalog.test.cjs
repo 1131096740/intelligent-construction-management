@@ -73,6 +73,18 @@ function observed(phase='before'){
   config:['search_path=pg_catalog'],bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20',xmin:'1000',acl:[['10','10','EXECUTE',false],['10','17000','EXECUTE',false]]};
  return row;
 }
+test('the named competition catalog accepts only the exact runtime connection limit delta',()=>{
+ const row=observed(),comp={...request,identity:{...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}};
+ const parse=(candidate,r)=>api.parseCurrent259CatalogRead(JSON.stringify(candidate),r);
+ assert.throws(()=>parse(row,comp));
+ row.roles.find(role=>role.name==='jg_task01_runtime').connectionLimit=2;
+ assert.throws(()=>parse(row,request));
+ const before=parse(row,comp);
+ assert.match(api.renderCurrent259B7Install({source,identity:comp.identity,nonce:comp.nonce,before}),/CURRENT259_TWO_RUNTIME_LANES/u);
+ row.roles.find(role=>role.name==='jg_task01_observer').connectionLimit=2;
+ assert.throws(()=>parse(row,comp));
+ assert.throws(()=>parse(row,{...comp,identity:{...comp.identity,runtimeProfile:'arbitrary'}}));
+});
 test('current259 accepts the contract scalar read needed by registered execution options',()=>{
  const result=api.parseCurrent259CatalogRead(JSON.stringify(observed()),request);
  assert.equal(result.status,'CURRENT259_B7_CATALOG_MATCHED_NOT_ADMISSION');

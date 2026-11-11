@@ -34,7 +34,8 @@ const logging=Object.freeze({statement:'none',errorStatement:'panic',verbosity:'
  transactionSampleRate:'0',minDurationSample:'-1',debugParse:'off',debugRewritten:'off',debugPlan:'off'});
 const commonRole=Object.freeze({superuser:false,createRole:false,createDb:false,inherit:false,replication:false,bypassRls:false,unlimitedValidity:true});
 const invariantKeys=['ledger','bindings','oldRoleSha256','membershipsSha256','protectedSha256'];
-const roleSpec=([name,login,secret])=>({...commonRole,name,login,limit:login?1:0,password:secret?'scram':'absent'});
+const roleSpec=([name,login,secret],competition)=>({...commonRole,name,login,
+ limit:competition&&name==='jg_task01_runtime'?2:login?1:0,password:secret?'scram':'absent'});
 const proofs=new WeakMap();
 const fault=code=>Object.assign(new Error(`CURRENT259_ROLE_PROVISION_${code}`),{code:`CURRENT259_ROLE_PROVISION_${code}`});
 const need=(test,code)=>{if(!test)throw fault(code);};
@@ -151,7 +152,7 @@ function verifyInstall(row,before,scope){
  const ids=new Set([scope.app.oid,'10']);
  for(let i=0;i<ROLE_SPECS.length;i++){
   const role=state.roles[i];
-  need(equal(omit(role,'oid','xmin'),roleSpec(ROLE_SPECS[i]))&&oid(role.oid)&&!ids.has(role.oid)&&role.xmin===xid32(row.writeXid),'INSTALL');ids.add(role.oid);
+  need(equal(omit(role,'oid','xmin'),roleSpec(ROLE_SPECS[i],scope.competition))&&oid(role.oid)&&!ids.has(role.oid)&&role.xmin===xid32(row.writeXid),'INSTALL');ids.add(role.oid);
  }
  const observer=state.roles.find(r=>r.name==='jg_task01_observer');
  need(equal(state.settings,[{oid:observer.oid,database:'0',config:['default_transaction_read_only=on']}]),'INSTALL');
@@ -163,8 +164,8 @@ function verifyInstall(row,before,scope){
 }
 
 function installSql(scope,before,credentials){
- const read=projection(scope.app.oid,null),expectedRoles=json(ROLE_SPECS.map(roleSpec));
- const changes=ROLE_SPECS.map(([name,login,secret])=>`CREATE ROLE ${name} ${login?'LOGIN':'NOLOGIN'} PASSWORD ${secret?quote(credentials[secret]):'NULL'} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT ${login?1:0};`).join('\n');
+ const read=projection(scope.app.oid,null),specs=ROLE_SPECS.map(spec=>roleSpec(spec,scope.competition)),expectedRoles=json(specs);
+ const changes=ROLE_SPECS.map(([name,login,secret],i)=>`CREATE ROLE ${name} ${login?'LOGIN':'NOLOGIN'} PASSWORD ${secret?quote(credentials[secret]):'NULL'} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT ${specs[i].limit};`).join('\n');
  const loginRoles=ROLE_SPECS.filter(([,login])=>login).map(([name])=>name).join(', ');
  // PostgreSQL samples a transaction when it starts. This dedicated psql
  // backend must disable sampling before BEGIN, then recheck inside it.
@@ -226,6 +227,16 @@ COMMIT;
 
 async function provisionCurrent259Roles(technicalCompletion,handle){
  need(arguments.length===2,'HANDLE');
+ return provision(technicalCompletion,handle,false);
+}
+async function provisionCurrent259CompetitionRoles(technicalCompletion,handle,permit){
+ need(arguments.length===3,'HANDLE');
+ const issuer=require('./task16-current259-payment-run-authorization.cjs');
+ const claim=Object.getOwnPropertyDescriptor(issuer,'claimCurrent259CompetitionRolePermit');
+ need(claim&&Object.hasOwn(claim,'value')&&typeof claim.value==='function'&&claim.value(permit,handle,technicalCompletion)===true,'HANDLE');
+ return provision(technicalCompletion,handle,true);
+}
+async function provision(technicalCompletion,handle,competition){
  const supply=claimCurrent259TechnicalSupply(technicalCompletion,handle);
  let phase='BEFORE';
  try{
@@ -239,7 +250,7 @@ async function provisionCurrent259Roles(technicalCompletion,handle){
   const {profile}=source;
   need(profile.profile==='TASK16_CURRENT259_SOURCE_V1'&&profile.candidateSha===source.candidateSha&&profile.sealSha256===source.sourceSealSha256&&
    profile.ledgerSha256===LEDGER_SHA&&profile.prefix256Sha256===PREFIX_SHA&&Array.isArray(profile.ledger)&&profile.ledger.length===259,'HANDLE');
-  const scope={identity,app,ledger:profile.ledger};
+  const scope={identity,app,ledger:profile.ledger,competition};
   const run=async(sql,label)=>{check();const value=await view.resource.execOwnerSql(sql,`current259-roles-${label}`);check();return observed(value?.stdout);};
   const before=await run(readSql(app.oid),'before');verifyBefore(before,scope);
   const credentials=view.credentials();
@@ -253,7 +264,7 @@ async function provisionCurrent259Roles(technicalCompletion,handle){
   const result=freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:view.runId,containerId:view.resource.containerId,
    databaseIdentity:{...identity},ordinary:{...state.app},roles:state.roles,commitXid:staged.writeXid,
    databaseAcl:{before:before.state.databases,after:state.databases,effective:committed.access},executionAllowed:false,nativeAdmission:false});
-  proofs.set(result,{handle,source,check,checkContinuity});return result;
+  proofs.set(result,{handle,source,check,checkContinuity,competition});return result;
  }catch{
   const error=fault(phase);
   try{await closeCurrent259OwnedResource(handle);}catch{Object.defineProperty(error,'resourceCleanup',{value:Object.freeze({status:'UNKNOWN'}),enumerable:true});}
@@ -263,6 +274,7 @@ async function provisionCurrent259Roles(technicalCompletion,handle){
 function claimCurrent259ProvisionedRoles(result,handle){
  need(arguments.length===2&&result&&!types.isProxy(result)&&proofs.has(result),'HANDLE');
  const proof=proofs.get(result);need(proof.handle===handle,'HANDLE');proofs.delete(result);proof.check();
- return Object.freeze({source:proof.source,completion:result,check:proof.check,checkContinuity:proof.checkContinuity});
+ return Object.freeze({source:proof.source,completion:result,check:proof.check,checkContinuity:proof.checkContinuity,
+  ...(proof.competition?{competition:true}:{})});
 }
-module.exports=Object.freeze({provisionCurrent259Roles,claimCurrent259ProvisionedRoles});
+module.exports=Object.freeze({provisionCurrent259Roles,provisionCurrent259CompetitionRoles,claimCurrent259ProvisionedRoles});

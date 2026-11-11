@@ -21,28 +21,43 @@ function fixture(t,options={}){
  session.checkLight=()=>{assert.ok(sessionActive&&resourceActive);};
  session.close=async()=>{calls.push('sessions-close');sessionActive=false;};
  session.verifyFull=async()=>{session.checkLight();calls.push('sessions-full');await options.onFull?.();};
- const providers=new Map(),token=Symbol('actual registered impact');
+ const providers=new Map(),token=Symbol('actual registered impact'),serverReads=[0,0],providerReads=[0,0];
+ const secondProof=Object.freeze({}),pair=Object.freeze([proof,secondProof]);
  const bundle={Task16RegisteredApplicationModule:class {},PrismaService:class {},
   configureApiSecurity(){calls.push('security');},configureProjectionExportJson(){calls.push('projection');},apiJsonReplacer(){},
   createApiValidationPipe(){return 'validation';},async listenApi(_app,port,host){calls.push('listen');assert.equal(port,0);assert.equal(host,'127.0.0.1');},
   Task16ImpactReaderToken:token};
- const app={async close(){calls.push('app-close');await options.onClose?.();},get(key){return providers.get(key);},
-  getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
-  enableCors(){calls.push('cors');},useGlobalPipes(){calls.push('validation');},
-  async init(){calls.push('init');await options.onInit?.();},
-  getHttpServer(){return {listening:true,address(){return {address:'127.0.0.1',family:'IPv4',port:52124};}};}};
- const server=app.getHttpServer();app.getHttpServer=()=>server;
- const moduleHandle={async close(){calls.push('module-close');},get(key){return providers.get(key);},createNestApplication(){calls.push('create-app');return app;}};
- const builder={overrideProvider(key){calls.push('override');return {useValue(value){providers.set(key,value);if(key===token)reader=value;return builder;}};},async compile(){calls.push('compile');await options.onCompile?.();return moduleHandle;}};
+ function framework(lane,entries){
+  const server={listening:true,address(){return {address:'127.0.0.1',family:'IPv4',port:52124+lane};}};
+  const app={async close(){calls.push('app-close');await options.onClose?.();},get(key){providerReads[lane]++;return entries.get(key);},
+   getHttpAdapter(){return {getInstance(){return {set(){calls.push('json');}};}};},
+   enableCors(){calls.push('cors');},useGlobalPipes(){calls.push('validation');},
+   async init(){calls.push('init');await options.onInit?.();},
+   getHttpServer(){serverReads[lane]++;return server;}};
+  const moduleHandle={async close(){calls.push('module-close');},get(key){return entries.get(key);},createNestApplication(){calls.push('create-app');return app;}};
+  const builder={overrideProvider(key){calls.push('override');return {useValue(value){entries.set(key,value);if(key===token)reader=value;return builder;}};},async compile(){calls.push('compile');await options.onCompile?.();return moduleHandle;}};
+  return {builder,server,entries};
+ }
+ const firstApp=framework(0,providers),secondApp=framework(1,new Map());
+ const otherSession={...session,runtime:options.competitionModule?runtimeModel.fixture().session.runtime:null,competitionLane:'b'};
+ const leases=new Set();
+ if(options.competitionModule)for(const [lane,current]of [session,otherSession].entries()){
+  current.competitionLane=lane===0?'a':'b';
+  current.activateBusinessContinuity=value=>{options.businessGuard(value,handle);leases.add(lane);};
+  current.deactivateBusinessContinuity=value=>{options.businessGuard(value,handle);leases.delete(lane);};
+  current.checkContinuity=value=>{options.businessGuard(value,handle);current.checkLight();assert.ok(leases.has(lane));};
+ }
+ let built=0;
  const Class=function OriginalSdk(){throw new Error('native client construction forbidden in app model');};
  const loader={Class,check(){assert.ok(resourceActive);},loadApplicationModules(request){
   calls.push('load');assert.deepEqual(request.map(row=>row.name),['application','database','security','projection','json','validation','listen']);
   options.onLoad?.(request);return bundle;
- },createTestingModule(metadata){calls.push('builder');assert.deepEqual(metadata,{imports:[bundle.Task16RegisteredApplicationModule]});return builder;}};
+ },createTestingModule(metadata){calls.push('builder');assert.deepEqual(metadata,{imports:[bundle.Task16RegisteredApplicationModule]});return (built++===0?firstApp:secondApp).builder;}};
  const view={loader,source:{candidateSha:session.source.candidateSha,sourceSealSha256:session.source.sealSha256},resource:{caPath:path.join(directory,'tls-private/ca.crt')},
-  check(){assert.ok(resourceActive);},verifyFull(){assert.ok(resourceActive);}};
+  check(){assert.ok(resourceActive);},checkLifetime(){assert.ok(resourceActive);},verifyFull(){assert.ok(resourceActive);}};
  const imports={
-  './task16-current259-live-sessions.cjs':{claimCurrent259LiveSessions(value,provided){
+  './task16-current259-live-sessions.cjs':{assertCurrent259CompetitionLivePair(value,provided){return !!options.competitionModule&&value===pair&&provided===handle;},claimCurrent259LiveSessions(value,provided){
+   if(options.competitionModule&&provided===handle&&value===secondProof&&claimed)return otherSession;
    if(value!==proof||provided!==handle||claimed)throw new Error('CURRENT259_LIVE_SESSIONS_HANDLE');
    claimed=true;return session;
   }},
@@ -55,11 +70,12 @@ function fixture(t,options={}){
  const module={exports:{}};
  const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
  if(options.paymentModule)imports['./task16-current259-payment-case.cjs']=options.paymentModule;
+ if(options.competitionModule)imports['./task16-current259-payment-competition.cjs']=options.competitionModule;
  const localRequire=name=>imports[name]??require(name);
  localRequire.cache=options.paymentModule?{...require.cache,[paymentFile]:{exports:options.paymentModule}}:require.cache;
  new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-application-factory.cjs'),'utf8'))(localRequire,module,__dirname);
  return {...model,api:module.exports,proof,handle,session,view,loader,calls,environment,directory,resourceCloses:()=>resourceCloses,
-  reader:()=>reader,providers,token,claimed:()=>claimed};
+  reader:()=>reader,providers,token,claimed:()=>claimed,pair,serverReads,providerReads,apps:[firstApp,secondApp],bundle};
 }
 
 
@@ -259,4 +275,33 @@ test('abort raised by HTTP close cannot reenter cleanup or suppress UNKNOWN',asy
  });
  assert.equal(f.calls.filter(call=>call==='app-close').length,1);
  assert.equal(f.calls.filter(call=>call==='sessions-close').length,1);assert.equal(f.resourceCloses(),1);
+});
+
+for(const fault of [null,'server-address','runtime-provider','token'])test('competition pair uses the fixed lightweight lane check and still rejects '+(fault??'no drift'),async t=>{
+ const scopeToken=Object.freeze({});let f,finished=false;
+ f=fixture(t,{
+  businessGuard(token,handle){assert.equal(handle,f.handle);assert.equal(token,scopeToken);},
+  competitionModule:{executeCurrent259PaymentCompetition(apps,leases,permit){
+   assert.equal(permit,scopeToken);
+   for(const lease of leases)lease.activateContinuity(fault==='token'?{}:scopeToken);
+   const reads=[...f.serverReads,...f.providerReads];
+   if(fault==='server-address')f.apps[1].server.address=()=>({address:'127.0.0.1',family:'IPv4',port:52555});
+   for(const lease of leases)lease.check();
+   assert.deepEqual([...f.serverReads,...f.providerReads],reads);
+   if(fault==='runtime-provider')f.apps[1].entries.set(f.bundle.PrismaService,{});
+   for(const app of apps)assert.equal(app.inspect().runtime,app.runtime);
+   assert.ok(f.serverReads.every((count,index)=>count>reads[index]));
+   for(const lease of leases)lease.finishContinuity(scopeToken);
+   finished=true;
+  }}
+ });
+ const signal=new AbortController().signal;
+ const run=f.api.withCurrent259OwnedApplicationPair(f.pair,f.handle,signal,
+  apps=>f.api.consumeCurrent259PaymentCompetition(apps,f.handle,scopeToken));
+ if(fault)await assert.rejects(run);
+ else await run;
+ assert.equal(finished,!fault);
+ const closeIndices=f.calls.flatMap((call,index)=>call==='app-close'?[index]:[]);
+ assert.equal(closeIndices.length,2);
+ if(fault)assert.ok(closeIndices.every(index=>index<f.calls.indexOf('sessions-close')));
 });
