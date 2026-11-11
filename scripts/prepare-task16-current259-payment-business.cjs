@@ -8,7 +8,8 @@ const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runt
 const PURPOSE='current259-payment-owned-seed-and-case';
 const ENTRY='services/api/prisma/task16-current259-payment-run-authorization.cjs';
 const SCENARIOS=Object.freeze({normal:Object.freeze({scenario:'normal',caseId:'registered.null-cross-company.commit',handler:'runRegisteredNullCrossCompanyCommit'}),
- 'response-loss':Object.freeze({scenario:'response-loss',caseId:'registered.null-cross-company.response-loss',handler:'runRegisteredNullCrossCompanyResponseLoss'})});
+ 'response-loss':Object.freeze({scenario:'response-loss',caseId:'registered.null-cross-company.response-loss',handler:'runRegisteredNullCrossCompanyResponseLoss'}),
+ 'cancel-commit':Object.freeze({scenario:'cancel-commit',caseId:'registered.null-cross-company.cancel-commit',handler:'runRegisteredNullCrossCompanyCommitCancellation'})});
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const need=ok=>{if(!ok)throw Object.assign(new Error('PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'),{code:'PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'});};
 function fixed(value,keys){need(value&&!types.isProxy(value)&&Object.getPrototypeOf(value)===Object.prototype&&Reflect.ownKeys(value).length===keys.length);return Object.fromEntries(keys.map(k=>{const d=Object.getOwnPropertyDescriptor(value,k);need(d&&Object.hasOwn(d,'value'));return[k,d.value];}));}
@@ -26,12 +27,15 @@ function dates(scenario,paidAt,openingDate){
  need(openingDate<=paidAt&&paidAt<=today);
  return {...SCENARIOS[scenario],paidAt,openingDate};
 }
-function scope(installation){return {...installation.scope,stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','selectedCase','ownedCleanup'],
+function scope(installation,selected){const cancellation=selected.scenario==='cancel-commit';return {...installation.scope,stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','selectedCase','ownedCleanup'],
  applications:true,environmentPreparation:true,fixtures:true,businessWrites:true,liveSessionAdmission:false,financialAcceptance:false,
- seedPostCount:3,registrationPostCount:2,seedRoutes:['POST /auth/login','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
- caseRoutes:['GET /payment-executions/:paymentId/registration-options','POST /payment-executions/:paymentId/registrations (initial)','POST /payment-executions/:paymentId/registrations (same-key replay)','GET /payment-executions/results/:idempotencyKey'],
+ seedPostCount:3,registrationPostCount:cancellation?1:2,seedRoutes:['POST /auth/login','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
+ caseRoutes:['GET /payment-executions/:paymentId/registration-options','POST /payment-executions/:paymentId/registrations (initial)',
+  ...(cancellation?[]:['POST /payment-executions/:paymentId/registrations (same-key replay)','GET /payment-executions/results/:idempotencyKey'])],
  ownerWrites:'ONE_FIXED_APPROVED_STATE_FIXTURE_TRANSACTION',observer:'FIXED_REPEATABLE_READ_READ_ONLY_CANONICAL_SNAPSHOT',
- approvalPath:false,commitFaults:false,multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};}
+ approvalPath:false,commitFaults:cancellation?'CANCEL_EXACT_COMMIT_ONCE':false,
+ ...(cancellation?{commitCancellation:{owner:'ONE_FIXED_LOCK_TRANSACTION_AND_BOUNDED_READ_ONLY_READY',httpTimeoutMs:5000,readyBudgetMs:5000,waitSeconds:12,settleSeconds:3,automaticRetry:false,disconnect:false}}:{}),
+ multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};}
 function capture(file,expected){const data=read(file,{privateFile:true,maxBytes:512*1024,collect:true,...(expected?{expectedIdentity:expected}:{}),code:'PAYMENT_BUSINESS_PLAN_FILE'});need(data.identity.uid===process.getuid());return data;}
 function writeNew(file,bytes){parent(file);let fd;try{fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{if(fd!==undefined)fs.closeSync(fd);}const dir=fs.openSync(path.dirname(file),fs.constants.O_RDONLY);try{fs.fsyncSync(dir);}finally{fs.closeSync(dir);}}
 function prepareCurrent259PaymentBusinessPlan(options){
@@ -40,7 +44,7 @@ function prepareCurrent259PaymentBusinessPlan(options){
  const sidecar=o.output+'.installation.json';parent(sidecar);
  const installed=base.prepareCurrent259PaymentInstallPlan({runRoot:o.runRoot,daemonId:o.daemonId,output:sidecar});
  const captured=base.readCurrent259PaymentInstallPlan(sidecar,installed.sha256);
- const raw={schemaVersion:1,purpose:PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:scope(captured.plan)};
+ const raw={schemaVersion:1,purpose:PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:scope(captured.plan,selected)};
  need(equal(parent(o.output),parentIdentity));const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');writeNew(o.output,bytes);
  return Object.freeze({status:'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
 }
@@ -51,7 +55,7 @@ function readCurrent259PaymentBusinessPlan(file,digest){
  const sidecar=fixed(raw.installation,['path','sha256','identity','parentIdentity']);need(sidecar.path===file+'.installation.json'&&equal(parent(sidecar.path),sidecar.parentIdentity));
  const side=capture(sidecar.path,sidecar.identity);need(side.sha256===sidecar.sha256);
  const original=base.readCurrent259PaymentInstallPlan(sidecar.path,sidecar.sha256);
- const selected=fixed(raw.case,['scenario','caseId','handler','paidAt','openingDate']);need(equal(selected,dates(selected.scenario,selected.paidAt,selected.openingDate))&&equal(raw.scope,scope(original.plan)));
+ const selected=fixed(raw.case,['scenario','caseId','handler','paidAt','openingDate']);need(equal(selected,dates(selected.scenario,selected.paidAt,selected.openingDate))&&equal(raw.scope,scope(original.plan,selected)));
  const plan=freeze({...original.plan,purpose:PURPOSE,entry:ENTRY,installation:sidecar,case:selected,scope:raw.scope});
  const info=freeze({path:file,sha256:digest,identity:data.identity,parentIdentity});
  return Object.freeze({plan,file:info});

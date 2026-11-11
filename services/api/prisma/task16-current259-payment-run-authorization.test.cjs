@@ -70,7 +70,8 @@ function fixture(t,options={}){
    assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(saved.sha256));
    options.onBusiness?.({api:module.exports,permit,application,handle,lease,s});
    if(Object.hasOwn(options,'caseFailure'))throw options.caseFailure;
-   lease.check();return {caseId:lease.scope.caseId,passed:true,executionId:'public-execution',rootId:'public-root'};
+   lease.check();return {caseId:lease.scope.caseId,passed:true,...(options.scenario==='cancel-commit'
+    ?{rollbackObserved:true}:{executionId:'public-execution',rootId:'public-root'})};
   }};
  }
 

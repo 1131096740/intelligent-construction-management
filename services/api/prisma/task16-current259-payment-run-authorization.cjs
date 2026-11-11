@@ -43,10 +43,11 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
   }});
  }catch(error){revoke(entry||currentRun);throw error;}
 }
-function assertCurrent259PaymentBusinessContinuity(token,handle){
+function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario){
  const entry=token&&!types.isProxy(token)&&businessContinuities.get(token),state=currentRun;
  try{
-  need(arguments.length===2&&entry&&entry===state?.business&&entry.active&&entry.claimed&&entry.handle===handle&&state.handle===handle&&
+  const scenarioMatches=arguments.length===2||arguments.length===3&&expectedScenario==='cancel-commit'&&entry?.scope.scenario===expectedScenario;
+  need(scenarioMatches&&entry&&entry===state?.business&&entry.active&&entry.claimed&&entry.handle===handle&&state.handle===handle&&
    state.active&&!state.controller.signal.aborted&&Date.now()<=state.endAt&&state.source===entry.source&&
    state.checkedBuild===entry.build&&state.businessB7===entry.b7&&state.businessLive===entry.liveProof&&state.businessApplication===entry.application&&state.businessScope===entry.scope&&state.view.loader===entry.loader&&data(state.view,'checkLifetime')===entry.lifetime,'BUSINESS_CONTINUITY');
   importsCheck();state.checkedInputs();entry.lifetime.call(state.view);
@@ -157,6 +158,7 @@ async function run(args){
   // Capture the fixed business closure before the first installation await,
   // never adopt a cache/export replacement after B7 has already been written.
   if(request.business)original('./task16-current259-business-continuity.cjs',['captureCurrent259BusinessIssuer']).captureCurrent259BusinessIssuer();
+  if(request.business&&plan.case.scenario==='cancel-commit')original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
   businessFlow=request.business?Object.freeze({
    withCurrent259LiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259LiveSessions']).withCurrent259LiveSessions,
    withCurrent259ApplicationEnvironment:original('./task16-current259-application-environment.cjs',['withCurrent259ApplicationEnvironment']).withCurrent259ApplicationEnvironment,
@@ -245,8 +247,10 @@ async function run(args){
          try{
           const result=await runCurrent259PaymentCase(application,handle,businessPermit);
           business.check();need(business.claimed&&result.caseId===plan.case.caseId&&result.passed===true,'BUSINESS_RESULT');
+          const cancellation=plan.case.scenario==='cancel-commit';
+          if(cancellation)need(data(result,'rollbackObserved')===true,'BUSINESS_RESULT');
           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
-           executionId:result.executionId,rootId:result.rootId};
+           ...(cancellation?{rollbackObserved:true}:{executionId:result.executionId,rootId:result.rootId})};
          }finally{business.active=false;businessPermissions.delete(businessPermit);}
         });
        });

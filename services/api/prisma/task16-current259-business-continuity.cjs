@@ -28,15 +28,18 @@ function captureCurrent259BusinessIssuer(){
   original=Object.freeze({issuer,main,exports,exportsDescriptor:Object.freeze(exportsDescriptor),filename:Object.freeze(filename),descriptor:Object.freeze(descriptor)});
  }catch(error){broken=true;throw error;}
 }
-function assertCurrent259BusinessIssuer(token,handle){
+function assertIssuer(token,handle,commitCancellation){
  try{
   need(original&&!broken);const {issuer,main,exports,descriptor}=original;
   const cache=ownData(require,'cache').value;
   need(ownData(require,'main').value===main&&ownData(cache,FILE).value===issuer&&sameDescriptor(ownData(main,'filename'),original.filename)&&sameDescriptor(ownData(issuer,'exports'),original.exportsDescriptor));
   need(sameDescriptor(ownData(exports,'assertCurrent259PaymentBusinessContinuity'),descriptor));
-  need(descriptor.value(token,handle)===true);return true;
+  const admitted=commitCancellation?descriptor.value(token,handle,'cancel-commit'):descriptor.value(token,handle);
+  need(admitted===true);return true;
  }catch(error){broken=true;throw error;}
 }
+function assertCurrent259BusinessIssuer(token,handle){return assertIssuer(token,handle,false);}
+function assertCurrent259CommitCancellationIssuer(token,handle){return assertIssuer(token,handle,true);}
 function checkCurrent259FileIdentity(file,expected){
  checkFdMethods();need(typeof file==='string'&&path.isAbsolute(file)&&fs.realpathSync(file)===file&&expected&&!types.isProxy(expected));
  const keys=Object.keys(expected),big=keys.includes('mtimeNs');
@@ -49,4 +52,4 @@ function checkCurrent259FileIdentity(file,expected){
  try{need(matches(fs.fstatSync(fd,{bigint:big}))&&matches(fs.lstatSync(file,{bigint:big})));}finally{Reflect.apply(fdClose.value,fs,[fd]);}
  return true;
 }
-module.exports=Object.freeze({captureCurrent259BusinessIssuer,assertCurrent259BusinessIssuer,checkCurrent259FileIdentity});
+module.exports=Object.freeze({captureCurrent259BusinessIssuer,assertCurrent259BusinessIssuer,assertCurrent259CommitCancellationIssuer,checkCurrent259FileIdentity});

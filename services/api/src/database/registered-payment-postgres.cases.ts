@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
 import { assertRegisteredPgConnectedRoles, registeredPgHttp } from "./registered-payment-postgres.fixture";
 import type { PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
@@ -24,7 +25,7 @@ function check(condition: unknown, code: string): asserts condition {
   if (!condition) throw new Error(code);
 }
 
-async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity) {
+async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false) {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
@@ -37,8 +38,9 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
   const allocations = await checked(() => tx.registeredFundPaymentAllocation.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true, accountId: true, sourceBatchId: true, amountCents: true } }));
   const events = await checked(() => tx.registeredPaymentEvent.findMany({ where: { executionId: { in: executionIds } }, select: { executionId: true } }));
   const roots = await checked(() => tx.interEntityRelationshipEntry.findMany({ where: { paymentExecutionId: { in: executionIds } }, select: { id: true, paymentExecutionId: true, sourceType: true, entryKind: true, direction: true, status: true, originalDebtorCompanyId: true, creditorCompanyId: true, amountCents: true, projectId: true } }));
-  const facts = await checked(() => tx.operatingFact.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: { in: executionIds } }, select: { id: true } }));
-  const impacts = await checked(() => tx.operatingImpactEntry.findMany({ where: { sourceType: "payment_execution", sourceBusinessId: { in: executionIds } }, select: { id: true } }));
+  const projection = { sourceType: "payment_execution", ...(isolatedPaymentScope ? {} : { sourceBusinessId: { in: executionIds } }) };
+  const facts = await checked(() => tx.operatingFact.findMany({ where: projection, select: { id: true } }));
+  const impacts = await checked(() => tx.operatingImpactEntry.findMany({ where: projection, select: { id: true } }));
   const audits = await checked(() => tx.auditLog.findMany({ where: { businessType: "payment_request", businessId: ids.payment, action: "payment.execution.record" }, select: { actorUserId: true, metadata: true } }));
   // Independent amounts come from the real immutable opening + canonical
   // postings, never the response or the application balance helper.
@@ -55,14 +57,14 @@ async function snapshot(tx: Prisma.TransactionClient, fixture: PreparedRegistere
   return { request, settlement, executions, funding, allocations, events, roots, facts, impacts, audits, balanceA: accountAmount(openingA), balanceB: accountAmount(openingB) };
 }
 
-async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity) {
+async function observe(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture, continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false) {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
   return context.observer.$transaction(async tx => {
     const setReadOnly = tx.$executeRawUnsafe;
     await checked(() => setReadOnly.call(tx, "SET TRANSACTION READ ONLY"));
-    return snapshot(tx, fixture, continuity);
+    return snapshot(tx, fixture, continuity, isolatedPaymentScope);
   }, { isolationLevel: "RepeatableRead" });
 }
 
@@ -77,16 +79,20 @@ export function runRegisteredNullCrossCompanyResponseLoss(context: RegisteredPgE
   return runCrossCompanyCase(context, fixture, continuity, "response-loss");
 }
 
-async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
-  continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
+async function prepareCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
+  continuity?: RegisteredPgSeedContinuity, isolatedPaymentScope = false) {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   light();
   const identity = await checked(() => assertRegisteredPgConnectedRoles(context, continuity));
   const { plan } = fixture;
   const { ids } = plan;
-  const before = await checked(() => observe(context, fixture, continuity));
+  const before = await checked(() => observe(context, fixture, continuity, isolatedPaymentScope));
   check(before.executions.length === 0 && before.roots.length === 0 && before.request.approvedAmountCents === 10000n && before.request.paidAmountCents === 0n && before.settlement.payableAmountCents === 10000n && before.settlement.paidAmountCents === 0n && before.balanceA === "100.0000" && before.balanceB === "100.0000", "PG_CASE_BEFORE_STATE");
+  if (isolatedPaymentScope) {
+    check([before.funding, before.allocations, before.events, before.audits, before.facts, before.impacts].every(rows => rows.length === 0),
+      "PG_CASE_CANCEL_BEFORE_STATE");
+  }
   const optionsResponse = await checked(() => registeredPgHttp(context, `/payment-executions/${ids.payment}/registration-options`, "GET", undefined, fixture.accessToken, continuity));
   const options = optionsResponse.body as { expectedPaymentUpdatedAt?: unknown; remainingAmountCents?: unknown; accounts?: Array<{ scopeKey: string; eligible: boolean }> };
   check(optionsResponse.status === 200 && typeof options.expectedPaymentUpdatedAt === "string" && options.remainingAmountCents === "10000" && options.accounts?.some(account => account.scopeKey === `company:${ids.companyB}` && account.eligible), "PG_CASE_PUBLIC_OPTIONS");
@@ -100,6 +106,33 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
   };
   const registration = `/payment-executions/${ids.payment}/registrations`;
   const submit = (transport = continuity) => registeredPgHttp(context, registration, "POST", command, fixture.accessToken, transport);
+  return { checked, identity, before, submit };
+}
+
+/** The owned case executor provides the one-use commit cancellation gate. */
+export async function runRegisteredNullCrossCompanyCommitCancellation(context: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgFixture, continuity: RegisteredPgSeedContinuity,
+  cancelCommit: (submit: () => Promise<void>) => Promise<void>) {
+  const { checked, identity, before, submit } = await prepareCrossCompanyCase(context, fixture, continuity, true);
+  let submitted = false;
+  let status: number | undefined;
+  await checked(() => cancelCommit(async () => {
+    check(!submitted, "PG_CASE_CANCEL_DUPLICATE_POST");
+    submitted = true;
+    status = (await checked(() => submit())).status;
+  }));
+  const after = await checked(() => observe(context, fixture, continuity, true));
+  check(status === 409 || (status !== undefined && status >= 500 && status <= 599), "PG_CASE_CANCEL_HTTP_STATUS");
+  check(isDeepStrictEqual(after, before), "PG_CASE_CANCEL_LEDGER_CHANGED");
+  return { caseId: "registered.null-cross-company.cancel-commit", database: identity.database,
+    observerPid: identity.observerPid, passed: true as const, rollbackObserved: true as const };
+}
+
+async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixture: PreparedRegisteredPgFixture,
+  continuity: RegisteredPgSeedContinuity | undefined, scenario: "commit" | "response-loss") {
+  const { checked, identity, submit } = await prepareCrossCompanyCase(context, fixture, continuity);
+  const { plan } = fixture;
+  const { ids } = plan;
   if (scenario === "response-loss") {
     check(continuity?.assertHttpRequest, "PG_CASE_RESPONSE_LOSS_REQUIRES_OWNED_TRANSPORT");
     const dropped = new Error("PG_CASE_RESPONSE_LOST_AFTER_UPSTREAM_HEADERS");
