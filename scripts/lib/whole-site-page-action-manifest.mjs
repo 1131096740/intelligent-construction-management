@@ -18444,19 +18444,240 @@ function directRegistrationCoordinateProof(call, symbols, context) {
   const ast = context.asts.get(DIRECT_REGISTRATION_COORDINATES);
   if (!ast) return false;
   const target = buildSymbolContext(ast, DIRECT_REGISTRATION_COORDINATES, context.sourceFileSet);
+  const stableBinding = name => {
+    const bindings = topLevelScopeVariables(target.scopeManager, name);
+    return bindings.length === 1 && !bindings[0].references.some(reference => reference.isWrite() && !reference.init)
+      ? bindings[0] : null;
+  };
   const definition = name => {
-    const [binding] = topLevelScopeVariables(target.scopeManager, name);
+    const binding = stableBinding(name);
     return binding && uniqueIndexedNode(target.definitionsByBinding, binding);
   };
+  // Prove both saved-source protocols all the way to the shared coordinate guard.
+  // Checking only the final state test would allow an early success or a substituted parser.
+  const validators = {
+    isDirectSignedDay: `
+      function isDirectSignedDay(value: string): boolean {
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/u.test(value) || value.length !== 10) return false;
+        const year = Number(value.slice(0, 4));
+        const month = Number(value.slice(5, 7));
+        const day = Number(value.slice(8, 10));
+        if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+        const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const monthLengths = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return day <= monthLengths[month - 1]!;
+      }
+    `,
+    record: `
+      function record(value: unknown): Record<string, unknown> | null {
+        return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+      }
+    `,
+    isLocator: `
+      function isLocator(value: unknown): value is DirectPartyLocator | null {
+        if (value === null) return true;
+        const locator = record(value);
+        return Boolean(locator && Object.keys(locator).length === 2 && typeof locator.roleKey === "string" &&
+          roleKeys.includes(locator.roleKey) && Number.isSafeInteger(locator.displayOrder) && Number(locator.displayOrder) >= 0);
+      }
+    `,
+    directSigningMarker: `
+      function directSigningMarker(value: unknown): DirectSigningMarker | null {
+        const marker = record(value);
+        if (!marker || Object.keys(marker).length !== 7 || marker.protocolVersion !== 1 ||
+          marker.source !== "direct_signed" || marker.relationship !== "outside" ||
+          !(marker.signedOn === null || typeof marker.signedOn === "string") ||
+          !isLocator(marker.enterpriseParty) || !isLocator(marker.counterpartyParty) ||
+          !(marker.fixedPaymentTermsVersionId === null || typeof marker.fixedPaymentTermsVersionId === "string" && marker.fixedPaymentTermsVersionId.length > 0)) return null;
+        return marker as unknown as DirectSigningMarker;
+      }
+    `,
+    nonempty: `
+      function nonempty(value: unknown): value is string {
+        return typeof value === "string" && value.trim().length > 0;
+      }
+    `,
+    upwardPosition: `
+      function upwardPosition(value: unknown): value is NonNullable<UpwardSigningMarker["companyParty"]> {
+        const position = record(value);
+        return Boolean(position && Object.keys(position).length === 2 && position.displayOrder === 0 &&
+          (position.roleKey === "party_a" || position.roleKey === "party_b"));
+      }
+    `,
+    upwardSigningMarker: `
+      function upwardSigningMarker(value: unknown): UpwardSigningMarker | null {
+        const marker = record(value);
+        if (!marker || Object.keys(marker).length !== 8 || marker.protocolVersion !== 2 || marker.source !== "direct_signed" ||
+          marker.relationship !== "upward" || !(marker.signedOn === null || typeof marker.signedOn === "string") ||
+          !((marker.enterpriseParty === null && marker.companyParty === null) ||
+            (upwardPosition(marker.enterpriseParty) && upwardPosition(marker.companyParty) && marker.enterpriseParty.roleKey !== marker.companyParty.roleKey)) ||
+          !(marker.companyParticipationId === null || nonempty(marker.companyParticipationId)) ||
+          !(marker.fixedPaymentTermsVersionId === null || nonempty(marker.fixedPaymentTermsVersionId))) return null;
+        return marker as unknown as UpwardSigningMarker;
+      }
+    `,
+    upwardInputDetails: `
+      function upwardInputDetails(input: unknown) {
+        const q = record(record(input)?.Q);
+        const subjects = record(q?.subjects);
+        const enterprise = record(subjects?.enterprise);
+        const company = record(subjects?.company);
+        return { q, enterprise, company };
+      }
+    `,
+    upwardInputState: `
+      function upwardInputState(source: Record<string, unknown>, contractId: string, versionId: string, revision: number, projectId: string): DirectInputState | null {
+        if (source.protocolVersion !== 2 || source.sourceKind !== "upward_direct_signed_pending") return null;
+        if (source.state === "unavailable") return source.sourceRevision === null && source.Q === null && source.inputSha256 === null ? "unavailable" : null;
+        if (source.sourceRevision !== revision || !Number.isSafeInteger(revision) || revision < 1) return null;
+        if (source.state === "incomplete") return source.Q === null && source.inputSha256 === null ? "incomplete" : null;
+        const { q, enterprise, company } = upwardInputDetails(source);
+        const locator = record(q?.locator);
+        const kind = record(q?.source);
+        const number = record(q?.contract)?.originalSignedNumber;
+        if (source.state !== "complete" || typeof source.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(source.inputSha256) ||
+          q?.inputProtocolVersion !== 2 || kind?.kind !== "direct_signed" || kind.relationship !== "upward" ||
+          locator?.contractId !== contractId || locator.contractVersionId !== versionId || locator.projectId !== projectId ||
+          locator.draftRevision !== revision || locator.changeType !== "original" || locator.versionNo !== 1 ||
+          !enterprise || enterprise.projectId !== projectId || !upwardPosition(enterprise.position) || !nonempty(enterprise.cpsId) ||
+          !nonempty(enterprise.assignmentId) || !nonempty(enterprise.businessPartyId) || !nonempty(enterprise.businessPartyVersionId) ||
+          !company || company.projectId !== projectId || !upwardPosition(company.position) || !nonempty(company.participationId) ||
+          !nonempty(company.companyEntityId) || !nonempty(company.companyEntityVersionId) || !nonempty(company.joinedCompanyEntityVersionId) ||
+          enterprise.position.roleKey === company.position.roleKey || !(number === null || typeof number === "string" && number.length > 0) ||
+          !Array.isArray(q.signedFiles) || q.signedFiles.length === 0 || q.signedFiles.length > 20) return null;
+        const files = new Set<string>();
+        for (const [index, item] of q.signedFiles.entries()) {
+          const file = record(item);
+          if (!file || !nonempty(file.fileId) || files.has(file.fileId) || file.displayOrder !== index ||
+            !["application/pdf", "image/jpeg", "image/png"].includes(String(file.mimeType)) || !Number.isSafeInteger(file.sizeBytes) ||
+            Number(file.sizeBytes) <= 0 || typeof file.contentSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(file.contentSha256)) return null;
+          files.add(file.fileId);
+        }
+        return "complete";
+      }
+    `,
+    directInputState: `
+      function directInputState(
+        input: unknown,
+        contractId: string,
+        versionId: string,
+        revision: number,
+        projectId: string,
+        relationship: PendingSigningMarker["relationship"] = "outside"
+      ): DirectInputState | null {
+        const source = record(input);
+        if (relationship === "upward") return source ? upwardInputState(source, contractId, versionId, revision, projectId) : null;
+        if (!source || source.protocolVersion !== 1 || source.sourceKind !== "direct_signed_pending") return null;
+        if (source.state === "unavailable") {
+          return source.sourceRevision === null && source.Q === null && source.inputSha256 === null ? "unavailable" : null;
+        }
+        if (source.sourceRevision !== revision || !Number.isSafeInteger(revision) || revision < 1) return null;
+        if (source.state === "incomplete" || source.state === "invalid") {
+          return source.Q === null && source.inputSha256 === null ? source.state : null;
+        }
+        const q = record(source.Q);
+        const locator = record(q?.locator);
+        const kind = record(q?.source);
+        if (source.state !== "complete" || typeof source.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(source.inputSha256) ||
+          q?.inputProtocolVersion !== 1 || kind?.kind !== "direct_signed" || kind.relationship !== "outside" ||
+          locator?.contractId !== contractId || locator.contractVersionId !== versionId || locator.projectId !== projectId ||
+          locator.draftRevision !== revision || locator.changeType !== "original" ||
+          !Array.isArray(q.signedFiles) || q.signedFiles.length === 0) return null;
+        return "complete";
+      }
+    `,
+    samePartyPosition: `
+      function samePartyPosition(left: DirectPartyLocator | null, right: DirectPartyLocator | null): boolean {
+        return left?.roleKey === right?.roleKey && left?.displayOrder === right?.displayOrder;
+      }
+    `,
+    upwardWorkbenchState: `
+      function upwardWorkbenchState(workbench: ContractDraftWorkbenchReadModel): DirectInputState {
+        const { version, contract } = workbench;
+        const marker = upwardSigningMarker(version.draftData?.directSigningInput);
+        const aggregateMarker = upwardSigningMarker(workbench.draft?.directSigningInput);
+        const caps = record(workbench.directPendingCapabilities);
+        const source = workbench.directPendingInput;
+        const state = directInputState(source, contract.id, version.id, version.draftRevision, contract.projectId, "upward");
+        const { q, enterprise, company } = upwardInputDetails(source);
+        const files = q?.signedFiles;
+        if (!marker || !aggregateMarker || marker.signedOn !== aggregateMarker.signedOn ||
+          (marker.signedOn !== null && !isDirectSignedDay(marker.signedOn)) || marker.companyParticipationId !== aggregateMarker.companyParticipationId ||
+          marker.fixedPaymentTermsVersionId !== aggregateMarker.fixedPaymentTermsVersionId ||
+          !samePartyPosition(marker.enterpriseParty, aggregateMarker.enterpriseParty) || !samePartyPosition(marker.companyParty, aggregateMarker.companyParty) ||
+          version.contractId !== contract.id || version.versionNo !== 1 || version.status !== "draft" || version.numericProtocolVersion !== 2 ||
+          !("changeType" in version) || version.changeType !== "original" || version.documentContentRevision !== null || version.documentContentFingerprint !== null ||
+          typeof caps?.registrationEnabled !== "boolean" || caps.copyEnabled !== false || caps.purgeEnabled !== false || !state ||
+          (marker.fixedPaymentTermsVersionId === null ? workbench.paymentTerms !== null :
+            typeof workbench.paymentTerms?.originalText !== "string" || !Array.isArray(workbench.paymentTerms.stages) || workbench.paymentTerms.stages.length !== 0) ||
+          (state === "complete" ? version.originalSignedNumberState !== "available" ||
+            version.originalSignedNumber !== record(q?.contract)?.originalSignedNumber ||
+            !upwardPosition(enterprise?.position) || !upwardPosition(company?.position) ||
+            !samePartyPosition(marker.enterpriseParty, enterprise.position) || !samePartyPosition(marker.companyParty, company.position) ||
+            company.participationId !== marker.companyParticipationId || !Array.isArray(files) || files.length !== workbench.attachments.length ||
+            files.some((file, index) => workbench.attachments[index]?.slotKey !== directOriginalSlot ||
+              workbench.attachments[index]?.fileId !== record(file)?.fileId || workbench.attachments[index]?.displayOrder !== index)
+            : version.originalSignedNumberState !== "unavailable" || version.originalSignedNumber !== null)) {
+          throw new Error("对上已签合同资料暂时无法核对，请刷新后再试");
+        }
+        return state;
+      }
+    `,
+    directWorkbenchState: `
+      function directWorkbenchState(workbench: ContractDraftWorkbenchReadModel): DirectInputState | null {
+        const { version, contract } = workbench;
+        const direct = Object.hasOwn(version.draftData ?? {}, "directSigningInput") ||
+          Object.hasOwn(workbench.draft ?? {}, "directSigningInput") || Object.hasOwn(workbench, "directPendingInput") ||
+          Object.hasOwn(workbench, "directPendingCapabilities");
+        if (!direct) return null;
+        if (record(version.draftData?.directSigningInput)?.relationship === "upward" || record(workbench.draft?.directSigningInput)?.relationship === "upward" ||
+          record(workbench.directPendingInput)?.sourceKind === "upward_direct_signed_pending") return upwardWorkbenchState(workbench);
+        const marker = directSigningMarker(version.draftData?.directSigningInput);
+        const aggregateMarker = directSigningMarker(workbench.draft?.directSigningInput);
+        const caps = record(workbench.directPendingCapabilities);
+        const state = directInputState(workbench.directPendingInput, contract.id, version.id, version.draftRevision, contract.projectId);
+        if (!marker || !aggregateMarker || marker.signedOn !== aggregateMarker.signedOn ||
+          (marker.signedOn !== null && !isDirectSignedDay(marker.signedOn)) ||
+          marker.fixedPaymentTermsVersionId !== aggregateMarker.fixedPaymentTermsVersionId ||
+          !samePartyPosition(marker.enterpriseParty, aggregateMarker.enterpriseParty) ||
+          !samePartyPosition(marker.counterpartyParty, aggregateMarker.counterpartyParty) ||
+          version.numericProtocolVersion !== 2 || !("changeType" in version) || version.changeType !== "original" ||
+          version.documentContentRevision !== null || version.documentContentFingerprint !== null ||
+          (caps?.registrationEnabled !== false && !(caps?.registrationEnabled === true && state === "complete" &&
+            version.status === "draft" && version.versionNo === 1 && version.contractId === contract.id)) ||
+          caps?.copyEnabled !== false || caps.purgeEnabled !== false ||
+          !state || (state === "unavailable" ? version.originalSignedNumberState !== "unavailable" :
+            version.originalSignedNumberState !== "available" || (version.originalSignedNumber !== null &&
+              (typeof version.originalSignedNumber !== "string" || version.originalSignedNumber === ""))) ||
+          (marker.fixedPaymentTermsVersionId === null ? workbench.paymentTerms !== null :
+            typeof workbench.paymentTerms?.originalText !== "string" || !Array.isArray(workbench.paymentTerms.stages) || workbench.paymentTerms.stages.length !== 0)) {
+          throw new Error("已签合同资料暂时无法核对，请刷新后再试");
+        }
+        return state;
+      }
+    `,
+  };
+  for (const [name, source] of Object.entries(validators)) {
+    if (!directRegistrationMatches(definition(name), source)) return false;
+  }
   const coordinates = definition("directRegistrationCoordinates");
-  const state = definition("directWorkbenchState");
-  const input = definition("directInputState");
-  const signing = definition("directSigningMarker");
-  if (!coordinates || !state || !input || !signing) return false;
+  if (!coordinates) return false;
+  const provenDefinitions = [coordinates, ...Object.keys(validators).map(definition)];
+  const literals = {
+    directOriginalSlot: '"direct_signed_originals_v1"',
+    archiveFileUuid: '/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu',
+    roleKeys: '["party_a", "party_b", "party_c", "guarantor", "consortium_member", "other"]'
+  };
+  for (const [name, expression] of Object.entries(literals)) {
+    const binding = stableBinding(name);
+    if (!binding || !directRegistrationExpression(uniqueIndexedNode(target.declarationsByBinding, binding), expression) ||
+        binding.references.some(reference => !reference.init && !provenDefinitions.some(({ body }) =>
+          body.range[0] <= reference.identifier.range[0] && reference.identifier.range[1] <= body.range[1]))) return false;
+  }
   const guard = coordinates.body.body[0];
   const parse = coordinates.body.body[1];
   if (!directRegistrationMatches(guard,
-    'if (!workbench || !actor || workbench.contract.ownerUserId !== actor || record(workbench.directPendingCapabilities)?.registrationEnabled !== true || !directSigningMarker(workbench.draft?.directSigningInput)) return null;') ||
+    'if (!workbench || !actor || workbench.contract.ownerUserId !== actor || record(workbench.directPendingCapabilities)?.registrationEnabled !== true || !(directSigningMarker(workbench.draft?.directSigningInput) || upwardSigningMarker(workbench.draft?.directSigningInput))) return null;') ||
     coordinates.body.body.length !== 2 || parse?.type !== "TryStatement" ||
     !directRegistrationBlock(parse.block, `
       if (directWorkbenchState(workbench) !== "complete") return null;
@@ -18468,28 +18689,27 @@ function directRegistrationCoordinateProof(call, symbols, context) {
       for (const [index, raw] of files.entries()) {
         const file = record(raw), attachment = workbench.attachments[index];
         if (typeof file?.fileId !== "string" || !archiveFileUuid.test(file.fileId) || fileIds.includes(file.fileId)
-          || file.mimeType !== "application/pdf" || file.displayOrder !== index || attachment?.slotKey !== directOriginalSlot ||
+          || !["application/pdf", "image/jpeg", "image/png"].includes(String(file.mimeType)) || file.displayOrder !== index || attachment?.slotKey !== directOriginalSlot ||
           attachment.fileId !== file.fileId || attachment.displayOrder !== index) return null;
         fileIds.push(file.fileId);
       }
       return { contractId: workbench.contract.id, versionId: workbench.version.id, draftRevision: workbench.version.draftRevision,
         inputSha256: source.inputSha256, fileIds };
     `) || !directRegistrationBlock(parse.handler?.body, "return null;") || parse.finalizer) return false;
-  const [stateCall] = directRegistrationCalls(parse.block, node => node.callee.name === "directWorkbenchState");
-  const [inputCall] = directRegistrationCalls(state, node => node.callee.name === "directInputState");
-  const [signingCall] = directRegistrationCalls(guard, node => node.callee.name === "directSigningMarker");
-  const callsDefinition = (callNode, declared) =>
-    target.scopeBindings.get(callNode?.callee) === target.scopeBindings.get(declared.id);
-  return callsDefinition(stateCall, state) && callsDefinition(inputCall, input) && callsDefinition(signingCall, signing) &&
-    state.body.body.some(statement => directRegistrationMatches(statement,
-      "const state = directInputState(workbench.directPendingInput, contract.id, version.id, version.draftRevision, contract.projectId);")) &&
-    input.body.body.some(statement => directRegistrationMatches(statement, `
-      if (source.state !== "complete" || typeof source.inputSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(source.inputSha256) ||
-        q?.inputProtocolVersion !== 1 || kind?.kind !== "direct_signed" || kind.relationship !== "outside" ||
-        locator?.contractId !== contractId || locator.contractVersionId !== versionId || locator.projectId !== projectId ||
-        locator.draftRevision !== revision || locator.changeType !== "original" ||
-        !Array.isArray(q.signedFiles) || q.signedFiles.length === 0) return null;
-    `));
+  const known = new Set([...Object.keys(validators), ...Object.keys(literals)]);
+  const intrinsic = new Set(["Array", "Boolean", "Number", "Object", "Set", "String"]);
+  for (const current of provenDefinitions) {
+    let trusted = true;
+    walkEstree(current.body, node => {
+      if (node.type !== "CallExpression" && node.type !== "NewExpression") return;
+      const root = referenceRootIdentifier(node.callee);
+      const name = root?.name;
+      if ((known.has(name) && target.scopeBindings.get(root) !== stableBinding(name)) ||
+          (intrinsic.has(name) && topLevelScopeVariables(target.scopeManager, name).length > 0)) trusted = false;
+    });
+    if (!trusted) return false;
+  }
+  return true;
 }
 
 function directRegistrationExpression(node, source) {
