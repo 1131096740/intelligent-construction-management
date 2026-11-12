@@ -264,4 +264,23 @@ async function withCurrent259GeneratedDocumentRuntime(evidence, runRoot, use) {
   return value;
 }
 
-module.exports = Object.freeze({ verifyCurrent259GeneratedDocumentRuntime, withCurrent259GeneratedDocumentRuntime });
+// Candidate tools are never runtime authority until independent qualification
+// and a reviewed source-bound activation have completed.
+function verifyOfficialTask12DocumentRuntime(file,expectedSha256,moduleView) {
+  if(arguments.length!==3)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_INPUT'),{code:'TASK12_OFFICIAL_DOCUMENT_INPUT'});
+  return require('./task12-official-document-profile.cjs').verifyOfficialTask12DocumentRuntime(file,expectedSha256,moduleView);
+}
+function observeOfficialTask12DocumentPublication(file,expectedSha256) {
+  if(arguments.length!==2)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_INPUT'),{code:'TASK12_OFFICIAL_DOCUMENT_INPUT'});
+  return require('./task12-official-document-profile.cjs').observeOfficialTask12DocumentPublication(file,expectedSha256);
+}
+async function withOfficialTask12DocumentRuntime(proof,runRoot,use) {
+  if(arguments.length!==3)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_SCOPE'),{code:'TASK12_OFFICIAL_DOCUMENT_SCOPE'});
+  return require('./task12-official-document-profile.cjs').withOfficialTask12DocumentRuntime(proof,runRoot,use);
+}
+function prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot) {
+  if(arguments.length!==2)throw Object.assign(new Error('TASK12_OFFICIAL_DOCUMENT_INPUT'),{code:'TASK12_OFFICIAL_DOCUMENT_INPUT'});
+  return require('./task12-official-document-profile.cjs').prepareOfficialTask12DocumentRuntimeInput(outputPath,runRoot);
+}
+module.exports = Object.freeze({ verifyCurrent259GeneratedDocumentRuntime, withCurrent259GeneratedDocumentRuntime,
+  observeOfficialTask12DocumentPublication, verifyOfficialTask12DocumentRuntime, withOfficialTask12DocumentRuntime,prepareOfficialTask12DocumentRuntimeInput });

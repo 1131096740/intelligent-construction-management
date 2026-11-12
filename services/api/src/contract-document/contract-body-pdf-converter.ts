@@ -1,3 +1,5 @@
+import { performance } from "node:perf_hooks";
+import { createOfficialDocumentChildBudget, attachPostcheck } from "../../prisma/task12-official-document-child.cjs";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -9,6 +11,8 @@ import PizZip from "pizzip";
 import { extractContractDocx } from "./contract-docx-extractor";
 import { finalizeContractBodyLineBoxScope, isReviewedTypographyVersion, REVIEWED_MATERIAL_SOURCE_SHA256, REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION,
   type ContractBodyLineBoxScope, type ReviewedTypographyVersion } from "./contract-body-document";
+
+import { currentOfficialDocumentScope } from "../../prisma/task12-official-document-profile.cjs";
 
 const exec = promisify(execFile);
 const HASH = /^[a-f0-9]{64}$/u;
@@ -72,7 +76,9 @@ function runtimeDescriptor(typographyVersion?: ReviewedTypographyVersion) {
 }
 
 async function lockFile(typographyVersion?: ReviewedTypographyVersion) {
-  const descriptor = runtimeDescriptor(typographyVersion);
+  const official = currentOfficialDocumentScope();
+  if (official && typographyVersion !== REVIEWED_MATERIAL_TYPOGRAPHY_V4_VERSION) throw new Error(RUNTIME_ERROR);
+  const descriptor = official ? { ...MATERIAL_BODY25_RUNTIME, lockName: official.lockName } : runtimeDescriptor(typographyVersion);
   const loaded = await jsonFile(join(ASSETS, descriptor.lockName));
   const lock = loaded.value as unknown as RuntimeLock;
   if (lock.schemaVersion !== 1 || lock.engine !== ENGINE || !HASH.test(lock.adapterSourceSha256) || !HASH.test(lock.jdkTreeSha256) || lock.jdkTreeEntries !== 456) throw new Error(RUNTIME_ERROR);
@@ -81,7 +87,10 @@ async function lockFile(typographyVersion?: ReviewedTypographyVersion) {
   for (const [items, count] of [[lock.jars, 2], [lock.classes, classCount], [lock.fonts, 10]] as const) {
     if (!Array.isArray(items) || items.length !== count || items.some(item => !item || typeof item.name !== "string" || !HASH.test(item.sha256)) || new Set(items.map(item => item.name)).size !== count) throw new Error(RUNTIME_ERROR);
   }
-  if (descriptor.scopedBody25) {
+  if (official) {
+    official.check();
+    if (loaded.sha256 !== official.lockSha256) throw new Error(RUNTIME_ERROR);
+  } else if (descriptor.scopedBody25) {
     const legacy = await jsonFile(join(ASSETS, LEGACY_RUNTIME.lockName));
     if (legacy.sha256 !== LEGACY_LOCK_SHA256 || loaded.sha256 === LEGACY_LOCK_SHA256 ||
       Object.keys(loaded.value).some(key => !["schemaVersion", "engine", "adapterSourceSha256", "jdkTreeSha256", "jdkTreeEntries", "jars", "classes", "fonts"].includes(key)) ||
@@ -150,15 +159,18 @@ async function loadRuntime(expectedLockSha256: string, typographyVersion?: Revie
   try {
     const locked = await lockFile(typographyVersion);
     if (locked.sha256 !== expectedLockSha256) throw new Error(RUNTIME_ERROR);
-    const manifestPath = process.env[locked.descriptor.manifestEnvironment];
+    const official = currentOfficialDocumentScope();
+    const manifestPath = official?.manifestPath ?? process.env[locked.descriptor.manifestEnvironment];
     if (!manifestPath) throw new Error(RUNTIME_ERROR);
     const loaded = await jsonFile(manifestPath), manifest = loaded.value as unknown as RuntimeManifest;
+    if (official && loaded.sha256 !== official.manifestSha256) throw new Error(RUNTIME_ERROR);
     if (Object.keys(loaded.value).some(key => !["schemaVersion", "engine", "jdkHome", "scratchDirectory", "jars", "classes", "fonts"].includes(key)) || manifest.schemaVersion !== 1 || manifest.engine !== ENGINE) throw new Error(RUNTIME_ERROR);
     const jdk = await jdkTree(manifest.jdkHome);
     if (jdk.sha256 !== locked.lock.jdkTreeSha256 || jdk.count !== locked.lock.jdkTreeEntries) throw new Error(RUNTIME_ERROR);
     const [jars, classes, fonts] = await Promise.all([files(manifest.jars, locked.lock.jars), files(manifest.classes, locked.lock.classes), files(manifest.fonts, locked.lock.fonts)]);
     if (typeof manifest.scratchDirectory !== "string" || !isAbsolute(manifest.scratchDirectory) || await realpath(manifest.scratchDirectory) !== resolve(manifest.scratchDirectory) || !(await lstat(manifest.scratchDirectory)).isDirectory() || !below(dirname(manifestPath), manifest.scratchDirectory)) throw new Error(RUNTIME_ERROR);
-    return { manifest, manifestSha256: loaded.sha256, lock: locked.lock, lockSha256: locked.sha256, descriptor: locked.descriptor, jars, classes, fonts };
+    official?.check();
+    return { manifest, manifestSha256: loaded.sha256, lock: locked.lock, lockSha256: locked.sha256, descriptor: locked.descriptor, jars, classes, fonts, official };
   } catch { throw new Error(RUNTIME_ERROR); }
 }
 
@@ -317,6 +329,9 @@ async function materialBody25Proof(path: string, expected: ReturnType<typeof mat
 
 export async function convertContractBodyDocxToPdf(bytes: Buffer, expectedRuntimeLockSha256: string,
   options: { typographyVersion?: ReviewedTypographyVersion; lineBoxScope?: ContractBodyLineBoxScope } = {}) {
+  const started=performance.now();
+  const official=currentOfficialDocumentScope();
+  const child=official?createOfficialDocumentChildBudget(official,TIMEOUT_MS,started):undefined;
   if (!options || typeof options !== "object" || Array.isArray(options) || Object.keys(options).some(key => !["typographyVersion", "lineBoxScope"].includes(key))) throw new Error(RUNTIME_ERROR);
   const runtime = await loadRuntime(expectedRuntimeLockSha256, options.typographyVersion);
   validateWord(bytes);
@@ -346,7 +361,8 @@ export async function convertContractBodyDocxToPdf(bytes: Buffer, expectedRuntim
     count: scoped.scope.paragraphs.length, typographyVersion: scoped.scope.typographyVersion } } : {}) };
   await writeFile(join(scratch, "started.json"), JSON.stringify(privateStarted, null, 2), { mode: 0o600 });
   try {
-    const result = await exec(join(runtime.manifest.jdkHome, "bin/java"), args, { cwd: scratch, env: environment, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 });
+    const invoke=(timeout:number)=>exec(join(runtime.manifest.jdkHome,"bin/java"),args,{cwd:scratch,env:environment,timeout,maxBuffer:4*1024*1024});
+    const result=child?await child.run(invoke):await invoke(TIMEOUT_MS);
     await writeFile(join(scratch, "stdout.log"), result.stdout, { mode: 0o600 });
     await writeFile(join(scratch, "stderr.log"), result.stderr, { mode: 0o600 });
     if (result.stdout.split("DOCX4J_CONVERSION_BEGIN").length !== 2 || result.stdout.split("DOCX4J_CONVERSION_END").length !== 2 || !result.stdout.includes("DOCX4J_BOUNDARY_DENIED=3") || await digest(input) !== sourceSha256) throw new Error(CONVERSION_ERROR);
@@ -357,12 +373,18 @@ export async function convertContractBodyDocxToPdf(bytes: Buffer, expectedRuntim
     if (privateBody25) await writeFile(join(scratch, "body25-private-diagnostics.json"), JSON.stringify(privateBody25, null, 2), { mode: 0o600, flag: "wx" });
     const provenance = { ...receipt, boundaryDenials: 3, conversionCalls: 1, pdfSha256: createHash("sha256").update(pdf).digest("hex") };
     await writeFile(join(scratch, "completed.json"), JSON.stringify({ ...provenance, ...(privateBody25 ? { privateBodyLineBox: privateBody25 } : {}) }, null, 2), { mode: 0o600 });
+    child?.remaining();
     return { pdf, provenance };
   } catch (cause) {
     const error = cause as { stdout?: string; stderr?: string; message?: string };
-    await writeFile(join(scratch, "failed.json"), JSON.stringify({ ...privateStarted, status: "failed", message: CONVERSION_ERROR }, null, 2), { mode: 0o600 });
-    if (error.stdout) await writeFile(join(scratch, "stdout.log"), error.stdout, { mode: 0o600 });
-    if (error.stderr) await writeFile(join(scratch, "stderr.log"), error.stderr, { mode: 0o600 });
-    throw new Error(CONVERSION_ERROR, { cause });
+    const recordFailure=async()=>{
+      await writeFile(join(scratch, "failed.json"), JSON.stringify({ ...privateStarted, status: "failed", message: CONVERSION_ERROR }, null, 2), { mode: 0o600 });
+      if (error.stdout) await writeFile(join(scratch, "stdout.log"), error.stdout, { mode: 0o600 });
+      if (error.stderr) await writeFile(join(scratch, "stderr.log"), error.stderr, { mode: 0o600 });
+    };
+    let first:unknown=cause;
+    if(official){try{await recordFailure();}catch(receiptError){first=attachPostcheck(first,receiptError);}}
+    else await recordFailure();
+    throw new Error(CONVERSION_ERROR, { cause:first });
   }
 }
