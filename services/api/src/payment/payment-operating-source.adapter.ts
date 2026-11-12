@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 
 import {
   frozenAffiliateFromJson,
@@ -53,7 +54,9 @@ export class PaymentExecutionOperatingSourceAdapter
       },
       orderBy: [{ paidAt: "asc" }, { id: "asc" }]
     });
-    return Promise.all(rows.map((row) => this.snapshot(tx, row)));
+    if (!rows.length) return [];
+    const readRegisteredFunding = await registeredPaymentInstalled(tx);
+    return Promise.all(rows.map((row) => this.snapshot(tx, row, readRegisteredFunding)));
   }
 
   async readSourceSnapshot(
@@ -78,7 +81,7 @@ export class PaymentExecutionOperatingSourceAdapter
       where: { id: row.paymentRequestId }
     });
     if (!request || request.projectId !== locator.projectId) return null;
-    return this.snapshot(tx, row, request);
+    return this.snapshot(tx, row, await registeredPaymentInstalled(tx), request);
   }
 
   toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
@@ -208,6 +211,7 @@ export class PaymentExecutionOperatingSourceAdapter
   private async snapshot(
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     row: PaymentExecutionRow,
+    readRegisteredFunding: boolean,
     loadedRequest?: PaymentRequestRow
   ): Promise<OperatingSourceSnapshot> {
     const request =
@@ -267,7 +271,9 @@ export class PaymentExecutionOperatingSourceAdapter
     });
     const debtor = approvedPayerIdentity(version, { paymentSubjectType: version.signingSubjectType });
     const approvedPayer = approvedPayerIdentity(version, request);
-    const registeredFunding = await tx.registeredPaymentFunding.findUnique({where:{executionId:row.id}});
+    const registeredFunding = readRegisteredFunding
+      ? await tx.registeredPaymentFunding.findUnique({where:{executionId:row.id}})
+      : null;
     const actualPayer = registeredFunding
       ? {type:registeredFunding.actualPayerKind === "public_cash" ? "public_cash" : "our_company", id:registeredFunding.actualPayerId}
       : actualPayerIdentity(row, affiliate.businessPartyVersionId, row.payerAttestation);

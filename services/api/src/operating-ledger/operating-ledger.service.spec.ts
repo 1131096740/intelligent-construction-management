@@ -66,6 +66,42 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("still requires a participating company on the legacy payment source date", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord()
+    });
+    prisma.projectParticipatingCompany.findFirst.mockResolvedValue(null);
+    const service = new OperatingLedgerService(prisma as never);
+    const input = baseInput();
+    await expect(service.appendFromSource({
+      ...input, sourceType: "payment_execution", factKind: "downstream_payment",
+      subjects: { actualPayer: { kind: "participating_company", id: "company-1" },
+        payee: { kind: "downstream_counterparty", id: "counterparty-version-1" } }
+    }, "actor-1")).rejects.toThrow("未在本项目事实日参与");
+    expect(prisma.projectParticipatingCompany.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        projectId: input.projectId,
+        AND: expect.arrayContaining([{ effectiveFrom: { lte: input.occurredAt } }])
+      })
+    }));
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a public-cash payment before registered funding has been installed", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    await expect(service.appendFromSource({
+      ...baseInput(), sourceType: "payment_execution", factKind: "downstream_payment",
+      subjects: { actualPayer: { kind: "public_cash", id: "public_cash" },
+        payee: { kind: "downstream_counterparty", id: "counterparty-version-1" } }
+    }, "actor-1")).rejects.toThrow("公共现金经营后果必须关联同一正式实付");
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
   it("经公开经营写入与读取保留合同承诺1.5340元，事实及影响均不冒充分", async () => {
     const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
     const service = new OperatingLedgerService(prisma as never);
@@ -897,6 +933,7 @@ function createPrismaMock(options: {
     contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn().mockImplementation(async (query: Prisma.Sql) => {
+      if (query.text.includes("registered_payment_voucher_catalog")) return [{ state: "absent" }];
       if (options.persistControlledRows) {
         const written = syntheticOperatingWrite(query);
         if (written.kind === "Fact") { storedFact = { ...written.row, impacts: storedImpacts }; return [{ id: written.row.id, projectId: written.row.projectId, sourceType: written.row.sourceType, sourceBusinessId: written.row.sourceBusinessId }]; }

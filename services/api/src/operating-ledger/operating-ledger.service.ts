@@ -27,6 +27,7 @@ import {
 } from "@jiangkong/shared-domain";
 
 import { PrismaService } from "../database/prisma.service";
+import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 import { translateProjectOperatingSerializationConflict } from "../project/project-operating-constraint";
 import { createOperatingImpactInvalidator } from "../project-close-profit/project-close-impact-invalidation";
 
@@ -852,6 +853,7 @@ export class OperatingLedgerService {
 
   private async registeredActualCompanySnapshot(tx: OperatingLedgerTransaction, input: AppendOperatingFactInput, subject: OperatingSubjectReference, role?: OperatingSubjectRole): Promise<Prisma.InputJsonObject|null> {
     if (role !== "actual_payer" || subject.kind !== "participating_company" || input.sourceType !== "payment_execution") return null;
+    if (!(await registeredPaymentInstalled(tx))) return null;
     const funding = await tx.registeredPaymentFunding.findUnique({where:{executionId:input.sourceBusinessId}});
     if (!funding) return null;
     const [execution,account] = await Promise.all([tx.paymentExecution.findUnique({where:{id:funding.executionId}}),tx.registeredFundAccount.findUnique({where:{id:funding.accountId}})]);
@@ -1029,7 +1031,9 @@ export class OperatingLedgerService {
         continue;
       }
       if (subject.kind === "public_cash") {
-        const funding = input.sourceType === "payment_execution" ? await tx.registeredPaymentFunding.findUnique({where:{executionId:input.sourceBusinessId}}) : null;
+        const funding = input.sourceType === "payment_execution" && await registeredPaymentInstalled(tx)
+          ? await tx.registeredPaymentFunding.findUnique({where:{executionId:input.sourceBusinessId}})
+          : null;
         const execution = funding ? await tx.paymentExecution.findUnique({where:{id:funding.executionId}}) : null;
         const account = funding ? await tx.registeredFundAccount.findUnique({where:{id:funding.accountId}}) : null;
         if (subject.id !== "public_cash" || funding?.actualPayerKind !== "public_cash" || funding.actualPayerId !== subject.id || account?.kind !== "public_cash" || account.companyEntityId !== null || execution?.amountCents !== input.amountCents) throw new BadRequestException("公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代");
