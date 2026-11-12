@@ -886,9 +886,8 @@ describe("project financing quota PostgreSQL runner", () => {
         legacyNames: ["jg_payment_execution_payer_issuer", "jg_pol275_owner", "jg_pol275_runtime", "jg_pol279_runtime", "jg_pol280_runtime"],
         roles: [{ oid: "10", name: "jiangkong", superuser: true, createRole: false, createDb: true,
           replication: true, bypassRls: true, memberships: [] }] }));
-      const fake = "#!" + process.execPath + "\n" + readFileSync(
-        join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8");
-      for (const name of ["docker", "pnpm"]) writeFileSync(join(bin, name), fake, { mode: 0o700 });
+      const fakeSource = readFileSync(join(process.cwd(), "prisma/testdata/pfq-masked-115-command.cjs"), "utf8");
+      installContainerInspectFixture(fixture, bin, fakeSource);
       const run = spawnSync(process.execPath, [join(prismaRoot, "run-project-financing-quota-concurrency-local.cjs")], {
         env: { PATH: bin, HOME: fixture, TMPDIR: artifacts, NODE_ENV: "test", PNPM_BIN: join(bin, "pnpm") },
         encoding: "utf8", timeout: 30_000
