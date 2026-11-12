@@ -22,10 +22,21 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
   let token: string;
   const sessions = new Map<string, unknown>();
   let participatingCompanyId: string;
-  let smsRecipient: string | undefined;
-  let deliveredSmsCode: string | undefined;
+  const smsInbox = new Map<string, string | null>();
   const password = `Local-${randomUUID()}`;
   const phone = `139${String(Date.now()).slice(-8)}`;
+
+  function configureSyntheticSms() {
+    const keys = ["SMS_ENABLED", "SMS_SECRET_ID", "SMS_SECRET_KEY", "SMS_SDK_APP_ID", "SMS_SIGN_NAME", "SMS_TEMPLATE_ID", "SMS_CODE_SECRET"] as const;
+    const previous = keys.map(key => [key, process.env[key]] as const);
+    for (const key of keys) process.env[key] = key === "SMS_ENABLED" ? "true" : randomUUID();
+    return () => {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    };
+  }
 
   async function request(path: string, method = "GET", body?: unknown, accessToken = token) {
     const response = await fetch(`${base}${path}`, {
@@ -45,8 +56,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       .overrideProvider(TencentSmsGateway)
       .useValue({ send: async (recipient: string, code: string) => {
         // Only the network boundary is synthetic; real SMS challenges and verification remain in PostgreSQL.
-        if (smsRecipient === undefined || recipient !== smsRecipient) throw new Error("未登记的合成短信接收人");
-        deliveredSmsCode = code;
+        if (!smsInbox.has(recipient)) throw new Error("未登记的合成短信接收人");
+        smsInbox.set(recipient, code);
       } })
       .compile();
     app = moduleRef.createNestApplication();
@@ -355,6 +366,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
         userId: financeSession.user.id, positionId: financePosition.id, projectId: retainedProject.body.id
       } });
       const callbackSecret = randomUUID();
+      const settingsAccounts = new Map<string, { phone: string; newPhone: string; password: string }>();
       const roleFixture = createServer(async (incoming, response) => {
         if (incoming.url === `/${callbackSecret}/revoke` && incoming.method === "POST") {
           await prisma.userPosition.deleteMany({ where: {
@@ -374,12 +386,21 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           response.writeHead(204).end();
           return;
         }
+        if (incoming.method === "GET" && incoming.url?.startsWith(`/${callbackSecret}/settings-sms/`)) {
+          const account = settingsAccounts.get(incoming.url.split("/").at(-1) ?? "");
+          const code = account && smsInbox.get(account.newPhone);
+          if (!code) {
+            response.writeHead(404).end();
+            return;
+          }
+          response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ code }));
+          return;
+        }
         response.writeHead(404).end();
       });
       await new Promise<void>((resolveListen) => roleFixture.listen(0, "127.0.0.1", resolveListen));
       const fixtureAddress = roleFixture.address();
       if (!fixtureAddress || typeof fixtureAddress === "string") throw new Error("撤权夹具未监听本机端口");
-      const settingsAccounts: Record<string, { phone: string; newPhone: string; password: string }> = {};
       const participantProjects: Record<string, { id: string; code: string; name: string }> = {};
       const constructionProjects: Record<string, { id: string; code: string; name: string }> = {};
       for (const [index, browser] of ["desktop", "mobile"].entries()) {
@@ -400,16 +421,18 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           name: "本人资料浏览器合成账号", phone: account.phone,
           passwordHash: await bcrypt.hash(account.password, 4), mustChangePassword: false
         } });
-        settingsAccounts[browser] = account;
+        settingsAccounts.set(browser, account);
       }
       await participatingCompany();
       const master = await actor("comprehensive_director");
       const enterpriseIntent = await partyIntent(master, "浏览器施工企业验收");
       expect((await request("/business-parties", "POST", enterpriseIntent.body, master)).status).toBe(201);
       const contractSession = await actor("contract_staff");
+      for (const account of settingsAccounts.values()) smsInbox.set(account.newPhone, null);
+      const restoreSms = configureSyntheticSms();
       try {
         await new Promise<void>((done, reject) => {
-          const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(settingsAccounts) };
+          const browserEnv: NodeJS.ProcessEnv = { ...process.env, POL113_API_URL: base, POL113_PROJECT_ID: projectId, POL113_BROWSER_SESSION: JSON.stringify(sessions.get(finance)), POL113_RENAME_SESSION: JSON.stringify(sessions.get(chairman)), POL113_SETTINGS_ACCOUNTS: JSON.stringify(Object.fromEntries(settingsAccounts)) };
           delete browserEnv.JEST_WORKER_ID;
           browserEnv.POL113_CONTRACT_SESSION = JSON.stringify(sessions.get(contractSession));
           browserEnv.POL113_MASTER_DATA_SESSION = JSON.stringify(sessions.get(master));
@@ -428,6 +451,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
           child.on("exit", (code) => code === 0 ? done() : reject(new Error("项目档案真实浏览器验证失败")));
         });
       } finally {
+        restoreSms();
+        for (const account of settingsAccounts.values()) smsInbox.delete(account.newPhone);
         await new Promise<void>((resolveClose, rejectClose) => roleFixture.close((error) => error ? rejectClose(error) : resolveClose()));
       }
     }
@@ -794,16 +819,13 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
     const denied = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: "wrong-password" });
     expect(denied.status).toBe(400);
     expect((await request("/auth/login", "POST", { phone, password })).body.user.name).toBe("资料测试经办人");
-    const smsKeys = ["SMS_ENABLED", "SMS_SECRET_ID", "SMS_SECRET_KEY", "SMS_SDK_APP_ID", "SMS_SIGN_NAME", "SMS_TEMPLATE_ID", "SMS_CODE_SECRET"] as const;
-    const previousSmsEnvironment = smsKeys.map(key => [key, process.env[key]] as const);
-    smsRecipient = newPhone;
-    deliveredSmsCode = undefined;
+    smsInbox.set(newPhone, null);
+    const restoreSms = configureSyntheticSms();
     try {
-      // Synthetic configuration is local to this case; no real gateway or credentials are used.
-      for (const key of smsKeys) process.env[key] = key === "SMS_ENABLED" ? "true" : randomUUID();
       const sent = await request("/account-security/phone-change-sms", "POST", { phone: newPhone });
       expect(sent.status).toBe(201);
-      if (deliveredSmsCode === undefined) throw new Error("合成短信网关未接收验证码");
+      const deliveredSmsCode = smsInbox.get(newPhone);
+      if (!deliveredSmsCode) throw new Error("合成短信网关未接收验证码");
       const saved = await request("/auth/profile", "PATCH", { name, phone: newPhone, currentPassword: password, code: deliveredSmsCode });
       expect(saved.status).toBe(200);
       expect(saved.body.user).toMatchObject({ id: userId, name, phone: newPhone });
@@ -814,12 +836,8 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       token = newLogin.body.tokens.accessToken;
       expect((await request("/auth/login", "POST", { phone, password })).status).toBe(401);
     } finally {
-      smsRecipient = undefined;
-      deliveredSmsCode = undefined;
-      for (const [key, value] of previousSmsEnvironment) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
+      smsInbox.delete(newPhone);
+      restoreSms();
     }
   });
 

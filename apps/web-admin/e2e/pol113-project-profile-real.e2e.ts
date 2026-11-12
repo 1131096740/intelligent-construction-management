@@ -125,17 +125,24 @@ test("切换项目丢弃旧名称草稿，旧目标不能在新项目预检且�
     values: { name: "甲项目未提交的草稿" }, operation: "edit"
   } });
   expect(mismatched.status()).toBe(400);
-  await name.fill("乙项目切换后保存");
+  await name.fill(first.name);
   const validated = page.waitForResponse((res) => res.url().includes("/project_rename/validate"));
-  const saved = page.waitForResponse((res) => new URL(res.url()).pathname === `/api/projects/${second.id}` && res.request().method() === "PATCH");
   await page.getByRole("button", { name: "保存名称", exact: true }).click();
-  expect((await validated).request().postDataJSON().target.entityId).toBe(second.id);
+  const precheck = await validated;
+  expect(precheck.ok()).toBe(true);
+  expect(precheck.request().postDataJSON().target.entityId).toBe(second.id);
+  await expect(page.getByRole("status").filter({ hasText: "已有同名项目，请核对项目编号" })).toBeVisible();
+  expect(writes).toEqual([]);
+  const revalidated = page.waitForResponse((res) => res.url().includes("/project_rename/validate"));
+  const saved = page.waitForResponse((res) => new URL(res.url()).pathname === `/api/projects/${second.id}` && res.request().method() === "PATCH");
+  await page.getByRole("button", { name: "确认同名并保存名称", exact: true }).click();
+  expect((await revalidated).request().postDataJSON().target.entityId).toBe(second.id);
   expect((await saved).ok()).toBe(true);
   expect(writes).toEqual([`/api/projects/${second.id}`]);
   const readback = await request.get(`${api}/projects`, { headers });
   const current = await readback.json();
   expect(current.find((project: { id: string }) => project.id === first.id).name).toBe(first.name);
-  expect(current.find((project: { id: string }) => project.id === second.id).name).toBe("乙项目切换后保存");
+  expect(current.find((project: { id: string }) => project.id === second.id).name).toBe(first.name);
 });
 
 test("综合部主管通过统一字段新增参与公司，空白原因保留且不新增", async ({ page, request }, testInfo) => {
