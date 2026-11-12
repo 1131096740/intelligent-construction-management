@@ -312,3 +312,23 @@ test('the draft receipt retains only fixed admission coordinates across owned cl
   assert.deepEqual(certificate.admissionFailure,{stage:'TLS_CERTIFICATE',operationCode:'TASK01_RESOURCE_CERTIFICATE_NOT_OBSERVED'});
   assert.doesNotMatch(JSON.stringify(certificate),/private certificate details/u);
 });
+
+test('readonly relay v2 is independently sealed and cannot reinterpret historical FIN plans',t=>{
+ const {root}=localPacket(t),api=planModel(t,root);
+ const oldRun=path.join(root,'relay-run'),newRun=path.join(root,'relay-readonly-run');
+ fs.mkdirSync(oldRun,{mode:0o700});fs.mkdirSync(newRun,{mode:0o700});
+ const options={packetRoot:root,daemonId:'relay-model-daemon'};
+ const old=api.prepareCurrent259RelayDiagnosticPlan(options),next=api.prepareCurrent259ReadonlyRelayPlan(options);
+ assert.throws(()=>api.verifyCurrent259ReadonlyRelayPlan(old.file,old.sha256),/INPUT/u);
+ assert.throws(()=>api.verifyCurrent259RelayDiagnosticPlan(next.file,next.sha256),/INPUT/u);
+ const {plan}=api.verifyCurrent259ReadonlyRelayPlan(next.file,next.sha256);
+ assert.equal(plan.run.root,newRun);
+ assert.equal(plan.scope.identityClients,2);assert.equal(plan.scope.identityReads,4);
+ assert.equal(plan.scope.positiveClients,undefined);
+ assert.deepEqual(plan.scope.closeKinds,['REAL_FIN','CLOSED_BY_RESET']);
+ assert.equal(plan.scope.requests,0);assert.equal(plan.scope.seedWrites,0);assert.equal(plan.scope.migrations,0);
+ const bytes=Buffer.from(JSON.stringify({...plan,scope:{...plan.scope,closeKinds:['CLOSED_BY_RESET']}}));
+ fs.writeFileSync(next.file,bytes);
+ assert.throws(()=>api.verifyCurrent259ReadonlyRelayPlan(next.file,hash(bytes)),/SCOPE/u);
+ assert.deepEqual(fs.readdirSync(oldRun),[]);assert.deepEqual(fs.readdirSync(newRun),[]);
+});

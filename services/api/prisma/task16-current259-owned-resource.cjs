@@ -16,6 +16,7 @@ const loaderModule=require.cache[loaderPath],resourceModule=require.cache[resour
 const {loadCurrent259Client}=loaderExports,{startTask01Postgres}=resourceExports;
 const startCurrent259TechnicalPostgres=Object.getOwnPropertyDescriptor(resourceExports,'startCurrent259TechnicalPostgres')?.value;
 const startCurrent259FirstQ2LoopbackPostgres=Object.getOwnPropertyDescriptor(resourceExports,'startCurrent259FirstQ2LoopbackPostgres')?.value;
+const startCurrent259ReadonlyRelayPostgres=Object.getOwnPropertyDescriptor(resourceExports,'startCurrent259ReadonlyRelayPostgres')?.value;
 const Q2_TOPOLOGY='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
 const LEGACY_TOPOLOGY='UNVERIFIED_HOST_PUBLISHED_TLS';
@@ -65,12 +66,15 @@ function closeCurrent259OwnedResource(handle){
  const owner=handles.get(handle)||closedHandles.get(handle);need(owner,'CURRENT259_RESOURCE_HANDLE');
  closedHandles.set(handle,owner);return owner.close();
 }
-async function withCurrent259Resource(build,planInput,signal,consume,technical,topology=LEGACY_TOPOLOGY){
+async function withCurrent259Resource(build,planInput,signal,consume,technical,topology=LEGACY_TOPOLOGY,readonlyPermit){
+ const readonlyRelay=readonlyPermit!==undefined;
  const paymentLoopback=Object.hasOwn(paymentStarters,topology),firstQ2=topology===Q2_TOPOLOGY,loopback=paymentLoopback||firstQ2;
- need((arguments.length===5||arguments.length===6&&technical&&loopback)&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
+ need((arguments.length===5||arguments.length===6&&technical&&loopback||arguments.length===7&&technical&&firstQ2&&readonlyRelay)&&typeof consume==='function','CURRENT259_RESOURCE_ARGUMENTS');
  // The original loader consumes the genuine build brand exactly once and caches
  // its result. Future fixed stages retain this same loader, not a second claim.
- importsCheck(technical,topology);const loader=loadCurrent259Client(build);
+ importsCheck(technical,topology);
+ if(readonlyRelay)need(typeof startCurrent259ReadonlyRelayPostgres==='function'&&own(resourceExports,'startCurrent259ReadonlyRelayPostgres')===startCurrent259ReadonlyRelayPostgres,'CURRENT259_RESOURCE_PRODUCER_CHANGED');
+ const loader=loadCurrent259Client(build);
  need(build&&!types.isProxy(build)&&!usedBuilds.has(build),'CURRENT259_RESOURCE_BUILD_REUSED');usedBuilds.add(build);
  importsCheck(technical,topology);loader.verifyFull();const witness=loader.witness(),plan=planSnapshot(planInput);
  need(!abortState(signal),'CURRENT259_RESOURCE_ABORTED');const toolIdentities=toolsCheck(),deadline=Date.now()+(technical?3600000:900000);
@@ -143,11 +147,11 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical,t
  function checkOperation(){if(businessToken)checkContinuity(businessToken);else check();}
 
  try{
-  resource=await (paymentLoopback?paymentStarters[topology]:firstQ2?startCurrent259FirstQ2LoopbackPostgres:technical?startCurrent259TechnicalPostgres:startTask01Postgres)({runId,sourceSha:witness.source.candidateSha,artifactsDir:plan.artifactsDir,endpoint:ENDPOINT,daemonId:plan.daemonId,imageId:IMAGE,tools:TOOLS,ownerPassword:credentials.owner,...(technical?{}:{deadlineMs:900000}),signal});
+  resource=await (readonlyRelay?startCurrent259ReadonlyRelayPostgres:paymentLoopback?paymentStarters[topology]:firstQ2?startCurrent259FirstQ2LoopbackPostgres:technical?startCurrent259TechnicalPostgres:startTask01Postgres)({runId,sourceSha:witness.source.candidateSha,artifactsDir:plan.artifactsDir,endpoint:ENDPOINT,daemonId:plan.daemonId,imageId:IMAGE,tools:TOOLS,ownerPassword:credentials.owner,...(technical?{}:{deadlineMs:900000}),signal},...(readonlyRelay?[readonlyPermit]:[]));
   // These are actual original producer return values, never caller projections.
   methods={close:own(resource,'close')};
   methods.getReceipt=own(resource,'getReceipt');
-  if(technical)methodNames=[...METHODS,...(!paymentLoopback?CONTRACT_METHODS:[]),...(loopback?['checkRelay','beginPrismaRelayDrain']:[]),...(firstQ2?[DOCUMENT_HBA_METHOD]:[])];
+  if(technical)methodNames=[...METHODS,...(!paymentLoopback?CONTRACT_METHODS:[]),...(loopback?['checkRelay','beginPrismaRelayDrain']:[]),...(firstQ2?[DOCUMENT_HBA_METHOD]:[]),...(readonlyRelay?['beginReadonlyRelayProbe']:[])];
   for(const key of methodNames)methods[key]=own(resource,key);
   need(methodNames.every(key=>typeof methods[key]==='function'),'CURRENT259_RESOURCE_CHANGED');
   fields=Object.fromEntries(relayFields.map(key=>[key,own(resource,key)]));fields.serverCertHashes=Object.freeze(record(fields.serverCertHashes,TLS_KEYS));
@@ -160,16 +164,20 @@ async function withCurrent259Resource(build,planInput,signal,consume,technical,t
   loader.verifyFull();check();
   handle=Object.freeze({kind:'CURRENT259_OWNED_RESOURCE'});
   const resourceView={...fields,topology};
-  for(const key of methodNames.filter(k=>!['close','getReceipt','checkRelay','beginPrismaRelayDrain',DOCUMENT_HBA_METHOD].includes(k)))resourceView[key]=async(...args)=>{need(!CONTRACT_METHODS.includes(key)||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
-  if(firstQ2)resourceView[DOCUMENT_HBA_METHOD]=async function(proof){
+  if(!readonlyRelay)for(const key of methodNames.filter(k=>!['close','getReceipt','checkRelay','beginPrismaRelayDrain',DOCUMENT_HBA_METHOD].includes(k)))resourceView[key]=async(...args)=>{need(!CONTRACT_METHODS.includes(key)||args.length===0,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();try{const result=await methods[key].apply(resource,args);checkOperation();return result;}catch(error){invalidate();void close().catch(()=>{});throw error;}};
+  if(firstQ2&&!readonlyRelay)resourceView[DOCUMENT_HBA_METHOD]=async function(proof){
    need(arguments.length===1,'CURRENT259_RESOURCE_DESCRIPTOR');checkOperation();
    try{const result=await methods[DOCUMENT_HBA_METHOD].call(resource,handle,proof);checkOperation();return result;}
    catch(error){invalidate();void close().catch(()=>{});throw error;}
   };
   resourceView.getReceipt=()=>{checkOperation();return methods.getReceipt.call(resource);};
-  resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
-  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return credentials;},check,checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity,
-   ...(loopback?{beginPrismaRelayDrain(){
+  if(!readonlyRelay)resourceView.getReceiptContinuity=token=>{businessIssuer(token,handle);checkLifetime();return methods.getReceipt.call(resource);};
+  view=Object.freeze({scope:'OWNED_RESOURCE_ONLY',...(technical?{purpose:TECHNICAL_PURPOSE,deadlineMs:3600000}:{}),runId,source:witness.source,build:witness.build,loader,resource:Object.freeze(resourceView),credentials:()=>{check();return readonlyRelay?Object.freeze({owner:credentials.owner}):credentials;},check,
+   ...(!readonlyRelay?{checkLifetime,checkContinuity,verifyBusinessFiles,activateBusinessContinuity,deactivateBusinessContinuity}:{}),
+   ...(readonlyRelay?{beginReadonlyRelayProbe(){
+    need(arguments.length===0&&!businessToken,'CURRENT259_RESOURCE_DESCRIPTOR');check();
+    return methods.beginReadonlyRelayProbe.call(resource);
+   }}:loopback?{beginPrismaRelayDrain(){
     need(arguments.length===0&&active&&!broken&&!businessToken&&!abortState(signal)&&
      own(resource,'beginPrismaRelayDrain')===methods.beginPrismaRelayDrain,'CURRENT259_RESOURCE_CLOSED');
     return methods.beginPrismaRelayDrain.call(resource);
@@ -217,6 +225,10 @@ async function withCurrent259FirstQ2LoopbackResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,Q2_TOPOLOGY);
 }
+async function withCurrent259ReadonlyRelayResource(build,plan,signal,permit,consume){
+ need(arguments.length===5&&signal!==undefined&&permit,'CURRENT259_RESOURCE_ARGUMENTS');
+ return withCurrent259Resource(build,plan,signal,consume,true,Q2_TOPOLOGY,permit);
+}
 async function withCurrent259CompetitionResource(build,plan,signal,consume){
  need(arguments.length===4&&typeof consume==='function'&&signal!==undefined,'CURRENT259_RESOURCE_ARGUMENTS');
  return withCurrent259Resource(build,plan,signal,consume,true,paymentLoopbackForScenario('competition').topology);
@@ -241,4 +253,4 @@ function claimCurrent259TechnicalResourceContinuity(handle,token){
  businessIssuer(token,handle);need(handle&&!types.isProxy(handle)&&handles.has(handle),'CURRENT259_RESOURCE_HANDLE');
  const owner=handles.get(handle);need(owner.technical===true,'CURRENT259_TECHNICAL_RESOURCE_REQUIRED');owner.view.checkLifetime();return owner.view;
 }
-module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259VoucherResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});
+module.exports=Object.freeze({withCurrent259OwnedResource,withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withCurrent259FirstQ2LoopbackResource,withCurrent259ReadonlyRelayResource,withCurrent259NormalPaymentResource,withCurrent259ResponseLossResource,withCurrent259CompetitionResource,withCurrent259VoucherResource,withCurrent259DisconnectRecoveryResource,withCurrent259AttributionGapResource,claimCurrent259OwnedResource,claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinuity,closeCurrent259OwnedResource});

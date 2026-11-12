@@ -12,6 +12,15 @@ const { types } = require("node:util");
 const TECHNICAL_LIFETIME = Symbol("current259 technical lifetime");
 const FIRST_ROLLBACK_LIFETIME = Symbol("current259 first-rollback lifetime");
 const FIRST_Q2_LIFETIME = Symbol("current259 first-Q2 lifetime");
+const READONLY_RELAY_LIFETIME = Symbol("current259 readonly-relay lifetime");
+const readonlyRelayPorts = new WeakMap();
+function claimReadonlyRelayBackendVerifier(permit, coordinates) {
+  const entry = readonlyRelayPorts.get(permit);
+  if (!entry || entry.containerId !== coordinates.containerId || entry.dockerConfig !== coordinates.dockerConfig ||
+    entry.signal !== coordinates.signal) return undefined;
+  readonlyRelayPorts.delete(permit);
+  return entry.verify;
+}
 const FIRST_Q2_TOPOLOGY = "UNVERIFIED_FIRST_Q2_LOOPBACK_TLS";
 const NORMAL_LIFETIME = Symbol("current259 normal payment lifetime");
 const RESPONSE_LOSS_LIFETIME = Symbol("current259 response loss lifetime");
@@ -278,7 +287,8 @@ async function prepareTask01Postgres(options = {}, lifetime) {
   const paymentLoopback = scenario !== undefined;
   const paymentTransport = paymentLoopback ? require("./task16-current259-payment-loopback.cjs").paymentLoopbackForScenario(scenario) : undefined;
   requireThat(!paymentLoopback || paymentTransport, "TASK01_RESOURCE_INPUT_INVALID");
-  const firstQ2 = lifetime === FIRST_Q2_LIFETIME;
+  const readonlyRelay = lifetime === READONLY_RELAY_LIFETIME;
+  const firstQ2 = lifetime === FIRST_Q2_LIFETIME || readonlyRelay;
   const loopback = paymentLoopback || firstQ2;
   const topology = paymentTransport?.topology ?? (firstQ2 ? FIRST_Q2_TOPOLOGY : "UNVERIFIED_HOST_PUBLISHED_TLS");
   const technical = loopback || lifetime === TECHNICAL_LIFETIME;
@@ -350,8 +360,8 @@ async function prepareTask01Postgres(options = {}, lifetime) {
   }
   const clientEnvironment = { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", TZ: "UTC", DOCKER_CONFIG: dockerConfig };
 
-  function run(executable, args, { input, timeoutMs = 60000, cleanup = false, allowFailure = false } = {}) {
-    const remaining = (cleanup ? cleanupEndAt : endAt) - Date.now();
+  function run(executable, args, { input, timeoutMs = 60000, cleanup = false, allowFailure = false, deadline = Infinity } = {}) {
+    const remaining = Math.min(cleanup ? cleanupEndAt : endAt, deadline) - Date.now();
     if (remaining <= 0 || !cleanup && signal?.aborted) return Promise.reject(fault(cleanup ? "TASK01_RESOURCE_CLEANUP_TIMEOUT" : "TASK01_RESOURCE_ABORTED_OR_TIMEOUT"));
     return new Promise((resolve, reject) => {
       const child = spawn(executable, args, { env: clientEnvironment, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
@@ -391,20 +401,20 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     });
   }
   const docker = (args, control) => run(tools.docker, ["--host", endpoint, ...args], control);
-  async function verifyDaemon(cleanup = false) {
-    const value = await docker(["info", "--format", "{{.ID}}"], { cleanup, timeoutMs: 10000 });
+  async function verifyDaemon(cleanup = false, deadline) {
+    const value = await docker(["info", "--format", "{{.ID}}"], { cleanup, timeoutMs: 10000, ...(deadline === undefined ? {} : { deadline }) });
     requireThat(value.stdout.toString().trim() === daemonId, "TASK01_RESOURCE_DAEMON_CHANGED");
   }
-  async function mutate(args, control = {}) { await verifyDaemon(Boolean(control.cleanup)); return docker(args, control); }
-  const inspect = async (kind, id, cleanup = false) => json((await docker([kind, "inspect", "--format", "{{json .}}", id], { cleanup, timeoutMs: 10000 })).stdout);
-  async function inspectNetwork(cleanup = false) {
-    const value = await inspect("network", networkId, cleanup);
+  async function mutate(args, control = {}) { await verifyDaemon(Boolean(control.cleanup), control.deadline); return docker(args, control); }
+  const inspect = async (kind, id, cleanup = false, deadline) => json((await docker([kind, "inspect", "--format", "{{json .}}", id], { cleanup, timeoutMs: 10000, ...(deadline === undefined ? {} : { deadline }) })).stdout);
+  async function inspectNetwork(cleanup = false, deadline) {
+    const value = await inspect("network", networkId, cleanup, deadline);
     requireThat(value.Id === networkId && value.Name === name && value.Internal === true && value.Driver === "bridge" && value.Labels?.[RUN_LABEL] === runId && value.Labels?.[TASK_LABEL] === "enterprise-task01" && value.Labels?.[SOURCE_LABEL] === sourceSha, "TASK01_RESOURCE_NETWORK_CHANGED");
     requireThat(Object.keys(value.Containers || {}).every(id => id === containerId), "TASK01_RESOURCE_NETWORK_OTHER_OWNER");
     return value;
   }
-  async function inspectOwned(cleanup = false) {
-    const value = await inspect("container", containerId, cleanup);
+  async function inspectOwned(cleanup = false, deadline) {
+    const value = await inspect("container", containerId, cleanup, deadline);
     requireThat(value.Id === containerId && value.Image === imageId && value.Name === `/${name}` && value.Config?.Labels?.[RUN_LABEL] === runId && value.Config?.Labels?.[TASK_LABEL] === "enterprise-task01" && value.Config?.Labels?.[SOURCE_LABEL] === sourceSha, "TASK01_RESOURCE_CONTAINER_CHANGED");
     const host = value.HostConfig;
     requireThat(host && host.NetworkMode === networkId && !host.Binds?.length && host.Memory === 1073741824 && host.MemorySwap === 1073741824 && host.NanoCpus === 2000000000 && host.PidsLimit === 256, "TASK01_RESOURCE_LIMITS_CHANGED");
@@ -419,7 +429,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     for (const mount of value.Mounts || []) {
       requireThat(mount.Type === "tmpfs" && Object.hasOwn(TMPFS, mount.Destination) || mount.Type === "volume" && mount.Destination === PGDATA && /^[0-9a-f]{64}$/u.test(mount.Name), "TASK01_RESOURCE_MOUNTS_CHANGED");
       if (mount.Type === "volume" && !receipt.volumes.some(row => row.name === mount.Name)) {
-        const metadata = await inspect("volume", mount.Name, cleanup);
+        const metadata = await inspect("volume", mount.Name, cleanup, deadline);
         receipt.volumes.push({ name: metadata.Name, createdAt: metadata.CreatedAt, driver: metadata.Driver });
         persist();
         throw fault("TASK01_RESOURCE_UNEXPECTED_IMAGE_VOLUME");
@@ -431,7 +441,7 @@ async function prepareTask01Postgres(options = {}, lifetime) {
       const ports = value.NetworkSettings?.Ports;
       requireThat(Object.keys(ports || {}).join(",") === "5432/tcp" && ports["5432/tcp"]?.length === 1 && ports["5432/tcp"][0].HostIp === "127.0.0.1" && ports["5432/tcp"][0].HostPort === String(receipt.port), "TASK01_RESOURCE_PORT_CHANGED");
     }
-    await inspectNetwork(cleanup);
+    await inspectNetwork(cleanup, deadline);
     return value;
   }
   function relayFailure(error) {
@@ -718,15 +728,15 @@ async function prepareTask01Postgres(options = {}, lifetime) {
   async function execOwnerSql(sql, phase) {
     return runOwnerSql(sql, phase);
   }
-  async function runOwnerSql(sql, phase, documentScope) {
+  async function runOwnerSql(sql, phase, documentScope, deadline) {
     requireThat(!closePromise && typeof sql === "string" && Buffer.byteLength(sql) <= 16 * 1024 * 1024 && typeof phase === "string" && /^[A-Za-z0-9._-]{1,128}$/u.test(phase), "TASK01_RESOURCE_SQL_INPUT_INVALID");
-    await inspectOwned();
+    await inspectOwned(false, deadline);
     const sevenPrestate = technical && phase === SEVEN_PRESTATE_PHASE;
     const archiveWrite = technical && !paymentLoopback && phase === ARCHIVE_WRITE_PHASE;
     const collectFixedFailure = sevenPrestate || archiveWrite;
     const args = ["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
       ...(collectFixedFailure ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"];
-    const control = { input: sql, timeoutMs: 120000, ...(collectFixedFailure ? { allowFailure: true } : {}) };
+    const control = { input: sql, timeoutMs: 120000, ...(deadline === undefined ? {} : { deadline }), ...(collectFixedFailure ? { allowFailure: true } : {}) };
     if (documentScope) { await verifyDaemon(); documentScope(); }
     const result = await (documentScope ? docker(args, control) : mutate(args, control));
     if (result.code !== 0) {
@@ -739,6 +749,22 @@ async function prepareTask01Postgres(options = {}, lifetime) {
       throw failure;
     }
     return { stdout: result.stdout.toString("utf8") };
+  }
+  async function verifyReadonlyBackendGone(identity, deadline) {
+    requireThat(readonlyRelay && Number.isSafeInteger(deadline) && deadline > Date.now() && deadline <= Date.now() + 5000 &&
+      Number.isInteger(identity.pid) && identity.pid > 0 && identity.pid <= 2147483647 &&
+      typeof identity.start === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/u.test(identity.start),
+      "TASK01_RESOURCE_INPUT_INVALID");
+    const sql = `BEGIN READ ONLY;
+SELECT CASE WHEN current_user = '${OWNER}' AND session_user = '${OWNER}' AND current_database() = '${databaseName}'
+ AND pg_catalog.pg_backend_pid() <> ${identity.pid} AND current_setting('transaction_read_only') = 'on'
+ AND EXISTS (SELECT 1 FROM pg_catalog.pg_stat_ssl WHERE pid = pg_catalog.pg_backend_pid() AND ssl)
+ AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid = ${identity.pid}
+   AND backend_start = '${identity.start}'::pg_catalog.timestamptz)
+ THEN 'gone' ELSE 'rejected' END;
+COMMIT;`;
+    const result = await runOwnerSql(sql, "current259-readonly-relay-backend-gone", undefined, deadline);
+    return result.stdout.trim() === "gone" && Date.now() < deadline;
   }
   let contractHbaAttempted = false, documentHbaAttempted = false, contractOrdinary, contractPlaintextStarted = false, contractPlaintextCursor;
   async function applyCurrent259ContractHbaV1() {
@@ -1032,7 +1058,13 @@ ROLLBACK;`;
       relayStartAttempted = true;
       try {
         const { startCurrent259LoopbackForward } = require("./task16-current259-loopback-forward.cjs");
-        relay = await startCurrent259LoopbackForward({ containerId, dockerConfig, signal });
+        const relayInput = { containerId, dockerConfig, signal };
+        if (readonlyRelay) {
+          const permit = Object.freeze({});
+          readonlyRelayPorts.set(permit, { ...relayInput, verify: verifyReadonlyBackendGone });
+          try { relay = await startCurrent259LoopbackForward(relayInput, permit); }
+          finally { readonlyRelayPorts.delete(permit); }
+        } else relay = await startCurrent259LoopbackForward(relayInput);
       }
       catch { throw fault("TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED"); }
       port = relay.port;
@@ -1058,7 +1090,11 @@ ROLLBACK;`;
     }
     receipt.phase = "ready-for-driver"; receipt.status = "started-awaiting-driver-verification"; persist();
     return { containerId, networkId, port, databaseName,
-      ...(loopback ? { relayId: receipt.relay.id, checkRelay, beginPrismaRelayDrain } : {}), caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical && !paymentLoopback ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1),
+      ...(loopback ? { relayId: receipt.relay.id, checkRelay, beginPrismaRelayDrain } : {}),
+      ...(readonlyRelay ? { beginReadonlyRelayProbe() {
+        requireThat(arguments.length === 0 && !closePromise, "TASK01_RESOURCE_CLOSED");
+        return relay.beginReadonlyRelayProbe();
+      } } : {}), caPath: material("ca.crt"), wrongCaPath: material("wrong-ca.crt"), serverCertHashes: { caSha256: receipt.tls.caSha256, wrongCaSha256: receipt.tls.wrongCaSha256, correctCertificateSha256: receipt.tls.correctCertificateSha256, wrongSanCertificateSha256: receipt.tls.wrongSanCertificateSha256, correctCertificateDerSha256: receipt.tls.correctCertificateDerSha256, wrongSanCertificateDerSha256: receipt.tls.wrongSanCertificateDerSha256 }, observePresentedCertificate: safeOperation(observePresentedCertificate), ...(technical && !paymentLoopback ? { applyCurrent259ContractHbaV1: safeOperation(applyCurrent259ContractHbaV1),
       beginCurrent259ContractPlaintextProbe: safeOperation(beginCurrent259ContractPlaintextProbe),
       verifyCurrent259ContractPlaintextRejection: safeOperation(verifyCurrent259ContractPlaintextRejection) } : {}),
       ...(firstQ2 ? { applyCurrent259DocumentHbaV1: safeOperation(applyCurrent259DocumentHbaV1) } : {}), execOwnerSql: safeOperation(execOwnerSql), inspectConnectionEndpoint: safeOperation(inspectConnectionEndpoint), setServerCertificate: safeOperation(setServerCertificate), captureLogCursor: safeOperation(captureLogCursor), readPlaintextRejectionEvidence: safeOperation(readPlaintextRejectionEvidence), getReceipt, close: safeOperation(close) };
@@ -1104,6 +1140,13 @@ async function startCurrent259FirstQ2LoopbackPostgres(options) {
   requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
   return startCurrent259FixedPostgres(options, FIRST_Q2_LIFETIME);
 }
+async function startCurrent259ReadonlyRelayPostgres(options, permit) {
+  requireThat(arguments.length === 2 && options && !types.isProxy(options) &&
+    Object.getPrototypeOf(options) === Object.prototype, "TASK01_RESOURCE_INPUT_INVALID");
+  const { claimReadonlyRelayResource } = require("./task12-current259-readonly-relay-once.cjs");
+  requireThat(claimReadonlyRelayResource(permit, options), "TASK01_RESOURCE_INPUT_INVALID");
+  return startCurrent259FixedPostgres(options, READONLY_RELAY_LIFETIME);
+}
 async function startCurrent259NormalPaymentPostgres(options) {
   requireThat(arguments.length === 1, "TASK01_RESOURCE_INPUT_INVALID");
   return startCurrent259FixedPostgres(options, NORMAL_LIFETIME);
@@ -1129,4 +1172,4 @@ async function startCurrent259AttributionGapPostgres(options) {
   return startCurrent259FixedPostgres(options, ATTRIBUTION_GAP_LIFETIME);
 }
 module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, startCurrent259FirstRollbackPostgres,
-  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure };
+  startCurrent259FirstQ2LoopbackPostgres, startCurrent259ReadonlyRelayPostgres, claimReadonlyRelayBackendVerifier, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure };
