@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { createTemplateTestServer } from "./template-management.test-support";
 import { createTask09Draft } from "./task09-draft-template.test-support";
 import { confirmedBodyLayout } from "./task10-body.test-support";
@@ -56,23 +57,53 @@ describe("Task10 confirmed unified material transport facts through public HTTP"
       console.info("统一清单原双表公有观测：" + directory);
     } finally { await server.processor.onApplicationShutdown(); await server.app.close(); }
   });
-  it("keeps unified ordinal and tax unit display server-derived despite customData and unknown facts", async () => {
-    const server = await createTemplateTestServer({ draftWorkbench: true });
-    const directory = await mkdtemp(join(tmpdir(), "jg-task10-unified-readonly-projection-"));
-    try {
+  describe("reviewed unified material projection", () => {
+    let server: Awaited<ReturnType<typeof createTemplateTestServer>>;
+    let directory: string;
+    let layout: Awaited<ReturnType<typeof confirmedBodyLayout>>;
+    let draft: Draft;
+    let preparationMs: number;
+    let saveMs: number;
+    let bodyReadMs: number;
+    const rows = [
+      { clientRowKey: "material", sortOrder: 0, itemName: "统一材料有税行", unit: "件", quantity: "2", unitPrice: "113", taxRatePercent: "13", customData: { rowNumber: "999", taxUnitPrice: "8888.0000", manufacturer: "合成厂家甲", ordinaryExtra: "保留原自定义字段", "contract.taxAmount": "123456789.0000" } },
+      { clientRowKey: "transport", sortOrder: 1, itemName: "统一运输有税行", unit: "趟", quantity: "2", unitPrice: "56.5", taxRatePercent: "13", customData: { rowNumber: "998", taxUnitPrice: "8887.0000" } },
+      { clientRowKey: "tiny", sortOrder: 2, itemName: "微量单位价不一致", unit: "件", quantity: "0.0001", unitPrice: "0.5", taxRatePercent: "13", customData: { rowNumber: "997", taxUnitPrice: "8886.0000" } },
+      { clientRowKey: "unknown", sortOrder: 3, itemName: "数量未约定", unit: "项", quantity: null, unitPrice: "113", taxRatePercent: "13", customData: { rowNumber: "996", taxUnitPrice: "8885.0000" } }
+    ];
+
+    beforeEach(async () => {
+      const started = performance.now();
+      server = await createTemplateTestServer({ draftWorkbench: true });
+      directory = await mkdtemp(join(tmpdir(), "jg-task10-unified-readonly-projection-"));
       const source = await readFile(resolve(__dirname, "../../assets/templates/material-purchase-unified-v2.docx"));
       expect(createHash("sha256").update(source).digest("hex")).toBe("3fcd682276933ccf69014ac30ddcb32e7e15322a3c433e19db437478fac95722");
-      const layout = await confirmedBodyLayout(server, source, "materials", "material_purchase", "材料运输统一版技术catalog");
-      const draft = await createTask09Draft(server);
-      const rows = [
-        { clientRowKey: "material", sortOrder: 0, itemName: "统一材料有税行", unit: "件", quantity: "2", unitPrice: "113", taxRatePercent: "13", customData: { rowNumber: "999", taxUnitPrice: "8888.0000", manufacturer: "合成厂家甲", ordinaryExtra: "保留原自定义字段", "contract.taxAmount": "123456789.0000" } },
-        { clientRowKey: "transport", sortOrder: 1, itemName: "统一运输有税行", unit: "趟", quantity: "2", unitPrice: "56.5", taxRatePercent: "13", customData: { rowNumber: "998", taxUnitPrice: "8887.0000" } },
-        { clientRowKey: "tiny", sortOrder: 2, itemName: "微量单位价不一致", unit: "件", quantity: "0.0001", unitPrice: "0.5", taxRatePercent: "13", customData: { rowNumber: "997", taxUnitPrice: "8886.0000" } },
-        { clientRowKey: "unknown", sortOrder: 3, itemName: "数量未约定", unit: "项", quantity: null, unitPrice: "113", taxRatePercent: "13", customData: { rowNumber: "996", taxUnitPrice: "8885.0000" } }
-      ];
+      layout = await confirmedBodyLayout(server, source, "materials", "material_purchase", "材料运输统一版技术catalog");
+      draft = await createTask09Draft(server);
+      preparationMs = Math.round(performance.now() - started);
+    });
+
+    beforeEach(async () => {
+      const started = performance.now();
       const saved = await saveRows(draft, rows, layout.id); const result = await saved.json(); expect({ status: saved.status, result }).toMatchObject({ status: 200 });
+      saveMs = Math.round(performance.now() - started);
+    });
+
+    beforeEach(async () => {
+      const started = performance.now();
       const response = await fetch(draft.base + "/document-body", { headers: draft.headers }); const body = await response.json();
       await writeFile(join(directory, "public-body.json"), JSON.stringify({ status: response.status, body, sourceSha: layout.sha256, expectedOrdinal: ["1", "2", "3", "4"], expectedTaxUnit: ["13.0000", "6.5000", "待确定", "待确定"], scope: "Synthetic immutable published catalog solely for public contract consumption; no adoption or publication claim" }, null, 2)); expect(response.status).toBe(200);
+      bodyReadMs = Math.round(performance.now() - started);
+    });
+
+    afterEach(async () => {
+      if (!server) return;
+      try { await server.processor.onApplicationShutdown(); }
+      finally { await server.app.close(); }
+    });
+
+    it("keeps unified ordinal and tax unit display server-derived despite customData and unknown facts", async () => {
+      const started = performance.now();
       const factsResponse = await fetch(draft.base + "/workbench", { headers: draft.headers }); expect(factsResponse.status).toBe(200); const facts = await factsResponse.json();
       const queuedResponse = await fetch(draft.base + "/preview-generation", { method: "POST", headers: draft.headers, body: JSON.stringify({ sourceRevision: facts.version.draftRevision }) }); expect(queuedResponse.status).toBe(201); const queued = await queuedResponse.json();
       const listed = await fetch((await server.app.getUrl()) + "/contract-workbench/" + draft.version.id + "/documents", { headers: draft.headers }); expect(listed.status).toBe(200); const output = (await listed.json()).find((job: { id: string }) => job.id === queued.generationId);
@@ -86,7 +117,10 @@ describe("Task10 confirmed unified material transport facts through public HTTP"
       expect(facts.bills[0].rows[3]).toMatchObject({ quantity: null, taxExclusiveUnitPrice: null, taxAmountYuan: null });
       expect(facts.bills[0].rows.map((row: { customData: unknown }) => row.customData)).toEqual(rows.map(row => row.customData));
       console.info("统一清单只读投影证据：" + directory);
-    } finally { await server.processor.onApplicationShutdown(); await server.app.close(); }
+      console.info("统一清单公开 HTTP 耗时", JSON.stringify({
+        preparationMs, saveMs, bodyReadMs, queueAndReadbackMs: Math.round(performance.now() - started)
+      }));
+    });
   });
 
   it.each(["approved", "unknown font"])("accepts the new plain PAGE version and binds authoritative net and tax totals with %s inspection", async (fontCase) => {

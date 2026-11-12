@@ -683,7 +683,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
 
   async function confirmCrossCompanyService(directoryActive: boolean) {
     const fixture = await createEligibleServiceFixture(observer, 1_000n, true);
-    const authority = await createPayerAuthority(observer, fixture);
+    const authority = await createPayerAuthority(observer, fixture, fixture.executionPayerCreditCode);
     const createdAuthority = await issuePayerAuthority(observer, authority);
     const reauthorizerUserId = randomUUID();
     const confirmerUserId = randomUUID();
@@ -1179,7 +1179,8 @@ async function createFixture(
 
 async function createPayerAuthority(
   client: DatabaseClient,
-  fixture: Pick<Fixture, "debtorCompanyId" | "executionPayerCompanyId">
+  fixture: Pick<Fixture, "debtorCompanyId" | "executionPayerCompanyId">,
+  holderCreditCodeSnapshot = "91310000DYNAMICGATE"
 ): Promise<Omit<PayerAuthority, "createdAt">> {
   const verifierUserId = randomUUID();
   const verificationEvidenceFileId = randomUUID();
@@ -1206,7 +1207,7 @@ async function createPayerAuthority(
     holderNameSnapshot: fixture.executionPayerCompanyId === fixture.debtorCompanyId
       ? "动态门付款主体"
       : "动态门实际付款主体",
-    holderCreditCodeSnapshot: "91310000DYNAMICGATE",
+    holderCreditCodeSnapshot,
     verificationReference: `bank-check-${randomUUID()}`,
     verifiedByUserId: verifierUserId,
     verifiedAt: new Date("2026-08-27T08:00:00.000Z"),
@@ -1376,6 +1377,9 @@ async function createEligibleServiceFixture(
   const actorUserId = randomUUID();
   const companyId = randomUUID();
   const executionPayerCompanyId = crossCompany ? randomUUID() : companyId;
+  const executionPayerCreditCode = crossCompany
+    ? `DYN${executionPayerCompanyId.replace(/-/g, "").slice(0, 15).toUpperCase()}`
+    : "91310000DYNAMICGATE";
   const companyVersionId = randomUUID();
   const projectId = randomUUID();
   const businessPartyId = randomUUID();
@@ -1444,7 +1448,7 @@ async function createEligibleServiceFixture(
       data: {
         id: executionPayerCompanyId,
         name: "动态门实际付款主体",
-        unifiedSocialCreditCode: "91310000DYNAMICGATE"
+        unifiedSocialCreditCode: executionPayerCreditCode
       }
     });
   }
@@ -1670,7 +1674,7 @@ async function createEligibleServiceFixture(
       paymentSubjectType: "our_company",
       companyEntityIdSnapshot: executionPayerCompanyId,
       companyEntityNameSnapshot: crossCompany ? "动态门实际付款主体" : "动态门付款主体",
-      companyEntityCreditCodeSnapshot: "91310000DYNAMICGATE",
+      companyEntityCreditCodeSnapshot: executionPayerCreditCode,
       amountCents,
       paidAt: new Date(),
       executedByUserId: actorUserId,
@@ -1709,6 +1713,7 @@ async function createEligibleServiceFixture(
     payableRef,
     paymentExecutionId,
     executionPayerCompanyId,
+    executionPayerCreditCode,
     debtorCompanyId: companyId,
     paymentRequestId,
     contractId,
