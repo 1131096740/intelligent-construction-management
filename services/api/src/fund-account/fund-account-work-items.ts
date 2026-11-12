@@ -8,7 +8,11 @@ export async function fundReviewWorkItems(prisma: PrismaService, userId: string,
   if (!prisma.fundAccountBalanceRegistration?.findMany) return [];
   return prisma.$transaction(async tx => {
     if (mode === "started" && !(await currentFundCompanyRoles(tx, userId)).some(role => role === "finance_staff" || role === "finance_director")) return [];
-    const rows = await tx.fundAccountBalanceRegistration.findMany({ where: { kind: "correction", status: "pending_review", ...(mode === "started" ? { createdByUserId: userId } : {}) }, orderBy: { createdAt: "desc" } });
+    const rows = await tx.fundAccountBalanceRegistration.findMany({
+      where: { kind: "correction", status: "pending_review", ...(mode === "started" ? { createdByUserId: userId } : {}) },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, approvalInstanceId: true, balanceYuan: true }
+    });
     const items: WorkItem[] = [];
     for (const row of rows) {
       try {
