@@ -82,6 +82,8 @@ ${targets.map(({table,trigger,routine})=>`CREATE TRIGGER ${identifier(trigger)} 
 FOR EACH ROW EXECUTE FUNCTION public.${routine}();
 ALTER TABLE public.${identifier(table)} ENABLE ALWAYS TRIGGER ${identifier(trigger)};`).join('\n')}`;
 }
+// Payment evidence reads xmin on three tables. Compare its direct grant and any
+// unexpected system-column grant alongside ordinary column privileges.
 function exactDirectSql(direct,identity,after){
  const expected=`SELECT r.oid AS grantee, CASE q.kind
     WHEN 'function' THEN to_regprocedure(q.object)::oid WHEN 'schema' THEN n.oid ELSE c.oid END AS object_oid,
@@ -93,14 +95,14 @@ function exactDirectSql(direct,identity,after){
   JOIN pg_roles r ON r.rolname=q.role_name
   LEFT JOIN pg_namespace n ON q.kind='schema' AND n.nspname=q.object
   LEFT JOIN pg_class c ON q.kind IN ('column','table') AND c.oid=to_regclass(format('public.%I',q.object))
-  LEFT JOIN pg_attribute a ON q.kind='column' AND a.attrelid=c.oid AND a.attname=q.column_name AND a.attnum>0 AND NOT a.attisdropped
+  LEFT JOIN pg_attribute a ON q.kind='column' AND a.attrelid=c.oid AND a.attname=q.column_name AND a.attnum<>0 AND NOT a.attisdropped
   LEFT JOIN pg_proc f ON q.kind='function' AND f.oid=to_regprocedure(CASE WHEN q.kind='function' THEN q.object END)`;
  return `(WITH expected AS (${expected}),
   expanded AS (
    SELECT c.oid AS object_oid,0 AS member,CASE WHEN c.relkind='S' THEN 'sequence' ELSE 'table' END AS kind,a.*
     FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE c.relnamespace=${identity.namespaceOid}::oid
    UNION ALL SELECT c.oid,a.attnum,'column',g.* FROM pg_class c JOIN pg_attribute a ON a.attrelid=c.oid
-    CROSS JOIN LATERAL aclexplode(a.attacl) g WHERE c.relnamespace=${identity.namespaceOid}::oid AND a.attnum>0 AND NOT a.attisdropped
+    CROSS JOIN LATERAL aclexplode(a.attacl) g WHERE c.relnamespace=${identity.namespaceOid}::oid AND a.attnum<>0 AND NOT a.attisdropped
    UNION ALL SELECT p.oid,0,'function',a.* FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE p.pronamespace=${identity.namespaceOid}::oid
    UNION ALL SELECT n.oid,0,'schema',a.* FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a WHERE n.oid=${identity.namespaceOid}::oid
    UNION ALL SELECT t.oid,0,'type',a.* FROM pg_type t CROSS JOIN LATERAL aclexplode(t.typacl) a WHERE t.typnamespace=${identity.namespaceOid}::oid

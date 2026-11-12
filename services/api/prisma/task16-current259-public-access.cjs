@@ -45,7 +45,7 @@ const aclRows = `SELECT 'routine'::text AS kind,p.oid AS object_oid,0 AS column_
   FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute k ON k.attrelid=c.oid
   CROSS JOIN LATERAL pg_catalog.aclexplode(k.attacl) a
   WHERE c.relnamespace=pg_catalog.to_regnamespace('public') AND c.relkind IN ('r','p','v','m','f')
-    AND k.attnum>0 AND NOT k.attisdropped
+    AND k.attnum<>0 AND NOT k.attisdropped
   UNION ALL SELECT 'type',t.oid,0,t.typowner,a.*
   FROM pg_catalog.pg_type t CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(t.typacl,pg_catalog.acldefault('T',t.typowner))) a
   WHERE t.oid IN ('public."OperatingLedgerFactWritePayloadV2"'::regtype,'public."OperatingLedgerImpactWritePayloadV2"'::regtype)`;

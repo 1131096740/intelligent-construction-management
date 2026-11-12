@@ -37,6 +37,12 @@ test('renders the fixed current259 matrix, all lock guards, and a fresh-backend 
  assert.equal(plan.publicAclStatus,'REQUIRES_FINAL_CATALOG');
  assert.match(plan.sql,/GRANT SELECT \([^\n]*"originalSignedNumber"[^\n]*\) ON TABLE public\."ContractVersion" TO "jg_task01_runtime"/u);
  assert.match(plan.sql,/GRANT DELETE ON TABLE public\."AuthRateLimit" TO "jg_task01_runtime"/u);
+ const xminTables=[...plan.sql.matchAll(/GRANT SELECT \([^\n]*"xmin"[^\n]*\) ON TABLE public\."([^"]+)" TO "jg_task01_runtime"/gu)]
+   .map(([,table])=>table).sort();
+ assert.deepEqual(xminTables,['FundAccountBalanceRegistration','PaymentExecution','RegisteredFundAccount']);
+ assert.match(plan.witnessSql,/pg_catalog\.pg_attribute a ON a\.attrelid=c\.oid AND a\.attnum<>0/u);
+ assert.match(plan.sql,/a\.attname=q\.column_name AND a\.attnum<>0/u);
+ assert.match(plan.sql,/aclexplode\(a\.attacl\) g WHERE c\.relnamespace=\d+::oid AND a\.attnum<>0/u);
  assert.doesNotMatch(plan.sql,/GRANT (?:INSERT|UPDATE|DELETE)[^\n]+TO "jg_task01_observer"/u);
  assert.equal([...plan.sql.matchAll(/ENABLE ALWAYS TRIGGER/g)].length,4);
  assert.match(plan.sql,/jg_task16_runtime_version_read_only/u);

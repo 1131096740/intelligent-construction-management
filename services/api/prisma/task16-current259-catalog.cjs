@@ -7,7 +7,7 @@ const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='fa28e78f0330024da5297dc4090cfd28364625600df06cf0aab2658d2a37035d';
+const MANIFEST_SHA='62a13a5007c6937e85445005acaeb52222ce8ff0f2c2e7c23d3d378cd83611a9';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');

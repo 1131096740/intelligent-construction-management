@@ -54,7 +54,7 @@
     },
     {
       "path": "services/api/prisma/task16-current259-catalog.sql",
-      "sha256": "7952af1517f2d1beed7b8c835ca9200d95a69add82005643ffc67f20e6a97f53"
+      "sha256": "8b1a5e909af8ad40efb3c8f224715332260e3aa3df33c0f15d3b1b649cd08602"
     },
     {
       "path": "services/api/prisma/task16-registered-access-check.cjs",

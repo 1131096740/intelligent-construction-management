@@ -8,7 +8,7 @@ capabilities AS (
  SELECT r.rolname::text AS role,'column'::text AS kind,c.relname::text AS object,a.attname::text AS member,
   op.privilege,pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,op.privilege||' WITH GRANT OPTION') AS grantable
  FROM restricted r CROSS JOIN pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
- JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
+ JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum<>0 AND NOT a.attisdropped
  CROSS JOIN (VALUES('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) op(privilege)
  WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
   AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,op.privilege)
@@ -34,7 +34,7 @@ other_acl AS (
  UNION ALL
  SELECT 'column',c.oid::text,t.attnum::text,a.* FROM pg_catalog.pg_class c
  JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
- JOIN pg_catalog.pg_attribute t ON t.attrelid=c.oid AND t.attnum>0 AND NOT t.attisdropped
+ JOIN pg_catalog.pg_attribute t ON t.attrelid=c.oid AND t.attnum<>0 AND NOT t.attisdropped
  CROSS JOIN LATERAL pg_catalog.aclexplode(t.attacl) a WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
  UNION ALL
  SELECT 'function',f.oid::text,'0',a.* FROM pg_catalog.pg_proc f
