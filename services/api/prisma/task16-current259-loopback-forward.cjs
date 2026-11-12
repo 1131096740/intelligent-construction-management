@@ -198,17 +198,17 @@ async function startCurrent259LoopbackForward(options) {
   const workers = new Set();
   let firstFailure, closing, active = false, prismaWindow, notifyStopped;
   const stopped = new Promise(resolve => { notifyStopped = resolve; });
-  const fail = (suffix, relayCloseState, relayFrameStage) => {
+  const fail = (suffix, relayCloseState, relayFrameStage, waitForNaturalExit = false) => {
     if (!firstFailure) {
       firstFailure = fault(suffix);
       if (relayCloseState) Object.defineProperty(firstFailure, 'relayCloseState', { value: Object.freeze({ ...relayCloseState }) });
       if (relayFrameStage) Object.defineProperty(firstFailure, 'relayFrameStage', { value: relayFrameStage });
     }
-    void close().catch(() => {});
+    if (!waitForNaturalExit) void close().catch(() => {});
   };
   const onAbort = () => fail('ABORTED');
   const server = net.createServer({ allowHalfOpen: true, pauseOnConnect: true }, socket => {
-    if (!active || closing) { socket.destroy(); return; }
+    if (firstFailure || !active || closing) { socket.destroy(); return; }
     if (socket.remoteAddress !== HOST || socket.localAddress !== HOST || workers.size >= CONNECTIONS) {
       socket.destroy();
       fail('LIMIT');
@@ -220,23 +220,43 @@ async function startCurrent259LoopbackForward(options) {
     try { child = spawn(DOCKER, argv, { env, stdio: ['pipe', 'pipe', 'pipe'] }); }
     catch { socket.destroy(); fail('CHILD'); return; }
 
-    let exited = false, halfCloseTimer;
+    let exited = false, halfCloseTimer, missingFin, childExitCode;
     const closeState = { hostFin: false, stdinEnded: false, pgFin: false, stdoutEnded: false, cliClosed: false,
       stdoutRawEnd: false, receiveSettled: false, cliExited: false, peerEndReturned: false };
     const closeSnapshot = () => ({ ...closeState, peerSocketDestroyed: socket.destroyed });
-    child.once('exit', () => { closeState.cliExited = true; });
+    const observeExit = exitCode => {
+      if (!closing && Number.isInteger(exitCode) && (exitCode === 0 || exitCode >= 41 && exitCode <= 48))
+        childExitCode = exitCode;
+    };
+    const finishMissingFin = () => {
+      if (!closing && missingFin) {
+        if (childExitCode !== undefined)
+          Object.defineProperty(missingFin, 'relayChildExitCode', { value: childExitCode });
+        void close().catch(() => {});
+      }
+    };
+    child.once('exit', exitCode => {
+      closeState.cliExited = true;
+      observeExit(exitCode);
+      finishMissingFin();
+    });
     child.stdout.once('end', () => { closeState.stdoutRawEnd = true; });
     const worker = { socket, child, closeSnapshot, closed: new Promise(resolve => child.once('close', exitCode => {
       exited = true;
       closeState.cliClosed = true;
+      observeExit(exitCode);
       resolve(exitCode);
-      if (!closing && exitCode !== 0) fail('CHILD');
+      if (missingFin) finishMissingFin();
+      else if (!closing && exitCode !== 0) fail('CHILD');
     })) };
     workers.add(worker);
-    const observeError = () => { if (!closing) fail('STREAM'); };
+    const observeError = () => { if (!closing && !missingFin) fail('STREAM'); };
     const halfClosed = side => {
       closeState[side] = true;
-      if (!halfCloseTimer) halfCloseTimer = setTimeout(() => fail('HALF_CLOSE_TIMEOUT', closeSnapshot()), HALF_CLOSE_MS);
+      if (!halfCloseTimer) halfCloseTimer = setTimeout(() => {
+        if (missingFin) finishMissingFin();
+        else fail('HALF_CLOSE_TIMEOUT', closeSnapshot());
+      }, HALF_CLOSE_MS);
     };
     // Native clients may reset after a terminal PostgreSQL reply. Retire only
     // that peer, then send an ordered EOF and drain its exact worker. Child and
@@ -260,7 +280,7 @@ async function startCurrent259LoopbackForward(options) {
     child.stderr.on('error', observeError);
     child.on('error', () => { if (!closing) fail('CHILD'); });
     child.stderr.on('data', chunk => {
-      if (!closing && chunk.length) fail('CHILD');
+      if (!closing && !missingFin && chunk.length) fail('CHILD');
     });
     worker.stop = () => {
       socket.destroy();
@@ -275,10 +295,19 @@ async function startCurrent259LoopbackForward(options) {
     });
     const window = prismaWindow?.accepting ? prismaWindow : undefined;
     window?.workers.add(worker);
-    worker.done = Promise.all([fromHost, fromPg, worker.closed]).catch(error => {
+    worker.done = Promise.all([fromHost, fromPg, worker.closed]).catch(async error => {
       if (!closing) {
-        if (error?.code === code('FRAME')) fail('FRAME', closeSnapshot(), error.relayFrameStage);
-        else fail('STREAM');
+        if (error?.code === code('FRAME')) {
+          const stage = error.relayFrameStage;
+          if (!firstFailure && stage === 'STDOUT_EOF_WITHOUT_FIN' && closeState.hostFin && closeState.stdinEnded) {
+            // Quarantine immediately. Observe only this worker's natural exit
+            // within the remaining half-close budget before starting teardown.
+            fail('FRAME', closeSnapshot(), stage, true);
+            missingFin = firstFailure;
+            if (closeState.cliExited || closeState.cliClosed) finishMissingFin();
+            await Promise.race([worker.closed, stopped]);
+          } else fail('FRAME', closeSnapshot(), stage);
+        } else fail('STREAM');
       }
     }).finally(() => {
       clearTimeout(halfCloseTimer);

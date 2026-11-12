@@ -51,11 +51,13 @@ function projectGeneratedDraftAdmissionFailure(value){
   const isFrame=relayCode==='CURRENT259_LOOPBACK_FORWARD_FRAME';
   const frameStage=isFrame?own(value,'relayFrameStage'):undefined;
   const sourceState=isFrame?own(value,'relayCloseState'):undefined;
+  const childExit=frameStage==='STDOUT_EOF_WITHOUT_FIN'?own(value,'relayChildExitCode'):undefined;
   const state=sourceState&&Object.fromEntries(relayCloseFields.map(key=>[key,own(sourceState,key)]));
   return Object.freeze({stage,...(admissionReasons.has(reason)?{reason}:{}),
     ...(operationCodes.has(operationCode)?{operationCode}:{}),
     ...(relayCodes.has(relayCode)?{relayCode}:{}),
     ...(relayFrameStages.has(frameStage)?{relayFrameStage:frameStage}:{}),
+    ...(Number.isInteger(childExit)&&(childExit===0||childExit>=41&&childExit<=48)?{relayChildExitCode:childExit}:{}),
     ...(state&&Object.values(state).every(value=>typeof value==='boolean')?{relayCloseState:Object.freeze(state)}:{}),
     ...(Number.isInteger(roleIndex)&&roleIndex>=0&&roleIndex<5?{roleIndex}:{})});
 }
@@ -70,7 +72,8 @@ function createGeneratedDraftAdmissionDiagnostic(){
         operationCode:operationCodes.has(primary)?primary:own(operationError,'errorCode')??own(operationError,'code'),
         relayCode:own(error,'relayCode')??own(operationError,'relayCode'),
         relayFrameStage:own(error,'relayFrameStage')??own(operationError,'relayFrameStage'),
-        relayCloseState:own(error,'relayCloseState')??own(operationError,'relayCloseState')});
+        relayCloseState:own(error,'relayCloseState')??own(operationError,'relayCloseState'),
+        relayChildExitCode:own(error,'relayChildExitCode')??own(operationError,'relayChildExitCode')});
     },
   });
 }

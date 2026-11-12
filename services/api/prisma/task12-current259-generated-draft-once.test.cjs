@@ -198,7 +198,7 @@ function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){
       if(failure==='frame'||failure==='forged-frame')throw Object.assign(new Error('private bytes'),{
         admissionFailure:{stage:'TLS_POSITIVE_CONTINUITY',operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',
           relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',roleIndex:1,
-          relayFrameStage:failure==='frame'?'STDOUT_EOF_WITHOUT_FIN':'private marker',
+          relayFrameStage:failure==='frame'?'STDOUT_EOF_WITHOUT_FIN':'private marker',relayChildExitCode:47,
           relayCloseState:{hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,
             stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,
             peerEndReturned:failure==='frame'?false:'private detail',raw:'private stdout'}}});
@@ -297,7 +297,7 @@ test('the draft receipt retains only fixed admission coordinates across owned cl
   const frame=await runModel(t,{failure:'frame'}).result();
   const frameBase={stage:'TLS_POSITIVE_CONTINUITY',operationCode:'TASK01_RESOURCE_LOOPBACK_FORWARD_FAILED',
     relayCode:'CURRENT259_LOOPBACK_FORWARD_FRAME',roleIndex:1};
-  assert.deepEqual(frame.admissionFailure,{...frameBase,relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',
+  assert.deepEqual(frame.admissionFailure,{...frameBase,relayFrameStage:'STDOUT_EOF_WITHOUT_FIN',relayChildExitCode:47,
     relayCloseState:{hostFin:true,stdinEnded:true,pgFin:false,stdoutEnded:false,cliClosed:false,
       stdoutRawEnd:true,receiveSettled:false,cliExited:false,peerSocketDestroyed:false,peerEndReturned:false}});
   assert.doesNotMatch(JSON.stringify(frame),/private/u);

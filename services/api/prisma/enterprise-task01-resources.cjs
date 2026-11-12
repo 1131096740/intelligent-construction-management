@@ -439,6 +439,9 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     if (code === "CURRENT259_LOOPBACK_FORWARD_FRAME") {
       const stage = ownErrorField(error, "relayFrameStage");
       if (RELAY_FRAME_STAGES.has(stage)) Object.defineProperty(failure, "relayFrameStage", { value: stage });
+      const exit = ownErrorField(error, "relayChildExitCode");
+      if (stage === "STDOUT_EOF_WITHOUT_FIN" && Number.isInteger(exit) && (exit === 0 || exit >= 41 && exit <= 48))
+        Object.defineProperty(failure, "relayChildExitCode", { value: exit });
     }
     if (code === "CURRENT259_LOOPBACK_FORWARD_FRAME" || code === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" ||
       code === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT") copyRelayCloseState(failure, error);

@@ -562,3 +562,81 @@ test('a Prisma wait preserves the original malformed frame failure', { timeout: 
   child.stdout.write(bad);
   await outcome;await relay.close();
 });
+
+for (const exitCode of [0, 47, 255]) {
+  test('missing FIN quarantines immediately and preserves only the natural allowed exit ' + exitCode, { timeout: 5000 }, async t => {
+    const child = fakeWorker();
+    const kill = child.kill;
+    let kills = 0;
+    child.kill = (...args) => { kills++; return kill(...args); };
+    const fixture = load(t, () => child);
+    const relay = await fixture.start();
+    t.after(() => relay.close());
+    const drain = relay.beginPrismaDrain();
+    const client = await connect(relay.port);
+    t.after(() => client.destroy());
+    const hostFinished = once(child.stdin, 'finish');
+    client.end(reply);
+    await hostFinished;
+    await new Promise(resolve => setImmediate(resolve));
+    child.stdout.end();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(kills, 0);
+    let first;
+    assert.throws(() => relay.check(), error => {
+      first = error;
+      return error.code === 'CURRENT259_LOOPBACK_FORWARD_FRAME' &&
+        error.relayFrameStage === 'STDOUT_EOF_WITHOUT_FIN' && error.relayChildExitCode === undefined;
+    });
+    assert.throws(() => relay.beginPrismaDrain(), error => error === first);
+    child.stderr.write('private relay message');
+    const another = net.createConnection({ host: '127.0.0.1', port: relay.port });
+    const rejected = once(another, 'close');
+    another.resume();
+    await rejected;
+    assert.equal(fixture.calls.length, 1);
+    assert.equal(kills, 0);
+    const failed = assert.rejects(drain(), error => {
+      assert.equal(error, first);
+      assert.equal(error.relayChildExitCode, exitCode === 255 ? undefined : exitCode);
+      assert.equal(error.relayCloseState.cliExited, false);
+      assert.equal(error.relayCloseState.pgFin, false);
+      assert.doesNotMatch(String(error) + JSON.stringify(error), /private/u);
+      return true;
+    });
+    child.emit('exit', exitCode, null);
+    child.stderr.end();
+    child.emit('close', exitCode, null);
+    await failed;
+    await relay.close();
+    assert.equal(kills, 0);
+  });
+}
+
+test('a missing FIN with no natural status retains the original FRAME through the fixed half-close deadline', { timeout: 7500 }, async t => {
+  const child = fakeWorker();
+  const fixture = load(t, () => child);
+  const relay = await fixture.start();
+  t.after(() => relay.close());
+  const drain = relay.beginPrismaDrain();
+  const client = await connect(relay.port);
+  t.after(() => client.destroy());
+  const hostFinished = once(child.stdin, 'finish');
+  client.end(reply);
+  await hostFinished;
+  await new Promise(resolve => setImmediate(resolve));
+  child.stdout.end();
+  await new Promise(resolve => setImmediate(resolve));
+  let first;
+  assert.throws(() => relay.check(), error => {
+    first = error;
+    return error.code === 'CURRENT259_LOOPBACK_FORWARD_FRAME';
+  });
+  await assert.rejects(drain(), error => {
+    assert.equal(error, first);
+    assert.equal(error.relayFrameStage, 'STDOUT_EOF_WITHOUT_FIN');
+    assert.equal(error.relayChildExitCode, undefined);
+    return true;
+  });
+  await relay.close();
+});
