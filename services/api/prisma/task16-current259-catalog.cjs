@@ -4,10 +4,10 @@ const path=require('node:path'),{createHash}=require('node:crypto');
 const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
-const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {qualifyCurrent259Source,isExactCurrentPaymentProfile,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='3d23c6518b64492f21a4045ca4fc4ece1a69a5942b5e1c4c7d0d2e441deef2fd';
+const MANIFEST_SHA='3dc89bfaab1c3b14cce5773392a406bc8f4590766b4bd31935348b40acb50144';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -66,7 +66,7 @@ function loadCurrent259CatalogMaterial(source){
 }
 function materialForRequest(r){
  const m=material(r.source);
- need(m.p.profile==='TASK16_CURRENT259_SOURCE_V1');
+ need(isExactCurrentPaymentProfile(m.p,r.identity.paymentProfile));
  if(r.identity.voucherProfile){
   const {current259VoucherAcl,voucherAccessPlan}=require('./task16-current259-voucher-acl.cjs');
   m.voucher=current259VoucherAcl();
@@ -76,10 +76,11 @@ function materialForRequest(r){
 }
 function request(input){
  const r=snapshot(input);need(equal(Object.keys(r).sort(),['identity','nonce','phase','source',...(Object.hasOwn(r,'installXid')?['installXid']:[])].sort()));
- const id=r.identity,competition=Object.hasOwn(id,'runtimeProfile'),voucher=Object.hasOwn(id,'voucherProfile');
- need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',...(competition?['runtimeProfile']:[]),...(voucher?['voucherProfile']:[])].sort())&&
+ const id=r.identity,competition=Object.hasOwn(id,'runtimeProfile'),voucher=Object.hasOwn(id,'voucherProfile'),payment261=Object.hasOwn(id,'paymentProfile');
+ need(equal(Object.keys(id).sort(),['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',...(competition?['runtimeProfile']:[]),...(voucher?['voucherProfile']:[]),...(payment261?['paymentProfile']:[])].sort())&&
   (!competition||id.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')&&
-  (!voucher||(competition&&id.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1')));
+  (!voucher||(competition&&id.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1'))&&
+  (!payment261||(!competition&&id.paymentProfile===PAYMENT261_RUNTIME_PROFILE)));
  need(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(id.runId)&&id.database==='jg_task01_'+id.runId.replaceAll('-','')&&
   ['databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid'].every(k=>oid(id[k]))&&
   new Set([id.ownerOid,id.runtimeOid,id.observerOid]).size===3&&wide(id.systemIdentifier)&&
@@ -94,12 +95,36 @@ function config(r,m){
   schemaSha256:m.p.schemaSha256,identity:r.identity,ledger:m.p.ledger,
   runtime,observer,readerColumns:m.manifest.readerColumns,relations:[...new Set([...runtime.tables,...observer.tables].map(x=>x.table).concat(['PaymentExecution','PaymentRequest','Contract','ContractVersion','OperatingFact','OperatingImpactEntry','RegisteredPaymentFunding','PaymentExecutionWagePayableBinding','HistoricalWageSummaryPaymentExecutionLink']))].sort().map(table=>({table,owner:m.plan.legacyRelationOwners[table]??'jg_task01_owner'})),readerSignature:SIGNATURE,installXid:r.installXid??null};
 }
+function payment261SourceGuardsSql(){
+ const bodySha=body=>"pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to("+body+",'UTF8')),'hex')";
+ return `EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t
+ JOIN pg_catalog.pg_proc f ON f.oid=t.tgfoid
+ JOIN pg_catalog.pg_language l ON l.oid=f.prolang
+ JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
+ WHERE t.tgrelid=pg_catalog.to_regclass('public."ContractBankEventClaim"')
+  AND t.tgname='ContractBankEventClaim_company_transfer' AND t.tgenabled='O' AND t.tgtype=7
+  AND NOT t.tgisinternal AND t.tgnargs=0 AND t.tgqual IS NULL
+  AND f.oid=pg_catalog.to_regprocedure('public.jg_guard_contract_bank_event_company_transfer()')
+  AND f.pronamespace=pg_catalog.to_regnamespace('public') AND f.proowner=c.relowner AND f.proowner=10
+  AND l.lanname='plpgsql' AND f.prokind='f' AND f.prorettype='pg_catalog.trigger'::regtype
+  AND f.provolatile='v' AND f.proparallel='u' AND NOT (f.prosecdef OR f.proisstrict OR f.proretset OR f.proleakproof)
+  AND f.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
+  AND ${bodySha('f.prosrc')}='ed2db669d021e3840924545c450f5b345f3d61ee2372c3a57ebb1f74bae20e79')
+ AND NOT EXISTS(SELECT 1 FROM (VALUES
+  ('public.jg_upward_archive_splice_metadata_v2()','ffe41b8fd0fabf65e106eff42c983fa15e6d2f11e123b48503f774805fa4ba88'),
+  ('public.jg_upward_archive_recipe_v2()','142d3ae6b930e932042990a9b31f5ab841beff1f2d84f1517e3c05a0ed28a17f'),
+  ('public.jg_require_contract_direct_upward_source_v2()','c4ed2c5040daf5f51e372a045e06fab5aeb8f048b16146c46e96c178f2128cee')
+ ) expected(signature,body_sha) WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc f
+  WHERE f.oid=pg_catalog.to_regprocedure(expected.signature) AND f.proowner=10
+   AND f.pronamespace=pg_catalog.to_regnamespace('public') AND ${bodySha('f.prosrc')}=expected.body_sha))`;
+}
 function query(r,m){
  const template=m.files.find(f=>f.path==='services/api/prisma/task16-current259-catalog.sql').bytes.toString('utf8');
  need(template.split('__CONFIG__').length===2&&template.includes('__GUARDS__'));
  const guards='('+baselineGuardsSql()+') AND ('+referenceGuardSql(m.plan)+')';
  const voucher=m.voucher?' AND ('+m.voucher.continuitySql(m.plan.functionProofs)+')':'';
- const sql=template.replace('__CONFIG__',quote(JSON.stringify(config(r,m)))).replace('__GUARDS__',guards+voucher);
+ const payment261=r.identity.paymentProfile?' AND ('+payment261SourceGuardsSql()+')':'';
+ const sql=template.replace('__CONFIG__',quote(JSON.stringify(config(r,m)))).replace('__GUARDS__',guards+voucher+payment261);
  if(!m.voucher)return sql;
  return `SELECT q.result || pg_catalog.jsonb_build_object('voucherBindingSha256',${m.voucher.bindingSha256Sql}) AS result
  FROM (${sql.trim().replace(/;$/u,'')}) q;\n`;

@@ -2,9 +2,11 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const api=require('./task16-current259-catalog.cjs');
+const {PAYMENT261_RUNTIME_PROFILE,PAYMENT261_LEDGER_SHA256}=require('./task16-current259-profile.cjs');
 const hash=x=>crypto.createHash('sha256').update(x).digest('hex');
 const root=path.resolve(__dirname,'../../..');
-const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().slice(0,259).map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+const currentMigrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+const migrations=currentMigrations.slice(0,259);
 const source={candidateSha:'a'.repeat(40),sealSha256:'b'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations};
 const identity={runId:'01234567-89ab-cdef-0123-456789abcdef',database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',runtimeOid:'17000',observerOid:'17001',systemIdentifier:'123456789'};
 const request={source,identity,nonce:'c'.repeat(64),phase:'before'};
@@ -73,6 +75,47 @@ function observed(phase='before',access=plan){
   config:['search_path=pg_catalog'],bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20',xmin:'1000',acl:[['10','10','EXECUTE',false],['10','17000','EXECUTE',false]]};
  return row;
 }
+test('payment261 B7 binds both forward rows, the exact owner routines and the original access matrix',()=>{
+ const source261={...source,migrations:currentMigrations};
+ const identity261={...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE};
+ const request261={...request,source:source261,identity:identity261};
+ const material=api.loadCurrent259CatalogMaterial(source261);
+ assert.equal(material.ledgerSha256,PAYMENT261_LEDGER_SHA256);
+ assert.deepEqual(material.accessPlan,api.loadCurrent259CatalogMaterial(source).accessPlan);
+ const parse=(row,r,prior)=>api.parseCurrent259CatalogRead(JSON.stringify({...row,ledger:material.ledger}),r,prior);
+ const before=parse(observed(),request261);
+ const staged=parse(observed('staged'),{...request261,phase:'staged'},before);
+ const committed=parse(observed('committed'),{...request261,phase:'committed',installXid:'1000'},staged);
+ assert.deepEqual(committed.raw.reader.acl,[['10','10','EXECUTE',false],['10','17000','EXECUTE',false]]);
+ assert.equal(committed.nativeAdmission,false);
+ const sql=api.renderCurrent259B7Install({source:source261,identity:identity261,nonce:request.nonce,before});
+ for(const marker of [PAYMENT261_RUNTIME_PROFILE,'jg_guard_contract_bank_event_company_transfer()','NOT (f.prosecdef',
+  'jg_upward_archive_splice_metadata_v2()','jg_upward_archive_recipe_v2()','jg_require_contract_direct_upward_source_v2()']){
+  assert.ok(sql.includes(marker),marker);
+  assert.ok(!api.renderCurrent259CatalogRead(request).includes(marker),marker);
+ }
+ assert.throws(()=>parse({...observed(),guardsVerified:false},request261),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(observed()),request261),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...observed(),extraFunctions:[['jg_task01_runtime','9999']]},request261),/TASK16_CURRENT259_CATALOG/u);
+});
+test('payment261 catalog rejects wrong-purpose, partial, drifted and expanded source profiles',()=>{
+ const source261={...source,migrations:currentMigrations};
+ const identity261={...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE};
+ const reject=(actualSource,actualIdentity,code='TASK16_CURRENT259_CATALOG')=>assert.throws(()=>api.renderCurrent259CatalogRead({
+  ...request,source:actualSource,identity:actualIdentity
+ }),{code});
+ reject(source261,identity);
+ reject(source,identity261);
+ reject(source261,{...identity261,paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'});
+ reject(source261,{...identity261,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'});
+ reject(source261,{...identity261,voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'});
+ reject({...source261,migrations:currentMigrations.slice(0,260)},identity261,'TASK16_CURRENT259_SOURCE');
+ reject({...source261,migrations:[...currentMigrations,{path:'services/api/prisma/migrations/20261112100000_future/migration.sql',sha256:'a'.repeat(64)}]},identity261,'TASK16_CURRENT259_SOURCE');
+ for(const index of [259,260]){
+  const drift=structuredClone(currentMigrations);drift[index].sha256='a'.repeat(64);
+  reject({...source261,migrations:drift},identity261,'TASK16_CURRENT259_SOURCE');
+ }
+});
 test('the named competition catalog accepts only the exact runtime connection limit delta',()=>{
  const row=observed(),comp={...request,identity:{...identity,runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}};
  const parse=(candidate,r)=>api.parseCurrent259CatalogRead(JSON.stringify(candidate),r);

@@ -23,7 +23,7 @@ function need(ok) {
   if (!ok) throw fail('INVALID');
 }
 
-function catalogRequest(source, provisioned, nonce, competition, voucher) {
+function catalogRequest(source, provisioned, nonce, competition, voucher, paymentProfile) {
   const { database, databaseOid, namespaceOid, ownerOid, systemIdentifier } = provisioned.databaseIdentity;
   const roleOid = name => {
     const roles = provisioned.roles.filter(role => role.name === name);
@@ -37,7 +37,7 @@ function catalogRequest(source, provisioned, nonce, competition, voucher) {
     identity: { runId: provisioned.runId, database, databaseOid, namespaceOid, ownerOid, systemIdentifier,
       runtimeOid: roleOid('jg_task01_runtime'), observerOid: roleOid('jg_task01_observer'),
       ...(competition ? { runtimeProfile: 'CURRENT259_TWO_RUNTIME_LANES' } : {}),
-      ...(voucher ? { voucherProfile: 'CURRENT259_PAYMENT_VOUCHER_V1' } : {}) },
+      ...(voucher ? { voucherProfile: 'CURRENT259_PAYMENT_VOUCHER_V1' } : {}), ...(paymentProfile ? { paymentProfile } : {}) },
     nonce, phase: 'before'
   };
 }
@@ -48,7 +48,7 @@ function proofSql(catalog, nonce, transactionId, commitStatus) {
    WHERE p.oid='${IDENTITY_ROUTINE}'::regprocedure),'catalog',q.result) FROM ${catalog} q;`;
 }
 
-function writeScript(sevenXid, runtime, publicSql, projection, nonce, voucherPreimageSql) {
+function writeScript(sevenXid, runtime, publicSql, projection, nonce, voucherPreimageSql, paymentProfile) {
   const voucher = voucherPreimageSql !== undefined;
   return `BEGIN ISOLATION LEVEL SERIALIZABLE;
 SET LOCAL search_path=pg_catalog,pg_temp;
@@ -68,7 +68,7 @@ ${voucher ? ' prior_voucher_binding text;\n' : ''}BEGIN
  ${voucher ? 'SELECT binding_sha256 INTO STRICT prior_voucher_binding FROM pg_temp.jg_c259_voucher_preimage;\n ' : ''}SELECT result INTO STRICT report FROM pg_temp.jg_c259_acl_proof;
  IF report->'extraFunctions' IS DISTINCT FROM '[]'::jsonb
    OR report->'publicAclViolations' IS DISTINCT FROM '[]'::jsonb
-   ${voucher ? "OR report->'guardsVerified' IS DISTINCT FROM 'true'::jsonb\n   OR report->>'voucherBindingSha256' IS DISTINCT FROM prior_voucher_binding\n   " : ''}OR report->>'writeXid' IS DISTINCT FROM pg_catalog.pg_current_xact_id()::text
+   ${voucher || paymentProfile ? "OR report->'guardsVerified' IS DISTINCT FROM 'true'::jsonb\n   " : ''}${voucher ? "OR report->>'voucherBindingSha256' IS DISTINCT FROM prior_voucher_binding\n   " : ''}OR report->>'writeXid' IS DISTINCT FROM pg_catalog.pg_current_xact_id()::text
    OR NOT EXISTS(SELECT FROM pg_catalog.pg_proc p WHERE p.oid='${IDENTITY_ROUTINE}'::regprocedure
      AND p.xmin::text=(mod(pg_catalog.pg_current_xact_id()::text::numeric,4294967296))::text)
  THEN RAISE EXCEPTION '${CODE}_FINAL_CATALOG'; END IF;
@@ -126,7 +126,7 @@ async function installPaymentAcl(sevenCompletion, handle, voucher) {
   const lease = claimSeven(sevenCompletion, handle);
   let writeAttempted = false;
   try {
-    const { source, completion, roleCompletion } = lease;
+    const { source, completion, roleCompletion, paymentProfile } = lease;
     const view = claimCurrent259TechnicalResource(handle);
     const check = () => { lease.check(); view.check(); view.verifyFull(); };
     const checkContinuity = token => { businessIssuer(token, handle); lease.checkContinuity(token); view.checkLifetime(); };
@@ -137,8 +137,9 @@ async function installPaymentAcl(sevenCompletion, handle, voucher) {
       roleCompletion.databaseIdentity.database === view.resource.databaseName);
     const nonce = randomBytes(32).toString('hex');
     const competition = lease.competition === true;
-    need(!voucher || competition && typeof lease.voucherPreimageSql === 'string' && lease.voucherPreimageSql.length > 0);
-    const request = catalogRequest(source, roleCompletion, nonce, competition, voucher);
+    need(roleCompletion.paymentProfile === paymentProfile && (!competition || paymentProfile === undefined) &&
+      (!voucher || competition && typeof lease.voucherPreimageSql === 'string' && lease.voucherPreimageSql.length > 0));
+    const request = catalogRequest(source, roleCompletion, nonce, competition, voucher, paymentProfile);
     const ordinaryRuntime = competition ? renderCurrent259CompetitionRuntimeAcl : renderCurrent259RuntimeAcl;
     const renderRuntime = voucher ? renderCurrent259VoucherRuntimeAcl : ordinaryRuntime;
     const runtime = renderRuntime(source, roleCompletion, nonce);
@@ -147,7 +148,8 @@ async function installPaymentAcl(sevenCompletion, handle, voucher) {
     const witness = runtime.witnessSql.trim();
     need(witness.endsWith(';'));
     const projection = witness.slice(0, -1);
-    const sql = writeScript(completion.installXid, runtime, publicSql, projection, nonce, voucher ? lease.voucherPreimageSql : undefined);
+    const sql = writeScript(completion.installXid, runtime, publicSql, projection, nonce,
+      voucher ? lease.voucherPreimageSql : undefined, paymentProfile);
     check();
     writeAttempted = true;
     const staged = parseProof(await view.resource.execOwnerSql(sql, WRITE), nonce, false, voucher);

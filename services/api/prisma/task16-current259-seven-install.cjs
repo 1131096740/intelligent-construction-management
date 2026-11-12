@@ -10,6 +10,7 @@ const {isDeepStrictEqual:equal,types}=require('node:util');
 const {claimCurrent259ProvisionedRoles}=require('./task16-current259-role-provision.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {loadCurrent259CatalogMaterial,current259Schema205WitnessSql,current259AclRowsSql}=require('./task16-current259-catalog.cjs');
+const {isExactCurrentArchiveProfile,isExactCurrentPaymentProfile}=require('./task16-current259-profile.cjs');
 const {renderCurrent259SevenPreimage,parseCurrent259SevenPreimage,describeCurrent259SevenPreimageFailure}=require('./task16-current259-seven-preimage.cjs');
 const {functionProofSql}=require('./task16-registered-access-check.cjs');
 const {registeredObjectWitnessSql,schema205RegistrySql,schema205RegistryValid,schema205EnforceConfigSql,SCHEMA205_DEPARSE_LOCAL}=require('./task16-registered-object-witness.cjs');
@@ -129,9 +130,10 @@ function currentRewriteBodies(ledger,changedRoutines){
   archiveChangedRoutines:changedRoutines.map(row=>archiveAfterProofs.get(row.signature)??row),
  };
 }
-function material(witness,archive){
+function material(witness,archive,paymentProfile){
  const profile=witness.profile;
- need((profile?.profile==='TASK16_CURRENT259_SOURCE_V1'||archive&&profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1')&&
+ const qualified=archive?paymentProfile===undefined&&isExactCurrentArchiveProfile(profile):isExactCurrentPaymentProfile(profile,paymentProfile);
+ need(qualified&&
   profile.candidateSha===witness.candidateSha&&profile.sealSha256===witness.sourceSealSha256);
  const catalog=loadCurrent259CatalogMaterial({candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))});
@@ -154,8 +156,9 @@ function material(witness,archive){
   ...currentRewriteBodies(catalog.ledger,changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3), ADD COLUMN "status" text NOT NULL;\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
 }
 function inputOf(lease,view,archive=false){
- const {completion:roleCompletion,source}=lease;
+ const {completion:roleCompletion,source,paymentProfile}=lease;
  const competition=lease.competition===true;
+ need(roleCompletion.paymentProfile===paymentProfile&&(!competition||paymentProfile===undefined));
  need(roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===source.candidateSha&&equal(source,view.source));
  need(hex(roleCompletion.sourceSha,40)&&roleCompletion.runId===view.runId&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(roleCompletion.runId));
  const id=roleCompletion.databaseIdentity;
@@ -172,7 +175,7 @@ function inputOf(lease,view,archive=false){
  need(new Set(['10',ordinary.oid,runtime.oid,observer.oid]).size===4);
  const xmin=String(BigInt(roleCompletion.commitXid)%4294967296n);
  need(runtime.xmin===xmin&&observer.xmin===xmin);
- return {source,id,ordinary,runtime,observer,roleCompletion,competition,material:material(source,archive)};
+ return {source,id,ordinary,runtime,observer,roleCompletion,competition,paymentProfile,material:material(source,archive,paymentProfile)};
 }
 
 function scopeGuards(input,phase,archiveXid){
@@ -591,7 +594,7 @@ async function installCurrent259SevenFragments(roleCompletion,handle){
   const completion=Object.freeze({status:'CURRENT259_SEVEN_INSTALLED_NOT_ADMISSION',sourceSha:input.roleCompletion.sourceSha,
    runId:input.roleCompletion.runId,containerId:input.roleCompletion.containerId,installXid:committed.installXid,catalogSha256:committed.catalogSha256,nativeAdmission:false});
   installed.set(completion,{handle,check,checkContinuity,source:input.source,roleCompletion:input.roleCompletion,
-   competition:input.competition,...(input.competition?{input}:{})});
+   competition:input.competition,paymentProfile:input.paymentProfile,...(input.competition?{input}:{})});
   return completion;
  }catch(cause){
   const primary=error(writing?'COMMIT_UNCONFIRMED':'PRESTATE_REJECTED');
@@ -613,8 +616,9 @@ function claimSevenInstallation(completion,handle,voucher){
  const receipt=installed.get(completion);
  need(receipt.handle===handle&&(!voucher||receipt.competition),'HANDLE');
  installed.delete(completion);receipt.check();
- const {check,checkContinuity,source,roleCompletion,competition}=receipt;
+ const {check,checkContinuity,source,roleCompletion,competition,paymentProfile}=receipt;
  return Object.freeze({completion,check,checkContinuity,source,roleCompletion,...(competition?{competition:true}:{}),
+  ...(paymentProfile?{paymentProfile}:{}),
   ...(voucher?{voucherPreimageSql:voucherSevenPreimageSql(receipt.input,completion.catalogSha256)}:{})});
 }
 function voucherSevenPreimageSql(input,catalogSha256){

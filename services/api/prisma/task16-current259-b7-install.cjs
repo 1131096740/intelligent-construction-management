@@ -63,7 +63,8 @@ async function installCurrent259B7(aclCompletion,handle,permit){
    equal(source,view.source)&&completion.sourceSha===source.candidateSha&&completion.runId===view.runId&&
    roleCompletion.sourceSha===source.candidateSha&&roleCompletion.runId===view.runId&&roleCompletion.containerId===view.resource.containerId&&
    request.phase==='before'&&request.identity.runId===view.runId&&request.identity.database===view.resource.databaseName&&
-   request.source.candidateSha===source.candidateSha&&request.source.sealSha256===source.sourceSealSha256);
+   request.source.candidateSha===source.candidateSha&&request.source.sealSha256===source.sourceSealSha256&&
+   request.identity.paymentProfile===roleCompletion.paymentProfile);
   const run=async(sql,phase)=>{
    const result=await view.resource.execOwnerSql(sql,phase);check();return result.stdout;
   };

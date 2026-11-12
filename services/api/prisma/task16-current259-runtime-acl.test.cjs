@@ -5,7 +5,7 @@ const {test} = require('node:test');
 const {createHash} = require('node:crypto');
 const {readFileSync, readdirSync} = require('node:fs');
 const path = require('node:path');
-const {qualifyCurrent259Source} = require('./task16-current259-profile.cjs');
+const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE} = require('./task16-current259-profile.cjs');
 const {renderCurrent259RuntimeAcl,renderCurrent259CompetitionRuntimeAcl,renderCurrent259VoucherRuntimeAcl} = require('./task16-current259-runtime-acl.cjs');
 
 const nonce='d'.repeat(64);
@@ -61,6 +61,24 @@ test('rejects a different candidate role receipt and checked-to-used getters',()
  result.roles=[{name:runtime.name,get oid(){getter++;return runtime.oid;}},observer];
  assert.throws(()=>renderCurrent259RuntimeAcl(source,result,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  assert.equal(getter,0);
+});
+
+test('payment261 runtime ACL retains the old grants and requires its scoped ordinary role receipt',()=>{
+ const extra=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().slice(259).map(name=>({
+  path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(path.join(__dirname,'migrations',name,'migration.sql')),
+ }));
+ const profile=qualifyCurrent259Source({...material,migrations:[...material.migrations,...extra]});
+ const witness={...source,profile},provisioned={...receipt(),paymentProfile:PAYMENT261_RUNTIME_PROFILE};
+ assert.throws(()=>renderCurrent259RuntimeAcl(witness,receipt(),nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259RuntimeAcl(source,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
+ const qualified=renderCurrent259RuntimeAcl(witness,provisioned,nonce),legacy=renderCurrent259RuntimeAcl(source,receipt(),nonce);
+ const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
+ assert.deepEqual(grants(qualified.sql),grants(legacy.sql));
+ assert.match(qualified.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
+ assert.match(qualified.witnessSql,/jg_upward_archive_recipe_v2\(\)/u);
+ assert.equal(qualified.nativeAdmission,false);
 });
 
 

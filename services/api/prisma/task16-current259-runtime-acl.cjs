@@ -5,6 +5,7 @@ const {readFileSync} = require('node:fs');
 const path = require('node:path');
 const {types} = require('node:util');
 const {loadCurrent259CatalogMaterial,renderCurrent259CatalogRead} = require('./task16-current259-catalog.cjs');
+const {isExactCurrentPaymentProfile} = require('./task16-current259-profile.cjs');
 const {renderCurrent259DatabasePrivileges} = require('./task16-current259-database-privileges.cjs');
 const {identityBody,versionGuardBody,referenceGuardBody,functionProofSql,referenceAbsentSql} = require('./task16-registered-access-check.cjs');
 
@@ -232,9 +233,9 @@ function renderCurrent259VoucherRuntimeAcl(witness,provisioned,nonce){
 function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
  provisioned=snapshot(provisioned);witness=snapshot(witness);
  need(typeof nonce==='string'&&/^[a-f0-9]{64}$/u.test(nonce));
- const profile=witness.profile;
- need(profile?.profile==='TASK16_CURRENT259_SOURCE_V1'&&profile.candidateSha===witness.candidateSha&&
-  profile.sealSha256===witness.sourceSealSha256&&Array.isArray(profile.ledger));
+ const profile=witness.profile,paymentProfile=provisioned.paymentProfile;
+ need((!competition||paymentProfile===undefined)&&isExactCurrentPaymentProfile(profile,paymentProfile)&&profile.candidateSha===witness.candidateSha&&
+  profile.sealSha256===witness.sourceSealSha256);
  const source={candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))};
  const material=loadCurrent259CatalogMaterial(source);
@@ -247,7 +248,7 @@ function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
  const {database,databaseOid,namespaceOid,ownerOid,systemIdentifier}=provisioned.databaseIdentity;
  const identity={runId:provisioned.runId,database,databaseOid,namespaceOid,ownerOid,systemIdentifier,
   runtimeOid:runtime.oid,observerOid:observer.oid,...(competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),
-  ...(voucher?{voucherProfile:voucher.profileName}:{})};
+  ...(voucher?{voucherProfile:voucher.profileName}:{}),...(paymentProfile?{paymentProfile}:{})};
  const databaseAcl=renderCurrent259DatabasePrivileges(provisioned);
  const legacy=fixedJson('task16-registered-access.json','d19fe664e58659b3008ab2ef2769c6d3e421cb8504d3f98b8fd332133291b5eb');
  const baseline=fixedJson('task16-baseline-access.json','6c2ec83b104694aa2de351ab6e81757d0a3c6528b5bf0687a546fae23b48976b');

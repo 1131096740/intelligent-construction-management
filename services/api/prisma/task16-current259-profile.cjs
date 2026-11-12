@@ -2,6 +2,7 @@
 const {createHash}=require('node:crypto'),{types}=require('node:util');
 const FULL='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
 const ARCHIVE_FULL='ebd6ee528e5eabd4b53abbd992c58637af70fee61f015a17f70b04cd55761598';
+const PAYMENT261_RUNTIME_PROFILE='TASK16_PAYMENT261_RUNTIME_V1';
 const PREFIX='85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24';
 const SCHEMA='60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4';
 const EXACT_PROFILES=Object.freeze([
@@ -39,4 +40,11 @@ function isExactCurrentArchiveProfile(source){
  return Boolean(source&&Array.isArray(source.ledger)&&source.prefix256Sha256===PREFIX&&
   EXACT_PROFILES.some(row=>row.profile===source.profile&&row.ledgerSha256===source.ledgerSha256&&row.size===source.ledger.length));
 }
-module.exports={qualifyCurrent259Source,currentArchiveLedgerSize,isExactCurrentArchiveProfile};
+function isExactCurrentPaymentProfile(source,paymentProfile){
+ if(paymentProfile!==undefined&&paymentProfile!==PAYMENT261_RUNTIME_PROFILE)return false;
+ return isExactCurrentArchiveProfile(source)&&
+  source.profile===(paymentProfile===undefined?'TASK16_CURRENT259_SOURCE_V1':'TASK12_ARCHIVE261_SOURCE_V1')&&
+  hash(source.ledger)===source.ledgerSha256;
+}
+module.exports={qualifyCurrent259Source,currentArchiveLedgerSize,isExactCurrentArchiveProfile,isExactCurrentPaymentProfile,
+ PAYMENT261_RUNTIME_PROFILE,PAYMENT259_LEDGER_SHA256:FULL,PAYMENT261_LEDGER_SHA256:ARCHIVE_FULL};

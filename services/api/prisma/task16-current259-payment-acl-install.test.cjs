@@ -3,10 +3,12 @@
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { test } = require('node:test');
+const { PAYMENT261_RUNTIME_PROFILE } = require('./task16-current259-profile.cjs');
 
 function fixture(mode = '') {
   const calls = [];
   const voucher = mode.startsWith('voucher');
+  const payment261 = mode.startsWith('payment261');
   const competition = mode === 'competition' || voucher && mode !== 'voucher-wrong-lanes';
   const permit = Object.freeze({}), permissionCalls = [];
   const handle = {}, token = Object.freeze({}), metadata = {parent:0};let forbidFull=false;
@@ -21,7 +23,8 @@ function fixture(mode = '') {
   const roleCompletion = {
     sourceSha: source.candidateSha, runId, containerId: 'c'.repeat(64), databaseIdentity: identity,
     roles: [{ name: 'jg_task01_runtime', oid: '25004', limit: competition || mode === 'wrong-lane-mode' ? 2 : 1 },
-      { name: 'jg_task01_observer', oid: '25005', limit: 1 }]
+      { name: 'jg_task01_observer', oid: '25005', limit: 1 }],
+    ...(payment261 ? { paymentProfile: PAYMENT261_RUNTIME_PROFILE } : {})
   };
   const projection = { phase: 'before', otherAclSha256: 'e'.repeat(64) };
   const resource = {
@@ -56,6 +59,7 @@ function fixture(mode = '') {
     claimed = true;
     return { source, roleCompletion, completion, check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;},
       ...(competition ? { competition: true } : {}),
+      ...(payment261 && mode !== 'payment261-missing-lease-profile' ? { paymentProfile: PAYMENT261_RUNTIME_PROFILE } : {}),
       ...(withVoucher ? { voucherPreimageSql } : {}) };
   }
   const inject = {
@@ -112,6 +116,7 @@ function fixture(mode = '') {
         assert.equal(request.phase, 'before');
         assert.equal(request.identity.runtimeProfile, competition ? 'CURRENT259_TWO_RUNTIME_LANES' : undefined);
         assert.equal(request.identity.voucherProfile, voucher ? 'CURRENT259_PAYMENT_VOUCHER_V1' : undefined);
+        assert.equal(request.identity.paymentProfile, payment261 ? PAYMENT261_RUNTIME_PROFILE : undefined);
         const raw = JSON.parse(stdout);
         assert.equal(raw.nonce, request.nonce);
         assert.equal(raw.identity.readOnly, true);
@@ -126,6 +131,17 @@ function fixture(mode = '') {
   const api = module.exports;
   return { api, calls, handle, token,metadata,forbidFull(){forbidFull=true;}, completion, roleCompletion, permit, permissionCalls };
 }
+
+test('payment261 carries the seven lease profile into the same catalog transaction and B7 request', async () => {
+  const f = fixture('payment261');
+  const installed = await f.api.installCurrent259PaymentAcl(f.completion, f.handle);
+  assert.equal(f.calls.length, 2);
+  assert.match(f.calls[0].sql, /report->'guardsVerified' IS DISTINCT FROM 'true'::jsonb/u);
+  assert.equal(f.api.claimCurrent259PaymentAcl(installed, f.handle).request.identity.paymentProfile, PAYMENT261_RUNTIME_PROFILE);
+  const missing = fixture('payment261-missing-lease-profile');
+  await assert.rejects(missing.api.installCurrent259PaymentAcl(missing.completion, missing.handle), /NOT_ATTEMPTED/u);
+  assert.deepEqual(missing.calls, [{ phase: 'cleanup' }]);
+});
 
 test('installs ACL once, then reads the exact committed result from another backend', async () => {
   const f = fixture();

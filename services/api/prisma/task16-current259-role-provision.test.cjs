@@ -9,7 +9,7 @@ const modulePath=path.join(__dirname,'task16-current259-role-provision.cjs');
 // The module has no public injection point and never contacts PostgreSQL here.
 const database='jg_task01_12345678123442348234123456789012';
 const {createHash}=require('node:crypto');
-const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const candidateSha='a'.repeat(40),sourceSealSha256='9'.repeat(64);
 const digest=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(name=>({
@@ -48,7 +48,7 @@ function modelRow(index){
 function fixture(change,cleanup,historical=false){
  const selectedSource=historical?{...source,profile:qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:migrations.slice(0,259)})}:source;
  const handle=Object.freeze({}),token=Object.freeze({}),permit=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
- let taken=false,closed=false;
+ let taken=false,closed=false,paymentPermitUsed=false;
  const check=()=>{if(closed)throw Error('fixture closed');if(forbidFull)throw Error('full forbidden');};
  const lifetime=()=>assert.equal(closed,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);lifetime();};
  const resource={containerId:completion.containerId,databaseName:database,async execOwnerSql(sql,phase){
@@ -61,6 +61,10 @@ function fixture(change,cleanup,historical=false){
  const imports={
   './task16-current259-payment-run-authorization.cjs':Object.freeze({claimCurrent259CompetitionRolePermit(value,provided,technical){
    assert.equal(value,permit);assert.equal(provided,handle);assert.equal(technical,completion);return true;
+  },claimCurrent259Payment261RolePermit(value,provided,technical){
+   assert.equal(value,permit);assert.equal(provided,handle);assert.equal(technical,completion);
+   if(paymentPermitUsed)return false;
+   paymentPermitUsed=true;return true;
   }}),
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './local-staged-current259-profile.cjs':Object.freeze({claimCurrent259TechnicalSupply(result,provided){
@@ -73,6 +77,24 @@ function fixture(change,cleanup,historical=false){
  new Function('require','module','__dirname',fs.readFileSync(modulePath,'utf8'))(name=>imports[name]??require(name),holder,__dirname);
  return {api:holder.exports,handle,token,permit,metadata,forbidFull(){forbidFull=true;},calls,closed:()=>closed,stop(){closed=true;}};
 }
+test('only the original payment261 permit binds the exact 261 ordinary role receipt',async()=>{
+ const f=fixture();
+ await assert.rejects(f.api.provisionCurrent259Payment261Roles(completion,f.handle,{}));
+ assert.equal(f.calls.length,0);
+ const result=await f.api.provisionCurrent259Payment261Roles(completion,f.handle,f.permit);
+ assert.equal(result.paymentProfile,PAYMENT261_RUNTIME_PROFILE);
+ assert.equal(result.roles.find(role=>role.name==='jg_task01_runtime').limit,1);
+ assert.equal(f.calls.length,3);
+ assert.equal(f.api.claimCurrent259ProvisionedRoles(result,f.handle).paymentProfile,PAYMENT261_RUNTIME_PROFILE);
+ await assert.rejects(f.api.provisionCurrent259Payment261Roles(completion,f.handle,f.permit),/CURRENT259_ROLE_PROVISION_HANDLE/u);
+ assert.equal(f.calls.length,3);
+ const historical=fixture(undefined,undefined,true);
+ await assert.rejects(historical.api.provisionCurrent259Payment261Roles(completion,historical.handle,historical.permit));
+ assert.equal(historical.calls.length,0);
+ const competition=fixture();
+ await assert.rejects(competition.api.provisionCurrent259CompetitionRoles(completion,competition.handle,competition.permit));
+ assert.equal(competition.calls.length,0);
+});
 test('only the fixed competition permit can change the runtime capacity and its independent proof',async()=>{
  const change=(row,index)=>{if(index)row.state.roles.find(role=>role.name==='jg_task01_runtime').limit=2;};
  const denied=fixture(change,undefined,true);

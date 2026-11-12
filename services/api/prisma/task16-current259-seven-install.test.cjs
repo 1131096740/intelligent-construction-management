@@ -4,13 +4,16 @@ const assert=require('node:assert/strict');
 const {readFileSync,readdirSync}=require('node:fs');
 const {createHash}=require('node:crypto');
 const path=require('node:path');
-const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const read=name=>readFileSync(path.join(__dirname,name),'utf8');
 const model=new Function('require',read('task16-current259-seven-preimage.test.cjs')+'\nreturn syntheticObservation;')(name=>name==='node:test'?()=>{}:require(name));
 const candidateSha='b'.repeat(40),sealSha256='a'.repeat(64);
-const source={candidateSha,sourceSealSha256:sealSha256,profile:qualifyCurrent259Source({candidateSha,sealSha256,
- schemaSha256:hash(read('schema.prisma')),migrations:readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)) .sort().slice(0,259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(read(`migrations/${name}/migration.sql`))}))})};
+const migrations=readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort()
+ .map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(read(`migrations/${name}/migration.sql`))}));
+const sourceFor=rows=>({candidateSha,sourceSealSha256:sealSha256,profile:qualifyCurrent259Source({candidateSha,sealSha256,
+ schemaSha256:hash(read('schema.prisma')),migrations:rows})});
+const source=sourceFor(migrations.slice(0,259));
 const runId='12345678-1234-4234-8234-123456789012',database='jg_task01_'+runId.replaceAll('-','');
 const containerId='c'.repeat(64),nonce='d'.repeat(64);
 const identity={database,databaseOid:'90',namespaceOid:'2200',ownerOid:'10',systemIdentifier:'1234567890123456789'};
@@ -23,14 +26,15 @@ const registry={namespaceOid:'2200',ownerOid:'10',publicDefault:null,globalDefau
  definition:{pronamespace:'2200',proowner:'10',prosrc:oldBody},
 }};
 const roleCompletion=Object.freeze({status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:candidateSha,runId,containerId,databaseIdentity:identity,ordinary,roles,databaseAcl,commitXid:'201'});
-function fixture(mutate,competition=false,migrationDrift){
- const suppliedRoles=competition?{...roleCompletion,roles:[{...roles[0],limit:2},roles[1]]}:roleCompletion;
+function fixture(mutate,competition=false,migrationDrift,{witness=source,paymentProfile}={}){
+ const suppliedRoles=competition?{...roleCompletion,roles:[{...roles[0],limit:2},roles[1]]}:
+  paymentProfile?{...roleCompletion,paymentProfile}:roleCompletion;
  const token=Object.freeze({}),metadata={parent:0};let forbidFull=false;
  const full=()=>{assert.equal(forbidFull,false);};
  const issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);};
- const calls=[],handle=Object.freeze({}),secretClaim={source,completion:suppliedRoles,competition,check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
+ const calls=[],handle=Object.freeze({}),secretClaim={source:witness,completion:suppliedRoles,competition,paymentProfile,check:full,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
  let closed=false,claimed=false;
- const view={source,runId,verifyFull:full,check:full,checkLifetime(){assert.equal(closed,false);},resource:{containerId,databaseName:database,async execOwnerSql(sql,phase){
+ const view={source:witness,runId,verifyFull:full,check:full,checkLifetime(){assert.equal(closed,false);},resource:{containerId,databaseName:database,async execOwnerSql(sql,phase){
   const index=calls.length;calls.push({sql,phase});
   const row={nonce,phase,backendPid:11+index,backendStart:`2026-11-11T04:00:0${index}.000000Z`,
    pre:index===0?model():null,registry:index===0?registry:null,fileRoles:index===0?['10','100']:null,
@@ -51,6 +55,21 @@ function fixture(mutate,competition=false,migrationDrift){
  new Function('require','module','__dirname',read('task16-current259-seven-install.cjs'))(name=>imports[name]??require(name),holder,__dirname);
  return {api:holder.exports,handle,token,metadata,suppliedRoles,forbidFull(){forbidFull=true;},calls,closed:()=>closed};
 }
+test('standalone payment261 requires the private payment profile and attests both rows in all owner phases',async()=>{
+ const witness=sourceFor(migrations);
+ const archive=fixture(undefined,false,undefined,{witness});
+ await assert.rejects(archive.api.installCurrent259SevenFragments(archive.suppliedRoles,archive.handle),/PRESTATE_REJECTED/u);
+ assert.equal(archive.calls.length,0);
+ const payment=fixture(undefined,false,undefined,{witness,paymentProfile:PAYMENT261_RUNTIME_PROFILE});
+ const result=await payment.api.installCurrent259SevenFragments(payment.suppliedRoles,payment.handle);
+ assert.equal(payment.calls.length,3);
+ for(const {sql} of payment.calls){
+  for(const row of witness.profile.ledger.slice(259)){
+   assert.ok(sql.includes(row.name));assert.ok(sql.includes(row.sha256));
+  }
+ }
+ assert.equal(payment.api.claimCurrent259SevenInstallation(result,payment.handle).paymentProfile,PAYMENT261_RUNTIME_PROFILE);
+});
 
 test('installs the pinned seven fragments in one write and issues only a same-resource committed continuation',async()=>{
  const f=fixture();const result=await f.api.installCurrent259SevenFragments(roleCompletion,f.handle);
