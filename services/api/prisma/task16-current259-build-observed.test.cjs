@@ -4,7 +4,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {observeCurrent259Build,claimCurrent259Build}=require('./task16-current259-build.cjs');
 const {types}=require('node:util');
-const {loadCurrent259Client,createCurrent259OwnedApplication,current259OwnedApplicationMethod,current259OwnedApplicationView}=require('./task16-current259-client-loader.cjs');
+const {loadCurrent259Client,createCurrent259OwnedApplication,current259OwnedApplicationMethod,current259OwnedApplicationView,inspectCurrent259OwnedPaymentProviders}=require('./task16-current259-client-loader.cjs');
 test('actual generated259 SDK/native engine/eight exports share one observed physical closure',async()=>{
  const handle=observeCurrent259Build();assert.equal(handle.executionAllowed,false);
  const loader=loadCurrent259Client(handle);assert.equal(loadCurrent259Client(handle),loader);
@@ -36,7 +36,9 @@ test('actual generated259 SDK/native engine/eight exports share one observed phy
  first.configureApiSecurity(view);first.configureProjectionExportJson(view);
  assert.equal(view.getHttpAdapter().getInstance().enabled('x-powered-by'),false);
  let traps=0;const foreign=new Proxy({}, {get(){traps++;throw new Error('foreign getter');},getOwnPropertyDescriptor(){traps++;throw new Error('foreign descriptor');}});
- assert.equal(current259OwnedApplicationMethod(foreign,'close'),undefined);assert.equal(current259OwnedApplicationView(foreign),undefined);assert.equal(traps,0);
+ assert.equal(current259OwnedApplicationMethod(foreign,'close'),undefined);assert.equal(current259OwnedApplicationView(foreign),undefined);
+ assert.equal(inspectCurrent259OwnedPaymentProviders(foreign,testing,null),undefined);assert.equal(traps,0);
+ assert.throws(()=>inspectCurrent259OwnedPaymentProviders(application,{},null),/CURRENT259_FRAMEWORK_CHANGED/u);
  assert.equal(current259OwnedApplicationMethod(application,'unknown'),undefined);
  const close=current259OwnedApplicationMethod(application,'close');await close();await close();
  assert.throws(()=>view.getHttpAdapter(),/CURRENT259_FRAMEWORK_CHANGED/u);

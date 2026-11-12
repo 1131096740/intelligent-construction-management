@@ -13,7 +13,8 @@ const {claimCurrent259TechnicalResource,claimCurrent259TechnicalResourceContinui
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {createCurrent259ImpactRuntime}=require('./task16-current259-impact-runtime.cjs');
-const {current259OwnedApplicationMethod,current259OwnedApplicationView,isCurrent259OwnedModule,createCurrent259OwnedApplication:createOwnedNestApplication,takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
+const {current259OwnedApplicationMethod,current259OwnedApplicationView,inspectCurrent259OwnedPaymentProviders,
+ isCurrent259OwnedModule,createCurrent259OwnedApplication:createOwnedNestApplication,takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
 const REQUEST=Object.freeze([
  ['application','database/task16-registered-application.module.js'],['database','database/prisma.service.js'],
  ['security','api-security.js'],['projection','operating-projection/projection-export-json.js'],
@@ -119,7 +120,14 @@ async function createApplication(context,boundary,continuity,reportPhase,ownedAd
    return Object.freeze({origin:`http://127.0.0.1:${port}/`,runtime});
   };
   const inspect=()=>{
-   check();need(appMethods.getHttpServer.call(appHandle)===server,'TASK16_APP_ADDRESS');
+   check();
+   if(ownedAdmission&&isCurrent259OwnedModule(moduleHandle)){
+    const proof=inspectCurrent259OwnedPaymentProviders(appHandle,moduleHandle,server);
+    need(proof&&proof.runtime===runtime&&proof.moduleRuntime===runtime,'TASK16_APP_RUNTIME_PROVIDER');
+    need(proof.reader===impactReader&&proof.moduleReader===impactReader,'TASK16_APP_IMPACT_READER_PROOF');
+    return inspectServer();
+   }
+   need(appMethods.getHttpServer.call(appHandle)===server,'TASK16_APP_ADDRESS');
    const result=inspectServer();
    verifyProviders(appHandle,appMethods);verifyProviders(moduleHandle,moduleMethods);
    return result;

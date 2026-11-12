@@ -13,6 +13,9 @@ const APP_METHODS=['close','get','getHttpAdapter','enableCors','useGlobalPipes',
 function dataMethod(value,key){let next=value;for(let i=0;next&&i<32;i++,next=Object.getPrototypeOf(next)){need(!types.isProxy(next),'CURRENT259_OWNED_METHOD');const d=Object.getOwnPropertyDescriptor(next,key);if(d){need(Object.hasOwn(d,'value')&&typeof d.value==='function','CURRENT259_OWNED_METHOD');return d.value;}}throw new Error('CURRENT259_OWNED_METHOD');}
 function current259OwnedApplicationMethod(value,key){return ownedApps.get(value)?.method(key);}
 function current259OwnedApplicationView(value){return ownedApps.get(value)?.view;}
+function inspectCurrent259OwnedPaymentProviders(value,testing,server){
+ return ownedApps.get(value)?.inspectPaymentProviders(testing,server);
+}
 function isCurrent259OwnedModule(value){return ownedModules.has(value);}
 function createCurrent259OwnedApplication(value){const owner=ownedModules.get(value);need(owner,'CURRENT259_OWNED_MODULE');return owner.create();}
 function takeCurrent259CreationFailure(error){const entry=creationFailures.get(error);creationFailures.delete(error);return entry;}
@@ -360,6 +363,7 @@ function loadCurrent259Client(handle){
    need(testing&&!types.isProxy(testing)&&Object.getPrototypeOf(testing)===framework.TestingModule.prototype,'CURRENT259_FRAMEWORK_MODULE');
    need(dataMethod(testing,'createNestApplication')===originalCreate&&dataMethod(testing,'createAdapterProxy')===originalAdapterProxy,'CURRENT259_FRAMEWORK_MODULE');
    const creationFields=new Map(['container','applicationConfig','graphInspector'].map(key=>[key,own(testing,key)]));
+   const testingGet=dataMethod(testing,'get');
    const container=creationFields.get('container');
    need(container&&!types.isProxy(container)&&Object.getPrototypeOf(container)===framework.NestContainer.prototype&&dataMethod(container,'setHttpAdapter')===setHttpAdapter,'CURRENT259_FRAMEWORK_CONTAINER');
    function checkCreation(){
@@ -394,12 +398,39 @@ function loadCurrent259Client(handle){
      collect();need(target&&adapter&&types.isProxy(proxy)&&globalThis.Proxy===nativeProxy,'CURRENT259_FRAMEWORK_PROXY');
      const originalMethods=new Map(APP_METHODS.map(key=>[key,dataMethod(target,key)]));
      let closed=false;const methods=new Map();
-     const record={method(key){
+     function verifyTarget(key){
+      const fn=originalMethods.get(key),getAdapter=originalMethods.get('getHttpAdapter');
+      need(!closed&&dataMethod(target,key)===fn&&dataMethod(target,'getHttpAdapter')===getAdapter&&
+       getAdapter.call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
+      return fn;
+     }
+     const record={inspectPaymentProviders(module,expectedServer){
+      need(!contractMode&&module===testing,'CURRENT259_FRAMEWORK_CHANGED');
+      check();
+      // A single synchronous guarded operation reads the same server and four
+      // providers. Each original method and the adapter are still checked.
+      const result=guardedOperation(()=>{
+       const server=verifyTarget('getHttpServer').call(target);
+       need(server===expectedServer,'CURRENT259_FRAMEWORK_CHANGED');
+       const runtime=verifyTarget('get').call(target,values.PrismaService);
+       const reader=verifyTarget('get').call(target,values.Task16ImpactReaderToken);
+       const readModule=token=>{
+        need(dataMethod(testing,'get')===testingGet,'CURRENT259_FRAMEWORK_CHANGED');
+        return testingGet.call(testing,token);
+       };
+       const moduleRuntime=readModule(values.PrismaService),moduleReader=readModule(values.Task16ImpactReaderToken);
+       return {runtime,reader,moduleRuntime,moduleReader};
+      });
+      // check() visits the complete root graph, including any qualified load
+      // during the read. There is no second identical traversal in this pass.
+      check();
+      return result;
+     },method(key){
       if(!APP_METHODS.includes(key))return undefined;
       if(methods.has(key))return methods.get(key);
       const fn=originalMethods.get(key);
       const wrapped=key==='close'?()=>{closed=true;return close();}:(...args)=>{
-       check();need(!closed&&dataMethod(target,key)===fn&&dataMethod(target,'getHttpAdapter')===originalMethods.get('getHttpAdapter')&&originalMethods.get('getHttpAdapter').call(target)===adapter,'CURRENT259_FRAMEWORK_CHANGED');
+       check();verifyTarget(key);
        const result=guardedOperation(()=>fn.apply(target,args));
        if(types.isPromise(result))return result.then(value=>{collect();return value===target?record.view:value;});collect();return result===target?record.view:result;
       };
@@ -421,4 +452,5 @@ function loadCurrent259Client(handle){
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
-module.exports=Object.freeze({loadCurrent259Client,current259OwnedApplicationMethod,current259OwnedApplicationView,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});
+module.exports=Object.freeze({loadCurrent259Client,current259OwnedApplicationMethod,current259OwnedApplicationView,
+ inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});

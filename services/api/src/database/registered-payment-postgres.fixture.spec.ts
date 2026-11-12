@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
+import { payment261SeedProfile, seedOrdinaryPayment261 } from "./registered-payment-postgres.seed261";
 
 function fixture() {
   const runId = "da49e313-e3da-407f-b279-3d09caecfc3e";
@@ -41,6 +42,100 @@ function fixture() {
 }
 
 describe("registered PG fixture: dedicated TLS session identity protocol (no connections)", () => {
+  it("records only the failed seed identity proof before the owner transaction", async () => {
+    const f = fixture();
+    f.sessions[2]!.readOnly = "off";
+    const recordSeedFailure = jest.fn();
+    const fetch = jest.fn();
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "NOT_ATTEMPTED" });
+    expect(recordSeedFailure).toHaveBeenCalledTimes(1);
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_IDENTITY", "PG_RESOURCE_OBSERVER_READ_ONLY", undefined);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("projects an owner transaction code without exposing the SDK message", async () => {
+    const f = fixture();
+    const recordSeedFailure = jest.fn();
+    const fetch = jest.fn();
+    const transaction = jest.fn().mockRejectedValue(Object.assign(new Error("private statement"), { code: "P2028" }));
+    Object.assign(f.context.owner, { $transaction: transaction });
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_OWNER_TRANSACTION", "P2028", undefined);
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves the fixed HTTP failure code and status without forwarding the body", async () => {
+    const f = fixture();
+    Object.assign(f.context.owner, { $transaction: jest.fn().mockResolvedValue(undefined) });
+    const recordSeedFailure = jest.fn();
+    const response = new Response(JSON.stringify({ message: "private body" }), { status: 403 });
+    Object.defineProperty(response, "url", { value: new URL("/auth/login", f.proof.application.origin).href });
+    const fetch = jest.fn().mockResolvedValue(response);
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", "PG_FIXTURE_REAL_HTTP_LOGIN", 403);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])("runs only the fixed two-statement 261 seed with binding %s", async bound => {
+    const f = fixture();
+    const calls: string[] = [];
+    const query = jest.fn(async (sql: string, payload: string, database: string) => {
+      calls.push("bind");
+      expect(sql).toContain("$1::jsonb");
+      expect(sql).toMatch(/set_config\('jg_task16.payment_seed_v1',[\s\S]+true\)/);
+      expect(sql).not.toContain("synthetic-hash");
+      expect(database).toBe(f.proof.databaseName);
+      expect(JSON.parse(payload)).toMatchObject({ passwordHash: "synthetic-hash", phone: plan.phone, ids: plan.ids });
+      return [{ bound }];
+    });
+    const execute = jest.fn(async (sql: string) => {
+      calls.push("static-do");
+      expect(sql).toContain("DO $jg_task16_seed$");
+      expect(sql).toContain("PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED");
+      expect(sql).not.toContain("synthetic-hash");
+      expect(sql).not.toMatch(/INSERT INTO public\."RegisteredContractHistoryRevision"|\bEXECUTE\b/);
+      return 0;
+    });
+    const transaction = jest.fn(async (run: (tx: unknown) => Promise<void>) => run({ $queryRawUnsafe: query, $executeRawUnsafe: execute }));
+    Object.assign(f.context.owner, { $transaction: transaction });
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    const run = seedOrdinaryPayment261(f.context.owner, f.proof.databaseName, plan, "synthetic-hash",
+      "91350211M000100Y46", "91440300708461136T", () => calls.push("check"));
+    if (bound) {
+      await run;
+      expect(calls).toEqual(["check", "check", "bind", "check", "check", "static-do", "check", "check"]);
+    } else {
+      await expect(run).rejects.toThrow("PG_FIXTURE_SEED_BINDING");
+      expect(execute).not.toHaveBeenCalled();
+    }
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+  });
+
+  it("uses the original registered HTTP login after the explicit 261 owner seed", async () => {
+    const f = fixture();
+    const tx = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ bound: true }]), $executeRawUnsafe: jest.fn().mockResolvedValue(0) };
+    const transaction = jest.fn(async (run: (client: unknown) => Promise<void>) => run(tx));
+    Object.assign(f.context.owner, { $transaction: transaction });
+    const recordSeedFailure = jest.fn();
+    const response = new Response(JSON.stringify({ message: "synthetic denied" }), { status: 403 });
+    Object.defineProperty(response, "url", { value: new URL("/auth/login", f.proof.application.origin).href });
+    const fetch = jest.fn().mockResolvedValue(response);
+    const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+    await expect(seedRegisteredPgFixture(f.context, plan, { checkLight() {}, fetch, recordSeedFailure, seedProfile: payment261SeedProfile }))
+      .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "UNKNOWN_DO_NOT_RETRY" });
+    expect(tx.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+    expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", "PG_FIXTURE_REAL_HTTP_LOGIN", 403);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts three independent resource-bound TLS roles, with a separate read-only observer", async () => {
     const f = fixture();
     await expect(assertRegisteredPgConnectedRoles(f.context)).resolves.toEqual({ database: f.proof.databaseName, ownerPid: 100, runtimePid: 101, observerPid: 102 });

@@ -27,7 +27,8 @@ function caseFixture(t,options={}){
   assert.ok(record&&record.application===application&&record.handle===handle,'untrusted business token');
   const continuityToken=Object.freeze({});continuities.add(continuityToken);
   return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
-   ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{})};
+   ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{}),
+   ...(options.recordCaseFailure?{recordCaseFailure:options.recordCaseFailure}:{})};
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
   name=>name==='./task16-current259-application-factory.cjs'?factory:name==='./task16-current259-payment-run-authorization.cjs'?authorization:require(name),holder);
@@ -64,7 +65,7 @@ function paymentModel(f,options={}){
   buildRegisteredPgFixturePlan(run,paidAt,openingDate){builds++;assert.equal(run,plan.runId);assert.equal(paidAt,plan.paidAt);assert.equal(openingDate,plan.openingDate);return structuredClone(plan);},
   async seedRegisteredPgFixture(execution,input,continuity){seeds++;captured={execution,input,continuity};continuity.checkLight();
    assert.equal(execution.owner,f.session.owner);assert.equal(execution.runtime,f.session.runtime);assert.equal(execution.observer,f.session.observer);
-   await options.onSeed?.();
+   await options.onSeed?.(continuity);
    return {plan:structuredClone(input),accessToken:'private-model-token',companyARegistrationId:'a',companyBRegistrationId:'b',companyBSourceId:'s'};
   },
   async runRegisteredNullCrossCompanyCommit(execution,fixture,continuity){consumers++;assert.equal(execution,captured.execution);assert.deepEqual(fixture.plan,captured.input);assert.equal(fixture.accessToken,'private-model-token');
@@ -316,5 +317,21 @@ for(const stage of ['PUBLIC_ACCOUNT','REGISTRATION','ORIGINAL_RESULT','OWNER_AFT
   assert.ok(f.calls.indexOf(failures[0])<f.calls.indexOf('app-close'));
   assert.equal(f.calls.filter(row=>row==='app-close').length,1);
   assert.equal(f.calls.filter(row=>row==='sessions-close').length,1);
+ });
+}
+
+for(const [substage,subcode] of [['SEED_IDENTITY','PG_RESOURCE_RUNTIME_PRIVILEGES'],['SEED_OWNER_TRANSACTION','P2028'],['SEED_LOGIN','TIMEOUT']]){
+ test('payment case retains the seed first failure before closing '+substage,async t=>{
+  const seen=[],f=caseFixture(t,{recordCaseFailure:(...detail)=>seen.push(detail)});
+  const m=paymentModel(f,{onSeed(continuity){
+   continuity.recordSeedFailure(substage,subcode);
+   throw Object.assign(new Error('private fixture payload'),{code:'TASK16_FIXTURE_FAILED_CLOSED'});
+  }});
+  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+   await f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}));
+  }));
+  assert.deepEqual(seen,[[substage,subcode],['SEED_FIXTURE','TASK16_FIXTURE_FAILED_CLOSED']]);
+  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+  assert.ok(f.calls.includes('app-close'));
  });
 }

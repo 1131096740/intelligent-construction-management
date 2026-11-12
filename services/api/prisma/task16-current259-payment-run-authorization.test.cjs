@@ -202,7 +202,8 @@ function fixture(t,options={}){
   ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{if(Object.hasOwn(options,'applicationFailure'))throw options.applicationFailure;return await consume(application);}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
-   const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,app,h);lease.check();
+   if(options.beforeCaseFailure)throw options.beforeCaseFailure;
+   const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,options.caseWrongApp?{...app}:app,h);lease.check();
    assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(options.selectedPlanSha??saved.sha256));
    options.onBusiness?.({api:module.exports,permit,application,handle,lease,s});
    if(options.gapFailureStage){
@@ -741,6 +742,47 @@ test('the fixed attribution-gap publisher verifies without opening resources or 
  assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
 });
+function ordinaryBusinessFailureFixture(t,options){
+ const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
+ new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
+ const s=holder.exports.fixture(t,{payment261:true}),plan=s.business.prepareCurrent261PaymentBusinessPlan({
+  runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,scenario:'normal',paidAt:'2026-11-10',openingDate:'2026-11-09'
+ });
+ const saved=s.api.readCurrent261PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ return fixture(t,{payment261:true,business:true,...options,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+}
+test('only the original ordinary 261 issuer supplies its fixed owner seed mode',async t=>{
+ let observed;
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness({lease}){
+  observed=lease.seedProfile;
+  assert.equal(lease.scope.seedProfile,undefined);
+ }});
+ const result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+ assert.equal(observed,'TASK16_PAYMENT261_RUNTIME_V1');
+});
+for(const [stage,permission,code,options] of [
+ ['APPLICATION_LEASE','ISSUED_NOT_YET_CONSUMED','TASK16_APP_HANDLE',{beforeCaseFailure:Object.assign(new Error('private fixture'),{code:'TASK16_APP_HANDLE'})}],
+ ['PERMIT_CLAIM','ISSUED_NOT_YET_CONSUMED','PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY',{caseWrongApp:true}],
+ ['SEED_OWNER_TRANSACTION','CONSUMED_ONCE','P2028',{onBusiness({lease}){
+  lease.recordCaseFailure('private phase','P2028');
+  lease.recordCaseFailure('SEED_OWNER_TRANSACTION','P2028');
+  lease.recordCaseFailure('SELECTED_CASE','P2003');
+ },caseFailure:new Error('private fixture')}],
+ ['SEED_LOGIN','CONSUMED_ONCE',undefined,{onBusiness({lease}){lease.recordCaseFailure('SEED_LOGIN','private code',403);},caseFailure:new Error('private fixture')}],
+]){
+ test('ordinary payment receipt preserves fixed failure '+stage,async t=>{
+  const f=ordinaryBusinessFailureFixture(t,options),result=await f.done;
+  assert.equal(result.status,'STOPPED');assert.equal(f.state.calls.filter(value=>value==='case').length,1);
+  const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+  assert.equal(receipt.failureStage,'seedAndSelectedCase');
+  assert.equal(receipt.business.permission,permission);
+  assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+  assert.deepEqual(receipt.paymentCaseFailure,{stage,...(code?{code}:{}),...(stage==='SEED_LOGIN'?{httpStatus:403}:{})});
+  assert.doesNotMatch(text,/private (?:phase|code|fixture)/u);
+ });
+}
+
 test('the attribution-gap plan is refused by the ordinary business entry before the attempt marker',async t=>{
  const f=attributionGapFixture(t,{attributionGap:false}),result=await f.done;
  assert.equal(result.status,'STOPPED');

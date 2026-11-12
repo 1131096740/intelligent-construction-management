@@ -37,6 +37,24 @@ const voucherFailureCodes=new Map([
  ['LEDGER_AFTER','CURRENT259_PAYMENT_VOUCHER_LEDGER_DRIFT'],
  ['FINAL_VERIFY','CURRENT259_PAYMENT_VOUCHER_FINAL_VERIFY']
 ]);
+const caseFailureStages=new Set(['APPLICATION_LEASE','PERMIT_CLAIM','CONTINUITY_ACTIVATION','CASE_SETUP',
+ 'PRE_SEED_AUTHORITY','PRE_SEED_LIVE','SEED_FIXTURE','SEED_IDENTITY','SEED_PREPARE','SEED_OWNER_TRANSACTION',
+ 'SEED_LOGIN','SEED_OPENING','POST_SEED_AUTHORITY','POST_SEED_LIVE','SELECTED_CASE','FINAL']);
+const caseFailureCodes=new Set(['PAYMENT_INSTALL_ONCE_BUSINESS_AUTHORITY','PAYMENT_INSTALL_ONCE_BUSINESS_CONTINUITY',
+ 'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED','PAYMENT_BUSINESS_PLAN_FILE','PAYMENT_INSTALL_PLAN_FILE',
+ 'CURRENT259_RESOURCE_CLOSED','CURRENT259_LOADER_CHANGED','CURRENT259_BUILD_CHANGED','CURRENT259_LIVE_SESSIONS_VERIFICATION',
+ 'CURRENT259_LIVE_SESSIONS_CONTINUITY','TASK16_APP_HANDLE','TASK16_APP_FAILED_CLOSED','TASK16_CURRENT259_CATALOG',
+ 'TASK16_FIXTURE_FAILED_CLOSED','P1001','P1002','P1008','P1010','P1011','P1017','P2002','P2003','P2010','P2024','P2025','P2028','P2034',
+ 'PG_RESOURCE_IDENTITY','PG_RESOURCE_DATABASE_VERSION','PG_RESOURCE_ROLE_PID_BINDING','PG_RESOURCE_OBSERVER_READ_ONLY',
+ 'PG_RESOURCE_RUNTIME_PRIVILEGES','PG_RESOURCE_OBSERVER_PRIVILEGES','PG_RESOURCE_PREPARED_FUNCTIONS',
+ 'PG_RESOURCE_PREPARED_PROJECTION_TRIGGERS','PG_FIXTURE_REAL_HTTP_LOGIN','PG_FIXTURE_REAL_HTTP_OPENING',
+ 'PG_FIXTURE_AUTOMATIC_HISTORY_MARKER_REQUIRED','TIMEOUT']);
+const seedHttpStatuses=new Set([200,201,400,401,403,404,409,422,429,500,503]);
+function recordCaseFailure(entry,stage,code,httpStatus){
+ if(entry?.recordCaseFailure&&caseFailureStages.has(stage))entry.caseFailure??=Object.freeze({stage,
+  ...(caseFailureCodes.has(code)?{code}:{}),
+  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpStatuses.has(httpStatus)?{httpStatus}:{})});
+}
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
 const need=(ok,suffix='INVALID')=>{if(!ok)throw fault(suffix);};
@@ -163,6 +181,8 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
    entry.scope.paymentProfile===(currentRun.competition||currentRun.attributionGap?currentRun.paymentProfile:undefined)&&entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
   entry.claimed=true;const token=Object.freeze({kind:'CURRENT259_PRIVATE_BUSINESS_CONTINUITY'});entry.continuityToken=token;businessContinuities.set(token,entry);entry.check();
   return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull,
+   ...(entry.seedProfile?{seedProfile:entry.seedProfile}:{}),
+   ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus){recordCaseFailure(entry,stage,code,httpStatus);}}:{}),
    ...(gap?{recordAttributionGapFailure(stage){
     const code=attributionGapFailureCodes.get(stage);
     if(code&&entry===currentRun?.business&&entry.active&&entry.claimed)entry.attributionGapFailure??=Object.freeze({stage,code});
@@ -171,7 +191,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
     const code=voucherFailureCodes.get(stage);
     if(code&&entry===currentRun?.business&&entry.active&&entry.claimed)entry.voucherFailure??=Object.freeze({stage,code});
    }}:{})});
- }catch(error){revoke(currentRun);throw error;}
+ }catch(error){recordCaseFailure(entry,'PERMIT_CLAIM',data(error,'code'));revoke(currentRun);throw error;}
 }
 // Publish the only export before the fixed consumer can require it in main.
 const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity,claimCurrent259CompetitionRolePermit,claimCurrent259Payment261CompetitionRolePermit,claimCurrent259CompetitionLivePermit,claimCurrent259DisconnectLivePermit,claimCurrent259VoucherAclPermit,claimCurrent259Payment261RolePermit,
@@ -529,7 +549,9 @@ async function run(args){
            new URL(application.origin).origin!==new URL(oldOrigin).origin,'DISCONNECT_REPLACEMENT_ENDPOINT');}
           catch(error){throw carryCurrent259DisconnectFailure(error,captureCurrent259DisconnectFailure(error,'RECOVERY_APPLICATION'));}
          }
-         const business={active:true,claimed:false,application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
+         const ordinary261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&!request.competition&&!request.attributionGap&&!disconnect;
+         const business={active:true,claimed:false,recordCaseFailure:ordinary261,...(ordinary261?{seedProfile:paymentProfile}:{}),
+          application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
           ...(request.competition261||request.voucher261||request.attributionGap261?{paymentProfile}:{}),
           ...(request.voucher?{voucherStorageRoot:data(environment,'storageRoot')}:{}),
@@ -582,6 +604,9 @@ async function run(args){
            ...(request.voucher?{voucherVerified:true}:{}),
            ...(disconnectPhase==='recovery'?{rollbackObserved:true,runtimeReplaced:true}:{})};
           return result;
+         }catch(error){
+          if(!business.claimed)recordCaseFailure(business,'APPLICATION_LEASE',data(error,'code'));
+          throw error;
          }finally{business.active=false;casePermissions.delete(businessPermit);}
          });
         };
@@ -613,6 +638,10 @@ async function run(args){
       const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
       if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
       // The case records this before application and live-session cleanup can mask the error.
+      if(stage==='seedAndSelectedCase'&&state.business?.recordCaseFailure){
+       if(state.business.claimed&&receipt.business?.permission==='ISSUED_NOT_YET_CONSUMED')receipt.business.permission='CONSUMED_ONCE';
+       if(state.business.caseFailure)receipt.paymentCaseFailure=state.business.caseFailure;
+      }
       if(request.attributionGap&&state?.business?.attributionGapFailure)receipt.attributionGapFailure=state.business.attributionGapFailure;
       if(request.voucher&&state?.business?.voucherFailure)receipt.voucherFailure=state.business.voucherFailure;
      }

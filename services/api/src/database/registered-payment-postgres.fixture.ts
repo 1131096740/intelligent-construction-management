@@ -1,5 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { types } from "node:util";
+import { payment261SeedProfile, seedOrdinaryPayment261 } from "./registered-payment-postgres.seed261";
 
 /** Prepared source only. Importing this module constructs no client, reads no
  * environment and opens no connection. Only a separately authorized executor
@@ -43,9 +45,13 @@ export interface RegisteredPgExecutionContext {
 
 /** Production-only continuity supplied by the source-bound executor. Tests
  * continue to enter through the original public run and owned fetch boundary. */
+type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTION" | "SEED_LOGIN" | "SEED_OPENING";
+
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
   fetch: typeof fetch;
+  seedProfile?: typeof payment261SeedProfile;
+  recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number) => void;
   /** Source-owned case request checker; never a caller route list. */
   assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
   assertHttpBody?: (route: string, method: "GET" | "POST", body: unknown) => void;
@@ -85,8 +91,19 @@ export interface PreparedRegisteredPgCompetition extends PreparedRegisteredPgFix
   contender: { actorId: string; requestKey: string; accessToken: string };
 }
 
+const fixedConditions = new WeakMap<Error, string>();
 function requireCondition(condition: unknown, code: string): asserts condition {
-  if (!condition) throw new Error(code);
+  if (!condition) {
+    const error = new Error(code);
+    fixedConditions.set(error, code);
+    throw error;
+  }
+}
+function seedFailureCode(error: unknown) {
+  if (!error || typeof error !== "object" || types.isProxy(error)) return undefined;
+  const code = Object.getOwnPropertyDescriptor(error, "code")?.value;
+  return fixedConditions.get(error as Error) ?? (typeof code === "string" && /^P[0-9]{4}$/.test(code) ? code :
+    error instanceof DOMException && error.name === "TimeoutError" ? "TIMEOUT" : undefined);
 }
 
 export function describeRegisteredPgPreparation() {
@@ -269,6 +286,8 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   let ownerAttempted = false;
+  let failureStage: SeedFailureStage = "SEED_PREPARE";
+  let httpStatus: number | undefined;
   try {
     light();
     // Snapshot caller input before any await. This fixture never refreshes an
@@ -283,12 +302,14 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     requireCondition(Object.keys(plan.ids).length === 16 && identityKeys.every(key => typeof plan.ids[key] === "string"
       && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(plan.ids[key]))
       && new Set(identityKeys.map(key => plan.ids[key])).size === 16, "PG_FIXTURE_IDENTITIES");
+    failureStage = "SEED_IDENTITY";
     if (contender && continuity) {
       requireCondition(contender.context.password.length >= 12 && contender.context.password !== context.password, "PG_COMPETITION_PASSWORDS");
       await checked(() => assertRegisteredPgCompetitionRoles(context, contender.context, continuity));
     } else {
       await checked(() => assertRegisteredPgConnectedRoles(context, continuity));
     }
+    failureStage = "SEED_PREPARE";
     requireCondition(plan.runId === context.proof.runId && context.password.length >= 12, "PG_FIXTURE_INPUT");
     const bcrypt = await checked(() => import("bcryptjs"));
     const { assertValidUnifiedSocialCreditCode } = await checked(() => import("../company-entity/unified-social-credit-code"));
@@ -298,8 +319,16 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
       passwordHash: await checked(() => bcrypt.hash(contender.context.password, 12)) } : undefined;
     const otherProjectId = attributionGap ? randomUUID() : undefined;
     const approved = second ? 4000n : 10000n;
+    const profile = continuity?.seedProfile;
+    requireCondition(profile === undefined || profile === payment261SeedProfile && !contender && !attributionGap, "PG_FIXTURE_SEED_PROFILE");
+    const credits = profile === payment261SeedProfile
+      ? [assertValidUnifiedSocialCreditCode("91350211M000100Y46"), assertValidUnifiedSocialCreditCode("91440300708461136T")] as const
+      : undefined;
+    failureStage = "SEED_OWNER_TRANSACTION";
     ownerAttempted = true;
-    await checked(() => context.owner.$transaction(async tx => {
+    if (credits) {
+      await seedOrdinaryPayment261(context.owner, context.proof.databaseName, plan, passwordHash, ...credits, light);
+    } else await checked(() => context.owner.$transaction(async tx => {
       await checked(() => tx.user.create({ data: { id: ids.actor, phone: plan.phone, name: `PG合成财务${plan.runId}`, passwordHash, isActive: true, mustChangePassword: false } }));
       const position = await checked(() => tx.position.findUnique({ where: { key: "finance_staff" } })) ?? await checked(() => tx.position.create({ data: { key: "finance_staff", name: "财务人员" } }));
       await checked(() => tx.userPosition.create({ data: { userId: ids.actor, positionId: position.id, projectId: null } }));
@@ -364,12 +393,16 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
       // action or a claim that approval/signature/notification paths were tested.
       await checked(() => tx.approvalInstance.create({ data: { id: ids.approvedRound, flowType: "payment.approve", businessType: "payment_request", businessId: ids.payment, status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: ids.actor } }));
     }, { isolationLevel: "Serializable" }));
+    failureStage = "SEED_LOGIN";
     const login = await checked(() => registeredPgHttp(context, "/auth/login", "POST", { phone: plan.phone, password: context.password }, undefined, continuity));
+    httpStatus = login.status;
     const auth = login.body as { tokens?: { accessToken?: unknown } };
     requireCondition(login.status === 201 && typeof auth.tokens?.accessToken === "string", "PG_FIXTURE_REAL_HTTP_LOGIN");
     const accessToken = auth.tokens.accessToken;
     const registrations: Array<{ id: string; sources: Array<{ id: string }> }> = [];
+    failureStage = "SEED_OPENING";
     for (const companyId of [ids.companyA, ids.companyB]) {
+      httpStatus = undefined;
       const gapCompany = otherProjectId !== undefined && companyId === ids.companyB;
       const response = await checked(() => registeredPgHttp(context, "/fund-accounts/openings", "POST", {
         scopeKey: `company:${companyId}`, balanceYuan: gapCompany ? "8" : "100", asOfDate: plan.openingDate,
@@ -378,6 +411,7 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
         sources: [{ amountYuan: gapCompany ? "5" : "100", sourceStatus: "known", sourceName: "合成已知项目资金", projectStatus: "project", projectId: ids.project },
           ...(gapCompany ? [{ amountYuan: "3", sourceStatus: "known", sourceName: "合成其他项目资金", projectStatus: "project", projectId: otherProjectId }] : [])]
       }, accessToken, continuity));
+      httpStatus = response.status;
       const registration = response.body as { id?: unknown; sources?: Array<{ id: string; projectId?: string }> };
       requireCondition(response.status === 201 && typeof registration.id === "string" &&
         registration.sources?.length === (gapCompany ? 2 : 1) && typeof registration.sources[0]?.id === "string", "PG_FIXTURE_REAL_HTTP_OPENING");
@@ -389,12 +423,17 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     const prepared = { plan, accessToken, companyARegistrationId: registrations[0]!.id, companyBRegistrationId: registrations[1]!.id, companyBSourceId: registrations[1]!.sources[0]!.id };
     if (otherProjectId) return { ...prepared, attributionGap: { otherProjectId, otherSourceId: registrations[1]!.sources[1]!.id } };
     if (!contender || !second) return prepared;
+    failureStage = "SEED_LOGIN";
+    httpStatus = undefined;
     const loginB = await checked(() => registeredPgHttp(contender.context, "/auth/login", "POST",
       { phone: second.phone, password: contender.context.password }, undefined, contender.continuity));
+    httpStatus = loginB.status;
     const tokenB = (loginB.body as { tokens?: { accessToken?: unknown } }).tokens?.accessToken;
     requireCondition(loginB.status === 201 && typeof tokenB === "string" && tokenB !== accessToken, "PG_COMPETITION_REAL_HTTP_LOGIN");
     return { ...prepared, contender: { actorId: second.actorId, requestKey: second.requestKey, accessToken: tokenB } };
-  } catch {
+  } catch (error) {
+    try { continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus); }
+    catch { /* Preserve the first fixture failure. */ }
     // A rejected/unknown owner transaction or later HTTP write is never proof
     // of rollback. Do not retain raw SDK/HTTP errors, credentials or causes.
     throw Object.assign(new Error("TASK16_FIXTURE_FAILED_CLOSED"), {

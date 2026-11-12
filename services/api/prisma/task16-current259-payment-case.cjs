@@ -25,10 +25,12 @@ const used=new WeakSet(),disconnectAttempts=new WeakMap();
 async function executeCurrent259PaymentCase(lease,permit){
  const factory=require('./task16-current259-application-factory.cjs');
  need(factory.isCurrent259PaymentLease(lease)&&!used.has(lease));used.add(lease);
- let attempted=false,permission,disconnectStage,attributionGapStage;
+ let attempted=false,permission,disconnectStage,attributionGapStage,caseStage='PERMIT_CLAIM';
  try{
   permission=authorization.claimCurrent259PaymentBusinessPermit(permit,lease.application,lease.handle);
+  caseStage='CONTINUITY_ACTIVATION';
   permission.check();lease.activateContinuity(permission.continuityToken);lease.check();
+  caseStage='CASE_SETUP';
   const scope=permission.scope,cancellation=scope.scenario==='cancel-commit',disconnect=scope.scenario==='disconnect-commit-recovery';
   const attributionGap=scope.scenario==='attribution-gap';
   const gapScope={expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false};
@@ -70,7 +72,11 @@ async function executeCurrent259PaymentCase(lease,permit){
     Object.keys(original).every(k=>session[k]===original[k])&&(!faulting||Object.getOwnPropertyDescriptor(session,faultName)?.value===commitFault)&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
     Object.getOwnPropertyDescriptor(globalThis,'fetch')?.value===originalFetch);
   };
-  check();await permission.verifyFull();await original.verifyFull.call(session);check();
+  caseStage='PRE_SEED_AUTHORITY';
+  check();await permission.verifyFull();
+  caseStage='PRE_SEED_LIVE';
+  await original.verifyFull.call(session);check();
+  caseStage='CASE_SETUP';
   const modules=load.call(loader);check();
   const names=attributionGap?['buildRegisteredPgFixturePlan','seedRegisteredPgAttributionGapFixture','runRegisteredProjectAttributionGap']:
    ['buildRegisteredPgFixturePlan','seedRegisteredPgFixture','runRegisteredNullCrossCompanyCommit','runRegisteredNullCrossCompanyResponseLoss'];
@@ -89,9 +95,16 @@ async function executeCurrent259PaymentCase(lease,permit){
   const transport=async(target,init)=>{check();const url=new URL(target);need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);const response=await originalFetch(target,init);check();return response;};
   attempted=true;
   const seed=attributionGap?methods.seedRegisteredPgAttributionGapFixture:methods.seedRegisteredPgFixture;
-  const prepared=prior?.fixture??await seed(execution,plan,Object.freeze({checkLight:check,fetch:transport}));check();
+  caseStage='SEED_FIXTURE';
+  const prepared=prior?.fixture??await seed(execution,plan,Object.freeze({checkLight:check,fetch:transport,
+   ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
+   ...(permission.recordCaseFailure?{recordSeedFailure:permission.recordCaseFailure}:{})}));check();
   const frozen=snapshot(prepared);need(equal(frozen.plan,plan)&&typeof frozen.accessToken==='string');
-  await permission.verifyFull();await original.verifyFull.call(session);check();
+  caseStage='POST_SEED_AUTHORITY';
+  await permission.verifyFull();
+  caseStage='POST_SEED_LIVE';
+  await original.verifyFull.call(session);check();
+  caseStage='SELECTED_CASE';
   const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
   let armed=false,barrierUsed=false,faultSettled=false,postCount=0,resultReads=0,rollbackEvidence;
   const gapRoutes=attributionGap?[
@@ -186,6 +199,7 @@ async function executeCurrent259PaymentCase(lease,permit){
    const handler=scope.scenario==='normal'?methods.runRegisteredNullCrossCompanyCommit:methods.runRegisteredNullCrossCompanyResponseLoss;
    result=await handler(execution,frozen,continuity);
   }
+  caseStage='FINAL';
   checkPrepared();await permission.verifyFull();await original.verifyFull.call(session);checkPrepared();
   need(result&&result.caseId===caseId&&result.passed===true);
   if(recovery)need(postCount===1&&resultReads===2&&result.rollbackObserved===true);
@@ -201,6 +215,8 @@ async function executeCurrent259PaymentCase(lease,permit){
   lease.finishContinuity(permission.continuityToken);permission.check();
   return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
  }catch(error){
+  const code=error&&typeof error==='object'&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;
+  permission?.recordCaseFailure?.(caseStage,code);
   if(attributionGapStage)permission?.recordAttributionGapFailure?.(attributionGapStage);
   const detail=disconnectStage?captureCurrent259DisconnectFailure(error,disconnectStage):undefined;
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';
