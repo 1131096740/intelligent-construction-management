@@ -75,6 +75,26 @@ test('the plan seals exact draft-only scope and rejects added credentials and wr
   assert.throws(()=>api.verifyCurrent259GeneratedDraftPlan(prepared.file,hash(bytes)),/SCOPE/u);
 });
 
+test('relay plan has its own seal and rejects altered scope or another launcher',t=>{
+  const {root}=localPacket(t),api=planModel(t,root);
+  const run=path.join(root,'relay-run');fs.mkdirSync(run,{mode:0o700});
+  const options={packetRoot:root,daemonId:'relay-model-daemon'};
+  assert.throws(()=>api.prepareCurrent259RelayDiagnosticPlan({...options,caseId:id}),/INPUT/u);
+  const relay=api.prepareCurrent259RelayDiagnosticPlan(options);
+  const {plan,check}=api.verifyCurrent259RelayDiagnosticPlan(relay.file,relay.sha256);
+  assert.equal(plan.purpose,'CURRENT259_RELAY_DIAGNOSTIC_LOCAL');
+  assert.match(plan.entry,/task12-current259-relay-diagnostic-once\.cjs$/u);
+  assert.equal(plan.scope.migrations,0);assert.equal(plan.scope.seedWrites,0);assert.equal(plan.scope.roleChanges,0);
+  assert.equal(plan.scope.requests,0);assert.equal(plan.scope.cos,false);assert.equal(plan.scope.positiveClients,2);
+  assert.equal(plan.scope.operationMs,15000);assert.equal(plan.scope.connectSeconds,5);assert.equal(plan.scope.poolSeconds,5);
+  assert.equal(plan.run.root,run);assert.deepEqual(fs.readdirSync(run),[]);
+  assert.throws(()=>api.verifyCurrent259GeneratedDraftPlan(relay.file,relay.sha256),/INPUT/u);
+  const bytes=Buffer.from(JSON.stringify({...plan,scope:{...plan.scope,migrations:261}}));
+  fs.writeFileSync(relay.file,bytes);
+  assert.throws(check,/CHANGED/u);
+  assert.throws(()=>api.verifyCurrent259RelayDiagnosticPlan(relay.file,hash(bytes)),/SCOPE/u);
+});
+
 test('document plans pin the separate runtime and cannot be accepted by the original draft entry',t=>{
   const {root,run}=localPacket(t),api=planModel(t,root);
   const options={packetRoot:root,daemonId:'generated-model-daemon',caseId:id,businessDate:'2026-11-12'};
