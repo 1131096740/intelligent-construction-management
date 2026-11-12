@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
 import { contractClassifications } from "../contract-ledger/contract-classification-read";
+import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { PaymentRequestService } from "./payment-request.service";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
@@ -845,6 +846,7 @@ export class PaymentReadService {
       const unsupported: RegisteredExecutionCapability = { supportedDomain: false, allowedActor: false, workflowReady: false, canSupplementVoucher: false, blockedReason: null };
       const domain = await currentRegisteredPaymentDomain(tx,paymentId);
       if (!domain.supportedDomain || !domain.payment) return unsupported;
+      if (!(await registeredPaymentInstalled(tx))) return unsupported;
       const {payment,version,executions} = domain;
       let allowedActor = true;
       try { await assertRegisteredPaymentActor(tx,actorUserId); }

@@ -1,5 +1,6 @@
 import { sensitiveBusinessReadAllowed } from "../auth/sensitive-business-read";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 import { confirmRegisteredContractHistory, lockRegisteredContractHistoryRevision, registeredContractHistoryBasis } from "./registered-payment-contract-history";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
 import { registeredOriginalPaymentResults, resolveRegisteredExistingSource } from "./registered-payment-existing-source";
@@ -3172,13 +3173,17 @@ export class PaymentRequestService {
       const payment = await tx.paymentRequest.findUnique({where:{id:paymentId}});
       if (!payment || payment.paymentSubjectType !== "our_company" || !["approved_pending_payment","partially_paid"].includes(payment.status)) throw new ConflictException("当前申请暂不能登记实际付款，请刷新共同待办");
       if (!(await currentRegisteredPaymentDomain(tx,payment.id)).supportedDomain) throw new ConflictException("当前付款不属于统一实付办理范围，请经原业务权限入口核验");
+      if (!(await registeredPaymentInstalled(tx))) throw new ConflictException("统一实付尚未启用，请通过原付款入口办理");
       const round = await currentRegisteredPaymentApproval(tx,payment.id);
       if (!round || round.status !== "approved") throw new ConflictException("当前付款审批尚未通过，请刷新共同待办");
       const version = await tx.contractVersion.findUnique({where:{id:payment.contractVersionId}});
       const contract = await tx.contract.findUnique({where:{id:payment.contractId}});
       if (!version || !contract || version.contractId !== contract.id || contract.projectId !== payment.projectId || version.signingSubjectType !== "our_company") throw new ConflictException("付款申请的合同与冻结主体依据不完整");
       const accounts = [];
-      for (const account of await tx.registeredFundAccount.findMany({orderBy:{scopeKey:"asc"}})) {
+      for (const account of await tx.registeredFundAccount.findMany({
+        orderBy: { scopeKey: "asc" },
+        select: { id: true, scopeKey: true, kind: true, companyEntityId: true }
+      })) {
         const registration = await tx.fundAccountBalanceRegistration.findFirst({where:{accountId:account.id,status:"confirmed"},orderBy:{version:"desc"}});
         const company = account.companyEntityId ? await tx.companyEntity.findUnique({where:{id:account.companyEntityId}}) : null;
         let reason = registration ? null : "账户尚未登记有效核对余额";
