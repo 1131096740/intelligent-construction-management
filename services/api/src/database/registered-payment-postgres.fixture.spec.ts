@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, registeredPgHttp, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
 import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
@@ -67,6 +67,29 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(recordSeedFailure).toHaveBeenCalledWith("SEED_OWNER_TRANSACTION", "P2028", undefined);
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("consumes owned JSON once and verifies original response origin %s", async sameOrigin => {
+    const f = fixture();
+    const response = new Response(JSON.stringify({ tokens: { accessToken: "synthetic-token" } }), { status: 201 });
+    Object.defineProperty(response, "url", { value: sameOrigin ? new URL("/auth/login", f.proof.application.origin).href : "http://127.0.0.1:15434/auth/login" });
+    const json = jest.spyOn(response, "json");
+    const requestJson = jest.fn(async (target: URL, init: RequestInit, timeoutMs: number) => {
+      expect(target.href).toBe(new URL("/auth/login", f.proof.application.origin).href);
+      expect(init.signal).toBeUndefined();
+      expect(timeoutMs).toBe(1000);
+      const body: unknown = await response.json();
+      return { response, body };
+    });
+    const fetch = jest.fn().mockRejectedValue(new Error("legacy fetch path must not run"));
+    const continuity = { checkLight() {}, fetch, requestJson };
+    const result = registeredPgHttp(f.context, "/auth/login", "POST", { phone: "19900000000" }, undefined, continuity);
+    if (sameOrigin) await expect(result).resolves.toEqual({ status: 201, body: { tokens: { accessToken: "synthetic-token" } } });
+    else await expect(result).rejects.toThrow("PG_RESOURCE_HTTP_RESPONSE_ORIGIN");
+    expect(requestJson).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledTimes(1);
+    expect(response.bodyUsed).toBe(true);
   });
 
   it.each(["CURRENT259_BUILD_CHANGED", "CURRENT259_BUSINESS_CONTINUITY"])("retains a message-only continuity rejection %s at the real seed login boundary", async guardCode => {

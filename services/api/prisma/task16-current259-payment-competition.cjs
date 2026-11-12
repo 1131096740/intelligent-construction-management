@@ -7,6 +7,8 @@ const { claimCurrent259TechnicalResourceContinuity }=require('./task16-current25
 const { loadCurrent259CatalogMaterial }=require('./task16-current259-catalog.cjs');
 const { claimCurrent259PaymentBusinessPermit }=require('./task16-current259-payment-run-authorization.cjs');
 const { paymentLoopbackForScenario }=require('./task16-current259-payment-loopback.cjs');
+const {isCurrentPaymentRuntimeMode}=require('./task16-current261-competition-profile.cjs');
+const {requestCurrent261SeedJson}=require('./task16-current261-seed-json.cjs');
 const fetchSlot=Object.getOwnPropertyDescriptor(globalThis,'fetch');
 const fetch=fetchSlot?.value;
 const builtin=process.binding('natives')['internal/bootstrap/web/exposed-window-or-worker'];
@@ -302,10 +304,9 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
      sourceSealSha256:source.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})}),
    owner:session.owner,runtime:session.runtime,observer:session.observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000
   }));
-  const lanes=contexts.map((context,index)=>Object.freeze({
-   checkLight:check,
-   ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
-   async fetch(target,init){check();const url=new URL(target);need(url.origin===new URL(context.proof.application.origin).origin&&!url.username&&!url.password&&!url.hash&&(!url.search||followUp&&url.pathname==='/payment-executions/recorded-items'&&url.search===`?paymentId=${paymentId}`));
+  const seedLanes=[];
+  const lanes=contexts.map((context,index)=>{
+   const checkHttpTarget=(target,init)=>{check();const url=new URL(target);need(url.origin===new URL(context.proof.application.origin).origin&&!url.username&&!url.password&&!url.hash&&(!url.search||followUp&&url.pathname==='/payment-executions/recorded-items'&&url.search===`?paymentId=${paymentId}`));
     if(followUp&&followUpLane===index&&init?.method==='POST'){
      const command=JSON.parse(init.body);
      need(command.idempotencyKey===prepared.followUpRequestKey&&command.amountCents==='1000'&&command.scopeKey===`company:${plan.ids.companyA}`&&
@@ -313,6 +314,11 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
       command.paidAt===plan.paidAt&&command.confirmationPassword===context.password);
      if(followUpCommand)need(equal(command,followUpCommand));else followUpCommand=command;
     }
+   };
+   const lane=Object.freeze({
+   checkLight:check,
+   ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
+   async fetch(target,init){checkHttpTarget(target,init);
     const response=await fetch(target,init);check();return response;},
    assertHttpRequest(route,method){
     check();
@@ -325,8 +331,18 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
     if(method==='POST'){need(armed&&route===`/payment-executions/${paymentId}/registrations`&&posts[index]===0);posts[index]++;return;}
     need(method==='GET'&&['/payment-executions/work-items',`/payment-executions/${paymentId}/registration-options`,`/payment-executions/results/${key}`,...(followUp&&followUpLane!==undefined?[`/payment-executions/results/${prepared.followUpRequestKey}`,`/payment-executions/results/${index===0?prepared.contender.requestKey:plan.ids.requestKey}`,`/payment-executions/recorded-items?paymentId=${paymentId}`]:[])].includes(route));
    }
-  }));
-  const seeded=await seed(...contexts,plan,...lanes);
+  });
+   seedLanes.push(permission.seedProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.seedProfile,true)?Object.freeze({...lane,
+    async requestJson(target,init,timeoutMs){
+     checkHttpTarget(target,init);
+     need(timeoutMs===context.httpTimeoutMs);
+     const result=await requestCurrent261SeedJson(target,init,timeoutMs);
+     check();return result;
+    }
+   }):lane);
+   return lane;
+  });
+  const seeded=await seed(...contexts,plan,...seedLanes);
   prepared=Object.freeze({...seeded,plan,contender:Object.freeze({...seeded.contender})});
   check();need(equal(seeded.plan,plan)&&seedPosts[0].length===3&&seedPosts[1].length===1&&uuid(prepared.contender.requestKey)&&
    typeof prepared.accessToken==='string'&&typeof prepared.contender.accessToken==='string'&&prepared.accessToken!==prepared.contender.accessToken);

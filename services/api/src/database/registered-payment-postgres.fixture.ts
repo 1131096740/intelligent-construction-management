@@ -51,6 +51,8 @@ type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTI
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
   fetch: typeof fetch;
+  /** Trusted owned transport consumes native JSON before synchronous qualification resumes. */
+  requestJson?: (target: URL, init: RequestInit, timeoutMs: number) => Promise<{ response: Response; body: unknown }>;
   seedProfile?: Payment261SeedProfile;
   recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number) => void;
   /** Source-owned case request checker; never a caller route list. */
@@ -120,6 +122,7 @@ const seedGuardCodes = new Set([
   "TASK16_APP_FAILED_CLOSED",
   "TASK16_CURRENT259_CATALOG",
   "CURRENT259_PAYMENT_CASE_FAILED_CLOSED",
+  "CURRENT261_SEED_JSON_FAILED_CLOSED",
   "CURRENT259_BUSINESS_CONTINUITY",
   "CURRENT259_LIVE_SESSIONS_FAILED_CLOSED",
   "CURRENT259_OWNED_METHOD",
@@ -300,11 +303,22 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
   const transport = continuity ? continuity.fetch : fetch;
   requireCondition(typeof transport === "function", "PG_RESOURCE_HTTP_TRANSPORT");
   light();
-  const response = await checked(() => transport(target, {
-    method, redirect: "error", signal: AbortSignal.timeout(context.httpTimeoutMs),
+  const init: RequestInit = {
+    method, redirect: "error",
     headers: { "content-type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
-  }));
+  };
+  const requestJson = continuity?.requestJson;
+  requireCondition(requestJson === undefined || typeof requestJson === "function", "PG_RESOURCE_HTTP_TRANSPORT");
+  let response: Response;
+  let parsedBody: unknown;
+  if (requestJson) {
+    const result = await checked(() => requestJson(target, init, context.httpTimeoutMs));
+    response = result.response;
+    parsedBody = result.body;
+  } else {
+    response = await checked(() => transport(target, { ...init, signal: AbortSignal.timeout(context.httpTimeoutMs) }));
+  }
   const status = response.status, json = response.json;
   requireCondition(typeof json === "function", "PG_RESOURCE_HTTP_RESPONSE");
   if (continuity) {
@@ -312,7 +326,7 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
     requireCondition(responseUrl === target.href && redirected === false, "PG_RESOURCE_HTTP_RESPONSE_ORIGIN");
   }
   light();
-  return { status, body: await checked(() => json.call(response)) as unknown };
+  return { status, body: requestJson ? parsedBody : await checked(() => json.call(response)) as unknown };
 }
 
 /** Executes nothing unless explicitly called with already connected resources.

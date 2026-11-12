@@ -49,6 +49,9 @@ function model(options={}){
    events.push('fixture');assert.deepEqual(planned,plan);assert.equal(a.owner,b.owner);assert.equal(a.observer,b.observer);
    assert.notEqual(a.runtime,b.runtime);assert.notEqual(a.password,b.password);
    assert.equal(laneA.seedProfile,options.seedProfile);assert.equal(laneB.seedProfile,options.seedProfile);
+   const explicit261=['TASK16_PAYMENT261_COMPETITION_RUNTIME_V1','TASK16_PAYMENT261_VOUCHER_RUNTIME_V1'].includes(options.seedProfile);
+   assert.equal(typeof laneA.requestJson,explicit261?'function':'undefined');
+   assert.equal(typeof laneB.requestJson,explicit261?'function':'undefined');
    for(const route of ['/auth/login','/fund-accounts/openings','/fund-accounts/openings'])laneA.assertHttpRequest(route,'POST');
    laneB.assertHttpRequest('/auth/login','POST');
    return {plan,accessToken:'one',contender:{requestKey:keyB,accessToken:'two',...(options.voucher?{actorId:keyB}:{})}};
@@ -56,6 +59,7 @@ function model(options={}){
   async runRegisteredTwoActorPaymentCompetition(a,b,prepared,control){
    const route='/payment-executions/'+paymentId+'/registrations';
    events.push('case');
+   assert.equal(control.lanes[0].requestJson,undefined);assert.equal(control.lanes[1].requestJson,undefined);
    const submit=index=>()=>{
     events.push('post-'+index);
     control.lanes[index].assertHttpRequest(route,'POST');

@@ -5,6 +5,8 @@ const {types,isDeepStrictEqual:equal}=require('node:util');
 const {createHash,randomBytes}=require('node:crypto');
 const path=require('node:path');
 const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs');
+const {isCurrentPaymentRuntimeMode}=require('./task16-current261-competition-profile.cjs');
+const {requestCurrent261SeedJson}=require('./task16-current261-seed-json.cjs');
 const authorization=require('./task16-current259-payment-run-authorization.cjs');
 const {paymentLoopbackForScenario,isCurrent259PaymentLoopbackTopology}=require('./task16-current259-payment-loopback.cjs');
 const {captureCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
@@ -92,22 +94,35 @@ async function executeCurrent259PaymentCase(lease,permit){
   const plan=prior?.plan??snapshot(methods.buildRegisteredPgFixturePlan(runId,scope.paidAt,scope.openingDate));check();
   const execution=Object.freeze({proof,owner:original.owner,runtime:original.runtime,observer:original.observer,
    password:prior?.password??randomBytes(32).toString('hex'),httpTimeoutMs:5000});
-  const transport=async(target,init)=>{
+  const checkHttpTarget=target=>{
    httpRoute=undefined;httpPhase='BEFORE_CHECK';check();
    httpPhase='TARGET';
    const url=new URL(target);httpRoute=url.pathname;
    need(url.origin===new URL(proof.application.origin).origin&&url.pathname.startsWith('/')&&!url.username&&!url.password&&!url.hash);
+  };
+  const transport=async(target,init)=>{
+   checkHttpTarget(target);
    httpPhase='FETCH';
    const response=await originalFetch(target,init);
    httpPhase='AFTER_CHECK';check();
    httpPhase='RESPONSE_RETURNED';
    return response;
   };
+  const requestJson=async(target,init,timeoutMs)=>{
+   checkHttpTarget(target);
+   need(timeoutMs===5000&&timeoutMs===execution.httpTimeoutMs&&!Object.hasOwn(init,'signal'));
+   httpPhase='FETCH';
+   const result=await requestCurrent261SeedJson(target,init,timeoutMs,()=>{httpPhase='BODY';});
+   httpPhase='AFTER_CHECK';check();
+   httpPhase='RESPONSE_RETURNED';
+   return result;
+  };
   attempted=true;
   const seed=attributionGap?methods.seedRegisteredPgAttributionGapFixture:methods.seedRegisteredPgFixture;
   caseStage='SEED_FIXTURE';
   const prepared=prior?.fixture??await seed(execution,plan,Object.freeze({checkLight:check,fetch:transport,
    ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
+   ...(permission.seedProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.seedProfile,false)?{requestJson}:{}),
    ...(permission.recordCaseFailure?{recordSeedFailure(stage,code,httpStatus){
     const currentHttp=httpPhase==='BEFORE_CHECK'||httpPhase==='TARGET'||
      stage==='SEED_LOGIN'&&httpRoute==='/auth/login'||stage==='SEED_OPENING'&&httpRoute==='/fund-accounts/openings';

@@ -1069,7 +1069,7 @@ test('follow-up261 refuses a case that only returns the original competition res
  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
  assert.equal(f.state.calls.includes('competition'),true);assert.notEqual(receipt.business.fullyPaid,true);
 });
-for(const phase of ['BEFORE_CHECK','TARGET','FETCH','AFTER_CHECK','RESPONSE_RETURNED','private phase']){
+for(const phase of ['BEFORE_CHECK','TARGET','FETCH','BODY','AFTER_CHECK','RESPONSE_RETURNED','private phase']){
  test('ordinary seed receipt retains only the fixed HTTP boundary '+phase,async t=>{
   const f=ordinaryBusinessFailureFixture(t,{onBusiness({lease}){
    lease.recordCaseFailure('SEED_LOGIN','HTTP_CONNECTION_REFUSED',undefined,phase);

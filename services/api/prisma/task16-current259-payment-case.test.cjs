@@ -29,6 +29,7 @@ function caseFixture(t,options={}){
   return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
    ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{}),
    ...(options.recordCaseFailure?{recordCaseFailure:options.recordCaseFailure}:{}),
+   ...(options.ordinarySeedProfile?{seedProfile:options.ordinarySeedProfile}:{}),
    ...(options.initialSeedProfile&&record.scope.disconnectPhase==='attempt'?{seedProfile:options.initialSeedProfile}:{})};
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
@@ -355,5 +356,29 @@ for(const seedStage of ['SEED_LOGIN','SEED_OPENING'])test('seed '+seedStage+' bi
   await f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}));
  }));
  assert.deepEqual(seen[0],seedStage==='SEED_LOGIN'?['SEED_LOGIN','HTTP_ABORTED',undefined,'FETCH']:['SEED_OPENING','HTTP_ABORTED']);
+ assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
+});
+
+for(const profile of [undefined,'TASK16_PAYMENT259_RUNTIME_V1','TASK16_PAYMENT261_RUNTIME_V1']){
+ test('owned seed JSON capability requires the explicit ordinary261 profile '+profile,async t=>{
+  const f=caseFixture(t,{ordinarySeedProfile:profile});
+  const m=paymentModel(f,{onSeed(continuity){
+   assert.equal(typeof continuity.requestJson,profile==='TASK16_PAYMENT261_RUNTIME_V1'?'function':'undefined');
+  }});
+  await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
+  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
+ });
+}
+
+test('owned seed JSON capability rejects a larger network budget before native fetch',async t=>{
+ const seen=[],f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',recordCaseFailure:(...row)=>seen.push(row)});
+ const m=paymentModel(f,{async onSeed(continuity){
+  try{await continuity.requestJson(new URL('/auth/login',m.captured().execution.proof.application.origin),{method:'POST'},5001);}
+  catch(error){continuity.recordSeedFailure('SEED_LOGIN',error.message);throw error;}
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(seen[0],['SEED_LOGIN','CURRENT259_PAYMENT_CASE_FAILED_CLOSED',undefined,'TARGET']);
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
 });
