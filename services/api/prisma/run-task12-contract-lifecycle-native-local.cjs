@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture } = require('./task12-native-lifecycle-fixture.cjs');
+const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture, withNativeLifecycleCleanup } = require('./task12-native-lifecycle-fixture.cjs');
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require('./local-staged-ci-dynamic.cjs');
 const { createCommandRuntime } = require('./money-bigint-runner-runtime.cjs');
 const { verifyCurrent259GeneratedDocumentRuntime } = require('./task12-current259-generated-document-runtime.cjs');
@@ -49,8 +49,8 @@ async function main(args = process.argv.slice(2)) {
   const directory = fs.realpathSync(fs.mkdtempSync('/private/tmp/jg-task12-native-'));
   fs.chmodSync(directory, 0o700);
   const ownerPassword = randomBytes(32).toString('hex');
-  let container, applicationOid, primaryFailure = false;
-  try {
+  let container, applicationOid;
+  return withNativeLifecycleCleanup(async () => {
     container = docker(['run','--detach','--rm','--pull=never','--name',name,
       '--label',CI_DYNAMIC_MIGRATION_LABEL+'='+runId,'--env','POSTGRES_PASSWORD','--env','PGPASSWORD','--env','POSTGRES_USER=jiangkong',
       '--env','POSTGRES_DB='+DATABASE,'--publish','127.0.0.1::5432','postgres:16'], { env: { ...env, POSTGRES_PASSWORD: ownerPassword, PGPASSWORD: ownerPassword } });
@@ -86,26 +86,27 @@ async function main(args = process.argv.slice(2)) {
     const packet = path.join(directory, 'test-input.json');
     const files = path.join(directory, 'files');fs.mkdirSync(files, { mode: 0o700 });
     fs.writeFileSync(packet, JSON.stringify({ version: 1, candidateSha: input.sha, scope, ownerUrl, urls, directory, runtime: input.runtime, runtimeSha: input.runtimeSha }), { mode: 0o600, flag: 'wx' });
-    command(pnpm, ['--filter','@jiangkong/api','exec','jest','--runInBand','--testRegex','task12-contract-lifecycle\\.native\\.ts$','--runTestsByPath','src/database/task12-contract-lifecycle.native.ts'],
+    command(pnpm, ['--filter','@jiangkong/api','exec','jest','--runInBand','--testRegex','task12-contract-lifecycle\\.native\\.spec\\.ts$','--runTestsByPath','src/database/task12-contract-lifecycle.native.spec.ts','--testPathIgnorePatterns',
+      ...require('../jest.config.cjs').testPathIgnorePatterns.filter(pattern=>pattern!=='/database/task12-contract-lifecycle\\.native\\.spec\\.ts$')],
       { env: { ...env, DATABASE_URL: urls.application, FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files,
         FILE_DOWNLOAD_SECRET: randomBytes(32).toString('hex'), TASK12_NATIVE_LIFECYCLE_INPUT: packet }, stdio: 'inherit', timeout: 900_000 });
     return { status: 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: 261 };
-  } catch (error) {
-    primaryFailure = true;
-    throw error;
-  } finally {
-    try {
+  }, [
+    ['CONTAINER_REMOVE', () => {
       if (container) {
         docker(['rm','--force','--volumes',container]);
-        if (docker(['container','ls','--all','--no-trunc','--filter','id='+container,'--format','{{.ID}}'])) throw new Error('TASK12_NATIVE_GATE_CLEANUP');
+        if (docker(['container','ls','--all','--no-trunc','--filter','id='+container,'--format','{{.ID}}'])) throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
       }
-    } catch {
-      if (!primaryFailure) throw new Error('TASK12_NATIVE_GATE_CLEANUP');
-      process.stderr.write('TASK12_NATIVE_GATE_CLEANUP_FAILED_AFTER_PRIMARY\n');
-    } finally {
+    }],
+    ['DIRECTORY_REMOVE', () => {
       fs.rmSync(directory, { recursive: true, force: true });
-    }
-  }
+      if(fs.existsSync(directory))throw new Error('TASK12_NATIVE_GATE_DIRECTORY_CLEANUP');
+    }]
+  ], {primary(){},cleanup(step){
+    // Fixed projection only. A broken diagnostic pipe must not mask the first
+    // business/cleanup error already retained by the native cleanup boundary.
+    try {process.stderr.write('TASK12_NATIVE_GATE_CLEANUP_FAILED_'+step+'\n');}catch{}
+  }});
 }
 if (require.main === module) main().then(value => process.stdout.write(JSON.stringify(value)+'\n')).catch(error => {
   const code = /^TASK12_NATIVE_GATE_[A-Za-z_]+$/u.test(error?.message) ? error.message : 'TASK12_NATIVE_LIFECYCLE_FAILED';

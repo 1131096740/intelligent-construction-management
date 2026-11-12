@@ -79,7 +79,7 @@ test('a successful native business case still fails if cleanup fails, and diagno
 });
 
 test('native lifecycle source uses both guarded cleanup boundaries and no raw error logger',()=>{
- const source=require('node:fs').readFileSync(path.join(__dirname,'../src/database/task12-contract-lifecycle.native.ts'),'utf8');
+ const source=require('node:fs').readFileSync(path.join(__dirname,'../src/database/task12-contract-lifecycle.native.spec.ts'),'utf8');
  assert.equal((source.match(/await withNativeLifecycleCleanup\(async/g)||[]).length,2);
  assert.match(source,/createNestApplication\(\{ logger: false \}\)/u);
  assert.match(source,/diagnostic\.database\(role,error\);throw error/u);
@@ -95,4 +95,19 @@ test('expected audit faults cannot replace a later independent read failure and 
  for(let i=0;i<20;i++)evidence.cleanup('APP_CLOSE',{code:'P1001',message:'private cleanup'});
  const report=evidence.report();assert.equal(report.stage,'AUDIT_FAULT_ROLLBACK_VERIFY');assert.equal(report.role,'owner');assert.equal(report.code,'P1001');
  assert.equal(Object.hasOwn(report,'sqlState'),false);assert.equal(report.cleanupFailures.length,9);assert.equal(JSON.stringify(report).includes('private'),false);
+});
+
+test('runner attempts directory cleanup after container cleanup failure without replacing the business first error',async()=>{
+ const {withNativeLifecycleCleanup}=require('./task12-native-lifecycle-fixture.cjs');
+ for(const original of [undefined,new Error('private primary')]){
+  const trace=[],failure=new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
+  await assert.rejects(withNativeLifecycleCleanup(async()=>{if(original)throw original;return true;},[
+   ['CONTAINER_REMOVE',async()=>{trace.push('container');throw failure;}],
+   ['DIRECTORY_REMOVE',async()=>{trace.push('directory');throw new Error('TASK12_NATIVE_GATE_DIRECTORY_CLEANUP');}]
+  ],{primary(){},cleanup(){}}),error=>error===(original??failure));
+  assert.deepEqual(trace,['container','directory']);
+ }
+ const source=require('node:fs').readFileSync(path.join(__dirname,'run-task12-contract-lifecycle-native-local.cjs'),'utf8');
+ assert.match(source,/return withNativeLifecycleCleanup/u);
+ assert.match(source,/DIRECTORY_REMOVE/u);
 });

@@ -7,7 +7,7 @@ module.exports = {
   roots: ["<rootDir>", "<rootDir>/../prisma"],
   testEnvironment: "node",
   testRegex: ".*(?:\\.spec|\\.e2e-spec)\\.ts$",
-  testPathIgnorePatterns: ["/node_modules/", ...exactIgnorePatterns, ...documentIgnorePatterns],
+  testPathIgnorePatterns: ["/node_modules/", ...exactIgnorePatterns, ...documentIgnorePatterns, "/database/task12-contract-lifecycle\\.native\\.spec\\.ts$"],
   transform: {
     "^.+\\.ts$": "ts-jest"
   }
