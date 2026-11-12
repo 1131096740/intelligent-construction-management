@@ -2217,6 +2217,7 @@ describe("ProjectService", () => {
           storageStatus: "active",
           contentSha256: attachmentFileSha256Snapshot
         }])
+        .mockResolvedValueOnce([{ state: "absent" }])
         .mockResolvedValueOnce([]),
       user: { findFirst: jest.fn().mockResolvedValue({ id: "finance-staff-1" }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

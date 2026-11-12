@@ -26,7 +26,7 @@ describe("POL-108 disposable PostgreSQL 16 runner", () => {
   });
 
   it("deploys twice, seeds only the disposable database and runs the gated public-seam suite", () => {
-    expect(runner).toContain("for (let pass = 0; pass < 2; pass += 1)");
+    expect(runner).toMatch(/await fixture\.migrate\(migration\);\s*await deploy\(migration\);/u);
     expect(runner).toContain("cwd: temporaryRoot");
     expect(runner).toContain('RUN_POL108_OPERATING_PROJECTION_PG16: "1"');
     expect(runner).toContain('require("./pol108-shards.cjs")');
