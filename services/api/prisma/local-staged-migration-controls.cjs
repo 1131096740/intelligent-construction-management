@@ -42,7 +42,7 @@ const literal = value => "'" + JSON.stringify(value).replaceAll("'", "''") + "'"
 function checkPlan(input) {
   let plan = dataRecord(input);
   const keys = ["database", "databaseOid", "namespaceOid", "actorOid", "ownerOid", "systemIdentifier",
-    "runId", "nonce", "appName", "schemaName", "migrations", "technicalProfile", "resourceRunId"];
+    "runId", "nonce", "appName", "schemaName", "migrations", "technicalProfile", "resourceRunId", "ciFixture"];
   need(Object.keys(plan).every(key => keys.includes(key)));
   if (Object.hasOwn(plan, "migrations")) {
     const migrations = dataArray(plan.migrations).map(dataRecord);
@@ -56,7 +56,9 @@ function checkPlan(input) {
   need(plan && !types.isProxy(plan) && uuid.test(plan.runId) && hash.test(plan.nonce) &&
     /^jg_fixture_app_[a-f0-9]{24}$/u.test(plan.appName) &&
     /^jg_fixture_[a-f0-9]{24}$/u.test(plan.schemaName) &&
-    (technical ? plan.database === "jg_task01_" + plan.resourceRunId.replaceAll("-", "") : /^jiangkong_project_financing_quota_[a-z0-9_]+$/u.test(plan.database)) &&
+    (technical ? plan.database === "jg_task01_" + plan.resourceRunId.replaceAll("-", "") :
+      Object.hasOwn(plan, "ciFixture") ? technicalProfiles.isCiDynamicDatabase(plan.ciFixture, plan.database) :
+        /^jiangkong_project_financing_quota_[a-z0-9_]+$/u.test(plan.database)) &&
     [plan.databaseOid, plan.namespaceOid, plan.actorOid, plan.ownerOid].every(oid) &&
     plan.ownerOid === plan.actorOid && typeof plan.systemIdentifier === "string" &&
     /^[1-9][0-9]{0,19}$/u.test(plan.systemIdentifier) &&

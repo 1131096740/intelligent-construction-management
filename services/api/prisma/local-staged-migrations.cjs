@@ -75,6 +75,7 @@ function createLocalMigrationFixture(input) {
   if (technical) need(Object.keys(supplied).length === 2 && typeof supplied.temporaryRoot === "string", "INPUT");
   const options = technical ? snapshot({ ...supplied, ...technical.options }) : supplied;
   const owner = technical?.owner ?? "jiangkong";
+  const ci = Object.hasOwn(options, "ciFixture");
   const container = snapshot(options.container);
   need([container.id, container.name, container.runId].every(value => typeof value === "string") &&
     /^[a-f0-9]{64}$/u.test(container.id) &&
@@ -89,7 +90,8 @@ function createLocalMigrationFixture(input) {
       .every(field => Object.hasOwn(field, "value")), "INPUT");
   const databaseNames = Object.freeze([...options.databaseNames]);
   need(databaseNames.length > 0 && new Set(databaseNames).size === databaseNames.length &&
-    databaseNames.every(name => typeof name === "string" && (technical ? name === technical.database : /^jiangkong_[a-z0-9_]+$/u.test(name))), "INPUT");
+    databaseNames.every(name => typeof name === "string" && (technical ? name === technical.database :
+      ci ? technicalProfiles.isCiDynamicDatabase(options.ciFixture, name) : /^jiangkong_[a-z0-9_]+$/u.test(name))), "INPUT");
   const states = new Map();
   let busy = false;
   let stopped = false;
@@ -357,6 +359,7 @@ function createLocalMigrationFixture(input) {
         appName: "jg_fixture_app_" + randomBytes(12).toString("hex"),
         schemaName: "jg_fixture_" + randomBytes(12).toString("hex"),
         ...(technical ? { technicalProfile: technical.id, resourceRunId: technical.runId } : {}),
+        ...(ci ? { ciFixture: options.ciFixture } : {}),
         migrations: expected.slice(0, 205)
       };
       if (technical) technical.recordMaterial(technicalProfiles.projectTechnicalSql(plan, await readFile(path.join(__dirname, "local-staged-migration-acl.sql"), "utf8"), "setup"));
