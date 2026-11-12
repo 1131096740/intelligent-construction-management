@@ -20,6 +20,8 @@ const SCENARIOS=Object.freeze({normal:Object.freeze({scenario:'normal',caseId:'r
 const COMPETITION=Object.freeze({scenario:'competition',caseId:'registered.two-actor.payment-competition',handler:'runRegisteredTwoActorPaymentCompetition'});
 const COMPETITION261=Object.freeze({purpose:'current261-payment-owned-two-actor-competition',
  payment261:true,runtimeProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE,selected:COMPETITION});
+const FOLLOW_UP=Object.freeze({scenario:'competition-follow-up',caseId:'registered.two-actor.payment-competition-follow-up',handler:'runRegisteredTwoActorPaymentCompetitionFollowUp'});
+const FOLLOW_UP261=Object.freeze({purpose:'current261-payment-owned-two-actor-competition-follow-up',payment261:true,runtimeProfile:PAYMENT261_COMPETITION_RUNTIME_PROFILE,selected:FOLLOW_UP});
 const ATTRIBUTION_GAP=Object.freeze({scenario:'attribution-gap',caseId:'registered.project-attribution-gap',handler:'runRegisteredProjectAttributionGap'});
 const VOUCHER=Object.freeze({scenario:'competition-voucher',caseId:'registered.two-actor.payment-voucher',handler:'supplementCompetitionWinnerVoucher'});
 const VOUCHER261=Object.freeze({purpose:'current261-payment-owned-two-actor-voucher',
@@ -70,7 +72,7 @@ function dates(scenario,paidAt,openingDate,profile){
  need(openingDate<=paidAt&&paidAt<=today);
  return {...(profile?.selected??SCENARIOS[scenario]),paidAt,openingDate};
 }
-function scope(installation,selected){const cancellation=selected.scenario==='cancel-commit',voucher=selected.scenario===VOUCHER.scenario,competition=voucher||selected.scenario===COMPETITION.scenario;
+function scope(installation,selected){const cancellation=selected.scenario==='cancel-commit',voucher=selected.scenario===VOUCHER.scenario,followUp=selected.scenario===FOLLOW_UP.scenario,competition=followUp||voucher||selected.scenario===COMPETITION.scenario;
  if(selected.scenario===ATTRIBUTION_GAP.scenario)return {...installation.scope,
   stages:[...installation.scope.stages.slice(0,-1),'liveSessions','applicationEnvironment','ownedApplication','seedFixture','selectedCase','ownedCleanup'],
   databaseTransport:paymentLoopbackForScenario(selected.scenario).plan,
@@ -99,10 +101,11 @@ function scope(installation,selected){const cancellation=selected.scenario==='ca
   multiActorConcurrency:false,supplementaryVoucher:false,corrections:false};
  if(competition)return {...installation.scope,stages:[...installation.scope.stages.slice(0,-1),'competitionLiveSessions','applicationEnvironment','ownedApplicationPair','seedTwoActorFixture','observeSamePaymentLock','selectedCase',...(voucher?['uploadWinnerVoucher','attachWinnerVoucher','verifyVoucherAndLedger']:[]),'ownedCleanup'],
   applications:true,environmentPreparation:true,fixtures:true,businessWrites:true,liveSessionAdmission:false,financialAcceptance:false,
-  seedPostCount:4,registrationPostCount:2,seedRoutes:['POST /auth/login (finance)','POST /auth/login (comprehensive director)','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
+  seedPostCount:4,registrationPostCount:followUp?4:2,...(followUp?{followUp:{actor:'ORIGINAL_LOSER',amountCents:'1000',company:'ORIGINAL_A',sameKeyReplay:true}}:{}),seedRoutes:['POST /auth/login (finance)','POST /auth/login (comprehensive director)','POST /fund-accounts/openings (company A)','POST /fund-accounts/openings (company B)'],
   caseRoutes:['GET /payment-executions/work-items (both before and after)','GET /payment-executions/:paymentId/registration-options (both)',
    'POST /payment-executions/:paymentId/registrations (finance)','POST /payment-executions/:paymentId/registrations (comprehensive director)',
    'GET /payment-executions/results/:idempotencyKey (both original keys)',
+   ...(followUp?['POST /payment-executions/:paymentId/registrations (original loser company A remainder)', 'POST /payment-executions/:paymentId/registrations (same follow-up key replay)', 'GET /payment-executions/results/:idempotencyKey (follow-up key)', 'GET /payment-executions/recorded-items?paymentId=:paymentId (both actors)']:[]),
    ...(voucher?['POST /payment-executions/:executionId/voucher-file-uploads (winner multipart)',
     'POST /payment-executions/:executionId/voucher (same winner and file)',
     'GET /payment-executions/results/:idempotencyKey (winner after attach)',
@@ -136,6 +139,7 @@ function prepareCurrent259PaymentBusinessPlan(options){
 function prepareCurrent261PaymentBusinessPlan(options){
  need(arguments.length===1);return prepare(options,PAYMENT261);
 }
+function prepareCurrent261PaymentCompetitionFollowUpPlan(options){need(arguments.length===1);return prepare(options,FOLLOW_UP261);}
 function prepareCurrent261PaymentCompetitionPlan(options){
  need(arguments.length===1);return prepare(options,COMPETITION261);
 }
@@ -167,7 +171,7 @@ function prepare(options,profile){
  const captured=readInstall(sidecar,installed.sha256);
  const raw={schemaVersion:1,purpose:profile?.purpose??PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:planScope(captured.plan,selected,profile),...(profile?.selected===VOUCHER?{voucherMaterials:voucherMaterials()}:{})};
  need(equal(parent(o.output),parentIdentity));const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');writeNew(o.output,bytes);
- return Object.freeze({status:profile===COMPETITION261?'PAYMENT261_COMPETITION_PLAN_PREPARED_NO_RESOURCES':profile===VOUCHER261?'PAYMENT261_VOUCHER_PLAN_PREPARED_NO_RESOURCES':profile===ATTRIBUTION_GAP261?'PAYMENT261_ATTRIBUTION_GAP_PLAN_PREPARED_NO_RESOURCES':profile?.payment261?'PAYMENT261_BUSINESS_PLAN_PREPARED_NO_RESOURCES':'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
+ return Object.freeze({status:profile===FOLLOW_UP261?'PAYMENT261_COMPETITION_FOLLOW_UP_PLAN_PREPARED_NO_RESOURCES':profile===COMPETITION261?'PAYMENT261_COMPETITION_PLAN_PREPARED_NO_RESOURCES':profile===VOUCHER261?'PAYMENT261_VOUCHER_PLAN_PREPARED_NO_RESOURCES':profile===ATTRIBUTION_GAP261?'PAYMENT261_ATTRIBUTION_GAP_PLAN_PREPARED_NO_RESOURCES':profile?.payment261?'PAYMENT261_BUSINESS_PLAN_PREPARED_NO_RESOURCES':'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
 }
 function readCurrent259PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest);
@@ -175,6 +179,7 @@ function readCurrent259PaymentBusinessPlan(file,digest){
 function readCurrent261PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest,PAYMENT261);
 }
+function readCurrent261PaymentCompetitionFollowUpPlan(file,digest){need(arguments.length===2);return readPlan(file,digest,FOLLOW_UP261);}
 function readCurrent261PaymentCompetitionPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest,COMPETITION261);
 }
@@ -215,6 +220,7 @@ function verifyCurrent259PaymentBusinessPlan(file,digest){
 function verifyCurrent261PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return verifyPlan(file,digest,PAYMENT261);
 }
+function verifyCurrent261PaymentCompetitionFollowUpPlan(file,digest){need(arguments.length===2);return verifyPlan(file,digest,FOLLOW_UP261);}
 function verifyCurrent261PaymentCompetitionPlan(file,digest){
  need(arguments.length===2);return verifyPlan(file,digest,COMPETITION261);
 }
@@ -247,8 +253,8 @@ function parse(args){
   const preparePlan=args[0]==='--prepare261'?prepareCurrent261PaymentBusinessPlan:prepareCurrent259PaymentBusinessPlan;
   return preparePlan({runRoot:args[2],daemonId:args[4],output:args[6],scenario:args[8],paidAt:args[10],openingDate:args[12]});
  }
- if(args.length===11&&['--prepare-competition261','--prepare-voucher261','--prepare-attribution-gap261'].includes(args[0])&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')
-  return (args[0]==='--prepare-voucher261'?prepareCurrent261PaymentVoucherPlan:
+ if(args.length===11&&['--prepare-competition261','--prepare-competition-follow-up261','--prepare-voucher261','--prepare-attribution-gap261'].includes(args[0])&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')
+  return (args[0]==='--prepare-competition-follow-up261'?prepareCurrent261PaymentCompetitionFollowUpPlan:args[0]==='--prepare-voucher261'?prepareCurrent261PaymentVoucherPlan:
    args[0]==='--prepare-attribution-gap261'?prepareCurrent261PaymentAttributionGapPlan:prepareCurrent261PaymentCompetitionPlan)
    ({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===11&&args[0]==='--prepare-competition'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentCompetitionPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
@@ -266,6 +272,7 @@ module.exports=Object.freeze({prepareCurrent259PaymentBusinessPlan,readCurrent25
  prepareCurrent259PaymentVoucherPlan,readCurrent259PaymentVoucherPlan,verifyCurrent259PaymentVoucherPlan,
  prepareCurrent261PaymentBusinessPlan,readCurrent261PaymentBusinessPlan,verifyCurrent261PaymentBusinessPlan,
  prepareCurrent261PaymentCompetitionPlan,readCurrent261PaymentCompetitionPlan,verifyCurrent261PaymentCompetitionPlan,
+ prepareCurrent261PaymentCompetitionFollowUpPlan,readCurrent261PaymentCompetitionFollowUpPlan,verifyCurrent261PaymentCompetitionFollowUpPlan,
  prepareCurrent261PaymentVoucherPlan,readCurrent261PaymentVoucherPlan,verifyCurrent261PaymentVoucherPlan,
  prepareCurrent261PaymentAttributionGapPlan,readCurrent261PaymentAttributionGapPlan,verifyCurrent261PaymentAttributionGapPlan});
 if(require.main===module){try{process.stdout.write(JSON.stringify(parse(process.argv.slice(2)))+'\n');}catch{process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:'PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'})+'\n');process.exitCode=1;}}

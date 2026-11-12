@@ -250,7 +250,7 @@ function fixture(t,options={}){
    state.calls.push('competition');assert.equal(apps,applications);assert.equal(h,handle);
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,apps,h);
    assert.equal(lease.seedProfile,options.competition261||options.voucher261?paymentProfile:undefined);lease.check();
-   assert.equal(lease.scope.scenario,options.voucher?'competition-voucher':'competition');
+   assert.equal(lease.scope.scenario,options.followUp261?'competition-follow-up':options.voucher?'competition-voucher':'competition');
    assert.equal(lease.scope.paymentProfile,paymentProfile);
    if(options.voucher){
     assert.equal(permit.kind,'CURRENT259_PRIVATE_VOUCHER_CASE');
@@ -262,7 +262,7 @@ function fixture(t,options={}){
      throw new Error('private upstream body');
     }
    }
-   return {caseId:lease.scope.caseId,passed:true,competitionObserved:true,...(options.voucher&&!options.missingVoucherResult?{voucherVerified:true}:{}),winner:'comprehensive_director',executionId:'execution',rootId:'root'};
+   return {caseId:lease.scope.caseId,passed:true,competitionObserved:true,...(options.voucher&&!options.missingVoucherResult?{voucherVerified:true}:{}),winner:'comprehensive_director',executionId:'execution',rootId:'root',...(options.followUp261&&!options.missingFollowUpResult?{fullyPaid:true,secondExecutionId:'40404040-1234-4bcd-8f12-0123456789ab'}:{})};
   };
   ports['./task16-current259-payment-competition.cjs']={executeCurrent259PaymentCompetition(){assert.fail('unexpected raw competition callback');}};
  }
@@ -320,7 +320,7 @@ function fixture(t,options={}){
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const launcherOptions=options.launchOption?[options.launchOption]:options.voucher261?[options.default?'--voucher261':'--voucher261-once']:
+ const launcherOptions=options.launchOption?[options.launchOption]:options.followUp261?[options.default?'--competition-follow-up261':'--competition-follow-up261-once']:options.voucher261?[options.default?'--voucher261':'--voucher261-once']:
   options.attributionGap261?[options.default?'--attribution-gap261':'--attribution-gap261-once']:options.competition261?[options.default?'--competition261':'--competition261-once']:options.payment261?
   [options.business?(options.default?'--business261':'--business261-once'):(options.default?'--install261':'--install261-once')]:undefined;
  const proc={argv:['node',file,...(launcherOptions??(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once'])),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
@@ -497,13 +497,13 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
 function competitionFixture(t,options={}){
  const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
  new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
- const payment261=options.competition261||options.voucher261;
- const s=holder.exports.fixture(t,{payment261}),plan=s.business[options.voucher261?'prepareCurrent261PaymentVoucherPlan':options.competition261?'prepareCurrent261PaymentCompetitionPlan':options.voucher?'prepareCurrent259PaymentVoucherPlan':'prepareCurrent259PaymentCompetitionPlan']({
+ const payment261=options.followUp261||options.competition261||options.voucher261;
+ const s=holder.exports.fixture(t,{payment261}),plan=s.business[options.followUp261?'prepareCurrent261PaymentCompetitionFollowUpPlan':options.voucher261?'prepareCurrent261PaymentVoucherPlan':options.competition261?'prepareCurrent261PaymentCompetitionPlan':options.voucher?'prepareCurrent259PaymentVoucherPlan':'prepareCurrent259PaymentCompetitionPlan']({
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
  const read=payment261?s.api.readCurrent261PaymentInstallPlan:s.api.readCurrent259PaymentInstallPlan;
  const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
- return fixture(t,{...options,payment261,voucher:options.voucher261||options.voucher,competition:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
+ return fixture(t,{...options,competition261:options.followUp261||options.competition261,payment261,voucher:options.voucher261||options.voucher,competition:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 test('competition consumes one fixed plan and reaches only the two-lane case, closing both apps before pools',async t=>{
  const f=competitionFixture(t),result=await f.done;
@@ -1050,4 +1050,22 @@ test('261 voucher and attribution gap reject other launch, role and B7 authority
   assert.equal((await run.done).status,'STOPPED');assert.equal(run.state.consumed,null);
   assert.equal(run.state.calls.at(-1),'b7');
  }
+});
+
+for(const onlyPrepare of [true,false])test('follow-up261 selects its exact plan without borrowing old competition authority '+onlyPrepare,async t=>{
+ const f=competitionFixture(t,{followUp261:true,default:onlyPrepare});
+ const result=await f.done;
+ assert.equal(result.status,onlyPrepare?'PAYMENT261_COMPETITION_FOLLOW_UP_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED');
+ if(onlyPrepare){assert.deepEqual(f.state.calls,[]);assert.equal(result.resourcesExecuted,false);}
+ else {
+  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+  assert.equal(receipt.business.scenario,'competition-follow-up');assert.equal(receipt.business.fullyPaid,true);
+  assert.equal(receipt.business.secondExecutionId,'40404040-1234-4bcd-8f12-0123456789ab');
+ }
+});
+test('follow-up261 refuses a case that only returns the original competition result',async t=>{
+ const f=competitionFixture(t,{followUp261:true,missingFollowUpResult:true});
+ const result=await f.done;assert.equal(result.status,'STOPPED');
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(f.state.calls.includes('competition'),true);assert.notEqual(receipt.business.fullyPaid,true);
 });

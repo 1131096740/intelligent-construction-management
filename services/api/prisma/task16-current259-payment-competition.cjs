@@ -235,14 +235,15 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
  let voucherFailureStage;
  try{
   const voucher=permission.scope.scenario==='competition-voucher';
+  const followUp=permission.scope.scenario==='competition-follow-up';
   if(voucher){
    voucherFailureStage='COMPETITION';
    need(typeof permission.recordVoucherFailure==='function');
   }
   const topology=paymentLoopbackForScenario(voucher?'competition-voucher':'competition').topology;
-  need(permission.scope.caseId===(voucher?voucherCase:competitionCase));
+  need(permission.scope.caseId===(followUp?'registered.two-actor.payment-competition-follow-up':voucher?voucherCase:competitionCase));
   need(first.session.owner===second.session.owner&&first.session.observer===second.session.observer&&first.session.runtime!==second.session.runtime&&
-   second.handle===handle&&second.loader===loader&&second.source===source&&(voucher||permission.scope.scenario==='competition')&&
+   second.handle===handle&&second.loader===loader&&second.source===source&&(followUp||voucher||permission.scope.scenario==='competition')&&
    leases.every((lease,index)=>lease.application===applications[index])&&
    new URL(first.application.origin).origin!==new URL(second.application.origin).origin);
   for(const lease of leases)lease.activateContinuity(token);
@@ -281,7 +282,7 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   await full();
   const material=loadCurrent259CatalogMaterial(source);
   const modules=loader.loadPaymentModules();
-  const names=['buildRegisteredPgFixturePlan','seedRegisteredPgCompetitionFixture','runRegisteredTwoActorPaymentCompetition'];
+  const names=['buildRegisteredPgFixturePlan',followUp?'seedRegisteredPgCompetitionFollowUpFixture':'seedRegisteredPgCompetitionFixture',followUp?'runRegisteredTwoActorPaymentCompetitionFollowUp':'runRegisteredTwoActorPaymentCompetition'];
   const [build,seed,run]=names.map(name=>own(modules,name));need([build,seed,run].every(value=>typeof value==='function'));
   const readLedger=voucher?own(modules,'observeRegisteredPaymentVoucherLedger'):undefined;
   if(voucher)need(typeof readLedger==='function');
@@ -289,7 +290,8 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   const built=build(fixtureRunId,permission.scope.paidAt,permission.scope.openingDate);
   const plan=Object.freeze({...built,ids:Object.freeze({...built.ids})});
   const paymentId=plan.ids.payment;need(uuid(paymentId));
-  let prepared,armed=false,used=false;
+  let prepared,armed=false,used=false,followUpLane,followUpCommand,raceLoser;
+  const followUpPosts=[0,0];
   const posts=[0,0],seedPosts=[[],[]];
   const contexts=leases.map(({application,session})=>Object.freeze({
    proof:Object.freeze({authorizationReference:permission.scope.authorizationReference,runId:fixtureRunId,resourceRunId:view.runId,
@@ -303,7 +305,14 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   const lanes=contexts.map((context,index)=>Object.freeze({
    checkLight:check,
    ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
-   async fetch(target,init){check();const url=new URL(target);need(url.origin===new URL(context.proof.application.origin).origin&&!url.username&&!url.password&&!url.hash&&!url.search);
+   async fetch(target,init){check();const url=new URL(target);need(url.origin===new URL(context.proof.application.origin).origin&&!url.username&&!url.password&&!url.hash&&(!url.search||followUp&&url.pathname==='/payment-executions/recorded-items'&&url.search===`?paymentId=${paymentId}`));
+    if(followUp&&followUpLane===index&&init?.method==='POST'){
+     const command=JSON.parse(init.body);
+     need(command.idempotencyKey===prepared.followUpRequestKey&&command.amountCents==='1000'&&command.scopeKey===`company:${plan.ids.companyA}`&&
+      command.expectedRegistrationId===prepared.companyARegistrationId&&equal(command.sourceAllocations,[{sourceBatchId:prepared.companyASourceId,amountCents:'1000'}])&&
+      command.paidAt===plan.paidAt&&command.confirmationPassword===context.password);
+     if(followUpCommand)need(equal(command,followUpCommand));else followUpCommand=command;
+    }
     const response=await fetch(target,init);check();return response;},
    assertHttpRequest(route,method){
     check();
@@ -312,8 +321,9 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
      need(method==='POST'&&route===routes[seedPosts[index].length]);seedPosts[index].push(route);return;
     }
     const key=index===0?plan.ids.requestKey:prepared.contender.requestKey;
+    if(followUp&&followUpLane===index&&method==='POST'){need(!armed&&used&&route===`/payment-executions/${paymentId}/registrations`&&followUpPosts[index]<2);followUpPosts[index]++;return;}
     if(method==='POST'){need(armed&&route===`/payment-executions/${paymentId}/registrations`&&posts[index]===0);posts[index]++;return;}
-    need(method==='GET'&&['/payment-executions/work-items',`/payment-executions/${paymentId}/registration-options`,`/payment-executions/results/${key}`].includes(route));
+    need(method==='GET'&&['/payment-executions/work-items',`/payment-executions/${paymentId}/registration-options`,`/payment-executions/results/${key}`,...(followUp&&followUpLane!==undefined?[`/payment-executions/results/${prepared.followUpRequestKey}`,`/payment-executions/results/${index===0?prepared.contender.requestKey:plan.ids.requestKey}`,`/payment-executions/recorded-items?paymentId=${paymentId}`]:[])].includes(route));
    }
   }));
   const seeded=await seed(...contexts,plan,...lanes);
@@ -322,16 +332,25 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
    typeof prepared.accessToken==='string'&&typeof prepared.contender.accessToken==='string'&&prepared.accessToken!==prepared.contender.accessToken);
   await full();
   const result=await run(...contexts,prepared,Object.freeze({lanes:Object.freeze(lanes),
+   ...(followUp?{async withFollowUp(index,key,consume){
+    check();need(used&&!armed&&equal(posts,[1,1])&&followUpLane===undefined&&index===raceLoser&&key===prepared.followUpRequestKey&&uuid(key)&&typeof consume==='function');
+    followUpLane=index;return consume();
+   }}:{}),
    async withSamePaymentLock(id,pids,submissions){
     check();need(!used&&id===paymentId&&equal(pids,owners.slice(1).map(row=>row.pid))&&submissions.length===2&&submissions.every(fn=>typeof fn==='function'));
     used=true;armed=true;
-    try{return await withSamePaymentLock(contexts[0],view,observe,check,paymentId,owners,submissions);}
+    try{
+     const responses=await withSamePaymentLock(contexts[0],view,observe,check,paymentId,owners,submissions);
+     if(followUp){need(responses.length===2&&[responses[0].status,responses[1].status].sort().join(',')==='201,409');raceLoser=responses[0].status===201?1:0;}
+     return responses;
+    }
     finally{armed=false;}
    }
   }));
   await full();
-  need(used&&equal(posts,[1,1])&&result?.caseId===competitionCase&&result.passed===true&&result.competitionObserved===true&&
+  need(used&&equal(posts,[1,1])&&result?.caseId===(followUp?'registered.two-actor.payment-competition-follow-up':competitionCase)&&result.passed===true&&result.competitionObserved===true&&
    uuid(result.executionId)&&uuid(result.rootId)&&['finance_staff','comprehensive_director'].includes(result.winner));
+  if(followUp)need(followUpLane===(result.winner==='finance_staff'?1:0)&&equal(followUpPosts,followUpLane===0?[2,0]:[0,2])&&result.fullyPaid===true&&uuid(result.secondExecutionId)&&result.secondExecutionId!==result.executionId);
   if(voucher){
    need(own(modules,'observeRegisteredPaymentVoucherLedger')===readLedger);
    await supplementCompetitionWinnerVoucher({result,prepared,contexts,lanes,storageRoot:permission.scope.voucherStorageRoot,
@@ -342,7 +361,7 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   for(const lease of leases)lease.finishContinuity(token);
   permission.check();
   return Object.freeze({caseId:permission.scope.caseId,passed:true,executionId:result.executionId,rootId:result.rootId,winner:result.winner,competitionObserved:true,
-   ...(voucher?{voucherVerified:true}:{}),financialAcceptance:false});
+   ...(voucher?{voucherVerified:true}:{}),...(followUp?{fullyPaid:true,secondExecutionId:result.secondExecutionId}:{}),financialAcceptance:false});
  }catch{
   if(voucherFailureStage)permission.recordVoucherFailure?.(voucherFailureStage);
   throw safe();

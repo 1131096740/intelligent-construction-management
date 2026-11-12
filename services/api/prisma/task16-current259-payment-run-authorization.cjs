@@ -7,7 +7,7 @@ const {performance}=require('node:perf_hooks');
 const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
 const {PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('./task16-current261-competition-profile.cjs');
-const ONCE_OPTIONS=Object.freeze(['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once','--install261-once','--business261-once','--competition261-once','--voucher261-once','--attribution-gap261-once']);
+const ONCE_OPTIONS=Object.freeze(['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once','--install261-once','--business261-once','--competition261-once','--competition-follow-up261-once','--voucher261-once','--attribution-gap261-once']);
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),attributionGapPermissions=new WeakMap(),voucherBusinessPermissions=new WeakMap(),businessContinuities=new WeakMap();
 const payment261RolePermissions=new WeakMap(),competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap(),voucherAclPermissions=new WeakMap();
 const attributionGapFailureCodes=new Map([
@@ -221,7 +221,7 @@ const {withCurrent259TechnicalResource,withCurrent259FirstRollbackResource,withC
   'withCurrent259ResponseLossResource','withCurrent259CompetitionResource','withCurrent259VoucherResource','withCurrent259DisconnectRecoveryResource','withCurrent259AttributionGapResource',
   'claimCurrent259TechnicalResource']);
 const paymentResources=Object.freeze({normal:withCurrent259NormalPaymentResource,'response-loss':withCurrent259ResponseLossResource,
- 'cancel-commit':withCurrent259FirstRollbackResource,competition:withCurrent259CompetitionResource,
+ 'cancel-commit':withCurrent259FirstRollbackResource,competition:withCurrent259CompetitionResource,'competition-follow-up':withCurrent259CompetitionResource,
  'competition-voucher':withCurrent259VoucherResource,
  'disconnect-commit-recovery':withCurrent259DisconnectRecoveryResource,'attribution-gap':withCurrent259AttributionGapResource});
 const {renderCurrent259CatalogRead}=original('./task16-current259-catalog.cjs',['renderCurrent259CatalogRead']);
@@ -321,7 +321,8 @@ function parse(args){
  need(Array.isArray(args)&&args.every(value=>typeof value==='string'),'ARGUMENTS');
  const voucher261=args[0]==='--voucher261'||args[0]==='--voucher261-once';
  const voucher=voucher261||args[0]==='--voucher'||args[0]==='--voucher-once';
- const competition261=args[0]==='--competition261'||args[0]==='--competition261-once';
+ const followUp261=args[0]==='--competition-follow-up261'||args[0]==='--competition-follow-up261-once';
+ const competition261=followUp261||args[0]==='--competition261'||args[0]==='--competition261-once';
  const competition=voucher||competition261||args[0]==='--competition'||args[0]==='--competition-once';
  const attributionGap261=args[0]==='--attribution-gap261'||args[0]==='--attribution-gap261-once';
  const attributionGap=attributionGap261||args[0]==='--attribution-gap'||args[0]==='--attribution-gap-once';
@@ -331,7 +332,7 @@ function parse(args){
  const business=business261||competition||attributionGap||args[0]==='--business'||args[0]==='--business-once';
  const once=ONCE_OPTIONS.includes(args[0]),rest=once||business||pfq||payment261?args.slice(1):args;
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,payment261,competition261,competition,attributionGap,attributionGap261,voucher,voucher261,pfq,file:rest[1],sha256:rest[3]};
+ return {once,business,payment261,followUp261,competition261,competition,attributionGap,attributionGap261,voucher,voucher261,pfq,file:rest[1],sha256:rest[3]};
 }
 async function run(args){
  const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
@@ -360,7 +361,7 @@ async function run(args){
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
   const paymentProfile=request.voucher261?PAYMENT261_VOUCHER_RUNTIME_PROFILE:request.attributionGap261?PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE:
    request.competition261?PAYMENT261_COMPETITION_RUNTIME_PROFILE:request.payment261?PAYMENT261_RUNTIME_PROFILE:undefined;
-  const names=request.voucher261?['readCurrent261PaymentVoucherPlan','verifyCurrent261PaymentVoucherPlan']:
+  const names=request.followUp261?['readCurrent261PaymentCompetitionFollowUpPlan','verifyCurrent261PaymentCompetitionFollowUpPlan']:request.voucher261?['readCurrent261PaymentVoucherPlan','verifyCurrent261PaymentVoucherPlan']:
    request.attributionGap261?['readCurrent261PaymentAttributionGapPlan','verifyCurrent261PaymentAttributionGapPlan']:
    request.competition261?['readCurrent261PaymentCompetitionPlan','verifyCurrent261PaymentCompetitionPlan']:
    request.payment261?(request.business?['readCurrent261PaymentBusinessPlan','verifyCurrent261PaymentBusinessPlan']:['readCurrent261PaymentInstallPlan','verifyCurrent261PaymentInstallPlan']):
@@ -382,11 +383,11 @@ async function run(args){
   }
   need(plan.scope.databaseTransport===loopback?.plan&&request.attributionGap===(loopbackScenario==='attribution-gap')&&
    request.voucher===(loopbackScenario==='competition-voucher')&&
-   request.competition===(loopbackScenario==='competition'||loopbackScenario==='competition-voucher'),'RESOURCE_PROFILE');
+   request.competition===(loopbackScenario==='competition'||loopbackScenario==='competition-follow-up'||loopbackScenario==='competition-voucher'),'RESOURCE_PROFILE');
   if(!request.once){
    checked=verifyPlan(request.file,request.sha256);checked.check();importsCheck();
    if(request.payment261)checkPayment261Source(checked.loader.witness().source);
-   return {status:request.voucher261?'PAYMENT261_VOUCHER_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap261?'PAYMENT261_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.competition261?'PAYMENT261_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.payment261?(request.business?'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT261_INSTALL_PLAN_VERIFIED_NO_RESOURCES'):request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.voucher?'PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap?'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
+   return {status:request.followUp261?'PAYMENT261_COMPETITION_FOLLOW_UP_PLAN_VERIFIED_NO_RESOURCES':request.voucher261?'PAYMENT261_VOUCHER_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap261?'PAYMENT261_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.competition261?'PAYMENT261_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.payment261?(request.business?'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT261_INSTALL_PLAN_VERIFIED_NO_RESOURCES'):request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.voucher?'PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap?'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
   }
   onceAttempted=true;
   try{writeNew(plan,plan.run.attemptFile,JSON.stringify({status:'STARTED',purpose:plan.purpose,planSha256:request.sha256,candidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true})+'\n');}
@@ -598,12 +599,14 @@ async function run(args){
             proof.originalResultUnconfirmed===true&&hex(proof.originalRequestKeySha256,64)&&!Object.hasOwn(result,'executionId')&&!Object.hasOwn(result,'rootId'),'BUSINESS_RESULT');
            attributionGapEvidence=Object.freeze(proof);
           }
+          if(request.followUp261)need(data(result,'fullyPaid')===true&&typeof data(result,'secondExecutionId')==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(data(result,'secondExecutionId')),'BUSINESS_RESULT');
           if(request.voucher)need(data(result,'voucherVerified')===true,'BUSINESS_RESULT');
           if(request.competition)need(data(result,'competitionObserved')===true&&['finance_staff','comprehensive_director'].includes(data(result,'winner')),'BUSINESS_RESULT');
           receipt.business={scenario:plan.case.scenario,caseId:plan.case.caseId,permission:'CONSUMED_ONCE',outcome:'CASE_RETURNED_NOT_FULL_ACCEPTANCE',
            ...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:request.attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),
            ...(request.competition?{competitionObserved:true,winner:result.winner}:{}),
            ...(request.voucher?{voucherVerified:true}:{}),
+           ...(request.followUp261?{fullyPaid:true,secondExecutionId:result.secondExecutionId}:{}),
            ...(disconnectPhase==='recovery'?{rollbackObserved:true,runtimeReplaced:true}:{})};
           return result;
          }catch(error){

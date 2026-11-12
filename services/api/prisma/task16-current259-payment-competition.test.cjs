@@ -41,8 +41,8 @@ function model(options={}){
   activateContinuity(value){assert.equal(value,token);events.push('active-'+index);},
   finishContinuity(value){assert.equal(value,token);events.push('done-'+index);},check(){}};
  });
- const plan={ids:{payment:paymentId,requestKey:keyA,...(options.voucher?{actor:keyA,settlement:keyB}:{})},...(options.voucher?{paidAt:'2026-11-10'}:{})};
- const scope={scenario:options.voucher?'competition-voucher':'competition',caseId:options.voucher?'registered.two-actor.payment-voucher':'registered.two-actor.payment-competition',paidAt:'2026-11-10',openingDate:'2026-11-09',...(options.voucher?{voucherStorageRoot:storageRoot}:{})};
+ const plan={ids:{payment:paymentId,requestKey:keyA,...(options.voucher||options.followUp?{actor:keyA,settlement:keyB,companyA:keyB}:{})},...(options.voucher||options.followUp?{paidAt:'2026-11-10'}:{})};
+ const scope={scenario:options.followUp?'competition-follow-up':options.voucher?'competition-voucher':'competition',caseId:options.followUp?'registered.two-actor.payment-competition-follow-up':options.voucher?'registered.two-actor.payment-voucher':'registered.two-actor.payment-competition',paidAt:'2026-11-10',openingDate:'2026-11-09',...(options.voucher?{voucherStorageRoot:storageRoot}:{})};
  const modules={
   buildRegisteredPgFixturePlan(id,paid,opening){assert.equal(id,'aabbccdd1234');assert.equal(paid,scope.paidAt);assert.equal(opening,scope.openingDate);return plan;},
   async seedRegisteredPgCompetitionFixture(a,b,planned,laneA,laneB){
@@ -69,6 +69,21 @@ function model(options={}){
   },
   async observeRegisteredPaymentVoucherLedger(){events.push('voucher-ledger');return {paid:options.changedLedger&&events.includes('voucher-attach')?'3001':'3000'};}
  };
+ if(options.followUp){
+  modules.seedRegisteredPgCompetitionFollowUpFixture=async(...args)=>({...await modules.seedRegisteredPgCompetitionFixture(...args),companyASourceId:'source-a',companyARegistrationId:keyB,followUpRequestKey:'30303030-1234-4bcd-8f12-0123456789ab'});
+  modules.runRegisteredTwoActorPaymentCompetitionFollowUp=async(a,b,prepared,control)=>{
+   const race=await modules.runRegisteredTwoActorPaymentCompetition(a,b,prepared,control);
+   const lane=options.wrongFollowUpLane?winner:1-winner;
+   return control.withFollowUp(lane,prepared.followUpRequestKey,async()=>{
+    const body={idempotencyKey:prepared.followUpRequestKey,amountCents:options.wrongFollowUpAmount?'2000':'1000',scopeKey:`company:${plan.ids.companyA}`,expectedRegistrationId:keyB,paidAt:plan.paidAt,sourceAllocations:[{sourceBatchId:'source-a',amountCents:'1000'}],confirmationPassword:(lane===0?a:b).password};
+    for(let i=0;i<(options.followUpExtraPost?3:2);i++){
+     control.lanes[lane].assertHttpRequest(`/payment-executions/${paymentId}/registrations`,'POST');
+     await control.lanes[lane].fetch(new URL(`/payment-executions/${paymentId}/registrations`,applicationPair[lane].origin),{method:'POST',body:JSON.stringify(body)});
+    }
+    return {...race,caseId:scope.caseId,fullyPaid:true,secondExecutionId:'40404040-1234-4bcd-8f12-0123456789ab'};
+   });
+  };
+ }
  const loader={loadPaymentModules(){return modules;}};
  for(const lease of leases)lease.loader=loader;
  const view={runId,resource:{caPath:'/private/tmp/model-resource/tls-private/ca.crt',topology,relayId,containerId,networkId,databaseName:identity.database,port:42531,getReceiptContinuity(value){
@@ -106,6 +121,7 @@ function model(options={}){
   return {stdout:JSON.stringify({overlap:true,readerPid:options.sameMonitor?813:815,databaseOid:'83',systemIdentifier:'5556789',readerOid:'10',readerTls:true})};
  }}};
  async function fixtureFetch(url,init){
+  if(options.followUp){events.push('follow-up-request');return {status:201};}
   assert.equal(url.origin,applicationPair[winner].origin);
   assert.deepEqual(init.headers.authorization,'Bearer '+(winner===0?'one':'two'));
   assert.equal(init.redirect,'error');assert.ok(init.signal instanceof AbortSignal);
@@ -152,7 +168,7 @@ function model(options={}){
   './task16-current259-application-factory.cjs':{isCurrent259PaymentLease(lease){return !options.forged&&leases.includes(lease);}}
  };
  new Function('require','module','process','globalThis',fs.readFileSync(path.join(__dirname,'task16-current259-payment-competition.cjs'),'utf8'))(
-  name=>ports[name]??require(name),module,options.voucher?fixtureProcess:process,options.voucher?{fetch:fixtureFetch}:globalThis
+  name=>ports[name]??require(name),module,options.voucher||options.followUp?fixtureProcess:process,options.voucher||options.followUp?{fetch:fixtureFetch}:globalThis
  );
  return {events,failures,run:()=>module.exports.executeCurrent259PaymentCompetition(applicationPair,leases,permit)};
 }
@@ -233,4 +249,15 @@ for(const voucher of [false,true])test('both 261 lanes retain the one issued fix
  const seedProfile=voucher?'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1':'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
  const f=model({voucher,seedProfile});
  assert.equal((await f.run()).passed,true);
+});
+
+for(const directorWins of [false,true])test('new follow-up admits only the original loser and two identical A remainder requests '+directorWins,async()=>{
+ const f=model({followUp:true,directorWins});
+ assert.equal((await f.run()).fullyPaid,true);
+ assert.equal(f.events.filter(v=>v==='follow-up-request').length,2);
+});
+for(const mode of ['wrongFollowUpLane','wrongFollowUpAmount','followUpExtraPost'])test('follow-up fails closed for '+mode,async()=>{
+ const f=model({followUp:true,[mode]:true});
+ await assert.rejects(f.run(),{code:'CURRENT259_PAYMENT_COMPETITION_FAILED_CLOSED'});
+ assert.equal(f.events.includes('done-0'),false);
 });

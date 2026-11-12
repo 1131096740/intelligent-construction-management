@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Prisma } from "@prisma/client";
 import { assertRegisteredPgCompetitionRoles, assertRegisteredPgConnectedRoles, assertRegisteredPgResourceProof, registeredPgHttp } from "./registered-payment-postgres.fixture";
-import type { PreparedRegisteredPgAttributionGap, PreparedRegisteredPgCompetition, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
+import type { PreparedRegisteredPgAttributionGap, PreparedRegisteredPgCompetition, PreparedRegisteredPgCompetitionFollowUp, PreparedRegisteredPgFixture, RegisteredPgExecutionContext, RegisteredPgSeedContinuity } from "./registered-payment-postgres.fixture";
 
 /** Source-derived inventory, not an executable resource runner or a PG result. */
 export function registeredPaymentPostgresCases() {
@@ -632,4 +632,95 @@ export async function observeRegisteredPaymentVoucherLedger(context: RegisteredP
   continuity: RegisteredPgSeedContinuity) {
   continuity.checkLight();
   return observe(context, fixture, continuity, true);
+}
+
+/** Separate fixed acceptance case: preserve the complete original race before a
+ * new, explicit intent by its loser pays the remainder from the original A. */
+export async function runRegisteredTwoActorPaymentCompetitionFollowUp(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext,
+  fixture: PreparedRegisteredPgCompetitionFollowUp, controls: Parameters<typeof runRegisteredTwoActorPaymentCompetition>[3] & {withFollowUp<T>(lane: number,key: string,consume: () => Promise<T>): Promise<T>}) {
+  const race = await runRegisteredTwoActorPaymentCompetition(primary, contender, fixture, controls);
+  const {plan} = fixture, {ids} = plan;
+  const loser = race.winner === "finance_staff" ? 1 : 0;
+  const contexts = [primary, contender] as const;
+  const tokens = [fixture.accessToken, fixture.contender.accessToken] as const;
+  const actorIds = [ids.actor, fixture.contender.actorId] as const;
+  const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => {
+    controls.lanes.forEach(lane => lane.checkLight()); const result = await operation();
+    controls.lanes.forEach(lane => lane.checkLight()); return result;
+  };
+  const key = fixture.followUpRequestKey;
+  check(typeof key === "string" && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(key) &&
+    key !== ids.requestKey && key !== fixture.contender.requestKey && typeof fixture.companyASourceId === "string" &&
+    fixture.companyASourceId.length > 0 && fixture.companyASourceId !== fixture.companyBSourceId, "PG_COMPETITION_FOLLOW_UP_INTENT");
+  const request = (index: number, route: string, method: "GET" | "POST" = "GET", body?: unknown) =>
+    checked(() => registeredPgHttp(contexts[index]!, route, method, body, tokens[index]!, controls.lanes[index]!));
+  return controls.withFollowUp(loser,key,async () => {
+  const endpoint = `/payment-executions/${ids.payment}`;
+  const before = await checked(() => observe(primary, fixture, controls.lanes[0], true));
+  const response = await request(loser, `${endpoint}/registration-options`);
+  const options = response.body as {paymentId?: unknown; projectId?: unknown; expectedPaymentUpdatedAt?: unknown; remainingAmountCents?: unknown;
+    accounts?: Array<{scopeKey?: unknown; eligible?: unknown; currentRegistrationId?: unknown}>};
+  check(response.status === 200 && options.paymentId === ids.payment && options.projectId === ids.project &&
+    options.remainingAmountCents === "1000" && typeof options.expectedPaymentUpdatedAt === "string" &&
+    options.accounts?.some(row => row.scopeKey === `company:${ids.companyA}` && row.eligible === true && row.currentRegistrationId === fixture.companyARegistrationId),
+  "PG_COMPETITION_FOLLOW_UP_OPTIONS");
+  const command = {idempotencyKey:key,expectedPaymentUpdatedAt:options.expectedPaymentUpdatedAt,amountCents:"1000",paidAt:plan.paidAt,
+    scopeKey:`company:${ids.companyA}`,expectedRegistrationId:fixture.companyARegistrationId,openingTreatment:"not_included",
+    openingReason:"本次实付未计入核对期初",openingEvidence:"隔离PG双公司分次付清",
+    sourceAllocations:[{sourceBatchId:fixture.companyASourceId,amountCents:"1000"}],confirmationPassword:contexts[loser]!.password};
+  check((await request(loser,`${endpoint}/registrations`,"POST",command)).status === 201,"PG_COMPETITION_FOLLOW_UP_HTTP");
+  const after = await checked(() => observe(primary, fixture, controls.lanes[0], true));
+  const second = after.executions.find(row => row.idempotencyKey === key);
+  check(second && second.id !== race.executionId && second.paymentRequestId === ids.payment && second.amountCents === 1000n && second.voucherFileId === null,
+    "PG_COMPETITION_FOLLOW_UP_EXECUTION");
+  check(after.executions.length === 2 && after.funding.length === 2 && after.allocations.length === 2 && after.events.length === 2 && after.audits.length === 2 &&
+    after.roots.length === 1 && after.roots[0]?.id === race.rootId && after.roots[0]?.amountCents === 3000n &&
+    after.facts.length === 0 && after.impacts.length === 0 && after.request.status === "paid" && after.request.approvedAmountCents === 4000n &&
+    after.request.paidAmountCents === 4000n && after.settlement.payableAmountCents === 4000n && after.settlement.paidAmountCents === 4000n &&
+    after.balanceA === "90.0000" && after.balanceB === "70.0000", "PG_COMPETITION_FOLLOW_UP_LEDGER");
+  check(isDeepStrictEqual(after.roots,before.roots) &&
+    (['executions','funding','allocations','events'] as const).every(table =>
+      isDeepStrictEqual(after[table].filter(row => ('executionId' in row ? row.executionId : row.id) === race.executionId),before[table])) &&
+    isDeepStrictEqual(after.audits.filter(row => row.actorUserId !== actorIds[loser]),before.audits),"PG_COMPETITION_FOLLOW_UP_ORIGINAL_FACTS");
+  const original = after.executions.find(row => row.id === race.executionId);
+  check(original?.amountCents === 3000n && original.paymentRequestId === ids.payment && original.voucherFileId === null &&
+    original.idempotencyKey === (loser === 1 ? ids.requestKey : fixture.contender.requestKey) &&
+    after.funding.some(row => row.executionId === race.executionId && row.actualPayerId === ids.companyB && row.actualPayerKind === "participating_company" && row.operatingLedgerEffectiveDateAtRegistration === null) &&
+    after.funding.some(row => row.executionId === second.id && row.actualPayerId === ids.companyA && row.actualPayerKind === "participating_company" && row.operatingLedgerEffectiveDateAtRegistration === null) &&
+    after.allocations.some(row => row.executionId === second.id && row.sourceBatchId === fixture.companyASourceId && row.amountCents === 1000n) &&
+    after.allocations.some(row => row.executionId === race.executionId && row.sourceBatchId === fixture.companyBSourceId && row.amountCents === 3000n) &&
+    after.events.some(row => row.executionId === second.id) && after.events.some(row => row.executionId === race.executionId), "PG_COMPETITION_FOLLOW_UP_GRAPH");
+  const audit = after.audits.find(row => row.actorUserId === actorIds[loser]);
+  check(audit && audit.metadata && typeof audit.metadata === "object" && !Array.isArray(audit.metadata) && audit.metadata.executionId === second.id && audit.metadata.voucherPending === true &&
+    audit.metadata.voucherFileId === null && typeof audit.metadata.actualPayer === "object" && audit.metadata.actualPayer !== null &&
+    !Array.isArray(audit.metadata.actualPayer) && audit.metadata.actualPayer.id === ids.companyA && audit.metadata.actualPayer.kind === "participating_company" &&
+    !JSON.stringify(audit.metadata).includes(contexts[loser]!.password), "PG_COMPETITION_FOLLOW_UP_ACTOR");
+  check((await request(loser,`${endpoint}/registrations`,"POST",command)).status === 201,"PG_COMPETITION_FOLLOW_UP_REPLAY");
+  check(isDeepStrictEqual(after,await checked(() => observe(primary, fixture, controls.lanes[0], true))),"PG_COMPETITION_FOLLOW_UP_REPLAY_LEDGER");
+  const recorded = await request(loser,`/payment-executions/results/${key}`);
+  const body = recorded.body as {status?: unknown;execution?: {executionId?: unknown;paymentId?: unknown;amountCents?: unknown;paidAt?: unknown;voucherPending?: unknown};effects?:unknown[];intercompany?:unknown[]};
+  check(recorded.status === 200 && body.status === "recorded" && body.execution?.executionId === second.id && body.execution.paymentId === ids.payment &&
+    body.execution.amountCents === "1000" && body.execution.paidAt === plan.paidAt && body.execution.voucherPending === true &&
+    body.effects?.length === 0 && body.intercompany?.length === 0,"PG_COMPETITION_FOLLOW_UP_RESULT");
+  const winnerResult = await request(1-loser,`/payment-executions/results/${original.idempotencyKey}`);
+  const winnerBody = winnerResult.body as {status?:unknown;execution?:{executionId?:unknown;amountCents?:unknown;paidAt?:unknown};effects?:unknown[];intercompany?:Array<{entryId?:unknown}>};
+  check(winnerResult.status === 200 && winnerBody.status === "recorded" && winnerBody.execution?.executionId === race.executionId &&
+    winnerBody.execution.amountCents === "3000" && winnerBody.execution.paidAt === plan.paidAt && winnerBody.effects?.length === 0 &&
+    winnerBody.intercompany?.length === 1 && winnerBody.intercompany[0]?.entryId === race.rootId,"PG_COMPETITION_FOLLOW_UP_ORIGINAL_RESULT");
+  const rejectedKey = loser === 0 ? ids.requestKey : fixture.contender.requestKey;
+  const rejected = await request(loser,`/payment-executions/results/${rejectedKey}`);
+  const rejectedBody = rejected.body as {status?:unknown;execution?:unknown};
+  check(rejected.status === 200 && rejectedBody.status === "unconfirmed" && rejectedBody.execution === undefined,"PG_COMPETITION_FOLLOW_UP_REJECTED_RESULT");
+  for (const index of [0,1]) {
+    const work = await request(index,"/payment-executions/work-items");
+    const workBody = work.body as {total?:unknown;items?:unknown[]};
+    check(work.status === 200 && workBody.total === 0 && workBody.items?.length === 0,"PG_COMPETITION_FOLLOW_UP_SHARED_DONE");
+    const items = await request(index,`/payment-executions/recorded-items?paymentId=${ids.payment}`);
+    const itemBody = items.body as {total?:unknown;items?:Array<{executionId?:unknown;resultKey?:unknown;amountCents?:unknown;paidAt?:unknown}>};
+    check(items.status === 200 && itemBody.total === 2 && itemBody.items?.length === 2 &&
+      itemBody.items.some(row => row.executionId === race.executionId && row.resultKey === original.idempotencyKey && row.amountCents === "3000" && row.paidAt === plan.paidAt) &&
+      itemBody.items.some(row => row.executionId === second.id && row.resultKey === key && row.amountCents === "1000" && row.paidAt === plan.paidAt),"PG_COMPETITION_FOLLOW_UP_RECORDED_ITEMS");
+  }
+  return {...race,caseId:"registered.two-actor.payment-competition-follow-up",secondExecutionId:second.id,fullyPaid:true as const};
+  });
 }

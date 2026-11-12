@@ -92,6 +92,11 @@ export interface PreparedRegisteredPgCompetition extends PreparedRegisteredPgFix
   contender: { actorId: string; requestKey: string; accessToken: string };
 }
 
+export interface PreparedRegisteredPgCompetitionFollowUp extends PreparedRegisteredPgCompetition {
+  companyASourceId: string;
+  followUpRequestKey: string;
+}
+
 const fixedConditions = new WeakMap<Error, string>();
 function requireCondition(condition: unknown, code: string): asserts condition {
   if (!condition) {
@@ -281,9 +286,16 @@ export async function seedRegisteredPgCompetitionFixture(primary: RegisteredPgEx
   return result;
 }
 
+export async function seedRegisteredPgCompetitionFollowUpFixture(primary: RegisteredPgExecutionContext, contender: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan,
+  primaryContinuity: RegisteredPgSeedContinuity, contenderContinuity: RegisteredPgSeedContinuity): Promise<PreparedRegisteredPgCompetitionFollowUp> {
+  const result = await seedFixture(primary, plan, primaryContinuity, { context: contender, continuity: contenderContinuity }, false, true);
+  requireCondition("contender" in result && "companyASourceId" in result && "followUpRequestKey" in result, "PG_COMPETITION_FOLLOW_UP_FIXTURE");
+  return result as PreparedRegisteredPgCompetitionFollowUp;
+}
+
 async function seedFixture(context: RegisteredPgExecutionContext, plan: RegisteredPgFixturePlan, continuity?: RegisteredPgSeedContinuity,
   contender?: { context: RegisteredPgExecutionContext; continuity: RegisteredPgSeedContinuity },
-  attributionGap = false): Promise<PreparedRegisteredPgFixture | PreparedRegisteredPgCompetition | PreparedRegisteredPgAttributionGap> {
+  attributionGap = false, followUp = false): Promise<PreparedRegisteredPgFixture | PreparedRegisteredPgCompetition | PreparedRegisteredPgAttributionGap | PreparedRegisteredPgCompetitionFollowUp> {
   const light = () => continuity?.checkLight();
   const checked = async <T>(operation: () => T | PromiseLike<T>): Promise<T> => { light(); const value = await operation(); light(); return value; };
   let ownerAttempted = false;
@@ -438,7 +450,8 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     httpStatus = loginB.status;
     const tokenB = (loginB.body as { tokens?: { accessToken?: unknown } }).tokens?.accessToken;
     requireCondition(loginB.status === 201 && typeof tokenB === "string" && tokenB !== accessToken, "PG_COMPETITION_REAL_HTTP_LOGIN");
-    return { ...prepared, contender: { actorId: second.actorId, requestKey: second.requestKey, accessToken: tokenB } };
+    return { ...prepared, contender: { actorId: second.actorId, requestKey: second.requestKey, accessToken: tokenB },
+      ...(followUp ? {companyASourceId: registrations[0]!.sources[0]!.id, followUpRequestKey: randomUUID()} : {}) };
   } catch (error) {
     try { continuity?.recordSeedFailure?.(failureStage, seedFailureCode(error), httpStatus); }
     catch { /* Preserve the first fixture failure. */ }

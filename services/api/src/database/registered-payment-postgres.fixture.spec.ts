@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture, seedRegisteredPgCompetitionFollowUpFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
 import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
@@ -136,7 +136,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile])(
+  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, "follow-up" as const])(
     "retains the original login and opening protocol for %s after exactly two owner statements", async profile => {
       const f = fixture();
       const contender = fixture();
@@ -144,6 +144,8 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
       const second = { ...contender.context, owner: f.context.owner, observer: f.context.observer,
         password: "synthetic-distinct-second-credential",
         proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } } };
+      const followUp = profile === "follow-up";
+      const effectiveProfile = followUp ? competition261SeedProfile : profile;
       const gap = profile === gap261SeedProfile;
       const tx = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ bound: true }]), $executeRawUnsafe: jest.fn().mockResolvedValue(0) };
       const transaction = jest.fn(async (run: (client: unknown) => Promise<void>) => run(tx));
@@ -163,12 +165,16 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
         return response;
       });
       const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
-      const lane = { checkLight() {}, fetch: fetch as typeof globalThis.fetch, seedProfile: profile };
+      const lane = { checkLight() {}, fetch: fetch as typeof globalThis.fetch, seedProfile: effectiveProfile };
       const result = gap
         ? await seedRegisteredPgAttributionGapFixture(f.context, plan, lane)
-        : await seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, lane);
+        : followUp ? await seedRegisteredPgCompetitionFollowUpFixture(f.context, second, plan, lane, lane) : await seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, lane);
       const payload = JSON.parse(tx.$queryRawUnsafe.mock.calls[0]![1]);
-      expect(payload.profile).toBe(profile);
+      expect(payload.profile).toBe(effectiveProfile);
+      if (followUp) {
+        expect(result).toMatchObject({companyASourceId:`company:${plan.ids.companyA}0`});
+        expect("followUpRequestKey" in result && result.followUpRequestKey).toMatch(/^[a-f0-9-]{36}$/u);
+      } else expect(Object.hasOwn(result,"companyASourceId")).toBe(false);
       expect(tx.$queryRawUnsafe).toHaveBeenCalledTimes(1);
       expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(1);
       expect(payload.passwordHash).not.toBe(f.context.password);
@@ -252,7 +258,7 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
 
 describe("registered PG original case: explicit observer projection protocol (no HTTP/PG)", () => {
   it.each(["normal", "response-loss", "upstream-failure", "absent-db-fact", "cancel-commit", "cancel-changed-ledger", "cancel-orphan-impact", "cancel-fake-success", "cancel-settlement-status",
-      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias"])(
+      "cancel-settlement-updated-at", "cancel-request-updated-at", "cancel-owner-role", "cancel-owner-pid", "cancel-owner-start", "cancel-owner-method", "cancel-owner-getter", "cancel-orphan-key", "cancel-recorded-key", "cancel-unconfirmed-execution", "cancel-result-error", "competition", "competition-follow-up", "competition-follow-up-director-wins", "competition-follow-up-stale-todo", "competition-follow-up-wrong-payer", "competition-follow-up-double-debit", "competition-follow-up-ineligible", "competition-stale-todo", "competition-second-win", "disconnect-recovery", "disconnect-ledger-drift", "disconnect-recorded-key", "disconnect-first-succeeded", "disconnect-same-pid", "disconnect-equivalent-origin", "disconnect-ip-alias"])(
     "verifies the %s case through only the approved observer columns", async scenario => {
     const f = fixture();
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
@@ -261,6 +267,11 @@ describe("registered PG original case: explicit observer projection protocol (no
     const competition = scenario.startsWith("competition");
     const disconnect = scenario.startsWith("disconnect");
     const equivalentOrigin = scenario === "disconnect-equivalent-origin" || scenario === "disconnect-ip-alias";
+    const followUp = scenario.startsWith("competition-follow-up");
+    const directorWins = scenario === "competition-follow-up-director-wins";
+    const followUpKey = randomUUID();
+    let completed = false;
+    let followUpPosts = 0;
     let posts = 0;
     const total = competition ? 4000n : 10000n, paid = competition ? 3000n : 4000n;
     const contender = { actorId: randomUUID(), requestKey: randomUUID(), accessToken: "synthetic-contender-only" };
@@ -310,17 +321,25 @@ describe("registered PG original case: explicit observer projection protocol (no
       fundAccountBalanceRegistration: ["accountId", "balanceYuan", "coveredExecutionIds"]
     };
     function rows(model: string, where: Record<string, unknown>) {
-      if (model === "paymentRequest") return [{ approvedAmountCents: total, paidAmountCents: recorded ? paid : 0n, status: recorded ? "partially_paid" : "approved_pending_payment" }];
-      if (model === "settlement") return [{ payableAmountCents: total, paidAmountCents: recorded ? paid : 0n }];
+      if (model === "paymentRequest") return [{ approvedAmountCents: total, paidAmountCents: completed ? total : recorded ? paid : 0n, status: completed ? "paid" : recorded ? "partially_paid" : "approved_pending_payment" }];
+      if (model === "settlement") return [{ payableAmountCents: total, paidAmountCents: completed ? total : recorded ? paid : 0n }];
       if (model === "fundAccountBalanceRegistration") return [{ accountId: where.id === "registration-a" ? "account-a" : "account-b", balanceYuan: new Prisma.Decimal("100"), coveredExecutionIds: [] }];
       if (model === "operatingImpactEntry" && orphanImpact && where.sourceBusinessId === undefined) return [{ id: "orphan-impact" }];
       if (!recorded) return [];
-      if (model === "paymentExecution") return [{ id: "execution-one", idempotencyKey: ids.requestKey, amountCents: paid, paymentRequestId: ids.payment, voucherFileId: null }];
+      if (completed) {
+        const secondAmount = scenario === "competition-follow-up-double-debit" ? 2000n : 1000n;
+        if (model === "paymentExecution") return [{id:"execution-one",idempotencyKey:directorWins?contender.requestKey:ids.requestKey,amountCents:3000n,paymentRequestId:ids.payment,voucherFileId:null}, {id:"execution-two",idempotencyKey:followUpKey,amountCents:1000n,paymentRequestId:ids.payment,voucherFileId:null}];
+        if (model === "registeredPaymentFunding") return [{executionId:"execution-one",operatingLedgerEffectiveDateAtRegistration:null,actualPayerId:ids.companyB,actualPayerKind:"participating_company"}, {executionId:"execution-two",operatingLedgerEffectiveDateAtRegistration:null,actualPayerId:scenario === "competition-follow-up-wrong-payer" ? ids.companyB : ids.companyA,actualPayerKind:"participating_company"}];
+        if (model === "registeredFundPaymentAllocation") return [{executionId:"execution-one",accountId:"account-b",sourceBatchId:"source-b",amountCents:3000n}, {executionId:"execution-two",accountId:"account-a",sourceBatchId:"source-a",amountCents:secondAmount}];
+        if (model === "registeredPaymentEvent") return [{executionId:"execution-one"},{executionId:"execution-two"}];
+        if (model === "auditLog") return [{actorUserId:directorWins?contender.actorId:ids.actor,metadata:{voucherFileId:null,voucherPending:true,actualPayer:{kind:"participating_company",id:ids.companyB}}}, {actorUserId:directorWins?ids.actor:contender.actorId,metadata:{executionId:"execution-two",voucherFileId:null,voucherPending:true,actualPayer:{kind:"participating_company",id:ids.companyA}}}];
+      }
+      if (model === "paymentExecution") return [{ id: "execution-one", idempotencyKey: directorWins?contender.requestKey:ids.requestKey, amountCents: paid, paymentRequestId: ids.payment, voucherFileId: null }];
       if (model === "registeredPaymentFunding") return [{ executionId: "execution-one", operatingLedgerEffectiveDateAtRegistration: null, actualPayerId: ids.companyB, actualPayerKind: "participating_company" }];
       if (model === "registeredFundPaymentAllocation") return [{ executionId: "execution-one", accountId: "account-b", sourceBatchId: "source-b", amountCents: paid }];
       if (model === "registeredPaymentEvent") return [{ executionId: "execution-one" }];
       if (model === "interEntityRelationshipEntry") return [{ id: "root-one", paymentExecutionId: "execution-one", sourceType: "registered_payment_execution", entryKind: "proxy_payment", direction: "increase", status: "confirmed", originalDebtorCompanyId: ids.companyA, creditorCompanyId: ids.companyB, amountCents: paid, projectId: ids.project }];
-      if (model === "auditLog") return [{ actorUserId: ids.actor, metadata: { voucherFileId: null, voucherPending: true, actualPayer: { kind: "participating_company", id: ids.companyB } } }];
+      if (model === "auditLog") return [{ actorUserId: directorWins?contender.actorId:ids.actor, metadata: { voucherFileId: null, voucherPending: true, actualPayer: { kind: "participating_company", id: ids.companyB } } }];
       return [];
     }
     const observer = Object.fromEntries(Object.keys(allowed).map(model => {
@@ -349,6 +368,15 @@ describe("registered PG original case: explicit observer projection protocol (no
         expect((init?.headers as Record<string, string>).authorization).toBe(`Bearer ${token}`);
         const initial = "2026-11-07T00:00:00.000Z", updated = "2026-11-07T00:00:00.005Z";
         const stale = laneB && scenario === "competition-stale-todo";
+        if (completed && route === "/payment-executions/work-items" && !(laneB && scenario === "competition-follow-up-stale-todo")) return respond(200,{total:0,items:[]});
+        if (followUp && recorded && route.endsWith("/registration-options")) return respond(200,{paymentId:ids.payment,projectId:ids.project,expectedPaymentUpdatedAt:updated,remainingAmountCents:"1000",accounts:[{scopeKey:`company:${ids.companyA}`,eligible:scenario !== "competition-follow-up-ineligible",currentRegistrationId:"registration-a"}]});
+        if (followUp && route.endsWith("/registrations") && init?.method === "POST" && JSON.parse(String(init.body)).idempotencyKey === followUpKey) {
+          const body=JSON.parse(String(init.body));
+          expect(laneB).toBe(!directorWins); expect(body.scopeKey).toBe(`company:${ids.companyA}`);expect(body.expectedRegistrationId).toBe("registration-a");expect(body.sourceAllocations).toEqual([{sourceBatchId:"source-a",amountCents:"1000"}]);expect(body.expectedPaymentUpdatedAt).toBe(updated);expect(body.amountCents).toBe("1000");
+          followUpPosts++; completed=true; return respond(201,{});
+        }
+        if (followUp && route.endsWith(`/results/${followUpKey}`)) return respond(200,{status:"recorded",execution:{executionId:"execution-two",paymentId:ids.payment,amountCents:"1000",paidAt:plan.paidAt,voucherPending:true},effects:[],intercompany:[]});
+        if (followUp && route === "/payment-executions/recorded-items") return respond(200,{total:2,items:[{executionId:"execution-one",resultKey:directorWins?contender.requestKey:ids.requestKey,amountCents:"3000",paidAt:plan.paidAt},{executionId:"execution-two",resultKey:followUpKey,amountCents:"1000",paidAt:plan.paidAt}]});
         if (route === "/payment-executions/work-items") return respond(200, { total: 1, items: [{ paymentId: ids.payment, projectId: ids.project,
           expectedPaymentUpdatedAt: recorded && !stale ? updated : initial, paidAmountCents: recorded && !stale ? "3000" : "0",
           remainingAmountCents: recorded && !stale ? "1000" : "4000" }] });
@@ -360,12 +388,12 @@ describe("registered PG original case: explicit observer projection protocol (no
           expect(command.amountCents).toBe("3000");
           expect(command.expectedPaymentUpdatedAt).toBe(initial);
           expect(command.confirmationPassword).toBe(laneB ? "synthetic-second-credential" : f.context.password);
-          if (!laneB) recorded = true;
-          return respond(!laneB || scenario === "competition-second-win" ? 201 : 409, {});
+          if (laneB === directorWins) recorded = true;
+          return respond(laneB === directorWins || scenario === "competition-second-win" ? 201 : 409, {});
         }
         if (route === `/payment-executions/results/${laneB ? contender.requestKey : ids.requestKey}`) {
-          return respond(200, laneB ? { status: "unconfirmed" } : { status: "recorded",
-            execution: { executionId: "execution-one", amountCents: "3000", paidAt: plan.paidAt }, effects: [], intercompany: [{}] });
+          return respond(200, laneB !== directorWins ? { status: "unconfirmed" } : { status: "recorded",
+            execution: { executionId: "execution-one", amountCents: "3000", paidAt: plan.paidAt }, effects: [], intercompany: [{entryId:"root-one"}] });
         }
         throw new Error("Unexpected competition HTTP route");
       }
@@ -474,13 +502,16 @@ describe("registered PG original case: explicit observer projection protocol (no
         const withSamePaymentLock = jest.fn(async (_id: string, _pids: readonly [number, number],
           submissions: readonly [() => Promise<{ status: number; body: unknown }>, () => Promise<{ status: number; body: unknown }>]) =>
           Promise.all([submissions[0](), submissions[1]()]));
-        const run = registeredCases.runRegisteredTwoActorPaymentCompetition(f.context, second, { ...prepared, contender }, {
-          lanes: [continuity, continuity], withSamePaymentLock
+        const run = (followUp ? registeredCases.runRegisteredTwoActorPaymentCompetitionFollowUp : registeredCases.runRegisteredTwoActorPaymentCompetition)(f.context, second, { ...prepared, contender, companyASourceId:"source-a",followUpRequestKey:followUpKey }, {
+          lanes: [continuity, continuity], withSamePaymentLock, withFollowUp: async <T>(_lane:number,_key:string,consume:()=>Promise<T>) => consume()
         });
-        if (scenario === "competition") await expect(run).resolves.toMatchObject({ competitionObserved: true, winner: "finance_staff", passed: true });
+        if (followUp) {
+          if (scenario === "competition-follow-up" || directorWins) {await expect(run).resolves.toMatchObject({fullyPaid:true,secondExecutionId:"execution-two",passed:true}); expect(followUpPosts).toBe(2);}
+          else await expect(run).rejects.toThrow(/PG_COMPETITION_FOLLOW_UP/u);
+        } else if (scenario === "competition") await expect(run).resolves.toMatchObject({ competitionObserved: true, winner: "finance_staff", passed: true });
         else await expect(run).rejects.toThrow(scenario === "competition-stale-todo" ? "PG_COMPETITION_SHARED_WORK" : "PG_COMPETITION_ONE_HTTP_WINNER");
         expect(withSamePaymentLock).toHaveBeenCalledWith(ids.payment, [101, 103], expect.any(Array));
-        expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2);
+        expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2+followUpPosts);
         return;
       }
       if (scenario.startsWith("cancel-")) {

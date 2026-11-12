@@ -273,3 +273,30 @@ test('261 voucher and attribution gap preserve their original requests and disti
  assert.throws(()=>f.business.verifyCurrent261PaymentVoucherPlan(voucher.file,digest));
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
+
+test('261 competition follow-up is a distinct exact four-post case and old readers reject it',t=>{
+ const f=fixture(t,{payment261:true}),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ const saved=f.business.prepareCurrent261PaymentCompetitionFollowUpPlan(options);
+ const {plan}=f.business.verifyCurrent261PaymentCompetitionFollowUpPlan(saved.file,saved.sha256);
+ assert.equal(plan.purpose,'current261-payment-owned-two-actor-competition-follow-up');
+ assert.equal(plan.case.scenario,'competition-follow-up');
+ assert.equal(plan.scope.registrationPostCount,4);
+ assert.deepEqual(plan.scope.followUp,{actor:'ORIGINAL_LOSER',amountCents:'1000',company:'ORIGINAL_A',sameKeyReplay:true});
+ assert.equal(plan.scope.competition.httpTimeoutMs,5000);
+ for(const verify of [f.business.verifyCurrent261PaymentCompetitionPlan,f.business.verifyCurrent261PaymentVoucherPlan,
+  f.business.verifyCurrent261PaymentBusinessPlan,f.business.verifyCurrent259PaymentCompetitionPlan])
+  assert.throws(()=>verify(saved.file,saved.sha256));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('follow-up reader rejects original competition and rehashed changes to its fixed intent or counts',t=>{
+ const old=fixture(t,{payment261:true}),options=f=>({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'});
+ const saved=old.business.prepareCurrent261PaymentCompetitionPlan(options(old));
+ assert.throws(()=>old.business.readCurrent261PaymentCompetitionFollowUpPlan(saved.file,saved.sha256));
+ for(const change of [row=>row.scope.followUp.amountCents='2000',row=>row.scope.followUp.actor='ORIGINAL_WINNER',row=>row.scope.registrationPostCount=5,
+  row=>row.case.handler='runRegisteredTwoActorPaymentCompetition',row=>row.scope.competition.httpTimeoutMs=30000]){
+  const f=fixture(t,{payment261:true}),current=f.business.prepareCurrent261PaymentCompetitionFollowUpPlan(options(f));
+  const row=JSON.parse(fs.readFileSync(current.file));change(row);const bytes=JSON.stringify(row);fs.writeFileSync(current.file,bytes);
+  assert.throws(()=>f.business.readCurrent261PaymentCompetitionFollowUpPlan(current.file,require('node:crypto').createHash('sha256').update(bytes).digest('hex')));
+ }
+});

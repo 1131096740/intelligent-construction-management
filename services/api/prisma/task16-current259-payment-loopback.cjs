@@ -9,6 +9,7 @@ const profiles = Object.freeze({
     plan: 'PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_PAYMENT_RESPONSE_LOSS_LOOPBACK_TLS'
   }),
+  'competition-follow-up': Object.freeze({plan:'PAYMENT_COMPETITION_LOOPBACK_TLS_V1',topology:'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'}),
   competition: Object.freeze({
     plan: 'PAYMENT_COMPETITION_LOOPBACK_TLS_V1',
     topology: 'UNVERIFIED_PAYMENT_COMPETITION_LOOPBACK_TLS'
