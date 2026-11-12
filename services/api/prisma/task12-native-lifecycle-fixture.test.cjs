@@ -150,3 +150,46 @@ test('psql diagnostics project only a known SQLSTATE and bounded static stdin li
  for(const text of ['psql:<stdin>:401: ERROR:  42601\n','psql:<stdin>:4: ERROR:  ZZ999\n','psql:<stdin>:4: ERROR:  private password\n','ERROR: 42601 SELECT private'])
   assert.equal(projectNativeLifecyclePsqlFailure(text,100),undefined);
 });
+
+test('runner recovers only its exact daemon-owned container after a lost create response and still removes its directory',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const file=path.join(__dirname,'run-task12-contract-lifecycle-native-local.cjs');
+ const runId='22345678-1234-4234-8234-123456789012',name='jiangkong-task12-native-'+runId,id='a'.repeat(64),sha='b'.repeat(40);
+ for(const owner of ['same','foreign','wrong-name','invalid-id','multiple','absent','inspect-failure','remove-failure','returned-mismatch','known-id-name-missing']){
+  let directory,created=false;const removed=[],calls=[],diagnostics=[];
+  const output=value=>({status:0,stdout:value,stderr:''});
+  const daemon=(bin,args)=>{
+   calls.push([bin,...args]);
+   if(bin==='git')return output(args[0]==='rev-parse'?sha:'');
+   if(bin!=='docker')return output('');
+   const op=args.slice(2);
+   if(op[0]==='image')return output('sha256:model');
+   if(op[0]==='run'){created=true;if(['returned-mismatch','known-id-name-missing'].includes(owner))return output(id);return {error:new Error('private timeout after daemon creation'),status:null,stderr:''};}
+   if(op[0]==='container'&&op[1]==='ls'){
+    const filter=op[op.indexOf('--filter')+1];
+    if(filter==='id='+id)return output(created?id:'');
+    assert.equal(filter,'name=^/'+name+'$');
+    if(owner==='known-id-name-missing')return output('');
+    if(owner==='inspect-failure')return {status:1,stderr:'private daemon error'};
+    const row=(owner==='invalid-id'?'invalid':owner==='returned-mismatch'?'d'.repeat(64):id)+' '+(owner==='wrong-name'?'another-container':name)+' '+(owner==='foreign'?'foreign-run':runId);
+    return output(created&&owner!=='absent'?row+(owner==='multiple'?'\n'+row:''):'');
+   }
+   if(op[0]==='rm'){removed.push(op.at(-1));if(owner==='remove-failure')return {status:1,stderr:'private remove error'};created=false;return output(id);}
+   if(op[0]==='exec'&&['returned-mismatch','known-id-name-missing'].includes(owner))return {status:1,stderr:'private ready error'};
+   assert.fail('unexpected daemon operation '+op[0]);
+  };
+  const localFs={...fs,mkdtempSync(prefix){directory=fs.mkdtempSync(prefix);return directory;}};
+  const entry={exports:{}};
+  const load=key=>key==='node:fs'?localFs:key==='node:child_process'?{spawnSync:daemon}:
+   key==='node:crypto'?{...require(key),randomUUID:()=>runId}:
+   key==='./task12-current259-generated-document-runtime.cjs'?{verifyCurrent259GeneratedDocumentRuntime(){}}:require(key);
+  const invoke=vm.runInNewContext('(function(require,module,__dirname,__filename){'+fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,'')+'\n})', {process:{env:{NODE_ENV:'test',DOCKER_HOST:'unix:///model-only'},stderr:{write(value){diagnostics.push(value);}}}});
+  invoke(load,entry,__dirname,file);
+  await assert.rejects(entry.exports.main(['--candidate-sha',sha,'--runtime-input','/private/tmp/model-runtime','--runtime-sha256','c'.repeat(64),'--confirm','LOCAL_TASK12_NATIVE_LIFECYCLE']),error=>error.message==='TASK12_NATIVE_GATE_COMMAND');
+  assert.equal(calls.filter(row=>row[0]==='docker'&&row[3]==='run').length,1,'creation is never retried');
+  assert.equal(fs.existsSync(directory),false,'private directory removed despite create failure');
+  assert.deepEqual(removed,['same','remove-failure'].includes(owner)?[id]:[],'unknown ownership is never deleted');
+  assert.equal(diagnostics.some(row=>row==='TASK12_NATIVE_GATE_CLEANUP_FAILED_CONTAINER_REMOVE\n'),!['same','absent'].includes(owner),'failed ownership or cleanup cannot report success');
+  assert.ok(calls.some(row=>row.includes('ls')),'daemon ownership is independently observed even without a returned id');
+ }
+});

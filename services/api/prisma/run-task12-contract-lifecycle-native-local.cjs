@@ -126,9 +126,22 @@ async function run(args,enter,capture) {
   }, [
     ['CONTAINER_REMOVE', () => {
       enter('CLEANUP_CONTAINER');
-      if (container) {
-        docker(['rm','--force','--volumes',container]);
-        if (docker(['container','ls','--all','--no-trunc','--filter','id='+container,'--format','{{.ID}}'])) throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
+      // A lost docker-run response does not prove the daemon failed to create
+      // the resource. Recover only this run's exact name and ownership label.
+      const list = () => docker(['container','ls','--all','--no-trunc','--filter','name=^/'+name+'$',
+        '--format','{{.ID}} {{.Names}} {{.Label "'+CI_DYNAMIC_MIGRATION_LABEL+'"}}']);
+      const observed = list();
+      if (observed) {
+        const row = observed.split(' ');
+        if (row.length !== 3 || !/^[a-f0-9]{64}$/u.test(row[0]) || row[1] !== name || row[2] !== runId ||
+          (container && container !== row[0])) throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
+        docker(['rm','--force','--volumes',row[0]]);
+        if (list()) throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
+      }
+      // A missing name is insufficient if the returned container ID survives
+      // under a changed name. Do not remove it without the ownership proof.
+      if (container && docker(['container','ls','--all','--no-trunc','--filter','id='+container,'--format','{{.ID}}'])) {
+        throw new Error('TASK12_NATIVE_GATE_CONTAINER_CLEANUP');
       }
     }],
     ['DIRECTORY_REMOVE', () => {
