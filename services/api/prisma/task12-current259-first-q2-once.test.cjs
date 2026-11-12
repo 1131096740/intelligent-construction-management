@@ -135,7 +135,11 @@ function model(t,{once=true,used=false,drift=false,alterEvidence=false,forgeInpu
 const settled=async f=>{await f.run();for(let n=0;n<25&&!f.calls.some(v=>typeof v==='object');n++)await new Promise(resolve=>setImmediate(resolve));};
 
 test('default verification stays HOLD and a pre-existing marker prevents private material or resource access',async t=>{
-  const hold=model(t,{once:false});await settled(hold);
+  const hold=model(t,{once:false});
+  hold.run();
+  assert.deepEqual(hold.calls,[]);
+  assert.deepEqual(hold.checks,[]);
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(hold.calls[0].status,'CURRENT259_FIRST_Q2_HOLD');
   assert.equal(fs.existsSync(hold.attemptFile),false);
   const used=model(t,{used:true});await settled(used);
@@ -218,11 +222,13 @@ test('before the marker, only the fixed failing stage and allowlisted plan reaso
 
 
 test('the fixed Q2 producer is required before marking an attempt or reading materials',async t=>{
-  const f=model(t,{preflight:'Q2_PRODUCER'});
-  await settled(f);
-  assert.deepEqual(f.calls,[{status:'CURRENT259_FIRST_Q2_STOPPED',phase:'PREFLIGHT',attempted:false,cleanup:'NOT_STARTED',
-    preflightFailure:'DEPENDENCIES'}]);
-  assert.equal(fs.existsSync(f.attemptFile),false);
+  for(const once of [false,true]){
+    const f=model(t,{preflight:'Q2_PRODUCER',once});
+    await settled(f);
+    assert.deepEqual(f.calls,[{status:'CURRENT259_FIRST_Q2_STOPPED',phase:'PREFLIGHT',attempted:false,cleanup:'NOT_STARTED',
+      preflightFailure:'DEPENDENCIES'}]);
+    assert.equal(fs.existsSync(f.attemptFile),false);
+  }
 });
 
 test('one verified outside plan runs its own fixed fixture and will not publish a Q2 completion',async t=>{

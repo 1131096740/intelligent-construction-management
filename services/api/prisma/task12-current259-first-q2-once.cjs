@@ -164,10 +164,11 @@ async function main(){
     checked=verifyCurrent259FirstQ2Plan(args.file,args.digest);
     const outside=checked.plan.case.relationship==='outside', outsideOperating=outside&&checked.plan.case.operating;
     const scenario=outsideOperating?'CURRENT259_FIRST_OUTSIDE_OPERATING':outside?'CURRENT259_FIRST_OUTSIDE_DIRECT':'CURRENT259_FIRST_Q2';
-    if(!args.once)return {status:scenario+'_HOLD',planSha256:args.digest};
-    preflight='HOST_ENV';checkHostEnv();
-    preflight='TIME';checkDate(checked.plan);
-    preflight='PLAN_RECHECK';checked.check();
+    if(args.once){
+      preflight='HOST_ENV';checkHostEnv();
+      preflight='TIME';checkDate(checked.plan);
+      preflight='PLAN_RECHECK';checked.check();
+    }
     preflight='DEPENDENCIES';
     const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
     const {openCurrent259FirstQ2Cos}=require('./task12-current259-first-q2-cos-native.cjs');
@@ -179,10 +180,11 @@ async function main(){
     const {withCurrent259FirstQ2SeededLogin,withCurrent259FirstQ2NativeApplication}=require('./task12-current259-contract-login.cjs');
     const {buildCurrent259FirstQ2Fixture,buildCurrent259FirstOutsideDirectFixture,buildCurrent259FirstOutsideOperatingFixture}=require('./task12-current259-q2-fixture.cjs');
     need([openCurrent259FirstQ2Cos,withCurrent259FirstQ2LoopbackResource,withCurrent259FirstQ2NativeApplication].every(fn=>typeof fn==='function'),'INCOMPLETE');
-    const plan=checked.plan,sha256=checked.sha256,controller=new AbortController();
     const buildFixture=outsideOperating?buildCurrent259FirstOutsideOperatingFixture
       :outside?buildCurrent259FirstOutsideDirectFixture:buildCurrent259FirstQ2Fixture;
     need(typeof buildFixture==='function','INCOMPLETE');
+    if(!args.once)return {status:scenario+'_HOLD',planSha256:args.digest};
+    const plan=checked.plan,sha256=checked.sha256,controller=new AbortController();
     const marker=Buffer.from(JSON.stringify({status:'CONSUMED',planSha256:sha256,sourceSha:plan.source.candidateSha,caseId:plan.case.id})+'\n');
     preflight='RUN_DIRECTORY';
     need(fs.readdirSync(plan.run.root).length===0,'ATTEMPT_USED');
@@ -254,4 +256,6 @@ async function main(){
     process.removeListener('SIGINT',signal);process.removeListener('SIGTERM',signal);
   }
 }
-if(require.main===module)void main().then(result=>process.stdout.write(JSON.stringify(result)+'\n'));
+// The native COS consumer imports this module's frozen permit exports.
+// Start after CommonJS has finished loading the entry to avoid a circular import.
+if(require.main===module)void Promise.resolve().then(main).then(result=>process.stdout.write(JSON.stringify(result)+'\n'));
