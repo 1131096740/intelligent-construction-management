@@ -57,6 +57,10 @@
 
 新文档头将推送原 Draft #428 并运行其常规CI，必须另记准确新SHA与结果。旧 ac721 的失败和清理结论不改，新手动 normal261 需要在新准确候选上重新封存并取得独立授权；#398与#394仍未验收完成，14/45阶段关闭不变，无main合并、部署或生产操作。
 
+后继状态（本段优先于上一段推送前的计划描述）：原 Draft #428 的准确候选 `88a83fd8f6a796567f156a6c52ac72d82cddd7f1` 已推送；fresh 回读 [CI43274524003](https://github.com/1131096740/intelligent-construction-management/actions/runs/43274524003) 为 completed/success，32 jobs全部成功、0失败/取消/跳过，含常规GitHub临时数据库门。这是准确88a的CI证据，不能替代新的手动普通实付验收。公开状态已由主控更新 [#398评论](https://github.com/1131096740/intelligent-construction-management/issues/398#issuecomment-6832447496) 与 [#382评论](https://github.com/1131096740/intelligent-construction-management/issues/382#issuecomment-6832448089)，PR仍Draft、14/45阶段关闭不变。
+
+新88a普通场景计划已仅运行SOURCE_ONLY prepare/helper verify，主计划摘要 `3e747bce13be8d97fdd1fa4f92cdd80bf9889de8423599a840ad77e184782114`，显式normal261/count9/effective access摘要与侧车、来源及请求绑定，run为空且未消耗attempt或启动资源。源码、依赖、构建、计划与run原身份封存不动。上次“确认授权”只允许源码修复、本地无资源验证和常规CI；新的手动隔离迁移/普通实付仍须新明确授权，旧ac721停止与已消耗许可不复用。任何后继候选都须重新绑定准确SHA与证据。外部CI完成收据 `/private/tmp/jg-398-ci88a-completed-receipt-20261113.md`，提议范围/精确命令 `/private/tmp/jg-398-normal261-plan-88a83fd8-20261113/NORMAL-261-88a83fd8-ONLY-PROPOSED.md`；无新手动once、部署或生产操作。
+
 ## 外部详细上下文
 
 - `/private/tmp/jg-398-normal261-repair-scope-readonly-20261113.md`：已独审的完整实施范围与负控。
