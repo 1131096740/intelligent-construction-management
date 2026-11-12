@@ -74,7 +74,7 @@ export class GeneralProcurementRequestService {
     const data = this.payload(input);
     const fingerprint = createHash("sha256").update(JSON.stringify([actorUserId, data], (_key, value) => typeof value === "bigint" ? value.toString() : value)).digest("hex");
     return this.prisma.$transaction(async tx => {
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`general-request:${input.requestKey}`}, 0))`);
+      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`general-request:${input.requestKey}`}, 0))::text AS "lockResult"`);
       const { actor, companyNameSnapshot } = await this.validateScope(tx, actorUserId, data);
       const deleted = await tx.auditLog.findFirst({ where: { action: "general_procurement.draft.delete", metadata: { path: ["requestKey"], equals: input.requestKey } } });
       if (deleted) throw new ConflictException("此草稿已删除，请重新发起申请");
@@ -96,7 +96,7 @@ export class GeneralProcurementRequestService {
     return this.prisma.$transaction(async tx => {
       const source = await tx.generalProcurement.findUnique({ where: { id } });
       if (!source) throw new NotFoundException("采购草稿不存在或已删除");
-      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`general-request:${source.requestKey}`}, 0))`);
+      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`general-request:${source.requestKey}`}, 0))::text AS "lockResult"`);
       const row = await this.lock(tx, id, revision);
       await generalRequestActor(tx, this.visibility, actorUserId, row.projectId);
       if (row.applicantUserId !== actorUserId) throw new ForbiddenException("只有申请人可以删除采购草稿");
