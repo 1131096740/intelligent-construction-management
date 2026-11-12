@@ -210,4 +210,3 @@ function generatedLifecycleCollisionSql(material){
  return Object.freeze({metadata,installation,acl,grants:Object.freeze(grants),normalize});
 }
 module.exports=Object.freeze({registeredGeneratedLifecycleCollisionMaterial,migrationGeneratedLifecycleCollisionMaterial,generatedLifecycleCollisionSql});
-
