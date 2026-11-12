@@ -36,7 +36,26 @@
 
 同一有效计划、模式、摘要和权限数必须贯通 prepare/verify、installer、独立 staged/committed 目录、B7、live、应用与业务 permit，缺项、额外项、换模式/计划或调用者自报标志均应拒绝。已发现 business 准备器给多个261模式先创建 normal sidecar 再覆盖模式，因此允许在原同计划绑定范围内一并修该准备器；不扩大权限集合或业务场景。
 
-实现工作树须从准确集成头独立建立；原 ac721 源、构建、方案与消耗/停止材料保持。当前源码修复尚在进行；原 CI 32/32 只属于 ac721，新候选的模型、CI及真实行为必须分别记录。
+实现工作树须从准确集成头独立建立；原 ac721 源、构建、方案与消耗/停止材料保持。本段为实施前边界，后继源码集成见下文；原 CI 32/32 只属于 ac721，新候选的模型、CI及真实行为必须分别记录。
+
+## 源码实现与独立集成
+
+准确提交 `ce46c8f1af37fe1d0701e34a3d72a927f43ce719`，树 `c00a10e7dbcc492eda00870b79c8f5963613a47d`，父提交为文档基线 `03411aa03b140afbe93ed248102857ad1d876d15`。独立实现工作树为 `/private/tmp/jg-398-normal261-plan-repair-20261113`；完成前已合入集成最新文档头，工作树干净。改动仅18路径（10控制源、8既有测试），275增/58删；无 Schema、迁移、业务服务或 SQL 正文变更。
+
+固定增量仅当显式 normal261 付款模式与准确261来源、账本及Schema同时合格时派生。绑定为冻结的 `{paymentProfile, insertAdditionCount, accessPlanSha256}`，摘要基于实际 runtime/observer有效向量；原 registeredManifestSha256 保持冻结源文件摘要含义。准备/验证、安装、七片向量、B7、live、应用、issuer/permit/case使用同一计划。特殊场景准备器传入其实际模式、模式缓存隔离，不能先取得 normal 九列再覆盖模式。
+
+作者先运行独立 literal 九元组公开反例，再最小实现；首轮5项、耦合40项及完整编排20项失败均保留，并逐组记录正常契约修正、模型适配及实际实现错误。原259来源的失败分类曾被提前校验改变，已恢复原断言；没有把旧权限期望改宽、删除反例或增加skip。最终结果：
+
+- 完整 `test:ci-orchestration`：1713总项，1712通过、0失败、1既有条件skip，退出0。
+- API generate/build/typecheck/lint退出0；最终 live 模型73/73。
+- 独立审查者在准确ce46的私有依赖副本运行15套既有边界，492/492，0skip；规范与规格两轴均0可操作发现，之后才将集成分支从034快进至ce46。
+- 历史baseline/registered、Schema、七片SQL与固定reader共11文件，独立逐字与034比较相同；迁移与其他权限矩阵未变。
+
+作者/独立证据：`/private/tmp/jg-398-normal261-repair-receipt-20261113.md`、`/private/tmp/jg-398-normal261-frozen-check-20261113.json`、`/private/tmp/jg-398-normal261-standards-review-ce46c8f1-20261113.md`、`/private/tmp/jg-398-normal261-spec-review-ce46c8f1-20261113.md`、`/private/tmp/jg-398-normal261-merger-ce46c8f1-20261113.md`。它们仅证明已标明的源码/模型/构建范围，未运行新的手动 PG、SQL、once 或实际业务。
+
+原 ac721 另做一次纯文件观察计时（不是新候选验收）：完整校验约2732ms、轻量校验约47ms，整体14.36秒；五树68,064项/703,296,404字节，未加载SDK或原生引擎、未连接资源。原始计数元数据的light次数误填5，外部INTERPRETATION更正为4，原记录保持，无重跑。该单次组件测量不能解释原57分钟整体原因，本修复没有为提速改动守卫或预算。证据 `/private/tmp/jg-398-fs-check-timing-20261113/READONLY-RECEIPT.md`。
+
+新文档头将推送原 Draft #428 并运行其常规CI，必须另记准确新SHA与结果。旧 ac721 的失败和清理结论不改，新手动 normal261 需要在新准确候选上重新封存并取得独立授权；#398与#394仍未验收完成，14/45阶段关闭不变，无main合并、部署或生产操作。
 
 ## 外部详细上下文
 
