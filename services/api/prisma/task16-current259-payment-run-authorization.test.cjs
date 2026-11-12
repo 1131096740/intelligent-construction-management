@@ -204,6 +204,7 @@ function fixture(t,options={}){
    state.calls.push('case');assert.equal(app,application);assert.equal(h,handle);
    if(options.beforeCaseFailure)throw options.beforeCaseFailure;
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,options.caseWrongApp?{...app}:app,h);lease.check();
+   assert.equal(lease.paymentProfile,paymentProfile);assert.equal(Object.hasOwn(lease,"paymentProfile"),paymentProfile!==undefined);assert.equal(Object.isFrozen(lease),true);
    assert.equal(lease.scope.scenario,options.scenario??'normal');assert.ok(lease.scope.authorizationReference.includes(options.selectedPlanSha??saved.sha256));
    options.onBusiness?.({api:module.exports,permit,application,handle,lease,s});
    if(options.gapFailureStage){
@@ -250,6 +251,7 @@ function fixture(t,options={}){
    state.calls.push('competition');assert.equal(apps,applications);assert.equal(h,handle);
    const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,apps,h);
    assert.equal(lease.seedProfile,options.competition261||options.voucher261?paymentProfile:undefined);lease.check();
+   assert.equal(lease.paymentProfile,paymentProfile);assert.equal(Object.hasOwn(lease,"paymentProfile"),paymentProfile!==undefined);
    assert.equal(lease.scope.scenario,options.followUp261?'competition-follow-up':options.voucher?'competition-voucher':'competition');
    assert.equal(lease.scope.paymentProfile,paymentProfile);
    if(options.voucher){
@@ -299,6 +301,7 @@ function fixture(t,options={}){
   ports['./task16-current259-payment-case.cjs'].runCurrent259PaymentCase=async(current,h,permit)=>{
    const business=module.exports.claimCurrent259PaymentBusinessPermit(permit,current,h);business.check();
    assert.equal(business.scope.scenario,'disconnect-commit-recovery');
+   assert.equal(business.paymentProfile,paymentProfile);assert.equal(Object.hasOwn(business,'paymentProfile'),paymentProfile!==undefined);
    if(business.scope.disconnectPhase==='attempt'){
     assert.equal(business.seedProfile,options.payment261?paymentProfile:undefined);
     assert.equal(current,originalApp);
@@ -1083,3 +1086,14 @@ for(const phase of ['BEFORE_CHECK','TARGET','FETCH','BODY','AFTER_CHECK','RESPON
   assert.doesNotMatch(text,/private (?:phase|request)/u);
  });
 }
+
+test('selected-case native timeout keeps its fixed body boundary and unknown business outcome',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness({lease}){
+  lease.recordCaseFailure('SELECTED_CASE','TIMEOUT',undefined,'BODY');
+ },caseFailure:new Error('private native response')});
+ await f.done;
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
+ assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'TIMEOUT',httpPhase:'BODY'});
+ assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
+ assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+});

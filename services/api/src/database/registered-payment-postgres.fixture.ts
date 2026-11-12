@@ -320,7 +320,7 @@ export async function registeredPgHttp(context: RegisteredPgExecutionContext, ro
     response = await checked(() => transport(target, { ...init, signal: AbortSignal.timeout(context.httpTimeoutMs) }));
   }
   const status = response.status, json = response.json;
-  requireCondition(typeof json === "function", "PG_RESOURCE_HTTP_RESPONSE");
+  requireCondition(typeof json === "function" && (!requestJson || response.bodyUsed === true), "PG_RESOURCE_HTTP_RESPONSE");
   if (continuity) {
     const responseUrl = response.url, redirected = response.redirected;
     requireCondition(responseUrl === target.href && redirected === false, "PG_RESOURCE_HTTP_RESPONSE_ORIGIN");

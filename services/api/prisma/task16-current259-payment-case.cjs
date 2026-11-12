@@ -134,6 +134,7 @@ async function executeCurrent259PaymentCase(lease,permit){
   await permission.verifyFull();
   caseStage='POST_SEED_LIVE';
   await original.verifyFull.call(session);check();
+  httpPhase=undefined;httpRoute=undefined;
   caseStage='SELECTED_CASE';
   const checkPrepared=()=>{check();need(equal(snapshot(prepared),frozen)&&names.every(k=>Object.getOwnPropertyDescriptor(modules,k)?.value===methods[k]));};
   let armed=false,barrierUsed=false,faultSettled=false,postCount=0,resultReads=0,rollbackEvidence;
@@ -189,6 +190,7 @@ async function executeCurrent259PaymentCase(lease,permit){
     [ `/payment-executions/${ids.payment}/registration-options`,`/payment-executions/results/${ids.requestKey}`].includes(route));
   };
   const continuity=Object.freeze({checkLight:checkPrepared,fetch:transport,assertHttpRequest,
+   ...(permission.paymentProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.paymentProfile,false)?{requestJson}:{}),
    ...(attributionGap?{assertHttpBody,markAttributionGapStage(stage){attributionGapStage=stage;}}:{})});
   const caseId=attributionGap?'registered.project-attribution-gap':'registered.null-cross-company.'+(scope.scenario==='normal'?'commit':scope.scenario);
   let result;
@@ -245,8 +247,15 @@ async function executeCurrent259PaymentCase(lease,permit){
   lease.finishContinuity(permission.continuityToken);permission.check();
   return Object.freeze({caseId,passed:true,...(cancellation?{rollbackObserved:true,originalResultUnconfirmed:true,rollbackEvidence}:attributionGap?{attributionGapEvidence}:{executionId:result.executionId,rootId:result.rootId}),...(recovery?{rollbackObserved:true}:{}),financialAcceptance:false});
  }catch(error){
-  const code=error&&typeof error==='object'&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;
-  permission?.recordCaseFailure?.(caseStage,code);
+  let code=error&&typeof error==='object'&&!types.isProxy(error)?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;
+  if(typeof code!=='string'&&error&&typeof error==='object'&&!types.isProxy(error)){
+   try{
+    const name=Object.getOwnPropertyDescriptor(DOMException.prototype,'name').get.call(error);
+    code=name==='TimeoutError'?'TIMEOUT':name==='AbortError'?'HTTP_ABORTED':undefined;
+   }catch{/* A diagnostic projection never replaces the original failure. */}
+  }
+  if(caseStage==='SELECTED_CASE'&&httpPhase)permission?.recordCaseFailure?.(caseStage,code,undefined,httpPhase);
+  else permission?.recordCaseFailure?.(caseStage,code);
   if(attributionGapStage)permission?.recordAttributionGapFailure?.(attributionGapStage);
   const detail=disconnectStage?captureCurrent259DisconnectFailure(error,disconnectStage):undefined;
   let cleanup='UNKNOWN_DO_NOT_CONTINUE';

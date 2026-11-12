@@ -304,7 +304,6 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
      sourceSealSha256:source.sealSha256,notificationAdapter:'disabled',fileStorage:'dedicated-private-local'})}),
    owner:session.owner,runtime:session.runtime,observer:session.observer,password:randomBytes(32).toString('hex'),httpTimeoutMs:5000
   }));
-  const seedLanes=[];
   const lanes=contexts.map((context,index)=>{
    const checkHttpTarget=(target,init)=>{check();const url=new URL(target);need(url.origin===new URL(context.proof.application.origin).origin&&!url.username&&!url.password&&!url.hash&&(!url.search||followUp&&url.pathname==='/payment-executions/recorded-items'&&url.search===`?paymentId=${paymentId}`));
     if(followUp&&followUpLane===index&&init?.method==='POST'){
@@ -332,17 +331,17 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
     need(method==='GET'&&['/payment-executions/work-items',`/payment-executions/${paymentId}/registration-options`,`/payment-executions/results/${key}`,...(followUp&&followUpLane!==undefined?[`/payment-executions/results/${prepared.followUpRequestKey}`,`/payment-executions/results/${index===0?prepared.contender.requestKey:plan.ids.requestKey}`,`/payment-executions/recorded-items?paymentId=${paymentId}`]:[])].includes(route));
    }
   });
-   seedLanes.push(permission.seedProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.seedProfile,true)?Object.freeze({...lane,
+   const selectedLane=permission.seedProfile!==undefined&&isCurrentPaymentRuntimeMode(permission.seedProfile,true)?Object.freeze({...lane,
     async requestJson(target,init,timeoutMs){
      checkHttpTarget(target,init);
      need(timeoutMs===context.httpTimeoutMs);
      const result=await requestCurrent261SeedJson(target,init,timeoutMs);
      check();return result;
     }
-   }):lane);
-   return lane;
+   }):lane;
+   return selectedLane;
   });
-  const seeded=await seed(...contexts,plan,...seedLanes);
+  const seeded=await seed(...contexts,plan,...lanes);
   prepared=Object.freeze({...seeded,plan,contender:Object.freeze({...seeded.contender})});
   check();need(equal(seeded.plan,plan)&&seedPosts[0].length===3&&seedPosts[1].length===1&&uuid(prepared.contender.requestKey)&&
    typeof prepared.accessToken==='string'&&typeof prepared.contender.accessToken==='string'&&prepared.accessToken!==prepared.contender.accessToken);

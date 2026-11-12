@@ -58,7 +58,7 @@ function recordCaseFailure(entry,stage,code,httpStatus,httpPhase){
  if(entry?.recordCaseFailure&&caseFailureStages.has(stage))entry.caseFailure??=Object.freeze({stage,
   ...(caseFailureCodes.has(code)?{code}:{}),
   ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpStatuses.has(httpStatus)?{httpStatus}:{}),
-  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING')&&seedHttpPhases.has(httpPhase)?{httpPhase}:{})});
+  ...((stage==='SEED_LOGIN'||stage==='SEED_OPENING'||stage==='SELECTED_CASE')&&seedHttpPhases.has(httpPhase)?{httpPhase}:{})});
 }
 let currentRun,onceAttempted=false;
 const fault=suffix=>Object.assign(new Error('PAYMENT_INSTALL_ONCE_'+suffix),{code:'PAYMENT_INSTALL_ONCE_'+suffix});
@@ -165,7 +165,7 @@ function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario
   const scenarioMatches=arguments.length===2||arguments.length===3&&fixedFault&&entry?.scope.scenario===expectedScenario;
   need(scenarioMatches&&entry&&entry===state?.business&&entry.active&&entry.claimed&&entry.handle===handle&&state.handle===handle&&
    state.active&&!state.controller.signal.aborted&&Date.now()<=state.endAt&&state.source===entry.source&&
-   state.checkedBuild===entry.build&&state.businessB7===entry.b7&&state.businessLive===entry.liveProof&&state.businessApplication===entry.application&&state.businessScope===entry.scope&&state.view.loader===entry.loader&&data(state.view,'checkLifetime')===entry.lifetime,'BUSINESS_CONTINUITY');
+   state.checkedBuild===entry.build&&state.paymentProfile===entry.paymentProfile&&state.businessB7===entry.b7&&state.businessLive===entry.liveProof&&state.businessApplication===entry.application&&state.businessScope===entry.scope&&state.view.loader===entry.loader&&data(state.view,'checkLifetime')===entry.lifetime,'BUSINESS_CONTINUITY');
   importsCheck();state.checkedInputs();entry.lifetime.call(state.view);
   const now=read(state.plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,expectedIdentity:state.attempt.identity,code:'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED'});
   need(now.sha256===state.attempt.sha256,'BUSINESS_CONTINUITY');return true;
@@ -186,6 +186,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
    entry.scope.paymentProfile===(currentRun.competition||currentRun.attributionGap?currentRun.paymentProfile:undefined)&&entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
   entry.claimed=true;const token=Object.freeze({kind:'CURRENT259_PRIVATE_BUSINESS_CONTINUITY'});entry.continuityToken=token;businessContinuities.set(token,entry);entry.check();
   return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull,
+   ...(entry.paymentProfile!==undefined?{paymentProfile:entry.paymentProfile}:{}),
    ...(entry.seedProfile?{seedProfile:entry.seedProfile}:{}),
    ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus,httpPhase){recordCaseFailure(entry,stage,code,httpStatus,httpPhase);}}:{}),
    ...(gap?{recordAttributionGapFailure(stage){
@@ -558,7 +559,8 @@ async function run(args){
          const ordinary261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&!request.competition&&!request.attributionGap&&!disconnect;
          const disconnectSeed261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&disconnectPhase==='attempt';
          const batchedSeed=ordinary261||disconnectSeed261||request.attributionGap261||request.competition261||request.voucher261;
-         const business={active:true,claimed:false,recordCaseFailure:ordinary261,...(batchedSeed?{seedProfile:paymentProfile}:{}),
+         const business={active:true,claimed:false,recordCaseFailure:ordinary261,
+          ...(paymentProfile!==undefined?{paymentProfile}:{}),...(batchedSeed?{seedProfile:paymentProfile}:{}),
           application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
           ...(request.competition261||request.voucher261||request.attributionGap261?{paymentProfile}:{}),

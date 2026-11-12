@@ -368,7 +368,7 @@ async function runCrossCompanyCase(context: RegisteredPgExecutionContext, fixtur
       await checked(() => body.cancel());
       throw dropped;
     };
-    const lost = await submit({ ...continuity, fetch: fetchWithoutDelivery }).then(() => false, error => {
+    const lost = await submit({ ...continuity, requestJson: undefined, fetch: fetchWithoutDelivery }).then(() => false, error => {
       if (error !== dropped) throw error;
       return true;
     });
