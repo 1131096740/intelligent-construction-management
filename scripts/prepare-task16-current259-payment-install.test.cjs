@@ -3,16 +3,19 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {createHash}=require('node:crypto');
 const {readQualifiedTask16File:realRead}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const file=path.join(__dirname,'prepare-task16-current259-payment-install.cjs');
+const historicalEnd='20261111120000_contract_direct_upward_closure_source_v2';
 function fixture(t){
  const base=fs.mkdtempSync('/private/tmp/jg-259-payment-plan-model-'),runRoot=path.join(base,'run');fs.mkdirSync(runRoot,{mode:0o700});
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  const state={captures:0,loads:0,stale:false,fullCalls:0,lightCalls:0,linkedTool:false};
- const migrations=fs.readdirSync(path.join(__dirname,'../services/api/prisma/migrations')).sort().filter(name=>/^\d{14}_/u.test(name)).map(name=>{
+ const migrations=fs.readdirSync(path.join(__dirname,'../services/api/prisma/migrations')).sort()
+  .filter(name=>/^\d{14}_/u.test(name)&&name<=historicalEnd).map(name=>{
   const relative='services/api/prisma/migrations/'+name+'/migration.sql';
   return {path:relative,sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'..',relative))).digest('hex')};
  });
  const rawSource={candidateSha:'a'.repeat(40),sealSha256:'b'.repeat(64),schemaSha256:'60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4',migrations};
  const profile=require('../services/api/prisma/task16-current259-profile.cjs').qualifyCurrent259Source(rawSource);
+ assert.equal(profile.profile,'TASK16_CURRENT259_SOURCE_V1');
  const handle=Object.freeze({});
  const witness={source:{candidateSha:rawSource.candidateSha,tree:'c'.repeat(40),sourceSealSha256:rawSource.sealSha256,profile},
   build:{node:{path:process.execPath,sha256:'1'.repeat(64),version:process.version},trees:['node_modules','services/api/node_modules','packages/shared-domain/node_modules','services/api/dist','packages/shared-domain/dist'].map(root=>({root,digest:'2'.repeat(64),entries:1,bytes:10}))},host:process.platform+'-'+process.arch,engineCommit:'605197351a3c8bdd595af2d2a9bc3025bca48ea2'};
@@ -46,6 +49,7 @@ test('offline payment plan binds technical259, nine roles, seven originals and B
  assert.deepEqual(verified.plan.scope.stages,['technical259','roles9','sevenFragments','paymentAcl','b7','ownedCleanup']);
  assert.equal(verified.plan.scope.roles.length,9);assert.equal(verified.plan.scope.businessWrites,false);
  assert.equal(verified.plan.material.installation.sevenFragments.length,7);
+ assert.equal(verified.plan.material.source.ledgerSha256,'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952');
  assert.equal(verified.plan.material.installation.readerBodySha256,'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20');
  assert.equal(fs.readdirSync(f.runRoot).length,0);assert.equal(f.state.loads,1);
 });
