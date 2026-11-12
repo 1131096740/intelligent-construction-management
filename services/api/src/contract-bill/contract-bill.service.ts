@@ -266,23 +266,32 @@ export class ContractBillService {
         data: this.batchRowData(row)
       });
     }
+    const lineages: Prisma.ContractBillRowLineageCreateManyInput[] = [];
+    const inserts: Prisma.ContractBillRowCreateManyInput[] = [];
     for (const row of newRows) {
-      const created = await tx.contractBillRow.create({
-        data: {
-          contractBillId: bill.id,
-          rowKey: randomUUID(),
-          ...this.batchRowData(row),
-          ...(trustedRestores.has(row.clientRowKey) ? originalDraftRowNumericData(trustedRestores.get(row.clientRowKey)!) : {})
-        }
+      const original = trustedRestores.get(row.clientRowKey);
+      const rowKey = randomUUID();
+      const lineageId = original?.lineageId ?? randomUUID();
+      if (!original?.lineageId) {
+        lineages.push({
+          id: lineageId,
+          contractId: version.contractId,
+          createdInContractVersionId: version.id,
+          createdByUserId: actorUserId,
+          status: "active"
+        });
+      }
+      inserts.push({
+        contractBillId: bill.id,
+        rowKey,
+        ...this.batchRowData(row),
+        ...(original ? originalDraftRowNumericData(original) : {}),
+        lineageId
       });
-      rowKeys.push({ clientRowKey: row.clientRowKey, rowKey: created.rowKey });
-      if (!trustedRestores.get(row.clientRowKey)?.lineageId) await this.lineage.bindNewRow(tx, {
-        contractId: version.contractId,
-        contractVersionId: version.id,
-        contractBillRowId: created.id,
-        actorUserId
-      });
+      rowKeys.push({ clientRowKey: row.clientRowKey, rowKey });
     }
+    if (lineages.length) await tx.contractBillRowLineage.createMany({ data: lineages });
+    if (inserts.length) await tx.contractBillRow.createMany({ data: inserts });
     const rows = await recalculateBillAndContractAmount(tx, { ...bill, pricingMode, numericProtocolVersion }, version, {
       updateContractVersionAmount: false
     });

@@ -557,6 +557,13 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
             });
 
           expect(persistedRows).toHaveLength(rowCount);
+          const lineages = await client.contractBillRowLineage.findMany({
+            where: { contractId: ids.contract, createdInContractVersionId: ids.version },
+            select: { id: true, createdByUserId: true }
+          });
+          expect(lineages).toHaveLength(rowCount);
+          expect(new Set(persistedRows.map(row => row.lineageId))).toEqual(new Set(lineages.map(row => row.id)));
+          expect(lineages.every(row => row.createdByUserId === ids.owner)).toBe(true);
           expect(billAfterFirst.revision).toBe(2);
           expect(firstResult).toMatchObject({
             draftRevision: 2,

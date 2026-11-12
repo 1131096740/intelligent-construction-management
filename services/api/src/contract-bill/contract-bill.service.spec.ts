@@ -1182,16 +1182,26 @@ describe("ContractBillService", () => {
   ])("saves declared tax-exclusive four-place draft facts without guessing missing tax (%j)", async ({ rate, gross, tax }) => {
     const { service, tx, bill, version } = fixture({ pricingMode: "tax_exclusive", pricingNature: "unit_price", defaultTaxRatePercent: rate });
     Object.assign(bill, { numericProtocolVersion: 2 });
+    const createLineages = jest.fn();
+    const createRows = jest.fn(async ({ data }: { data: Record<string, unknown>[] }) => {
+      for (const row of data) await tx.contractBillRow.create({ data: row });
+      return { count: data.length };
+    });
+    Object.assign(tx, { contractBillRowLineage: { createMany: createLineages } });
+    Object.assign(tx.contractBillRow, { createMany: createRows });
     const result = await service.replaceRowsInTransaction(tx as never, "owner-1", version, bill, {
       expectedRevision: 2, numericProtocolVersion: 2,
       rows: [{ clientRowKey: "net-row", sortOrder: 0, itemName: "不含税约定材料", unit: "吨", quantity: "1.2345", unitPrice: "1.2345", customData: {} }]
     });
     expect(result.changed).toBe(true);
-    const data = tx.contractBillRow.create.mock.calls[0][0].data;
-    expect(data.taxExclusiveAmountYuan).toBe("1.5240");
-    expect(data.taxInclusiveAmountYuan).toBe(gross);
-    expect(data.taxAmountYuan).toBe(tax);
-    expect(data.taxExclusiveUnitPrice?.toString()).toBe("1.2345");
+    const [data] = createRows.mock.calls[0]![0].data;
+    expect(createLineages).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ id: data!.lineageId, createdByUserId: "owner-1" })]
+    });
+    expect(data!.taxExclusiveAmountYuan).toBe("1.5240");
+    expect(data!.taxInclusiveAmountYuan).toBe(gross);
+    expect(data!.taxAmountYuan).toBe(tax);
+    expect(String(data!.taxExclusiveUnitPrice)).toBe("1.2345");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
