@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path');
 const {performance}=require('node:perf_hooks');
 const abortPrototype=AbortSignal.prototype,readAborted=Object.getOwnPropertyDescriptor(abortPrototype,'aborted').get;
 const addAbortListener=EventTarget.prototype.addEventListener,removeAbortListener=EventTarget.prototype.removeEventListener;
-const {types}=require('node:util');
+const {types,isDeepStrictEqual:equal}=require('node:util');
 const {assertCurrent259BusinessIssuer:businessIssuer}=require('./task16-current259-business-continuity.cjs');
 const {claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,captureCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
 const {describeCurrent259DisconnectFailure,carryCurrent259DisconnectFailure}=require('./task16-current259-disconnect-failure.cjs');
@@ -284,14 +284,19 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
   const original=Object.fromEntries(fields.map(key=>[key,own(session,key)]));
   const profile=qualifyCurrent259Source(source),sourceSnapshot=JSON.stringify(profile);
   need(view.source.candidateSha===profile.candidateSha&&view.source.sourceSealSha256===profile.sealSha256,code);
-  const material=loadCurrent259CatalogMaterial(source);
+  const paymentProfile=Object.getOwnPropertyDescriptor(session,'paymentProfile')?.value;
+  const effectiveAccessBinding=Object.getOwnPropertyDescriptor(session,'effectiveAccessBinding')?.value;
+  const material=loadCurrent259CatalogMaterial(source,paymentProfile);
+  need(equal(effectiveAccessBinding,material.effectiveAccessBinding),code);
   need(material.sourceSha===profile.candidateSha&&material.sealSha256===profile.sealSha256&&
    /^[a-f0-9]{64}$/u.test(material.registeredManifestSha256),code);
   const registered=Object.freeze({manifestSha256:material.registeredManifestSha256});
-  const binding=Object.freeze({sourceSha:profile.candidateSha,sourceSealSha256:profile.sealSha256,registeredManifestSha256:registered.manifestSha256});
+  const binding=Object.freeze({sourceSha:profile.candidateSha,sourceSealSha256:profile.sealSha256,registeredManifestSha256:registered.manifestSha256,
+   ...(effectiveAccessBinding?{effectiveAccessBinding}: {})});
   const check=()=>{
    try{
     need(active&&!broken&&!aborted.call(signal),code);
+    need(Object.getOwnPropertyDescriptor(session,'paymentProfile')?.value===paymentProfile&&equal(Object.getOwnPropertyDescriptor(session,'effectiveAccessBinding')?.value,effectiveAccessBinding),code);
     if(businessToken){businessIssuer(businessToken,handle);need(typeof checkSessionContinuity==='function'&&own(session,'checkContinuity')===checkSessionContinuity&&own(session,'activateBusinessContinuity')===activateSession,code);checkSessionContinuity.call(session,businessToken);view.checkLifetime();}
     else checkSession.call(session);
     need((businessToken?claimCurrent259TechnicalResourceContinuity(handle,businessToken):claimCurrent259TechnicalResource(handle))===view&&view.loader===loader&&own(loader,'Class')===Class&&
@@ -335,6 +340,7 @@ async function createCurrent259OwnedApplication(proof,handle,signal,onControl,pa
   need(!boundedInspection||typeof inspectScoped==='function',code);
   const getReceipt=Object.getOwnPropertyDescriptor(view.resource,'getReceipt')?.value,getReceiptContinuity=Object.getOwnPropertyDescriptor(view.resource,'getReceiptContinuity')?.value;
   paymentApplications.set(application,Object.freeze({handle,application,session,loader,source,
+   ...(effectiveAccessBinding?{effectiveAccessBinding}:{}),
    check:()=>{
     checkPaymentModule();
     const inspected=businessToken&&inspectScoped?inspectScoped():appInspect.call(app);

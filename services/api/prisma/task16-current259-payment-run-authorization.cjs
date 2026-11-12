@@ -165,6 +165,7 @@ function assertCurrent259PaymentBusinessContinuity(token,handle,expectedScenario
   const scenarioMatches=arguments.length===2||arguments.length===3&&fixedFault&&entry?.scope.scenario===expectedScenario;
   need(scenarioMatches&&entry&&entry===state?.business&&entry.active&&entry.claimed&&entry.handle===handle&&state.handle===handle&&
    state.active&&!state.controller.signal.aborted&&Date.now()<=state.endAt&&state.source===entry.source&&
+   equal(state.effectiveAccessBinding,entry.effectiveAccessBinding)&&
    state.checkedBuild===entry.build&&state.paymentProfile===entry.paymentProfile&&state.businessB7===entry.b7&&state.businessLive===entry.liveProof&&state.businessApplication===entry.application&&state.businessScope===entry.scope&&state.view.loader===entry.loader&&data(state.view,'checkLifetime')===entry.lifetime,'BUSINESS_CONTINUITY');
   importsCheck();state.checkedInputs();entry.lifetime.call(state.view);
   const now=read(state.plan.run.attemptFile,{privateFile:true,maxBytes:4096,collect:true,expectedIdentity:state.attempt.identity,code:'PAYMENT_INSTALL_ONCE_ATTEMPT_CHANGED'});
@@ -183,10 +184,11 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
   need(arguments.length===3&&entry&&entry===currentRun?.business&&entry.active&&!entry.claimed&&
    Boolean(gap)===(entry.scope.scenario==='attribution-gap')&&
    Boolean(voucher)===(entry.scope.scenario==='competition-voucher')&&
-   entry.scope.paymentProfile===(currentRun.competition||currentRun.attributionGap?currentRun.paymentProfile:undefined)&&entry.application===application&&entry.handle===handle,'BUSINESS_AUTHORITY');
+   entry.scope.paymentProfile===(currentRun.competition||currentRun.attributionGap?currentRun.paymentProfile:undefined)&&entry.application===application&&entry.handle===handle&&equal(entry.effectiveAccessBinding,currentRun.effectiveAccessBinding),'BUSINESS_AUTHORITY');
   entry.claimed=true;const token=Object.freeze({kind:'CURRENT259_PRIVATE_BUSINESS_CONTINUITY'});entry.continuityToken=token;businessContinuities.set(token,entry);entry.check();
   return Object.freeze({scope:entry.scope,continuityToken:token,check:entry.check,verifyFull:entry.verifyFull,
    ...(entry.paymentProfile!==undefined?{paymentProfile:entry.paymentProfile}:{}),
+   ...(entry.effectiveAccessBinding?{effectiveAccessBinding:entry.effectiveAccessBinding}:{}),
    ...(entry.seedProfile?{seedProfile:entry.seedProfile}:{}),
    ...(entry.recordCaseFailure?{recordCaseFailure(stage,code,httpStatus,httpPhase){recordCaseFailure(entry,stage,code,httpStatus,httpPhase);}}:{}),
    ...(gap?{recordAttributionGapFailure(stage){
@@ -441,6 +443,9 @@ async function run(args){
    need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();
    if(request.payment261)checkPayment261Source(checked.loader.witness().source);
    receipt.sourceMaterialVerified=true;
+   const effectiveAccessBinding=plan.material.installation.effectiveAccessBinding;
+   need(paymentProfile===PAYMENT261_RUNTIME_PROFILE?effectiveAccessBinding?.paymentProfile===paymentProfile&&effectiveAccessBinding.insertAdditionCount===9&&hex(effectiveAccessBinding.accessPlanSha256,64):effectiveAccessBinding===undefined,'EFFECTIVE_ACCESS_BINDING');
+   if(effectiveAccessBinding)receipt.effectiveAccessBinding=effectiveAccessBinding;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
    controller=new AbortController();resourceStartedAt=performance.now();endAt=Date.now()+plan.limits.resourceMs;
    process.once('SIGINT',onSigint);process.once('SIGTERM',onSigterm);timer=setTimeout(()=>abort('RESOURCE_DEADLINE'),plan.limits.resourceMs);
@@ -449,7 +454,7 @@ async function run(args){
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt(),false,loopback?.topology);
     checkPayment261Source(source);
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,abort,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,payment261:request.payment261,paymentProfile,competition:request.competition,voucher:request.voucher,attributionGap:request.attributionGap,disconnect};
+    state={active:true,controller,abort,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,payment261:request.payment261,paymentProfile,effectiveAccessBinding,competition:request.competition,voucher:request.voucher,attributionGap:request.attributionGap,disconnect};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -549,7 +554,8 @@ async function run(args){
          const applications=request.competition?application:[application];
          const coordinates=applications.map(app=>({app,inspect:data(app,'inspect'),runtime:data(app,'runtime')}));
          const sameApplications=()=>coordinates.every(({app,inspect,runtime})=>typeof inspect==='function'&&
-          data(app,'inspect')===inspect&&data(app,'runtime')===runtime&&inspect.call(app).runtime===runtime);
+          data(app,'inspect')===inspect&&data(app,'runtime')===runtime&&inspect.call(app).runtime===runtime&&
+          equal(data(data(app,'sourceBinding'),'effectiveAccessBinding'),state.effectiveAccessBinding));
          need(sameApplications()&&(!request.competition||coordinates.length===2&&coordinates[0].runtime!==coordinates[1].runtime),'BUSINESS_APPLICATION');
          if(disconnectPhase==='recovery'){
           try{need(typeof oldOrigin==='string'&&typeof data(application,'origin')==='string'&&
@@ -559,7 +565,7 @@ async function run(args){
          const ordinary261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&!request.competition&&!request.attributionGap&&!disconnect;
          const disconnectSeed261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&disconnectPhase==='attempt';
          const batchedSeed=ordinary261||disconnectSeed261||request.attributionGap261||request.competition261||request.voucher261;
-         const business={active:true,claimed:false,recordCaseFailure:ordinary261,
+         const business={active:true,claimed:false,recordCaseFailure:ordinary261,effectiveAccessBinding:state.effectiveAccessBinding,
           ...(paymentProfile!==undefined?{paymentProfile}:{}),...(batchedSeed?{seedProfile:paymentProfile}:{}),
           application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,

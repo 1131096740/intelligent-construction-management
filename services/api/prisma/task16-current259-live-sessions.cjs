@@ -9,7 +9,7 @@ const { isDeepStrictEqual: equal, types } = require('node:util');
 const { claimCurrent259B7Installation } = require('./task16-current259-b7-install.cjs');
 const { claimCurrent259TechnicalResource, claimCurrent259TechnicalResourceContinuity, closeCurrent259OwnedResource } = require('./task16-current259-owned-resource.cjs');
 const { current259ClientIdentitySql, parseCurrent259ClientSessions } = require('./task16-current259-session-identity.cjs');
-const { renderCurrent259CatalogRead, parseCurrent259CatalogRead, current259Schema205WitnessSql } = require('./task16-current259-catalog.cjs');
+const { renderCurrent259CatalogRead, parseCurrent259CatalogRead, current259Schema205WitnessSql, loadCurrent259CatalogMaterial } = require('./task16-current259-catalog.cjs');
 const { registeredObjectWitnessSql, schema205RegistrySql } = require('./task16-registered-object-witness.cjs');
 const { schema205ScopeSql } = require('./task16-schema205-scope.cjs');
 const { readQualifiedTask16File: read } = require('./task16-runtime-inputs.cjs');
@@ -138,6 +138,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   const lease = claimCurrent259B7Installation(b7Completion, handle);
   const paymentProfile=lease.request.identity.paymentProfile;
   const payment261=paymentProfile===PAYMENT261_RUNTIME_PROFILE;
+  const effectiveAccessBinding=loadCurrent259CatalogMaterial(lease.request.source,paymentProfile).effectiveAccessBinding;
   const voucher=lease.request.identity.voucherProfile==='CURRENT259_PAYMENT_VOUCHER_V1';
   need((lease.request.identity.runtimeProfile==='CURRENT259_TWO_RUNTIME_LANES')===competition&&(!voucher||competition),'HANDLE');
   const retainIdleConnections=paymentProfile!==undefined&&
@@ -473,6 +474,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     const guard=()=>need(!recovery||lane!==1||!retiredRuntime,'RETIRED');
     const session = Object.freeze({ source: lease.request.source, owner: clients[0].client, runtime: clients[lane].client, observer: clients[2].client,
       identity: parsed.identity, endpoint: parsed.endpoint,
+      ...(effectiveAccessBinding?{paymentProfile,effectiveAccessBinding}:{}),
       b7: Object.freeze({ profile: 'B7_ORIGINAL', xid: b7Completion.installXid, routineOid: lease.committedProof.raw.reader.oid, bodySha256: lease.committedProof.raw.reader.bodySha256 }),
       checkLight:()=>{guard();checkLight();},checkContinuity:token=>{guard();checkContinuity(token);},
       activateBusinessContinuity:token=>{guard();activateBusinessContinuity(token,lane);},

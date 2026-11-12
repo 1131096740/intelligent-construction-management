@@ -6,6 +6,7 @@ const {createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=requir
 const base=require('./prepare-task16-current259-payment-install.cjs');
 const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const {paymentLoopbackForScenario}=require('../services/api/prisma/task16-current259-payment-loopback.cjs');
+const {PAYMENT261_RUNTIME_PROFILE}=require('../services/api/prisma/task16-current259-profile.cjs');
 const {PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE}=require('../services/api/prisma/task16-current261-competition-profile.cjs');
 const PURPOSE='current259-payment-owned-seed-and-case';
 const PAYMENT261=Object.freeze({purpose:'current261-payment-owned-seed-and-case',payment261:true});
@@ -167,8 +168,9 @@ function prepare(options,profile){
  const sidecar=o.output+'.installation.json';parent(sidecar);
  const prepareInstall=profile?.payment261?base.prepareCurrent261PaymentInstallPlan:base.prepareCurrent259PaymentInstallPlan;
  const readInstall=profile?.payment261?base.readCurrent261PaymentInstallPlan:base.readCurrent259PaymentInstallPlan;
- const installed=prepareInstall({runRoot:o.runRoot,daemonId:o.daemonId,output:sidecar});
- const captured=readInstall(sidecar,installed.sha256);
+ const mode=profile?.runtimeProfile??(profile?.payment261?PAYMENT261_RUNTIME_PROFILE:undefined);
+ const installed=prepareInstall({runRoot:o.runRoot,daemonId:o.daemonId,output:sidecar},...(profile?.payment261?[mode]:[]));
+ const captured=readInstall(sidecar,installed.sha256,...(profile?.payment261?[mode]:[]));
  const raw={schemaVersion:1,purpose:profile?.purpose??PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:planScope(captured.plan,selected,profile),...(profile?.selected===VOUCHER?{voucherMaterials:voucherMaterials()}:{})};
  need(equal(parent(o.output),parentIdentity));const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');writeNew(o.output,bytes);
  return Object.freeze({status:profile===FOLLOW_UP261?'PAYMENT261_COMPETITION_FOLLOW_UP_PLAN_PREPARED_NO_RESOURCES':profile===COMPETITION261?'PAYMENT261_COMPETITION_PLAN_PREPARED_NO_RESOURCES':profile===VOUCHER261?'PAYMENT261_VOUCHER_PLAN_PREPARED_NO_RESOURCES':profile===ATTRIBUTION_GAP261?'PAYMENT261_ATTRIBUTION_GAP_PLAN_PREPARED_NO_RESOURCES':profile?.payment261?'PAYMENT261_BUSINESS_PLAN_PREPARED_NO_RESOURCES':'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
@@ -206,7 +208,7 @@ function readPlan(file,digest,profile){
  const sidecar=fixed(raw.installation,['path','sha256','identity','parentIdentity']);need(sidecar.path===file+'.installation.json'&&equal(parent(sidecar.path),sidecar.parentIdentity));
  const side=capture(sidecar.path,sidecar.identity);need(side.sha256===sidecar.sha256);
  const readInstall=profile?.payment261?base.readCurrent261PaymentInstallPlan:base.readCurrent259PaymentInstallPlan;
- const original=readInstall(sidecar.path,sidecar.sha256);
+ const original=readInstall(sidecar.path,sidecar.sha256,...(profile?.payment261?[profile.runtimeProfile??PAYMENT261_RUNTIME_PROFILE]:[]));
  const selected=fixed(raw.case,['scenario','caseId','handler','paidAt','openingDate']);need(equal(selected,dates(selected.scenario,selected.paidAt,selected.openingDate,profile))&&equal(raw.scope,planScope(original.plan,selected,profile)));
  if(profile?.selected===VOUCHER)need(equal(raw.voucherMaterials,voucherMaterials()));
  const plan=freeze({...original.plan,purpose,entry:ENTRY,installation:sidecar,case:selected,scope:raw.scope,
@@ -242,7 +244,7 @@ function verifyCurrent259PaymentVoucherPlan(file,digest){
 function verifyPlan(file,digest,profile){
  const saved=readPlan(file,digest,profile),p=saved.plan;
  const verifyInstall=profile?.payment261?base.verifyCurrent261PaymentInstallPlan:base.verifyCurrent259PaymentInstallPlan;
- const original=verifyInstall(p.installation.path,p.installation.sha256);
+ const original=verifyInstall(p.installation.path,p.installation.sha256,...(profile?.payment261?[profile.runtimeProfile??PAYMENT261_RUNTIME_PROFILE]:[]));
  let broken=false;
  function checkInputs(){try{need(!broken);const again=readPlan(file,digest,profile);need(equal(again,saved)&&equal(parent(file),saved.file.parentIdentity));capture(file,saved.file.identity);capture(p.installation.path,p.installation.identity);}catch(error){broken=true;throw error;}}
  function check(){try{need(!broken);original.check();checkInputs();}catch(error){broken=true;throw error;}}

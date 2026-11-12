@@ -18,6 +18,10 @@ function fixture(t,options={}){
  const done=new Promise(resolve=>{finish=resolve;});
  const source=s.loader.witness().source;
  const paymentProfile=options.voucher261?PAYMENT261_VOUCHER_RUNTIME_PROFILE:options.attributionGap261?PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE:options.competition261?PAYMENT261_COMPETITION_RUNTIME_PROFILE:options.payment261?'TASK16_PAYMENT261_RUNTIME_V1':undefined;
+ const savedData=JSON.parse(fs.readFileSync(saved.file??saved.path??options.planFile,'utf8'));
+ const installationData=savedData.material?savedData:JSON.parse(fs.readFileSync(savedData.installation.path,'utf8'));
+ const effectiveAccessBinding=installationData.material.installation.effectiveAccessBinding;
+ const sourceBinding=Object.freeze({...effectiveAccessBinding?{effectiveAccessBinding:options.applicationBinding?options.applicationBinding(effectiveAccessBinding):effectiveAccessBinding}:{}});
  const identity={database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',systemIdentifier:'123456789'};
  const technical=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:'01234567-89ab-cdef-0123-456789abcdef',containerId:'7'.repeat(64),database:identity.database,databaseIdentity:identity});
  const names=['jg_c259_outside_executor_login','jg_c259_outside_executor_owner','jg_c259_outside_issuer_login','jg_c259_outside_issuer_owner','jg_c259_upward_issuer_login','jg_c259_upward_issuer_owner','jg_c259_upward_runtime_login','jg_task01_observer','jg_task01_runtime'];
@@ -188,7 +192,7 @@ function fixture(t,options={}){
  if(options.business){
   ports['./task16-current259-business-continuity.cjs']={captureCurrent259BusinessIssuer(){}};
   state.replaceBusinessLive=()=>{ports['./task16-current259-live-sessions.cjs'].withCurrent259LiveSessions=async()=>{state.calls.push('foreign-live');};};
-  const liveProof=Object.freeze({}),application=Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
+  const liveProof=Object.freeze({}),application=Object.freeze({sourceBinding,runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
   ports['./task16-current259-live-sessions.cjs']={
    describeCurrent259LiveFailure(error){return error===options.liveFailure?options.liveDetail:undefined;},
    describeCurrent259ApplicationFailure(error){return error===options.applicationFailure?options.applicationDetail:undefined;},
@@ -271,7 +275,7 @@ function fixture(t,options={}){
  if(options.disconnect){
   const firstProof=Object.freeze({}),replacementProof=Object.freeze({}),closeProof=Object.freeze({});
   const attempt=Object.freeze({}),rollback=Object.freeze({});
-  const app=origin=>Object.freeze({origin,runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
+  const app=origin=>Object.freeze({origin,sourceBinding,runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
   const originalApp=app('http://127.0.0.1:52123/'),replacementApp=app(options.sameListener?'http://127.1:52123':'http://127.0.0.1:52124/');
   ports['./task16-current259-live-sessions.cjs'].withCurrent259DisconnectLiveSessions=async(b7,h,permit,consume)=>{
    assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live-disconnect');
@@ -505,7 +509,7 @@ function competitionFixture(t,options={}){
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
  const read=payment261?s.api.readCurrent261PaymentInstallPlan:s.api.readCurrent259PaymentInstallPlan;
- const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256,...(payment261?[JSON.parse(fs.readFileSync(s.output)).scope.paymentProfile]:[])).file;
  return fixture(t,{...options,competition261:options.followUp261||options.competition261,payment261,voucher:options.voucher261||options.voucher,competition:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 test('competition consumes one fixed plan and reaches only the two-lane case, closing both apps before pools',async t=>{
@@ -718,7 +722,7 @@ function attributionGapFixture(t,options={}){
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
  const read=options.attributionGap261?s.api.readCurrent261PaymentInstallPlan:s.api.readCurrent259PaymentInstallPlan;
- const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256,...(options.attributionGap261?[JSON.parse(fs.readFileSync(s.output)).scope.paymentProfile]:[])).file;
  return fixture(t,{payment261:options.attributionGap261,business:true,attributionGap:true,scenario:'attribution-gap',...options,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 test('main publishes the ordinary live checkpoint with the original failure code and cleanup outcome',async t=>{
@@ -1096,4 +1100,21 @@ test('selected-case native timeout keeps its fixed body boundary and unknown bus
  assert.deepEqual(receipt.paymentCaseFailure,{stage:'SELECTED_CASE',code:'TIMEOUT',httpPhase:'BODY'});
  assert.equal(receipt.business.outcome,'UNKNOWN_DO_NOT_RETRY');
  assert.equal(receipt.business.permission,'CONSUMED_ONCE');
+});
+
+test('normal261 issuer passes the identical sealed effective plan to the business permit',async t=>{
+ let permitBinding;
+ const f=ordinaryBusinessFailureFixture(t,{onBusiness({lease,application}){
+  permitBinding=lease.effectiveAccessBinding;
+  assert.deepEqual(permitBinding,application.sourceBinding.effectiveAccessBinding);
+  assert.ok(Object.isFrozen(permitBinding));
+ }}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.deepEqual(receipt.effectiveAccessBinding,permitBinding);
+});
+for(const mode of ['missing','hash','profile','count'])test('normal261 issuer rejects '+mode+' application plan before business entry',async t=>{
+ const f=ordinaryBusinessFailureFixture(t,{applicationBinding(binding){return mode==='missing'?undefined:{...binding,...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'}:{insertAdditionCount:8})};}}),result=await f.done;
+ assert.equal(result.failureCode,'PAYMENT_INSTALL_ONCE_BUSINESS_APPLICATION',JSON.stringify(result));
+ assert.equal(f.state.calls.includes('case'),false);
 });

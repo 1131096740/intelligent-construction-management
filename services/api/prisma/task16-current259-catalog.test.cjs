@@ -76,17 +76,19 @@ function observed(phase='before',access=plan){
   config:['search_path=pg_catalog'],bodySha256:'f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20',xmin:'1000',acl:[['10','10','EXECUTE',false],['10','17000','EXECUTE',false]]};
  return row;
 }
-test('payment261 B7 binds both forward rows, the exact owner routines and the original access matrix',()=>{
+test('payment261 B7 binds both forward rows, the exact owner routines and the effective normal payment matrix',()=>{
  const source261={...source,migrations:currentMigrations};
  const identity261={...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE};
  const request261={...request,source:source261,identity:identity261};
  const material=api.loadCurrent259CatalogMaterial(source261);
  assert.equal(material.ledgerSha256,PAYMENT261_LEDGER_SHA256);
  assert.deepEqual(material.accessPlan,api.loadCurrent259CatalogMaterial(source).accessPlan);
+ const effective=api.loadCurrent259CatalogMaterial(source261,PAYMENT261_RUNTIME_PROFILE).accessPlan;
+ const observe=phase=>observed(phase,{...plan,...effective});
  const parse=(row,r,prior)=>api.parseCurrent259CatalogRead(JSON.stringify({...row,ledger:material.ledger}),r,prior);
- const before=parse(observed(),request261);
- const staged=parse(observed('staged'),{...request261,phase:'staged'},before);
- const committed=parse(observed('committed'),{...request261,phase:'committed',installXid:'1000'},staged);
+ const before=parse(observe(),request261);
+ const staged=parse(observe('staged'),{...request261,phase:'staged'},before);
+ const committed=parse(observe('committed'),{...request261,phase:'committed',installXid:'1000'},staged);
  assert.deepEqual(committed.raw.reader.acl,[['10','10','EXECUTE',false],['10','17000','EXECUTE',false]]);
  assert.equal(committed.nativeAdmission,false);
  const sql=api.renderCurrent259B7Install({source:source261,identity:identity261,nonce:request.nonce,before});
@@ -95,9 +97,9 @@ test('payment261 B7 binds both forward rows, the exact owner routines and the or
   assert.ok(sql.includes(marker),marker);
   assert.ok(!api.renderCurrent259CatalogRead(request).includes(marker),marker);
  }
- assert.throws(()=>parse({...observed(),guardsVerified:false},request261),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...observe(),guardsVerified:false},request261),/TASK16_CURRENT259_CATALOG/u);
  assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(observed()),request261),/TASK16_CURRENT259_CATALOG/u);
- assert.throws(()=>parse({...observed(),extraFunctions:[['jg_task01_runtime','9999']]},request261),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>parse({...observe(),extraFunctions:[['jg_task01_runtime','9999']]},request261),/TASK16_CURRENT259_CATALOG/u);
 });
 test('payment261 catalog rejects wrong-purpose, partial, drifted and expanded source profiles',()=>{
  const source261={...source,migrations:currentMigrations};
@@ -358,4 +360,47 @@ test('261 two-lane catalog binds exact ledger and runtime limit through independ
   {...r,identity:{...identity261,paymentProfile:PAYMENT261_RUNTIME_PROFILE}},
   {...r,identity:{...identity261,voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}}])
   assert.throws(()=>api.renderCurrent259CatalogRead(invalid),/TASK16_CURRENT259_CATALOG/u);
+});
+
+const normal261InsertAdditions=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
+ ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
+ ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
+test('normal261 explicit payment mode supplies exactly the nine source-required INSERT columns and a distinct bound plan',()=>{
+ const current={...source,migrations:currentMigrations};
+ const base=api.loadCurrent259CatalogMaterial(current);
+ const payment=api.loadCurrent259CatalogMaterial(current,PAYMENT261_RUNTIME_PROFILE);
+ const inserts=plan=>plan.runtime.tables.flatMap(t=>(t.insert??[]).map(c=>[t.table,c]));
+ const original=new Set(inserts(base.accessPlan).map(JSON.stringify));
+ assert.deepEqual(inserts(payment.accessPlan).filter(row=>!original.has(JSON.stringify(row))).sort(),[...normal261InsertAdditions].sort());
+ assert.deepEqual(payment.accessPlan.observer,base.accessPlan.observer);
+ assert.equal(payment.registeredManifestSha256,base.registeredManifestSha256);
+ assert.deepEqual(payment.effectiveAccessBinding,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,insertAdditionCount:9,
+  accessPlanSha256:hash(JSON.stringify(payment.accessPlan))});
+ assert.equal(Object.isFrozen(payment.effectiveAccessBinding),true);
+ for(const other of [undefined,PAYMENT261_COMPETITION_RUNTIME_PROFILE,PAYMENT261_VOUCHER_RUNTIME_PROFILE,PAYMENT261_ATTRIBUTION_GAP_RUNTIME_PROFILE]){
+  const actual=api.loadCurrent259CatalogMaterial(current,other);
+  assert.deepEqual(actual.accessPlan,base.accessPlan);assert.equal(actual.effectiveAccessBinding,undefined);
+ }
+ assert.throws(()=>api.loadCurrent259CatalogMaterial(source,PAYMENT261_RUNTIME_PROFILE));
+});
+test('normal261 physical readback rejects each missing addition, any expanded authority and a profile swap',()=>{
+ const current={...source,migrations:currentMigrations};
+ const effective=api.loadCurrent259CatalogMaterial(current,PAYMENT261_RUNTIME_PROFILE).accessPlan;
+ const r={...request,source:current,identity:{...identity,paymentProfile:PAYMENT261_RUNTIME_PROFILE}};
+ const row=()=>({...observed('before',{...plan,...effective}),ledger:api.loadCurrent259CatalogMaterial(current).ledger});
+ const parse=value=>api.parseCurrent259CatalogRead(JSON.stringify(value),r);
+ assert.doesNotThrow(()=>parse(row()));
+ for(const [table,column]of normal261InsertAdditions){
+  const missing=row();missing.capabilities=missing.capabilities.filter(c=>!(c[0]==='jg_task01_runtime'&&c[2]===table&&c[3]===column&&c[4]==='INSERT'));
+  assert.throws(()=>parse(missing),/TASK16_CURRENT259_CATALOG/u,table+'.'+column);
+ }
+ for(const added of [['jg_task01_runtime','column','AuditLog','ipAddress','INSERT',false],
+  ['jg_task01_runtime','column','AuditLog','userAgent','INSERT',false],['jg_task01_runtime','column','RefreshToken','revokedAt','INSERT',false],
+  ['jg_task01_runtime','column','AuditLog','createdAt','UPDATE',false],['jg_task01_observer','column','AuditLog','createdAt','INSERT',false],
+  ['jg_task01_runtime','table','AuditLog','','INSERT',false]]){
+  const extra=row();extra.capabilities.push(added);assert.throws(()=>parse(extra),/TASK16_CURRENT259_CATALOG/u);
+ }
+ const grantable=row();grantable.capabilities.find(c=>c[0]==='jg_task01_runtime'&&c[2]==='AuditLog'&&c[3]==='createdAt'&&c[4]==='INSERT')[5]=true;
+ assert.throws(()=>parse(grantable),/TASK16_CURRENT259_CATALOG/u);
+ assert.throws(()=>api.parseCurrent259CatalogRead(JSON.stringify(row()),{...r,identity:{...identity}}),/TASK16_CURRENT259_CATALOG/u);
 });

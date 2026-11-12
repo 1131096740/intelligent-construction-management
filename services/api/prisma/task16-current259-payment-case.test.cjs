@@ -26,7 +26,7 @@ function caseFixture(t,options={}){
   const record=permissions.get(permit);permissions.delete(permit);
   assert.ok(record&&record.application===application&&record.handle===handle,'untrusted business token');
   const continuityToken=Object.freeze({});continuities.add(continuityToken);
-  return {scope:record.scope,continuityToken,
+  return {scope:record.scope,continuityToken,...(f.session.effectiveAccessBinding?{effectiveAccessBinding:options.permissionBinding?options.permissionBinding(f.session.effectiveAccessBinding):f.session.effectiveAccessBinding}:{}),
    ...((options.ordinarySeedProfile??options.initialSeedProfile)!==undefined?{paymentProfile:options.ordinarySeedProfile??options.initialSeedProfile}:{}),verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
    ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{}),
    ...(options.recordCaseFailure?{recordCaseFailure:options.recordCaseFailure}:{}),
@@ -35,7 +35,7 @@ function caseFixture(t,options={}){
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
   name=>name==='./task16-current259-application-factory.cjs'?factory:name==='./task16-current259-payment-run-authorization.cjs'?authorization:require(name),holder);
- f=owned(t,{...options,businessGuard,paymentModule:holder.exports});factory=f.api;
+ f=owned(t,{...options,...((options.ordinarySeedProfile??options.initialSeedProfile)==='TASK16_PAYMENT261_RUNTIME_V1'?{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}:{}),businessGuard,paymentModule:holder.exports});factory=f.api;
  f.view.checkLifetime=f.view.check;
  f.session.activateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('activate-continuity');};
  f.session.deactivateBusinessContinuity=token=>{businessGuard(token,f.handle);f.calls.push('finish-continuity');};
@@ -368,9 +368,11 @@ for(const profile of [undefined,'TASK16_PAYMENT259_RUNTIME_V1','TASK16_PAYMENT26
   const m=paymentModel(f,{onSeed(continuity){
    assert.equal(typeof continuity.requestJson,profile==='TASK16_PAYMENT261_RUNTIME_V1'?'function':'undefined');
   }});
-  await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  const run=()=>f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
    f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate})));
-  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
+  if(profile==='TASK16_PAYMENT259_RUNTIME_V1'){
+   await assert.rejects(run());assert.deepEqual(m.counts(),{builds:0,seeds:0,consumers:0});
+  }else{await run();assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});}
  });
 }
 
@@ -401,4 +403,13 @@ for(const [name,code] of [['TimeoutError','TIMEOUT'],['AbortError','HTTP_ABORTED
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
  assert.deepEqual(seen,[['SELECTED_CASE',code]]);
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
+});
+
+for(const mode of ['missing','hash','profile','count'])test('normal261 case rejects '+mode+' permission binding before seed',async t=>{
+ const f=caseFixture(t,{ordinarySeedProfile:'TASK16_PAYMENT261_RUNTIME_V1',permissionBinding(binding){
+  return mode==='missing'?undefined:{...binding,...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'}:{insertAdditionCount:8})};
+ }}),m=paymentModel(f);
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
+  f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
+ assert.deepEqual(m.counts(),{builds:0,seeds:0,consumers:0});
 });

@@ -7,6 +7,7 @@ const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runt
 require('../services/api/prisma/task16-current259-payment-run-authorization.cjs');
 const {PAYMENT259_LEDGER_SHA256,PAYMENT261_LEDGER_SHA256,PAYMENT261_RUNTIME_PROFILE}=require('../services/api/prisma/task16-current259-profile.cjs');
 const {loadCurrent259CatalogMaterial}=require('../services/api/prisma/task16-current259-catalog.cjs');
+const {isCurrentPaymentRuntimeMode}=require('../services/api/prisma/task16-current261-competition-profile.cjs');
 const {observeCurrent259Build}=require('../services/api/prisma/task16-current259-build.cjs');
 const {loadCurrent259Client}=require('../services/api/prisma/task16-current259-client-loader.cjs');
 const ROOT=fs.realpathSync(path.resolve(__dirname,'..'));
@@ -62,15 +63,17 @@ function toolsCheck(expected){
  if(expected)need(isDeepStrictEqual(result,expected),'PAYMENT_INSTALL_PLAN_TOOL');
  return result;
 }
-let observedMaterial;
-function material(){
- if(observedMaterial){observedMaterial.loader.verifyFull();toolsCheck(observedMaterial.observed.tools);return observedMaterial;}
+const observedMaterials=new Map();
+function material(paymentProfile){
+ const cached=observedMaterials.get(paymentProfile);
+ if(cached){cached.loader.verifyFull();toolsCheck(cached.observed.tools);return cached;}
  const buildHandle=observeCurrent259Build(),loader=loadCurrent259Client(buildHandle);loader.verifyFull();const w=loader.witness();
+ if(paymentProfile!==undefined)need(w.source.profile.ledgerSha256===PAYMENT261_LEDGER_SHA256,'PAYMENT_INSTALL_PLAN_SCOPE');
  const source=w.source,profile=source.profile;
- const catalog=loadCurrent259CatalogMaterial({candidateSha:source.candidateSha,sealSha256:source.sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:profile.ledger.map(row=>({path:'services/api/prisma/migrations/'+row.name+'/migration.sql',sha256:row.sha256}))});
+ const catalog=loadCurrent259CatalogMaterial({candidateSha:source.candidateSha,sealSha256:source.sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:profile.ledger.map(row=>({path:'services/api/prisma/migrations/'+row.name+'/migration.sql',sha256:row.sha256}))},paymentProfile);
  const tools=toolsCheck();
- const observed=copy({tools,installation:{registeredManifestSha256:catalog.registeredManifestSha256,sevenFragments:catalog.sevenFragments,readerBodySha256:catalog.readerBodySha256,readerSqlSha256:catalog.readerSqlSha256},source:{candidateSha:w.source.candidateSha,tree:w.source.tree,sourceSealSha256:w.source.sourceSealSha256,ledgerSha256:w.source.profile.ledgerSha256,prefix256Sha256:w.source.profile.prefix256Sha256,schemaSha256:w.source.profile.schemaSha256},build:w.build,host:w.host,engineCommit:w.engineCommit});
- observedMaterial=Object.freeze({buildHandle,loader,observed:freeze(observed)});return observedMaterial;
+ const observed=copy({tools,installation:{registeredManifestSha256:catalog.registeredManifestSha256,...(catalog.effectiveAccessBinding?{effectiveAccessBinding:catalog.effectiveAccessBinding}:{}),sevenFragments:catalog.sevenFragments,readerBodySha256:catalog.readerBodySha256,readerSqlSha256:catalog.readerSqlSha256},source:{candidateSha:w.source.candidateSha,tree:w.source.tree,sourceSealSha256:w.source.sourceSealSha256,ledgerSha256:w.source.profile.ledgerSha256,prefix256Sha256:w.source.profile.prefix256Sha256,schemaSha256:w.source.profile.schemaSha256},build:w.build,host:w.host,engineCommit:w.engineCommit});
+ const result=Object.freeze({buildHandle,loader,observed:freeze(observed)});observedMaterials.set(paymentProfile,result);return result;
 }
 function expectedPlan(runRoot,daemonId,observed,profile){
  need(typeof daemonId==='string'&&/^[A-Za-z0-9:-]{16,128}$/u.test(daemonId),'PAYMENT_INSTALL_PLAN_DAEMON');
@@ -83,12 +86,16 @@ function prepareCurrent259PaymentInstallPlan(options){
 function prepareCurrent259PfqCompositionPlan(options){
  need(arguments.length===1,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return prepare(options,PFQ);
 }
-function prepareCurrent261PaymentInstallPlan(options){
- need(arguments.length===1,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return prepare(options,PAYMENT261);
+function payment261Plan(paymentProfile){
+ need(paymentProfile!==undefined&&(isCurrentPaymentRuntimeMode(paymentProfile,false)||isCurrentPaymentRuntimeMode(paymentProfile,true)),'PAYMENT_INSTALL_PLAN_SCOPE');
+ return {...PAYMENT261,scope:{...PAYMENT261.scope,paymentProfile}};
+}
+function prepareCurrent261PaymentInstallPlan(options,paymentProfile=PAYMENT261_RUNTIME_PROFILE){
+ need(arguments.length===1||arguments.length===2,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return prepare(options,payment261Plan(paymentProfile));
 }
 function prepare(options,profile){
  const o=keys(options,['runRoot','daemonId','output']);outsideFile(o.output);
- const captured=material(),plan=expectedPlan(o.runRoot,o.daemonId,captured.observed,profile);
+ const captured=material(profile.scope.paymentProfile),plan=expectedPlan(o.runRoot,o.daemonId,captured.observed,profile);
  need(![plan.run.resourceDir,plan.run.attemptFile,plan.run.receiptFile,plan.run.receiptFile+'.pending'].includes(o.output),'PAYMENT_INSTALL_PLAN_OUTPUT_RESERVED');
  need(![plan.run.resourceDir,plan.run.attemptFile,plan.run.receiptFile].some(p=>fs.existsSync(p)),'PAYMENT_INSTALL_PLAN_RUN_ALREADY_USED');
  captured.loader.verifyFull();const bytes=Buffer.from(JSON.stringify(plan,null,2)+'\n');writeNew(o.output,bytes);
@@ -100,8 +107,8 @@ function readCurrent259PaymentInstallPlan(file,digest){
 function readCurrent259PfqCompositionPlan(file,digest){
  need(arguments.length===2,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return readPlan(file,digest,PFQ);
 }
-function readCurrent261PaymentInstallPlan(file,digest){
- need(arguments.length===2,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return readPlan(file,digest,PAYMENT261);
+function readCurrent261PaymentInstallPlan(file,digest,paymentProfile=PAYMENT261_RUNTIME_PROFILE){
+ need(arguments.length===2||arguments.length===3,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return readPlan(file,digest,payment261Plan(paymentProfile));
 }
 function readPlan(file,digest,profile){
  need(typeof digest==='string'&&/^[a-f0-9]{64}$/u.test(digest),'PAYMENT_INSTALL_PLAN_ARGUMENTS');outsideFile(file);
@@ -122,11 +129,11 @@ function verifyCurrent259PaymentInstallPlan(file,digest){
 function verifyCurrent259PfqCompositionPlan(file,digest){
  need(arguments.length===2,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return verifyPlan(file,digest,PFQ);
 }
-function verifyCurrent261PaymentInstallPlan(file,digest){
- need(arguments.length===2,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return verifyPlan(file,digest,PAYMENT261);
+function verifyCurrent261PaymentInstallPlan(file,digest,paymentProfile=PAYMENT261_RUNTIME_PROFILE){
+ need(arguments.length===2||arguments.length===3,'PAYMENT_INSTALL_PLAN_ARGUMENTS');return verifyPlan(file,digest,payment261Plan(paymentProfile));
 }
 function verifyPlan(file,digest,profile){
- const base=readPlan(file,digest,profile),captured=material();
+ const base=readPlan(file,digest,profile),captured=material(profile.scope.paymentProfile);
  need(isDeepStrictEqual(base.plan,expectedPlan(base.plan.run.root,base.plan.resource.daemonId,captured.observed,profile)),'PAYMENT_INSTALL_PLAN_MATERIAL_CHANGED');
  function check(){captured.loader.verifyFull();toolsCheck(captured.observed.tools);const current=read(file,{privateFile:true,maxBytes:512*1024,collect:true,expectedIdentity:base.file.identity,code:'PAYMENT_INSTALL_PLAN_FILE_CHANGED'});need(hash(current.bytes)===digest&&isDeepStrictEqual(base.plan.run.identity,privateDirectory(base.plan.run.root)),'PAYMENT_INSTALL_PLAN_FILE_CHANGED');}
  check();return Object.freeze({...base,buildHandle:captured.buildHandle,loader:captured.loader,check});

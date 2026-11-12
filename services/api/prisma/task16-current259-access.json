@@ -350,5 +350,46 @@
     ],
     "forbiddenGrantee": "PUBLIC",
     "source": "services/api/prisma/task16-registered-access-check.sql"
+  },
+  "normal261RuntimeInsertAdditions": {
+    "paymentProfile": "TASK16_PAYMENT261_RUNTIME_V1",
+    "columns": [
+      [
+        "AuditLog",
+        "createdAt"
+      ],
+      [
+        "RefreshToken",
+        "createdAt"
+      ],
+      [
+        "RegisteredFundAccount",
+        "createdAt"
+      ],
+      [
+        "FundAccountBalanceRegistration",
+        "createdAt"
+      ],
+      [
+        "FundAccountBalanceRegistration",
+        "coveredExecutionIds"
+      ],
+      [
+        "PaymentExecution",
+        "createdAt"
+      ],
+      [
+        "RegisteredPaymentEvent",
+        "createdAt"
+      ],
+      [
+        "RegisteredPaymentEvent",
+        "eventType"
+      ],
+      [
+        "InterEntityRelationshipEntry",
+        "createdAt"
+      ]
+    ]
   }
 }

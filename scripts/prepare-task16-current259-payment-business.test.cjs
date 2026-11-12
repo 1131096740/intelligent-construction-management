@@ -226,7 +226,7 @@ test('261 competition plan binds the exact ledger, sidecar, original pair and 5s
  assert.equal(plan.scope.seedPostCount,4);
  assert.equal(plan.scope.registrationPostCount,2);
  assert.equal(plan.case.caseId,'registered.two-actor.payment-competition');
- const sidecar=f.api.readCurrent261PaymentInstallPlan(plan.installation.path,plan.installation.sha256);
+ const sidecar=f.api.readCurrent261PaymentInstallPlan(plan.installation.path,plan.installation.sha256,plan.scope.paymentProfile);
  assert.equal(sidecar.plan.scope.businessWrites,false);
  for(const verify of [f.business.verifyCurrent259PaymentCompetitionPlan,f.business.verifyCurrent261PaymentBusinessPlan,
   f.business.verifyCurrent259PaymentVoucherPlan,f.business.verifyCurrent259PaymentAttributionGapPlan])
@@ -258,7 +258,7 @@ test('261 voucher and attribution gap preserve their original requests and disti
  assert.deepEqual(verifiedGap.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
  for(const plan of [verifiedVoucher,verifiedGap]){
   assert.equal(plan.scope.migrations,261);
-  const sidecar=f.api.verifyCurrent261PaymentInstallPlan(plan.installation.path,plan.installation.sha256);
+  const sidecar=f.api.verifyCurrent261PaymentInstallPlan(plan.installation.path,plan.installation.sha256,plan.scope.paymentProfile);
   assert.equal(sidecar.plan.scope.businessWrites,false);
  }
  for(const [sealed,verifiers] of [[voucher,[f.business.verifyCurrent261PaymentAttributionGapPlan,f.business.verifyCurrent259PaymentVoucherPlan]],

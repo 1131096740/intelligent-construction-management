@@ -238,7 +238,7 @@ function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
   profile.sealSha256===witness.sourceSealSha256);
  const source={candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))};
- const material=loadCurrent259CatalogMaterial(source);
+ const material=loadCurrent259CatalogMaterial(source,paymentProfile);
  need(provisioned.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&provisioned.sourceSha===material.sourceSha&&Array.isArray(provisioned.roles));
  const plan=voucher?voucher.voucherAccessPlan(material.accessPlan):material.accessPlan;
  const findRole=name=>{const matches=provisioned.roles.filter(role=>role.name===name);need(matches.length===1&&oid(matches[0].oid));return matches[0];};

@@ -10,6 +10,11 @@ const {loadCurrent259CatalogMaterial}=require('./task16-current259-catalog.cjs')
 const {captureCurrent259ApplicationFailure,describeCurrent259ApplicationFailure}=require('./task16-current259-live-sessions.cjs');
 function fixture(t,options={}){
  const model=runtimeModel.fixture(),session=model.session,calls=[],proof=Object.freeze({}),handle=Object.freeze({});
+ if(options.paymentProfile!==undefined){
+  session.paymentProfile=options.paymentProfile;
+  session.effectiveAccessBinding=loadCurrent259CatalogMaterial(session.source,options.paymentProfile).effectiveAccessBinding;
+ }
+ options.onSession?.(session);
  const directory=fs.mkdtempSync('/private/tmp/jg-259-owned-app-model-');fs.chmodSync(directory,0o700);
  const storage=path.join(directory,'storage');fs.mkdirSync(storage,{mode:0o700});
  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
@@ -68,7 +73,7 @@ function fixture(t,options={}){
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(provided,token){assert.equal(provided,handle);options.businessGuard(token,provided);view.check();return view;},claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);resourceClaims++;view.check();return view;},async closeCurrent259OwnedResource(){resourceCloses++;resourceActive=false;}},
   './task16-current259-client-loader.cjs':{current259OwnedApplicationMethod(){},current259OwnedApplicationView(){},isCurrent259OwnedModule(){return false;},createCurrent259OwnedApplication(){throw new Error('wrong bridge');},takeCurrent259CreationFailure(){}},
   './run-task16-registered-pg-local.cjs':{ownsActiveTask16SimulationContext(){return false;}},
-  './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value){const material=loadCurrent259CatalogMaterial(value);return options.material?options.material(material):material;}}
+  './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(value,paymentProfile){const material=loadCurrent259CatalogMaterial(value,paymentProfile);return options.material?options.material(material):material;}}
  };
  const module={exports:{}};
  const paymentFile=path.join(__dirname,'task16-current259-payment-case.cjs');
@@ -485,4 +490,30 @@ test('old app that returned from close with its original listener active cannot 
   code:'TASK16_APP_CLOSE_UNKNOWN',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'
  });
  assert.equal(f.resourceCloses(),1);
+});
+
+const NORMAL261='TASK16_PAYMENT261_RUNTIME_V1';
+test('normal261 owned application publishes the live effective access binding',async t=>{
+ const f=fixture(t,{paymentProfile:NORMAL261});
+ await f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  assert.deepEqual(app.sourceBinding.effectiveAccessBinding,f.session.effectiveAccessBinding);
+  assert.equal(app.sourceBinding.effectiveAccessBinding.insertAdditionCount,9);
+  assert.ok(Object.isFrozen(app.sourceBinding.effectiveAccessBinding));
+ });
+});
+for(const mode of ['missing','hash','profile','count','wrong-source'])test('normal261 application rejects '+mode+' live binding before framework load',async t=>{
+ const f=fixture(t,{paymentProfile:NORMAL261,onSession(session){
+  if(mode==='wrong-source'){session.source={...session.source,migrations:session.source.migrations.slice(0,259)};return;}
+  if(mode==='missing'){delete session.effectiveAccessBinding;return;}
+  session.effectiveAccessBinding={...session.effectiveAccessBinding,...(mode==='hash'?{accessPlanSha256:'0'.repeat(64)}:mode==='profile'?{paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'}:{insertAdditionCount:8})};
+ }});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,()=>assert.fail('no callback')));
+ assert.equal(f.calls.includes('load'),false);
+});
+test('normal261 application revokes a changed live binding at continuity boundary',async t=>{
+ const f=fixture(t,{paymentProfile:NORMAL261});
+ await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,async app=>{
+  delete f.session.effectiveAccessBinding;
+  assert.throws(()=>app.inspect());
+ }));
 });

@@ -111,3 +111,23 @@ test('ordinary payment261 installation rejects an exact historical 259 source be
  assert.equal(fs.existsSync(f.output),false);
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
+test('261 normal and other named modes cache and verify distinct effective plan bindings without resources',t=>{
+ const f=fixture(t,{payment261:true});
+ const mode=require('../services/api/prisma/task16-current261-competition-profile.cjs').PAYMENT261_COMPETITION_RUNTIME_PROFILE;
+ const normal=f.api.prepareCurrent261PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output});
+ const other=f.api.prepareCurrent261PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output+'.competition'},mode);
+ const checked=f.api.verifyCurrent261PaymentInstallPlan(normal.file,normal.sha256);
+ assert.deepEqual(Object.keys(checked.plan.material.installation.effectiveAccessBinding).sort(),['accessPlanSha256','insertAdditionCount','paymentProfile']);
+ assert.equal(checked.plan.material.installation.effectiveAccessBinding.insertAdditionCount,9);
+ assert.equal(f.api.verifyCurrent261PaymentInstallPlan(other.file,other.sha256,mode).plan.material.installation.effectiveAccessBinding,undefined);
+ assert.equal(f.state.captures,2,'different modes cannot reuse the first observed mode cache');
+ assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(other.file,other.sha256));
+ assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(normal.file,normal.sha256,mode));
+ const original=fs.readFileSync(normal.file);
+ for(const field of ['paymentProfile','accessPlanSha256','insertAdditionCount']){
+  const raw=JSON.parse(original);raw.material.installation.effectiveAccessBinding[field]=field==='insertAdditionCount'?8:'tampered';
+  const bytes=Buffer.from(JSON.stringify(raw));fs.writeFileSync(normal.file,bytes);
+  assert.throws(()=>f.api.verifyCurrent261PaymentInstallPlan(normal.file,createHash('sha256').update(bytes).digest('hex')));
+ }
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});

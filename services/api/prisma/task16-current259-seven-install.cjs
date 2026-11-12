@@ -137,7 +137,7 @@ function material(witness,archive,paymentProfile){
  need(qualified&&
   profile.candidateSha===witness.candidateSha&&profile.sealSha256===witness.sourceSealSha256);
  const catalog=loadCurrent259CatalogMaterial({candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
-  migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))});
+  migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))},paymentProfile);
  const files=new Map(catalog.sevenFragments.map(({path:relative,sha256})=>{
   const name=fragmentNames.find(name=>relative===`services/api/prisma/prepared/task16/registered-${name}.sql`);
   const bytes=readFileSync(path.join(ROOT,relative));need(name&&hash(bytes)===sha256);

@@ -67,12 +67,15 @@ async function executeCurrent259PaymentCase(lease,permit){
     endpoint.host===relay.host&&endpoint.port===resource.port&&relay.port===resource.port);
   }else need(!isCurrent259PaymentLoopbackTopology(resource.topology)&&resource.port===session.endpoint.publishedPort);
   if(recovery)need(resource.runId===prior.runId&&resource.topology===prior.topology&&equal(resource.relay,prior.relay));
-  const material=loadCurrent259CatalogMaterial(source);
+  const material=loadCurrent259CatalogMaterial(source,permission.paymentProfile);
+  need(equal(permission.effectiveAccessBinding,material.effectiveAccessBinding)&&
+   equal(lease.effectiveAccessBinding,material.effectiveAccessBinding)&&equal(session.effectiveAccessBinding,material.effectiveAccessBinding));
+  if(material.effectiveAccessBinding)need(session.paymentProfile===permission.paymentProfile);
   const check=()=>{
    permission.check();lease.check();
    need(session===lease.session&&loader===lease.loader&&source===lease.source&&Object.getOwnPropertyDescriptor(loader,'loadPaymentModules')?.value===load&&
     Object.keys(original).every(k=>session[k]===original[k])&&(!faulting||Object.getOwnPropertyDescriptor(session,faultName)?.value===commitFault)&&equal(lease.resourceIdentity(),resource)&&equal(session.identity[0],identity)&&
-    Object.getOwnPropertyDescriptor(globalThis,'fetch')?.value===originalFetch);
+    Object.getOwnPropertyDescriptor(globalThis,'fetch')?.value===originalFetch&&equal(permission.effectiveAccessBinding,material.effectiveAccessBinding)&&equal(lease.effectiveAccessBinding,material.effectiveAccessBinding)&&equal(session.effectiveAccessBinding,material.effectiveAccessBinding));
   };
   caseStage='PRE_SEED_AUTHORITY';
   check();await permission.verifyFull();

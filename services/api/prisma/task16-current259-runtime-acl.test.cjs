@@ -74,8 +74,12 @@ test('payment261 runtime ACL retains the old grants and requires its scoped ordi
  assert.throws(()=>renderCurrent259CompetitionRuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  assert.throws(()=>renderCurrent259VoucherRuntimeAcl(witness,provisioned,nonce),/TASK16_CURRENT259_RUNTIME_ACL/u);
  const qualified=renderCurrent259RuntimeAcl(witness,provisioned,nonce),legacy=renderCurrent259RuntimeAcl(source,receipt(),nonce);
+ const effective=require('./task16-current259-catalog.cjs').loadCurrent259CatalogMaterial({...material,migrations:[...material.migrations,...extra]},PAYMENT261_RUNTIME_PROFILE).accessPlan;
+ for(const row of effective.runtime.tables){
+  if(row.insert?.length)assert.ok(qualified.sql.includes(`GRANT INSERT (${row.insert.map(c=>'"'+c+'"').join(', ')}) ON TABLE public."${row.table}" TO "jg_task01_runtime";`));
+ }
  const grants=sql=>sql.match(/^GRANT [^;]+;/gmu);
- assert.deepEqual(grants(qualified.sql),grants(legacy.sql));
+ assert.deepEqual(grants(qualified.sql).filter(sql=>!sql.startsWith('GRANT INSERT ')),grants(legacy.sql).filter(sql=>!sql.startsWith('GRANT INSERT ')));
  assert.match(qualified.witnessSql,/jg_guard_contract_bank_event_company_transfer\(\)/u);
  assert.match(qualified.witnessSql,/jg_upward_archive_recipe_v2\(\)/u);
  assert.equal(qualified.nativeAdmission,false);

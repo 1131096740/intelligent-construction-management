@@ -4,11 +4,11 @@ const path=require('node:path'),{createHash}=require('node:crypto');
 const {types,isDeepStrictEqual:equal}=require('node:util');
 const {baselineGuardsSql,referenceGuardSql}=require('./task16-registered-access-check.cjs');
 const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
-const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+const {qualifyCurrent259Source,PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
 const {isExactCurrentPaymentRuntimeSource,isCurrentPaymentRuntimeMode,isCurrentPaymentVoucherMode}=require('./task16-current261-competition-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='3dc89bfaab1c3b14cce5773392a406bc8f4590766b4bd31935348b40acb50144';
+const MANIFEST_SHA='61e7f62e7292f00c5c73f5011bdfafd71eab70b3d8663faab4eb892470312f1a';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -39,8 +39,9 @@ function snapshot(value){
 const quote=x=>"'"+x.replaceAll("'","''")+"'";
 const oid=x=>typeof x==='string'&&/^[1-9][0-9]{0,9}$/u.test(x)&&BigInt(x)<=0xffffffffn;
 const wide=x=>typeof x==='string'&&/^[1-9][0-9]{0,19}$/u.test(x)&&BigInt(x)<=0xffffffffffffffffn;
-function material(source){
+function material(source,paymentProfile){
  const p=qualifyCurrent259Source(source),capture=relative=>read(path.join(ROOT,relative),{maxBytes:2*1024*1024,collect:true,code:'TASK16_CURRENT259_CATALOG'});
+ if(paymentProfile!==undefined)need(isExactCurrentPaymentRuntimeSource(p,paymentProfile));
  const m=capture(MANIFEST);need(m.sha256===MANIFEST_SHA);const manifest=JSON.parse(m.bytes.toString('utf8'));
  need(p.ledgerSha256===(p.profile==='TASK12_ARCHIVE261_SOURCE_V1'?manifest.archive261LedgerSha256:manifest.fullLedgerSha256));
  for(let i=0;i<p.ledger.length;i++){const r=p.ledger[i];need(capture(source.migrations[i].path).sha256===r.sha256);}
@@ -54,19 +55,32 @@ function material(source){
  const version=plan.runtime.tables.find(table=>table.table==='ContractVersion');
  need(version&&!version.select.includes('originalSignedNumber'));
  version.select=[...version.select,'originalSignedNumber'].sort();
- return{p,manifest,files,sql,plan};
+ const required=[['AuditLog','createdAt'],['RefreshToken','createdAt'],['RegisteredFundAccount','createdAt'],
+  ['FundAccountBalanceRegistration','createdAt'],['FundAccountBalanceRegistration','coveredExecutionIds'],
+  ['PaymentExecution','createdAt'],['RegisteredPaymentEvent','createdAt'],['RegisteredPaymentEvent','eventType'],['InterEntityRelationshipEntry','createdAt']];
+ need(equal(manifest.normal261RuntimeInsertAdditions,{paymentProfile:PAYMENT261_RUNTIME_PROFILE,columns:required}));
+ let effectiveAccessBinding;
+ if(paymentProfile===PAYMENT261_RUNTIME_PROFILE){
+  for(const [table,column]of required){
+   const rows=plan.runtime.tables.filter(row=>row.table===table);need(rows.length===1&&rows[0].insert.length>0&&!rows[0].insert.includes(column));
+   rows[0].insert=[...rows[0].insert,column].sort();
+  }
+  effectiveAccessBinding={paymentProfile,insertAdditionCount:required.length,accessPlanSha256:hash(JSON.stringify({runtime:plan.runtime,observer:plan.observer}))};
+ }
+ return{p,manifest,files,sql,plan,effectiveAccessBinding};
 }
-function loadCurrent259CatalogMaterial(source){
- source=snapshot(source);const m=material(source);
+function loadCurrent259CatalogMaterial(source,paymentProfile){
+ source=snapshot(source);const m=material(source,paymentProfile);
  need(m.files[1].path==='services/api/prisma/task16-registered-access.json');
  return snapshot({profile:m.manifest.profile,sourceSha:m.p.candidateSha,sealSha256:m.p.sealSha256,
   registeredManifestSha256:m.files[1].sha256,ledger:m.p.ledger,ledgerSha256:m.p.ledgerSha256,prefix256Sha256:m.p.prefix256Sha256,
   readerBodySha256:BODY,readerSqlSha256:hash(m.sql),sevenFragments:m.manifest.files.slice(2,9),
   accessPlan:{runtime:m.plan.runtime,observer:m.plan.observer},
+  ...(m.effectiveAccessBinding?{effectiveAccessBinding:m.effectiveAccessBinding}:{}),
   executionAllowed:false,nativeAdmission:false});
 }
 function materialForRequest(r){
- const m=material(r.source);
+ const m=material(r.source,r.identity.paymentProfile);
  need(isExactCurrentPaymentRuntimeSource(m.p,r.identity.paymentProfile));
  if(r.identity.voucherProfile){
   const {current259VoucherAcl,voucherAccessPlan}=require('./task16-current259-voucher-acl.cjs');

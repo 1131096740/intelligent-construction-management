@@ -13,12 +13,13 @@ const {source,identity,request,observed}=catalog;
 const clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(options={}){
  const handle=Object.freeze({}),completion=Object.freeze({installXid:'1000'}),calls=[],clients=[];
- let plan=catalog.plan;
+ const paymentProfile=options.payment261===true?PAYMENT261_RUNTIME_PROFILE:options.payment261;
+ const requestedSource=paymentProfile?{...source,migrations:catalog.currentMigrations}:source;
+ let plan=paymentProfile===PAYMENT261_RUNTIME_PROFILE?{...catalog.plan,...catalog.api.loadCurrent259CatalogMaterial(requestedSource,paymentProfile).accessPlan}:catalog.plan;
  if(options.voucher)plan=require('./task16-current259-voucher-acl.cjs').voucherAccessPlan(plan);
  const proofRow=observed('committed',plan),staged=observed('staged',plan),parser=catalog.api.parseCurrent259CatalogRead;
  const initial=observed('before',plan);
- const paymentProfile=options.payment261===true?PAYMENT261_RUNTIME_PROFILE:options.payment261;
- const requested={...request,source:paymentProfile?{...source,migrations:catalog.currentMigrations}:source,
+ const requested={...request,source:requestedSource,
   identity:{...request.identity,...(paymentProfile?{paymentProfile}:{}),
    ...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),
    ...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})}};
@@ -155,6 +156,9 @@ test('ordinary payment261 retains the same three backends across re-verification
  await f.api.withCurrent259LiveSessions(f.completion,f.handle,async proof=>{
   const session=f.api.claimCurrent259LiveSessions(proof,f.handle);
   const identity=session.identity;
+  assert.equal(session.paymentProfile,PAYMENT261_RUNTIME_PROFILE);
+  assert.deepEqual(session.effectiveAccessBinding,catalog.api.loadCurrent259CatalogMaterial({...source,migrations:catalog.currentMigrations},PAYMENT261_RUNTIME_PROFILE).effectiveAccessBinding);
+  assert.ok(Object.isFrozen(session.effectiveAccessBinding));
   await session.verifyFull();
   assert.equal(session.identity,identity);
   assert.deepEqual(identity.map(row=>row.pid),[101,102,103]);
