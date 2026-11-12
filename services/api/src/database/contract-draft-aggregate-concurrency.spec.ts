@@ -176,7 +176,7 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
       expect(unknownRead.version).toMatchObject({ amountYuan: null, amountCents: null });
       expect(unknownRead.bills[0]).toMatchObject({ taxInclusiveAmountYuan: null, taxInclusiveAmountCents: null });
       expect(unknownRead.bills[0].rows[0]).toMatchObject({ quantity: null, unitPrice: null, taxInclusiveAmountYuan: null });
-      expect(unknownRead.bills[0].rows[1]).toMatchObject({ unitPrice: "0", taxInclusiveAmountYuan: "0.0000" });
+      expect(unknownRead.bills[0].rows[1]).toMatchObject({ unitPrice: "0.00", taxInclusiveAmountYuan: "0.0000" });
     } finally {
       await http.close(); await cleanupDraft(client, ids); await client.$disconnect();
     }
@@ -228,7 +228,8 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
     try {
       await seedDraft(first, ids, true);
       await first.contractVersion.update({ where: { id: ids.version }, data: {
-        numericProtocolVersion: 2, pricingNature: "unit_price", amountSource: "bill_sum", defaultTaxRatePercent: "0", amountYuan: null
+        numericProtocolVersion: 2, pricingNature: "unit_price", amountSource: "bill_sum", taxMode: "multiple_rate",
+        defaultTaxRatePercent: "0", amountYuan: null
       } });
       await first.contractBill.updateMany({ where: { contractVersionId: ids.version }, data: {
         numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4
@@ -261,7 +262,7 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
       };
       const deleteBody = { ...aggregateInput(randomUUID()), changedSections: ["draft", "bills"],
         draft: { ...aggregateInput(randomUUID()).draft, pricingNature: "unit_price", amountSource: "bill_sum", manualAmountCents: undefined,
-          taxFacts: { ...aggregateInput(randomUUID()).draft.taxFacts, defaultTaxRatePercent: "0" } },
+          taxFacts: { ...aggregateInput(randomUUID()).draft.taxFacts, taxMode: "multiple_rate", defaultTaxRatePercent: "0" } },
         bills: [ { billKey: "main", numericProtocolVersion: 2, expectedRevision: 1, rows: [] },
           { billKey: "secondary", numericProtocolVersion: 2, expectedRevision: 1, rows: [] } ] };
       const deletion = await put(bases[0]!, deleteBody); expect(deletion.status).toBe(200);

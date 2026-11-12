@@ -42,6 +42,7 @@ import { InMemoryVersionedObjectStorage } from "../file/versioned-object-storage
 import { PrismaService } from "./prisma.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
+const LEGACY_CLEANUP_DATABASE = "jiangkong_contract_cleanup_pre_m206_test";
 const requireFromHere = createRequire(__filename);
 const receiptPurge = requireFromHere(
   resolve(__dirname, "../../scripts/purge-pristine-draft-deletion-receipts.cjs")
@@ -52,7 +53,7 @@ const receiptPurge = requireFromHere(
   ) => Promise<{ scannedCount: number; deletedCount: number }>;
 };
 
-function localLifecycleDatabaseUrl(value: string | undefined) {
+function localLifecycleDatabaseUrl(value: string | undefined, database = TEST_DATABASE) {
   if (!value || process.env.NODE_ENV === "production") {
     throw new Error("合同生命周期路由测试必须连接非生产专用数据库");
   }
@@ -60,7 +61,7 @@ function localLifecycleDatabaseUrl(value: string | undefined) {
   if (
     !["postgresql:", "postgres:"].includes(url.protocol) ||
     !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
-    url.pathname !== `/${TEST_DATABASE}`
+    url.pathname !== `/${database}`
   ) {
     throw new Error("合同生命周期路由测试拒绝非本机专用数据库");
   }
@@ -75,7 +76,8 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
     "projects lifecycle capabilities and executes governed workbench submission routes",
     async () => {
       const databaseUrl = localLifecycleDatabaseUrl(
-        process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+        process.env.CONTRACT_LEGACY_CLEANUP_DATABASE_URL,
+        LEGACY_CLEANUP_DATABASE
       );
       const prisma = new PrismaClient({
         datasources: { db: { url: databaseUrl } }
