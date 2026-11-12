@@ -8,6 +8,7 @@ import { ContractWorkbenchService } from "../contract-workbench/contract-workben
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { Test } from "@nestjs/testing";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { ContractDraftBillExcelController } from "../contract-bill/contract-draft-bill-excel.controller";
 import { ContractBillExcelService } from "../contract-bill/contract-bill-excel.service";
 import { apiJsonReplacer } from "../api-json-replacer";
@@ -102,7 +103,8 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
         { provide: ContractDraftEditLeaseService, useValue: {} },
         { provide: ContractService, useValue: {} },
         { provide: PristineDraftDeletionService, useValue: {} },
-        { provide: ContractDocumentService, useValue: {} }
+        { provide: ContractDocumentService, useValue: {} },
+        { provide: ContractV2SubmissionService, useValue: {} }
       ] }).compile();
     const http = routed.createNestApplication({ logger: false });
     http.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -197,7 +199,7 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
         { assertCanBindContractDraftAttachments: async () => undefined } as never, audit);
       const module = await Test.createTestingModule({ controllers: [ContractDraftController], providers: [
         { provide: ContractDraftAggregateService, useValue: aggregate },
-        ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService]
+        ...[ContractDraftEditLeaseService, ContractService, PristineDraftDeletionService, ContractDocumentService, ContractV2SubmissionService]
           .map(provide => ({ provide, useValue: {} }))
       ] }).compile();
       const app = module.createNestApplication({ logger: false });

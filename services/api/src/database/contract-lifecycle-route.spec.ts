@@ -16,6 +16,7 @@ import { PrismaBusinessEntrySnapshotStore } from "../business-entry-definition/b
 import { BUSINESS_ENTRY_TRANSACTION_REGISTRY } from "../business-entry-definition/business-entry-transaction-scene-registry";
 import { BusinessEntryTransactionService } from "../business-entry-definition/business-entry-transaction.service";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
 import {
@@ -447,6 +448,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             { provide: ContractDraftAggregateService, useValue: {} },
             { provide: ContractDraftEditLeaseService, useValue: {} },
             { provide: ContractDocumentService, useValue: {} },
+            { provide: ContractV2SubmissionService, useValue: {} },
             { provide: PristineDraftDeletionService, useValue: deletion },
             { provide: PrismaService, useValue: prisma }
           ]
