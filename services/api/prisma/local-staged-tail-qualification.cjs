@@ -42,15 +42,18 @@ const BINDINGS=[
 ];
 function context(input){
  verifyMaterials();const v=frozen(input);keys(v,['plan','setup','migrations']);controls.checkSetup(v.setup,v.plan);
- need(v.plan.actorOid==='10'&&Array.isArray(v.migrations)&&v.migrations.length===259);
- const ledger=v.migrations.map((r,i)=>{keys(r,['name','sha256']);need(/^\d{14}_[a-z0-9_]+$/u.test(r.name)&&digest(r.sha256)&&(!i||v.migrations[i-1].name<r.name));return {...r,finished:true,rolledBack:false};});
+ need(v.plan.actorOid==='10'&&Array.isArray(v.migrations)&&v.migrations.length>=259);
+ // The staged grant controls are sealed to the first 259 migrations. The
+ // parent runner still verifies the complete current ledger after deployment.
+ const qualifiedMigrations=Object.freeze(v.migrations.slice(0,259));
+ const ledger=qualifiedMigrations.map((r,i)=>{keys(r,['name','sha256']);need(/^\d{14}_[a-z0-9_]+$/u.test(r.name)&&digest(r.sha256)&&(!i||v.migrations[i-1].name<r.name));return {...r,finished:true,rolledBack:false};});
  need(hash(JSON.stringify(ledger))===FULL&&equal(v.plan.migrations,v.migrations.slice(0,205)));
- for(const r of v.migrations)need(hash(fs.readFileSync(path.join(__dirname,'migrations',r.name,'migration.sql')))===r.sha256);
+ for(const r of qualifiedMigrations)need(hash(fs.readFileSync(path.join(__dirname,'migrations',r.name,'migration.sql')))===r.sha256);
  const ci=Object.hasOwn(v.plan,'ciFixture');
  const ciRecovery=ci&&technicalProfiles.ciDynamicRecoveryMigration(v.plan.ciFixture,v.plan.database);
  const rollback=ci?ledger.find(row=>row.name===ciRecovery):ledger[114];
  need(!ciRecovery||rollback);
- return Object.freeze({...v,ledger:Object.freeze(ledger),rollback,requireSingleRollback:Boolean(ciRecovery)});
+ return Object.freeze({...v,migrations:qualifiedMigrations,ledger:Object.freeze(ledger),rollback,requireSingleRollback:Boolean(ciRecovery)});
 }
 function targets(stage){
  need(WINDOWS.includes(stage));return stage===213?matrix.post213Targets:

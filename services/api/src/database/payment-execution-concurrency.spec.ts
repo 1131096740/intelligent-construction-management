@@ -1,3 +1,4 @@
+import { assertTask07BankClaimNegatives, prepareTask07FormalPayment } from "./task07-formal-payment.test-support";
 import { CompanyEntityService } from "../company-entity/company-entity.service";
 import { CompanyEntityAccess } from "../company-entity/company-entity-access";
 import { randomUUID } from "node:crypto";
@@ -94,14 +95,21 @@ describe("payment execution PostgreSQL concurrency", () => {
     try {
       await Promise.all(clients.map(client=>client.$connect()));
       await assertFullyMigrated(clients[2]!);
-      await seedFixture(clients[0]!,fixture);
+      await seedFixture(clients[0]!,fixture, true);
+      await prepareTask07FormalPayment(clients[0]!, fixture);
       const chairman=await clients[0]!.position.upsert({where:{key:"chairman"},update:{},create:{key:"chairman",name:"董事长"}});
       await clients[0]!.userPosition.create({data:{userId:fixture.actorUserId,positionId:chairman.id,projectId:null}});
       const archive=new CompanyEntityService(clients[0] as never,new CompanyEntityAccess(clients[0] as never),new AuditService());
       const frozen=await clients[0]!.companyEntityVersion.findUniqueOrThrow({where:{id:fixture.companyVersionId}});
       await archive.updateStatus(fixture.companyId,fixture.actorUserId,{isActive:false});
       expect(await clients[0]!.companyEntityVersion.findUnique({where:{id:fixture.companyVersionId}})).toEqual(frozen);
+      await assertTask07BankClaimNegatives(clients[0]!, fixture);
       await verifyRemainingCompetition(clients,fixture,gates,pending);
+      const originalExecution = await clients[0]!.paymentExecution.findFirstOrThrow({ where: { paymentRequestId: fixture.scenarios.remaining.paymentId } });
+      const originalClaim = await clients[0]!.contractBankEventClaim.findUniqueOrThrow({
+        where: { sourceType_sourceId: { sourceType: "payment_execution", sourceId: originalExecution.id } }
+      });
+      await expect(clients[0]!.contractBankEventClaim.delete({ where: { observationId: originalClaim.observationId } })).rejects.toThrow("contract_bank_event_immutable");
       await verifyIdempotentReplay(clients,fixture,gates,pending);
       await verifyFundingShortageZeroWrite(clients[0]!,fixture);
     } finally {
@@ -125,7 +133,8 @@ type AuditRecorder = {
   ): Promise<unknown>;
 };
 
-type Fixture = ReturnType<typeof fixtureIds>;
+export type Task07PaymentFixture = ReturnType<typeof fixtureIds>;
+type Fixture = Task07PaymentFixture;
 type Scenario = Fixture["scenarios"][keyof Fixture["scenarios"]];
 
 function fixtureIds() {
@@ -154,6 +163,7 @@ function fixtureIds() {
       crossB: scenario("cross_b"),
       shortage: scenario("shortage")
     },
+    bankReferences: new Map<string, string>(),
     vouchers: {
       remainingA: `${prefix}_voucher_remaining_a`,
       remainingB: `${prefix}_voucher_remaining_b`,
@@ -353,7 +363,7 @@ async function expectImmutableMutationFailure(
   );
 }
 
-async function seedFixture(client: PrismaClientType, fixture: Fixture) {
+async function seedFixture(client: PrismaClientType, fixture: Fixture, formalPayment = false) {
   const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET!;await client.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;
   await client.user.create({
     data: {
@@ -384,7 +394,8 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
       cashAmountCents,
       fixture.companyId,
       fixture.companyVersionId,
-      fixture.companyCreditCode
+      fixture.companyCreditCode,
+      formalPayment
     );
   }
 
@@ -404,6 +415,7 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
   const position=await client.position.upsert({where:{key:"finance_director"},create:{key:"finance_director",name:"财务负责人"},update:{}});
   await client.user.create({data:{id:fixture.verifierUserId,name:"独立账户核验人",isActive:true}});
   await client.userPosition.create({data:{userId:fixture.verifierUserId,positionId:position.id}});
+  if (formalPayment) return;
   const verificationId=randomUUID();
   const newBankEvidence=async()=>{const id=randomUUID();await client.fileObject.create({data:{id,bucket:"local-private",objectKey:`${fixture.prefix}/${id}.pdf`,originalName:"银行核验.pdf",mimeType:"application/pdf",sizeBytes:128,uploadedByUserId:fixture.verifierUserId,contentSha256:"a".repeat(64),storageStatus:"active"}});return id;};
   const evidenceId=await newBankEvidence();
@@ -419,7 +431,8 @@ async function seedScenario(
   cashAmountCents: bigint,
   companyId: string,
   companyVersionId: string,
-  companyCreditCode: string
+  companyCreditCode: string,
+  formalPayment: boolean
 ) {
   await client.project.create({
     data: {
@@ -504,7 +517,7 @@ async function seedScenario(
       paidAmountCents: 0n
     }
   });
-  await client.paymentRequest.create({
+  if (!formalPayment) await client.paymentRequest.create({
     data: {
       id: scenario.paymentId,
       projectId: scenario.projectId,
@@ -564,6 +577,7 @@ async function verifyRemainingCompetition(
     scenario.paymentId,
     fixture.actorUserId,
     executionInput(
+      fixture.bankReferences,
       payment.updatedAt,
       randomUUID(),
       "700",
@@ -577,6 +591,7 @@ async function verifyRemainingCompetition(
     scenario.paymentId,
     fixture.actorUserId,
     executionInput(
+      fixture.bankReferences,
       payment.updatedAt,
       randomUUID(),
       "700",
@@ -640,6 +655,7 @@ async function verifyIdempotentReplay(
     new AuditService()
   );
   const input = executionInput(
+    fixture.bankReferences,
     payment.updatedAt,
     randomUUID(),
     "400",
@@ -727,6 +743,7 @@ async function verifyCrossProjectVoucherUniqueness(
     firstScenario.paymentId,
     fixture.actorUserId,
     executionInput(
+      fixture.bankReferences,
       firstPayment.updatedAt,
       randomUUID(),
       "300",
@@ -740,6 +757,7 @@ async function verifyCrossProjectVoucherUniqueness(
     secondScenario.paymentId,
     fixture.actorUserId,
     executionInput(
+      fixture.bankReferences,
       secondPayment.updatedAt,
       randomUUID(),
       "300",
@@ -793,6 +811,7 @@ async function verifyFundingShortageZeroWrite(
       scenario.paymentId,
       fixture.actorUserId,
       executionInput(
+        fixture.bankReferences,
         payment.updatedAt,
         randomUUID(),
         "500",
@@ -890,6 +909,7 @@ function pausingAudit(
 }
 
 function executionInput(
+  bankReferences: Map<string, string>,
   expectedPaymentUpdatedAt: string,
   idempotencyKey: string,
   amountCents: string,
@@ -902,7 +922,7 @@ function executionInput(
     amountCents,
     paidAt,
     voucherFileId,
-    bankReceiptReference:`bank-${voucherFileId}`,
+    bankReceiptReference: bankReferences.get(voucherFileId) ?? `bank-${voucherFileId}`,
     confirmationPassword: "local-concurrency-confirmation"
   };
 }
