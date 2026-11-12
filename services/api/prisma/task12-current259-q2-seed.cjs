@@ -198,12 +198,32 @@ function createCurrent259GeneratedDocumentSeed(fixture,identity,handlerHash,dire
   return generatedDraftSeed(fixture,identity,new Map([[fixture.handler.id,handlerHash],[directors[0].userId,directorHash]]));
 }
 
-function generatedDraftSeed(fixture,identity,passwords) {
+function createCurrent261LocalLifecycleSeed(fixture,identity,hashes) {
+  need(arguments.length===3 && fixture&&!types.isProxy(fixture)&&Object.isFrozen(fixture)&&
+    fixture.approval&&Object.isFrozen(fixture.approval)&&fixture.approval.users.length===8&&fixture.approval.members.length===2&&fixture.approval.globalRoles.length===5,'INPUT');
+  const master=fixture.master,keys=['BusinessParty','BusinessPartyVersion','CompanyEntity','CompanyEntityVersion','ProjectParticipatingCompany'];
+  need(master&&!types.isProxy(master)&&Object.isFrozen(master)&&equal(Object.keys(master).sort(),keys)&&keys.every(key=>
+    Array.isArray(master[key])&&Object.isFrozen(master[key])&&master[key].length===1&&Object.isFrozen(master[key][0])),'INPUT');
+  need(hashes&&!types.isProxy(hashes)&&Object.getPrototypeOf(hashes)===Object.prototype,'INPUT');
+  const descriptors=Object.getOwnPropertyDescriptors(hashes),users=fixture.approval.users;
+  need(Reflect.ownKeys(descriptors).length===users.length&&users.every(user=>descriptors[user.id]&&Object.hasOwn(descriptors[user.id],'value')),'INPUT');
+  const values=users.map(user=>descriptors[user.id].value);
+  need(values.every(value=>typeof value==='string'&&/^\$2[aby]\$10\$[./A-Za-z0-9]{53}$/u.test(value))&&new Set(values).size===users.length,'INPUT');
+  need(master.CompanyEntityVersion[0].companyEntityId===master.CompanyEntity[0].id&&
+    master.ProjectParticipatingCompany[0].projectId===fixture.approval.project.id&&
+    master.ProjectParticipatingCompany[0].companyEntityId===master.CompanyEntity[0].id&&
+    master.ProjectParticipatingCompany[0].companyEntityVersionId===master.CompanyEntityVersion[0].id&&
+    master.BusinessPartyVersion[0].businessPartyId===master.BusinessParty[0].id,'INPUT');
+  return generatedDraftSeed(fixture.approval,identity,new Map(users.map((user,i)=>[user.id,values[i]])),master);
+}
+
+function generatedDraftSeed(fixture,identity,passwords,master) {
   const owner=qualifyIdentity(identity);
   const groups={
     User:fixture.users.map(row=>({...row,passwordHash:passwords.get(row.id)??null})),
     Project:[fixture.project],
     ProjectMember:fixture.members,
+    ...(master??{}),
   };
   const roleKeys=fixture.globalRoles.map(row=>quote(row.roleKey)).join(',');
   const positionCount='(SELECT count(*) FROM public."Position" WHERE "key" IN ('+roleKeys+'))';
@@ -237,7 +257,7 @@ function generatedDraftSeed(fixture,identity,passwords) {
     fixture.globalRoles.map(row=>'INSERT INTO public."UserPosition"("id","userId","positionId","projectId") SELECT '+
       quote(row.id)+','+quote(row.userId)+',p."id",NULL FROM public."Position" p WHERE p."key"='+quote(row.roleKey)+';'));
   return createSeedProtocol(owner,locked,empty,writes,
-    at=>[...Object.entries(groups).map(([name,rows])=>match(name,rows,at)),positions(at),roleMatch(at),absent(prohibited)].join(' AND '),21,false);
+    at=>[...Object.entries(groups).map(([name,rows])=>match(name,rows,at)),positions(at),roleMatch(at),absent(prohibited)].join(' AND '),master?26:21,false);
 }
 
 // Read the one expected upload on a separate owner connection while the app
@@ -428,4 +448,4 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
   }});
 }
 
-module.exports=Object.freeze({createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});
+module.exports=Object.freeze({createCurrent261LocalLifecycleSeed,createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});

@@ -4,7 +4,7 @@ const {types}=require('node:util');
 const {isCurrent259OwnedModule,createCurrent259OwnedApplication,current259OwnedApplicationView,
  takeCurrent259CreationFailure}=require('./task16-current259-client-loader.cjs');
 const CODE='CURRENT259_GENERATED_DOCUMENT_APP';
-const faults=new WeakMap(),httpBridges=new WeakMap();
+const faults=new WeakMap(),httpBridges=new WeakMap(),lifecycleHttpBridges=new WeakMap();
 const exercisePattern=/^CURRENT259_GENERATED_DOCUMENT_EXERCISE_(?:INPUT|TEMPLATE|OPEN|SAVE|OWNER_BEGIN|GENERATE|PUBLIC_READBACK|OWNER_READBACK|RESULT)$/u;
 const fixedExerciseCode=value=>typeof value==='string'&&exercisePattern.test(value)?value:undefined;
 const fault=stage=>{
@@ -47,11 +47,15 @@ function takeCurrent259GeneratedDocumentHttpBridge(config,server){
  need(arguments.length===2&&httpBridges.get(config)===server&&httpBridges.delete(config),'HANDLE');
 }
 
+function takeCurrent261LocalLifecycleHttpBridge(config,server){
+ need(arguments.length===2&&lifecycleHttpBridges.get(config)===server&&lifecycleHttpBridges.delete(config),'HANDLE');
+}
+
 async function runCurrent259GeneratedDocumentApplication(bridge){
  need(arguments.length===1,'HANDLE');
  const {takeCurrent259GeneratedDocumentApplicationBridge}=require('./task12-current259-document-login.cjs');
  try{takeCurrent259GeneratedDocumentApplicationBridge(bridge);}catch{throw fault('HANDLE');}
- const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft}=bridge;
+ const {check,loader,loaded,ordinary,providers,queue,exercise,publicDraft,publicLifecycle}=bridge;
  let testing,view,orphan,closeApp,closeModule,restoreQueue,restoreOrdinary,server;
  let compilationStarted=false,pending=false,cleanupUnknown=false,primary,stage='PROVIDERS',value;
  const bounded=async operation=>{
@@ -116,7 +120,8 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
   stage='INIT';
   await bounded(()=>method(view,'init').call(view));verifyProviders(view);
   need(document.queueDraftPreview===routeQueue,'PROVIDERS');
-  if(publicDraft){
+  if(publicDraft||publicLifecycle){
+   need(!(publicDraft&&publicLifecycle),'HTTP');
    stage='LISTEN';
    server=method(view,'getHttpServer').call(view);
    need(server&&server.listening===false,'LISTEN');
@@ -125,7 +130,8 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
    await bounded(()=>listen(view,0,'127.0.0.1'));
    need(method(view,'getHttpServer').call(view)===server,'LISTEN');
    stage='HTTP';
-   const {withCurrent259DocumentHttp}=require('./task12-current259-document-http.cjs');
+   const withHttp=publicLifecycle?require('./task12-current261-local-lifecycle-http.cjs').withCurrent261LocalLifecycleHttp:
+    require('./task12-current259-document-http.cjs').withCurrent259DocumentHttp;
    const jwtToken=own(loaded,'JwtTokenService'),jwtService=get(view,jwtToken),verifyAccess=method(jwtService,'verifyAccessToken');
    need(typeof jwtToken==='function'&&get(testing,jwtToken)===jwtService,'HTTP');
    const checkPublic=()=>{
@@ -134,15 +140,17 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
      method(jwtService,'verifyAccessToken')===verifyAccess,'HTTP');
    };
    const verifyToken=token=>{checkPublic();return verifyAccess.call(jwtService,token);};
-   httpBridges.set(publicDraft,server);
-   try{value=await withCurrent259DocumentHttp(publicDraft,server,checkPublic,verifyToken,exercise);}
-   finally{httpBridges.delete(publicDraft);}
+   const config=publicLifecycle??publicDraft,bridges=publicLifecycle?lifecycleHttpBridges:httpBridges;
+   bridges.set(config,server);
+   try{value=await withHttp(config,server,checkPublic,verifyToken,exercise);}
+   finally{bridges.delete(config);}
   }else{
    stage='USE';value=await exercise();
   }
   verifyProviders(view);need(document.queueDraftPreview===routeQueue,'PROVIDERS');
  }catch(error){
   primary=fault(faults.get(error)??stage);
+  if(publicLifecycle){Object.defineProperty(primary,'cause',{value:error});if(own(error,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(primary,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
   const exerciseCode=publicDraft&&stage==='HTTP'&&fixedExerciseCode(own(error,'code'));
   if(exerciseCode)Object.defineProperty(primary,'exerciseCode',{value:exerciseCode,enumerable:true});
   if(own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')cleanupUnknown=true;
@@ -163,4 +171,4 @@ async function runCurrent259GeneratedDocumentApplication(bridge){
  if(primary)throw primary;
  return value;
 }
-module.exports=Object.freeze({runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});
+module.exports=Object.freeze({takeCurrent261LocalLifecycleHttpBridge,runCurrent259GeneratedDocumentApplication,takeCurrent259GeneratedDocumentHttpBridge,fixedExerciseCode});

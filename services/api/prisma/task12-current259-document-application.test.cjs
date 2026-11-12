@@ -44,8 +44,9 @@ function model(failure){
   configureProjectionExportJson(){trace.push('projection');},apiJsonReplacer(){},createApiValidationPipe(){return {};}};
  const bridge=Object.freeze({check(){},loader,loaded,ordinary,providers,async queue(...args){trace.push(['queue',...args]);return 77;},
   ...(['public','stuck-listener','public-fixed-error','public-other-error'].includes(failure)?{publicDraft:Object.freeze({})}:{}),
+  ...(failure==='lifecycle'?{publicLifecycle:Object.freeze({})}:{}),
   async exercise(http){
-   if(['public','stuck-listener','public-fixed-error','public-other-error'].includes(failure)){assert.deepEqual(http,{fixed:true});trace.push('exercise-public');
+   if(['public','stuck-listener','public-fixed-error','public-other-error','lifecycle'].includes(failure)){assert.deepEqual(http,{fixed:true});trace.push('exercise-public');
     if(failure.endsWith('-error'))throw Object.assign(Error('private details'),
      {code:failure==='public-fixed-error'?'CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE':'arbitrary'});
     return false;}
@@ -54,6 +55,10 @@ function model(failure){
   }});
  let claimed=false;
  const imports={
+  './task12-current261-local-lifecycle-http.cjs':{async withCurrent261LocalLifecycleHttp(config,live,check,verifyToken,consume){
+   assert.equal(config,bridge.publicLifecycle);assert.equal(live,server);check();assert.throws(()=>mod.exports.takeCurrent259GeneratedDocumentHttpBridge(config,live),/HANDLE/u);
+   mod.exports.takeCurrent261LocalLifecycleHttpBridge(config,live);assert.throws(()=>mod.exports.takeCurrent261LocalLifecycleHttpBridge(config,live),/HANDLE/u);trace.push('lifecycle-http');return consume({fixed:true});
+  }},
   './task12-current259-document-http.cjs':{async withCurrent259DocumentHttp(config,live,check,verifyToken,consume){
    assert.equal(config,bridge.publicDraft);assert.equal(live,server);check();assert.deepEqual(verifyToken('synthetic'),{});trace.push('public-http');return consume({fixed:true});
   }},
@@ -124,4 +129,11 @@ test('projects only exact public exercise codes and retains independently failed
    assert.doesNotMatch(JSON.stringify(error),/private details|arbitrary/u);return true;
   });
  }
+});
+
+test('life application listens through a separate one-use HTTP bridge without widening preview authority',async()=>{
+ const f=model('lifecycle');assert.equal(await f.api.runCurrent259GeneratedDocumentApplication(f.bridge),false);
+ assert.ok(f.trace.includes('lifecycle-http'));assert.ok(!f.trace.includes('public-http'));
+ assert.ok(f.trace.indexOf('exercise-public')<f.trace.indexOf('app-close'));assert.ok(f.trace.includes('worker-drained'));
+ assert.throws(()=>f.api.takeCurrent261LocalLifecycleHttpBridge(f.bridge.publicLifecycle,f.server),/HANDLE/u);
 });

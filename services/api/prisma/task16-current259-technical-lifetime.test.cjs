@@ -89,7 +89,8 @@ test('the fixed first-rollback starter claims its own transport without arbitrar
  assert.equal(f.receipts[0].limits.totalDeadlineMs,3600000);
 });
 
-function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false}={}){
+function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259FirstRollbackPostgres",document=false,save=false,lifecycle=false}={}){
+ if(lifecycle)save=true;
  const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream'),crypto=require('node:crypto');
  const docker='/Applications/Docker.app/Contents/Resources/bin/docker';
  const config={...options(),tools:{docker,openssl:'/synthetic/openssl'},signal:new AbortController().signal};
@@ -105,7 +106,8 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  const docHandle=Object.freeze({}),docProof=Object.freeze({sourceSha:config.sourceSha,runId:mode==='document-foreign-scope'?'00000000-0000-4000-8000-000000000001':config.runId,containerId,installXid:'903',
   roleOids:Object.freeze(save?['17000','17001','17002','17009']:['17000','17001','17002']),
   roleXmins:Object.freeze(documentRoles.map(()=> '903')),
-  ...(save?{purpose:'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1',ordinaryName:documentRoles[3]}:{})});
+  ...(save?{purpose:lifecycle?'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1':'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1',ordinaryName:documentRoles[3]}:{}),
+  ...(lifecycle?{effectivePlanSha256:'e'.repeat(64),installation:'ARCHIVE261_REGISTERED_SEVEN'}:{})});
  let docScopeActive=true,reloadObserved=false,ownerReads=0;
  const documentProbes=[],documentRenders=[];
  const digest=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
@@ -246,7 +248,9 @@ function rollbackResourceModel(mode,{firstQ2=false,starter="startCurrent259First
  const imports={'node:fs':fsModel,'node:crypto':{...crypto,X509Certificate:class{constructor(raw){this.raw=raw;}}},
   'node:child_process':{spawn},'node:net':net,'node:tls':tls,'./task16-current259-loopback-forward.cjs':relay,
   ...(document?{'./task12-current259-document-login.cjs':{assertCurrent259GeneratedDocumentLoginScope(proof,handle){
-   assert.ok(docScopeActive&&proof===docProof&&handle===docHandle);
+   assert.ok(!lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
+  },assertCurrent261GeneratedLifecycleLoginScope(proof,handle){
+   assert.ok(lifecycle&&docScopeActive&&proof===docProof&&handle===docHandle);
   }}}:{})};
  const holder={exports:{}};
  new Function('require','module',fs.readFileSync(source,'utf8'))(id=>imports[id]??require(id),holder);
@@ -572,4 +576,15 @@ test('an unproven ordinary role or its missing plaintext rejection never publish
   assert.equal(f.calls.filter(args=>args.includes('document-hba')).length,mode==='document-bad-ordinary'?0:1);
   assert.equal(resource.getReceipt().documentHba,undefined);await resource.close();
  }
+});
+
+test('explicit lifecycle HBA consumes its private login brand and retains the effective registered plan',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true,document:true,lifecycle:true}),resource=await f.start();
+ await assert.rejects(resource.applyCurrent259DocumentHbaV1(f.docHandle,{...f.docProof,effectivePlanSha256:'0'.repeat(64)}),/TASK01_RESOURCE_DOCUMENT_HBA_SCOPE/u);
+ assert.ok(!f.calls.some(args=>args.includes('document-hba')));
+ const hba=await resource.applyCurrent259DocumentHbaV1(f.docHandle,f.docProof);
+ assert.equal(hba.rules,13);assert.equal(hba.purpose,'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1');
+ assert.equal(hba.effectivePlanSha256,f.docProof.effectivePlanSha256);assert.equal(hba.installation,'ARCHIVE261_REGISTERED_SEVEN');
+ assert.equal(f.documentProbes.length,4);assert.equal(resource.getReceipt().contractHba,undefined);
+ await resource.close();
 });

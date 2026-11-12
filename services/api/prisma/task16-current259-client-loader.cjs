@@ -2,12 +2,18 @@
 const {assertCurrent259BusinessIssuer:businessIssuer,checkCurrent259FileIdentity}=require('./task16-current259-business-continuity.cjs');
 // Loads only this observation's sealed physical closure. No SDK instance, DB,
 // custom constructor, supplied resolver or application bootstrap is accepted.
-const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
+const fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{createHash}=require('node:crypto');
 const {types}=require('node:util');
 const {claimCurrent259Build}=require('./task16-current259-build.cjs');
 const BUILTIN_LOADER_SOURCE=process.binding('natives')['internal/modules/cjs/loader'];
 const need=(ok,code)=>{if(!ok)throw Object.assign(new Error(code),{code});};
 const own=(value,key)=>{need(value&&!types.isProxy(value),'CURRENT259_LOADER_DESCRIPTOR');const d=Object.getOwnPropertyDescriptor(value,key);need(d&&Object.hasOwn(d,'value'),'CURRENT259_LOADER_DESCRIPTOR');return d.value;};
+const officialDocumentModuleViews=new WeakMap();
+function claimCurrent261OfficialDocumentModules(view){
+ const code='CURRENT261_OFFICIAL_DOCUMENT_MODULES';
+ need(arguments.length===1&&view&&typeof view==='object'&&!types.isProxy(view)&&officialDocumentModuleViews.has(view),code);
+ const lease=officialDocumentModuleViews.get(view);lease.verifyFull();return lease;
+}
 const cache=new WeakMap(),ownedModules=new WeakMap(),ownedApps=new WeakMap(),creationFailures=new WeakMap();
 const APP_METHODS=['close','get','getHttpAdapter','enableCors','useGlobalPipes','init','getHttpServer','listen'];
 function dataMethod(value,key){let next=value;for(let i=0;next&&i<32;i++,next=Object.getPrototypeOf(next)){need(!types.isProxy(next),'CURRENT259_OWNED_METHOD');const d=Object.getOwnPropertyDescriptor(next,key);if(d){need(Object.hasOwn(d,'value')&&typeof d.value==='function','CURRENT259_OWNED_METHOD');return d.value;}}throw new Error('CURRENT259_OWNED_METHOD');}
@@ -138,7 +144,7 @@ function loadCurrent259Client(handle){
  const serviceMethods=['onModuleInit','onApplicationShutdown'].map(key=>({key,value:values.PrismaService.prototype[key]}));
  need(serviceMethods.every(row=>typeof row.value==='function'),'CURRENT259_LOADER_CONSTRUCTOR');
  const exportedValues=Object.freeze({...values}),Test=values.Test,testMethod=own(Test,'createTestingModule');
- let contract,document,ordinaryTestingUsed=false;
+ let contract,document,lifeDocument,ordinaryTestingUsed=false;
  function check(){
   try{
    need(!failed&&!loading&&coreHooksUnmodified()&&Module._load===hooks.load&&hooksMatch(),'CURRENT259_LOADER_HOOKS');
@@ -148,7 +154,7 @@ function loadCurrent259Client(handle){
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define,'TASK16_APP_REFLECTION_CHANGED');
    for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(key=>actual[key]===row.descriptor[key]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
-   checkMetadata();contract?.checkMetadata();document?.checkMetadata();
+   checkMetadata();contract?.checkMetadata();document?.checkMetadata();lifeDocument?.checkMetadata();
    for(const p of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,p)))need(files.has(p),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
@@ -167,7 +173,7 @@ function loadCurrent259Client(handle){
    need(require.cache[material.clientEntry]===wrapper&&own(wrapper.exports,'PrismaClient')===Class&&own(loaded,'PrismaClient')===Class&&own(engine,'version')===engineVersion&&own(engine,'QueryEngine')===QueryEngine&&prisma.prismaVersion?.client==='5.22.0'&&prisma.prismaVersion?.engine==='605197351a3c8bdd595af2d2a9bc3025bca48ea2','CURRENT259_LOADER_CLASS');
    for(const row of records){need(own(row.module.exports,row.key)===row.value,'CURRENT259_LOADER_EXPORT');if(row.descriptor){const actual=Object.getOwnPropertyDescriptor(row.module.exports,row.key);need(actual&&['value','writable','enumerable','configurable'].every(k=>actual[k]===row.descriptor[k]),'CURRENT259_PAYMENT_EXPORT');}}
    need(Reflect.getMetadata===reflection.get&&Reflect.defineMetadata===reflection.define&&Object.getPrototypeOf(values.PrismaService)===Class&&Object.getPrototypeOf(values.PrismaService.prototype)===Class.prototype&&classMethodsUnchanged()&&serviceMethods.every(r=>values.PrismaService.prototype[r.key]===r.value)&&own(Test,'createTestingModule')===testMethod,'CURRENT259_LOADER_CONSTRUCTOR');
-   checkMetadata();contract?.checkMetadata();document?.checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
+   checkMetadata();contract?.checkMetadata();document?.checkMetadata();lifeDocument?.checkMetadata();for(const file of Object.keys(require.cache))if(runtimeRoots.some(r=>inside(r,file)))need(files.has(file),'CURRENT259_LOADER_FOREIGN_CACHE');
   }catch{failed=true;throw Object.assign(new Error('CURRENT259_LOADER_CHANGED'),{code:'CURRENT259_LOADER_CHANGED'});}
  }
  function verifyBusinessFiles(token,ownedHandle){
@@ -333,6 +339,58 @@ function loadCurrent259Client(handle){
    return exports;
   }catch(error){failed=true;throw error;}
  }
+ function loadCurrent261LocalLifecycleDocumentModules(){
+  const code='CURRENT261_LOCAL_LIFECYCLE_MODULE_SOURCE';
+  need(arguments.length===0&&material.source.profile.profile==='TASK12_ARCHIVE261_SOURCE_V1',code);
+  check();if(lifeDocument)return lifeDocument.exports;
+  try{
+   const base=loadGeneratedContractDocumentModules(),published={},modules={};
+   for(const [slot,relative,names]of [
+    ['fixture','services/api/dist/database/task12-local-lifecycle-fixture.js',['buildTask12LocalLifecycleFixture','isTask12LocalLifecycleFixture','createTask12LocalLifecycleOriginals']],
+    ['case','services/api/dist/database/task12-local-lifecycle-case.js',['runTask12LocalLifecycleCase','expectTask12LocalLifecycleAuditRollback','finishTask12LocalLifecycleCase','claimTask12LocalLifecycleCheckpoint']],
+    ['sample','services/api/dist/contract-document/task12-official-qualification-sample.js',['createOfficialQualificationSample','canonicalOfficialQualificationDocx']],
+    ['profile','services/api/prisma/task12-official-document-profile.cjs',['currentOfficialDocumentScope']],
+    ['child','services/api/prisma/task12-official-document-child.cjs',['createOfficialDocumentChildBudget','attachPostcheck']],
+    ['context','services/api/prisma/task12-document-context.cjs',['createDocumentContextAuthority']],
+    ['runtime','services/api/prisma/task12-current259-generated-document-runtime.cjs',['verifyOfficialTask12DocumentRuntime','withOfficialTask12DocumentRuntime']],
+    ['converter','services/api/dist/contract-document/contract-body-pdf-converter.js',['contractBodyPdfRuntimeLockFingerprint','assertContractBodyPdfRuntimeLock','convertContractBodyDocxToPdf']],
+    ['lo','services/api/dist/contract-document/libreoffice-converter.js',['convertDocxToPdf','convertXlsxToPdf']]
+   ]){
+    const file=path.join(root,relative),exports=guardedRequire(file),mod=require.cache[file];
+    need(mod?.loaded===true&&mod.exports===exports&&mod.filename===file,code);modules[slot]=mod;roots.push(mod);
+    for(const key of names){const descriptor=Object.getOwnPropertyDescriptor(exports,key);need(descriptor&&Object.hasOwn(descriptor,'value')&&typeof descriptor.value==='function',code);
+     records.push({module:mod,key,value:descriptor.value,descriptor});
+     if(['fixture','case','profile'].includes(slot))published[key]=descriptor.value;
+    }
+   }
+   const {assertCurrent261LocalLifecycleToolClosure}=require('./task12-current261-local-lifecycle-module-proof.cjs');
+   const verify=()=>assertCurrent261LocalLifecycleToolClosure(root,modules,require.cache);verify();
+   const readTask12LocalLifecycleSourceDocx=function(){
+    need(arguments.length===0,code);check();
+    const file=path.join(root,'services/api/assets/templates/material-purchase-real-v1.docx'),observed=material.capture(file);
+    const fields=['dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs'];
+    const identity=stat=>Object.fromEntries(fields.map(k=>[k,String(stat[k])]));
+    const same=stat=>stat.isFile()&&JSON.stringify(identity(stat))===JSON.stringify(observed.identity);
+    need(BigInt(observed.identity.size)>0n&&BigInt(observed.identity.size)<8n*1024n*1024n,code);
+    const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+    let bytes;
+    try{
+     need(same(fs.fstatSync(fd,{bigint:true})),code);bytes=Buffer.alloc(Number(observed.identity.size));let offset=0;
+     while(offset<bytes.length){const count=fs.readSync(fd,bytes,offset,bytes.length-offset,offset);need(count>0,code);offset+=count;}
+     need(fs.readSync(fd,Buffer.alloc(1),0,1,bytes.length)===0&&same(fs.fstatSync(fd,{bigint:true}))&&same(fs.lstatSync(file,{bigint:true}))&&fs.realpathSync(file)===file,code);
+    }finally{fs.closeSync(fd);}
+    need(createHash('sha256').update(bytes).digest('hex')===observed.sha256,code);check();return bytes;
+   };
+   lifeDocument=Object.freeze({exports:Object.freeze({...base,...published,readTask12LocalLifecycleSourceDocx}),checkMetadata:verify});
+   collect();
+   const lease=Object.freeze({root,source:material.source,build:material.summary,
+    check:()=>check(),verifyFull:()=>{check();material.check();},
+    createOfficialQualificationSample:own(modules.sample.exports,'createOfficialQualificationSample'),
+    canonicalDocx:own(modules.sample.exports,'canonicalOfficialQualificationDocx')});
+   officialDocumentModuleViews.set(lifeDocument.exports,lease);
+   return lifeDocument.exports;
+  }catch{failed=true;throw Object.assign(new Error(code),{code});}
+ }
  function createContractTestingModule(){
   need(arguments.length===0&&contract,'CURRENT259_CONTRACT_FIXED_ENTRIES');
   return createOwnedTestingModule({imports:[contract.root]},contract);
@@ -447,10 +505,10 @@ function loadCurrent259Client(handle){
   }});
   return facade;
  }
- check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,createDocumentTestingModule,
+ check();material.check();const result=Object.freeze({Class,PrismaService:values.PrismaService,Test,check,checkContinuity,verifyBusinessFiles,verifyFull:()=>{check();material.check();},loadApplicationModules,loadPaymentModules:()=>{check();return paymentExports;},createTestingModule,loadContractApplicationModules,createContractTestingModule,loadGeneratedContractDraftAdmission,loadGeneratedContractDocumentModules,loadCurrent261LocalLifecycleDocumentModules,createDocumentTestingModule,
   constructorContract:'IMPLICIT_DERIVED_CONSTRUCTOR_FORWARDS_OPTIONS;LIFECYCLE_HOOKS_UNCHANGED_NOT_CALLED',
   witness:()=>{check();return Object.freeze({source:material.source,build:material.summary,host:process.platform+'-'+process.arch,engineCommit:observedVersion.commit,modules:files.size,executionAllowed:false});}});
  cache.set(handle,result);return result;
 }
-module.exports=Object.freeze({loadCurrent259Client,current259OwnedApplicationMethod,current259OwnedApplicationView,
+module.exports=Object.freeze({loadCurrent259Client,claimCurrent261OfficialDocumentModules,current259OwnedApplicationMethod,current259OwnedApplicationView,
  inspectCurrent259OwnedPaymentProviders,isCurrent259OwnedModule,createCurrent259OwnedApplication,takeCurrent259CreationFailure});

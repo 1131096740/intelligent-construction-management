@@ -3,20 +3,24 @@ const {createHash,createHmac,pbkdf2Sync,randomBytes}=require('node:crypto');
 const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const {isDeepStrictEqual:equal,types}=require('node:util');
-const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl}=require('./task12-current259-document-acl-transport.cjs');
+const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl,claimCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl-transport.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {withCurrent259ApplicationEnvironment}=require('./task16-current259-application-environment.cjs');
-const {createCurrent259GeneratedDocumentSeed}=require('./task12-current259-q2-seed.cjs');
+const {createCurrent259GeneratedDocumentSeed,createCurrent261LocalLifecycleSeed}=require('./task12-current259-q2-seed.cjs');
 const {readQualifiedTask16File}=require('./task16-runtime-inputs.cjs');
 
 const CODE='CURRENT259_DOCUMENT_LOGIN';
+const {describeCurrent261LocalLifecycle}=require('./task12-current261-local-lifecycle-scope.cjs');
+const {describeCurrent261GeneratedLifecycleDocumentAcl}=require('./task12-current259-document-acl.cjs');
+const {generatedLifecycleCollisionSql}=require('./task12-current261-generated-lifecycle-collision.cjs');
+const lifecyclePurpose='CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1';
 const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
 const ordinaryLimit=2;
 const caseCoordinate=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
-const consumed=new WeakSet(),active=new WeakMap(),nestBridges=new WeakSet();
+const consumed=new WeakSet(),active=new WeakMap(),nestBridges=new WeakSet(),lifecycleExercises=new WeakMap();
 const fixedReasons=new WeakMap();
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
@@ -64,7 +68,7 @@ function replaceExact(sql,marker,replacement){
  need(sql.split(marker).length===2,'RENDER');
  return sql.replace(marker,()=>replacement);
 }
-function qualify(lease,view,save){
+function qualify(lease,view,save,lifecycle=false){
  const {completion,roles,source,ordinaryAcl,continuitySql,continuitySha256}=lease;
  const {resource,runId}=view,identity=ordinaryAcl.roleCompletion.databaseIdentity;
  const predecessors=[completion.roleInstallXid,completion.installXid,ordinaryAcl.completion.installXid,ordinaryAcl.completion.archiveInstallXid];
@@ -76,12 +80,16 @@ function qualify(lease,view,save){
   identity.database==='jg_task01_'+runId.replaceAll('-','')&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&xid(identity.systemIdentifier)&&
   Array.isArray(roles)&&roles.length===names.length&&roles.every((role,i)=>role.name===names[i]&&oid(role.oid)&&
    role.oid!=='10'&&role.xmin===xmin(completion.roleInstallXid))&&new Set(roles.map(role=>role.oid)).size===names.length,'HANDLE');
- need((ordinaryAcl.generatedDocument===true)===save,'HANDLE');
+ if(lifecycle){
+  const plan=describeCurrent261LocalLifecycle(source);
+  need(ordinaryAcl.generatedLifecycle===true&&ordinaryAcl.generatedDocument!==true&&completion.effectivePlanSha256===plan.effectivePlanSha256&&
+   completion.installation===plan.installation&&ordinaryAcl.completion.effectivePlanSha256===plan.effectivePlanSha256&&ordinaryAcl.completion.installation===plan.installation,'HANDLE');
+ }else need(ordinaryAcl.generatedLifecycle!==true&&(ordinaryAcl.generatedDocument===true)===save,'HANDLE');
  let ordinary;
  if(save){
   const {roleCompletion}=ordinaryAcl;
   const {name,oid:roleOid,login,limit,password}=roleCompletion.ordinary??{};
-  need(ordinaryAcl.completion.purpose===savePurpose&&ordinaryAcl.generatedDraft!==true&&
+  need(ordinaryAcl.completion.purpose===(lifecycle?lifecyclePurpose:savePurpose)&&ordinaryAcl.generatedDraft!==true&&
    roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===completion.sourceSha&&
    roleCompletion.runId===runId&&roleCompletion.containerId===resource.containerId&&
    roleCompletion.executionAllowed===false&&roleCompletion.nativeAdmission===false&&
@@ -93,14 +101,16 @@ function qualify(lease,view,save){
   ordinary=Object.freeze({name,oid:roleOid});
  }
  return {roles,identity,predecessors,continuitySql,continuitySha256,ordinary,
+  lifecycleMaterial:lifecycle?describeCurrent261GeneratedLifecycleDocumentAcl(source):undefined,
   targets:ordinary?[...roles,ordinary]:roles};
 }
 
-function documentAcl(ids){
+function documentAcl(ids,material){
  const bytes=readFileSync(join(__dirname,'task12-current259-document-acl.json'));
  need(sha(bytes)===manifestSha,'SOURCE');
  const {roles}=JSON.parse(bytes),expected=[];
- for(const [role,tables] of Object.entries(roles))
+ if(material)expected.push(...material.rows);
+ if(!material)for(const [role,tables] of Object.entries(roles))
   for(const [relation,operations] of Object.entries(tables))
    for(const [privilege,columns] of Object.entries(operations))
     for(const column of columns)expected.push({role,relation,column,privilege:privilege.toUpperCase()});
@@ -114,7 +124,7 @@ function documentAcl(ids){
  ) (SELECT * FROM actual EXCEPT ALL SELECT * FROM expected) UNION ALL (SELECT * FROM expected EXCEPT ALL SELECT * FROM actual))
  AND NOT EXISTS(SELECT FROM pg_class c CROSS JOIN pg_authid r WHERE c.relnamespace=${namespace}
   AND r.oid IN (${ids}) AND c.relkind IN ('r','p','v','m','f')
-  AND has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))`;
+  AND has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))${material?(()=>{const fixed=generatedLifecycleCollisionSql(material.collision);return ` AND (${fixed.metadata}) AND (${fixed.installation}) AND (${fixed.acl(true)})`;})():''}`;
 }
 function catalog(input){
  const {identity,roles,continuitySql,predecessors,targets,ordinary}=input;
@@ -170,7 +180,7 @@ function catalog(input){
   AND 16-current_setting('superuser_reserved_connections')::int-current_setting('reserved_connections')::int>=10
   AND NOT EXISTS(SELECT FROM pg_stat_activity a WHERE a.backend_type='client backend' AND a.pid<>pg_backend_pid())
   AND ${predecessors.map(value=>`pg_xact_status(${quote(value)}::xid8)='committed'`).join(' AND ')}
-  AND (${hba}) AND (${documentAcl(ids)})${ordinary?`
+  AND (${hba}) AND (${documentAcl(ids,input.lifecycleMaterial)})${ordinary?`
   AND has_database_privilege(${quote(ordinary.oid)}::oid,${quote(identity.databaseOid)}::oid,'CONNECT')
   AND has_schema_privilege(${quote(ordinary.oid)}::oid,${namespace},'USAGE')`:''}`;
  const expectedAccess=owner=>['database','schema'].flatMap(kind=>[...roles].sort((a,b)=>Number(a.oid)-Number(b.oid)).map(role=>
@@ -254,20 +264,35 @@ function withCurrent259GeneratedDocumentPublicApplication(aclResult,handle,caseI
  if(arguments.length!==4||typeof caseId!=='string'||!caseCoordinate.test(caseId))return Promise.reject(fault('HANDLE'));
  return runLogin(aclResult,handle,use,true,true,true,caseId);
 }
+function withCurrent261LocalLifecyclePublicApplication(aclResult,handle,caseId,signal,use){
+ if(arguments.length!==5||typeof caseId!=='string'||!caseCoordinate.test(caseId)||!(signal instanceof AbortSignal)||types.isProxy(signal)||signal.aborted)return Promise.reject(fault('HANDLE'));
+ return runLogin(aclResult,handle,use,true,true,true,caseId,true,signal);
+}
+function takeCurrent261LocalLifecycleExerciseBridge(key){
+ need(arguments.length===1&&key&&!types.isProxy(key)&&lifecycleExercises.has(key),'HANDLE');
+ const scope=lifecycleExercises.get(key);scope.check();lifecycleExercises.delete(key);return scope;
+}
 function takeCurrent259GeneratedDocumentApplicationBridge(bridge){
  need(arguments.length===1&&nestBridges.delete(bridge),'HANDLE');
 }
-async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId){
+async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,caseId,lifecycle=false,lifecycleSignal){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&
   typeof use==='function'&&!types.isProxy(use)&&!consumed.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(resource.topology===topology&&typeof exec==='function','HANDLE');
- const claim=save?claimCurrent259GeneratedDocumentSaveAcl:claimCurrent259GeneratedDocumentAcl;
- const lease=claim(aclResult,handle),input=qualify(lease,view,save);
+ const claim=lifecycle?claimCurrent261GeneratedLifecycleDocumentAcl:save?claimCurrent259GeneratedDocumentSaveAcl:claimCurrent259GeneratedDocumentAcl;
+ need(typeof claim==='function','HANDLE');
+ const lease=claim(aclResult,handle),input=qualify(lease,view,save,lifecycle);
  need(aclResult===lease.completion,'HANDLE');
+ let official;
+ if(lifecycle){
+  const modules=view.loader.loadCurrent261LocalLifecycleDocumentModules();official=modules.currentOfficialDocumentScope();
+  need(official?.kind==='OFFICIAL_TOOL_RUNTIME'&&official.profile==='TASK12_OFFICIAL_TEMURIN17_0_17_10_V1'&&official.source?.head===view.source.candidateSha,'ROLE_RUNTIME');
+ }
  consumed.add(handle);
  const check=()=>{
   lease.check();view.check();
+  if(lifecycle)need(!lifecycleSignal.aborted&&view.loader.loadCurrent261LocalLifecycleDocumentModules().currentOfficialDocumentScope()===official,'ROLE_RUNTIME');
   need(claimCurrent259TechnicalResource(handle)===view&&view.resource===resource&&
    resource.topology===topology&&own(resource,'execOwnerSql')===exec,'CONTINUITY');
  };
@@ -303,13 +328,15 @@ async function runLogin(aclResult,handle,use,withRoles,save=false,nest=false,cas
   proof=Object.freeze({status:'CURRENT259_DOCUMENT_LOGIN_COMMITTED_NOT_ADMISSION',sourceSha:aclResult.sourceSha,
    runId:view.runId,containerId:resource.containerId,aclInstallXid:aclResult.installXid,installXid:committed.xid,
    continuitySha256:committed.stable,roleOids:Object.freeze(input.targets.map(role=>role.oid)),
-   ...(input.ordinary?{purpose:savePurpose,ordinaryName:input.ordinary.name}:{}),
+   ...(input.ordinary?{purpose:lifecycle?lifecyclePurpose:savePurpose,ordinaryName:input.ordinary.name}:{}),
+   ...(lifecycle?{effectivePlanSha256:aclResult.effectivePlanSha256,installation:aclResult.installation}:{}),
    roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
-  active.set(proof,{handle,check});
-  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId):use(proof));
+  active.set(proof,{handle,check,lifecycle,identity:input.identity,continuitySql:c.stable});
+  const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use,nest,caseId,lifecycleSignal):use(proof));
   check();return result;
  }catch(cause){
   const error=Object.assign(fault(phase==='BEFORE'?'PRESTATE_REJECTED':phase==='CONSUME'?'CONSUME_FAILED':'COMMIT_UNCONFIRMED'),{phase});
+  if(lifecycle){Object.defineProperty(error,'cause',{value:cause});if(own(cause,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(error,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
   if(proof)active.delete(proof);
   const inner=withRoles?own(cause,'cause'):undefined;
   const recognized=fixedReasons.has(cause)?cause:fixedReasons.has(inner)?inner:undefined;
@@ -349,24 +376,27 @@ const backend=(pid,start)=>Number.isInteger(pid)&&pid>0&&pid<=2147483647&&typeof
 const port=value=>Number.isInteger(value)&&value>0&&value<=65535;
 const project=(row,keys)=>Object.fromEntries(keys.map(key=>[key,own(row,key)]));
 
-async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId){
+async function runDocumentRoles(handle,view,proof,identity,secrets,use,nest,caseId,lifecycleSignal){
  const {resource,loader}=view;
- const save=proof.purpose===savePurpose;
+ const lifecycle=proof.purpose===lifecyclePurpose;
+ const save=proof.purpose===savePurpose||lifecycle;
  const loginNames=save?[...names,proof.ordinaryName]:names;
  const original=project(resource,['applyCurrent259DocumentHbaV1','getReceipt','inspectConnectionEndpoint',
   'observePresentedCertificate','execOwnerSql']);
- const load=own(loader,'loadGeneratedContractDocumentModules'),Prisma=own(loader,'PrismaService'),beginDrain=own(view,'beginPrismaRelayDrain');
+ const loadName=lifecycle?'loadCurrent261LocalLifecycleDocumentModules':'loadGeneratedContractDocumentModules';
+ const load=own(loader,loadName),Prisma=own(loader,'PrismaService'),beginDrain=own(view,'beginPrismaRelayDrain');
  need(Object.values(original).every(fn=>typeof fn==='function')&&[load,Prisma,beginDrain].every(fn=>typeof fn==='function'),'ROLE_PRODUCER');
  const check=()=>{
-  assertCurrent259GeneratedDocumentLoginScope(proof,handle);
+  (lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof,handle);
   need(view.loader===loader&&view.resource===resource&&own(loader,'PrismaService')===Prisma&&
-   own(loader,'loadGeneratedContractDocumentModules')===load&&own(view,'beginPrismaRelayDrain')===beginDrain&&
+   own(loader,loadName)===load&&own(view,'beginPrismaRelayDrain')===beginDrain&&
    Object.entries(original).every(([key,value])=>own(resource,key)===value),'ROLE_PRODUCER');
  };
  check();
  const transition=await original.applyCurrent259DocumentHbaV1.call(resource,proof);
  check();
- need(transition&&transition.rules===(save?13:12)&&(save?transition.purpose===savePurpose:transition.purpose===undefined)&&hex(transition.beforeSha256,64)&&hex(transition.afterSha256,64)&&
+ need(transition&&transition.rules===(save?13:12)&&(save?transition.purpose===(lifecycle?lifecyclePurpose:savePurpose):transition.purpose===undefined)&&
+  (!lifecycle||transition.effectivePlanSha256===proof.effectivePlanSha256&&transition.installation===proof.installation)&&hex(transition.beforeSha256,64)&&hex(transition.afterSha256,64)&&
   transition.beforeSha256!==transition.afterSha256&&transition.loginInstallXid===proof.installXid&&
   transition.plaintextNoEncryptionRejected===true,'ROLE_HBA');
  const endpoint=await original.inspectConnectionEndpoint.call(resource);
@@ -477,6 +507,24 @@ ROLLBACK;`;
   const waitDrain=beginDrain.call(view);
   need(typeof waitDrain==='function','ROLE_DRAIN');
   try{
+   let publicLifecycle;
+   if(lifecycle){
+    const build=own(modules,'buildTask12LocalLifecycleFixture'),isFixture=own(modules,'isTask12LocalLifecycleFixture'),hash=own(modules,'hashTask12GeneratedAdmissionPassword');
+    need([build,isFixture,hash].every(fn=>typeof fn==='function'),'ROLE_ENTRY');
+    const fixture=build(caseId);need(isFixture(fixture)&&fixture.approval.users.length===8,'ROLE_SEED');
+    const passwords=Object.freeze(Object.fromEntries(fixture.approval.users.map(user=>[user.id,randomBytes(32).toString('hex')])));
+    need(new Set(Object.values(passwords)).size===8,'ROLE_SEED');
+    const hashes=Object.fromEntries(await Promise.all(fixture.approval.users.map(async user=>[user.id,await hash(passwords[user.id])])));
+    verify();
+    const seed=createCurrent261LocalLifecycleSeed(fixture,identity,hashes);
+    const runSeed=async(sql,label)=>{verify();const result=await original.execOwnerSql.call(resource,sql,'current261-local-lifecycle-seed-'+label);verify();return result?.stdout;};
+    seed.verifyBefore(await runSeed(seed.beforeSql(),'before'));
+    seed.verifyWritten(await runSeed(seed.writeSql(),'write'));
+    const observed=seed.finish(await runSeed(seed.committedSql(),'committed'));
+    need(observed.seedRows===26&&observed.seedXid!==proof.installXid&&observed.seedXid!==proof.aclInstallXid,'ROLE_SEED');
+    const sourceDocx=modules.readTask12LocalLifecycleSourceDocx(),originals=await modules.createTask12LocalLifecycleOriginals(fixture);verify();
+    publicLifecycle=Object.freeze({fixture,passwords,sourceDocx,originals,signal:lifecycleSignal});
+   }
    for(const [index,name] of loginNames.entries()){
     verify();
     const url=new URL(`postgresql://${name}:${secrets[index].toString('ascii')}@127.0.0.1:${endpoint.port}/${identity.database}`);
@@ -504,7 +552,7 @@ ROLLBACK;`;
     storageRoot:environment.storageRoot,roleOids:Object.freeze(Object.fromEntries(slots.map((slot,i)=>[slot,proof.roleOids[i]])))});
    const connections=Object.freeze(Object.fromEntries(slots.map((slot,i)=>[slot,clients[i].client])));
    let publicDraft;
-   if(caseId){
+   if(caseId&&!lifecycle){
     const build=own(modules,'buildTask12GeneratedApprovalFixture'),hash=own(modules,'hashTask12GeneratedAdmissionPassword');
     const openDraft=own(modules,'openTask12GeneratedApprovalDraft');
     need([build,hash,openDraft].every(fn=>typeof fn==='function'),'ROLE_ENTRY');
@@ -547,6 +595,12 @@ ROLLBACK;`;
     })));
     try{
      const exercise=async http=>{
+      if(publicLifecycle){
+       need(http,'ROLE_ENTRY');verify();
+       const key=Object.freeze({});lifecycleExercises.set(key,Object.freeze({handle,proof,modules,config:publicLifecycle,check(){need(available,'ROLE_ENTRY');verify();}}));
+       try{const result=await require('./task12-current261-local-lifecycle-exercise.cjs').exerciseCurrent261LocalLifecycle(key,http);verify();return await use(result);}
+       finally{lifecycleExercises.delete(key);}
+      }
       if(!publicDraft){const result=await use(exposed);verify();return result;}
       need(http,'ROLE_ENTRY');
       const {beginCurrent259GeneratedDocumentOwnerReadback,readCurrent259GeneratedDocumentOwnerReadback}=
@@ -590,7 +644,7 @@ ROLLBACK;`;
      };
      if(!nest)return await exercise();
      const bridge=Object.freeze({check:verify,loader,loaded:modules,proof,ordinary:clients[names.length].client,providers,
-      queue:exposed.queue.queueDraftPreview,exercise,...(publicDraft?{publicDraft}:{})});
+      queue:exposed.queue.queueDraftPreview,exercise,...(publicDraft?{publicDraft}:{}),...(publicLifecycle?{publicLifecycle}:{})});
      const {runCurrent259GeneratedDocumentApplication,fixedExerciseCode}=require('./task12-current259-document-application.cjs');
      nestBridges.add(bridge);
      try{return await runCurrent259GeneratedDocumentApplication(bridge);}
@@ -598,6 +652,7 @@ ROLLBACK;`;
       const code=own(error,'code');
       const stage=typeof code==='string'&&/^CURRENT259_GENERATED_DOCUMENT_APP_(HANDLE|DESCRIPTOR|PROVIDERS|MODULE|COMPILE|CREATE|INIT|LISTEN|HTTP|USE|CLOSE|TIMEOUT)$/u.exec(code)?.[1];
       const safe=fault(stage?'ROLE_APP_'+stage:'ROLE_APP');
+      if(lifecycle){Object.defineProperty(safe,'cause',{value:error});if(own(error,'ownerCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(safe,'ownerCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE',enumerable:true});}
       const exerciseCode=publicDraft&&stage==='HTTP'&&fixedExerciseCode(own(error,'exerciseCode'));
       if(exerciseCode)Object.defineProperty(safe,'exerciseCode',{value:exerciseCode});
       if(own(error,'appCleanupOutcome')==='UNKNOWN_DO_NOT_CONTINUE')Object.defineProperty(safe,'appCleanupOutcome',{value:'UNKNOWN_DO_NOT_CONTINUE'});
@@ -619,6 +674,7 @@ ROLLBACK;`;
   try{await waitDrain();}catch{unknown=true;}
   if(unknown){
    const cleanup=Object.assign(fault(fixedReasons.get(first)??'ROLE_CLEANUP_UNKNOWN'),{appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE'});
+   if(lifecycle&&first!==undefined)Object.defineProperty(cleanup,'cause',{value:first});
    const exerciseCode=fixedReasons.has(first)&&own(first,'exerciseCode');
    if(exerciseCode)Object.defineProperty(cleanup,'exerciseCode',{value:exerciseCode});
    throw cleanup;
@@ -630,9 +686,18 @@ ROLLBACK;`;
 
 function assertCurrent259GeneratedDocumentLoginScope(proof,handle){
  const scope=active.get(proof);
- need(arguments.length===2&&scope?.handle===handle&&scope,'HANDLE');
+ need(arguments.length===2&&scope?.handle===handle&&scope&&!scope.lifecycle,'HANDLE');
  scope.check();
 }
 
-module.exports=Object.freeze({withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
+function assertCurrent261GeneratedLifecycleLoginScope(proof,handle){
+ const scope=active.get(proof);need(arguments.length===2&&scope?.handle===handle&&scope.lifecycle===true,'HANDLE');scope.check();
+}
+function claimCurrent261LocalLifecycleOwnerProof(proof,handle){
+ assertCurrent261GeneratedLifecycleLoginScope(proof,handle);
+ const scope=active.get(proof);
+ return Object.freeze({identity:Object.freeze({...scope.identity}),continuitySql:scope.continuitySql,continuitySha256:proof.continuitySha256,
+  effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation,check:scope.check});
+}
+module.exports=Object.freeze({takeCurrent261LocalLifecycleExerciseBridge,claimCurrent261LocalLifecycleOwnerProof,withCurrent261LocalLifecyclePublicApplication,assertCurrent261GeneratedLifecycleLoginScope,withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,withCurrent259GeneratedDocumentSaveApplication,
  withCurrent259GeneratedDocumentPublicApplication,takeCurrent259GeneratedDocumentApplicationBridge,assertCurrent259GeneratedDocumentLoginScope});

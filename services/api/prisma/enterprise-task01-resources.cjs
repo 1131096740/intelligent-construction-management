@@ -897,17 +897,21 @@ COMMIT;`;
   async function applyCurrent259DocumentHbaV1(handle, proof) {
     const scopeError = "TASK01_RESOURCE_DOCUMENT_HBA_SCOPE";
     requireThat(firstQ2 && arguments.length === 2 && !contractHbaAttempted && !documentHbaAttempted && !closePromise, scopeError);
-    const { assertCurrent259GeneratedDocumentLoginScope } = require("./task12-current259-document-login.cjs");
+    const { assertCurrent259GeneratedDocumentLoginScope, assertCurrent261GeneratedLifecycleLoginScope } = require("./task12-current259-document-login.cjs");
+    requireThat(proof&&typeof proof==="object"&&!types.isProxy(proof),scopeError);
+    const purpose=Object.getOwnPropertyDescriptor(proof,"purpose")?.value;
+    const lifecycle=purpose==="CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1";
     const checkScope = () => {
       requireThat(!closePromise && !signal.aborted, scopeError);
-      try { assertCurrent259GeneratedDocumentLoginScope(proof, handle); }
+      try { (lifecycle?assertCurrent261GeneratedLifecycleLoginScope:assertCurrent259GeneratedDocumentLoginScope)(proof, handle); }
       catch { throw fault(scopeError); }
       requireThat(proof.runId === runId && proof.containerId === containerId && proof.sourceSha === sourceSha, scopeError);
       checkRelay();
     };
     checkScope();
     const savePurpose = "CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1";
-    const save = proof.purpose === savePurpose;
+    const save = purpose === savePurpose || lifecycle;
+    requireThat(!lifecycle || proof.installation === "ARCHIVE261_REGISTERED_SEVEN" && typeof proof.effectivePlanSha256 === "string" && /^[a-f0-9]{64}$/u.test(proof.effectivePlanSha256),scopeError);
     requireThat(save ? typeof proof.ordinaryName === "string" && /^jg_fixture_app_[a-f0-9]{24}$/u.test(proof.ordinaryName) :
       proof.purpose === undefined && proof.ordinaryName === undefined, scopeError);
     const logins = save ? [...DOCUMENT_LOGINS, proof.ordinaryName] : DOCUMENT_LOGINS;
@@ -989,7 +993,8 @@ ROLLBACK;`;
     checkScope();
     requireThat(file.stdout.toString("utf8") === `${afterSha256}  ${HBA_PATH}\n`, "TASK01_RESOURCE_DOCUMENT_HBA_FILE");
     const transition = Object.freeze({ beforeSha256, afterSha256, rules: rules.length, loginInstallXid: xid,
-      plaintextNoEncryptionRejected: true, ...(save ? { purpose: savePurpose } : {}) });
+      plaintextNoEncryptionRejected: true, ...(save ? { purpose: lifecycle?purpose:savePurpose } : {}),
+      ...(lifecycle?{effectivePlanSha256:proof.effectivePlanSha256,installation:proof.installation}:{}) });
     receipt.documentHba = transition;
     persist();
     return transition;

@@ -6,15 +6,22 @@ const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
 const ordinaryName='jg_fixture_app_0123456789abcdef01234567';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
-function fixture(change, priorSql, pool, save=false){
+function fixture(change, priorSql, pool, save=false,lifecycle=false){
  const handle={},source={candidateSha:'a'.repeat(40)},runId='a0000000-0000-4000-8000-000000000001';
+ if(lifecycle){
+  const fs=require('node:fs'),path=require('node:path');
+  const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>fs.existsSync(path.join(__dirname,'migrations',n,'migration.sql'))).sort().map(n=>({path:'services/api/prisma/migrations/'+n+'/migration.sql',sha256:sha(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+  Object.assign(source,{tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),profile:require('./task16-current259-profile.cjs').qualifyCurrent259Source({candidateSha:source.candidateSha,sealSha256:'c'.repeat(64),schemaSha256:sha(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations})});
+ }
+ const life=lifecycle?require('./task12-current261-local-lifecycle-scope.cjs').describeCurrent261LocalLifecycle(source):undefined;
+ const plan=life?{effectivePlanSha256:life.effectivePlanSha256,installation:life.installation}:{};
  const database='jg_task01_'+runId.replaceAll('-',''),containerId='b'.repeat(64);
  const roles=['template','worker','queue'].map((suffix,i)=>({name:'jg_c259_doc_'+suffix,oid:String(17000+i),xmin:'901'}));
- const completion=Object.freeze({status:'CURRENT259_DOCUMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
+ const completion=Object.freeze({...plan,status:'CURRENT259_DOCUMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'902',roleInstallXid:'901',nativeAdmission:false,executionAllowed:false});
  const ordinary={name:ordinaryName,oid:'17009',login:true,limit:0,password:'absent',superuser:false,inherit:false,createRole:false,
   createDb:false,replication:false,bypassRls:false,unlimitedValidity:true};
- const ordinaryAcl={...(save?{generatedDocument:true}:{}),completion:{installXid:'900',archiveInstallXid:'899',...(save?{purpose:savePurpose}:{})},
+ const ordinaryAcl={...(lifecycle?{generatedLifecycle:true}:save?{generatedDocument:true}:{}),completion:{...plan,installXid:'900',archiveInstallXid:'899',...(save?{purpose:lifecycle?'CURRENT261_GENERATED_LIFECYCLE_ORDINARY_ACL_V1':savePurpose}:{})},
   roleCompletion:{ordinary,commitXid:'898',status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,
    runId,containerId,executionAllowed:false,nativeAdmission:false,databaseIdentity:{
   database,databaseOid:'17010',namespaceOid:'2200',systemIdentifier:'7200000000000000001'}}};
@@ -46,10 +53,12 @@ function fixture(change, priorSql, pool, save=false){
   assert.equal(r,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;
   return {completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,check(){}};
  };
- const view={resource,source,runId,check(){}},imports={
+ const lifeRuntime=Object.freeze({kind:'OFFICIAL_TOOL_RUNTIME',profile:'TASK12_OFFICIAL_TEMURIN17_0_17_10_V1',source:{head:source.candidateSha}});
+ const view={resource,source,runId,check(){},...(lifecycle?{loader:{loadCurrent261LocalLifecycleDocumentModules(){return{currentOfficialDocumentScope(){return lifeRuntime;}};}}}:{})},imports={
   './task12-current259-document-acl-transport.cjs':{
    claimCurrent259GeneratedDocumentAcl(r,h){assert.equal(save,false,'HANDLE');return claim(r,h);},
-   claimCurrent259GeneratedDocumentSaveAcl(r,h){assert.equal(save,true,'HANDLE');return claim(r,h);}
+   claimCurrent259GeneratedDocumentSaveAcl(r,h){assert.equal(lifecycle,false,'HANDLE');assert.equal(save,true,'HANDLE');return claim(r,h);},
+   claimCurrent261GeneratedLifecycleDocumentAcl(r,h){assert.equal(lifecycle,true,'HANDLE');return claim(r,h);}
   },
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
    async closeCurrent259OwnedResource(h){assert.equal(h,handle);closes++;}}
@@ -469,4 +478,30 @@ test('only the fixed public exercise error crosses the login wrappers while clea
   assert.doesNotMatch(JSON.stringify(error),/private details/u);
   return true;
  });
+});
+
+test('the local lifecycle application rejects an old preview ACL receipt before any owner SQL or pool',async()=>{
+ const f=fixture(undefined,undefined,undefined,true);
+ await assert.rejects(async()=>f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail()),/HANDLE/u);
+ assert.equal(f.calls.length,0);assert.equal(f.closed(),0);
+});
+
+test('life login checks its entire real document matrix and invoker function ACL, not the frozen preview matrix',async()=>{
+ const f=fixture(()=>{throw Error('MODEL_STOP_AFTER_RENDER');},undefined,undefined,true,true);
+ await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail()));
+ assert.equal(f.calls.length,1);
+ const sql=f.calls[0].sql;
+ for(const [role,relation,column,privilege]of [
+  ['jg_c259_doc_worker','AuditLog','createdAt','INSERT'],
+  ['jg_c259_doc_template','ProjectFinancingQuota','attachmentFileId','SELECT']])
+  assert.ok(sql.includes(JSON.stringify({role,relation,column,privilege})));
+ assert.ok(sql.includes('public.jg_file_business_binding_columns_before_registered_payment()'));
+ assert.ok(sql.includes('p.proowner=10'));
+ assert.ok(sql.includes('actual EXCEPT ALL SELECT * FROM expected'));
+});
+
+test('life requires its actual official context before any login SQL, not a preview runtime scope',async()=>{
+ const f=fixture(undefined,undefined,{setup({view}){view.loader={loadCurrent261LocalLifecycleDocumentModules(){return{currentOfficialDocumentScope(){return undefined;}};}};}},true,true);
+ await assert.rejects(f.api.withCurrent261LocalLifecyclePublicApplication(f.completion,f.handle,publicCase,new AbortController().signal,()=>assert.fail()));
+ assert.equal(f.calls.length,0);
 });
