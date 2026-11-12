@@ -612,7 +612,11 @@ async function current259Model(temporaryRoot, mutate, technical = true, commandF
       }
       return model.ports.executeSql({ database:receipt.databaseName,phase:phase.replace(/^current259-/u,""),sql });
     } };
-  const view = { purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",deadlineMs:3600000,source: { candidateSha: "c".repeat(40), profile: { ledgerSha256: "d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952", ledger: rows } },
+  const view = { purpose:"CURRENT259_TECHNICAL_MIGRATIONS_V1",deadlineMs:3600000,source: { candidateSha: "c".repeat(40), profile: require('./task16-current259-profile.cjs').qualifyCurrent259Source({
+      candidateSha:"c".repeat(40),sealSha256:"e".repeat(64),
+      schemaSha256:crypto.createHash("sha256").update(require("node:fs").readFileSync(path.join(__dirname,"schema.prisma"))).digest("hex"),
+      migrations: rows.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))
+    }) },
     build: { node: { path: process.execPath, sha256: crypto.createHash("sha256").update(require("node:fs").readFileSync(process.execPath)).digest("hex") } }, runId: container.runId, resource,
     credentials: () => ({ owner: "synthetic-non-secret" }),
     check: () => { checks++; assert.equal(closed, false, "synthetic resource closed"); },
@@ -689,7 +693,7 @@ async function current259Model(temporaryRoot, mutate, technical = true, commandF
     scheduleFullFailure: (after,error) => {fullFailureAfter=after;fullFailure=error;}, pauseNextSql: () => { pauseSql=true; return new Promise(resolve=>{notifySql=resolve;}); }, releaseSql: () => pendingReject?.(Error("synthetic test release")), failClose:()=>{closeFails=true;}, counts: () => ({ checks, commands, closes, observations }) };
 }
 
-test("owned current259 technical recipe reuses all four atomic windows and independent readbacks", async () => {
+test("owned exact261 technical recipe reuses all four atomic windows and independent readbacks", async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), "current259-model-"));
   const model = await current259Model(temporaryRoot);
   const run = model.api.createCurrent259TechnicalMigration(model.handle);
@@ -697,7 +701,7 @@ test("owned current259 technical recipe reuses all four atomic windows and indep
   assert.equal(result.status, "CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION");
   assert.equal(result.executionAllowed, false); assert.equal(result.nativeAdmission, false);
   assert.match(result.application.name, /^jg_fixture_app_[a-f0-9]{24}$/u);
-  assert.deepEqual(model.deploymentRequests.map(row => row.count), [203,205,213,215,218,221,259]);
+  assert.deepEqual(model.deploymentRequests.map(row => row.count), [203,205,213,215,218,221,canonicalBaseline.expectedDirectoryCount]);
   for (const stage of [213,215,218,221]) assert.deepEqual(model.calls.filter(value => value.startsWith("tail" + stage)),
     ["tail" + stage + "-before", "tail" + stage + "-supply", "tail" + stage + "-readback"]);
   assert.ok(model.counts().checks >= 544,"all former per-stage source checks remain"); assert.equal(model.counts().commands, 7);
@@ -882,7 +886,7 @@ test("owned current259 partial final readback cannot issue technical supply",asy
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'current259-supply-partial-'));
  const model=await current259Model(root,(phase,row)=>{if(phase==='complete-readback')row.ledger.pop();return row;});
  const partial=model.api.createCurrent259TechnicalMigration(model.handle).migrate();
- await assert.rejects(partial,/LOCAL_MIGRATION_COMPLETION/);assert.equal(model.deploymentRequests.at(-1).count,259);
+ await assert.rejects(partial,/LOCAL_MIGRATION_COMPLETION/);assert.equal(model.deploymentRequests.at(-1).count,canonicalBaseline.expectedDirectoryCount);
  assert.throws(()=>model.api.claimCurrent259TechnicalSupply(partial,model.handle),/CURRENT259_TECHNICAL_PROFILE/);
  assert.equal(model.counts().closes,1);
 });

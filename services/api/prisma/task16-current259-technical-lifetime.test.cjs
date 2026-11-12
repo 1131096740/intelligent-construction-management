@@ -451,6 +451,37 @@ test('seven prestate maps a fixed input section without retaining input, line or
  await resource.close();
 });
 
+test('archive writer projects only the first native strict error and its fixed context',async()=>{
+ const f=rollbackResourceModel('healthy',{firstQ2:true}),resource=await f.start();
+ const sql='\\set VERBOSITY verbose\nDO $archive_registered_final$\nBEGIN\nEND $archive_registered_final$;';
+ const first='psql:<stdin>:4: ERROR:  P0002: query returned no rows\n';
+ const approved='PL/pgSQL function public.jg_install_contract_direct_upward_v2(text,text,text,uuid) line 94 at SQL statement';
+ for(const [stderr,expected] of [
+  [first+'DETAIL: private payload\nCONTEXT:  '+approved+'\nLOCATION: private pointer\n',
+   {sqlState:'P0002',section:'ARCHIVE_FINAL',routine:'jg_install_contract_direct_upward_v2',sourceLine:94}],
+  [first+'CONTEXT:  PL/pgSQL function public.raw_private(text) line 2 at SQL statement\n',
+   {sqlState:'P0002',section:'ARCHIVE_FINAL'}],
+  [first+'CONTEXT:  '+approved.replace('94','99999')+'\n',
+   {sqlState:'P0002',section:'ARCHIVE_FINAL'}],
+  [first+'psql:<stdin>:4: ERROR:  P0002: query returned no rows\nCONTEXT:  '+approved+'\n',
+   {sqlState:'P0002',section:'ARCHIVE_FINAL'}],
+  [first.replace('P0002','P0001')+'CONTEXT:  '+approved+'\n',undefined],
+ ]){
+  f.failOwnerSql(stderr);
+  await assert.rejects(resource.execOwnerSql(sql,'archive-registered-write'),error=>{
+   assert.equal(error.code,'TASK01_RESOURCE_COMMAND_FAILED');
+   assert.deepEqual(error.archiveWriteFailure,expected);
+   assert.doesNotMatch(String(error)+JSON.stringify(error.archiveWriteFailure),/private|DETAIL|CONTEXT|LOCATION/u);
+   return true;
+  });
+ }
+ assert.ok(f.calls.filter(row=>row[0]==='exec'&&row.includes('psql')).at(-1).includes('VERBOSITY=verbose'));
+ f.failOwnerSql(first+'CONTEXT:  '+approved+'\n');
+ await assert.rejects(resource.execOwnerSql(sql,'archive-registered-committed'),error=>error.archiveWriteFailure===undefined);
+ assert.ok(!f.calls.filter(row=>row[0]==='exec'&&row.includes('psql')).at(-1).includes('VERBOSITY=verbose'));
+ await resource.close();
+});
+
 test('first-Q2 document HBA rejects an unbranded role list without any HBA write',async()=>{
  const f=rollbackResourceModel('healthy',{firstQ2:true}),resource=await f.start();
  await assert.rejects(resource.applyCurrent259DocumentHbaV1({},Object.freeze({roleOids:['17000','17001','17002']})),

@@ -74,6 +74,67 @@ function sevenPrestateDiagnostic(stderr, sql) {
   return Object.freeze({ sqlState: match[2], ...(guard ? { guard } : {}), ...(section ? { section } : {}),
     ...(SEVEN_SCOPE_REASONS.has(scopeReason) ? { scopeReason } : {}) });
 }
+const ARCHIVE_WRITE_PHASE = "archive-registered-write";
+const ARCHIVE_WRITE_SECTIONS = new Map([
+  ["DO $archive_registered_before$", "ARCHIVE_BEFORE"],
+  ["DO $current259_seven_scope$", "SEVEN_SCOPE"],
+  ["DO $current259_seven_fresh$", "SEVEN_FRESH"],
+  ["DO $jg_current259_seven$", "SEVEN_REFERENCE"],
+  ["DO $current259_seven_preimage$", "SEVEN_PREIMAGE"],
+  ["DO $archive_registered_middle$", "ARCHIVE_MIDDLE"],
+  ["DO $current259_seven_archive_mid$", "SEVEN_ARCHIVE_MID"],
+  ["DO $$", "SEVEN_FRAGMENT"],
+  ["DO $current259_seven_postimage$", "SEVEN_POSTIMAGE"],
+  ["DO $current259_seven_bridge$", "SEVEN_BRIDGE"],
+  ["DO $current259_seven_objects$", "SEVEN_INSTALLED"],
+  ["DO $archive_registered_final$", "ARCHIVE_FINAL"]
+]);
+const ARCHIVE_WRITE_ROUTINES = new Set(["inline_code_block",
+  "jg_install_contract_direct_archive_outside_v1", "jg_install_direct_outside_operating_archive_read_v2",
+  "jg_install_direct_outside_operating_parent_v2", "jg_install_direct_outside_operating_slot_v2",
+  "jg_install_direct_outside_operating_version_v2", "jg_install_direct_outside_runtime_tls_v2",
+  "jg_install_direct_outside_operating_assignment_lock_v2", "jg_install_direct_outside_operating_reference_clock_v2",
+  "jg_install_direct_outside_operating_pair_v2", "jg_install_direct_outside_operating_archive_completion_v2",
+  "jg_install_direct_outside_operating_generation_v2", "jg_install_direct_outside_operating_nonce_v2",
+  "jg_install_direct_outside_operating_basis_bridge_v2", "jg_install_contract_direct_upward_v2",
+  "jg_require_contract_direct_upward_source_v2"
+]);
+
+function projectCurrent259ArchiveWriteFailure(value) {
+  const sqlState = ownErrorField(value, "sqlState");
+  if (sqlState !== "P0002") return undefined;
+  const section = ownErrorField(value, "section"), routine = ownErrorField(value, "routine"),
+    sourceLine = ownErrorField(value, "sourceLine");
+  return Object.freeze({ sqlState,
+    ...([...ARCHIVE_WRITE_SECTIONS.values()].includes(section) ? { section } : {}),
+    ...(ARCHIVE_WRITE_ROUTINES.has(routine) && Number.isInteger(sourceLine) && sourceLine >= 1 && sourceLine <= 4096
+      ? { routine, sourceLine } : {})
+  });
+}
+
+function archiveWriteDiagnostic(stderr, sql) {
+  const output = stderr.toString("utf8").split("\n");
+  const errorLine = /^psql:<stdin>:[1-9][0-9]*: ERROR:/u;
+  const first = output.findIndex(value => errorLine.test(value));
+  if (first === -1) return undefined;
+  const match = /^psql:<stdin>:([1-9][0-9]{0,7}): ERROR: +P0002: +query returned no rows\r?$/u.exec(output[first]);
+  if (!match) return undefined;
+  let section, routine, sourceLine;
+  const stop = Number(match[1]), lines = sql.split("\n");
+  if (stop <= lines.length) for (const line of lines.slice(0, stop)) {
+    for (const [marker, fixedSection] of ARCHIVE_WRITE_SECTIONS)
+      if (line.startsWith(marker)) section = fixedSection;
+  }
+  for (let i = first + 1; i < output.length; i++) {
+    if (errorLine.test(output[i]) || output[i].startsWith("LOCATION:")) break;
+    const frame = /^(?:CONTEXT: +)?PL\/pgSQL function (?:public\.)?([a-z_][a-z_0-9]{0,95})(?:\([a-z_0-9 ,."\[\]]{0,180}\))? line ([1-9][0-9]{0,3}) at SQL statement\r?$/u.exec(output[i]);
+    if (frame) {
+      [, routine, sourceLine] = frame;
+      break;
+    }
+  }
+  return projectCurrent259ArchiveWriteFailure({ sqlState: "P0002", section, routine, sourceLine: Number(sourceLine) });
+}
 function hbaRules(database, roles, loopback = false) {
   return [
     ["local", "all", OWNER, null, "peer", ["map=jg_task01_init"]],
@@ -506,6 +567,10 @@ async function prepareTask01Postgres(options = {}, lifetime) {
           const detail = ownErrorField(error, "sevenOwnerFailure");
           if (detail) Object.defineProperty(failure, "sevenOwnerFailure", { value: detail });
         }
+        if (operation === execOwnerSql && args[1] === ARCHIVE_WRITE_PHASE) {
+          const detail = projectCurrent259ArchiveWriteFailure(ownErrorField(error, "archiveWriteFailure"));
+          if (detail) Object.defineProperty(failure, "archiveWriteFailure", { value: detail });
+        }
         throw failure;
       }
     };
@@ -644,16 +709,20 @@ async function prepareTask01Postgres(options = {}, lifetime) {
     requireThat(!closePromise && typeof sql === "string" && Buffer.byteLength(sql) <= 16 * 1024 * 1024 && typeof phase === "string" && /^[A-Za-z0-9._-]{1,128}$/u.test(phase), "TASK01_RESOURCE_SQL_INPUT_INVALID");
     await inspectOwned();
     const sevenPrestate = technical && phase === SEVEN_PRESTATE_PHASE;
+    const archiveWrite = technical && !paymentLoopback && phase === ARCHIVE_WRITE_PHASE;
+    const collectFixedFailure = sevenPrestate || archiveWrite;
     const args = ["exec", "--interactive", "--user", "postgres", "--env", "PGPASSFILE=/jg-task01/owner.pgpass", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/jg-task01/ca.crt", containerId, "psql", "--no-psqlrc", "--no-password", "--set", "ON_ERROR_STOP=1",
-      ...(sevenPrestate ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"];
-    const control = { input: sql, timeoutMs: 120000, ...(sevenPrestate ? { allowFailure: true } : {}) };
+      ...(collectFixedFailure ? ["--set", "VERBOSITY=verbose"] : []), "--quiet", "--tuples-only", "--no-align", "--host", "127.0.0.1", "--port", "5432", "--username", OWNER, "--dbname", databaseName, "--file", "-"];
+    const control = { input: sql, timeoutMs: 120000, ...(collectFixedFailure ? { allowFailure: true } : {}) };
     if (documentScope) { await verifyDaemon(); documentScope(); }
     const result = await (documentScope ? docker(args, control) : mutate(args, control));
     if (result.code !== 0) {
       const failure = fault("TASK01_RESOURCE_COMMAND_FAILED");
       failure.commandKind = result.code === null ? "signal-exit" : "nonzero-exit";
-      const detail = result.code === 3 ? sevenPrestateDiagnostic(result.stderr, sql) : undefined;
-      if (detail) Object.defineProperty(failure, "sevenOwnerFailure", { value: detail });
+      if (collectFixedFailure && result.code === 3) {
+        const detail = archiveWrite ? archiveWriteDiagnostic(result.stderr, sql) : sevenPrestateDiagnostic(result.stderr, sql);
+        if (detail) Object.defineProperty(failure, archiveWrite ? "archiveWriteFailure" : "sevenOwnerFailure", { value: detail });
+      }
       throw failure;
     }
     return { stdout: result.stdout.toString("utf8") };
@@ -1047,4 +1116,4 @@ async function startCurrent259AttributionGapPostgres(options) {
   return startCurrent259FixedPostgres(options, ATTRIBUTION_GAP_LIFETIME);
 }
 module.exports = { startTask01Postgres, startCurrent259TechnicalPostgres, startCurrent259FirstRollbackPostgres,
-  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint };
+  startCurrent259FirstQ2LoopbackPostgres, startCurrent259NormalPaymentPostgres, startCurrent259ResponseLossPostgres, startCurrent259CompetitionPostgres, startCurrent259VoucherPostgres, startCurrent259DisconnectRecoveryPostgres, startCurrent259AttributionGapPostgres, projectCurrent259PhysicalEndpoint, projectCurrent259ArchiveWriteFailure };

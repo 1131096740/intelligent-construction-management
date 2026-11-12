@@ -11,8 +11,7 @@ const activeArchive=Object.freeze(['jg_contract_direct_archive_intent_binding_v1
  'jg_contract_direct_upward_issuer_binding_v2','jg_contract_direct_upward_closure_v2','jg_contract_direct_upward_execution_binding_v2']);
 const top='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const owner='jg_task01_owner';
-const ledgerSha='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
-const prefixSha='85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24';
+const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
 const attempted=new WeakSet(),issued=new WeakMap();
 const own=(value,key)=>value&&!types.isProxy(value)?Object.getOwnPropertyDescriptor(value,key)?.value:undefined;
 const fault=stage=>Object.assign(new Error(CODE+'_'+stage),{code:CODE+'_'+stage});
@@ -46,8 +45,7 @@ function scope(acl,view,document){
   completion.containerId===resource.containerId&&hex(completion.containerId,64)&&
   identity.database===resource.databaseName&&identity.database===`jg_task01_${view.runId.replaceAll('-','')}`&&
   oid(identity.databaseOid)&&oid(identity.namespaceOid)&&xid(identity.systemIdentifier)&&
-  profile?.profile==='TASK16_CURRENT259_SOURCE_V1'&&profile.ledgerSha256===ledgerSha&&profile.prefix256Sha256===prefixSha&&
-  Array.isArray(profile.ledger)&&profile.ledger.length===259&&xid(completion.installXid)&&
+  isExactCurrentArchiveProfile(profile)&&xid(completion.installXid)&&
   completion.archiveInstallXid===archiveCompletion.installXid&&xid(archiveCompletion.installXid)&&
   archiveCompletion.status==='CURRENT259_ARCHIVE_AUTHORITIES_INSTALLED'&&archiveCompletion.registeredFileSource===true&&
   [completion.catalogSha256,completion.protectedSha256,archiveCompletion.bindingSha256,archiveCompletion.pendingSha256]

@@ -45,17 +45,19 @@ function modelRow(index){
   state:{...base,app:{...app},roles:after?roleRows:[],databases:after?postDatabaseAcls:databaseAcls,
    settings:after?[{oid:'117',database:'0',config:['default_transaction_read_only=on']}]:[],violations:0}};
 }
-function fixture(change,cleanup){
+function fixture(change,cleanup,historical=false){
+ const selectedSource=historical?{...source,profile:qualifyCurrent259Source({candidateSha,sealSha256:sourceSealSha256,schemaSha256:profile.schemaSha256,migrations:migrations.slice(0,259)})}:source;
  const handle=Object.freeze({}),token=Object.freeze({}),permit=Object.freeze({}),calls=[],metadata={parent:0};let forbidFull=false;
  let taken=false,closed=false;
  const check=()=>{if(closed)throw Error('fixture closed');if(forbidFull)throw Error('full forbidden');};
  const lifetime=()=>assert.equal(closed,false),issuer=(t,h)=>{assert.equal(t,token);assert.equal(h,handle);lifetime();};
  const resource={containerId:completion.containerId,databaseName:database,async execOwnerSql(sql,phase){
   check();const index=calls.length;calls.push({phase,sql});const row=structuredClone(modelRow(index));
+  if(historical)row.state.ledger=structuredClone(selectedSource.profile.ledger);
   change?.(row,index);
   return {stdout:JSON.stringify(row)+'\n'};
  }};
- const view={runId:completion.runId,source,resource,check,checkLifetime:lifetime,verifyFull:check,credentials:()=>({runtime:'f'.repeat(96),observer:'e'.repeat(96)})};
+ const view={runId:completion.runId,source:selectedSource,resource,check,checkLifetime:lifetime,verifyFull:check,credentials:()=>({runtime:'f'.repeat(96),observer:'e'.repeat(96)})};
  const imports={
   './task16-current259-payment-run-authorization.cjs':Object.freeze({claimCurrent259CompetitionRolePermit(value,provided,technical){
    assert.equal(value,permit);assert.equal(provided,handle);assert.equal(technical,completion);return true;
@@ -63,7 +65,7 @@ function fixture(change,cleanup){
   './task16-current259-business-continuity.cjs':{assertCurrent259BusinessIssuer:issuer},
   './local-staged-current259-profile.cjs':Object.freeze({claimCurrent259TechnicalSupply(result,provided){
    assert.equal(result,completion);assert.equal(provided,handle);assert.equal(taken,false);taken=true;
-   return {source,completion,check,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
+   return {source:selectedSource,completion,check,checkContinuity(t){issuer(t,handle);metadata.parent++;}};
   }}),
   './task16-current259-owned-resource.cjs':Object.freeze({claimCurrent259TechnicalResource(provided){assert.equal(provided,handle);check();return view;},async closeCurrent259OwnedResource(provided){assert.equal(provided,handle);closed=true;cleanup?.();}}),
  };
@@ -73,11 +75,11 @@ function fixture(change,cleanup){
 }
 test('only the fixed competition permit can change the runtime capacity and its independent proof',async()=>{
  const change=(row,index)=>{if(index)row.state.roles.find(role=>role.name==='jg_task01_runtime').limit=2;};
- const denied=fixture(change);
+ const denied=fixture(change,undefined,true);
  await assert.rejects(denied.api.provisionCurrent259CompetitionRoles(completion,denied.handle,{}));
  assert.equal(denied.calls.length,0);
  await assert.rejects(denied.api.provisionCurrent259Roles(completion,denied.handle),/COMMIT_UNCONFIRMED/u);
- const admitted=fixture(change);
+ const admitted=fixture(change,undefined,true);
  const result=await admitted.api.provisionCurrent259CompetitionRoles(completion,admitted.handle,admitted.permit);
  const writer=admitted.calls[1].sql;
  assert.equal(writer.match(/CONNECTION LIMIT 2;/gu).length,1);

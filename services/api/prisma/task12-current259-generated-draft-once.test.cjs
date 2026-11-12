@@ -32,10 +32,11 @@ function planModel(t,root){
   const mod={exports:{}};
   const material=Object.freeze({}),loader={verifyFull(){},witness(){return {
     source:{candidateSha:'a'.repeat(40),tree:'b'.repeat(40),sourceSealSha256:'c'.repeat(64),
-      profile:{ledgerSha256:'d'.repeat(64),prefix256Sha256:'e'.repeat(64),schemaSha256:'f'.repeat(64)}},
+      profile:{ledgerSha256:'ebd6ee528e5eabd4b53abbd992c58637af70fee61f015a17f70b04cd55761598',prefix256Sha256:'e'.repeat(64),schemaSha256:'f'.repeat(64)}},
     build:{sdk:'synthetic'},host:{node:'synthetic'},engineCommit:'synthetic'
   };}};
   const ports={
+    '../services/api/prisma/task16-current259-profile.cjs':require('./task16-current259-profile.cjs'),
     '../services/api/prisma/task12-current259-contract-login.cjs':{CURRENT259_FIRST_Q2_TRANSPORT:'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS'},
     '../services/api/prisma/task16-current259-build.cjs':{observeCurrent259Build:()=>material},
     '../services/api/prisma/task16-current259-client-loader.cjs':{loadCurrent259Client(handle){assert.equal(handle,material);return loader;}},
@@ -62,6 +63,8 @@ test('the plan seals exact draft-only scope and rejects added credentials and wr
   const prepared=api.prepareCurrent259GeneratedDraftPlan(options);
   const verified=api.verifyCurrent259GeneratedDraftPlan(prepared.file,prepared.sha256);
   assert.deepEqual(verified.plan.case,{id,businessDate:'2026-11-12',relationship:'inside',contractTypeKey:'material_purchase',operating:false});
+  assert.equal(verified.plan.scope.migrations,261);
+  assert.equal(verified.plan.scope.stages[0],'technical261');
   assert.equal(verified.plan.scope.requests,5);
   assert.equal(verified.plan.scope.cos,false);assert.equal(verified.plan.scope.worker,false);
   assert.deepEqual(fs.readdirSync(run),[]);
@@ -145,6 +148,10 @@ function runModel(t,{once=true,used=false,failure,wrongResult=false}={}){
       assert.equal(h,handle);
       if(failure==='archive')throw Object.assign(new Error('secret'),{
         code:'CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED',phase:'archive-registered-committed'});
+      if(failure==='archive-writer-strict')throw Object.assign(new Error('secret'),{
+        code:'CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED',phase:'archive-registered-write',
+        archiveWriteFailure:Object.freeze({sqlState:'P0002',section:'ARCHIVE_FINAL',
+          routine:'jg_install_contract_direct_upward_v2',sourceLine:94,raw:'secret'})});
       if(failure==='archive-prestate')throw Object.assign(new Error('secret'),{
         code:'CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED',phase:'current259-seven-before',
         sevenFailure:Object.freeze({causeCode:'TASK01_RESOURCE_COMMAND_FAILED',sqlState:'P0001',
@@ -228,6 +235,11 @@ test('the receipt retains source-qualified migration detail and only fixed ACL a
   assert.equal(archive.failureStage,'archive-registered-committed');
   assert.equal(archive.reason,'CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED');
   assert.equal(archive.cleanup,'UNKNOWN');
+  const writer=await runModel(t,{failure:'archive-writer-strict'}).result();
+  assert.equal(writer.failureStage,'archive-registered-write');
+  assert.deepEqual(writer.archiveWriteFailure,{sqlState:'P0002',section:'ARCHIVE_FINAL',
+    routine:'jg_install_contract_direct_upward_v2',sourceLine:94});
+  assert.doesNotMatch(JSON.stringify(writer),/secret|raw/u);
   const archivePrestate=await runModel(t,{failure:'archive-prestate'}).result();
   assert.equal(archivePrestate.failureStage,'current259-seven-before');
   assert.deepEqual(archivePrestate.sevenFailure,{phase:'current259-seven-before',boundary:'OWNER_SQL',

@@ -10,7 +10,7 @@ const read=name=>readFileSync(path.join(__dirname,name),'utf8');
 const model=new Function('require',read('task16-current259-seven-preimage.test.cjs')+'\nreturn syntheticObservation;')(name=>name==='node:test'?()=>{}:require(name));
 const candidateSha='b'.repeat(40),sealSha256='a'.repeat(64);
 const source={candidateSha,sourceSealSha256:sealSha256,profile:qualifyCurrent259Source({candidateSha,sealSha256,
- schemaSha256:hash(read('schema.prisma')),migrations:readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)).sort().map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(read(`migrations/${name}/migration.sql`))}))})};
+ schemaSha256:hash(read('schema.prisma')),migrations:readdirSync(path.join(__dirname,'migrations')).filter(name=>/^\d{14}_/u.test(name)) .sort().slice(0,259).map(name=>({path:`services/api/prisma/migrations/${name}/migration.sql`,sha256:hash(read(`migrations/${name}/migration.sql`))}))})};
 const runId='12345678-1234-4234-8234-123456789012',database='jg_task01_'+runId.replaceAll('-','');
 const containerId='c'.repeat(64),nonce='d'.repeat(64);
 const identity={database,databaseOid:'90',namespaceOid:'2200',ownerOid:'10',systemIdentifier:'1234567890123456789'};

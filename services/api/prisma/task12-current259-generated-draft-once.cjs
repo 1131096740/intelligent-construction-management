@@ -90,7 +90,7 @@ function evidence(result){
 async function main(){
   let checked,attempted=false,resourceEntered=false,scopeEntered=false,phase='PREFLIGHT',cleanup='NOT_STARTED';
   const controller=new AbortController(),signal=()=>controller.abort();
-  let writeReceipt,technicalFailure,httpFailure,failureStage,sevenFailure;
+  let writeReceipt,technicalFailure,httpFailure,failureStage,sevenFailure,archiveWriteFailure;
   try{
     need(FRESH,'FRESH');
     const args=parseArgs(process.argv.slice(2));
@@ -140,6 +140,10 @@ async function main(){
         if(name==='GENERATED_DRAFT_ADMISSION'&&own(error,'code')==='CURRENT259_CONTRACT_LOGIN_CONSUMER')
           httpFailure=projectGeneratedDraftHttpFailure(own(error,'generatedHttpFailure'));
         failureStage=stageFailure(error,name);
+        if(failureStage==='archive-registered-write'){
+          const {projectCurrent259ArchiveWriteFailure}=require('./enterprise-task01-resources.cjs');
+          archiveWriteFailure=projectCurrent259ArchiveWriteFailure(own(error,'archiveWriteFailure'));
+        }
         const detail=failureStage==='current259-seven-before'?own(error,'sevenFailure'):undefined;
         if(detail){
           const {describeCurrent259SevenPrestateCommandFailure}=require('./task16-current259-seven-install.cjs');
@@ -167,7 +171,8 @@ async function main(){
     process.exitCode=1;
     if(resourceEntered&&cleanup!=='CLOSED')cleanup=safeCleanup(cause,scopeEntered);
     const reason=safeReason(cause),proof={...(reason?{reason}:{}),...(technicalFailure?{technicalFailure}:{}),
-      ...(httpFailure?{httpFailure}:{}),...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{})};
+      ...(httpFailure?{httpFailure}:{}),...(failureStage?{failureStage}:{}),...(sevenFailure?{sevenFailure}:{}),
+      ...(archiveWriteFailure?{archiveWriteFailure}:{})};
     if(writeReceipt){
       try{return writeReceipt('CURRENT259_GENERATED_DRAFT_STOPPED',proof);}
       catch{cleanup='UNKNOWN';}

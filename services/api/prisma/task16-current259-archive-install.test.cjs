@@ -23,7 +23,7 @@ const expectedInstallers = [
   'jg_install_contract_direct_upward_v2',
 ];
 
-function model(alter = row => row, alterClaim = () => {}) {
+function model(alter = row => row, alterClaim = () => {}, migrationCount = 261) {
   const handle = Object.freeze({}), provisionResult = Object.freeze({});
   const runId = '01234567-89ab-cdef-0123-456789abcdef';
   const databaseIdentity = {
@@ -50,7 +50,7 @@ function model(alter = row => row, alterClaim = () => {}) {
   const root = join(__dirname, 'migrations');
   const { createHash } = require('node:crypto');
   const ledger = fs.readdirSync(root, { withFileTypes: true }).filter(item => item.isDirectory())
-    .map(item => item.name).sort().map(name => ({ name, sha256: createHash('sha256').update(readFileSync(join(root, name, 'migration.sql'))).digest('hex'), finished: true, rolledBack: false }));
+    .map(item => item.name).sort().slice(0,migrationCount).map(name => ({ name, sha256: createHash('sha256').update(readFileSync(join(root, name, 'migration.sql'))).digest('hex'), finished: true, rolledBack: false }));
   const source = { candidateSha: completion.sourceSha, tree: 'd'.repeat(40), sourceSealSha256: 'e'.repeat(64) };
   source.profile = structuredClone(require('./task16-current259-profile.cjs').qualifyCurrent259Source({ candidateSha: source.candidateSha,
     sealSha256: source.sourceSealSha256, schemaSha256: createHash('sha256').update(readFileSync(join(__dirname, 'schema.prisma'))).digest('hex'),
@@ -132,6 +132,9 @@ test('the qualified archive and registered-file chain preserves both before cont
     'upward := public.jg_install_contract_direct_upward_v2','CURRENT259_ARCHIVE_INSTALL_POSTSTATE'];
   let previous=-1;for(const marker of markers){const at=sql.indexOf(marker,previous+1);assert.ok(at>previous,marker);previous=at;}
   assert.equal([...sql.matchAll(/^COMMIT;/gmu)].length,1);
+  assert.ok(sql.startsWith('\\set VERBOSITY verbose\n'));
+  assert.match(sql,/SET log_error_verbosity TO 'terse';/u);
+  assert.ok(f.calls[3].sql.startsWith('\\set VERBOSITY terse\n'));
   assert.match(f.calls[3].sql,/pg_xact_status\('702'::xid8\)/u);
   assert.equal(result.registeredFileSource,true);
   assert.equal(result.nativeAdmission,false);
@@ -172,6 +175,25 @@ test('both archive writers bind the three frozen outside native routines before 
     assert.match(wiring[1], /to_jsonb\(p\)-ARRAY\['proowner','proacl'\][\s\S]+IS NOT DISTINCT FROM prior_metadata/u);
     assert.doesNotMatch(after, /<<archive_outside_native>>/u);
   }
+});
+
+test('the archive writer preserves only a fixed first SQL diagnostic on its rejected phase',async()=>{
+ const detail={sqlState:'P0002',section:'ARCHIVE_FINAL',routine:'jg_install_contract_direct_upward_v2',sourceLine:94,
+  raw:'private error context'};
+ const f=model((row,phase)=>{
+  if(phase==='archive-registered-write')throw Object.assign(new Error('private error context'),
+   {code:'TASK01_RESOURCE_COMMAND_FAILED',archiveWriteFailure:detail});
+  return row;
+ });
+ await assert.rejects(f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle),error=>{
+  assert.equal(error.code,'CURRENT259_ARCHIVE_INSTALL_COMMIT_UNCONFIRMED');
+  assert.deepEqual(error.archiveWriteFailure,{sqlState:'P0002',section:'ARCHIVE_FINAL',
+    routine:'jg_install_contract_direct_upward_v2',sourceLine:94});
+  assert.doesNotMatch(JSON.stringify(error),/private|raw/u);
+  return true;
+ });
+ assert.equal(f.calls.at(-1).phase,'archive-registered-write');
+ assert.equal(f.closed(),1);
 });
 
 test('the combined writer rejects an executor already present in the original seven-file closure',async()=>{
@@ -398,4 +420,27 @@ test('the registered archive preserves the fixed parser field and stops before i
  });
  assert.deepEqual(f.calls.map(x=>x.phase),['archive-install-before','current259-seven-before']);
  assert.equal(f.closed(),1);
+});
+
+test('the historical 259 and explicit 261 archive profiles render independent frozen catalogs', async () => {
+  for (const count of [259,261]) {
+    const f=model(undefined,undefined,count);
+    await f.installCurrent259ArchiveAuthoritiesWithRegisteredFileSource(f.provisionResult,f.handle);
+    const sql=f.calls.find(call=>call.phase==='archive-registered-write').sql;
+    assert.equal(sql.includes('CURRENT259_ARCHIVE_INSTALL_TASK07_PREIMAGE'),count===261);
+    assert.equal(sql.includes('ed2db669d021e3840924545c450f5b345f3d61ee2372c3a57ebb1f74bae20e79'),count===261);
+    assert.equal(sql.includes('ffe41b8fd0fabf65e106eff42c983fa15e6d2f11e123b48503f774805fa4ba88'),count===261);
+    assert.equal(sql.includes('cbabcde24a8a4b272cf41ddc82705803776bc94d47c560e4dc731ef91cb19fb6'),count===259);
+    assert.match(sql,/53d691e74321049c33b9769f433e080540058b00fd5d2ef4045b92abae354ce1/u);
+  }
+  assert.throws(()=>model(undefined,undefined,260),/CURRENT259_SOURCE/u);
+  let qualified;
+  model(undefined,({source})=>{qualified=source.profile;});
+  const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
+  const raw={candidateSha:qualified.candidateSha,sealSha256:qualified.sealSha256,schemaSha256:qualified.schemaSha256,
+    migrations:qualified.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))};
+  for (const migrations of [
+    raw.migrations.map((row,index)=>index===260?{...row,sha256:'0'.repeat(64)}:row),
+    [...raw.migrations,{path:'services/api/prisma/migrations/20261111150000_unqualified/migration.sql',sha256:'1'.repeat(64)}],
+  ]) assert.throws(()=>qualifyCurrent259Source({...raw,migrations}),/CURRENT259_SOURCE/u);
 });

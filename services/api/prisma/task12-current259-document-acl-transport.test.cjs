@@ -8,7 +8,7 @@ function fixture(options={}){
  const handle=Object.freeze({}),runId='a0000000-0000-4000-8000-000000000001',containerId='b'.repeat(64);
  const database='jg_task01_'+runId.replaceAll('-','');
  const identity={database,databaseOid:'16391',namespaceOid:'2200',systemIdentifier:'7200000000000000001'};
- const source={candidateSha:'a'.repeat(40),profile:{ledger:Array.from({length:259},(_,n)=>({name:String(n).padStart(4,'0')+'_source',sha256:'e'.repeat(64),finished:true,rolledBack:false}))}};
+ const source={candidateSha:'a'.repeat(40),profile:{profile:'TASK16_CURRENT259_SOURCE_V1',ledgerSha256:'d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952',prefix256Sha256:'85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24',ledger:Array.from({length:259},(_,n)=>({name:String(n).padStart(4,'0')+'_source',sha256:'e'.repeat(64),finished:true,rolledBack:false}))}};
  const completion=Object.freeze({status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'900',roleCount:3,executionAllowed:false,nativeAdmission:false});
  const ordinaryAclCompletion=Object.freeze({installXid:'890',archiveInstallXid:'880',catalogSha256:'c'.repeat(64),protectedSha256:'d'.repeat(64)});

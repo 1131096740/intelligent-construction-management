@@ -5,6 +5,7 @@ const {beginCurrent259GeneratedDocumentAcl}=require('./task12-current259-documen
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 
+const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
 const CODE='CURRENT259_DOCUMENT_ACL_TRANSPORT';
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
@@ -46,7 +47,7 @@ function qualify(rolesLease,view){
   typeof catalogSql==='string'&&catalogSql.split('a.attacl::text').length===2&&
   identity.database===resource.databaseName&&identity.database===`jg_task01_${view.runId.replaceAll('-','')}`&&
   oid(identity.databaseOid)&&oid(identity.namespaceOid)&&xid(identity.systemIdentifier)&&
-  Array.isArray(source.profile?.ledger)&&source.profile.ledger.length===259,'HANDLE');
+  isExactCurrentArchiveProfile(source.profile),'HANDLE');
  const xmin=String(BigInt(completion.installXid)%0x100000000n);
  need(Array.isArray(roles)&&roles.length===names.length&&roles.every((role,i)=>
   role.name===names[i]&&oid(role.oid)&&role.oid!=='10'&&role.xmin===xmin)&&

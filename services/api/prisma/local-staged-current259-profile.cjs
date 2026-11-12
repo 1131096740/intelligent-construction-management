@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {types,isDeepStrictEqual}=require('node:util');
 const {randomBytes}=require('node:crypto');
 const ROOT=path.resolve(__dirname,'../../..'),ID='CURRENT259_OWNED_TECHNICAL_V1',OWNER='jg_task01_owner';
-const FULL='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
+const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
 const profiles=new WeakMap(),usedHandles=new WeakSet(),supplies=new WeakMap(),failures=new WeakMap();
 const need=ok=>{if(!ok)throw new Error('CURRENT259_TECHNICAL_PROFILE');};
 function dataDescriptor(owner,key){need(owner&&!types.isProxy(owner));const d=Object.getOwnPropertyDescriptor(owner,key);need(d&&Object.hasOwn(d,'value'));return Object.freeze(d);}
@@ -120,7 +120,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  need(view.resource.topology!=='UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'||typeof beginPrismaRelayDrain==='function');
  need(view.purpose==='CURRENT259_TECHNICAL_MIGRATIONS_V1'&&view.deadlineMs===3600000);
  const source=view.source,build=view.build,resource=view.resource;
- need(source.profile.ledgerSha256===FULL&&source.profile.ledger.length===259&&build.node.path===process.execPath);
+ need(isExactCurrentArchiveProfile(source.profile)&&build.node.path===process.execPath);
  const receipt=resource.getReceipt(),runId=view.runId,database='jg_task01_'+runId.replaceAll('-','');
  need(receipt.databaseName===database&&receipt.containerId===resource.containerId&&receipt.runId===runId);
  const frozenIdentity={runId,containerId:resource.containerId,networkId:resource.networkId,database,port:resource.port,name:receipt.containerName};
@@ -198,6 +198,7 @@ function createCurrent259TechnicalMigration(handle,signal){
  }catch(error){void stop().catch(()=>{});throw error;}}
  const token=Object.freeze({kind:ID});
  const profile={id:ID,owner:OWNER,database,runId,check,recordControlPhase,
+  ledger:source.profile.ledger,
   recordMaterial:row=>{check();sqlMaterials.push(Object.freeze({kind:row.kind??"setup",beforeSha256:row.beforeSha256,afterSha256:row.afterSha256}));},
   options:{container:{id:resource.containerId,name:receipt.containerName,runId},databaseNames:[database],
    inspectContainer:async()=>{

@@ -10,8 +10,7 @@ const {claimCurrent259TechnicalSupply}=require('./local-staged-current259-profil
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 
 const OWNER='jg_task01_owner';
-const LEDGER_SHA='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
-const PREFIX_SHA='85d1a225757b69aa81531560c7d989441ae6de6400c3a77737a86fc5e4a54a24';
+const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
 const ROLE_SPECS=Object.freeze([
  ['jg_c259_outside_executor_login',true],['jg_c259_outside_executor_owner',false],
  ['jg_c259_outside_issuer_login',true],['jg_c259_outside_issuer_owner',false],
@@ -248,8 +247,8 @@ async function provision(technicalCompletion,handle,competition){
   need(completion.status==='CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION'&&completion.database===view.resource.databaseName&&identity.database===completion.database&&/^jg_task01_[a-f0-9]{32}$/u.test(identity.database)&&identity.actor===OWNER&&identity.sessionActor===OWNER&&identity.ownerOid==='10'&&identity.actorOid==='10'&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&typeof identity.systemIdentifier==='string'&&/^[1-9][0-9]{0,19}$/u.test(identity.systemIdentifier)&&identity.tls===true&&identity.clientAddress==='127.0.0.1'&&identity.serverAddress==='127.0.0.1'&&identity.serverPort===5432,'HANDLE');
   need(/^jg_fixture_app_[a-f0-9]{24}$/u.test(app.name)&&oid(app.oid)&&app.oid!=='10'&&sha(app.nonce),'HANDLE');
   const {profile}=source;
-  need(profile.profile==='TASK16_CURRENT259_SOURCE_V1'&&profile.candidateSha===source.candidateSha&&profile.sealSha256===source.sourceSealSha256&&
-   profile.ledgerSha256===LEDGER_SHA&&profile.prefix256Sha256===PREFIX_SHA&&Array.isArray(profile.ledger)&&profile.ledger.length===259,'HANDLE');
+  need(isExactCurrentArchiveProfile(profile)&&(!competition||profile.profile==='TASK16_CURRENT259_SOURCE_V1')&&
+   profile.candidateSha===source.candidateSha&&profile.sealSha256===source.sourceSealSha256,'HANDLE');
   const scope={identity,app,ledger:profile.ledger,competition};
   const run=async(sql,label)=>{check();const value=await view.resource.execOwnerSql(sql,`current259-roles-${label}`);check();return observed(value?.stdout);};
   const before=await run(readSql(app.oid),'before');verifyBefore(before,scope);

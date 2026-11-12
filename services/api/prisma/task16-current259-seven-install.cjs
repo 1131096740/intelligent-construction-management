@@ -129,9 +129,10 @@ function currentRewriteBodies(ledger,changedRoutines){
   archiveChangedRoutines:changedRoutines.map(row=>archiveAfterProofs.get(row.signature)??row),
  };
 }
-function material(witness){
+function material(witness,archive){
  const profile=witness.profile;
- need(profile?.profile==='TASK16_CURRENT259_SOURCE_V1'&&profile.candidateSha===witness.candidateSha&&profile.sealSha256===witness.sourceSealSha256);
+ need((profile?.profile==='TASK16_CURRENT259_SOURCE_V1'||archive&&profile?.profile==='TASK12_ARCHIVE261_SOURCE_V1')&&
+  profile.candidateSha===witness.candidateSha&&profile.sealSha256===witness.sourceSealSha256);
  const catalog=loadCurrent259CatalogMaterial({candidateSha:witness.candidateSha,sealSha256:witness.sourceSealSha256,schemaSha256:profile.schemaSha256,
   migrations:profile.ledger.map(row=>({path:`services/api/prisma/migrations/${row.name}/migration.sql`,sha256:row.sha256}))});
  const files=new Map(catalog.sevenFragments.map(({path:relative,sha256})=>{
@@ -152,7 +153,7 @@ function material(witness){
  return {ledger:catalog.ledger,fragments:fragmentNames.map(name=>files.get(name)),newRoutines,
   ...currentRewriteBodies(catalog.ledger,changedRoutines),referenceEdit:`ALTER TABLE ${TEMP} ADD COLUMN "confirmedByUserId" text, ADD COLUMN "confirmedAt" timestamp(3), ADD COLUMN "status" text NOT NULL;\n${constraintEdit.replaceAll(RELATION,TEMP)}`};
 }
-function inputOf(lease,view){
+function inputOf(lease,view,archive=false){
  const {completion:roleCompletion,source}=lease;
  const competition=lease.competition===true;
  need(roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===source.candidateSha&&equal(source,view.source));
@@ -171,7 +172,7 @@ function inputOf(lease,view){
  need(new Set(['10',ordinary.oid,runtime.oid,observer.oid]).size===4);
  const xmin=String(BigInt(roleCompletion.commitXid)%4294967296n);
  need(runtime.xmin===xmin&&observer.xmin===xmin);
- return {source,id,ordinary,runtime,observer,roleCompletion,competition,material:material(source)};
+ return {source,id,ordinary,runtime,observer,roleCompletion,competition,material:material(source,archive)};
 }
 
 function scopeGuards(input,phase,archiveXid){
@@ -468,7 +469,7 @@ function readResult(result,input,phase,nonce){
  return {...row,pre:parseCurrent259SevenPreimage(JSON.stringify(row.pre),'10',nonce)};
 }
 function archiveSevenMaterial(lease,view,nonce){
- const input=inputOf(lease,view);
+ const input=inputOf(lease,view,true);
  need(!input.competition,'ARCHIVE_EXECUTOR');
  const executor=input.roleCompletion.roles.find(role=>role.name==='jg_c259_outside_executor_owner');
  need(hex(nonce,64)&&executor?.login===false&&oid(executor.oid)&&![input.ordinary.oid,input.runtime.oid,input.observer.oid,'10'].includes(executor.oid));

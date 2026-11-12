@@ -314,7 +314,8 @@ function createLocalMigrationFixture(input) {
       checkRoles(before);
       const count = checkLedger(before.ledger, target, rolledBack);
       if (ciRecovery) need(before.ledger.filter(row => row.name === ciRecovery && row.rolledBack === true).length === 1, "CI_RECOVERY");
-      if (technical) need(count === 0 && target.length === 259 && request.expectedFailure === undefined, "CURRENT259_FRESH_FULL_ONLY");
+      if (technical) need(count === 0 && request.expectedFailure === undefined &&
+        isDeepStrictEqual(target, technical.ledger.map(({name, sha256}) => ({name, sha256}))), "CURRENT259_FRESH_FULL_ONLY");
       if (recovery) {
         need(count === 114 && before.ledger.filter(row => row.name === expected[114].name &&
           row.sha256 === expected[114].sha256 && row.finished === false && row.rolledBack === true)

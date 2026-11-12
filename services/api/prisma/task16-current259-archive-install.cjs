@@ -5,13 +5,14 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { types } = require('node:util');
 const { claimCurrent259ProvisionedRoles } = require('./task16-current259-role-provision.cjs');
+const { projectCurrent259ArchiveWriteFailure } = require('./enterprise-task01-resources.cjs');
 const {
   claimCurrent259TechnicalResource, closeCurrent259OwnedResource,
 } = require('./task16-current259-owned-resource.cjs');
 const { archiveSevenMaterial, describeCurrent259SevenPrestateCommandFailure, describeCurrent259SevenPrestateReadbackFailure } = require('./task16-current259-seven-install.cjs');
 
 const OWNER = 'jg_task01_owner';
-const LEDGER = 'd3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';
+const {isExactCurrentArchiveProfile}=require('./task16-current259-profile.cjs');
 const STAGES = ['archive-install-before', 'archive-install-write', 'archive-install-committed'];
 const REGISTERED_STAGES = ['archive-registered-write', 'archive-registered-committed'];
 const OUTSIDE_ROLES = ['issuer_login', 'issuer_owner', 'executor_login', 'executor_owner'].map(role => `jg_c259_outside_${role}`);
@@ -64,6 +65,11 @@ const CHECKERS = [
   ['jg_upward_archive_constraint_body_v2(text)', 'text', 'plpgsql', 'i', true, 'bf0b610bd25402782ec37e8a475da8d6033212c5b63afe3458070a647edf8829'],
   ['jg_upward_archive_recipe_v2()', 'jsonb', 'sql', 'i', false, '70cfbea26f01c95b0e4a7b5674829aae767718bad7513ba69a496b55fb4eb9c2'],
 ];
+const ARCHIVE261_CHECKERS=Object.freeze({
+  'jg_upward_archive_splice_metadata_v2()':'ffe41b8fd0fabf65e106eff42c983fa15e6d2f11e123b48503f774805fa4ba88',
+  'jg_upward_archive_recipe_v2()':'142d3ae6b930e932042990a9b31f5ab841beff1f2d84f1517e3c05a0ed28a17f',
+  'jg_require_contract_direct_upward_source_v2()':'c4ed2c5040daf5f51e372a045e06fab5aeb8f048b16146c46e96c178f2128cee',
+});
 const attempted = new WeakSet();
 const receipts = new WeakMap();
 const fault = code => Object.assign(new Error(code), { code });
@@ -98,7 +104,7 @@ function roleInput(lease, view) {
   need(completion.runId === view.runId && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(view.runId) && database === `jg_task01_${view.runId.replaceAll('-', '')}`);
   need(completion.containerId === view.resource.containerId && hex(completion.containerId, 64));
   need(oid(databaseOid) && oid(namespaceOid) && ownerOid === '10' && xid(systemIdentifier) && xid(commitXid));
-  need(ledgerSha256 === LEDGER && Array.isArray(ledger) && ledger.length === 259 && sha(JSON.stringify(ledger)) === LEDGER);
+  need(isExactCurrentArchiveProfile(source.profile) && sha(JSON.stringify(ledger)) === ledgerSha256);
   need(ordinary && ordinary.login === true && /^jg_fixture_app_[a-f0-9]{24}$/u.test(ordinary.name) && oid(ordinary.oid));
   need(Array.isArray(roles) && roles.length === ROLE_NAMES.length);
   const roleXmin = String(BigInt(commitXid) % 4294967296n);
@@ -149,13 +155,15 @@ function roleGuards(input) {
 
 function backendGuards(input, write) {
   const standardPath = 'search_path=pg_catalog, pg_temp';
+  const archive261 = input.source.profile.profile === 'TASK12_ARCHIVE261_SOURCE_V1';
   const specs = [
     ...INSTALLERS.map(([name, args, result, body], index) => ({ signature: `public.${name}(${args})`, result, body,
       language: 'plpgsql', volatility: 'v', strict: index === 0 || index === INSTALLERS.length - 1,
       config: index === 0 ? 'search_path=pg_catalog, public, pg_temp' : standardPath,
     })),
     ...CHECKERS.map(([signature, result, language, volatility, strict, body]) => ({
-      signature: `public.${signature}`, result, language, volatility, strict, body, config: standardPath,
+      signature: `public.${signature}`, result, language, volatility, strict, config: standardPath,
+      body: archive261 ? ARCHIVE261_CHECKERS[signature] ?? body : body,
     })),
   ];
   return `IF current_user<>${literal(OWNER)} OR session_user<>current_user OR current_user::regrole::oid::text<>${literal(input.ownerOid)}
@@ -175,6 +183,19 @@ function backendGuards(input, write) {
  IF (SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name COLLATE "C") FROM public._prisma_migrations)
  IS DISTINCT FROM ${json(input.ledger)} THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_LEDGER'; END IF;
  ${roleGuards(input)}
+ ${archive261 ? `IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+    JOIN pg_catalog.pg_language l ON l.oid=p.prolang
+    JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
+    WHERE t.tgrelid='public."ContractBankEventClaim"'::regclass AND t.tgname='ContractBankEventClaim_company_transfer'
+     AND NOT t.tgisinternal AND t.tgenabled='O' AND t.tgtype=7 AND t.tgnargs=0 AND t.tgqual IS NULL
+     AND p.oid='public.jg_guard_contract_bank_event_company_transfer()'::regprocedure
+     AND p.pronamespace=pg_catalog.to_regnamespace('public') AND p.proowner=c.relowner AND p.proowner=current_user::regrole::oid
+     AND l.lanname='plpgsql' AND p.prokind='f' AND p.prorettype='pg_catalog.trigger'::regtype
+     AND p.provolatile='v' AND p.proparallel='u' AND NOT (p.prosecdef OR p.proisstrict OR p.proretset OR p.proleakproof)
+     AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
+     AND ${digestSql('p.prosrc')}='ed2db669d021e3840924545c450f5b345f3d61ee2372c3a57ebb1f74bae20e79') THEN
+   RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_TASK07_PREIMAGE';
+ END IF;` : ''}
  IF EXISTS(SELECT 1 FROM pg_catalog.jsonb_to_recordset(${json(specs)}) expected(signature text,result text,body text,strict boolean,config text,language text,volatility text)
    WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_language l ON l.oid=p.prolang
      WHERE p.oid=pg_catalog.to_regprocedure(expected.signature) AND p.proowner=current_user::regrole::oid
@@ -371,8 +392,8 @@ function upwardCall(input) {
       THEN RAISE EXCEPTION 'CURRENT259_ARCHIVE_INSTALL_UPWARD_RESULT'; END IF;`,
   ].join('\n ');
 }
-function beginArchive(write) {
-  return `\\set VERBOSITY terse
+function beginArchive(write, clientVerbosity = 'terse') {
+  return `\\set VERBOSITY ${clientVerbosity}
 SET log_min_error_statement TO 'panic';
 SET log_error_verbosity TO 'terse';
 SET log_statement TO 'none';
@@ -442,7 +463,7 @@ function registeredMidstate(input) {
 function renderRegistered(input, phase, challenge, before, material, staged) {
   const write = phase === REGISTERED_STAGES[0];
   const installXid = write ? 'pg_catalog.pg_current_xact_id()' : `${literal(staged.installXid)}::xid8`;
-  return `${beginArchive(write)}
+  return `${beginArchive(write, write ? 'verbose' : 'terse')}
 ${write ? `DO $archive_registered_before$
 BEGIN
  ${backendGuards(input, true)}
@@ -621,8 +642,11 @@ async function installArchive(provisionResult, handle, registered) {
     receipts.set(completion, { source: input.source, roleCompletion: input.completion, handle, check,
       ...(registered ? { ordinaryAclWitness: ordinaryAclWitness(input, completion, sevenCatalogSql) } : {}) });
     return completion;
-  } catch {
-    const context = { phase, ...(sevenFailure ? { sevenFailure } : {}) };
+  } catch (cause) {
+    const archiveWriteFailure = phase === REGISTERED_STAGES[0] && cause && typeof cause === 'object' && !types.isProxy(cause)
+      && Object.getOwnPropertyDescriptor(cause, 'code')?.value === 'TASK01_RESOURCE_COMMAND_FAILED'
+      ? projectCurrent259ArchiveWriteFailure(Object.getOwnPropertyDescriptor(cause, 'archiveWriteFailure')?.value) : undefined;
+    const context = { phase, ...(sevenFailure ? { sevenFailure } : {}), ...(archiveWriteFailure ? { archiveWriteFailure } : {}) };
     try { await closeCurrent259OwnedResource(handle); }
     catch { throw Object.assign(fault(writing ? 'CURRENT259_ARCHIVE_INSTALL_COMMIT_AND_CLEANUP_UNCONFIRMED' : 'CURRENT259_ARCHIVE_INSTALL_CLEANUP_UNCONFIRMED'), context); }
     throw Object.assign(fault(writing ? 'CURRENT259_ARCHIVE_INSTALL_COMMIT_UNCONFIRMED' : 'CURRENT259_ARCHIVE_INSTALL_PRESTATE_REJECTED'), context);

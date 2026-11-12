@@ -7,7 +7,7 @@ const {schema205WitnessSql}=require('./task16-registered-object-witness.cjs');
 const {qualifyCurrent259Source}=require('./task16-current259-profile.cjs');
 const {readQualifiedTask16File:read}=require('./task16-runtime-inputs.cjs');
 const ROOT=path.resolve(__dirname,'../../..'),MANIFEST='services/api/prisma/task16-current259-access.json';
-const MANIFEST_SHA='62a13a5007c6937e85445005acaeb52222ce8ff0f2c2e7c23d3d378cd83611a9';
+const MANIFEST_SHA='3d23c6518b64492f21a4045ca4fc4ece1a69a5942b5e1c4c7d0d2e441deef2fd';
 const BODY='f0044171410316e95ae93815ddaf344a20ecf106e0468d074ec8f8ca20f6fb20';
 const SIGNATURE='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -41,6 +41,7 @@ const wide=x=>typeof x==='string'&&/^[1-9][0-9]{0,19}$/u.test(x)&&BigInt(x)<=0xf
 function material(source){
  const p=qualifyCurrent259Source(source),capture=relative=>read(path.join(ROOT,relative),{maxBytes:2*1024*1024,collect:true,code:'TASK16_CURRENT259_CATALOG'});
  const m=capture(MANIFEST);need(m.sha256===MANIFEST_SHA);const manifest=JSON.parse(m.bytes.toString('utf8'));
+ need(p.ledgerSha256===(p.profile==='TASK12_ARCHIVE261_SOURCE_V1'?manifest.archive261LedgerSha256:manifest.fullLedgerSha256));
  for(let i=0;i<p.ledger.length;i++){const r=p.ledger[i];need(capture(source.migrations[i].path).sha256===r.sha256);}
  need(capture('services/api/prisma/schema.prisma').sha256===p.schemaSha256);
  const files=manifest.files.map(r=>{const c=capture(r.path);need(c.sha256===r.sha256);return{...r,bytes:c.bytes};});
@@ -65,6 +66,7 @@ function loadCurrent259CatalogMaterial(source){
 }
 function materialForRequest(r){
  const m=material(r.source);
+ need(m.p.profile==='TASK16_CURRENT259_SOURCE_V1');
  if(r.identity.voucherProfile){
   const {current259VoucherAcl,voucherAccessPlan}=require('./task16-current259-voucher-acl.cjs');
   m.voucher=current259VoucherAcl();

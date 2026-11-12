@@ -9,6 +9,7 @@ const {CURRENT259_FIRST_Q2_TRANSPORT}=require('../services/api/prisma/task12-cur
 const {observeCurrent259Build}=require('../services/api/prisma/task16-current259-build.cjs');
 const {loadCurrent259Client}=require('../services/api/prisma/task16-current259-client-loader.cjs');
 const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
+const {currentArchiveLedgerSize}=require('../services/api/prisma/task16-current259-profile.cjs');
 const ROOT=fs.realpathSync(path.resolve(__dirname,'..'));
 const ENTRY='services/api/prisma/task12-current259-generated-draft-once.cjs';
 const RESOURCE=Object.freeze({transport:CURRENT259_FIRST_Q2_TRANSPORT,endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',
@@ -76,6 +77,10 @@ function material(){
   return build;
 }
 
+function archiveScope(scope,source){
+  const migrations=currentArchiveLedgerSize(source.ledgerSha256);
+  return {...scope,migrations,stages:[`technical${migrations}`,...scope.stages.slice(1)]};
+}
 function planFor(options,source,protocol,runtime){
   const {packetRoot,daemonId,caseId,businessDate}=fixed(options,['packetRoot','daemonId','caseId','businessDate']);
   need(typeof daemonId==='string'&&/^[A-Za-z0-9:-]{16,128}$/u.test(daemonId)&&typeof caseId==='string'&&
@@ -87,7 +92,7 @@ function planFor(options,source,protocol,runtime){
   return {version:1,purpose:protocol.purpose,entry:protocol.entry,source,packet:{root:packetRoot,identity:directory(packetRoot,'DIRECTORY')},
     resource:{...RESOURCE,daemonId},case:{id:caseId,businessDate,relationship:'inside',contractTypeKey:'material_purchase',operating:false},
     run:{root,identity:directory(root,'DIRECTORY'),resourceDir:path.join(root,'resource'),
-      attemptFile:path.join(root,'attempt.json'),receiptFile:path.join(root,'receipt.json')},scope:protocol.scope,
+      attemptFile:path.join(root,'attempt.json'),receiptFile:path.join(root,'receipt.json')},scope:archiveScope(protocol.scope,source),
     ...(runtime?{runtime}:{})};
 }
 function writeNew(file,bytes){
@@ -148,7 +153,7 @@ function verifyPlan(file,digest,protocol){
   let raw;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data.bytes));}catch{throw fault('JSON');}
   const document=protocol===DOCUMENT;
   const fields=fixed(raw,['version','purpose','entry','source','packet','resource','case','run','scope',...(document?['runtime']:[])],'SCOPE');
-  need(fields.version===1&&fields.purpose===protocol.purpose&&fields.entry===protocol.entry&&equal(fields.scope,protocol.scope),'SCOPE');
+  need(fields.version===1&&fields.purpose===protocol.purpose&&fields.entry===protocol.entry,'SCOPE');
   const runtime=document?documentRuntime(fields.runtime,path.dirname(file)):undefined;
   const captured=material();
   const options={packetRoot:path.dirname(file),daemonId:fields.resource?.daemonId,caseId:fields.case?.id,businessDate:fields.case?.businessDate};

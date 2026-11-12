@@ -11,6 +11,7 @@ const {loadCurrent259Client}=require('../services/api/prisma/task16-current259-c
 const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const {current259FirstQ2UploadPrefix,current259FirstOutsideDirectUploadPrefix,current259FirstOutsideOperatingUploadPrefix}=require('../services/api/prisma/task12-current259-q2-fixture.cjs');
 
+const {currentArchiveLedgerSize}=require('../services/api/prisma/task16-current259-profile.cjs');
 const ROOT=fs.realpathSync(path.resolve(__dirname,'..'));
 const ENTRY='services/api/prisma/task12-current259-first-q2-once.cjs';
 const RESOURCE=Object.freeze({transport:CURRENT259_FIRST_Q2_TRANSPORT,endpoint:'unix:///Users/leoyang/.docker/run/docker.sock',
@@ -85,6 +86,10 @@ function material(){
   build.loader.verifyFull();
   return build;
 }
+function archiveScope(scope,source){
+  const migrations=currentArchiveLedgerSize(source.ledgerSha256);
+  return {...scope,migrations,stages:[`technical${migrations}`,...scope.stages.slice(1)]};
+}
 function planFor(options,source,scenario){
   const profile=PROFILES[scenario],outside=scenario!=='upward';
   const {packetRoot,daemonId,caseId,businessDate,operating,cos}=fixed(options,['packetRoot','daemonId','caseId','businessDate','operating','cos']);
@@ -113,7 +118,7 @@ function planFor(options,source,scenario){
       inputs:{root:inputs,identity:inputsIdentity},application,observer,
       canary:{key:prefix+'q2-private-canary.bin',sha256:storage.canarySha256,sizeBytes:storage.canaryBytes}},
     run:{root,identity:runIdentity,resourceDir:path.join(root,'resource'),attemptFile:path.join(root,'attempt.json'),
-      receiptFile:path.join(root,'receipt.json')},scope:profile.scope};
+      receiptFile:path.join(root,'receipt.json')},scope:archiveScope(profile.scope,source)};
 }
 function writeNew(file,bytes){
   let fd;
@@ -152,7 +157,7 @@ function verifyCurrent259FirstQ2Plan(file,digest){
   let raw;try{raw=JSON.parse(data.bytes.toString('utf8'));}catch{throw fault('JSON');}
   const fields=fixed(raw,['version','purpose','entry','source','packet','resource','case','cos','run','scope'],'SCOPE');
   const scenario=Object.keys(PROFILES).find(key=>PROFILES[key].purpose===fields.purpose);
-  need(fields.version===1&&scenario&&fields.entry===ENTRY&&equal(fields.scope,PROFILES[scenario].scope),'SCOPE');
+  need(fields.version===1&&scenario&&fields.entry===ENTRY,'SCOPE');
   const c=fields.cos,k=fields.case;
   need(c&&k&&fields.resource&&c.canary&&c.application&&c.observer,'SCOPE');
   const captured=material();
