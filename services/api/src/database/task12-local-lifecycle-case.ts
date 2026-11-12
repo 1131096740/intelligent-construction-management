@@ -15,7 +15,7 @@ export interface Task12LocalLifecycleRequest {
 export interface Task12LocalLifecycleBridge {
   check(): void;
   send(actor: number, request: Task12LocalLifecycleRequest): Promise<{ status: number; body: unknown }>;
-  download(actor: number, path: string): Promise<{ status: number; bytes: Buffer }>;
+  download(actor: number, path: string): Promise<{ status: number; bytes: Buffer; mimeType: string }>;
   now(): number; wait(ms: number): Promise<void>;
 }
 interface Fixture {
@@ -27,11 +27,15 @@ export interface Task12LocalLifecycleCaseInput {
   bridge: Task12LocalLifecycleBridge; signal: AbortSignal;
   readPdfDrawnText(bytes: Buffer, signal: AbortSignal): Promise<readonly string[]>;
 }
+export interface Task12LocalLifecycleDownloadedFile {
+  readonly id: string; readonly sha256: string; readonly sizeBytes: number; readonly mimeType: string;
+}
 export interface Task12LocalLifecycleCheckpoint {
   stage: "ORIGINALS" | "AUDIT_ROLLBACK" | "COMPLETE";
   fixtureIdentity: string; projectId: string; handlerId: string; contractId: string; versionId: string;
   roundIds: Readonly<{ withdrawn: string; rejected: string; approved: string }>;
   generationIds: Readonly<{ first: string; second: string; final: string }>;
+  generatedFiles: readonly Readonly<{ generationId: string; docx: Task12LocalLifecycleDownloadedFile; pdf: Task12LocalLifecycleDownloadedFile }>[];
   final: Readonly<{ documentContentRevision: number; documentContentFingerprint: string }>;
   originals: readonly Readonly<{ id: string; sha256: string; sizeBytes: number }>[];
   archive?: Readonly<{ id: string; idempotencyKey: string }>;
@@ -104,10 +108,13 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   let clause = "双方补充约定第一版。";
   const edit = () => { bodyPlan = { protocolVersion: 1, layoutTemplateVersionId: published.layoutId, sourceSha256: sourceBody.sourceSha256, edits: [{ positionId: editable.id, text: editable.text + clause }] }; };
   edit(); await save();
-  const download = async (fileId: string) => {
+  const generatedFiles = new Map<string, Readonly<{ generationId: string; docx: Task12LocalLifecycleDownloadedFile; pdf: Task12LocalLifecycleDownloadedFile }>>();
+  const download = async (fileId: string, mimeType: string) => {
     const ticket = await accepted(input, 0, "/files/" + fileId + "/download-ticket", "POST", { confirmationPassword: passwords[0], downloadReason: "本轮隔离合同验收" });
-    need(typeof ticket.downloadUrl === "string" && ticket.downloadUrl.startsWith("/files/" + fileId + "/download?"), "DOWNLOAD");
-    const response = await input.bridge.download(0, ticket.downloadUrl); check(input); need(response.status === 200 && response.bytes instanceof Uint8Array && response.bytes.length > 0, "DOWNLOAD"); return { bytes: response.bytes, url: ticket.downloadUrl as string };
+    need(ticket.fileId === fileId && ticket.mimeType === mimeType && Number.isSafeInteger(ticket.sizeBytes) && ticket.sizeBytes > 0 &&
+      typeof ticket.downloadUrl === "string" && ticket.downloadUrl.startsWith("/files/" + fileId + "/download?"), "DOWNLOAD");
+    const response = await input.bridge.download(0, ticket.downloadUrl); check(input); need(response.status === 200 && response.bytes instanceof Uint8Array && response.bytes.length === ticket.sizeBytes && response.mimeType === mimeType, "DOWNLOAD");
+    return { bytes: response.bytes, evidence: Object.freeze({ id: fileId, sha256: hash(response.bytes), sizeBytes: response.bytes.length, mimeType }) };
   };
   let physicalPdfRead = false;
   const generate = async () => {
@@ -115,7 +122,11 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
     const generated = await runTask12GeneratedDocument({ template: published, versionId, sourceRevision: version.draftRevision,
       documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
       lease: { token: lease.token, leaseRevision: lease.leaseRevision, expiresAt: current.lease.expiresAt } }, port(0));
-    const word = await download(generated.docxFileId), pdf = await download(generated.pdfFileId);
+    const word = await download(generated.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), pdf = await download(generated.pdfFileId, "application/pdf");
+    const downloaded = Object.freeze({ generationId: generated.generationId, docx: word.evidence, pdf: pdf.evidence });
+    const previous = generatedFiles.get(generated.generationId);
+    need(!previous || isDeepStrictEqual(previous, downloaded), "GENERATED_FILES_CHANGED");
+    if (!previous) generatedFiles.set(generated.generationId, downloaded);
     need(extractContractDocx(word.bytes).blocks.map(block => block.text).join(" ").includes(clause.normalize("NFKC")), "WORD");
     // Match the original native gate's one-use, 25-second runtime reader.
     // Later rounds still download both outputs and inspect the edited Word;
@@ -168,6 +179,7 @@ export async function runTask12LocalLifecycleCase(input: Task12LocalLifecycleCas
   const checkpoint: Task12LocalLifecycleCheckpoint = Object.freeze({ stage: "ORIGINALS", fixtureIdentity: seed.project.id, projectId: seed.project.id, handlerId: seed.handler.id, contractId, versionId,
     roundIds: Object.freeze({ withdrawn: round1.approvalInstanceId, rejected: round2.approvalInstanceId, approved: round3.approvalInstanceId }),
     generationIds: Object.freeze({ first: first.generated.generationId, second: second.generated.generationId, final: final.generated.generationId }),
+    generatedFiles: Object.freeze([...generatedFiles.values()]),
     final: Object.freeze({ documentContentRevision: final.submission.documentContentRevision, documentContentFingerprint: final.submission.documentContentFingerprint }), originals: Object.freeze(originals) });
   return issue({ input, checkpoint, archive: Object.freeze(archive), originalBytes });
 }
@@ -187,8 +199,9 @@ export async function finishTask12LocalLifecycleCase(token: object): Promise<obj
   const queried = await accepted(input, 0, path + "/archive-requests/" + archive.idempotencyKey); need(isDeepStrictEqual(queried.result, archived), "ARCHIVE_QUERY");
   for (const [index, original] of checkpoint.originals.entries()) {
     const ticket = await accepted(input, 0, "/files/" + original.id + "/download-ticket", "POST", { confirmationPassword: input.passwords[0], downloadReason: "本轮签章原件核对" });
-    need(typeof ticket.downloadUrl === "string" && ticket.downloadUrl.startsWith("/files/" + original.id + "/download?"), "DOWNLOAD");
-    const downloaded = await input.bridge.download(0, ticket.downloadUrl); check(input); need(downloaded.status === 200 && downloaded.bytes.equals(state.originalBytes[index]), "DOWNLOAD");
+    need(ticket.fileId === original.id && ticket.mimeType === "application/pdf" && ticket.sizeBytes === original.sizeBytes &&
+      typeof ticket.downloadUrl === "string" && ticket.downloadUrl.startsWith("/files/" + original.id + "/download?"), "DOWNLOAD");
+    const downloaded = await input.bridge.download(0, ticket.downloadUrl); check(input); need(downloaded.status === 200 && downloaded.mimeType === "application/pdf" && downloaded.bytes.equals(state.originalBytes[index]), "DOWNLOAD");
     need((await send(input, 7, "/files/" + original.id + "/download-ticket", "POST", { confirmationPassword: input.passwords[7], downloadReason: "越权负控" })).status === 403, "OUTSIDER_DOWNLOAD");
     const expired = new URL(ticket.downloadUrl, "http://127.0.0.1"); expired.searchParams.set("expiresAt", "2000-01-01T00:00:00.000Z");
     const rejected = await input.bridge.download(0, expired.pathname + expired.search); check(input); need(rejected.status !== 200, "EXPIRED_DOWNLOAD");

@@ -44,9 +44,9 @@ function networkModel(mode = "normal") {
     bridge: {
       check() { if(!alive) throw new Error("MODEL_BRIDGE_CLOSED"); }, now:()=>1000, wait:async()=>undefined,
       async download(_actor,path) {
-        if(path.includes("2000-01-01")) return {status:403,bytes:Buffer.alloc(0)};
+        if(path.includes("2000-01-01")) return {status:403,bytes:Buffer.alloc(0),mimeType:""};
         const file=files.get(path.split("/")[2]); if(!file) throw new Error("model missing file");
-        return {status:200,bytes:mode==="wrong-download"&&path.includes(uid(80))?Buffer.from("bad"):file};
+        return {status:200,mimeType:path.includes("/files/"+uid(51))||path.includes("/files/"+uid(52))||path.includes("/files/"+uid(53))?"application/vnd.openxmlformats-officedocument.wordprocessingml.document":"application/pdf",bytes:mode==="wrong-download"&&path.includes(uid(80))?Buffer.from("bad"):file};
       },
       async send(actor,request) {
         calls.push({actor,request});const {method,path,json}=request;
@@ -79,12 +79,18 @@ function networkModel(mode = "normal") {
         }
         if(path===draft+"/workbench")return ok({version:checkpointVersion(),draft:{},bills:[],lease:{state:"held_by_me",expiresAt:expiry},documents:activeGeneration?[{...activeGeneration,purpose:"draft",status:"success",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint}]:[]});
         if(path===draft+"/preview-generation") {
-          generation++;activeGeneration={id:uid(40+generation),docxFileId:uid(50+generation),pdfFileId:uid(60+generation)};
+          generation++;
+          if(generation===3 && mode.startsWith("reuse")) {
+            if(mode==="reuse-changed-pdf")files.set(activeGeneration!.pdfFileId,Buffer.from("%PDF-other"));
+            if(mode==="reuse-changed") {const zip=new PizZip(files.get(activeGeneration!.docxFileId)!);zip.comment="changed replay artifact";files.set(activeGeneration!.docxFileId,zip.generate({type:"nodebuffer"}));}
+            return ok({generationId:activeGeneration!.id,status:"queued",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint});
+          }
+          activeGeneration={id:uid(40+generation),docxFileId:uid(50+generation),pdfFileId:uid(60+generation)};
           const zip=new PizZip(source), xml=zip.file("word/document.xml")!.asText();zip.file("word/document.xml",xml.replace("</w:body>","<w:p><w:r><w:t>"+clause+"</w:t></w:r></w:p></w:body>"));
-          files.set(activeGeneration.docxFileId,zip.generate({type:"nodebuffer"}));files.set(activeGeneration.pdfFileId,Buffer.from("%PDF-model"));
+          files.set(activeGeneration.docxFileId,mode==="old-second-word"&&generation===2?source:zip.generate({type:"nodebuffer"}));files.set(activeGeneration.pdfFileId,Buffer.from("%PDF-model"));
           return ok({generationId:activeGeneration.id,status:"queued",sourceRevision:revision,documentContentRevision:contentRevision,documentContentFingerprint:fingerprint});
         }
-        if(path.startsWith("/files/")&&path.endsWith("/download-ticket"))return actor===7?ok({},403):ok({downloadUrl:path.replace("/download-ticket","/download?token=model&expiresAt=2099-01-01")});
+        if(path.startsWith("/files/")&&path.endsWith("/download-ticket"))return actor===7?ok({},403):ok({fileId:path.split("/")[2],mimeType:Number(path.split("/")[2].slice(-12))<60?"application/vnd.openxmlformats-officedocument.wordprocessingml.document":"application/pdf",sizeBytes:files.get(path.split("/")[2])!.length,downloadUrl:path.replace("/download-ticket","/download?token=model&expiresAt=2099-01-01")});
         if(path===draft+"/submission") {
           if(actor===7)return ok({},403);if(json?.blanksReviewed===false)return ok({},409);
           if(round===3)return ok(round3);round++;const result={approvalInstanceId:uid(70+round)};if(round===3)round3=result;return ok(result);
@@ -137,7 +143,7 @@ it("invalidates the private continuation when its original bridge has closed",as
 });
 it("rejects altered signed-original bytes and stops without any later download",async()=>{
   const m=networkModel(), token=await runTask12LocalLifecycleCase(m.input),rollback=await expectTask12LocalLifecycleAuditRollback(token);
-  const originalDownload=m.input.bridge.download;m.input.bridge.download=async(actor,path)=>path.includes("expiresAt=2099")?{status:200,bytes:Buffer.from("changed original")}:originalDownload(actor,path);
+  const originalDownload=m.input.bridge.download;m.input.bridge.download=async(actor,path)=>path.includes("expiresAt=2099")?{status:200,bytes:Buffer.from("changed original"),mimeType:"application/pdf"}:originalDownload(actor,path);
   await expect(finishTask12LocalLifecycleCase(rollback)).rejects.toThrow("_DOWNLOAD");
   await expect(finishTask12LocalLifecycleCase(rollback)).rejects.toThrow("CHECKPOINT");
 });
@@ -158,9 +164,31 @@ it("stops the entire case when the first physical PDF reader fails",async()=>{
   expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(1);
 });
 it("still rejects an unmodified Word in the second round after the sole PDF read",async()=>{
-  const m=networkModel();let reads=0,downloads=0;const download=m.input.bridge.download;
+  const m=networkModel("old-second-word");let reads=0,downloads=0;const download=m.input.bridge.download;
   m.input.readPdfDrawnText=async()=>{reads++;return ["本轮隔离V2材料合同"];};
-  m.input.bridge.download=async(actor,path)=>{downloads++;return path.includes(uid(52))?{status:200,bytes:source}:download(actor,path);};
+  m.input.bridge.download=async(actor,path)=>{downloads++;return download(actor,path);};
   await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("_WORD");expect(reads).toBe(1);expect(downloads).toBe(4);
   expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(2);
+});
+
+it("records actual generated download bytes in an immutable safe checkpoint, deduplicating a matching replay",async()=>{
+  const m=networkModel("reuse"), observed=new Map<string,Buffer>(),download=m.input.bridge.download;
+  m.input.bridge.download=async(actor,path)=>{const result=await download(actor,path);if(result.status===200)observed.set(path.split("/")[2],result.bytes);return result;};
+  const token=await runTask12LocalLifecycleCase(m.input),checkpoint=claimTask12LocalLifecycleCheckpoint(token);
+  expect(checkpoint).toHaveProperty("generatedFiles");
+  const entries=(checkpoint as unknown as {generatedFiles:Array<{generationId:string;docx:{id:string;sha256:string;sizeBytes:number;mimeType:string};pdf:{id:string;sha256:string;sizeBytes:number;mimeType:string}}>}).generatedFiles;
+  expect(entries.map(entry=>entry.generationId)).toEqual([uid(41),uid(42)]);
+  for(const entry of entries)for(const [kind,file] of [["docx",entry.docx],["pdf",entry.pdf]] as const){const bytes=observed.get(file.id)!;expect(file).toEqual({id:file.id,sha256:digest(bytes),sizeBytes:bytes.length,mimeType:kind==="pdf"?"application/pdf":"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});expect(Object.isFrozen(file)).toBe(true);}
+  expect(Object.isFrozen(entries)).toBe(true);
+});
+it.each(["reuse-changed","reuse-changed-pdf"])("rejects %s bytes for a repeated generation instead of overwriting its first evidence",async(mode)=>{
+  const m=networkModel(mode);await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("GENERATED_FILES_CHANGED");
+});
+
+it.each(["ticket-mime", "ticket-size", "response-mime"])("rejects %s disagreement before accepting a generated file",async(mode)=>{
+  const m=networkModel(),send=m.input.bridge.send,download=m.input.bridge.download;
+  m.input.bridge.send=async(actor,request)=>{const result=await send(actor,request);if(request.path.endsWith("/download-ticket")&&result.status===201){const body=result.body as Record<string,unknown>;return {...result,body:{...body,...(mode==="ticket-mime"?{mimeType:"application/pdf"}:mode==="ticket-size"?{sizeBytes:1}:{})}};}return result;};
+  m.input.bridge.download=async(actor,path)=>{const result=await download(actor,path);return mode==="response-mime"?{...result,mimeType:"text/plain"}:result;};
+  await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("_DOWNLOAD");
+  expect(m.calls.some(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/submission"))).toBe(false);
 });
