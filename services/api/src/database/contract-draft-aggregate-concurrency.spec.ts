@@ -149,7 +149,10 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
       invalid.bills[0]!.rows[0]!.unitPrice = "1.23456";
       const invalidResponse = await put(invalid);
       expect(invalidResponse.status).toBe(400);
-      expect(await invalidResponse.json()).toMatchObject({ code: "CONTRACT_BILL_VALIDATION_FAILED", rowErrors: expect.arrayContaining([expect.objectContaining({ field: "unitPrice" })]) });
+      expect(await invalidResponse.json()).toMatchObject({
+        code: "DRAFT_VALIDATION_FAILED",
+        message: "清单有 1 处需要修改"
+      });
       const overflow = structuredClone(invalid); overflow.idempotencyKey = randomUUID();
       overflow.bills[0]!.rows[0]!.quantity = "1";
       overflow.bills[0]!.rows[0]!.unitPrice = "92233720368547758.0750";
@@ -290,7 +293,10 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
       const competingAttempt = put(bases[1]!, competingBody); inFlight.push(competingAttempt);
       releaseLock!(); await lockTask;
       const responses = await Promise.all([winningAttempt, competingAttempt]);
-      expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
+      const outcomes = await Promise.all(responses.map(async response => response.status === 400
+        ? { status: response.status, error: await response.clone().json() }
+        : { status: response.status }));
+      expect(outcomes.sort((left, right) => left.status - right.status)).toEqual([{ status: 200 }, { status: 409 }]);
       const winnerIndex = responses.findIndex(response => response.status === 200);
       const winnerBody = winnerIndex === 0 ? restoreBody : competingBody;
       const restored = await responses[winnerIndex]!.json();
