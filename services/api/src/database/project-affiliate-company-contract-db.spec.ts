@@ -30,11 +30,12 @@ import { BadRequestException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { ProjectAffiliateCompanyContractService } from "../project/project-affiliate-company-contract.service";
 
 const TEST_DATABASE = "jiangkong_project_affiliate_company_contract_test";
-const { renderContractFinanceFileGuardGrant } = require("../../prisma/contract-bank-runtime-fixture.cjs") as {
+const { renderContractFinanceFileGuardGrant } = createRequire(__filename)("../../prisma/contract-bank-runtime-fixture.cjs") as {
   renderContractFinanceFileGuardGrant: (role: string) => string;
 };
 const LIVE_TEST_ENABLED =
