@@ -102,6 +102,11 @@ function model(t,{once=true,failure,used=false,env={},fresh=true,businessDate=to
     const result=await use(application);
     if(failure==='application-close')throw fixedError('CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',{
      phase:'CONSUME',reason:'ROLE_APP_CLOSE',appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE',raw:'private payload'});
+    if(failure==='application-exercise')throw fixedError('CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',{
+     phase:'CONSUME',reason:'ROLE_APP_HTTP',exerciseCode:'CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE',
+     appCleanupOutcome:'UNKNOWN_DO_NOT_CONTINUE',raw:'private payload'});
+    if(failure==='application-unknown')throw fixedError('CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',{
+     phase:'CONSUME',reason:'ROLE_APP_HTTP',exerciseCode:'CURRENT259_GENERATED_DOCUMENT_EXERCISE_PRIVATE',raw:'private payload'});
     return result;
    }finally{calls.push('application-close');}
   }},
@@ -218,6 +223,17 @@ test('keeps only established technical, seven-fragment and exercise diagnostics'
  assert.equal(exercise.phase,'APPLICATION');
  assert.equal(exercise.reason,'CURRENT259_GENERATED_DOCUMENT_EXERCISE_OWNER_READBACK');
  assert.doesNotMatch(JSON.stringify({migration,archive,exercise}),/private payload/u);
+});
+
+test('projects the whitelisted document stage carried by the real HTTP cleanup wrapper',async t=>{
+ const wrapped=await model(t,{failure:'application-exercise'}).result();
+ assert.equal(wrapped.phase,'APPLICATION');
+ assert.equal(wrapped.failureStage,'CONSUME');
+ assert.equal(wrapped.reason,'CURRENT259_GENERATED_DOCUMENT_EXERCISE_SAVE');
+ assert.equal(wrapped.cleanup,'UNKNOWN');
+ const unknown=await model(t,{failure:'application-unknown'}).result();
+ assert.equal(unknown.reason,'CURRENT259_DOCUMENT_LOGIN_ROLE_APP_HTTP');
+ assert.doesNotMatch(JSON.stringify({wrapped,unknown}),/private payload|EXERCISE_PRIVATE/u);
 });
 
 

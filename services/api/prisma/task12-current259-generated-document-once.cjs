@@ -41,8 +41,8 @@ const reasonCodes=new Set([
  'CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED',
  ...['FRESH','ARGS','HOST_ENV','TIME','CONTINUITY','DEPENDENCIES','ATTEMPT','ATTEMPT_USED','RESULT','RUNTIME','RECEIPT']
   .map(part=>'CURRENT259_GENERATED_DOCUMENT_ONCE_'+part),
- ...['DIRECTORY','DIGEST','SCOPE','CHANGED','RUN_ALREADY_USED','INPUT']
-  .map(part=>'CURRENT259_GENERATED_DOCUMENT_PLAN_'+part),
+ ...['DIRECTORY','DIGEST','SCOPE','CHANGED','RUN_ALREADY_USED','INPUT','RUNTIME']
+  .map(part=>'CURRENT259_GENERATED_DRAFT_PLAN_'+part),
  ...['INPUT','SCOPE','ENV','CONTINUITY','CLEANUP_UNKNOWN','READER']
   .map(part=>'CURRENT259_GENERATED_DOCUMENT_RUNTIME_'+part),
  ...['INPUT','TEMPLATE','OPEN','SAVE','OWNER_BEGIN','GENERATE','PUBLIC_READBACK','OWNER_READBACK','RESULT']
@@ -51,17 +51,17 @@ const reasonCodes=new Set([
 const loginReasons=new Set([
  'PREIMAGE','POSTIMAGE','READBACK','OUTPUT','ROLE_PRODUCER','ROLE_HBA','ROLE_IDENTITY','ROLE_DRAIN','ROLE_CONSTRUCT',
  'ROLE_CLIENT','ROLE_CONNECT','ROLE_OWNER_READ','ROLE_ENTRY','ROLE_CLEANUP_UNKNOWN','ROLE_CLOSE_TIMEOUT','ROLE_APP',
- ...['HANDLE','DESCRIPTOR','PROVIDERS','MODULE','COMPILE','CREATE','INIT','USE','CLOSE','TIMEOUT'].map(stage=>'ROLE_APP_'+stage)
+ ...['HANDLE','DESCRIPTOR','PROVIDERS','MODULE','COMPILE','CREATE','INIT','LISTEN','HTTP','USE','CLOSE','TIMEOUT'].map(stage=>'ROLE_APP_'+stage)
 ]);
 
 function safeReason(cause){
  let found;
  for(let i=0;i<6&&cause&&typeof cause==='object'&&!types.isProxy(cause);i++,cause=own(cause,'cause')){
-  const code=own(cause,'code'),reason=own(cause,'reason');
+  const code=own(cause,'code'),reason=own(cause,'reason'),exerciseCode=own(cause,'exerciseCode');
   if(reasonCodes.has(code))found=code;
   if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&loginReasons.has(reason))found='CURRENT259_DOCUMENT_LOGIN_'+reason;
-  if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&reasonCodes.has(reason)&&
-   typeof reason==='string'&&reason.startsWith('CURRENT259_GENERATED_DOCUMENT_EXERCISE_'))found=reason;
+  if(code==='CURRENT259_DOCUMENT_LOGIN_CONSUME_FAILED'&&reason==='ROLE_APP_HTTP'&&reasonCodes.has(exerciseCode)&&
+   typeof exerciseCode==='string'&&exerciseCode.startsWith('CURRENT259_GENERATED_DOCUMENT_EXERCISE_'))found=exerciseCode;
  }
  return found;
 }
