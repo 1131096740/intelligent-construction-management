@@ -172,3 +172,35 @@ test('matching executable bytes do not permit setuid or setgid regular files',()
   assert.throws(()=>model.api.inspectOfficialDocumentQualification(input.name,input.sha256),{code:'TASK12_OFFICIAL_DOCUMENT_BUILD_NODE'});
  }
 });
+
+
+test('a verifier clone outside the canonical module cache cannot issue authority',()=>{
+ const model=require('./task12-official-document-model.test-support.cjs').model(),input=model.publish();
+ const file=require('node:path').join(__dirname,'task12-official-document-profile.cjs');
+ model.moduleCache[file]={exports:{...model.moduleCache[file].exports}};
+ assert.throws(()=>model.api.verifyOfficialTask12DocumentRuntime(input.name,input.sha256,model.moduleView),{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
+});
+
+test('a canonical profile cache replacement revokes a retained scope before any later child',async()=>{
+ const model=require('./task12-official-document-model.test-support.cjs').model(),input=model.packet();
+ const proof=model.api.inspectOfficialDocumentQualification(input.name,input.sha256);
+ await assert.rejects(model.api.withOfficialDocumentQualification(proof,async scope=>{
+  delete model.moduleCache[require('node:path').join(__dirname,'task12-official-document-profile.cjs')];scope.checkMaterials();
+ }),{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
+});
+
+
+test('actual Module._compile source clones cannot issue qualification evidence',()=>{
+ const fs=require('node:fs'),Module=require('node:module'),file=require('node:path').join(__dirname,'task12-official-document-profile.cjs');
+ const clone=new Module(file,module);clone.filename=file;clone.paths=module.paths;clone._compile(fs.readFileSync(file,'utf8'),file);
+ assert.throws(()=>clone.exports.inspectOfficialDocumentQualification('/private/tmp/no-input','0'.repeat(64)),{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
+});
+
+test('restoring cache identity after an observed replacement does not revive authority',async()=>{
+ const model=require('./task12-official-document-model.test-support.cjs').model(),input=model.packet(),file=require('node:path').join(__dirname,'task12-official-document-profile.cjs');
+ const proof=model.api.inspectOfficialDocumentQualification(input.name,input.sha256),original=model.moduleCache[file];
+ await assert.rejects(model.api.withOfficialDocumentQualification(proof,async scope=>{
+  delete model.moduleCache[file];assert.throws(scope.check,{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
+  model.moduleCache[file]=original;assert.throws(scope.checkMaterials,{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
+ }),{code:'TASK12_OFFICIAL_DOCUMENT_MODULES'});
+});
