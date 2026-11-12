@@ -26,6 +26,24 @@ const DISCONNECT_TOPOLOGY = paymentLoopbackForScenario('disconnect-commit-recove
 const CODE = 'CURRENT259_LIVE_SESSIONS';
 const KINDS = ['owner', 'runtime', 'observer'];
 const METHOD_NAMES = ['$disconnect', '$connect', '$queryRawUnsafe', '$transaction'];
+const liveFailures = new WeakMap();
+const prismaCodes = new Set(['P1000', 'P1001', 'P1002', 'P1003', 'P1008', 'P1010', 'P1011', 'P1017', 'P2010', 'P2024']);
+const sqlStates = new Set(['08000', '08001', '08003', '08004', '08006', '08P01', '0A000', '22023', '25006',
+  '28000', '28P01', '3D000', '42501', '42601', '42702', '42703', '42725', '42804', '42883', '42P01',
+  '53300', '57014', '57P01', 'XX000']);
+
+function describeCurrent259LiveFailure(error) {
+  return liveFailures.get(error);
+}
+function liveFailure(error, checkpoint) {
+  const data = (value, key) => value && typeof value === 'object' && !types.isProxy(value)
+    ? Object.getOwnPropertyDescriptor(value, key)?.value : undefined;
+  const code = data(error, 'code');
+  const prismaCode = [data(error, 'errorCode'), code].find(value => prismaCodes.has(value)) ?? null;
+  const sqlState = [prismaCode === 'P2010' ? data(data(error, 'meta'), 'code') : undefined, code]
+    .find(value => sqlStates.has(value)) ?? null;
+  return Object.freeze({ checkpoint, prismaCode, sqlState });
+}
 const stamp = expression => `pg_catalog.to_char(${expression} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 const fail = suffix => Object.assign(new Error(CODE + '_' + suffix), { code: CODE + '_' + suffix });
 function need(ok, suffix = 'INVALID') { if (!ok) throw fail(suffix); }
@@ -61,7 +79,15 @@ function assertCurrent259CompetitionLivePair(proofs,handle) {
 
 async function withCurrent259LiveSessions(b7Completion, handle, consume) {
   need(arguments.length === 3 && typeof consume === 'function', 'ARGUMENTS');
-  return withLiveSessions(b7Completion,handle,consume,false);
+  try {
+    return await withLiveSessions(b7Completion,handle,consume,false);
+  } catch (error) {
+    // Failure before the live scope starts keeps the existing error and cleanup path.
+    if (error && typeof error === 'object' && !types.isProxy(error) && !liveFailures.has(error)) {
+      liveFailures.set(error, liveFailure(error, 'LIVE_PREPARE'));
+    }
+    throw error;
+  }
 }
 async function withCurrent259CompetitionLiveSessions(b7Completion,handle,permit,consume) {
   need(arguments.length===4&&typeof consume==='function','ARGUMENTS');
@@ -91,6 +117,10 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   let methods, initial, businessToken, faultUsed = false;
   let replacementRow, retiredRuntime, disconnectOutcome, directoryBefore, replacementUsed=false, recoveryComplete=false;
   let disconnectStage='LIVE_ADMISSION', disconnectFailure;
+  let checkpoint = 'LIVE_PREPARE', firstLiveFailure;
+  function rememberLiveFailure(error) {
+    if (!competition && !recovery) firstLiveFailure ??= liveFailure(error, checkpoint);
+  }
   function rememberDisconnectFailure(error,stage=disconnectStage) {
     if(recovery)disconnectFailure??=captureCurrent259DisconnectFailure(error,stage);
   }
@@ -241,6 +271,7 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
     if (result.timeout || result.failed) {
       if (result.timeout) cleanup = 'UNKNOWN';
       broken = true; active = false;
+      rememberLiveFailure(result.error);
       if(failureStage&&result.failed)rememberDisconnectFailure(result.error,failureStage);
       throw fail(result.timeout ? 'UNSETTLED' : 'OPERATION');
     }
@@ -331,11 +362,15 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
   }
   async function verify(installedOnly = false, sourceContinuityOnly = false, lane=replacementRow?3:1) {
     try {
+      checkpoint = 'VERIFY_CONTINUITY';
       checkLight(); need(!checking, 'CONCURRENT_VERIFY'); checking = true;
       if (!((installedOnly || sourceContinuityOnly) && businessToken)) { view.verifyFull(); checkLight(); }
+      checkpoint = 'VERIFY_ENDPOINT';
       const physical = await endpoint(), nonce = randomBytes(32).toString('hex');
       const indices = installedOnly?[0,2]:!initialRows&&competition?[0,1,2,3]:[0,lane,2];
+      checkpoint = 'IDENTITY_SELF';
       const observed = await observe(indices, nonce);
+      checkpoint = 'IDENTITY_PARSE';
       if (!initialRows) {
         parseCurrent259ClientSessions(observed.slice(0,3), { ...expected, nonce });
         if(competition){
@@ -350,12 +385,16 @@ async function withLiveSessions(b7Completion, handle, consume, competition, reco
       }
       const currentRows=replacementRow?[initialRows[0],replacementRow,initialRows[2]]:initialRows;
       need(currentRows.every(row => row.serverAddress === physical.serverAddress), 'PHYSICAL_ENDPOINT');
+      checkpoint = 'IDENTITY_INDEPENDENT';
       await independentlyObserve(currentRows, nonce, !!replacementRow);
+      checkpoint = 'CATALOG';
       await catalog();
+      checkpoint = 'VERIFY_CONTINUITY';
       if(replacementRow&&!installedOnly&&!sourceContinuityOnly)need(await recoveryDirectory()===directoryBefore,'RECOVERY_DIRECTORY');
       if (!((installedOnly || sourceContinuityOnly) && businessToken)) view.verifyFull();
       checkLight();
     } catch(error) {
+      rememberLiveFailure(error);
       rememberDisconnectFailure(error);
       broken = true; active = false; await closeResource();
       const failure=fail('VERIFICATION');
@@ -505,33 +544,48 @@ ROLLBACK;`;
     need(Object.values(methods).every(fn => typeof fn === 'function'));
     initial = methods.getReceipt();
     checkLight();
+    checkpoint = 'ENDPOINT';
     await endpoint();
+    checkpoint = 'CA';
     need(typeof Class === 'function' && Object.values(methods).every(fn => typeof fn === 'function'));
     ca = read(resource.caPath, { privateFile: false, maxBytes: 1048576, code: CODE + '_CA' });
     need(ca.identity.uid === process.getuid() && ca.sha256 === initial.tls.caSha256, 'CA');
+    checkpoint = 'CREDENTIALS';
     const credentials=view.credentials();
-    for (const kind of [...KINDS,...(competition?['runtime']:[])]) await connectClient(kind, credentials);
+    for (const kind of [...KINDS,...(competition?['runtime']:[])]) {
+      checkpoint = 'CONNECT_' + kind.toUpperCase();
+      await connectClient(kind, credentials);
+    }
     await verify();
+    checkpoint = 'PROOF';
     proofs=(competition?[1,3]:[1]).map(issueProof);
     if(competition){Object.freeze(proofs);competitionPairs.set(proofs,handle);}
     disconnectStage='ORIGINAL_APPLICATION';
+    checkpoint = 'CALLBACK_ENTRY';
     value = recovery?await consume(proofs[0],replaceRuntime):await consume(competition?proofs:proofs[0]);
     disconnectStage='FINAL_LIVE_VERIFICATION';
     checkLight();
     need(!recovery||recoveryComplete,'REPLACEMENT_REQUIRED');
     await verify();
   } catch(error) {
+    rememberLiveFailure(error);
     rememberDisconnectFailure(error);
     hasPrimary = true; broken = true; active = false;
   } finally {
+    checkpoint = 'CLEANUP';
     try { await close(); }
-    catch(error) { rememberDisconnectFailure(error,'LIVE_CLEANUP'); hasPrimary = true; }
+    catch(error) {
+      rememberLiveFailure(error);
+      rememberDisconnectFailure(error,'LIVE_CLEANUP');
+      hasPrimary = true;
+    }
   }
   if (hasPrimary) {
     const error=Object.assign(fail('FAILED_CLOSED'), { clientCleanupOutcome: cleanup, resourceCleanupOutcome: resourceCleanup });
+    if (firstLiveFailure) liveFailures.set(error, firstLiveFailure);
     throw disconnectFailure?carryCurrent259DisconnectFailure(error,disconnectFailure):error;
   }
   return value;
 }
 
-module.exports = Object.freeze({ withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,withCurrent259DisconnectLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,isCurrent259PaymentLoopbackImpactSession,verifyCurrent259ImpactFileBoundary });
+module.exports = Object.freeze({ describeCurrent259LiveFailure, withCurrent259LiveSessions,withCurrent259CompetitionLiveSessions,withCurrent259DisconnectLiveSessions,claimCurrent259LiveSessions,assertCurrent259CompetitionLivePair,isCurrent259PaymentLoopbackImpactSession,verifyCurrent259ImpactFileBoundary });

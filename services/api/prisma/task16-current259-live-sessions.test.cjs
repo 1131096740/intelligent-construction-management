@@ -92,6 +92,12 @@ function fixture(options={}){
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,token){continuity(token,h);return view;},claimCurrent259TechnicalResource(h){assert.equal(h,handle);check();return view;},async closeCurrent259OwnedResource(h){assert.equal(h,handle);resourceClosed++;options.onClose?.();}},
   './task16-runtime-inputs.cjs':{readQualifiedTask16File(){options.onRead?.();return {sha256:'c'.repeat(64),identity:{uid:process.getuid()}};}}
  };
+ if(options.beforeParse){
+  const identityModule=require('./task16-current259-session-identity.cjs');
+  imports['./task16-current259-session-identity.cjs']={...identityModule,parseCurrent259ClientSessions(...args){
+   options.beforeParse();return identityModule.parseCurrent259ClientSessions(...args);
+  }};
+ }
  const api=new Function('require','module','setTimeout',fs.readFileSync(path.join(__dirname,'task16-current259-live-sessions.cjs'),'utf8')+'\nreturn module.exports;')(
   name=>imports[name]??require(name),{exports:{}},options.fastTimeout?(fn=>setTimeout(fn,1)):setTimeout);
  return {api,handle,completion,calls,clients,continuityToken,resourceClosed:()=>resourceClosed,fulls:()=>fulls};
@@ -128,6 +134,62 @@ test('three scoped clients retain exact same-handle identities and expire after 
  assert.equal(f.clients.length,3);assert.deepEqual(f.clients.map(x=>x.disconnects),[1,1,1]);
  assert.throws(()=>session.checkLight());assert.throws(()=>f.api.claimCurrent259LiveSessions(proof,f.handle));
  assert.equal(f.resourceClosed(),0);
+});
+
+test('an ordinary live admission retains only the first bounded Prisma failure across cleanup',async()=>{
+ const primary=Object.assign(new Error('private SQL, connection URL and path'),{code:'P2010',meta:{code:'42501',message:'private SQL'}});
+ const f=fixture({onIdentity(_row,index){if(index===1)throw primary;},onDisconnect(){throw new Error('private cleanup');}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>assert.fail('unexpected proof')),error=>{
+  assert.equal(error.code,'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED');
+  assert.equal(error.clientCleanupOutcome,'UNKNOWN');
+  assert.equal(error.resourceCleanupOutcome,'CLOSED');
+  assert.equal(f.api.describeCurrent259LiveFailure(primary),undefined);
+  assert.equal(f.api.describeCurrent259LiveFailure({liveFailure:{checkpoint:'IDENTITY_SELF'}}),undefined);
+  const detail=f.api.describeCurrent259LiveFailure(error);
+  assert.deepEqual(detail,{checkpoint:'IDENTITY_SELF',prismaCode:'P2010',sqlState:'42501'});
+  assert.ok(Object.isFrozen(detail));
+  assert.doesNotMatch(JSON.stringify(error),/private|liveFailure/u);
+  return true;
+ });
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1]);
+ assert.equal(f.resourceClosed(),1);
+});
+
+for(const [checkpoint,options] of [
+ ['IDENTITY_PARSE',{onIdentity(row,index){if(index===2)row.readOnly='off';}}],
+ ['IDENTITY_INDEPENDENT',{onOwner(row){row.readerTls=false;}}],
+ ['CATALOG',{onCatalog(row){row.reader.bodySha256='e'.repeat(64);}}],
+ ['PROOF',(()=>{let calls=0;return {beforeParse(){if(++calls===2)throw new Error('private proof payload');}};})()]
+])test('ordinary live admission identifies '+checkpoint+' before entering the consumer',async()=>{
+ const f=fixture(options);
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>assert.fail('unexpected proof')),error=>{
+  assert.equal(error.code,'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED');
+  assert.deepEqual(f.api.describeCurrent259LiveFailure(error),{checkpoint,prismaCode:null,sqlState:null});
+  return true;
+ });
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1,1]);
+ assert.equal(f.resourceClosed(),1);
+});
+
+test('ordinary live admission reads only own allowlisted engine codes',async()=>{
+ let reads=0;
+ const native=Object.assign(new Error('private endpoint'),{errorCode:'P1011'});
+ Object.defineProperties(native,{code:{get(){reads++;throw new Error('private code');}},
+  meta:{get(){reads++;throw new Error('private meta');}}});
+ const f=fixture({onConnect(client){if(client.index===1)throw native;}});
+ await assert.rejects(f.api.withCurrent259LiveSessions(f.completion,f.handle,()=>assert.fail('unexpected proof')),error=>{
+  assert.deepEqual(f.api.describeCurrent259LiveFailure(error),{checkpoint:'CONNECT_RUNTIME',prismaCode:'P1011',sqlState:null});
+  return true;
+ });
+ assert.equal(reads,0);
+ assert.deepEqual(f.clients.map(client=>client.disconnects),[1,1]);
+ assert.equal(f.resourceClosed(),1);
+
+ const spoof=fixture({onConnect(){throw Object.assign(new Error('private endpoint'),{errorCode:'P9999',code:'ZZ999',meta:{code:'42501'}});}});
+ await assert.rejects(spoof.api.withCurrent259LiveSessions(spoof.completion,spoof.handle,()=>assert.fail('unexpected proof')),error=>{
+  assert.deepEqual(spoof.api.describeCurrent259LiveFailure(error),{checkpoint:'CONNECT_OWNER',prismaCode:null,sqlState:null});
+  return true;
+ });
 });
 
 test('commit cancellation observes the original backend and pairs its own READY with one public submission',async()=>{

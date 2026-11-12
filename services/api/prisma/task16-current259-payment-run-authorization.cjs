@@ -313,8 +313,11 @@ async function run(args){
   const installVoucherAcl=request.voucher?original('./task16-current259-payment-acl-install.cjs',['installCurrent259VoucherPaymentAcl']).installCurrent259VoucherPaymentAcl:undefined;
   const provisionCompetition=request.competition?original('./task16-current259-role-provision.cjs',['provisionCurrent259CompetitionRoles']).provisionCurrent259CompetitionRoles:undefined;
   if(request.competition)original('./task16-current259-payment-competition.cjs',['executeCurrent259PaymentCompetition']);
+  const liveSessions=request.business?original('./task16-current259-live-sessions.cjs',
+   ['withCurrent259LiveSessions','describeCurrent259LiveFailure']):undefined;
   businessFlow=request.business?Object.freeze({
-   withCurrent259LiveSessions:original('./task16-current259-live-sessions.cjs',['withCurrent259LiveSessions']).withCurrent259LiveSessions,
+   withCurrent259LiveSessions:liveSessions.withCurrent259LiveSessions,
+   describeCurrent259LiveFailure:liveSessions.describeCurrent259LiveFailure,
    withCurrent259ApplicationEnvironment:original('./task16-current259-application-environment.cjs',['withCurrent259ApplicationEnvironment']).withCurrent259ApplicationEnvironment,
    withCurrent259OwnedApplication:original('./task16-current259-application-factory.cjs',['withCurrent259OwnedApplication']).withCurrent259OwnedApplication,
    runCurrent259PaymentCase:original('./task16-current259-payment-case.cjs',['runCurrent259PaymentCase']).runCurrent259PaymentCase,
@@ -515,6 +518,8 @@ async function run(args){
       if(technicalFailure)receipt.technicalFailure=technicalFailure;
       const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
       if(sevenFailure)receipt.sevenFailure=sevenFailure;
+      const liveFailure=stage==='liveSessions'&&!request.competition&&!disconnect?businessFlow?.describeCurrent259LiveFailure(error):undefined;
+      if(liveFailure)receipt.liveFailure=liveFailure;
       const disconnectFailure=disconnect?describeCurrent259DisconnectFailure(error):undefined;
       if(disconnectFailure)receipt.disconnectFailure=disconnectFailure;
       // The case records this before application and live-session cleanup can mask the error.

@@ -171,7 +171,14 @@ function fixture(t,options={}){
   ports['./task16-current259-business-continuity.cjs']={captureCurrent259BusinessIssuer(){}};
   state.replaceBusinessLive=()=>{ports['./task16-current259-live-sessions.cjs'].withCurrent259LiveSessions=async()=>{state.calls.push('foreign-live');};};
   const liveProof=Object.freeze({}),application=Object.freeze({runtime:Object.freeze({}),inspect(){return {runtime:this.runtime};}});
-  ports['./task16-current259-live-sessions.cjs']={async withCurrent259LiveSessions(b7,h,consume){assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live');try{return await consume(liveProof);}finally{state.calls.push('pools-close');}}};
+  ports['./task16-current259-live-sessions.cjs']={
+   describeCurrent259LiveFailure(error){return error===options.liveFailure?options.liveDetail:undefined;},
+   async withCurrent259LiveSessions(b7,h,consume){
+    assert.equal(h,handle);assert.equal(b7.installXid,'1300');state.calls.push('live');
+    try{if(Object.hasOwn(options,'liveFailure'))throw options.liveFailure;return await consume(liveProof);}
+    finally{state.calls.push('pools-close');}
+   }
+  };
   ports['./task16-current259-application-environment.cjs']={async withCurrent259ApplicationEnvironment(h,consume){assert.equal(h,handle);state.calls.push('env');try{return await consume({check,...(options.voucher?{storageRoot:'/private/tmp/model-resource/application-private-voucher'}:{})});}finally{state.calls.push('env-close');}}};
   ports['./task16-current259-application-factory.cjs']={async withCurrent259OwnedApplication(proof,h,sig,consume){assert.equal(proof,liveProof);assert.equal(h,handle);assert.equal(sig,signal);state.calls.push('app');try{return await consume(application);}finally{state.calls.push('app-close');}}};
   ports['./task16-current259-payment-case.cjs']={async runCurrent259PaymentCase(app,h,permit){
@@ -640,6 +647,22 @@ function attributionGapFixture(t,options={}){
  const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
  return fixture(t,{business:true,attributionGap:true,scenario:'attribution-gap',...options,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
+test('main publishes the ordinary live checkpoint with the original failure code and cleanup outcome',async t=>{
+ const liveDetail=Object.freeze({checkpoint:'CATALOG',prismaCode:null,sqlState:'42501'});
+ const liveFailure=Object.assign(new Error('private connection URL'),{code:'CURRENT259_LIVE_SESSIONS_FAILED_CLOSED'});
+ const f=attributionGapFixture(t,{liveFailure,liveDetail,cleanupFailure:true}),result=await f.done;
+ const text=fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'),receipt=JSON.parse(text);
+ assert.equal(result.status,'STOPPED');
+ assert.equal(receipt.failureCode,'PAYMENT_INSTALL_ONCE_FAILED_CLOSED');
+ assert.equal(receipt.failureStage,'liveSessions');
+ assert.deepEqual(receipt.liveFailure,liveDetail);
+ assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
+ assert.equal(receipt.business,undefined);
+ assert.equal(receipt.disconnectFailure,undefined);
+ assert.doesNotMatch(text,/private connection URL|SECRET_SQL_PASSWORD/u);
+ assert.deepEqual(f.state.calls,['start-attribution-gap','technical259','roles9','seven','acl','b7','live','pools-close']);
+});
+
 test('the fixed attribution-gap publisher verifies without opening resources or an attempt',async t=>{
  const f=attributionGapFixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));
