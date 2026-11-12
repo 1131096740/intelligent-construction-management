@@ -22,7 +22,7 @@ const ciDatabases=Object.freeze({
  DYNAMIC_POL113_POL115_ENTRY_V1:Object.freeze(['pol113','jiangkong_pol115_entry_test','jiangkong_pol114',
   'jiangkong_pol115_spot_entry_test','template_workbench']),
  DYNAMIC_REMAINING_V1:Object.freeze([
-  'jiangkong_contract_draft_aggregate_test','jiangkong_project_funding_integration_test','jiangkong_contract_takeover_task1_20260729',
+  'jiangkong_contract_draft_aggregate_test','jiangkong_contract_cleanup_pre_m206_test','jiangkong_project_funding_integration_test','jiangkong_contract_takeover_task1_20260729',
   'jiangkong_project_affiliate_company_contract_test','jiangkong_spot_incidental_task11','jiangkong_direct_payment_task13',
   'jiangkong_contract_takeover_task8_final_20260729','jiangkong_file_binding_manifest_test',
   'jiangkong_project_operating_profile_upgrade_test','jiangkong_database_dynamic_misc','jiangkong_participant_history_integrity_test',

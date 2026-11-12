@@ -8,7 +8,7 @@ const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
-const { loadCanonicalMigrationBaseline } = require("./migration-baseline.cjs");
+const { loadCanonicalMigrationBaseline, migrationChecksum } = require("./migration-baseline.cjs");
 const {
   createCommandRuntime,
   createRunnerCleanup,
@@ -35,6 +35,14 @@ const manifest = JSON.parse(readFileSync(
 ));
 const TERMINAL_MIGRATION_CHECKSUM = migrationBaseline.terminalMigrationChecksum;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
+const LEGACY_CLEANUP_DATABASE = "jiangkong_contract_cleanup_pre_m206_test";
+const RETENTION_MIGRATION = "20261109110000_contract_direct_review_retention_v1";
+const LEGACY_CLEANUP_TERMINAL = "20261109100000_contract_direct_pending_input_v1";
+const LEGACY_CLEANUP_PROOF = Object.freeze({
+  count: 205,
+  terminal: LEGACY_CLEANUP_TERMINAL,
+  checksum: migrationChecksum(migrationsRoot, LEGACY_CLEANUP_TERMINAL)
+});
 
 const GROUPS = [
   {
@@ -296,7 +304,7 @@ function assertManifestMatchesGroups() {
 
 assertManifestMatchesGroups();
 
-const ALLOWED_DATABASE_NAMES = new Set(GROUPS.map((group) => group.database));
+const ALLOWED_DATABASE_NAMES = new Set([...GROUPS.map((group) => group.database), LEGACY_CLEANUP_DATABASE]);
 
 function fail(message) {
   throw new Error(message);
@@ -477,17 +485,19 @@ async function deployMigration({ databaseUrl, runtimeEnv, schemaPath }) {
   );
 }
 
-async function migrate(databaseUrl, environment, { group, temporaryRoot, container, dockerEnv, migration }) {
+async function migrate(databaseUrl, environment, {
+  group, temporaryRoot, container, dockerEnv, migration, legacyCleanupDatabaseUrl
+}) {
   migration ??= createCiDynamicMigrationFixture({
     ciFixture: "DYNAMIC_REMAINING_V1",
     container,
-    databaseNames: [group.database],
+    databaseNames: legacyCleanupDatabaseUrl ? [group.database, LEGACY_CLEANUP_DATABASE] : [group.database],
     temporaryRoot,
     dockerCommand: (args, options) => run(docker, args, { ...options, env: dockerEnv }),
     deploy: deployMigration
   });
   if (group.preTerminalMigrationFixture === "terminal_migration") {
-    const schemaPath = await prepareTerminalMigrationUpgrade(temporaryRoot);
+    const schemaPath = await prepareMigrationPrefix(temporaryRoot, "terminal-migration-upgrade-prisma", TERMINAL_MIGRATION);
     // This call proves the complete canonical predecessor ledger on the owned
     // database. The original upgrade now has exactly one pending migration.
     await migration.migrate({ databaseUrl, runtimeEnv: environment, schemaPath });
@@ -500,9 +510,16 @@ async function migrate(databaseUrl, environment, { group, temporaryRoot, contain
     ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],
     { env: { ...environment, DATABASE_URL: databaseUrl }, forwardOutput: true }
   );
+  if (legacyCleanupDatabaseUrl) {
+    const schemaPath = await prepareMigrationPrefix(temporaryRoot, "contract-cleanup-pre-m206-prisma", RETENTION_MIGRATION);
+    await migration.migrate({ databaseUrl: legacyCleanupDatabaseUrl, runtimeEnv: environment, schemaPath });
+    await assertTerminalMigrationProof(container.name, LEGACY_CLEANUP_DATABASE, dockerEnv, LEGACY_CLEANUP_PROOF);
+  }
 }
 
-async function assertTerminalMigrationProof(containerName, database, dockerEnv) {
+async function assertTerminalMigrationProof(containerName, database, dockerEnv, expected = {
+  count: EXPECTED_MIGRATION_COUNT, terminal: TERMINAL_MIGRATION, checksum: TERMINAL_MIGRATION_CHECKSUM
+}) {
   const result = await run(
     docker,
     [
@@ -520,17 +537,17 @@ async function assertTerminalMigrationProof(containerName, database, dockerEnv) 
       "|",
       "-c",
       `SELECT count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
-        `count(*) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
-        `max(checksum) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)` +
+        `count(*) FILTER (WHERE migration_name = '${expected.terminal}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
+        `max(checksum) FILTER (WHERE migration_name = '${expected.terminal}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)` +
         ` FROM _prisma_migrations;`
     ],
     { env: dockerEnv }
   );
   const [migrationCount, terminalCount, terminalChecksum] = result.stdout.trim().split("|");
   if (
-    Number(migrationCount) !== EXPECTED_MIGRATION_COUNT ||
+    Number(migrationCount) !== expected.count ||
     Number(terminalCount) !== 1 ||
-    terminalChecksum !== TERMINAL_MIGRATION_CHECKSUM
+    terminalChecksum !== expected.checksum
   ) {
     fail(
       `迁移终点证明不完整：count=${migrationCount} terminal=${terminalCount} checksum=${terminalChecksum}`
@@ -578,8 +595,8 @@ async function prepareProjectOperatingProfileUpgrade(
   );
 }
 
-async function prepareTerminalMigrationUpgrade(temporaryRoot) {
-  const fixturePrismaRoot = path.join(temporaryRoot, "terminal-migration-upgrade-prisma");
+async function prepareMigrationPrefix(temporaryRoot, fixtureName, stopBeforeMigration) {
+  const fixturePrismaRoot = path.join(temporaryRoot, fixtureName);
   await mkdir(fixturePrismaRoot, { recursive: true });
   await cp(path.join(prismaRoot, "schema.prisma"), path.join(fixturePrismaRoot, "schema.prisma"));
   await cp(path.join(prismaRoot, "migrations"), path.join(fixturePrismaRoot, "migrations"), {
@@ -588,7 +605,7 @@ async function prepareTerminalMigrationUpgrade(temporaryRoot) {
       const relativePath = path.relative(path.join(prismaRoot, "migrations"), source);
       if (!relativePath || relativePath === "migration_lock.toml") return true;
       const [migrationName] = relativePath.split(path.sep);
-      return migrationName < TERMINAL_MIGRATION;
+      return migrationName < stopBeforeMigration;
     }
   });
   return path.join(fixturePrismaRoot, "schema.prisma");
@@ -706,8 +723,14 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
           group.database
         );
       }
+      let legacyCleanupDatabaseUrl;
+      if (group.id === "contract_draft_aggregate") {
+        await run(docker, ["exec", containerName, "createdb", "-U", "jiangkong", LEGACY_CLEANUP_DATABASE], { env: dockerEnv });
+        legacyCleanupDatabaseUrl = databaseUrlFor(password, port, LEGACY_CLEANUP_DATABASE);
+        environment.CONTRACT_LEGACY_CLEANUP_DATABASE_URL = legacyCleanupDatabaseUrl;
+      }
       await migrate(databaseUrl, environment, {
-        group, temporaryRoot, dockerEnv,
+        group, temporaryRoot, dockerEnv, legacyCleanupDatabaseUrl,
         container: { id: started.stdout.trim(), name: containerName, runId }
       });
       await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
@@ -726,6 +749,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
         database: group.database,
         pendingTests: group.pendingTests,
         files: group.files,
+        ...(legacyCleanupDatabaseUrl ? { legacyCleanupMigration: LEGACY_CLEANUP_PROOF } : {}),
         durationMs: Date.now() - groupStartedAt,
         status: "passed"
       });

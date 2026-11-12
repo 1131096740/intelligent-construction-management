@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { NON_RECEIPT_FILE_BINDINGS } from "./file-business-binding";
+import { NON_RECEIPT_FILE_BINDINGS, registeredPaymentVoucherInstalled } from "./file-business-binding";
 import { contractReviewRetainedObjectKeys } from "./contract-review-file-retention";
 import { isValidObjectKey, type VersionedObjectStorage } from "./versioned-object-storage";
 
@@ -128,23 +128,28 @@ export async function fileBusinessBindingRefs(
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
-  const registryQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
-    (binding) =>
+  const includeVoucher = await registeredPaymentVoucherInstalled(tx);
+  const registryQueries = NON_RECEIPT_FILE_BINDINGS
+    .filter(({ table }) => table !== "RegisteredPaymentVoucher" || includeVoucher)
+    .flatMap((binding) =>
       binding.columns.map((column) => {
         const tableId = sqlIdentifier(binding.table);
+        const voucher = binding.table === "RegisteredPaymentVoucher";
+        const relation = voucher ? Prisma.sql`public.${tableId}` : tableId;
         const columnId = sqlIdentifier(column);
         const rowIdColumn =
-          "rowIdColumn" in binding ? binding.rowIdColumn : "id"
+          "rowIdColumn" in binding ? binding.rowIdColumn : "id";
+        const rowId = voucher ? Prisma.sql`x."executionId"` : Prisma.sql`to_jsonb(x) ->> ${rowIdColumn}`;
         return Prisma.sql`
           SELECT x.${columnId} AS "fileId",
                  ${binding.table} AS "table",
                  ${column} AS "column",
-                 to_jsonb(x) ->> ${rowIdColumn} AS "rowId"
-          FROM ${tableId} x
+                 ${rowId} AS "rowId"
+          FROM ${relation} x
           JOIN candidates c ON c."id" = x.${columnId}
         `;
       })
-  );
+    );
   const rows = await tx.$queryRaw<ResolvedFileBinding[]>(
     Prisma.sql`
       /* file_binding_manifest_refs */

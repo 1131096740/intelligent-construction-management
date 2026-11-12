@@ -35,6 +35,7 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
     if (args[0] === "run") {
       if (mode === "start-failure") throw new Error("injected start failure");
       if (mode === "signal") await new Promise((_, reject) => { interruptRun = reject; });
+      return { stdout: "c".repeat(64), stderr: "" };
     }
     if (args[0] === "rm" && mode === "cleanup-failure") throw new Error("injected cleanup failure");
     return { stdout: "", stderr: "" };
@@ -58,12 +59,17 @@ function loadRunner(file: string, mode: "start-failure" | "cleanup-failure" | "s
       if (name === "./money-bigint-runner-runtime.cjs") return {
         ...runtime, createCommandRuntime: () => ({ command, stopAll })
       };
-      if (name === "./local-staged-ci-dynamic.cjs" && file === "run-contract-settlement-v2-local.cjs") {
+      if (name === "./local-staged-ci-dynamic.cjs") {
         return {
           CI_DYNAMIC_MIGRATION_LABEL: "jg.local-ci-dynamic-migration",
-          createCiDynamicMigrationFixture: (options: { deploy: (request: unknown) => Promise<unknown> }) => ({
-            migrate: (request: unknown) => options.deploy(request)
-          })
+          createCiDynamicMigrationFixture: (options: {
+            container: { id: string; name: string };
+            deploy: (request: unknown) => Promise<unknown>;
+          }) => {
+            expect(options.container.id).toBe("c".repeat(64));
+            expect(options.container.name).toMatch(/^jiangkong-/u);
+            return { migrate: (request: unknown) => options.deploy(request) };
+          }
         };
       }
       if (name === "node:net") return fakeNet;

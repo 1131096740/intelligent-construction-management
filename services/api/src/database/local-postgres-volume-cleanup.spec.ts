@@ -18,7 +18,7 @@ describe("disposable PostgreSQL volume cleanup policy", () => {
     expect(runners.length).toBeGreaterThanOrEqual(34);
   });
 
-  it.each(["name", "containerName", "containerId"])(
+  it.each(["name", "containerName", "containerId", "activeContainer"])(
     "reads single and double quoted cleanup arguments for %s without executing source",
     (identifier) => {
       const [command] = cleanupArrays(
@@ -54,7 +54,7 @@ describe("disposable PostgreSQL volume cleanup policy", () => {
     expect(commands.length).toBeGreaterThan(0);
     for (const command of commands) {
       expect(command).toContain('"--volumes"');
-      expect(command).toMatch(/\b(?:containerName|containerId|name)\b/u);
+      expect(command).toMatch(/\b(?:containerName|containerId|activeContainer|name)\b/u);
       expect(command).not.toContain('"--all"');
     }
     expect(source).not.toMatch(/volume[\s\S]{0,15}prune/u);
