@@ -214,6 +214,7 @@ function fixture(t,options={}){
    if(Object.hasOwn(options,'caseFailure'))throw options.caseFailure;
    if(options.attributionGap){
     assert.equal(lease.scope.paymentProfile,options.attributionGap261?paymentProfile:undefined);
+    assert.equal(lease.seedProfile,options.attributionGap261?paymentProfile:undefined);
     assert.equal(permit.kind,'CURRENT259_PRIVATE_ATTRIBUTION_GAP_CASE');
     assert.deepEqual(lease.scope.attributionGap,{expectedStatus:409,paymentAmountCents:'800',projectAmountCents:'500',gapAmountCents:'300',automaticRetry:false});
    }
@@ -247,7 +248,8 @@ function fixture(t,options={}){
   };
   ports['./task16-current259-application-factory.cjs'].consumeCurrent259PaymentCompetition=async(apps,h,permit)=>{
    state.calls.push('competition');assert.equal(apps,applications);assert.equal(h,handle);
-   const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,apps,h);lease.check();
+   const lease=module.exports.claimCurrent259PaymentBusinessPermit(permit,apps,h);
+   assert.equal(lease.seedProfile,options.competition261||options.voucher261?paymentProfile:undefined);lease.check();
    assert.equal(lease.scope.scenario,options.voucher?'competition-voucher':'competition');
    assert.equal(lease.scope.paymentProfile,paymentProfile);
    if(options.voucher){
@@ -298,6 +300,7 @@ function fixture(t,options={}){
    const business=module.exports.claimCurrent259PaymentBusinessPermit(permit,current,h);business.check();
    assert.equal(business.scope.scenario,'disconnect-commit-recovery');
    if(business.scope.disconnectPhase==='attempt'){
+    assert.equal(business.seedProfile,options.payment261?paymentProfile:undefined);
     assert.equal(current,originalApp);
     assert.equal(module.exports.assertCurrent259PaymentBusinessContinuity(business.continuityToken,h,'disconnect-commit-recovery'),true);
     state.calls.push('first-post');
@@ -305,6 +308,7 @@ function fixture(t,options={}){
    }
    assert.equal(current,replacementApp);
    assert.equal(business.scope.disconnectPhase,'recovery');
+   assert.equal(business.seedProfile,undefined);
    assert.equal(business.scope.disconnectAttempt,attempt);assert.equal(business.scope.disconnectRollback,rollback);
    state.calls.push('recover');
    return {caseId:business.scope.caseId,passed:true,rollbackObserved:true,executionId:'execution',rootId:'root'};
@@ -529,10 +533,13 @@ test('competition verification reaches neither resource nor attempt',async t=>{
 function disconnectFixture(t,options={}){
  const source=path.join(ROOT,'scripts/prepare-task16-current259-payment-business.test.cjs'),holder={exports:{}},rq=Module.createRequire(source);
  new Function('require','module','__dirname',fs.readFileSync(source,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),holder,path.dirname(source));
- const s=holder.exports.fixture(t),plan=s.business.prepareCurrent259PaymentBusinessPlan({
+ const s=holder.exports.fixture(t,{payment261:options.payment261});
+ const prepare=options.payment261?s.business.prepareCurrent261PaymentBusinessPlan:s.business.prepareCurrent259PaymentBusinessPlan;
+ const plan=prepare({
   runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,scenario:'disconnect-commit-recovery',paidAt:'2026-11-10',openingDate:'2026-11-09'
  });
- const saved=s.api.readCurrent259PaymentInstallPlan(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
+ const read=options.payment261?s.api.readCurrent261PaymentInstallPlan:s.api.readCurrent259PaymentInstallPlan;
+ const saved=read(s.output+'.installation.json',JSON.parse(fs.readFileSync(s.output)).installation.sha256).file;
  return fixture(t,{...options,disconnect:true,business:true,planFixture:s,saved,businessApi:s.business,selectedPlanSha:plan.sha256});
 }
 for(const rollbackFailure of [false,true])test('fresh A16 once only starts a replacement application after retired original and confirmed rollback ('+rollbackFailure+')',async t=>{
@@ -552,6 +559,13 @@ for(const rollbackFailure of [false,true])test('fresh A16 once only starts a rep
  assert.equal(f.state.closes,1);
 });
 
+
+test('261 A16 only issues the batched seed to the first application',async t=>{
+ const f=disconnectFixture(t,{payment261:true}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.equal(f.state.calls.filter(value=>value==='first-post').length,1);
+ assert.equal(f.state.calls.filter(value=>value==='recover').length,1);
+});
 
 test('disconnect once publishes the branded first failure independently of later cleanup UNKNOWN',async t=>{
  const f=disconnectFixture(t,{rollbackFailure:true,cleanupFailure:true}),result=await f.done;

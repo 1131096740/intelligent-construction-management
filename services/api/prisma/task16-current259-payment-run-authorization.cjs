@@ -550,7 +550,9 @@ async function run(args){
           catch(error){throw carryCurrent259DisconnectFailure(error,captureCurrent259DisconnectFailure(error,'RECOVERY_APPLICATION'));}
          }
          const ordinary261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&!request.competition&&!request.attributionGap&&!disconnect;
-         const business={active:true,claimed:false,recordCaseFailure:ordinary261,...(ordinary261?{seedProfile:paymentProfile}:{}),
+         const disconnectSeed261=paymentProfile===PAYMENT261_RUNTIME_PROFILE&&disconnectPhase==='attempt';
+         const batchedSeed=ordinary261||disconnectSeed261||request.attributionGap261||request.competition261||request.voucher261;
+         const business={active:true,claimed:false,recordCaseFailure:ordinary261,...(batchedSeed?{seedProfile:paymentProfile}:{}),
           application,handle,liveProof,b7,source,build:checked.buildHandle,loader:view.loader,lifetime:data(view,'checkLifetime'),scope:Object.freeze({...plan.case,
           authorizationReference:'plan-sha256:'+request.sha256+';owned-run:'+view.runId,
           ...(request.competition261||request.voucher261||request.attributionGap261?{paymentProfile}:{}),

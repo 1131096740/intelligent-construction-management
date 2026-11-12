@@ -302,6 +302,7 @@ async function executeCurrent259PaymentCompetition(applications, leases, permit)
   }));
   const lanes=contexts.map((context,index)=>Object.freeze({
    checkLight:check,
+   ...(permission.seedProfile?{seedProfile:permission.seedProfile}:{}),
    async fetch(target,init){check();const url=new URL(target);need(url.origin===new URL(context.proof.application.origin).origin&&!url.username&&!url.password&&!url.hash&&!url.search);
     const response=await fetch(target,init);check();return response;},
    assertHttpRequest(route,method){

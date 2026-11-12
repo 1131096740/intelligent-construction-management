@@ -28,7 +28,8 @@ function caseFixture(t,options={}){
   const continuityToken=Object.freeze({});continuities.add(continuityToken);
   return {scope:record.scope,continuityToken,verifyFull(){f.calls.push('permission-full');record.application.inspect();},check(){if(record.closed)throw new Error('closed permission');record.application.inspect();},
    ...(record.scope.scenario==='attribution-gap'?{recordAttributionGapFailure:stage=>f.calls.push(['gap-first-failure',stage])}:{}),
-   ...(options.recordCaseFailure?{recordCaseFailure:options.recordCaseFailure}:{})};
+   ...(options.recordCaseFailure?{recordCaseFailure:options.recordCaseFailure}:{}),
+   ...(options.initialSeedProfile&&record.scope.disconnectPhase==='attempt'?{seedProfile:options.initialSeedProfile}:{})};
  }};
  new Function('require','module',fs.readFileSync(path.join(__dirname,'task16-current259-payment-case.cjs'),'utf8'))(
   name=>name==='./task16-current259-application-factory.cjs'?factory:name==='./task16-current259-payment-run-authorization.cjs'?authorization:require(name),holder);
@@ -159,9 +160,11 @@ test('full checks occur at the three quiet boundaries and never inside original 
  assert.deepEqual(f.calls.filter(x=>['activate-continuity','finish-continuity'].includes(x)),['activate-continuity','finish-continuity']);
 });
 
-for(const mode of ['complete','foreign-key','post-first','swapped-relay','resolved-key'])
+for(const mode of ['complete','complete-261','foreign-key','post-first','swapped-relay','resolved-key'])
  test('A16 replacement uses the original seed, relay and key: '+mode,async t=>{
- const f=caseFixture(t,{retirement:true,replacementRelayDrift:mode==='swapped-relay'}),m=paymentModel(f);
+ const initialSeedProfile=mode==='complete-261'?'TASK16_PAYMENT261_RUNTIME_V1':undefined;
+ const f=caseFixture(t,{retirement:true,initialSeedProfile,replacementRelayDrift:mode==='swapped-relay'}),
+  m=paymentModel(f,{onSeed(continuity){assert.equal(continuity.seedProfile,initialSeedProfile);}});
  const rollback=Object.freeze({}),attempt=Object.freeze({}),trace=[],signal=new AbortController().signal;
  const options='/payment-executions/'+m.plan.ids.payment+'/registration-options';
  const post='/payment-executions/'+m.plan.ids.payment+'/registrations';
@@ -204,8 +207,9 @@ for(const mode of ['complete','foreign-key','post-first','swapped-relay','resolv
  assert.equal(f.api.claimCurrent259DisconnectApplicationClose(first.closeProof,f.proof,f.handle),'http://127.0.0.1:52124/');
  const recover=()=>f.api.withCurrent259OwnedApplication(f.secondProof,f.handle,signal,app=>
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{...scope,disconnectPhase:'recovery',disconnectAttempt:attempt,disconnectRollback:rollback})));
- if(mode==='complete'){
+ if(mode==='complete'||mode==='complete-261'){
   assert.equal((await recover()).rollbackObserved,true);
+  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:0});
   assert.deepEqual(trace,['fault-ready','original-post','recovery-post']);assert.equal(f.resourceCloses(),0);
  }else{
   await assert.rejects(recover(),error=>{

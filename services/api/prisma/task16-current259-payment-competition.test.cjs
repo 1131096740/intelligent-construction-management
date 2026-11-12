@@ -48,6 +48,7 @@ function model(options={}){
   async seedRegisteredPgCompetitionFixture(a,b,planned,laneA,laneB){
    events.push('fixture');assert.deepEqual(planned,plan);assert.equal(a.owner,b.owner);assert.equal(a.observer,b.observer);
    assert.notEqual(a.runtime,b.runtime);assert.notEqual(a.password,b.password);
+   assert.equal(laneA.seedProfile,options.seedProfile);assert.equal(laneB.seedProfile,options.seedProfile);
    for(const route of ['/auth/login','/fund-accounts/openings','/fund-accounts/openings'])laneA.assertHttpRequest(route,'POST');
    laneB.assertHttpRequest('/auth/login','POST');
    return {plan,accessToken:'one',contender:{requestKey:keyB,accessToken:'two',...(options.voucher?{actorId:keyB}:{})}};
@@ -146,7 +147,7 @@ function model(options={}){
    return {sha256:options.changedBytes?'f'.repeat(64):storedFile.contentSha256,identity:{size:storedFile.sizeBytes}};}},
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResourceContinuity(h,t){assert.equal(h,handle);assert.equal(t,token);return view;}},
   './task16-current259-catalog.cjs':{loadCurrent259CatalogMaterial(s){assert.equal(s,source);return {sevenFragments:[]};}},
-  './task16-current259-payment-run-authorization.cjs':{claimCurrent259PaymentBusinessPermit(p,apps,h){assert.equal(p,permit);assert.equal(h,handle);assert.equal(apps,applicationPair);return {scope,continuityToken:token,check(){},verifyFull(){events.push('plan-full');},
+  './task16-current259-payment-run-authorization.cjs':{claimCurrent259PaymentBusinessPermit(p,apps,h){assert.equal(p,permit);assert.equal(h,handle);assert.equal(apps,applicationPair);return {scope,continuityToken:token,seedProfile:options.seedProfile,check(){},verifyFull(){events.push('plan-full');},
    ...(options.voucher?{recordVoucherFailure(stage){failures.push(stage);}}:{})};}},
   './task16-current259-application-factory.cjs':{isCurrent259PaymentLease(lease){return !options.forged&&leases.includes(lease);}}
  };
@@ -227,3 +228,9 @@ for(const [mode,stage,last] of [
   assert.equal(fixture.events.filter(event=>event==='voucher-upload').length,1);
  });
 }
+
+for(const voucher of [false,true])test('both 261 lanes retain the one issued fixed seed profile '+voucher,async()=>{
+ const seedProfile=voucher?'TASK16_PAYMENT261_VOUCHER_RUNTIME_V1':'TASK16_PAYMENT261_COMPETITION_RUNTIME_V1';
+ const f=model({voucher,seedProfile});
+ assert.equal((await f.run()).passed,true);
+});

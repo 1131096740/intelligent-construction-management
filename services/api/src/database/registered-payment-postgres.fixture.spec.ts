@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture } from "./registered-payment-postgres.fixture";
+import { assertRegisteredPgConnectedRoles, buildRegisteredPgFixturePlan, seedRegisteredPgFixture, seedRegisteredPgAttributionGapFixture, seedRegisteredPgCompetitionFixture } from "./registered-payment-postgres.fixture";
 import type { RegisteredPgExecutionContext } from "./registered-payment-postgres.fixture";
 import * as registeredCases from "./registered-payment-postgres.cases";
-import { payment261SeedProfile, seedOrdinaryPayment261 } from "./registered-payment-postgres.seed261";
+import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
 
 function fixture() {
   const runId = "da49e313-e3da-407f-b279-3d09caecfc3e";
@@ -106,13 +106,13 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     const transaction = jest.fn(async (run: (tx: unknown) => Promise<void>) => run({ $queryRawUnsafe: query, $executeRawUnsafe: execute }));
     Object.assign(f.context.owner, { $transaction: transaction });
     const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
-    const run = seedOrdinaryPayment261(f.context.owner, f.proof.databaseName, plan, "synthetic-hash",
+    const run = seedPayment261(f.context.owner, f.proof.databaseName, plan, "synthetic-hash",
       "91350211M000100Y46", "91440300708461136T", () => calls.push("check"));
     if (bound) {
       await run;
       expect(calls).toEqual(["check", "check", "bind", "check", "check", "static-do", "check", "check"]);
     } else {
-      await expect(run).rejects.toThrow("PG_FIXTURE_SEED_BINDING");
+      await expect(run).rejects.toThrow("隔离付款种子参数绑定未通过");
       expect(execute).not.toHaveBeenCalled();
     }
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
@@ -135,6 +135,55 @@ describe("registered PG fixture: dedicated TLS session identity protocol (no con
     expect(recordSeedFailure).toHaveBeenCalledWith("SEED_LOGIN", "PG_FIXTURE_REAL_HTTP_LOGIN", 403);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it.each([gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile])(
+    "retains the original login and opening protocol for %s after exactly two owner statements", async profile => {
+      const f = fixture();
+      const contender = fixture();
+      contender.sessions[1]!.pid = 201;
+      const second = { ...contender.context, owner: f.context.owner, observer: f.context.observer,
+        password: "synthetic-distinct-second-credential",
+        proof: { ...f.context.proof, application: { ...f.context.proof.application, origin: "http://127.0.0.1:15434/" } } };
+      const gap = profile === gap261SeedProfile;
+      const tx = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ bound: true }]), $executeRawUnsafe: jest.fn().mockResolvedValue(0) };
+      const transaction = jest.fn(async (run: (client: unknown) => Promise<void>) => run(tx));
+      Object.assign(f.context.owner, { $transaction: transaction });
+      const routes: string[] = [];
+      const fetch = jest.fn(async (target: URL, init?: RequestInit) => {
+        routes.push(target.port + target.pathname);
+        expect(init?.method).toBe("POST");
+        const body = JSON.parse(String(init?.body));
+        const response = new Response(JSON.stringify(target.pathname === "/auth/login"
+          ? { tokens: { accessToken: target.port === "15433" ? "synthetic-primary" : "synthetic-contender" } }
+          : { id: body.scopeKey, sources: body.sources.map((source: { projectId: string }, index: number) =>
+            ({ id: body.scopeKey + index, projectId: source.projectId })) }), { status: 201 });
+        Object.defineProperty(response, "url", { value: target.href });
+        if (target.pathname === "/fund-accounts/openings" && body.balanceYuan === "8")
+          expect(body.sources.map((source: { amountYuan: string }) => source.amountYuan)).toEqual(["5", "3"]);
+        return response;
+      });
+      const plan = buildRegisteredPgFixturePlan(f.proof.runId, "2026-11-07", "2026-11-01");
+      const lane = { checkLight() {}, fetch: fetch as typeof globalThis.fetch, seedProfile: profile };
+      const result = gap
+        ? await seedRegisteredPgAttributionGapFixture(f.context, plan, lane)
+        : await seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, lane);
+      const payload = JSON.parse(tx.$queryRawUnsafe.mock.calls[0]![1]);
+      expect(payload.profile).toBe(profile);
+      expect(tx.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+      expect(payload.passwordHash).not.toBe(f.context.password);
+      expect(routes).toEqual(["15433/auth/login", "15433/fund-accounts/openings", "15433/fund-accounts/openings",
+        ...(!gap ? ["15434/auth/login"] : [])]);
+      if ("attributionGap" in result) expect(result.attributionGap.otherProjectId).toBe(payload.otherProjectId);
+      if ("contender" in result) {
+        expect(result.contender.actorId).toBe(payload.contender.actorId);
+        expect(result.contender.accessToken).toBe("synthetic-contender");
+        expect(payload.contender.passwordHash).not.toBe(second.password);
+        await expect(seedRegisteredPgCompetitionFixture(f.context, second, plan, lane, { ...lane, seedProfile: payment261SeedProfile }))
+          .rejects.toMatchObject({ code: "TASK16_FIXTURE_FAILED_CLOSED", fixtureOutcome: "NOT_ATTEMPTED" });
+        expect(transaction).toHaveBeenCalledTimes(1);
+      }
+    });
 
   it("accepts three independent resource-bound TLS roles, with a separate read-only observer", async () => {
     const f = fixture();

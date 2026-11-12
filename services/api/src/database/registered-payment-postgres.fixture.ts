@@ -1,7 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
+import type { Payment261SeedProfile } from "./registered-payment-postgres.seed261";
 import { randomUUID } from "node:crypto";
 import { types } from "node:util";
-import { payment261SeedProfile, seedOrdinaryPayment261 } from "./registered-payment-postgres.seed261";
+import { payment261SeedProfile, gap261SeedProfile, competition261SeedProfile, voucher261SeedProfile, seedPayment261 } from "./registered-payment-postgres.seed261";
 
 /** Prepared source only. Importing this module constructs no client, reads no
  * environment and opens no connection. Only a separately authorized executor
@@ -50,7 +51,7 @@ type SeedFailureStage = "SEED_IDENTITY" | "SEED_PREPARE" | "SEED_OWNER_TRANSACTI
 export interface RegisteredPgSeedContinuity {
   checkLight: () => void;
   fetch: typeof fetch;
-  seedProfile?: typeof payment261SeedProfile;
+  seedProfile?: Payment261SeedProfile;
   recordSeedFailure?: (stage: SeedFailureStage, code?: string, httpStatus?: number) => void;
   /** Source-owned case request checker; never a caller route list. */
   assertHttpRequest?: (route: string, method: "GET" | "POST") => void;
@@ -320,14 +321,21 @@ async function seedFixture(context: RegisteredPgExecutionContext, plan: Register
     const otherProjectId = attributionGap ? randomUUID() : undefined;
     const approved = second ? 4000n : 10000n;
     const profile = continuity?.seedProfile;
-    requireCondition(profile === undefined || profile === payment261SeedProfile && !contender && !attributionGap, "PG_FIXTURE_SEED_PROFILE");
-    const credits = profile === payment261SeedProfile
+    const dualProfile = profile === competition261SeedProfile || profile === voucher261SeedProfile;
+    requireCondition((profile === undefined && contender?.continuity.seedProfile === undefined)
+      || (profile === payment261SeedProfile && !contender && !attributionGap)
+      || (profile === gap261SeedProfile && !contender && attributionGap)
+      || (dualProfile && contender?.continuity.seedProfile === profile && !!second && !attributionGap), "PG_FIXTURE_SEED_PROFILE");
+    const credits = profile !== undefined
       ? [assertValidUnifiedSocialCreditCode("91350211M000100Y46"), assertValidUnifiedSocialCreditCode("91440300708461136T")] as const
       : undefined;
     failureStage = "SEED_OWNER_TRANSACTION";
     ownerAttempted = true;
     if (credits) {
-      await seedOrdinaryPayment261(context.owner, context.proof.databaseName, plan, passwordHash, ...credits, light);
+      const variant = profile === gap261SeedProfile && otherProjectId
+        ? { profile, otherProjectId } as const
+        : dualProfile && second ? { profile, contender: { actorId: second.actorId, phone: second.phone, passwordHash: second.passwordHash } } : undefined;
+      await seedPayment261(context.owner, context.proof.databaseName, plan, passwordHash, ...credits, light, variant);
     } else await checked(() => context.owner.$transaction(async tx => {
       await checked(() => tx.user.create({ data: { id: ids.actor, phone: plan.phone, name: `PG合成财务${plan.runId}`, passwordHash, isActive: true, mustChangePassword: false } }));
       const position = await checked(() => tx.position.findUnique({ where: { key: "finance_staff" } })) ?? await checked(() => tx.position.create({ data: { key: "finance_staff", name: "财务人员" } }));
