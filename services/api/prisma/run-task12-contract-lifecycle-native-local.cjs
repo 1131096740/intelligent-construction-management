@@ -1,0 +1,114 @@
+#!/usr/bin/env node
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { randomUUID, randomBytes } = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+const { DATABASE, TERMINAL, DOCUMENT_ROLES, renderNativeLifecycleFixture } = require('./task12-native-lifecycle-fixture.cjs');
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require('./local-staged-ci-dynamic.cjs');
+const { createCommandRuntime } = require('./money-bigint-runner-runtime.cjs');
+const { verifyCurrent259GeneratedDocumentRuntime } = require('./task12-current259-generated-document-runtime.cjs');
+const root = path.resolve(__dirname, '../../..');
+const pnpm = process.env.PNPM_BIN || 'pnpm';
+function command(bin, args, options = {}) {
+  const result = spawnSync(bin, args, { cwd: root, env: process.env, encoding: 'utf8', timeout: 180_000,
+    maxBuffer: 32 * 1024 * 1024, ...options });
+  if (result.error || result.status !== 0) throw new Error('TASK12_NATIVE_GATE_COMMAND_' + path.basename(bin));
+  return result.stdout?.trim() || '';
+}
+function parseArgs(args) {
+  if (!args.length) return undefined;
+  if (args.length !== 8 || args[0] !== '--candidate-sha' || !/^[a-f0-9]{40}$/u.test(args[1]) ||
+    args[2] !== '--runtime-input' || !path.isAbsolute(args[3]) || args[4] !== '--runtime-sha256' ||
+    !/^[a-f0-9]{64}$/u.test(args[5]) || args[6] !== '--confirm' || args[7] !== 'LOCAL_TASK12_NATIVE_LIFECYCLE') {
+    throw new Error('TASK12_NATIVE_GATE_ARGUMENTS');
+  }
+  return { sha: args[1], runtime: args[3], runtimeSha: args[5] };
+}
+async function main(args = process.argv.slice(2)) {
+  const input = parseArgs(args);
+  if (!input) return { status: 'TASK12_NATIVE_LIFECYCLE_NOT_EXECUTED', scope: 'local_current261_real_pg_http_native_documents' };
+  if (process.env.NODE_ENV === 'production' || process.env.DATABASE_URL ||
+    ['NODE_OPTIONS','NODE_PATH','DOC_CONVERTER_COMMAND','DOC_ALLOWED_FONTS','CONTRACT_MATERIAL_BODY25_DOCX4J_RUNTIME_MANIFEST'].some(key => process.env[key])) {
+    throw new Error('TASK12_NATIVE_GATE_ENVIRONMENT');
+  }
+  if (command('git', ['rev-parse','HEAD']) !== input.sha || command('git', ['status','--porcelain','--untracked-files=all'])) {
+    throw new Error('TASK12_NATIVE_GATE_SOURCE');
+  }
+  // Mandatory original native runtime qualification precedes all PG resources.
+  verifyCurrent259GeneratedDocumentRuntime(input.runtime, input.runtimeSha);
+  const endpoint = process.env.DOCKER_HOST || command('docker', ['context','inspect','--format','{{.Endpoints.docker.Host}}']);
+  if (!endpoint.startsWith('unix://')) throw new Error('TASK12_NATIVE_GATE_DOCKER');
+  const env = { ...process.env, DOCKER_HOST: endpoint, NODE_ENV: 'test' };
+  delete env.DOCKER_CONTEXT;
+  const docker = (args, options) => command('docker', ['--host',endpoint,...args], { env, ...options });
+  docker(['image','inspect','postgres:16','--format','{{.Id}}']);
+  command(pnpm, ['--filter','@jiangkong/api','run','pretest'], { env, stdio: 'inherit' });
+  command(pnpm, ['--filter','@jiangkong/api','build'], { env, stdio: 'inherit' });
+  const runId = randomUUID(), name = 'jg-task12-native-' + runId;
+  const directory = fs.realpathSync(fs.mkdtempSync('/private/tmp/jg-task12-native-'));
+  fs.chmodSync(directory, 0o700);
+  const ownerPassword = randomBytes(32).toString('hex');
+  let container, applicationOid, primaryFailure = false;
+  try {
+    container = docker(['run','--detach','--rm','--pull=never','--name',name,
+      '--label',CI_DYNAMIC_MIGRATION_LABEL+'='+runId,'--env','POSTGRES_PASSWORD','--env','PGPASSWORD','--env','POSTGRES_USER=jiangkong',
+      '--env','POSTGRES_DB='+DATABASE,'--publish','127.0.0.1::5432','postgres:16'], { env: { ...env, POSTGRES_PASSWORD: ownerPassword, PGPASSWORD: ownerPassword } });
+    if (!/^[a-f0-9]{64}$/u.test(container)) throw new Error('TASK12_NATIVE_GATE_CONTAINER');
+    docker(['exec',container,'sh','-c',`for attempt in $(seq 1 150); do pg_isready -h 127.0.0.1 -U jiangkong -d ${DATABASE} && exit 0; sleep 0.2; done; exit 1`]);
+    const port = /^127\.0\.0\.1:(\d+)$/u.exec(docker(['port',container,'5432/tcp']))?.[1];
+    if (!port) throw new Error('TASK12_NATIVE_GATE_LOOPBACK');
+    const ownerUrl = `postgresql://jiangkong:${ownerPassword}@127.0.0.1:${port}/${DATABASE}`;
+    const runtime = createCommandRuntime({ defaultCwd: root });
+    const fixture = createCiDynamicMigrationFixture({ ciFixture: 'DYNAMIC_REMAINING_V1',
+      container: { id: container, name, runId }, databaseNames: [DATABASE], temporaryRoot: directory,
+      dockerCommand: (args, options) => runtime.command('docker', ['--host',endpoint,...args], { ...options, env }),
+      deploy: async ({ databaseUrl, runtimeEnv, schemaPath }) => {
+        const options = new URL(databaseUrl).searchParams.get('options') || '';
+        const observed = /app\.contract_archive_v2_application_role_oid=(\d+)/u.exec(options)?.[1];
+        if (observed) {
+          if (applicationOid && observed !== applicationOid) throw new Error('TASK12_NATIVE_GATE_APP_CHANGED');
+          applicationOid = observed;
+        }
+        return runtime.command(pnpm, ['--filter','@jiangkong/api','exec','prisma','migrate','deploy', ...(schemaPath ? ['--schema',schemaPath] : [])],
+          { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true });
+      }
+    });
+    await fixture.migrate({ databaseUrl: ownerUrl, runtimeEnv: env });
+    if (!applicationOid || !/^[1-9][0-9]{1,9}$/u.test(applicationOid)) throw new Error('TASK12_NATIVE_GATE_APP_MISSING');
+    const psql = sql => docker(['exec','--interactive',container,'psql','-X','-A','-t','-q','-v','ON_ERROR_STOP=1','-U','jiangkong','-d',DATABASE,'-f','-'], { input: sql });
+    const applicationRole = psql(`SELECT rolname FROM pg_roles WHERE oid=${applicationOid}::oid;`);
+    const scope = { database: DATABASE, appName: applicationRole, appOid: applicationOid, migrationCount: 261, terminal: TERMINAL };
+    const secrets = Object.fromEntries(['application',...Object.keys(DOCUMENT_ROLES)].map(slot => [slot,randomBytes(32).toString('hex')]));
+    psql(renderNativeLifecycleFixture(scope, secrets));
+    const urls = Object.fromEntries(Object.entries({ application: applicationRole, ...DOCUMENT_ROLES }).map(([slot, role]) =>
+      [slot,`postgresql://${role}:${secrets[slot]}@127.0.0.1:${port}/${DATABASE}?connection_limit=1`]));
+    const packet = path.join(directory, 'test-input.json');
+    const files = path.join(directory, 'files');fs.mkdirSync(files, { mode: 0o700 });
+    fs.writeFileSync(packet, JSON.stringify({ version: 1, candidateSha: input.sha, scope, ownerUrl, urls, directory, runtime: input.runtime, runtimeSha: input.runtimeSha }), { mode: 0o600, flag: 'wx' });
+    command(pnpm, ['--filter','@jiangkong/api','exec','jest','--runInBand','--testRegex','task12-contract-lifecycle\\.native\\.ts$','--runTestsByPath','src/database/task12-contract-lifecycle.native.ts'],
+      { env: { ...env, DATABASE_URL: urls.application, FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files,
+        FILE_DOWNLOAD_SECRET: randomBytes(32).toString('hex'), TASK12_NATIVE_LIFECYCLE_INPUT: packet }, stdio: 'inherit', timeout: 900_000 });
+    return { status: 'TASK12_NATIVE_LIFECYCLE_PG_HTTP_PASSED', candidateSha: input.sha, migrationCount: 261 };
+  } catch (error) {
+    primaryFailure = true;
+    throw error;
+  } finally {
+    try {
+      if (container) {
+        docker(['rm','--force','--volumes',container]);
+        if (docker(['container','ls','--all','--no-trunc','--filter','id='+container,'--format','{{.ID}}'])) throw new Error('TASK12_NATIVE_GATE_CLEANUP');
+      }
+    } catch {
+      if (!primaryFailure) throw new Error('TASK12_NATIVE_GATE_CLEANUP');
+      process.stderr.write('TASK12_NATIVE_GATE_CLEANUP_FAILED_AFTER_PRIMARY\n');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+}
+if (require.main === module) main().then(value => process.stdout.write(JSON.stringify(value)+'\n')).catch(error => {
+  const code = /^TASK12_NATIVE_GATE_[A-Za-z_]+$/u.test(error?.message) ? error.message : 'TASK12_NATIVE_LIFECYCLE_FAILED';
+  process.stderr.write(code+'\n');process.exitCode=1;
+});
+module.exports = { parseArgs, main };
