@@ -1674,3 +1674,64 @@ module.exports.useSyntheticSnapshot = () => {
   assert.equal(paidSource.status, "partially_paid");
   assert.equal(paidSource.paidAmountCents, 50n);
 });
+
+test("employee onboarding prepares once and gives both Jest batches their own command budget", async () => {
+  const runner = path.join(__dirname, "run-employee-onboarding-local.cjs");
+  const source = readFileSync(runner, "utf8").replace("\nverify().finally(", "\nreturn verify().finally(");
+  const run = new Function("require", "process", "console", "__dirname", source);
+  const id = "a".repeat(64);
+  const denials = [
+    "unexpected effective table privileges", "unexpected effective column privileges", "unexpected effective table privileges",
+    "role administration privileges", "role administration privileges", "role administration privileges",
+    "server mutation privileges", "server mutation privileges", "unexpected effective sequence privileges"
+  ];
+  for (const failFirstBatch of [false, true]) {
+    const invocations = [];
+    const directoriesRemoved = [];
+    let grants = 0;
+    const fakeProcess = { env: { NODE_ENV: "test", DOCKER_HOST: "unix:///fixture" }, stdout: { write() {} } };
+    const child = (bin, args, options) => {
+      invocations.push({ bin, args, options });
+      if (bin === "pnpm") {
+        if (failFirstBatch && args.includes("jest")) return { status: null, error: { code: "ETIMEDOUT" } };
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      assert.equal(bin, "docker");
+      let stdout = "";
+      if (args[2] === "run") stdout = id;
+      if (args[2] === "port") stdout = "127.0.0.1:1234";
+      if (args.at(-1) === "SELECT has_table_privilege('onboarding_runtime', 'public.\"AuthRateLimit\"', 'DELETE');") stdout = "f";
+      if (args.includes("--file=/tmp/onboarding-grants.sql")) {
+        const denial = denials[grants++ - 2];
+        if (denial) return { status: 3, stdout: "", stderr: denial };
+      }
+      return { status: 0, stdout, stderr: "" };
+    };
+    const imports = {
+      "node:child_process": { spawnSync: child },
+      "node:fs": { mkdtempSync: prefix => prefix + "fixture", rmSync: directory => directoriesRemoved.push(directory) },
+      "./local-staged-ci-dynamic.cjs": { CI_DYNAMIC_MIGRATION_LABEL: "fixture", createCiDynamicMigrationFixture: () => ({ async migrate() {} }) }
+    };
+    await run(name => imports[name] ?? require(name), fakeProcess, { log() {}, error() {} }, __dirname);
+    const pnpm = invocations.filter(call => call.bin === "pnpm");
+    const lifecycle = ["--filter", "@jiangkong/api", "run", "pretest"];
+    const jest = ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath"];
+    const first = [...jest, "src/database/personnel-lifecycle-http-postgres.spec.ts"];
+    const second = [...jest, "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts",
+      "src/database/employee-role-consistency-http-postgres.spec.ts", "src/database/employee-phone-reuse-postgres.spec.ts",
+      "src/database/personnel-roster-read-http-postgres.spec.ts"];
+    assert.deepEqual(pnpm.map(call => call.args), failFirstBatch ? [lifecycle, first] : [lifecycle, first, second]);
+    for (const { options } of pnpm) {
+      assert.equal(options.timeout, 180_000);
+      assert.equal(options.env, pnpm[0].options.env);
+      const database = new URL(options.env.DATABASE_URL);
+      assert.equal(database.username, "onboarding_runtime");
+      assert.equal(database.host, "127.0.0.1:1234");
+      assert.equal(database.pathname, "/onboarding");
+      assert.equal(options.env.RUN_EMPLOYEE_ONBOARDING_PG16, "1");
+    }
+    assert.deepEqual(invocations.at(-1).args, ["--host", "unix:///fixture", "rm", "--force", "--volumes", id]);
+    assert.equal(directoriesRemoved.length, 1);
+    assert.equal(fakeProcess.exitCode, failFirstBatch ? 1 : undefined);
+  }
+});

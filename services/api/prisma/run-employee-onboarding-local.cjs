@@ -265,7 +265,14 @@ async function verify() {
     ROLLBACK;`], process.env, true);
   console.log("EMPLOYEE_ONBOARDING 人员历史宽ACL收紧、非owner读写正反例、备份只读及重跑幂等通过");
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/onboarding`;
-  command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts", "src/database/personnel-lifecycle-http-postgres.spec.ts", "src/database/employee-role-consistency-http-postgres.spec.ts", "src/database/employee-phone-reuse-postgres.spec.ts", "src/database/personnel-roster-read-http-postgres.spec.ts"], env);
+  command("pnpm", ["--filter", "@jiangkong/api", "run", "pretest"], env);
+  // The personnel lifecycle suite includes its own browser run and needs its own command budget.
+  command("pnpm", ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath",
+    "src/database/personnel-lifecycle-http-postgres.spec.ts"], env);
+  command("pnpm", ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--runTestsByPath",
+    "src/database/employee-onboarding-http-postgres.spec.ts", "src/database/project-roster-http-postgres.spec.ts",
+    "src/database/employee-role-consistency-http-postgres.spec.ts", "src/database/employee-phone-reuse-postgres.spec.ts",
+    "src/database/personnel-roster-read-http-postgres.spec.ts"], env);
 }
 
 verify().finally(() => {
