@@ -2,6 +2,8 @@
 
 - [~] 用户回复“确认授权”，解除上轮首错停线，批准按已独审的完整 normal261 范围实施九项列级 INSERT 权限与同计划绑定修复、无资源本地验证、原 Draft #428 集成及常规 CI（含 GitHub 临时数据库测试）。只绑定明确的当前 261 正常付款模式；旧 259、归档模式、observer、其他 writer 与冻结清单保持。旧 `ac721/37e27daa` 单次许可已消耗，不复用；新的手动隔离迁移/实付仍须新候选、新方案及独立授权。当前尚未实施本修复。[只读范围](/private/tmp/jg-398-normal261-repair-scope-readonly-20261113.md)。
 
+- [~] 固定 Prisma 引擎源码与 normal 全链只读审查已确认九项源级缺口，覆盖登录、两次期初、实付事件和跨公司往来；不是九次实际失败。独立实现从准确 `30b638eb` 起步，必须以同一 effective 计划贯通准备、安装、目录/B7、live 与应用许可。已确认还需修正 business 准备器的特殊场景 sidecar 模式传递，避免先按 normal 加权后再覆盖模式；不改变 SQL/Schema、业务服务或冻结清单。实际修复与验证仍在进行，新候选尚无业务验收结果。[源级审计与边界](docs/progress/2026-11-13-382-normal261-acl-source-audit.md)。
+
 ## #382 单次隔离实付停止回执（2026-11-13）
 
 - [~] 用户明确授权后，准确 `ac721326` 的 [CI 43250259492](https://github.com/1131096740/intelligent-construction-management/actions/runs/43250259492) 32 项全部成功，主控据固定 `37e27daa` 方案执行正常实付 261 入口一次。约 57 分 39 秒后退出 1，`STOPPED`，停在 `seedAndSelectedCase / SEED_LOGIN`；原 stderr 显示登录写 AuditLog 返回 PostgreSQL `42501`。许可已消耗，native/financial/live admission 均为 false，不计实付通过，不重试、不修复或运行后续业务门。本轮容器与网络的准确 ID/名称/标签已独立观察不存在；控制器记录 relay 关闭及主机凭据、私钥材料擦除。#394/#398 仍 OPEN，14/45 不变。此前 #394 的 `e1dc686b` 仅本地合入未推送；本停止文档亦未提交或推送。[详细停止回执](docs/progress/2026-11-13-382-ac721-normal261-stop.md)。
