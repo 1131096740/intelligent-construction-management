@@ -92,6 +92,37 @@ const generatedProfile=Object.freeze({keys:generatedKeys,rows:generatedRows,
  lockRelations:[...new Set([...lockRelations,...Object.keys(generatedDraftReads)])].sort(),
  sha256:sha(JSON.stringify([requirementsSha256,generatedDraftReads]))});
 
+// First inside/material save on a fresh V2 draft. It keeps the empty main
+// bill and original tax/terms, adds the two parties, and selects the published
+// mapped layout. Even absent rows need permission on queries and row locks.
+const documentPurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
+const documentReads=Object.freeze({
+ ContractLayoutTemplate:['id','name','contractTypeKey','createdByUserId','createdAt','updatedAt'],
+ PaymentTermsStage:['stageType','fixedAmountCents','triggerAnchor','advanceDeductionMode','advanceDeductionRatioBps','advanceDeductionStartRatioBps','retentionBps'],
+});
+const documentWrites=Object.freeze({
+ Contract:['ownerUserId'],
+ ContractVersion:['clauseSnapshot','estimatedAmountCents','amountAdjustmentReason','taxFactStatus','taxFactSource','taxFactsFrozenAt',
+  'layoutTemplateVersionId','readinessSnapshot','numericProtocolVersion','documentContentRevision','documentContentFingerprint'],
+ ContractGeneratedDocument:['status','updatedAt'],
+});
+const documentRowLocks=Object.freeze({
+ ContractBill:'updatedAt',ContractBillRow:'updatedAt',ContractPartySnapshot:'createdAt',
+ PaymentTermsVersion:'updatedAt',PaymentTermsStage:'createdAt',
+});
+const documentKeys=new Map(generatedKeys),documentRows=[...generatedRows];
+for(const [privilege,targets] of [
+ ['SELECT',documentReads],['UPDATE',documentWrites],
+ ['UPDATE',Object.fromEntries(Object.entries(documentRowLocks).map(([relation,column])=>[relation,[column]]))]
+])for(const [relation,columns] of Object.entries(targets))for(const column of columns){
+ const target=relation+'.'+column,prior=documentKeys.get(target)??[];
+ need(!prior.includes(privilege),'SOURCE');
+ documentKeys.set(target,[...prior,privilege]);documentRows.push({relation,column,privilege});
+}
+const documentProfile=Object.freeze({keys:documentKeys,rows:documentRows,
+ lockRelations:[...new Set([...generatedProfile.lockRelations,...Object.keys(documentReads)])].sort(),
+ sha256:sha(JSON.stringify([documentPurpose,generatedProfile.sha256,documentReads,documentWrites,documentRowLocks]))});
+
 const protectedRowsSql=`pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(
  ${protectedBindings.map(name=>`(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_array(b.xmin::text,pg_catalog.to_jsonb(b))
    ORDER BY pg_catalog.to_jsonb(b)::text COLLATE "C",b.xmin::text COLLATE "C") FROM public.${name} b)`).join(', ')},
@@ -125,10 +156,14 @@ function rawEntries(acl) {
 
 function targets(ordinary,profile){
  const app=ownerRoleSql(ordinary);
+ const document=profile===documentProfile;
+ const requiredLocks=document?Object.entries(documentRowLocks).map(([relation,column])=>
+  `AND (NOT (req.relation=${quote(relation)} AND req."column"=${quote(column)} AND req.privilege='UPDATE')
+   OR NOT pg_catalog.has_any_column_privilege(${app},${quote('public.'+identifier(relation))}::regclass,'UPDATE'))`).join('\n '):'';
  return `WITH requested AS (
  SELECT req.* FROM pg_catalog.jsonb_to_recordset(${json(profile.rows)}) req(relation text,"column" text,privilege text)
- WHERE NOT (req.relation='BusinessParty' AND req."column"=${quote(manifest.businessPartyRowLockFallback)} AND req.privilege='UPDATE')
-   OR NOT pg_catalog.has_any_column_privilege(${app},'public."BusinessParty"'::regclass,'UPDATE')
+ WHERE ${document?'(':''}NOT (req.relation='BusinessParty' AND req."column"=${quote(manifest.businessPartyRowLockFallback)} AND req.privilege='UPDATE')
+   OR NOT pg_catalog.has_any_column_privilege(${app},'public."BusinessParty"'::regclass,'UPDATE')${document?')\n '+requiredLocks:''}
 ), resolved AS (
  SELECT req.*,c.oid AS relation_oid,a.attnum AS attribute_number,
  CASE WHEN req."column" IS NULL THEN pg_catalog.has_table_privilege(${app},c.oid,req.privilege)
@@ -174,9 +209,9 @@ function limits(ordinary,profile) {
     (a.attname NOT IN ('contentSha256','executionId','fileId') AND pg_catalog.has_column_privilege(${app},a.attrelid,a.attnum,'SELECT'))))
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid='public."FileObject"'::regclass AND a.attnum>0 AND NOT a.attisdropped
    AND a.attname<>'createdAt' AND pg_catalog.has_column_privilege(${app},a.attrelid,a.attnum,'UPDATE'))
- ${lockFields}${profile===generatedProfile?`
+ ${lockFields}${profile!==ordinaryProfile?`
  OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relnamespace=pg_catalog.to_regnamespace('public')
-  AND c.relname IN (${literalList(Object.keys(generatedDraftReads))}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
+  AND c.relname IN (${literalList([...new Set([...Object.keys(generatedDraftReads),...(profile===documentProfile?Object.keys(documentReads):[])])])}) AND pg_catalog.has_table_privilege(${app},c.oid,'SELECT'))`:''}
  THEN RAISE EXCEPTION '${CODE}_PRIVILEGE_BOUNDARY'; END IF;`;
 }
 
@@ -334,6 +369,11 @@ async function installCurrent259GeneratedDraftOrdinaryAcl(archiveCompletion,hand
  return install(archiveCompletion,handle,generatedProfile);
 }
 
+async function installCurrent259GeneratedDocumentOrdinaryAcl(archiveCompletion,handle){
+ need(arguments.length===2,'HANDLE');
+ return install(archiveCompletion,handle,documentProfile);
+}
+
 async function install(archiveCompletion,handle,profile){
  need(handle && typeof handle==='object' && !types.isProxy(handle) && !used.has(handle),'HANDLE');
  const lease=claimCurrent259ArchiveInstallation(archiveCompletion,handle);
@@ -346,6 +386,7 @@ async function install(archiveCompletion,handle,profile){
     Object.getOwnPropertyDescriptor(resource,'execOwnerSql')?.value===exec,'CONTINUITY');};
   check();
   const ordinary=candidateShape(archiveCompletion,view,lease);
+  if(profile===documentProfile)need(resource.topology==='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS','HANDLE');
   const run=async(next,before,staged)=>{
    phase=next;check();
    const challenge=randomBytes(32).toString('hex');
@@ -366,8 +407,9 @@ async function install(archiveCompletion,handle,profile){
   check();
   const completion=Object.freeze({status:proofStatus,sourceSha:archiveCompletion.sourceSha,runId:archiveCompletion.runId,
     containerId:archiveCompletion.containerId,installXid:committed.installXid,archiveInstallXid:archiveCompletion.installXid,
-    catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,executionAllowed:false,nativeAdmission:false});
-  proofs.set(completion,{handle,check,generatedDraft:profile===generatedProfile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
+    catalogSha256:committed.catalogSha256,protectedSha256:committed.protectedSha256,requirementsSha256:profile.sha256,
+    ...(profile===documentProfile?{purpose:documentPurpose}:{}),executionAllowed:false,nativeAdmission:false});
+  proofs.set(completion,{handle,check,profile,archiveCompletion,roleCompletion:lease.roleCompletion,source:lease.source,
     catalogSql:lease.ordinaryAclWitness(phases[2]).catalogSql,
     protectedSql:protectSeven(normalizedSevenCatalog(lease.ordinaryAclWitness(phases[2]).sevenCatalogSql,before.changes))});
   return completion;
@@ -379,13 +421,22 @@ async function install(archiveCompletion,handle,profile){
  }
 }
 function claimCurrent259OrdinaryArchiveAcl(completion,handle){
- need(arguments.length===2 && completion && !types.isProxy(completion) && proofs.has(completion),'HANDLE');
+ need(arguments.length===2,'HANDLE');
+ return claim(completion,handle,false);
+}
+function claimCurrent259GeneratedDocumentOrdinaryAcl(completion,handle){
+ need(arguments.length===2,'HANDLE');
+ return claim(completion,handle,true);
+}
+function claim(completion,handle,document){
+ need(completion && !types.isProxy(completion) && proofs.has(completion),'HANDLE');
  const receipt=proofs.get(completion);
- need(receipt.handle===handle,'HANDLE');
+ need(receipt.handle===handle && (receipt.profile===documentProfile)===document,'HANDLE');
  proofs.delete(completion);receipt.check();
  const {check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql}=receipt;
  return Object.freeze({completion,check,archiveCompletion,roleCompletion,source,catalogSql,protectedSql,
-  ...(receipt.generatedDraft?{generatedDraft:true}:{})});
+  ...(receipt.profile===generatedProfile?{generatedDraft:true}:{}),...(document?{generatedDocument:true}:{})});
 }
 
-module.exports=Object.freeze({installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl});
+module.exports=Object.freeze({installCurrent259OrdinaryArchiveAcl,installCurrent259GeneratedDraftOrdinaryAcl,
+ installCurrent259GeneratedDocumentOrdinaryAcl,claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl});

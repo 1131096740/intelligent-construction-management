@@ -14,6 +14,9 @@ const VERSION='jg_task16_runtime_version_read_only';
 const REFERENCE='jg_task16_runtime_reference_read_only';
 const IDENTITY='jg_task01_connection_identity';
 const READER='public.jg_read_registered_payment_impacts(text,text,text,text,text)';
+const LINEAGE_MIGRATION='20260828080000_pol13b_payer_authority_and_relation_guards';
+const LINEAGE_MIGRATION_SHA='9d7aae81f62752499e0be7acb487116eab846bf12e5792291d9bf42b1f15f067';
+const LINEAGE_BODY_SHA='4f58454305ef953353959c192ea13d7c82567b48219b5f8a4ff5e132b2cb218e';
 const ops=['select','insert','update','references'];
 const need=condition=>{if(!condition)throw new Error(CODE);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -114,9 +117,19 @@ function catalogQuery(source,identity,nonce){
  need(text.startsWith(prefix)&&text.endsWith(suffix));
  return text.slice(prefix.length,-suffix.length);
 }
-function proofSql(plan,legacy,baseline){
+function proofSql(plan,legacy,baseline,ledger){
  const signatures=new Set(plan.runtime.functions.map(s=>s.toLowerCase()));
- const proofs=[...legacy.functionProofs,...baseline.functionProofs].filter(row=>signatures.has(row.signature.toLowerCase()));
+ const [lineage]=baseline.functionProofs;
+ need(baseline.functionProofs.length===1&&lineage.signature==='public.assert_inter_entity_relationship_lineage(text,text)'&&
+  lineage.source===`services/api/prisma/migrations/${LINEAGE_MIGRATION}/migration.sql`&&
+  ledger.find(row=>row.name===LINEAGE_MIGRATION)?.sha256===LINEAGE_MIGRATION_SHA&&hash(lineage.body)===LINEAGE_BODY_SHA);
+ // The historical baseline only attests the body. The registered checker also
+ // needs the catalog attributes from this migration's CREATE FUNCTION.
+ const lineageProof={...lineage,bodySha256:LINEAGE_BODY_SHA,language:'plpgsql',strict:false,volatility:'v',
+  parallel:'u',returnType:'void',returnsSet:false,searchPath:null,
+  interface:{argumentNames:['p_settlement_case_id','p_payment_execution_id'],inputArgumentTypes:['text','text'],
+   allArgumentTypes:null,argumentModes:null,defaultArgumentCount:0,variadicType:null,kind:'f',leakproof:false,support:null}};
+ const proofs=[...legacy.functionProofs,lineageProof].filter(row=>signatures.has(row.signature.toLowerCase()));
  need(proofs.length===plan.runtime.functions.length-2);
  return functionProofSql({functionProofs:proofs});
 }
@@ -227,7 +240,7 @@ function renderRuntimeAcl(witness,provisioned,nonce,competition,voucher){
  const databaseAcl=renderCurrent259DatabasePrivileges(provisioned);
  const legacy=fixedJson('task16-registered-access.json','d19fe664e58659b3008ab2ef2769c6d3e421cb8504d3f98b8fd332133291b5eb');
  const baseline=fixedJson('task16-baseline-access.json','6c2ec83b104694aa2de351ab6e81757d0a3c6528b5bf0687a546fae23b48976b');
- const expect=matrix(plan),proof=proofSql(plan,legacy,baseline),catalog=catalogQuery(source,identity,nonce);
+ const expect=matrix(plan),proof=proofSql(plan,legacy,baseline,material.ledger),catalog=catalogQuery(source,identity,nonce);
  const verify=readOnly=>postSql(catalog,identity,expect,databaseAcl.expected,proof,material.ledger,legacy.legacyRelationOwners,readOnly);
  const setup="SET LOCAL search_path=pg_catalog,pg_temp;\nSET LOCAL standard_conforming_strings=on;";
  const sql=[setup,...(voucher?[voucher.profile.preimageSql(legacy.functionProofs)]:

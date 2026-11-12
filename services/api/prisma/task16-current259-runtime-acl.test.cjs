@@ -69,6 +69,26 @@ test('transaction includes exact directory read checks and does not accept a rep
  assert.doesNotMatch(result.sql,/REVOKE USAGE|GRANT USAGE[^\n]+jg_fixture_app/u);
 });
 
+test('checks the migration-pinned lineage routine with its full catalog metadata in both ACL proofs',()=>{
+ const {functionProofs:[lineage]}=require('./task16-baseline-access.json');
+ const migration=readFileSync(path.join(__dirname,'migrations/20260828080000_pol13b_payer_authority_and_relation_guards/migration.sql'),'utf8');
+ const body=/CREATE OR REPLACE FUNCTION assert_inter_entity_relationship_lineage\(\s*p_settlement_case_id TEXT,\s*p_payment_execution_id TEXT\s*\)\s*RETURNS VOID AS \$\$([\s\S]*?)\$\$ LANGUAGE plpgsql;/u.exec(migration)?.[1];
+ assert.equal(lineage.body,body);
+ const expected={...lineage,bodySha256:'4f58454305ef953353959c192ea13d7c82567b48219b5f8a4ff5e132b2cb218e',
+  language:'plpgsql',strict:false,volatility:'v',parallel:'u',returnType:'void',returnsSet:false,searchPath:null,
+  interface:{argumentNames:['p_settlement_case_id','p_payment_execution_id'],inputArgumentTypes:['text','text'],
+   allArgumentTypes:null,argumentModes:null,defaultArgumentCount:0,variadicType:null,kind:'f',leakproof:false,support:null}};
+ const twoLanes={...receipt(),roles:[{...runtime,limit:2},{...observer,limit:1}]};
+ for(const plan of [renderCurrent259RuntimeAcl(source,receipt(),nonce),
+  renderCurrent259CompetitionRuntimeAcl(source,twoLanes,nonce),renderCurrent259VoucherRuntimeAcl(source,twoLanes,nonce)]){
+  for(const sql of [plan.sql,plan.readbackSql]){
+   const proofs=[...sql.matchAll(/FROM pg_catalog\.jsonb_array_elements\('((?:[^']|'')*)'::jsonb\) proof WHERE NOT EXISTS/gu)]
+    .flatMap(([,value])=>JSON.parse(value.replaceAll("''","'")));
+   assert.deepEqual(proofs.filter(row=>row.signature===lineage.signature),[expected]);
+  }
+ }
+});
+
 
 test('fixed competition ACL requires runtime two and observer one and leaves the original single lane SQL unchanged',()=>{
  const single=receipt();

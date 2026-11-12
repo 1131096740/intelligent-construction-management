@@ -122,7 +122,7 @@ export class LayoutTemplateService {
       if (version.draftRevision !== input.expectedRevision || version.docxFileId !== input.sourceFileId) {
         throw new ConflictException("模板原文件或修订已变化，请重新读取并选择位置");
       }
-      const source = await this.files.getFileBuffer(version.docxFileId);
+      const source = await this.files.getFileBuffer(version.docxFileId, tx);
       const prepared = prepareLayoutSourceMapping(source.buffer, version.docxFileId, version.draftRevision + 1, input.bindings);
       if (prepared.mapping.sourceSha256 !== input.sourceSha256) throw new ConflictException("模板原文件已变化，请重新读取并选择位置");
       const placeholderSchema = { ...(version.placeholderSchema as Record<string, unknown>), sourceMapping: prepared.mapping };
@@ -150,7 +150,7 @@ export class LayoutTemplateService {
       if (version.status !== "draft" || version.draftRevision !== input.expectedRevision || version.docxFileId !== input.sourceFileId || mapping?.sourceSha256 !== input.sourceSha256 || mapping?.fingerprint !== input.mappingFingerprint) {
         throw new ConflictException("模板原文件或填写位置已变化，请重新预览并确认");
       }
-      const source = await this.files.getFileBuffer(version.docxFileId);
+      const source = await this.files.getFileBuffer(version.docxFileId, tx);
       mappedLayoutSourceForVersion(source.buffer, version);
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
       if (!report || report.blockingErrors.length || version.inspectionRevision !== version.draftRevision) throw new BadRequestException("请先完成当前修订的版式检查");
@@ -394,7 +394,7 @@ export class LayoutTemplateService {
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以检查");
       }
-      const source = await this.files.getFileBuffer(version.docxFileId);
+      const source = await this.files.getFileBuffer(version.docxFileId, tx);
       const report = this.inspectDocx(mappedLayoutSourceForVersion(source.buffer, version), version.placeholderSchema);
       const sourceRevision = version.draftRevision;
       const result = await tx.contractLayoutTemplateVersion.updateMany({
@@ -423,7 +423,7 @@ export class LayoutTemplateService {
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以生成预览");
       }
-      const source = await this.files.getFileBuffer(version.docxFileId);
+      const source = await this.files.getFileBuffer(version.docxFileId, tx);
       mappedLayoutSourceForVersion(source.buffer, version);
       const schema = version.placeholderSchema as Record<string, unknown>;
       const mapping = schema.sourceMapping as Record<string, unknown> | undefined;

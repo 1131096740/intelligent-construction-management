@@ -177,6 +177,7 @@ describe("LayoutTemplateService", () => {
 
     const result = await service.inspectVersion("version-1", "staff-1");
 
+    expect(files.getFileBuffer).toHaveBeenCalledWith("file-1", tx);
     expect(result.placeholders).toEqual([
       "contract.name",
       "contract.temporaryCode",
@@ -383,6 +384,7 @@ describe("LayoutTemplateService", () => {
     const result = await service.queuePreview("version-1", "staff-1", sampleData);
 
     expect(result).toMatchObject({ id: "job-1", status: "queued" });
+    expect(files.getFileBuffer).toHaveBeenCalledWith("source-file", tx);
     expect(tx.contractLayoutPreviewJob.create).toHaveBeenCalledWith({
       data: {
         layoutTemplateVersionId: "version-1",

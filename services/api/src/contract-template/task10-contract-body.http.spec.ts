@@ -42,8 +42,8 @@ describe("task10 complete contract body through authenticated public draft HTTP"
     const draft = await createTask09Draft(server);
     expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
     const download = server.files.getFileBuffer.bind(server.files);
-    const fileReads = jest.spyOn(server.files, "getFileBuffer").mockImplementationOnce(async fileId => {
-      const verified = await download(fileId);
+    const fileReads = jest.spyOn(server.files, "getFileBuffer").mockImplementationOnce(async (fileId, tx) => {
+      const verified = await download(fileId, tx);
       await server.store.prisma.fileObject.update({ where: { id: fileId }, data: metadata });
       return verified;
     });

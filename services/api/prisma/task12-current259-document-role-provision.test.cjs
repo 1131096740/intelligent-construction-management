@@ -13,7 +13,7 @@ function fixture(options={}){
  const containerId='b'.repeat(64);
  const completion=Object.freeze({status:'CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'901',archiveInstallXid:'900',catalogSha256:'c'.repeat(64),protectedSha256:'d'.repeat(64),
-  executionAllowed:false,nativeAdmission:false});
+  ...(options.document?{purpose:'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1'}:{}),executionAllowed:false,nativeAdmission:false});
  const roleCompletion={databaseIdentity:identity,ordinary:{oid:'16392'},roles:[{oid:'16393'}]};
  const archiveCompletion={status:'CURRENT259_ARCHIVE_AUTHORITIES_INSTALLED',registeredFileSource:true,bindingSha256:'f'.repeat(64),pendingSha256:'0'.repeat(64),installXid:'900'};
  let closed=0,claimed=false;
@@ -32,8 +32,14 @@ function fixture(options={}){
  const view={resource,runId,source,check(){}};
  const imports={
   './task16-current259-ordinary-archive-acl.cjs':{claimCurrent259OrdinaryArchiveAcl(r,h){
+   if(options.document)throw Error('HANDLE');
    assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
    return {source,completion,archiveCompletion,roleCompletion,generatedDraft:!options.oldProfile,
+    catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
+  },claimCurrent259GeneratedDocumentOrdinaryAcl(r,h){
+   if(!options.document)throw Error('HANDLE');
+   assert.equal(r,completion);assert.equal(h,handle);assert.ok(!claimed);claimed=true;
+   return {source,completion,archiveCompletion,roleCompletion,generatedDocument:true,
     catalogSql:"pg_catalog.repeat('c',64)",protectedSql:"pg_catalog.repeat('d',64)",check(){}};
   }},
   './task16-current259-owned-resource.cjs':{
@@ -89,4 +95,18 @@ test('independent commit drift never issues roles and preserves unknown cleanup'
  await assert.rejects(f.api.provisionCurrent259GeneratedDocumentRoles(f.completion,f.handle),
   error=>error.code==='CURRENT259_DOCUMENT_ROLE_PROVISION_COMMIT_UNCONFIRMED'&&error.resourceCleanup.status==='UNKNOWN');
  assert.equal(f.calls.length,3);assert.equal(f.closed(),1);
+});
+
+test('the fixed document save path consumes only the separate ordinary save proof',async()=>{
+ const f=fixture({document:true});
+ await assert.rejects(f.api.provisionCurrent259GeneratedDocumentRoles(f.completion,f.handle),/HANDLE/u);
+ assert.equal(f.calls.length,0);
+ const result=await f.api.provisionCurrent259GeneratedDocumentSaveRoles(f.completion,f.handle);
+ assert.equal(f.calls.length,3);
+ const lease=f.api.claimCurrent259GeneratedDocumentRoles(result,f.handle);
+ assert.equal(lease.ordinaryAcl.generatedDocument,true);
+ assert.equal(lease.ordinaryAclCompletion,f.completion);
+ const old=fixture();
+ await assert.rejects(old.api.provisionCurrent259GeneratedDocumentSaveRoles(old.completion,old.handle),/HANDLE/u);
+ assert.equal(old.calls.length,0);
 });

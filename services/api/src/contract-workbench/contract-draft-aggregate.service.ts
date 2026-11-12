@@ -499,7 +499,7 @@ export class ContractDraftAggregateService {
         if (effectiveLayoutTemplateVersionId && (input.draft.numericProtocolVersion === 2 || version.numericProtocolVersion === 2)) {
           const selected = await tx.contractLayoutTemplateVersion.findUnique({ where: { id: effectiveLayoutTemplateVersionId } });
           if (!selected) throw new BadRequestException("原已选合同模板不存在，请保留当前正文并重新选择模板");
-          const selectedSource = await this.files.getFileBuffer(selected.docxFileId);
+          const selectedSource = await this.files.getFileBuffer(selected.docxFileId, tx);
           const selectedSourceSha256 = createHash("sha256").update(selectedSource.buffer).digest("hex");
           if (selectedSourceSha256 === REVIEWED_LABOR_SOURCE_SHA256) {
             assertReviewedTypographySource(selectedSource.buffer, REVIEWED_LABOR_TYPOGRAPHY_VERSION);
@@ -557,7 +557,7 @@ export class ContractDraftAggregateService {
             ? await tx.contractLayoutTemplateVersion.findUnique({ where: { id: effectiveLayoutTemplateVersionId } })
             : await assertSelectableLayoutVersion(tx, this.files, effectiveLayoutTemplateVersionId, currentDraftBusinessType);
           if (!layout) throw new BadRequestException("原已选合同模板不存在，请保留当前正文并重新选择模板");
-          const source = await this.files.getFileBuffer(layout.docxFileId);
+          const source = await this.files.getFileBuffer(layout.docxFileId, tx);
           const mapped = mappedLayoutSourceForVersion(source.buffer, layout);
           const upgradeLaborTaxOrder = currentBodyRenderProfile?.reviewedLaborTaxBindingVersion === undefined && reviewedLaborTaxBindingVersion === REVIEWED_LABOR_TAX_BINDING_VERSION;
           const normalizeSavedBody = (value: unknown) => upgradeLaborTaxOrder

@@ -37,7 +37,7 @@ function fixture(options={}) {
   let claimed=false, closes=0;
   const check = () => { assert.equal(closes,0); options.check?.(); };
   const anchor = options.witness ?? (() => Object.freeze({guardSql: 'PERFORM 1;', sevenCatalogSql: "pg_catalog.repeat('2',64) /* pg_catalog.aclexplode(CASE WHEN pg_catalog.cardinality(coalesce(a.attacl,'{}'::aclitem[]))>0 THEN coalesce(a.attacl,'{}'::aclitem[]) END) jsonb_build_array(a.attnum,a.attacl) */", catalogSql: 'pg_catalog.repeat(\'a\',64) /* c.relacl::text a.attacl::text */'}));
-  const view = {source,runId:completion.runId,check,resource:{containerId:completion.containerId,databaseName:scope.databaseIdentity.database,
+  const view = {source,runId:completion.runId,check,resource:{containerId:completion.containerId,databaseName:scope.databaseIdentity.database,topology:options.topology??'UNVERIFIED_FIRST_Q2_LOOPBACK_TLS',
     async execOwnerSql(sql,phase){
       calls.push({sql,phase});
       const n=phases.indexOf(phase);
@@ -234,4 +234,50 @@ test('only the fixed generated ACL admits the actual pristine workbench read col
   const bad=fixture({observe:(row,n)=>{if(!n)row.changes.push({...candidate,privileges:['UPDATE']});}});
   await assert.rejects(bad.api.installCurrent259GeneratedDraftOrdinaryAcl(bad.completion,bad.handle),/PRESTATE_REJECTED/u);
   assert.equal(bad.calls.length,1);
+});
+
+test('fixed document save has its own ordinary ACL proof and column grants',async()=>{
+ const f=fixture({observe(row,n){if(!n)row.changes=[
+  {relation:'ContractVersion',column:'documentContentFingerprint',relationOid:'17010',attnum:5,privileges:['UPDATE'],rawAcl:null,acl:[]},
+  {relation:'ContractGeneratedDocument',column:'status',relationOid:'17011',attnum:4,privileges:['UPDATE'],rawAcl:null,acl:[]},
+  {relation:'ContractBillRow',column:'updatedAt',relationOid:'17012',attnum:3,privileges:['UPDATE'],rawAcl:null,acl:[]},
+  {relation:'ContractLayoutTemplate',column:'contractTypeKey',relationOid:'17013',attnum:2,privileges:['SELECT'],rawAcl:null,acl:[]}
+ ];}});
+ const result=await f.api.installCurrent259GeneratedDocumentOrdinaryAcl(f.completion,f.handle);
+ assert.equal(result.purpose,'CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1');
+ assert.throws(()=>f.api.claimCurrent259OrdinaryArchiveAcl(result,f.handle),/HANDLE/u);
+ assert.throws(()=>f.api.claimCurrent259GeneratedDocumentOrdinaryAcl({...result},f.handle),/HANDLE/u);
+ const proof=f.api.claimCurrent259GeneratedDocumentOrdinaryAcl(result,f.handle);
+ assert.equal(proof.completion,result);assert.equal(proof.generatedDocument,true);
+ assert.equal(proof.generatedDraft,undefined);
+ assert.throws(()=>f.api.claimCurrent259GeneratedDocumentOrdinaryAcl(result,f.handle),/HANDLE/u);
+ assert.match(f.calls[1].sql,/GRANT UPDATE \("documentContentFingerprint"\) ON TABLE public\."ContractVersion"/u);
+ assert.match(f.calls[1].sql,/GRANT UPDATE \("status"\) ON TABLE public\."ContractGeneratedDocument"/u);
+ assert.match(f.calls[1].sql,/GRANT UPDATE \("updatedAt"\) ON TABLE public\."ContractBillRow"/u);
+ assert.match(f.calls[1].sql,/GRANT SELECT \("contractTypeKey"\) ON TABLE public\."ContractLayoutTemplate"/u);
+ assert.doesNotMatch(f.calls[1].sql,/^GRANT DELETE/mu);
+});
+
+test('document save leaves bill and party replacement writes outside this fixed profile',async()=>{
+ for(const [relation,column,privilege] of [
+  ['ContractBillRow','itemName','INSERT'],['ContractBillRow','quantity','UPDATE'],
+  ['ContractPartySnapshot',null,'DELETE'],['ContractPartySnapshot','snapshot','UPDATE'],
+  ['ContractVersion','taxFactRevision','UPDATE'],['PaymentTermsStage',null,'DELETE']
+ ]){
+  const f=fixture({observe(row,n){if(!n)row.changes=[{
+   relation,column,relationOid:'17010',attnum:column?3:0,privileges:[privilege],rawAcl:null,acl:[]
+  }];}});
+  await assert.rejects(f.api.installCurrent259GeneratedDocumentOrdinaryAcl(f.completion,f.handle),/PRESTATE_REJECTED/u);
+  assert.deepEqual(f.calls.map(call=>call.phase),[phases[0]]);assert.equal(f.closes(),1);
+ }
+});
+
+test('the document ACL does not change a payment topology or consume legacy generated proof',async()=>{
+ const wrong=fixture({topology:'UNVERIFIED_FIRST_ROLLBACK_LOOPBACK_TLS'});
+ await assert.rejects(wrong.api.installCurrent259GeneratedDocumentOrdinaryAcl(wrong.completion,wrong.handle),/PRESTATE_REJECTED/u);
+ assert.equal(wrong.calls.length,0);
+ const prior=fixture();
+ const issued=await prior.api.installCurrent259GeneratedDraftOrdinaryAcl(prior.completion,prior.handle);
+ assert.throws(()=>prior.api.claimCurrent259GeneratedDocumentOrdinaryAcl(issued,prior.handle),/HANDLE/u);
+ assert.equal(prior.api.claimCurrent259OrdinaryArchiveAcl(issued,prior.handle).generatedDraft,true);
 });

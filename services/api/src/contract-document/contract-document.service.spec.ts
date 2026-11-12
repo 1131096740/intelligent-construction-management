@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
+import { FileService, type PrivateFileStorage } from "../file/file.service";
 import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-document.service";
 
 describe("ContractDocumentService", () => {
@@ -102,7 +103,7 @@ describe("ContractDocumentService", () => {
           amountCents: 1_000_000n,
           invoiceType: "vat_special",
           defaultTaxRatePercent: { toString: () => "13" },
-          draftData: { projectName: "建设项目一期", deliveryLocation: "项目现场" },
+          draftData: { projectName: "建设项目一期", deliveryLocation: "项目现场", deliveryDate: "2026-11-12" },
           clauseSnapshot: [
             { key: "payment", content: { text: "结算后付款" } }
           ],
@@ -306,6 +307,59 @@ describe("ContractDocumentService", () => {
       "attachment-a",
       "owner-1"
     );
+  });
+
+  function makeSingleConnectionService(current: { storageStatus?: string; objectKey?: string } = {}, bytes = source) {
+    const file = { id: "layout-file-1", objectKey: "private/layout.docx", storageStatus: "active",
+      contentSha256: createHash("sha256").update(source).digest("hex") };
+    const fileObject = { findUnique: jest.fn().mockResolvedValue(file) };
+    const tx = { ...makeTx(), fileObject, contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) } };
+    let held = false;
+    const poolLookup = jest.fn(async () => {
+      if (held) throw new Error("only connection is held by the transaction");
+      return { ...file, ...current };
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => {
+        held = true;
+        try { return await callback(tx); } finally { held = false; }
+      }),
+      fileObject: { findUnique: poolLookup }
+    } as unknown as PrismaService;
+    const read = jest.fn().mockResolvedValue(bytes);
+    const storage = { read } as unknown as PrivateFileStorage;
+    const service = new ContractDocumentService(prisma, audit as never, new FileService(prisma, audit as never, storage), {} as never);
+    return { service, file, fileObject, poolLookup, read, tx };
+  }
+
+  it.each([true, false])("queues using the held connection only when the layout bytes match: %s", async (matching) => {
+    const { service, file, fileObject, poolLookup, read, tx } = makeSingleConnectionService({}, matching ? source : Buffer.from("changed layout"));
+    const queued = service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1", purpose: "draft", attachmentFileIds: []
+    });
+    if (matching) {
+      await expect(queued).resolves.toMatchObject({ status: "queued" });
+    } else {
+      await expect(queued).rejects.toThrow("资料文件完整性校验失败");
+      expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    }
+    expect(poolLookup).not.toHaveBeenCalled();
+    expect(fileObject.findUnique).toHaveBeenCalledWith({ where: { id: file.id } });
+    expect(read).toHaveBeenCalledWith(file.objectKey);
+  });
+
+  it.each([
+    { current: {}, error: null },
+    { current: { storageStatus: "purged" }, error: "资料文件当前不可用" },
+    { current: { objectKey: "private/replaced.docx" }, error: "版式原文件已变化" }
+  ])("checks current draft-body file metadata after releasing the snapshot: $current", async ({ current, error }) => {
+    const { service, file, fileObject, poolLookup, read } = makeSingleConnectionService(current);
+    const body = service.getDraftBody("version-1", "owner-1");
+    if (error) await expect(body).rejects.toThrow(error);
+    else await expect(body).resolves.toMatchObject({ sourceSha256: file.contentSha256 });
+    expect(fileObject.findUnique).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(poolLookup).toHaveBeenCalledTimes(1);
   });
 
   it("allocates and locks a formal contract code on first external-file generation", async () => {

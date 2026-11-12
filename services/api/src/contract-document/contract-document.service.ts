@@ -116,7 +116,7 @@ export class ContractDocumentService {
   ) {}
 
   async getDraftBody(contractVersionId: string, actorUserId: string, numericProtocol?: string) {
-    return this.prisma.$transaction(async tx => {
+    const { version, contract, layout, source, mapped, parties, bills, rows, checkpoints } = await this.prisma.$transaction(async tx => {
       const { version, contract } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
       assertContractDraftNumericProtocol(version, numericProtocol);
       if (version.status !== "draft") throw new BadRequestException("当前合同正文已冻结，请从合同详情查看原文");
@@ -128,39 +128,41 @@ export class ContractDocumentService {
         tx.contractBill.findMany({ where: { contractVersionId }, orderBy: { billKey: "asc" } })
       ]);
       const rows = bills.length ? await tx.contractBillRow.findMany({ where: { contractBillId: { in: bills.map(bill => bill.id) } }, orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }] }) : [];
-      // Check current file metadata outside the repeatable-read snapshot before rendering the verified bytes.
-      const currentSource = await this.prisma.fileObject.findUnique({
-        where: { id: layout.docxFileId },
-        select: { storageStatus: true, contentSha256: true, objectKey: true }
-      });
-      if (!currentSource) throw new Error("资料文件不存在或已被移除");
-      if (currentSource.storageStatus !== "active") throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
-      if (currentSource.contentSha256 !== source.file.contentSha256 || currentSource.objectKey !== source.file.objectKey) {
-        throw new BadRequestException("版式原文件已变化，请由合同主管重新检查确认");
-      }
-      const draftData = this.isObject(version.draftData) ? version.draftData : {};
-      const bodyRenderProfile = readContractBodyRenderProfile(draftData);
-      const typographyVersion = bodyRenderProfile?.typographyVersion;
-      const signatureDateVersion = bodyRenderProfile?.signatureDateVersion;
-      const pageNumberVersion = bodyRenderProfile?.pageNumberVersion;
-      const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
-        bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
-          ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}) });
       const checkpoints = await tx.contractDraftCheckpoint.findMany({ where: { contractVersionId }, orderBy: { sequenceNo: "desc" } });
-      const savePoints = checkpoints.flatMap(checkpoint => {
-        const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
-        return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
-          layoutTemplateVersionId: snapshot.layoutTemplateVersionId, documentBody: snapshot.documentBody }] : [];
-      }).slice(0, 5);
-      return {
-        contractVersionId, draftRevision: version.draftRevision,
-        documentContentRevision: version.documentContentRevision,
-        layoutTemplateVersionId: layout.id, sourceSha256: rendered.sourceSha256,
-        blocks: rendered.blocks, flow: rendered.flow, paragraphGroups: rendered.paragraphGroups, savePoints,
-        warnings: createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
-          ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []
-      };
+      return { version, contract, layout, source, mapped, parties, bills, rows, checkpoints };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+
+    // Release the snapshot connection before checking current file metadata and rendering.
+    const currentSource = await this.prisma.fileObject.findUnique({
+      where: { id: layout.docxFileId },
+      select: { storageStatus: true, contentSha256: true, objectKey: true }
+    });
+    if (!currentSource) throw new Error("资料文件不存在或已被移除");
+    if (currentSource.storageStatus !== "active") throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
+    if (currentSource.contentSha256 !== source.file.contentSha256 || currentSource.objectKey !== source.file.objectKey) {
+      throw new BadRequestException("版式原文件已变化，请由合同主管重新检查确认");
+    }
+    const draftData = this.isObject(version.draftData) ? version.draftData : {};
+    const bodyRenderProfile = readContractBodyRenderProfile(draftData);
+    const typographyVersion = bodyRenderProfile?.typographyVersion;
+    const signatureDateVersion = bodyRenderProfile?.signatureDateVersion;
+    const pageNumberVersion = bodyRenderProfile?.pageNumberVersion;
+    const rendered = renderContractBody(source.buffer, mapped, { values: this.renderValues(contract, version, parties,
+      bills.map(bill => ({ ...bill, rows: rows.filter(row => row.contractBillId === bill.id) })), "draft", declaredBillKeys(layout.placeholderSchema, layout.inspectionReport), CONTRACT_BODY_TABLE_LAYOUT_VERSION) }, requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport), layout.id, draftData.documentBody, { tableLayoutVersion: CONTRACT_BODY_TABLE_LAYOUT_VERSION,
+        ...(typographyVersion ? { typographyVersion } : {}), ...(signatureDateVersion ? { signatureDateVersion } : {}), ...(pageNumberVersion ? { pageNumberVersion } : {}) });
+    const savePoints = checkpoints.flatMap(checkpoint => {
+      const snapshot = this.isObject(checkpoint.snapshot) ? checkpoint.snapshot : {};
+      return snapshot.kind === "contract_body" ? [{ id: checkpoint.id, createdAt: checkpoint.createdAt, documentContentRevision: snapshot.documentContentRevision,
+        layoutTemplateVersionId: snapshot.layoutTemplateVersionId, documentBody: snapshot.documentBody }] : [];
+    }).slice(0, 5);
+    return {
+      contractVersionId, draftRevision: version.draftRevision,
+      documentContentRevision: version.documentContentRevision,
+      layoutTemplateVersionId: layout.id, sourceSha256: rendered.sourceSha256,
+      blocks: rendered.blocks, flow: rendered.flow, paragraphGroups: rendered.paragraphGroups, savePoints,
+      warnings: createHash("sha256").update(source.buffer).digest("hex") === REVIEWED_LABOR_SOURCE_SHA256 && !readContractBodyRenderProfile(draftData)?.reviewedLaborTaxBindingVersion
+        ? ["当前合同使用历史税率内容，请保存填写资料后更新正文税务内容。"] : []
+    };
   }
 
   async queue(
@@ -351,7 +353,7 @@ export class ContractDocumentService {
         const layoutSourceMapping = confirmedLayoutSourceMapping(layout);
         let bodyDocument: ContractDocumentInputSnapshot["bodyDocument"];
         if (useBodyRenderer) {
-          const source = await this.files.getFileBuffer(layout.docxFileId);
+          const source = await this.files.getFileBuffer(layout.docxFileId, tx);
           if (typographyVersion) assertReviewedTypographySource(source.buffer, typographyVersion);
           if (pageNumberVersion) assertReviewedOriginalMechanicalPageSource(source.buffer);
           bodyDocument = { protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: createHash("sha256").update(source.buffer).digest("hex"),

@@ -665,7 +665,7 @@ export class ContractFormalFileService {
     if (locked.uploadedByUserId !== actorUserId) {
       throw this.deny("只能关联本人本次上传的合同文件", "contract.formal_file.file_denied");
     }
-    return this.inspectLockedPdf(fileId, locked);
+    return this.inspectLockedPdf(fileId, locked, tx);
   }
 
   async inspectOwnedStoredPdf(fileId: string, actorUserId: string) {
@@ -779,7 +779,7 @@ export class ContractFormalFileService {
     if (!locked || locked.storageStatus !== "active") {
       throw this.deny("已关联的合同文件当前不可用，请重新上传", "contract.formal_file.file_denied");
     }
-    const inspection = await this.inspectLockedPdf(fileId, locked);
+    const inspection = await this.inspectLockedPdf(fileId, locked, tx);
     if (inspection.sha256 !== expectedSha256 ||
       (expectedPageCount !== undefined && inspection.pageCount !== expectedPageCount)) {
       throw this.deny("已关联的合同文件完整性校验失败，请重新上传", "contract.formal_file.file_denied");
@@ -796,7 +796,8 @@ export class ContractFormalFileService {
       mimeType: string;
       sizeBytes: number;
       contentSha256: string | null;
-    }
+    },
+    tx?: Prisma.TransactionClient
   ) {
     if (locked.mimeType !== PDF_MIME) {
       throw this.deny("合同正式文件必须为 PDF 格式", "contract.formal_file.file_denied");
@@ -809,7 +810,7 @@ export class ContractFormalFileService {
     }
     let loaded: Awaited<ReturnType<FileService["getFileBuffer"]>>;
     try {
-      loaded = await this.files!.getFileBuffer(fileId);
+      loaded = await this.files!.getFileBuffer(fileId, tx);
     } catch {
       throw this.deny("合同 PDF 暂时无法读取，请重新上传或稍后重试", "contract.formal_file.file_denied");
     }

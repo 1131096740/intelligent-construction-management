@@ -124,14 +124,14 @@ export class ContractV2ArchiveService {
 
         for (const ref of refs) {
           const file = await tx.fileObject.findUnique({ where: { id: String(ref.fileId) } });
-          const data = await this.files.getFileBuffer(String(ref.fileId));
+          const data = await this.files.getFileBuffer(String(ref.fileId), tx);
           if (!file || file.storageStatus !== "active" || file.sizeBytes !== ref.sizeBytes || file.mimeType !== ref.mimeType || file.contentSha256 !== ref.contentSha256 || sha(data.buffer) !== ref.contentSha256 || data.buffer.length !== ref.sizeBytes) conflict("本轮生成文书校验失败，请核对原文件");
         }
         const manifest = [];
         for (const [displayOrder, fileId] of input.fileIds.entries()) {
           await this.files.assertCanAttachUnlinkedFile(tx, fileId, actor);
           const file = await tx.fileObject.findUniqueOrThrow({ where: { id: fileId } });
-          const data = await this.files.getFileBuffer(fileId);
+          const data = await this.files.getFileBuffer(fileId, tx);
           if (file.mimeType !== "application/pdf" || file.sizeBytes <= 0 || file.sizeBytes !== data.buffer.length || file.contentSha256 !== sha(data.buffer)) throw new BadRequestException("双方签章原件必须是可校验的PDF文件");
           const pdf = await PDFDocument.load(data.buffer).catch(() => { throw new BadRequestException("归档PDF无法解析，请重新核对原件"); });
           if (!pdf.getPageCount()) throw new BadRequestException("归档PDF不能为空");

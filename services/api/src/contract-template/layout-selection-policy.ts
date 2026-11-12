@@ -51,7 +51,7 @@ export async function readSelectableLayoutSource(
     if (!docx || !pdf || docx.mimeType !== DOCX_MIME || pdf.mimeType !== "application/pdf" ||
       ![docx, pdf].every(file => file.storageStatus === "active" && file.sizeBytes > 0 && /^[a-f0-9]{64}$/u.test(file.contentSha256 ?? ""))) throw new BadRequestException(CONFIRM_REQUIRED);
   }
-  const source = await files.getFileBuffer(layout.docxFileId);
+  const source = await files.getFileBuffer(layout.docxFileId, tx);
   const sha256 = createHash("sha256").update(source.buffer).digest("hex");
   if (source.file.id !== layout.docxFileId || source.file.storageStatus !== "active" || source.file.contentSha256 !== sha256 || mapping && mapping.sourceSha256 !== sha256) {
     throw new BadRequestException("版式原文件已变化，请由合同主管重新检查确认");

@@ -1,6 +1,6 @@
 'use strict';
 // Import the original ordinary ACL producer before claiming its owned resource.
-const {claimCurrent259OrdinaryArchiveAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
+const {claimCurrent259OrdinaryArchiveAcl,claimCurrent259GeneratedDocumentOrdinaryAcl}=require('./task16-current259-ordinary-archive-acl.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {randomBytes}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
@@ -34,11 +34,12 @@ const readOnly='BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;';
 const serializable='BEGIN ISOLATION LEVEL SERIALIZABLE READ WRITE;';
 const digest=expr=>`encode(sha256(convert_to((${expr})::text,'UTF8')),'hex')`;
 
-function scope(acl,view){
+function scope(acl,view,document){
  const {completion,roleCompletion,archiveCompletion,source}=acl;
  const resource=view.resource,profile=source.profile;
  const identity=Object.fromEntries(identityKeys.map(key=>[key,roleCompletion.databaseIdentity[key]]));
- need(acl.generatedDraft===true&&completion.status==='CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION'&&
+ need((document?acl.generatedDocument===true&&completion.purpose==='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1'
+  :acl.generatedDraft===true)&&completion.status==='CURRENT259_ORDINARY_ARCHIVE_ACL_COMMITTED_NOT_ADMISSION'&&
   completion.executionAllowed===false&&completion.nativeAdmission===false&&resource.topology===top&&
   completion.sourceSha===source.candidateSha&&equal(source,view.source)&&hex(completion.sourceSha,40)&&
   completion.runId===view.runId&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(completion.runId)&&
@@ -159,11 +160,20 @@ function observation(result,input,phase,challenge){
 }
 
 async function provisionCurrent259GeneratedDocumentRoles(ordinaryAclCompletion,handle){
- need(arguments.length===2&&handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
+ need(arguments.length===2,'HANDLE');
+ return provision(ordinaryAclCompletion,handle,false);
+}
+async function provisionCurrent259GeneratedDocumentSaveRoles(ordinaryAclCompletion,handle){
+ need(arguments.length===2,'HANDLE');
+ return provision(ordinaryAclCompletion,handle,true);
+}
+async function provision(ordinaryAclCompletion,handle,document){
+ need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&!attempted.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle);
  need(view.resource.topology===top,'HANDLE');
- const acl=claimCurrent259OrdinaryArchiveAcl(ordinaryAclCompletion,handle);
- const input=scope(acl,view),resource=view.resource,exec=own(resource,'execOwnerSql');
+ const claim=document?claimCurrent259GeneratedDocumentOrdinaryAcl:claimCurrent259OrdinaryArchiveAcl;
+ const acl=claim(ordinaryAclCompletion,handle);
+ const input=scope(acl,view,document),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(acl.completion===ordinaryAclCompletion&&typeof exec==='function','HANDLE');
  attempted.add(handle);
  const check=()=>{
@@ -206,4 +216,5 @@ function claimCurrent259GeneratedDocumentRoles(result,handle){
  return Object.freeze({completion:result,ordinaryAclCompletion:receipt.ordinaryAcl.completion,
   ordinaryAcl:receipt.ordinaryAcl,source:receipt.ordinaryAcl.source,roles:receipt.roles,check:receipt.check});
 }
-module.exports=Object.freeze({provisionCurrent259GeneratedDocumentRoles,claimCurrent259GeneratedDocumentRoles});
+module.exports=Object.freeze({provisionCurrent259GeneratedDocumentRoles,provisionCurrent259GeneratedDocumentSaveRoles,
+ claimCurrent259GeneratedDocumentRoles});

@@ -2,16 +2,23 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
 const filename=require('node:path').join(__dirname,'task12-current259-document-login.cjs');
+const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
+const ordinaryName='jg_fixture_app_0123456789abcdef01234567';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
-function fixture(change, priorSql, pool){
+function fixture(change, priorSql, pool, save=false){
  const handle={},source={candidateSha:'a'.repeat(40)},runId='a0000000-0000-4000-8000-000000000001';
  const database='jg_task01_'+runId.replaceAll('-',''),containerId='b'.repeat(64);
  const roles=['template','worker','queue'].map((suffix,i)=>({name:'jg_c259_doc_'+suffix,oid:String(17000+i),xmin:'901'}));
  const completion=Object.freeze({status:'CURRENT259_DOCUMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'902',roleInstallXid:'901',nativeAdmission:false,executionAllowed:false});
- const ordinaryAcl={completion:{installXid:'900',archiveInstallXid:'899'},roleCompletion:{databaseIdentity:{
+ const ordinary={name:ordinaryName,oid:'17009',login:true,limit:0,password:'absent',superuser:false,inherit:false,createRole:false,
+  createDb:false,replication:false,bypassRls:false,unlimitedValidity:true};
+ const ordinaryAcl={...(save?{generatedDocument:true}:{}),completion:{installXid:'900',archiveInstallXid:'899',...(save?{purpose:savePurpose}:{})},
+  roleCompletion:{ordinary,commitXid:'898',status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',sourceSha:source.candidateSha,
+   runId,containerId,executionAllowed:false,nativeAdmission:false,databaseIdentity:{
   database,databaseOid:'17010',namespaceOid:'2200',systemIdentifier:'7200000000000000001'}}};
+ const targets=save?[...roles,ordinary]:roles;
  const continuitySql=priorSql??`(SELECT jsonb_build_array(
  (SELECT n.nspacl::text FROM pg_namespace n WHERE n.nspname='public'),
  (SELECT jsonb_agg(to_jsonb(d) ORDER BY d.oid) FROM pg_database d),
@@ -26,21 +33,25 @@ function fixture(change, priorSql, pool){
   if(n===1)verifiers=[...sql.matchAll(/PASSWORD '(SCRAM-SHA-256\$[^']+)'/gu)].map(m=>m[1]);
   const row={nonce:sql.match(/'nonce','([0-9a-f]{64})'/u)[1],stable,pid:401+n,
    start:`2026-11-12T00:00:00.00000${n+1}Z`,xid:n?'903':null,status:n===2?'committed':null,
-   roles:roles.map((r,i)=>[r.oid,r.name,n?'903':r.xmin,n>0,n?1:0,n?sha(verifiers[i]):null]),
+   roles:targets.map((r,i)=>[r.oid,r.name,n?'903':r===ordinary?'889':r.xmin,n>0||r===ordinary,n?(r===ordinary?2:1):0,n?sha(verifiers[i]):null]),
    access:[],schemaOwner:'6171'};
   if(n) row.access=['database','schema'].flatMap(kind=>roles.map(r=>[kind,kind==='database'?'17010':'2200',kind==='database'?'10':'6171',r.oid,kind==='database'?'CONNECT':'USAGE',false]));
   change?.(n,row);
   return {stdout:JSON.stringify(row)+'\n'};
  }};
+ const claim=(r,h)=>{
+  assert.equal(r,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;
+  return {completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,check(){}};
+ };
  const view={resource,source,runId,check(){}},imports={
-  './task12-current259-document-acl-transport.cjs':{claimCurrent259GeneratedDocumentAcl(r,h){
-   assert.equal(r,completion);assert.equal(h,handle);assert.equal(claimed,false);claimed=true;
-   return {completion,ordinaryAcl,roles,source,continuitySql,continuitySha256,check(){}};
-  }},
+  './task12-current259-document-acl-transport.cjs':{
+   claimCurrent259GeneratedDocumentAcl(r,h){assert.equal(save,false,'HANDLE');return claim(r,h);},
+   claimCurrent259GeneratedDocumentSaveAcl(r,h){assert.equal(save,true,'HANDLE');return claim(r,h);}
+  },
   './task16-current259-owned-resource.cjs':{claimCurrent259TechnicalResource(h){assert.equal(h,handle);return view;},
    async closeCurrent259OwnedResource(h){assert.equal(h,handle);closes++;}}
  };
- if(pool)pool.setup({resource,view,handle,roles,identity:ordinaryAcl.roleCompletion.databaseIdentity,source,imports});
+ if(pool)pool.setup({resource,view,handle,roles:targets,identity:ordinaryAcl.roleCompletion.databaseIdentity,source,imports});
  const mod={exports:{}};
  new Function('require','module','__dirname',readFileSync(filename,'utf8'))(id=>imports[id]??require(id),mod,__dirname);
  return {api:mod.exports,completion,handle,calls,closed:()=>closes,getVerifiers:()=>verifiers};
@@ -96,19 +107,25 @@ test('a protected catalog change or callback failure cannot release a successful
  assert.equal(f.calls.length,3);assert.equal(f.closed(),1);
 });
 
-function poolFixture(mode='success'){
+function poolFixture(mode='success',save=false,priorSql){
  const trace=[],urls=[],clients=[],ownerSql=[];
  const state={queries:0};
  const pool={
   setup({resource,view,handle,roles,identity,source,imports}){
    const relay={id:'00000000-0000-4000-8000-000000000002',containerId:resource.containerId,host:'127.0.0.1',port:43211};
-   const transition={beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),rules:12,loginInstallXid:'903',plaintextNoEncryptionRejected:true};
+   const transition={beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),rules:save?13:12,loginInstallXid:'903',plaintextNoEncryptionRejected:true,...(save?{purpose:savePurpose}:{})};
    const cert={mode:'correct',derSha256:'c'.repeat(64)},file='/private/tmp/model/tls-private/ca.crt',caSha='d'.repeat(64),stat={uid:process.getuid()};
    Object.assign(resource,{port:relay.port,networkId:'e'.repeat(64),caPath:file,
     serverCertHashes:{correctCertificateDerSha256:cert.derSha256,caSha256:caSha},
     async applyCurrent259DocumentHbaV1(proof){
      f.api.assertCurrent259GeneratedDocumentLoginScope(proof,handle);
-     trace.push('hba');return mode==='hba'?{...transition,plaintextNoEncryptionRejected:false}:transition;
+     assert.equal(proof.purpose,save?savePurpose:undefined);
+     assert.equal(proof.ordinaryName,save?ordinaryName:undefined);
+     assert.equal(proof.roleOids.length,save?4:3);
+     trace.push('hba');
+     if(mode==='hba')return {...transition,plaintextNoEncryptionRejected:false};
+     if(mode==='legacy-hba')return {...transition,rules:12,purpose:undefined};
+     return transition;
     },
     async inspectConnectionEndpoint(){return {containerId:resource.containerId,networkId:resource.networkId,databaseName:identity.database,
      transport:resource.topology,relayId:relay.id,host:'127.0.0.1',port:relay.port,serverAddress:'127.0.0.1',serverPort:5432};},
@@ -138,7 +155,7 @@ function poolFixture(mode='success'){
    view.loader={
     loadGeneratedContractDocumentModules(){trace.push('load');
      return {async withTask12PreownedDocumentRoleServices(connections,expected,use){
-      assert.deepEqual(Object.values(connections),clients);
+      assert.deepEqual(Object.values(connections),clients.slice(0,3));
       assert.deepEqual(expected,{database:identity.database,databaseOid:identity.databaseOid,namespaceOid:identity.namespaceOid,
        storageRoot:'/private/tmp/model/storage',roleOids:{template:'17000',worker:'17001',queue:'17002'}});
       trace.push('role-services');
@@ -153,12 +170,12 @@ function poolFixture(mode='success'){
       assert.equal(url.username,role.name);assert.match(url.password,/^[0-9a-f]{96}$/u);assert.equal(url.port,String(relay.port));
       assert.equal(url.hostname,'127.0.0.1');assert.equal(url.pathname,'/'+identity.database);
       assert.equal(url.searchParams.get('sslmode'),'require');assert.equal(url.searchParams.get('sslaccept'),'strict');
-      assert.equal(url.searchParams.get('sslcert'),file);assert.equal(url.searchParams.get('connection_limit'),'1');
+      assert.equal(url.searchParams.get('sslcert'),file);assert.equal(url.searchParams.get('connection_limit'),save&&index===3?'2':'1');
       assert.deepEqual(options.log,[]);
       urls.push(url);clients.push(this);
       this.session={oid:role.oid,pid:501+index,start:`2026-11-12T00:00:00.00001${index}Z`,ssl:true,
        clientAddress:'127.0.0.1',clientPort:33000+index,role:role.name,databaseOid:identity.databaseOid,database:identity.database};
-      this.$connect=async()=>{trace.push('connect-'+index);if(mode==='connect-failure'&&index===1)throw Error(url.href);};
+      this.$connect=async()=>{trace.push('connect-'+index);if((mode==='connect-failure'&&index===1)||(mode==='ordinary-connect'&&index===3))throw Error(url.href);};
       this.$queryRawUnsafe=async(sql,challenge)=>{
        state.clientSql=sql;state.queries++;
        return [{...this.session,challenge,sessionRole:role.name,serverAddress:'127.0.0.1',serverPort:5432,
@@ -177,7 +194,10 @@ function poolFixture(mode='success'){
    return {stdout:JSON.stringify({challenge,pid:900,start:'2026-11-12T00:00:00.000019Z',scope:true,sessions})};
   }
  };
- const f=fixture(undefined,undefined,pool);
+ const f=fixture((n,row)=>{
+  if(mode==='ordinary-prestate'&&!n)row.roles[3][4]=1;
+  if(mode==='ordinary-poststate'&&n===2)row.roles[3][4]=1;
+ },priorSql,pool,save);
  return {...f,trace,urls,clients,ownerSql,state};
 }
 
@@ -245,4 +265,42 @@ test('debug overrides stop before a private datasource can be constructed',async
   if(before===undefined)delete process.env.DEBUG;
   else process.env.DEBUG=before;
  }
+});
+
+test('the fixed save login entry rejects a legacy document proof before any SQL',async()=>{
+ const f=fixture();
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentSaveRoleServices(f.completion,f.handle,()=>assert.fail()),/HANDLE/u);
+ assert.equal(f.calls.length,0);
+});
+
+test('save purpose connects the existing ordinary OID with two seats and each document OID with one',async()=>{
+ const f=poolFixture('success',true);
+ const result=await f.api.withCurrent259GeneratedDocumentSaveRoleServices(f.completion,f.handle,async actions=>{
+  assert.deepEqual(Object.keys(actions),['template','worker','queue']);return 42;
+ });
+ assert.equal(result,42);
+ const [before,write,committed]=f.calls.map(call=>call.sql);
+ assert.match(before,/has_database_privilege\('17009'::oid,'17010'::oid,'CONNECT'\)/u);
+ assert.match(write,/ALTER ROLE "jg_fixture_app_0123456789abcdef01234567" CONNECTION LIMIT 2 PASSWORD 'SCRAM/u);
+ assert.doesNotMatch(write,/^GRANT .*jg_fixture_app/mu);
+ assert.match(committed,/pg_xact_status\('903'::xid8\)/u);
+ assert.equal((write.match(/^ALTER ROLE /gmu)??[]).length,4);
+ assert.equal(new Set(f.urls.map(url=>url.password)).size,4);
+ assert.match(f.ownerSql[0],/CASE WHEN r.oid='17009'::oid THEN 2 ELSE 1 END/u);
+ assert.deepEqual(f.trace.filter(x=>x.startsWith('disconnect-')),['disconnect-0','disconnect-1','disconnect-2','disconnect-3']);
+ assert.equal(f.trace.at(-1),'drain-closed');
+});
+
+test('save purpose rejects wrong ordinary initial and committed attributes, old HBA and failed native login',async()=>{
+ for(const [mode,reason,n] of [['ordinary-prestate','PREIMAGE',1],['ordinary-poststate','READBACK',3],
+  ['legacy-hba','ROLE_HBA',3],['ordinary-connect','ROLE_CONNECT',3]]){
+  const f=poolFixture(mode,true);
+  await assert.rejects(f.api.withCurrent259GeneratedDocumentSaveRoleServices(f.completion,f.handle,()=>assert.fail()),
+   error=>error.reason===reason&&!JSON.stringify(error).includes('postgresql://'));
+  assert.equal(f.calls.length,n);assert.equal(f.closed(),1);
+  assert.equal(f.trace.filter(x=>x.startsWith('disconnect-')).length,mode==='ordinary-connect'?4:0);
+ }
+ const f=fixture(undefined,undefined,undefined,true);
+ await assert.rejects(f.api.withCurrent259GeneratedDocumentLogin(f.completion,f.handle,()=>assert.fail()),/HANDLE/u);
+ assert.equal(f.calls.length,0);
 });

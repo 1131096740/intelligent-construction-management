@@ -234,7 +234,7 @@ export class ContractV2SubmissionService {
       for (const [id, mime] of [[document.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], [document.pdfFileId, "application/pdf"]]) {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "FileObject" WHERE "id" = ${id} FOR SHARE`);
         const file = await tx.fileObject.findUnique({ where: { id } });
-        const stored = await this.files.getFileBuffer(id).catch(() => conflict("当前正文文件不可读取或校验失败，请重新生成后提交"));
+        const stored = await this.files.getFileBuffer(id, tx).catch(() => conflict("当前正文文件不可读取或校验失败，请重新生成后提交"));
         if (!file || file.storageStatus !== "active" || file.mimeType !== mime || file.contentSha256 !== hash(stored.buffer) || file.sizeBytes !== stored.buffer.length) conflict("当前正文文件校验失败，请重新生成后提交");
         frozenFiles.push({ fileId: id, contentSha256: file.contentSha256, sizeBytes: file.sizeBytes, mimeType: file.mimeType });
       }

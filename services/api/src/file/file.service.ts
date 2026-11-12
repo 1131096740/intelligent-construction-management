@@ -1497,8 +1497,11 @@ export class FileService {
   }
 
   // 内部服务读取，不走用户下载权限与审计。
-  async getFileBuffer(fileId: string): Promise<InternalFileBuffer> {
-    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+  async getFileBuffer(
+    fileId: string,
+    tx: Pick<Prisma.TransactionClient, "fileObject"> = this.prisma
+  ): Promise<InternalFileBuffer> {
+    const file = await tx.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
       throw new Error("资料文件不存在或已被移除");
     }

@@ -3,13 +3,15 @@ const {createHash,createHmac,pbkdf2Sync,randomBytes}=require('node:crypto');
 const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const {isDeepStrictEqual:equal,types}=require('node:util');
-const {claimCurrent259GeneratedDocumentAcl}=require('./task12-current259-document-acl-transport.cjs');
+const {claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl}=require('./task12-current259-document-acl-transport.cjs');
 const {claimCurrent259TechnicalResource,closeCurrent259OwnedResource}=require('./task16-current259-owned-resource.cjs');
 const {current259AclRowsSql}=require('./task16-current259-catalog.cjs');
 const {withCurrent259ApplicationEnvironment}=require('./task16-current259-application-environment.cjs');
 const {readQualifiedTask16File}=require('./task16-runtime-inputs.cjs');
 
 const CODE='CURRENT259_DOCUMENT_LOGIN';
+const savePurpose='CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1';
+const ordinaryLimit=2;
 const topology='UNVERIFIED_FIRST_Q2_LOOPBACK_TLS';
 const names=Object.freeze(['jg_c259_doc_template','jg_c259_doc_worker','jg_c259_doc_queue']);
 const consumed=new WeakSet(),active=new WeakMap();
@@ -60,7 +62,7 @@ function replaceExact(sql,marker,replacement){
  need(sql.split(marker).length===2,'RENDER');
  return sql.replace(marker,()=>replacement);
 }
-function qualify(lease,view){
+function qualify(lease,view,save){
  const {completion,roles,source,ordinaryAcl,continuitySql,continuitySha256}=lease;
  const {resource,runId}=view,identity=ordinaryAcl.roleCompletion.databaseIdentity;
  const predecessors=[completion.roleInstallXid,completion.installXid,ordinaryAcl.completion.installXid,ordinaryAcl.completion.archiveInstallXid];
@@ -72,7 +74,24 @@ function qualify(lease,view){
   identity.database==='jg_task01_'+runId.replaceAll('-','')&&oid(identity.databaseOid)&&oid(identity.namespaceOid)&&xid(identity.systemIdentifier)&&
   Array.isArray(roles)&&roles.length===names.length&&roles.every((role,i)=>role.name===names[i]&&oid(role.oid)&&
    role.oid!=='10'&&role.xmin===xmin(completion.roleInstallXid))&&new Set(roles.map(role=>role.oid)).size===names.length,'HANDLE');
- return {roles,identity,predecessors,continuitySql,continuitySha256};
+ need((ordinaryAcl.generatedDocument===true)===save,'HANDLE');
+ let ordinary;
+ if(save){
+  const {roleCompletion}=ordinaryAcl;
+  const {name,oid:roleOid,login,limit,password}=roleCompletion.ordinary??{};
+  need(ordinaryAcl.completion.purpose===savePurpose&&ordinaryAcl.generatedDraft!==true&&
+   roleCompletion.status==='CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION'&&roleCompletion.sourceSha===completion.sourceSha&&
+   roleCompletion.runId===runId&&roleCompletion.containerId===resource.containerId&&
+   roleCompletion.executionAllowed===false&&roleCompletion.nativeAdmission===false&&
+   /^jg_fixture_app_[a-f0-9]{24}$/u.test(name)&&oid(roleOid)&&roleOid!=='10'&&
+   !roles.some(role=>role.oid===roleOid)&&login===true&&limit===0&&password==='absent'&&
+   ['superuser','inherit','createRole','createDb','replication','bypassRls'].every(key=>roleCompletion.ordinary[key]===false)&&
+   roleCompletion.ordinary.unlimitedValidity===true&&xid(roleCompletion.commitXid)&&!predecessors.includes(roleCompletion.commitXid),'HANDLE');
+  predecessors.push(roleCompletion.commitXid);
+  ordinary=Object.freeze({name,oid:roleOid});
+ }
+ return {roles,identity,predecessors,continuitySql,continuitySha256,ordinary,
+  targets:ordinary?[...roles,ordinary]:roles};
 }
 
 function documentAcl(ids){
@@ -96,8 +115,9 @@ function documentAcl(ids){
   AND has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))`;
 }
 function catalog(input){
- const {identity,roles,continuitySql,predecessors}=input;
+ const {identity,roles,continuitySql,predecessors,targets,ordinary}=input;
  const ids=roles.map(role=>quote(role.oid)+'::oid').join(',');
+ const targetIds=ordinary?targets.map(role=>quote(role.oid)+'::oid').join(','):ids;
  const aclRows=(kind,acl,owner)=>`aclexplode(COALESCE(${acl},acldefault('${kind}',${owner})))`;
  const databaseAcl=aclRows('d','d.datacl','d.datdba'),schemaAcl=aclRows('n','n.nspacl','n.nspowner');
  const others=acl=>`(SELECT COALESCE(jsonb_agg(jsonb_build_array(g.grantor,g.grantee,g.privilege_type,g.is_grantable)
@@ -107,7 +127,7 @@ function catalog(input){
   `(SELECT jsonb_agg(CASE WHEN d.oid=${quote(identity.databaseOid)}::oid THEN
    jsonb_build_array(to_jsonb(d)-'datacl',${others(databaseAcl)}) ELSE to_jsonb(d) END ORDER BY d.oid) FROM pg_database d)`);
  stable=replaceExact(stable,'r.rolpassword IS NULL) ORDER BY r.oid) FROM pg_authid r)',
-  `r.rolpassword IS NULL) ORDER BY r.oid) FROM pg_authid r WHERE r.oid NOT IN (${ids}))`);
+  `r.rolpassword IS NULL) ORDER BY r.oid) FROM pg_authid r WHERE r.oid NOT IN (${targetIds}))`);
  const access=`(SELECT COALESCE(jsonb_agg(jsonb_build_array(kind,target::text,grantor::text,grantee::text,privilege,is_grantable)
   ORDER BY kind COLLATE "C",target,grantee,grantor,privilege COLLATE "C",is_grantable),'[]'::jsonb) FROM (
   SELECT 'database'::text AS kind,d.oid AS target,g.grantor,g.grantee,g.privilege_type AS privilege,g.is_grantable
@@ -116,11 +136,11 @@ function catalog(input){
   SELECT 'schema',n.oid,g.grantor,g.grantee,g.privilege_type,g.is_grantable
    FROM pg_namespace n CROSS JOIN LATERAL ${schemaAcl} g WHERE g.grantee IN (${ids})
  ) granted)`;
- const roleOrder=names.map(quote).join(',');
+ const roleOrder=targets.map(role=>quote(role.name)).join(',');
  const roleState=`(SELECT jsonb_agg(jsonb_build_array(r.oid::text,r.rolname,r.xmin::text,r.rolcanlogin,r.rolconnlimit,
   CASE WHEN r.rolpassword IS NULL THEN NULL ELSE ${digest('r.rolpassword')} END)
   ORDER BY array_position(ARRAY[${roleOrder}],r.rolname::text))
-  FROM pg_authid r WHERE r.oid IN (${ids}) AND r.rolvaliduntil IS NULL AND NOT
+  FROM pg_authid r WHERE r.oid IN (${targetIds}) AND r.rolvaliduntil IS NULL AND NOT
   (r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
   AND NOT has_schema_privilege(r.oid,${namespace},'CREATE')
   AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid)
@@ -148,7 +168,9 @@ function catalog(input){
   AND 16-current_setting('superuser_reserved_connections')::int-current_setting('reserved_connections')::int>=10
   AND NOT EXISTS(SELECT FROM pg_stat_activity a WHERE a.backend_type='client backend' AND a.pid<>pg_backend_pid())
   AND ${predecessors.map(value=>`pg_xact_status(${quote(value)}::xid8)='committed'`).join(' AND ')}
-  AND (${hba}) AND (${documentAcl(ids)})`;
+  AND (${hba}) AND (${documentAcl(ids)})${ordinary?`
+  AND has_database_privilege(${quote(ordinary.oid)}::oid,${quote(identity.databaseOid)}::oid,'CONNECT')
+  AND has_schema_privilege(${quote(ordinary.oid)}::oid,${namespace},'USAGE')`:''}`;
  const expectedAccess=owner=>['database','schema'].flatMap(kind=>[...roles].sort((a,b)=>Number(a.oid)-Number(b.oid)).map(role=>
   [kind,kind==='database'?identity.databaseOid:identity.namespaceOid,kind==='database'?'10':owner,role.oid,kind==='database'?'CONNECT':'USAGE',false]));
  return {stable,access,roleState,common,expectedAccess};
@@ -158,13 +180,16 @@ function render(input,c,phase,nonce,before,verifiers,staged){
  const writing=phase==='WRITE',committed=phase==='COMMITTED';
  const writeXid=writing?'pg_current_xact_id()::text':committed?quote(staged.xid):'NULL::text';
  const status=committed?`pg_xact_status(${quote(staged.xid)}::xid8)`:'NULL::text';
- const beforeRoles=input.roles.map(role=>[role.oid,role.name,role.xmin,false,0,null]);
- const stagedRoles=writing&&`jsonb_build_array(${input.roles.map((role,i)=>
-  `jsonb_build_array(${quote(role.oid)},${quote(role.name)},(pg_current_xact_id()::text::numeric%4294967296)::text,true,1,${quote(sha(verifiers[i]))})`).join(',')})`;
+ const initialRoles=input.roles.map(role=>[role.oid,role.name,role.xmin,false,0,null]);
+ const beforeRoles=input.ordinary?(before?json(before.roles):`(${json(initialRoles)}||jsonb_build_array(jsonb_build_array(
+  ${quote(input.ordinary.oid)},${quote(input.ordinary.name)},
+  (SELECT r.xmin::text FROM pg_authid r WHERE r.oid=${quote(input.ordinary.oid)}::oid),true,0,NULL)))`):json(initialRoles);
+ const stagedRoles=writing&&`jsonb_build_array(${input.targets.map((role,i)=>
+  `jsonb_build_array(${quote(role.oid)},${quote(role.name)},(pg_current_xact_id()::text::numeric%4294967296)::text,true,${role===input.ordinary?ordinaryLimit:1},${quote(sha(verifiers[i]))})`).join(',')})`;
  const fixedBefore=`(${input.continuitySql}) IS NOT DISTINCT FROM ${quote(input.continuitySha256)}`;
  const guard=(tag,post)=>`DO $doc_login_${tag}$ BEGIN
  IF (${c.common}) IS DISTINCT FROM true
- OR (${c.roleState}) IS DISTINCT FROM ${post?(writing?stagedRoles:json(staged.roles)):json(beforeRoles)}
+ OR (${c.roleState}) IS DISTINCT FROM ${post?(writing?stagedRoles:json(staged.roles)):beforeRoles}
  OR (${c.access}) IS DISTINCT FROM ${json(post?c.expectedAccess(before.schemaOwner):[])}
  ${post?'':`OR NOT (${fixedBefore})`}
  ${before?`OR (${c.stable}) IS DISTINCT FROM ${quote(before.stable)}
@@ -181,7 +206,9 @@ function render(input,c,phase,nonce,before,verifiers,staged){
   ...(writing?["SET LOCAL password_encryption='scram-sha-256';",'LOCK TABLE pg_catalog.pg_authid IN SHARE ROW EXCLUSIVE MODE NOWAIT;']:[]),
   guard(committed?'committed':'preimage',committed),
   ...(writing?[
-   ...names.map((name,i)=>`ALTER ROLE "${name}" LOGIN CONNECTION LIMIT 1 PASSWORD ${quote(verifiers[i])};`),
+   ...input.targets.map((role,i)=>role===input.ordinary
+    ?`ALTER ROLE "${role.name}" CONNECTION LIMIT ${ordinaryLimit} PASSWORD ${quote(verifiers[i])};`
+    :`ALTER ROLE "${role.name}" LOGIN CONNECTION LIMIT 1 PASSWORD ${quote(verifiers[i])};`),
    `GRANT CONNECT ON DATABASE "${input.identity.database}" TO ${roleList};`,
    `GRANT USAGE ON SCHEMA public TO ${roleList};`,
    guard('postimage',true)
@@ -213,12 +240,17 @@ function withCurrent259GeneratedDocumentRoleServices(aclResult,handle,use){
  if(arguments.length!==3)return Promise.reject(fault('HANDLE'));
  return runLogin(aclResult,handle,use,true);
 }
-async function runLogin(aclResult,handle,use,withRoles){
+function withCurrent259GeneratedDocumentSaveRoleServices(aclResult,handle,use){
+ if(arguments.length!==3)return Promise.reject(fault('HANDLE'));
+ return runLogin(aclResult,handle,use,true,true);
+}
+async function runLogin(aclResult,handle,use,withRoles,save=false){
  need(handle&&typeof handle==='object'&&!types.isProxy(handle)&&
   typeof use==='function'&&!types.isProxy(use)&&!consumed.has(handle),'HANDLE');
  const view=claimCurrent259TechnicalResource(handle),resource=view.resource,exec=own(resource,'execOwnerSql');
  need(resource.topology===topology&&typeof exec==='function','HANDLE');
- const lease=claimCurrent259GeneratedDocumentAcl(aclResult,handle),input=qualify(lease,view);
+ const claim=save?claimCurrent259GeneratedDocumentSaveAcl:claimCurrent259GeneratedDocumentAcl;
+ const lease=claim(aclResult,handle),input=qualify(lease,view,save);
  need(aclResult===lease.completion,'HANDLE');
  consumed.add(handle);
  const check=()=>{
@@ -238,21 +270,27 @@ async function runLogin(aclResult,handle,use,withRoles){
    check();return read(result,nonce);
   };
   const before=await run('BEFORE');
-  need(before.xid===null&&before.status===null&&equal(before.access,[])&&
-   equal(before.roles,input.roles.map(role=>[role.oid,role.name,role.xmin,false,0,null])),'PREIMAGE');
-  for(const _ of names)secrets.push(password());
+  const expectedBefore=input.roles.map(role=>[role.oid,role.name,role.xmin,false,0,null]);
+  if(input.ordinary){
+   const old=before.roles?.[names.length];
+   need(Array.isArray(old)&&oid(old[2]),'PREIMAGE');
+   expectedBefore.push([input.ordinary.oid,input.ordinary.name,old[2],true,0,null]);
+  }
+  need(before.xid===null&&before.status===null&&equal(before.access,[])&&equal(before.roles,expectedBefore),'PREIMAGE');
+  for(const _ of input.targets)secrets.push(password());
   const verifiers=secrets.map(verifier);
   const staged=await run('WRITE',before,verifiers);
   need(xid(staged.xid)&&!input.predecessors.includes(staged.xid)&&staged.status===null&&independent(before,staged)&&
-   staged.stable===before.stable&&staged.schemaOwner===before.schemaOwner&&equal(staged.access,c.expectedAccess(before.schemaOwner))&&equal(staged.roles,input.roles.map((role,i)=>
-    [role.oid,role.name,xmin(staged.xid),true,1,sha(verifiers[i])])),'POSTIMAGE');
+   staged.stable===before.stable&&staged.schemaOwner===before.schemaOwner&&equal(staged.access,c.expectedAccess(before.schemaOwner))&&equal(staged.roles,input.targets.map((role,i)=>
+    [role.oid,role.name,xmin(staged.xid),true,role===input.ordinary?ordinaryLimit:1,sha(verifiers[i])])),'POSTIMAGE');
   const committed=await run('COMMITTED',before,undefined,staged);
   need(committed.xid===staged.xid&&committed.status==='committed'&&independent(staged,committed)&&independent(before,committed)&&
    committed.stable===before.stable&&committed.schemaOwner===before.schemaOwner&&equal(committed.roles,staged.roles)&&equal(committed.access,staged.access),'READBACK');
   phase='CONSUME';check();
   proof=Object.freeze({status:'CURRENT259_DOCUMENT_LOGIN_COMMITTED_NOT_ADMISSION',sourceSha:aclResult.sourceSha,
    runId:view.runId,containerId:resource.containerId,aclInstallXid:aclResult.installXid,installXid:committed.xid,
-   continuitySha256:committed.stable,roleOids:Object.freeze(input.roles.map(role=>role.oid)),
+   continuitySha256:committed.stable,roleOids:Object.freeze(input.targets.map(role=>role.oid)),
+   ...(input.ordinary?{purpose:savePurpose,ordinaryName:input.ordinary.name}:{}),
    roleXmins:Object.freeze(committed.roles.map(role=>role[2])),executionAllowed:false,nativeAdmission:false});
   active.set(proof,{handle,check});
   const result=await (withRoles?runDocumentRoles(handle,view,proof,input.identity,secrets,use):use(proof));
@@ -298,6 +336,8 @@ const project=(row,keys)=>Object.fromEntries(keys.map(key=>[key,own(row,key)]));
 
 async function runDocumentRoles(handle,view,proof,identity,secrets,use){
  const {resource,loader}=view;
+ const save=proof.purpose===savePurpose;
+ const loginNames=save?[...names,proof.ordinaryName]:names;
  const original=project(resource,['applyCurrent259DocumentHbaV1','getReceipt','inspectConnectionEndpoint',
   'observePresentedCertificate','execOwnerSql']);
  const load=own(loader,'loadGeneratedContractDocumentModules'),Prisma=own(loader,'PrismaService'),beginDrain=own(view,'beginPrismaRelayDrain');
@@ -311,7 +351,7 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use){
  check();
  const transition=await original.applyCurrent259DocumentHbaV1.call(resource,proof);
  check();
- need(transition&&transition.rules===12&&hex(transition.beforeSha256,64)&&hex(transition.afterSha256,64)&&
+ need(transition&&transition.rules===(save?13:12)&&(save?transition.purpose===savePurpose:transition.purpose===undefined)&&hex(transition.beforeSha256,64)&&hex(transition.afterSha256,64)&&
   transition.beforeSha256!==transition.afterSha256&&transition.loginInstallXid===proof.installXid&&
   transition.plaintextNoEncryptionRejected===true,'ROLE_HBA');
  const endpoint=await original.inspectConnectionEndpoint.call(resource);
@@ -366,10 +406,10 @@ async function runDocumentRoles(handle,view,proof,identity,secrets,use){
    const rows=await bounded(()=>entry.methods.$queryRawUnsafe.call(entry.client,tlsSql,challenge),'ROLE_QUERY_TIMEOUT');
    verifyClient(entry);
    const row=Array.isArray(rows)&&rows.length===1&&rows[0];
-   need(own(row,'challenge')===challenge&&own(row,'sessionRole')===names[index]&&own(row,'serverAddress')==='127.0.0.1'&&
+   need(own(row,'challenge')===challenge&&own(row,'sessionRole')===loginNames[index]&&own(row,'serverAddress')==='127.0.0.1'&&
     own(row,'serverPort')===5432,'ROLE_IDENTITY');
    const session=project(row,sessionKeys);
-   need(session.oid===proof.roleOids[index]&&session.role===names[index]&&session.database===identity.database&&
+   need(session.oid===proof.roleOids[index]&&session.role===loginNames[index]&&session.database===identity.database&&
     session.databaseOid===identity.databaseOid&&session.clientAddress==='127.0.0.1'&&port(session.clientPort)&&
     backend(session.pid,session.start)&&session.ssl===true,'ROLE_IDENTITY');
    return session;
@@ -389,7 +429,8 @@ SELECT jsonb_build_object('challenge','${challenge}','pid',pg_backend_pid(),'sta
   'clientAddress',host(a.client_addr),'clientPort',a.client_port,'role',a.usename,'databaseOid',a.datid::text,'database',a.datname) ORDER BY a.usesysid)
   FROM pg_stat_activity a JOIN pg_stat_ssl s ON s.pid=a.pid JOIN pg_authid r ON r.oid=a.usesysid
   WHERE a.backend_type='client backend' AND a.usesysid IN (${proof.roleOids.map(oid=>quote(oid)+'::oid').join(',')})
-   AND r.xmin::text=${quote(proof.roleXmins[0])} AND r.rolconnlimit=1 AND r.rolcanlogin));
+   AND r.xmin::text=${quote(proof.roleXmins[0])} AND r.rolconnlimit=${save?
+    `CASE WHEN r.oid=${quote(proof.roleOids[names.length])}::oid THEN ${ordinaryLimit} ELSE 1 END`:'1'} AND r.rolcanlogin));
 ROLLBACK;`;
    verify();const output=await original.execOwnerSql.call(resource,sql,'current259-document-pools-live');verify();
    const text=own(output,'stdout');let row;
@@ -400,11 +441,12 @@ ROLLBACK;`;
   const waitDrain=beginDrain.call(view);
   need(typeof waitDrain==='function','ROLE_DRAIN');
   try{
-   for(const [index,name] of names.entries()){
+   for(const [index,name] of loginNames.entries()){
     verify();
     const url=new URL(`postgresql://${name}:${secrets[index].toString('ascii')}@127.0.0.1:${endpoint.port}/${identity.database}`);
-    for(const [key,val] of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',
-     sslcert:caFile,application_name:'jg_394_document_'+slots[index],connect_timeout:'5',pool_timeout:'5'}))url.searchParams.set(key,val);
+    const ordinary=save&&index===names.length;
+    for(const [key,val] of Object.entries({schema:'public',connection_limit:ordinary?String(ordinaryLimit):'1',sslmode:'require',sslaccept:'strict',
+     sslcert:caFile,application_name:'jg_394_document_'+(ordinary?'ordinary':slots[index]),connect_timeout:'5',pool_timeout:'5'}))url.searchParams.set(key,val);
     let client;
     try{client=new Prisma({datasources:{db:{url:url.toString()}},log:[]});}
     catch{unknown=true;throw fault('ROLE_CONSTRUCT');}
@@ -464,4 +506,4 @@ function assertCurrent259GeneratedDocumentLoginScope(proof,handle){
  scope.check();
 }
 
-module.exports=Object.freeze({withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,assertCurrent259GeneratedDocumentLoginScope});
+module.exports=Object.freeze({withCurrent259GeneratedDocumentLogin,withCurrent259GeneratedDocumentRoleServices,withCurrent259GeneratedDocumentSaveRoleServices,assertCurrent259GeneratedDocumentLoginScope});

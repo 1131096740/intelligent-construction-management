@@ -202,11 +202,19 @@ async function installCurrent259GeneratedDocumentAcl(roleCompletion,handle){
  }
 }
 function claimCurrent259GeneratedDocumentAcl(result,handle){
+ need(arguments.length===2,'HANDLE');
+ return claim(result,handle,false);
+}
+function claimCurrent259GeneratedDocumentSaveAcl(result,handle){
+ need(arguments.length===2,'HANDLE');
+ return claim(result,handle,true);
+}
+function claim(result,handle,save){
  const receipt=installed.get(result);
- need(arguments.length===2&&receipt?.handle===handle,'HANDLE');
+ need(receipt?.handle===handle&&receipt&&(receipt.rolesLease.ordinaryAcl.generatedDocument===true)===save,'HANDLE');
  installed.delete(result);receipt.check();
  const {ordinaryAcl,roles,source}=receipt.rolesLease;
  return Object.freeze({completion:result,ordinaryAcl,roles,source,check:receipt.check,
   continuitySha256:receipt.continuitySha256,continuitySql:receipt.continuitySql});
 }
-module.exports=Object.freeze({installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl});
+module.exports=Object.freeze({installCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentAcl,claimCurrent259GeneratedDocumentSaveAcl});

@@ -12,7 +12,7 @@ function fixture(options={}){
  const completion=Object.freeze({status:'CURRENT259_DOCUMENT_ROLES_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,
   runId,containerId,installXid:'900',roleCount:3,executionAllowed:false,nativeAdmission:false});
  const ordinaryAclCompletion=Object.freeze({installXid:'890',archiveInstallXid:'880',catalogSha256:'c'.repeat(64),protectedSha256:'d'.repeat(64)});
- const ordinaryAcl={completion:ordinaryAclCompletion,catalogSql:"(SELECT pg_catalog.repeat('c',64) FROM (SELECT a.attacl::text AS old_acl FROM pg_catalog.pg_attribute a LIMIT 1) w)",
+ const ordinaryAcl={...(options.save?{generatedDocument:true}:{}),completion:ordinaryAclCompletion,catalogSql:"(SELECT pg_catalog.repeat('c',64) FROM (SELECT a.attacl::text AS old_acl FROM pg_catalog.pg_attribute a LIMIT 1) w)",
   protectedSql:"pg_catalog.repeat('d',64)",roleCompletion:{databaseIdentity:identity},
   archiveCompletion:{bindingSha256:'f'.repeat(64),pendingSha256:'0'.repeat(64),installXid:'880'}};
  if(options.witness){
@@ -94,4 +94,15 @@ test('retains only fixed transport failure context at the first phase',async()=>
   assert.ok(!JSON.stringify(error).includes('opaque model transport output'));return true;
  });
  assert.equal(f.calls.length,1);assert.equal(f.closed(),1);
+});
+
+test('a mismatched login purpose cannot consume either document ACL receipt',async()=>{
+ for(const save of [true,false]){
+  const f=fixture({save}),result=await f.api.installCurrent259GeneratedDocumentAcl(f.completion,f.handle);
+  const old=f.api.claimCurrent259GeneratedDocumentAcl,next=f.api.claimCurrent259GeneratedDocumentSaveAcl;
+  assert.throws(()=>(save?old:next)(result,f.handle),/HANDLE/u);
+  const proof=(save?next:old)(result,f.handle);
+  assert.equal(proof.ordinaryAcl.generatedDocument,save?true:undefined);
+  assert.throws(()=>(save?next:old)(result,f.handle),/HANDLE/u);
+ }
 });

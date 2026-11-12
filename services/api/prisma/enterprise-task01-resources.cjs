@@ -783,11 +783,16 @@ async function prepareTask01Postgres(options = {}, lifetime) {
       checkRelay();
     };
     checkScope();
+    const savePurpose = "CURRENT259_GENERATED_DOCUMENT_ORDINARY_ACL_V1";
+    const save = proof.purpose === savePurpose;
+    requireThat(save ? typeof proof.ordinaryName === "string" && /^jg_fixture_app_[a-f0-9]{24}$/u.test(proof.ordinaryName) :
+      proof.purpose === undefined && proof.ordinaryName === undefined, scopeError);
+    const logins = save ? [...DOCUMENT_LOGINS, proof.ordinaryName] : DOCUMENT_LOGINS;
     const ids = proof.roleOids, xmins = proof.roleXmins, xid = proof.installXid;
     const oid = value => typeof value === "string" && /^[1-9][0-9]{0,9}$/u.test(value) && Number(value) <= 0xffffffff;
-    requireThat(ids.length === 3 && ids.every(value => oid(value) && value !== "10") && new Set(ids).size === 3 &&
+    requireThat(ids.length === logins.length && ids.every(value => oid(value) && value !== "10") && new Set(ids).size === logins.length &&
       typeof xid === "string" && /^[1-9][0-9]{0,19}$/u.test(xid) && BigInt(xid) <= 0xffffffffffffffffn &&
-      xmins.length === 3 && xmins.every(value => oid(value) && value === String(BigInt(xid) % 0x100000000n)), scopeError);
+      xmins.length === logins.length && xmins.every(value => oid(value) && value === String(BigInt(xid) % 0x100000000n)), scopeError);
     documentHbaAttempted = true;
 
     const readSql = `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
@@ -800,7 +805,7 @@ SELECT jsonb_build_object('pid',pg_backend_pid(),'start',
   AND EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl) AND pg_xact_status('${xid}'::xid8)='committed',
  'roles',(SELECT jsonb_agg(jsonb_build_array(r.rolname,r.oid::text,r.xmin::text) ORDER BY e.pos)
   FROM unnest(ARRAY[${ids.map(id => `'${id}'::oid`).join(",")}]) WITH ORDINALITY e(id,pos)
-  JOIN pg_authid r ON r.oid=e.id WHERE r.rolcanlogin AND r.rolconnlimit=1 AND r.rolvaliduntil IS NULL
+  JOIN pg_authid r ON r.oid=e.id WHERE r.rolcanlogin AND r.rolconnlimit=${save ? "CASE WHEN e.pos=4 THEN 2 ELSE 1 END" : "1"} AND r.rolvaliduntil IS NULL
    AND NOT (r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
    AND r.rolpassword LIKE 'SCRAM-SHA-256$%'),
  'rules',(${hbaProjectionSql.slice(0, -1)}));
@@ -818,11 +823,11 @@ ROLLBACK;`;
       catch { throw fault(code); }
       requireThat(row?.scope === true && Number.isInteger(row.pid) && row.pid > 0 && row.pid <= 2147483647 &&
         timestamp(row.start) && timestamp(row.configuredAt) &&
-        JSON.stringify(row.roles) === JSON.stringify(DOCUMENT_LOGINS.map((name, i) => [name, ids[i], xmins[i]])) &&
+        JSON.stringify(row.roles) === JSON.stringify(logins.map((name, i) => [name, ids[i], xmins[i]])) &&
         JSON.stringify(row.rules) === JSON.stringify(expectedRules), code);
       return row;
     };
-    const original = hbaRules(databaseName, ROLES, true), rules = hbaRules(databaseName, [...ROLES, ...DOCUMENT_LOGINS], true);
+    const original = hbaRules(databaseName, ROLES, true), rules = hbaRules(databaseName, [...ROLES, ...logins], true);
     const contents = renderHba(rules), beforeSha256 = sha(renderHba(original)), afterSha256 = sha(contents);
     requireThat(receipt.configuration.hbaSha256 === beforeSha256, "TASK01_RESOURCE_DOCUMENT_HBA_PREIMAGE");
     const before = await read(original, "document-hba-before");
@@ -843,7 +848,7 @@ ROLLBACK;`;
     }
     requireThat(after.configuredAt > before.configuredAt && after.pid !== before.pid && after.start !== before.start,
       "TASK01_RESOURCE_DOCUMENT_HBA_RELOAD");
-    for (const role of DOCUMENT_LOGINS) {
+    for (const role of logins) {
       const cursor = await captureLogCursor();
       checkScope();
       try { await sendLoopbackPlaintextStartup(role); }
@@ -861,7 +866,7 @@ ROLLBACK;`;
     checkScope();
     requireThat(file.stdout.toString("utf8") === `${afterSha256}  ${HBA_PATH}\n`, "TASK01_RESOURCE_DOCUMENT_HBA_FILE");
     const transition = Object.freeze({ beforeSha256, afterSha256, rules: rules.length, loginInstallXid: xid,
-      plaintextNoEncryptionRejected: true });
+      plaintextNoEncryptionRejected: true, ...(save ? { purpose: savePurpose } : {}) });
     receipt.documentHba = transition;
     persist();
     return transition;
