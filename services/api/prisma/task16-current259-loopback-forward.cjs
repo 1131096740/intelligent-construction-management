@@ -8,6 +8,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const { types } = require('node:util');
+const { decodeRelaySysreadExit } = require('./task16-current259-relay-sysread.cjs');
 const { readQualifiedTask16File } = require('./task16-runtime-inputs.cjs');
 
 const DOCKER = '/Applications/Docker.app/Contents/Resources/bin/docker';
@@ -39,7 +40,7 @@ use IO::Select;
 use IO::Socket::INET;
 use Socket qw(SHUT_WR);
 use Fcntl qw(F_GETFL F_SETFL O_NONBLOCK);
-use Errno qw(EAGAIN EWOULDBLOCK EINTR);
+use Errno qw(EAGAIN EWOULDBLOCK EINTR ECONNRESET ENOTCONN);
 $SIG{PIPE} = 'IGNORE';
 $SIG{ALRM} = sub { exit 48 };
 my $max = 32768;
@@ -88,7 +89,12 @@ while (1) {
     exit 43 unless $room > 0;
     my $data = '';
     my $count = sysread($fh, $data, $room);
-    if (!defined($count)) { next if $! == EINTR || $! == EAGAIN || $! == EWOULDBLOCK; exit 47; }
+    if (!defined($count)) {
+      my $errno = 0 + $!;
+      next if $errno == EINTR || $errno == EAGAIN || $errno == EWOULDBLOCK;
+      my $base = fileno($fh) == fileno($pg) ? 70 : 73;
+      exit($base + ($errno == ECONNRESET ? 0 : $errno == ENOTCONN ? 1 : 2));
+    }
     if ($is_pg) {
       $to_host = pack('N', $count) . $data;
       unless ($count) { alarm(5) unless $host_fin; $pg_fin = 1; }
@@ -225,13 +231,16 @@ async function startCurrent259LoopbackForward(options) {
       stdoutRawEnd: false, receiveSettled: false, cliExited: false, peerEndReturned: false };
     const closeSnapshot = () => ({ ...closeState, peerSocketDestroyed: socket.destroyed });
     const observeExit = exitCode => {
-      if (!closing && Number.isInteger(exitCode) && (exitCode === 0 || exitCode >= 41 && exitCode <= 48))
+      if (!closing && Number.isInteger(exitCode) && (exitCode === 0 || exitCode >= 41 && exitCode <= 48 || decodeRelaySysreadExit(exitCode)))
         childExitCode = exitCode;
     };
     const finishMissingFin = () => {
       if (!closing && missingFin) {
-        if (childExitCode !== undefined)
-          Object.defineProperty(missingFin, 'relayChildExitCode', { value: childExitCode });
+        if (childExitCode !== undefined) {
+          const sysread = decodeRelaySysreadExit(childExitCode);
+          Object.defineProperty(missingFin, 'relayChildExitCode', { value: sysread ? 47 : childExitCode });
+          if (sysread) Object.defineProperty(missingFin, 'relaySysreadExit', { value: childExitCode });
+        }
         void close().catch(() => {});
       }
     };

@@ -563,7 +563,7 @@ test('a Prisma wait preserves the original malformed frame failure', { timeout: 
   await outcome;await relay.close();
 });
 
-for (const exitCode of [0, 47, 255]) {
+for (const exitCode of [0, 47, 70, 71, 72, 73, 74, 75, 76, 255]) {
   test('missing FIN quarantines immediately and preserves only the natural allowed exit ' + exitCode, { timeout: 5000 }, async t => {
     const child = fakeWorker();
     const kill = child.kill;
@@ -598,7 +598,9 @@ for (const exitCode of [0, 47, 255]) {
     assert.equal(kills, 0);
     const failed = assert.rejects(drain(), error => {
       assert.equal(error, first);
-      assert.equal(error.relayChildExitCode, exitCode === 255 ? undefined : exitCode);
+      const sysread = exitCode >= 70 && exitCode <= 75;
+      assert.equal(error.relayChildExitCode, sysread ? 47 : exitCode === 76 || exitCode === 255 ? undefined : exitCode);
+      assert.equal(error.relaySysreadExit, sysread ? exitCode : undefined);
       assert.equal(error.relayCloseState.cliExited, false);
       assert.equal(error.relayCloseState.pgFin, false);
       assert.doesNotMatch(String(error) + JSON.stringify(error), /private/u);

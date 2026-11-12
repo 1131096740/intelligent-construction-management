@@ -1,6 +1,7 @@
 "use strict";
 // Prepared task01 test setup. No command runs on import. Live validation requires
 // a separately approved, source-sealed driver; this module is not a CLI/runner.
+const { decodeRelaySysreadExit } = require("./task16-current259-relay-sysread.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
@@ -440,8 +441,12 @@ async function prepareTask01Postgres(options = {}, lifetime) {
       const stage = ownErrorField(error, "relayFrameStage");
       if (RELAY_FRAME_STAGES.has(stage)) Object.defineProperty(failure, "relayFrameStage", { value: stage });
       const exit = ownErrorField(error, "relayChildExitCode");
-      if (stage === "STDOUT_EOF_WITHOUT_FIN" && Number.isInteger(exit) && (exit === 0 || exit >= 41 && exit <= 48))
+      if (stage === "STDOUT_EOF_WITHOUT_FIN" && Number.isInteger(exit) && (exit === 0 || exit >= 41 && exit <= 48)) {
         Object.defineProperty(failure, "relayChildExitCode", { value: exit });
+        const sysread = ownErrorField(error, "relaySysreadExit");
+        if (exit === 47 && decodeRelaySysreadExit(sysread))
+          Object.defineProperty(failure, "relaySysreadExit", { value: sysread });
+      }
     }
     if (code === "CURRENT259_LOOPBACK_FORWARD_FRAME" || code === "CURRENT259_LOOPBACK_FORWARD_HALF_CLOSE_TIMEOUT" ||
       code === "CURRENT259_LOOPBACK_FORWARD_DEPLOY_DRAIN_TIMEOUT") copyRelayCloseState(failure, error);

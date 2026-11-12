@@ -1,6 +1,7 @@
 'use strict';
 
 const {types}=require('node:util');
+const {decodeRelaySysreadExit}=require('./task16-current259-relay-sysread.cjs');
 const steps=Object.freeze(['LOGIN','CAPABILITY','CREATE','LEASE','WORKBENCH']);
 const statuses=new Set([200,201,400,401,403,404,405,409,413,415,422,429,500,502,503,504]);
 const admissionStages=new Set(['LOGIN_BEFORE','SEED_FIXTURE','SEED_BEFORE','SEED_WRITE','SEED_COMMITTED','SEED_CONTINUITY',
@@ -52,12 +53,14 @@ function projectGeneratedDraftAdmissionFailure(value){
   const frameStage=isFrame?own(value,'relayFrameStage'):undefined;
   const sourceState=isFrame?own(value,'relayCloseState'):undefined;
   const childExit=frameStage==='STDOUT_EOF_WITHOUT_FIN'?own(value,'relayChildExitCode'):undefined;
+  const sysread=childExit===47?decodeRelaySysreadExit(own(value,'relaySysreadExit')):undefined;
   const state=sourceState&&Object.fromEntries(relayCloseFields.map(key=>[key,own(sourceState,key)]));
   return Object.freeze({stage,...(admissionReasons.has(reason)?{reason}:{}),
     ...(operationCodes.has(operationCode)?{operationCode}:{}),
     ...(relayCodes.has(relayCode)?{relayCode}:{}),
     ...(relayFrameStages.has(frameStage)?{relayFrameStage:frameStage}:{}),
     ...(Number.isInteger(childExit)&&(childExit===0||childExit>=41&&childExit<=48)?{relayChildExitCode:childExit}:{}),
+    ...sysread,
     ...(state&&Object.values(state).every(value=>typeof value==='boolean')?{relayCloseState:Object.freeze(state)}:{}),
     ...(Number.isInteger(roleIndex)&&roleIndex>=0&&roleIndex<5?{roleIndex}:{})});
 }
@@ -73,7 +76,8 @@ function createGeneratedDraftAdmissionDiagnostic(){
         relayCode:own(error,'relayCode')??own(operationError,'relayCode'),
         relayFrameStage:own(error,'relayFrameStage')??own(operationError,'relayFrameStage'),
         relayCloseState:own(error,'relayCloseState')??own(operationError,'relayCloseState'),
-        relayChildExitCode:own(error,'relayChildExitCode')??own(operationError,'relayChildExitCode')});
+        relayChildExitCode:own(error,'relayChildExitCode')??own(operationError,'relayChildExitCode'),
+        relaySysreadExit:own(error,'relaySysreadExit')??own(operationError,'relaySysreadExit')});
     },
   });
 }
