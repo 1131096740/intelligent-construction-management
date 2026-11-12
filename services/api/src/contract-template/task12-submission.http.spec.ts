@@ -664,6 +664,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
     ["material_purchase", "material_director", true, "2026-11-09T00:30:00+08:00", "project_staff", null, "lifecycle"],
     ["material_purchase", "material_director", true, "2026-11-08T23:30:00+08:00", "project_staff", null, "lifecycle"],
     ["other", "comprehensive_director", false, null, "project_staff", null, "lifecycle"],
+    ["other", "comprehensive_director", true, null, "project_staff", null, "lifecycle"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "allRoles"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "rotatedDuty"],
     ["material_purchase", "material_director", false, null, "project_staff", null, "scopedDuty"],
@@ -1335,7 +1336,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         if (operatingEnabled) {
           await server.store.prisma.project.update({ where: { id: draft.projectId }, data: { operatingLedgerEffectiveDate: new Date(archiveInstant ? "2026-11-09T00:00:00.000Z" : "2026-11-01T00:00:00.000Z") } });
           const controlledParties = await server.store.prisma.contractPartySnapshot.findMany({ where: { contractVersionId: draft.version.id, roleKey: "party_b" } });
-          expect(controlledParties).toEqual([expect.objectContaining({ businessPartyVersionId: expect.any(String) })]);
+          expect(controlledParties).toEqual([expect.objectContaining({ businessPartyVersionId: contractType === "other" ? null : expect.any(String) })]);
           const affiliateId = randomUUID(), affiliateVersionId = randomUUID();
           await server.store.prisma.projectAffiliateAssignment.create({ data: { projectId: draft.projectId, businessPartyId: affiliateId, businessPartyVersionId: affiliateVersionId, affiliateNameSnapshot: "合成施工企业", affiliateCreditCodeSnapshot: "91310000123456789A", effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), endedAt: null } });
         }
@@ -1581,7 +1582,19 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           const impact = await server.store.prisma.operatingImpactEntry.findFirst({ where: { factId: fact!.id } });
           const current = await server.store.prisma.contractVersion.findUnique({ where: { id: draft.version.id } });
           const participant = await server.store.prisma.projectParticipatingCompany.findFirst({ where: { projectId: draft.projectId } });
-          expect(current!.companyEntityVersionId).not.toBe(participant!.companyEntityVersionId);
+          if (contractType === "material_purchase") {
+            expect(current!.companyEntityVersionId).not.toBe(participant!.companyEntityVersionId);
+            expect(fact!.sourceSnapshot).not.toHaveProperty("counterpartySnapshotId");
+            expect(fact!.sourceSnapshot).not.toHaveProperty("counterpartySubjectId");
+          } else {
+            expect(current!.companyEntityVersionId).toBe(participant!.companyEntityVersionId);
+            expect(fact).toMatchObject({ creditorSubjectKind: "downstream_counterparty", creditorSubjectId: `contract_party_snapshot:${selectedParty!.id}`, sourceSnapshot: { counterpartyVersionId: null, counterpartySnapshotId: selectedParty!.id } });
+            expect(await server.store.prisma.businessParty.count({ where: { name: "当单相对方" } })).toBe(0);
+            const paperParty = await server.store.prisma.contractPartySnapshot.findUniqueOrThrow({ where: { id: selectedParty!.id } });
+            await server.store.prisma.contractPartySnapshot.update({ where: { id: paperParty.id }, data: { snapshot: { name: "归档后替换主体" } } });
+            await expect(new ContractOperatingSourceAdapter().readSourceSnapshot(server.store.prisma as never, { projectId: draft.projectId, sourceType: "contract_version", sourceBusinessId: draft.version.id })).rejects.toThrow("相对方冻结来源不一致");
+            await server.store.prisma.contractPartySnapshot.update({ where: { id: paperParty.id }, data: { snapshot: paperParty.snapshot } });
+          }
           expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null, direction: "neutral", sourceVersion: 1, debtorSubjectKind: "participating_company", debtorSubjectId: current!.companyEntityIdSnapshot,
             sourceSnapshot: { archiveAuthoritySha256: "a".repeat(64), sourceBasisSha256: "b".repeat(64), sourceBasis: { sourceLocator: { sourceVersion: 1 }, versionEvidence: { documentContentRevision: revised.version.documentContentRevision }, subjects: { participation: { companyEntityVersionId: participant!.companyEntityVersionId }, signingIdentity: { company: { id: current!.companyEntityVersionId } } } } } });
           expect(revised.version.documentContentRevision).toBeGreaterThan(1);
@@ -1589,6 +1602,12 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
           expect(fact!.amountYuan === null ? null : new Prisma.Decimal(String(fact!.amountYuan)).toFixed(4)).toBe(sourceAmount === null ? null : sourceAmount === "0.0000" ? "0.0000" : "94.0054");
           expect(await server.store.prisma.operatingFact.count({ where: { projectId: draft.projectId } })).toBe(1);
           expect(await server.store.prisma.operatingImpactEntry.count({ where: { projectId: draft.projectId } })).toBe(1);
+          const rereadSource = await new ContractOperatingSourceAdapter().readSourceSnapshot(server.store.prisma as never, { projectId: draft.projectId, sourceType: "contract_version", sourceBusinessId: draft.version.id });
+          const { numericFacts, ...frozenSource } = fact!.sourceSnapshot as Prisma.JsonObject;
+          expect(numericFacts).toEqual({ protocolVersion: 2, amountState: sourceAmount === null ? "unknown" : "known", amountYuan: sourceAmount === null ? null : sourceAmount === "0.0000" ? "0.0000" : "94.0054" });
+          expect(rereadSource!.sourceSnapshot).toEqual(frozenSource);
+          expect(await server.store.prisma.operatingFact.count({ where: { projectId: draft.projectId } })).toBe(1);
+          expect(await server.store.prisma.operatingImpactEntry.count({ where: { factId: fact!.id } })).toBe(1);
           await server.store.prisma.operatingFact.delete({ where: { id: fact!.id } });
           await assertIncompleteDetail();
           await server.store.prisma.operatingFact.create({ data: fact! });

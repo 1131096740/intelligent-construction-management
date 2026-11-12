@@ -92,3 +92,43 @@ describe("合同承诺与成本分离", () => {
     expect(input.basisSnapshot).toMatchObject({ amountNature: "uncapped" });
   });
 });
+
+function inlineArchiveSource(): OperatingSourceSnapshot {
+  const party = { id: "paper-party", contractVersionId: "archive-v1", roleKey: "party_b", displayOrder: 0,
+    businessPartyVersionId: null, snapshot: { name: "本单供货单位", unifiedSocialCreditCode: "" } };
+  return { ...snapshot("0", "archive-v1"), sourceSnapshot: {
+    ...snapshot("0", "archive-v1").sourceSnapshot,
+    numericProtocolVersion: 2, commitmentDeltaYuan: null, archiveProtocolVersion: 2, archiveBusinessDay: "2026-10-01",
+    contractId: "contract", contractVersionId: "archive-v1", companyEntityIdSnapshot: "company-id",
+    counterpartyVersionId: null, counterpartySnapshotId: party.id, counterpartySubjectId: "contract_party_snapshot:paper-party",
+    sourceBasis: { sourceLocator: { contractId: "contract", contractVersionId: "archive-v1" }, subjects: { parties: [party] } }
+  } };
+}
+describe("表内当单相对方的已归档经营身份", () => {
+  it("复用本单冻结相对方身份，未知金额仍只形成承诺且不建全局单位", () => {
+    expect(adapter.toOperatingFactInput(inlineArchiveSource()).input).toMatchObject({
+      numericProtocolVersion: 2, amountYuan: null, amountCents: null,
+      subjects: { creditor: { kind: "downstream_counterparty", id: "contract_party_snapshot:paper-party" } },
+      impacts: [{ impactKind: "contract_commitment_reference", direction: "notice", amountYuan: null }]
+    });
+  });
+  it.each([
+    { counterpartySnapshotId: "unrelated-row" },
+    { counterpartySubjectId: "contract_party_snapshot:unrelated-row" },
+    { counterpartyVersionId: "invented-global-version" },
+    { contractId: "another-contract" }
+  ])("拒绝改变已冻结相对方locator或伪造受控版本 %p", changed => {
+    const source = inlineArchiveSource();source.sourceSnapshot = { ...source.sourceSnapshot, ...changed };
+    expect(() => adapter.toOperatingFactInput(source)).toThrow("相对方");
+  });
+  it.each(["contractVersionId", "roleKey"])("拒绝纸面相对方的%s跨版本或换角色", field => {
+    const source = inlineArchiveSource();
+    source.sourceSnapshot = { ...source.sourceSnapshot, sourceBasis: {
+      sourceLocator: { contractId: "contract", contractVersionId: "archive-v1" }, subjects: { parties: [{
+        id: "paper-party", contractVersionId: "archive-v1", roleKey: "party_b", displayOrder: 0,
+        businessPartyVersionId: null, snapshot: { name: "本单供货单位" }, [field]: "another"
+      }] }
+    } };
+    expect(() => adapter.toOperatingFactInput(source)).toThrow("相对方");
+  });
+});
