@@ -26,7 +26,7 @@ export async function prepareTask07FormalPayment(db: PrismaClient, fixture: Task
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
       const value = await response.json() as T;
-      if (!response.ok) throw new Error(`Task07 ${method} ${path} ${response.status} ${JSON.stringify(value)}`);
+      if (!response.ok) throw new Error(`付款验收请求失败，HTTP 状态为 ${response.status}`);
       return value;
     };
     const identity = async (id: string): Promise<Identity> => {
