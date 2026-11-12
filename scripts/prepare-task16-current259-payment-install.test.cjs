@@ -4,18 +4,19 @@ const {createHash}=require('node:crypto');
 const {readQualifiedTask16File:realRead}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const file=path.join(__dirname,'prepare-task16-current259-payment-install.cjs');
 const historicalEnd='20261111120000_contract_direct_upward_closure_source_v2';
-function fixture(t){
+const payment261End='20261111140000_contract_direct_upward_retention_acl_source_v3';
+function fixture(t,{payment261=false}={}){
  const base=fs.mkdtempSync('/private/tmp/jg-259-payment-plan-model-'),runRoot=path.join(base,'run');fs.mkdirSync(runRoot,{mode:0o700});
  t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  const state={captures:0,loads:0,stale:false,fullCalls:0,lightCalls:0,linkedTool:false};
  const migrations=fs.readdirSync(path.join(__dirname,'../services/api/prisma/migrations')).sort()
-  .filter(name=>/^\d{14}_/u.test(name)&&name<=historicalEnd).map(name=>{
+  .filter(name=>/^\d{14}_/u.test(name)&&name<=(payment261?payment261End:historicalEnd)).map(name=>{
   const relative='services/api/prisma/migrations/'+name+'/migration.sql';
   return {path:relative,sha256:createHash('sha256').update(fs.readFileSync(path.join(__dirname,'..',relative))).digest('hex')};
  });
  const rawSource={candidateSha:'a'.repeat(40),sealSha256:'b'.repeat(64),schemaSha256:'60386e4f3c54ee25461e8a3814e7254f8d4f5695eb58a805486485cb1cc788e4',migrations};
  const profile=require('../services/api/prisma/task16-current259-profile.cjs').qualifyCurrent259Source(rawSource);
- assert.equal(profile.profile,'TASK16_CURRENT259_SOURCE_V1');
+ assert.equal(profile.profile,payment261?'TASK12_ARCHIVE261_SOURCE_V1':'TASK16_CURRENT259_SOURCE_V1');
  const handle=Object.freeze({});
  const witness={source:{candidateSha:rawSource.candidateSha,tree:'c'.repeat(40),sourceSealSha256:rawSource.sealSha256,profile},
   build:{node:{path:process.execPath,sha256:'1'.repeat(64),version:process.version},trees:['node_modules','services/api/node_modules','packages/shared-domain/node_modules','services/api/dist','packages/shared-domain/dist'].map(root=>({root,digest:'2'.repeat(64),entries:1,bytes:10}))},host:process.platform+'-'+process.arch,engineCommit:'605197351a3c8bdd595af2d2a9bc3025bca48ea2'};
@@ -78,4 +79,35 @@ for(const child of ['resource','attempt.json','receipt.json','receipt.json.pendi
  const f=fixture(t);
  assert.throws(()=>f.api.prepareCurrent259PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:path.join(f.runRoot,child)}),/PAYMENT_INSTALL_PLAN_/);
  assert.equal(fs.readdirSync(f.runRoot).length,0);
+});
+
+test('ordinary payment261 installation seals the exact 261 ledger and excludes historical and PFQ readers',t=>{
+ const f=fixture(t,{payment261:true}),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output};
+ assert.throws(()=>f.api.prepareCurrent259PaymentInstallPlan(options),/PAYMENT_INSTALL_PLAN_SCOPE/u);
+ assert.throws(()=>f.api.prepareCurrent259PfqCompositionPlan(options),/PAYMENT_INSTALL_PLAN_SCOPE/u);
+ const saved=f.api.prepareCurrent261PaymentInstallPlan(options);
+ assert.equal(saved.status,'PAYMENT261_INSTALL_PLAN_PREPARED_NO_RESOURCES');
+ const {plan}=f.api.verifyCurrent261PaymentInstallPlan(f.output,saved.sha256);
+ assert.equal(plan.purpose,'current261-payment-technical-install-through-b7');
+ assert.equal(plan.scope.paymentProfile,'TASK16_PAYMENT261_RUNTIME_V1');
+ assert.equal(plan.scope.migrations,261);
+ assert.equal(plan.scope.stages[0],'technical261');
+ assert.equal(plan.material.source.ledgerSha256,'ebd6ee528e5eabd4b53abbd992c58637af70fee61f015a17f70b04cd55761598');
+ assert.throws(()=>f.api.readCurrent259PaymentInstallPlan(f.output,saved.sha256),/PAYMENT_INSTALL_PLAN_SCOPE/u);
+ assert.throws(()=>f.api.readCurrent259PfqCompositionPlan(f.output,saved.sha256),/PAYMENT_INSTALL_PLAN_SCOPE/u);
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+ const mutations=[p=>{p.scope.migrations=260;},p=>{p.material.source.ledgerSha256='d3538d5a3cc3a74627d70cf0e445915ef8a84c07ae06851f9aa50292d90d2952';},p=>{p.scope.paymentProfile='TASK12_ARCHIVE261_SOURCE_V1';}];
+ for(const [index,mutate] of mutations.entries()){
+  const forged=JSON.parse(fs.readFileSync(f.output)),target=f.output+'.forged-'+index;
+  mutate(forged);
+  const bytes=Buffer.from(JSON.stringify(forged));
+  fs.writeFileSync(target,bytes,{mode:0o600});
+  assert.throws(()=>f.api.readCurrent261PaymentInstallPlan(target,createHash('sha256').update(bytes).digest('hex')),/PAYMENT_INSTALL_PLAN_SCOPE/u);
+ }
+});
+test('ordinary payment261 installation rejects an exact historical 259 source before writing a plan',t=>{
+ const f=fixture(t);
+ assert.throws(()=>f.api.prepareCurrent261PaymentInstallPlan({runRoot:f.runRoot,daemonId:f.daemonId,output:f.output}),/PAYMENT_INSTALL_PLAN_SCOPE/u);
+ assert.equal(fs.existsSync(f.output),false);
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });

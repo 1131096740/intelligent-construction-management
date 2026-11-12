@@ -7,6 +7,7 @@ const base=require('./prepare-task16-current259-payment-install.cjs');
 const {readQualifiedTask16File:read}=require('../services/api/prisma/task16-runtime-inputs.cjs');
 const {paymentLoopbackForScenario}=require('../services/api/prisma/task16-current259-payment-loopback.cjs');
 const PURPOSE='current259-payment-owned-seed-and-case';
+const PAYMENT261=Object.freeze({purpose:'current261-payment-owned-seed-and-case',payment261:true});
 const ATTRIBUTION_GAP_PURPOSE='current259-payment-owned-project-attribution-gap';
 const COMPETITION_PURPOSE='current259-payment-owned-two-actor-competition';
 const VOUCHER_PURPOSE='current259-payment-owned-two-actor-voucher';
@@ -56,7 +57,7 @@ function parent(file){
  return Object.fromEntries(['dev','ino','uid','gid','mode'].map(k=>[k,st[k]]));
 }
 function dates(scenario,paidAt,openingDate,profile){
- need(profile?scenario===profile.selected.scenario:Object.hasOwn(SCENARIOS,scenario));
+ need(profile?.selected?scenario===profile.selected.scenario:Object.hasOwn(SCENARIOS,scenario));
  for(const v of [paidAt,openingDate]){need(typeof v==='string'&&/^\d{4}-\d\d-\d\d$/u.test(v)&&v.slice(0,4)!=='0000');const d=new Date(v+'T00:00:00.000Z');need(Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v);}
  const today=new Date(Date.now()+8*3600000).toISOString().slice(0,10);
  need(openingDate<=paidAt&&paidAt<=today);
@@ -121,6 +122,9 @@ function prepareCurrent259PaymentBusinessPlan(options){
  need(arguments.length===1);
  return prepare(options);
 }
+function prepareCurrent261PaymentBusinessPlan(options){
+ need(arguments.length===1);return prepare(options,PAYMENT261);
+}
 function prepareCurrent259PaymentCompetitionPlan(options){
  need(arguments.length===1);
  return prepare(options,FIXED_PLANS.competition);
@@ -133,18 +137,23 @@ function prepareCurrent259PaymentVoucherPlan(options){
  need(arguments.length==1);return prepare(options,FIXED_PLANS['competition-voucher']);
 }
 function prepare(options,profile){
- const o=fixed(options,['runRoot','daemonId','output','paidAt','openingDate',...(profile?[]:['scenario'])]);
- const selected=dates(profile?.selected.scenario??o.scenario,o.paidAt,o.openingDate,profile),parentIdentity=parent(o.output);
+ const o=fixed(options,['runRoot','daemonId','output','paidAt','openingDate',...(profile?.selected?[]:['scenario'])]);
+ const selected=dates(profile?.selected?.scenario??o.scenario,o.paidAt,o.openingDate,profile),parentIdentity=parent(o.output);
  const reserved=['resource','attempt.json','receipt.json','receipt.json.pending'].map(x=>path.join(o.runRoot,x));need(!reserved.includes(o.output));
  const sidecar=o.output+'.installation.json';parent(sidecar);
- const installed=base.prepareCurrent259PaymentInstallPlan({runRoot:o.runRoot,daemonId:o.daemonId,output:sidecar});
- const captured=base.readCurrent259PaymentInstallPlan(sidecar,installed.sha256);
+ const prepareInstall=profile?.payment261?base.prepareCurrent261PaymentInstallPlan:base.prepareCurrent259PaymentInstallPlan;
+ const readInstall=profile?.payment261?base.readCurrent261PaymentInstallPlan:base.readCurrent259PaymentInstallPlan;
+ const installed=prepareInstall({runRoot:o.runRoot,daemonId:o.daemonId,output:sidecar});
+ const captured=readInstall(sidecar,installed.sha256);
  const raw={schemaVersion:1,purpose:profile?.purpose??PURPOSE,entry:ENTRY,parentIdentity,installation:{path:sidecar,sha256:installed.sha256,identity:captured.file.identity,parentIdentity:parent(sidecar)},case:selected,scope:scope(captured.plan,selected),...(profile?.selected===VOUCHER?{voucherMaterials:voucherMaterials()}:{})};
  need(equal(parent(o.output),parentIdentity));const bytes=Buffer.from(JSON.stringify(raw,null,2)+'\n');writeNew(o.output,bytes);
- return Object.freeze({status:'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
+ return Object.freeze({status:profile?.payment261?'PAYMENT261_BUSINESS_PLAN_PREPARED_NO_RESOURCES':'PAYMENT_BUSINESS_PLAN_PREPARED_NO_RESOURCES',file:o.output,sha256:hash(bytes),candidateSha:captured.plan.material.source.candidateSha});
 }
 function readCurrent259PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest);
+}
+function readCurrent261PaymentBusinessPlan(file,digest){
+ need(arguments.length===2);return readPlan(file,digest,PAYMENT261);
 }
 function readCurrent259PaymentCompetitionPlan(file,digest){
  need(arguments.length===2);return readPlan(file,digest,FIXED_PLANS.competition);
@@ -162,7 +171,8 @@ function readPlan(file,digest,profile){
  need(raw.schemaVersion===1&&raw.purpose===purpose&&raw.entry===ENTRY&&equal(parentIdentity,raw.parentIdentity));
  const sidecar=fixed(raw.installation,['path','sha256','identity','parentIdentity']);need(sidecar.path===file+'.installation.json'&&equal(parent(sidecar.path),sidecar.parentIdentity));
  const side=capture(sidecar.path,sidecar.identity);need(side.sha256===sidecar.sha256);
- const original=base.readCurrent259PaymentInstallPlan(sidecar.path,sidecar.sha256);
+ const readInstall=profile?.payment261?base.readCurrent261PaymentInstallPlan:base.readCurrent259PaymentInstallPlan;
+ const original=readInstall(sidecar.path,sidecar.sha256);
  const selected=fixed(raw.case,['scenario','caseId','handler','paidAt','openingDate']);need(equal(selected,dates(selected.scenario,selected.paidAt,selected.openingDate,profile))&&equal(raw.scope,scope(original.plan,selected)));
  if(profile?.selected===VOUCHER)need(equal(raw.voucherMaterials,voucherMaterials()));
  const plan=freeze({...original.plan,purpose,entry:ENTRY,installation:sidecar,case:selected,scope:raw.scope,
@@ -172,6 +182,9 @@ function readPlan(file,digest,profile){
 }
 function verifyCurrent259PaymentBusinessPlan(file,digest){
  need(arguments.length===2);return verifyPlan(file,digest);
+}
+function verifyCurrent261PaymentBusinessPlan(file,digest){
+ need(arguments.length===2);return verifyPlan(file,digest,PAYMENT261);
 }
 function verifyCurrent259PaymentCompetitionPlan(file,digest){
  need(arguments.length===2);return verifyPlan(file,digest,FIXED_PLANS.competition);
@@ -184,22 +197,30 @@ function verifyCurrent259PaymentVoucherPlan(file,digest){
 }
 function verifyPlan(file,digest,profile){
  const saved=readPlan(file,digest,profile),p=saved.plan;
- const original=base.verifyCurrent259PaymentInstallPlan(p.installation.path,p.installation.sha256);
+ const verifyInstall=profile?.payment261?base.verifyCurrent261PaymentInstallPlan:base.verifyCurrent259PaymentInstallPlan;
+ const original=verifyInstall(p.installation.path,p.installation.sha256);
  let broken=false;
  function checkInputs(){try{need(!broken);const again=readPlan(file,digest,profile);need(equal(again,saved)&&equal(parent(file),saved.file.parentIdentity));capture(file,saved.file.identity);capture(p.installation.path,p.installation.identity);}catch(error){broken=true;throw error;}}
  function check(){try{need(!broken);original.check();checkInputs();}catch(error){broken=true;throw error;}}
  check();return Object.freeze({...saved,buildHandle:original.buildHandle,loader:original.loader,checkInputs,check});
 }
 function parse(args){
- if(args.length===13&&args[0]==='--prepare'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--scenario'&&args[9]==='--paid-at'&&args[11]==='--opening-date')return prepareCurrent259PaymentBusinessPlan({runRoot:args[2],daemonId:args[4],output:args[6],scenario:args[8],paidAt:args[10],openingDate:args[12]});
+ if(args.length===13&&['--prepare','--prepare261'].includes(args[0])&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--scenario'&&args[9]==='--paid-at'&&args[11]==='--opening-date'){
+  const preparePlan=args[0]==='--prepare261'?prepareCurrent261PaymentBusinessPlan:prepareCurrent259PaymentBusinessPlan;
+  return preparePlan({runRoot:args[2],daemonId:args[4],output:args[6],scenario:args[8],paidAt:args[10],openingDate:args[12]});
+ }
  if(args.length===11&&args[0]==='--prepare-competition'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentCompetitionPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===11&&args[0]==='--prepare-attribution-gap'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentAttributionGapPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
  if(args.length===11&&args[0]==='--prepare-voucher'&&args[1]==='--run-root'&&args[3]==='--daemon-id'&&args[5]==='--output'&&args[7]==='--paid-at'&&args[9]==='--opening-date')return prepareCurrent259PaymentVoucherPlan({runRoot:args[2],daemonId:args[4],output:args[6],paidAt:args[8],openingDate:args[10]});
- if(args.length===5&&args[0]==='--verify'&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256'){const v=verifyCurrent259PaymentBusinessPlan(args[2],args[4]);return{status:'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES',candidateSha:v.plan.material.source.candidateSha,planSha256:args[4]};}
+ if(args.length===5&&['--verify','--verify261'].includes(args[0])&&args[1]==='--plan'&&args[3]==='--expected-plan-sha256'){
+  const payment261=args[0]==='--verify261',verifyPlan=payment261?verifyCurrent261PaymentBusinessPlan:verifyCurrent259PaymentBusinessPlan;
+  const v=verifyPlan(args[2],args[4]);return{status:payment261?'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES',candidateSha:v.plan.material.source.candidateSha,planSha256:args[4]};
+ }
  need(false);
 }
 module.exports=Object.freeze({prepareCurrent259PaymentBusinessPlan,readCurrent259PaymentBusinessPlan,verifyCurrent259PaymentBusinessPlan,
  prepareCurrent259PaymentCompetitionPlan,readCurrent259PaymentCompetitionPlan,verifyCurrent259PaymentCompetitionPlan,
  prepareCurrent259PaymentAttributionGapPlan,readCurrent259PaymentAttributionGapPlan,verifyCurrent259PaymentAttributionGapPlan,
- prepareCurrent259PaymentVoucherPlan,readCurrent259PaymentVoucherPlan,verifyCurrent259PaymentVoucherPlan});
+ prepareCurrent259PaymentVoucherPlan,readCurrent259PaymentVoucherPlan,verifyCurrent259PaymentVoucherPlan,
+ prepareCurrent261PaymentBusinessPlan,readCurrent261PaymentBusinessPlan,verifyCurrent261PaymentBusinessPlan});
 if(require.main===module){try{process.stdout.write(JSON.stringify(parse(process.argv.slice(2)))+'\n');}catch{process.stdout.write(JSON.stringify({status:'REJECTED_NO_RESOURCES',code:'PAYMENT_BUSINESS_PLAN_FAILED_CLOSED'})+'\n');process.exitCode=1;}}

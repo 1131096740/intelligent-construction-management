@@ -5,8 +5,10 @@ const FRESH=require.main===module&&process.argv[1]===__filename&&process.execArg
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types,isDeepStrictEqual:equal}=require('node:util');
 const {performance}=require('node:perf_hooks');
 const {paymentLoopbackForScenario}=require('./task16-current259-payment-loopback.cjs');
+const {PAYMENT261_RUNTIME_PROFILE}=require('./task16-current259-profile.cjs');
+const ONCE_OPTIONS=Object.freeze(['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once','--install261-once','--business261-once']);
 const permissions=new WeakMap(),businessPermissions=new WeakMap(),attributionGapPermissions=new WeakMap(),voucherBusinessPermissions=new WeakMap(),businessContinuities=new WeakMap();
-const competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap(),voucherAclPermissions=new WeakMap();
+const payment261RolePermissions=new WeakMap(),competitionRolePermissions=new WeakMap(),competitionLivePermissions=new WeakMap(),disconnectLivePermissions=new WeakMap(),voucherAclPermissions=new WeakMap();
 const attributionGapFailureCodes=new Map([
  ['CASE_SETUP','PG_CASE_ATTRIBUTION_GAP_SETUP'],
  ['OBSERVER_BEFORE','PG_CASE_ATTRIBUTION_GAP_BEFORE'],
@@ -57,7 +59,7 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
     need(available,'WRITE_REUSED');entry.check();
     const row=fixed(binding,['scope','planSha256','sourceSha','sourceSealSha256','runId','containerId','aclXid','nonce','identity','beforeCatalogSha256','beforeSqlSha256','installSqlSha256']);
     const id=fixed(row.identity,['runId','database','databaseOid','namespaceOid','ownerOid','runtimeOid','observerOid','systemIdentifier',
-     ...(entry.competition?['runtimeProfile']:[]),...(entry.voucher?['voucherProfile']:[])]);
+     ...(entry.competition?['runtimeProfile']:[]),...(entry.voucher?['voucherProfile']:[]),...(entry.payment261?['paymentProfile']:[])]);
     need(row.scope==='CURRENT259_DOCKER_B7_INSTALL'&&row.planSha256===entry.planSha256&&row.sourceSha===entry.source.candidateSha&&
      row.sourceSealSha256===entry.source.sourceSealSha256&&row.runId===entry.view.runId&&row.containerId===entry.view.resource.containerId&&
      row.aclXid===entry.acl.installXid&&equal(id,entry.identity)&&hex(row.nonce,64)&&
@@ -72,6 +74,15 @@ function claimCurrent259B7WritePermit(permit,handle,acl){
     entry.check();return true;
    }catch(error){revoke(entry);throw error;}
   }});
+ }catch(error){revoke(entry||currentRun);throw error;}
+}
+function claimCurrent259Payment261RolePermit(permit,handle,technical){
+ const entry=permit&&!types.isProxy(permit)&&payment261RolePermissions.get(permit);
+ if(entry)payment261RolePermissions.delete(permit);
+ try{
+  need(arguments.length===3&&entry&&entry===currentRun&&entry.active&&entry.payment261&&!entry.competition&&
+   entry.handle===handle&&entry.technical===technical&&!entry.payment261RolesClaimed,'PAYMENT261_ROLE_AUTHORITY');
+  entry.payment261RolesClaimed=true;entry.check();return true;
  }catch(error){revoke(entry||currentRun);throw error;}
 }
 function claimCurrent259CompetitionRolePermit(permit,handle,technical){
@@ -145,7 +156,7 @@ function claimCurrent259PaymentBusinessPermit(permit,application,handle){
  }catch(error){revoke(currentRun);throw error;}
 }
 // Publish the only export before the fixed consumer can require it in main.
-const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity,claimCurrent259CompetitionRolePermit,claimCurrent259CompetitionLivePermit,claimCurrent259DisconnectLivePermit,claimCurrent259VoucherAclPermit});
+const moduleApi=Object.freeze({claimCurrent259B7WritePermit,claimCurrent259PaymentBusinessPermit,assertCurrent259PaymentBusinessContinuity,claimCurrent259CompetitionRolePermit,claimCurrent259CompetitionLivePermit,claimCurrent259DisconnectLivePermit,claimCurrent259VoucherAclPermit,claimCurrent259Payment261RolePermit});
 module.exports=moduleApi;
 // B7's original lineage imports the technical owner before loader/core caches.
 const records=[];
@@ -273,12 +284,15 @@ function parse(args){
  const competition=voucher||args[0]==='--competition'||args[0]==='--competition-once';
  const attributionGap=args[0]==='--attribution-gap'||args[0]==='--attribution-gap-once';
  const pfq=args[0]==='--pfq-composition'||args[0]==='--pfq-composition-once';
- const business=competition||attributionGap||args[0]==='--business'||args[0]==='--business-once',once=['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once'].includes(args[0]),rest=once||business||pfq?args.slice(1):args;
+ const business261=args[0]==='--business261'||args[0]==='--business261-once';
+ const payment261=business261||args[0]==='--install261'||args[0]==='--install261-once';
+ const business=business261||competition||attributionGap||args[0]==='--business'||args[0]==='--business-once';
+ const once=ONCE_OPTIONS.includes(args[0]),rest=once||business||pfq||payment261?args.slice(1):args;
  need(rest.length===4&&rest[0]==='--plan'&&rest[2]==='--expected-plan-sha256'&&hex(rest[3],64),'ARGUMENTS');
- return {once,business,competition,attributionGap,voucher,pfq,file:rest[1],sha256:rest[3]};
+ return {once,business,payment261,competition,attributionGap,voucher,pfq,file:rest[1],sha256:rest[3]};
 }
 async function run(args){
- const requestedOnce=Array.isArray(args)&&['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once'].includes(args[0]);
+ const requestedOnce=Array.isArray(args)&&ONCE_OPTIONS.includes(args[0]);
  let request,plan,receipt,checked,created,started=false,marker=false,published=false,publicationStarted=false;
  let hasFirst=false,first,stage='preflight',state,controller,timer,businessFlow,endAt;
  const startedAt=performance.now(),stageTimings=[];
@@ -302,7 +316,8 @@ async function run(args){
  }
  try{
   request=parse(args);if(request.once)need(FRESH&&!onceAttempted,'FRESH_MAIN');
-  const names=request.pfq?['readCurrent259PfqCompositionPlan','verifyCurrent259PfqCompositionPlan']:request.voucher?['readCurrent259PaymentVoucherPlan','verifyCurrent259PaymentVoucherPlan']:request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
+  const names=request.payment261?(request.business?['readCurrent261PaymentBusinessPlan','verifyCurrent261PaymentBusinessPlan']:['readCurrent261PaymentInstallPlan','verifyCurrent261PaymentInstallPlan']):
+   request.pfq?['readCurrent259PfqCompositionPlan','verifyCurrent259PfqCompositionPlan']:request.voucher?['readCurrent259PaymentVoucherPlan','verifyCurrent259PaymentVoucherPlan']:request.competition?['readCurrent259PaymentCompetitionPlan','verifyCurrent259PaymentCompetitionPlan']:
    request.attributionGap?['readCurrent259PaymentAttributionGapPlan','verifyCurrent259PaymentAttributionGapPlan']:
    request.business?['readCurrent259PaymentBusinessPlan','verifyCurrent259PaymentBusinessPlan']:['readCurrent259PaymentInstallPlan','verifyCurrent259PaymentInstallPlan'];
   const planModule=original(request.business?'../../../scripts/prepare-task16-current259-payment-business.cjs':'../../../scripts/prepare-task16-current259-payment-install.cjs',names);
@@ -310,11 +325,20 @@ async function run(args){
   const basic=readPlan(request.file,request.sha256);plan=basic.plan;
   const loopbackScenario=request.pfq?'cancel-commit':request.business?plan.case.scenario:undefined;
   const loopback=paymentLoopbackForScenario(loopbackScenario);
+  need(plan.scope.migrations===(request.payment261?261:259)&&
+   plan.scope.paymentProfile===(request.payment261?PAYMENT261_RUNTIME_PROFILE:undefined),'LEDGER_PROFILE');
+  const {isExactCurrentPaymentProfile}=request.payment261?original('./task16-current259-profile.cjs',['isExactCurrentPaymentProfile']):{};
+  function checkPayment261Source(source){
+   if(request.payment261)need(isExactCurrentPaymentProfile(source.profile,PAYMENT261_RUNTIME_PROFILE)&&
+    source.profile.ledgerSha256===plan.material.source.ledgerSha256&&source.candidateSha===plan.material.source.candidateSha&&
+    source.sourceSealSha256===plan.material.source.sourceSealSha256,'LEDGER_PROFILE');
+  }
   need(plan.scope.databaseTransport===loopback?.plan&&request.attributionGap===(loopbackScenario==='attribution-gap')&&
    request.voucher===(loopbackScenario==='competition-voucher'),'RESOURCE_PROFILE');
   if(!request.once){
    checked=verifyPlan(request.file,request.sha256);checked.check();importsCheck();
-   return {status:request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.voucher?'PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap?'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
+   if(request.payment261)checkPayment261Source(checked.loader.witness().source);
+   return {status:request.payment261?(request.business?'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT261_INSTALL_PLAN_VERIFIED_NO_RESOURCES'):request.pfq?'PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES':request.voucher?'PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES':request.competition?'PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES':request.attributionGap?'PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES':request.business?'PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES':'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',candidateSha:plan.material.source.candidateSha,planSha256:request.sha256,onceAttemptConsumed:false,resourcesExecuted:false};
   }
   onceAttempted=true;
   try{writeNew(plan,plan.run.attemptFile,JSON.stringify({status:'STARTED',purpose:plan.purpose,planSha256:request.sha256,candidateSha:plan.material.source.candidateSha,onceAttemptConsumed:true})+'\n');}
@@ -331,6 +355,7 @@ async function run(args){
   const disconnect=request.business&&plan.case.scenario==='disconnect-commit-recovery';
   if(request.business&&(plan.case.scenario==='cancel-commit'||disconnect))original('./task16-current259-a16-fault.cjs',['createCurrent259A16FaultPlan']);
   const installVoucherAcl=request.voucher?original('./task16-current259-payment-acl-install.cjs',['installCurrent259VoucherPaymentAcl']).installCurrent259VoucherPaymentAcl:undefined;
+  const provisionPayment261=request.payment261?original('./task16-current259-role-provision.cjs',['provisionCurrent259Payment261Roles']).provisionCurrent259Payment261Roles:undefined;
   const provisionCompetition=request.competition?original('./task16-current259-role-provision.cjs',['provisionCurrent259CompetitionRoles']).provisionCurrent259CompetitionRoles:undefined;
   if(request.competition)original('./task16-current259-payment-competition.cjs',['executeCurrent259PaymentCompetition']);
   const liveSessions=request.business?original('./task16-current259-live-sessions.cjs',
@@ -355,15 +380,18 @@ async function run(args){
   try{
    need(!fs.existsSync(plan.run.receiptFile)&&!fs.existsSync(plan.run.receiptFile+'.pending'),'RECEIPT_EXISTS');
    checked=verifyPlan(request.file,request.sha256);
-   need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();receipt.sourceMaterialVerified=true;
+   need(equal(basic.file.identity,checked.file.identity),'PLAN_REPLACED');checked.check();importsCheck();
+   if(request.payment261)checkPayment261Source(checked.loader.witness().source);
+   receipt.sourceMaterialVerified=true;
    need(!fs.existsSync(plan.run.resourceDir),'RESOURCE_CHILD_EXISTS');
    controller=new AbortController();resourceStartedAt=performance.now();endAt=Date.now()+plan.limits.resourceMs;
    process.once('SIGINT',onSigint);process.once('SIGTERM',onSigterm);timer=setTimeout(()=>abort('RESOURCE_DEADLINE'),plan.limits.resourceMs);
    enterStage('resourceStartup');started=true;
    await withResource(checked.buildHandle,{artifactsDir:plan.run.resourceDir,daemonId:plan.resource.daemonId},controller.signal,async handle=>{
     const view=claimCurrent259TechnicalResource(handle),source=view.source;created=resourceIdentity(view.resource.getReceipt(),false,loopback?.topology);
+    checkPayment261Source(source);
     need(created.sourceSha===plan.material.source.candidateSha&&created.daemonId===plan.resource.daemonId&&created.endpoint===plan.resource.endpoint&&created.imageId===plan.resource.imageId,'RESOURCE_IDENTITY');
-    state={active:true,controller,abort,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,competition:request.competition,voucher:request.voucher,disconnect};
+    state={active:true,controller,abort,handle,view,source,plan,attempt,checkedBuild:checked.buildHandle,checkedInputs:checked.checkInputs,endAt,planSha256:request.sha256,claimed:false,writeUsed:false,payment261:request.payment261,competition:request.competition,voucher:request.voucher,disconnect};
     currentRun=state;
     let resolveAbort;
     const cancellation=new Promise(resolve=>{resolveAbort=resolve;});
@@ -387,13 +415,18 @@ async function run(args){
     const completed=(name,result)=>{state.check();need(result&&result.sourceSha===source.candidateSha&&result.runId===view.runId,'STAGE_RESULT');
      receipt.stages.push(Object.freeze({stage:name,status:'RETURNED_NOT_ADMISSION',...(result.installXid?{installXid:result.installXid}:{}),...(result.commitXid?{commitXid:result.commitXid}:{})}));};
     try{
-     state.check();enterStage('technical259');
+     state.check();enterStage(request.payment261?'technical261':'technical259');
      const technical=await settled(createCurrent259TechnicalMigration(handle,controller.signal).migrate());completed(stage,technical);
      enterStage('roles9');let roles;
      if(request.competition){
       state.technical=technical;
       const rolePermit=Object.freeze({kind:'CURRENT259_PRIVATE_COMPETITION_ROLES'});competitionRolePermissions.set(rolePermit,state);
       try{roles=await settled(provisionCompetition(technical,handle,rolePermit));}finally{competitionRolePermissions.delete(rolePermit);}
+     }else if(request.payment261){
+      state.technical=technical;
+      const rolePermit=Object.freeze({kind:'CURRENT259_PRIVATE_PAYMENT261_ROLES'});payment261RolePermissions.set(rolePermit,state);
+      try{roles=await settled(provisionPayment261(technical,handle,rolePermit));}finally{payment261RolePermissions.delete(rolePermit);}
+      need(state.payment261RolesClaimed&&roles.paymentProfile===PAYMENT261_RUNTIME_PROFILE,'PAYMENT261_ROLE_AUTHORITY');
      }else roles=await settled(provisionCurrent259Roles(technical,handle));
      completed(stage,roles);
      enterStage('sevenFragments');const seven=await settled(installCurrent259SevenFragments(roles,handle));completed(stage,seven);
@@ -414,7 +447,7 @@ async function run(args){
      const id=technical.databaseIdentity;
      need(technical.database===created.databaseName&&id.database===created.databaseName&&id.ownerOid==='10','DATABASE_IDENTITY');
      state.identity=Object.freeze({runId:view.runId,...Object.fromEntries(['database','databaseOid','namespaceOid','ownerOid','systemIdentifier'].map(key=>[key,id[key]])),runtimeOid:roleOid('jg_task01_runtime'),observerOid:roleOid('jg_task01_observer'),...(request.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),
-      ...(request.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})});
+      ...(request.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{}),...(request.payment261?{paymentProfile:PAYMENT261_RUNTIME_PROFILE}:{})});
      state.catalogSource={candidateSha:source.candidateSha,sealSha256:source.sourceSealSha256,schemaSha256:source.profile.schemaSha256,migrations:source.profile.ledger.map(row=>({path:'services/api/prisma/migrations/'+row.name+'/migration.sql',sha256:row.sha256}))};
      state.acl=acl;const permit=Object.freeze({kind:'CURRENT259_PRIVATE_B7_WRITE'});permissions.set(permit,state);
      enterStage('b7');const b7=await settled(installCurrent259B7(acl,handle,permit));completed(stage,b7);
@@ -534,7 +567,7 @@ async function run(args){
     }catch(error){
      if(!hasFirst){
       failureObservedAt=performance.now();hasFirst=true;first=error;receipt.failureCode=safeCode(error);receipt.failureStage=stage;
-      const technicalFailure=stage==='technical259'?describeCurrent259TechnicalFailure(error):undefined;
+      const technicalFailure=stage==='technical259'||stage==='technical261'?describeCurrent259TechnicalFailure(error):undefined;
       if(technicalFailure)receipt.technicalFailure=technicalFailure;
       const sevenFailure=stage==='sevenFragments'?describeCurrent259SevenFailure(error):undefined;
       if(sevenFailure)receipt.sevenFailure=sevenFailure;
@@ -571,7 +604,7 @@ async function run(args){
 // The fresh-entry predicate above is captured before any dependency load.
 if(require.main===module)queueMicrotask(()=>{
  void run(process.argv.slice(2)).then(result=>{
-  const exit=result.status==='PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
-  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(['--once','--business-once','--competition-once','--attribution-gap-once','--voucher-once','--pfq-composition-once'].includes(process.argv[2]))process.exit(exit);});
+  const exit=result.status==='PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT261_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PFQ_COMPOSITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PFQ_COMPOSED_CONCURRENCY_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_BUSINESS_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_ATTRIBUTION_GAP_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_VOUCHER_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_COMPETITION_PLAN_VERIFIED_NO_RESOURCES'||result.status==='PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED'||result.status==='PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED'?0:1;
+  process.exitCode=exit;process.stdout.write(JSON.stringify(result)+'\n',()=>{if(ONCE_OPTIONS.includes(process.argv[2]))process.exit(exit);});
  });
 });

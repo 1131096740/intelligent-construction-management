@@ -1,13 +1,15 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
 const noop=()=>{};
-function helpers(t){
+function helpers(t,options){
  const file=path.resolve(__dirname,'../../../scripts/prepare-task16-current259-payment-business.test.cjs'),m={exports:{}},rq=Module.createRequire(file);
  new Function('require','module','__dirname',fs.readFileSync(file,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),m,path.dirname(file));
- return m.exports.fixture(t);
+ return m.exports.fixture(t,options);
 }
 function runFixture(t,options={}){
- const s=options.planFixture??helpers(t),saved=options.saved??s.business.prepareCurrent259PaymentBusinessPlan({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,scenario:options.scenario??'normal',paidAt:'2026-11-10',openingDate:'2026-11-09'});
+ const s=options.planFixture??helpers(t,{payment261:options.payment261});
+ const prepare=options.payment261?s.business.prepareCurrent261PaymentBusinessPlan:s.business.prepareCurrent259PaymentBusinessPlan;
+ const saved=options.saved??prepare({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output,scenario:options.scenario??'normal',paidAt:'2026-11-10',openingDate:'2026-11-09'});
  const m={exports:{}};
  const make=new Function('require','module','__dirname',fs.readFileSync(path.join(__dirname,'task16-current259-payment-run-authorization.test.cjs'),'utf8')+'\nreturn fixture;')(
   name=>name==='node:test'?{test:noop}:require(name),m,__dirname);
@@ -105,4 +107,17 @@ for(const scenario of ['normal','response-loss'])test('a different cleanup relay
  const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json'),'utf8'));
  assert.equal(receipt.resource.cleanup.relayClosed,false);assert.equal(receipt.resource.cleanup.status,'UNKNOWN');
  assert.equal(f.state.calls.filter(name=>name==='case').length,1);
+});
+
+test('explicit business261 verifies offline and runs only the original single-actor scoped case',async t=>{
+ const offline=runFixture(t,{payment261:true,default:true});
+ assert.equal((await offline.done).status,'PAYMENT261_BUSINESS_PLAN_VERIFIED_NO_RESOURCES');
+ assert.deepEqual(offline.state.calls,[]);
+ const f=runFixture(t,{payment261:true}),result=await f.done;
+ assert.equal(result.status,'PAYMENT_BUSINESS_CASE_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.deepEqual(f.state.calls,['start-normal','technical259','payment261-roles','seven','acl','b7','live','env','app','case','app-close','env-close','pools-close']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(f.s.runRoot,'receipt.json')));
+ assert.equal(receipt.scope.paymentProfile,'TASK16_PAYMENT261_RUNTIME_V1');
+ assert.equal(receipt.business.caseId,'registered.null-cross-company.commit');
+ assert.equal(receipt.business.permission,'CONSUMED_ONCE');
 });

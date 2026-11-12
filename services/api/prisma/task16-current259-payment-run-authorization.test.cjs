@@ -2,15 +2,15 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{createHash}=require('node:crypto');
 const file=path.join(__dirname,'task16-current259-payment-run-authorization.cjs'),ROOT=path.resolve(__dirname,'../../..');
 const noop=()=>{};
-function planFixture(t){
+function planFixture(t,options){
  const p=path.join(ROOT,'scripts/prepare-task16-current259-payment-install.test.cjs'),module={exports:{}},rq=Module.createRequire(p);
  new Function('require','module','__dirname',fs.readFileSync(p,'utf8'))(name=>name==='node:test'?{test:noop}:rq(name),module,path.dirname(p));
- return module.exports.fixture(t);
+ return module.exports.fixture(t,options);
 }
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 function fixture(t,options={}){
- const s=options.planFixture??planFixture(t);
- const prepare=options.pfqPlan?s.api.prepareCurrent259PfqCompositionPlan:s.api.prepareCurrent259PaymentInstallPlan;
+ const s=options.planFixture??planFixture(t,{payment261:options.payment261});
+ const prepare=options.payment261?s.api.prepareCurrent261PaymentInstallPlan:options.pfqPlan?s.api.prepareCurrent259PfqCompositionPlan:s.api.prepareCurrent259PaymentInstallPlan;
  const saved=options.saved??prepare({runRoot:s.runRoot,daemonId:s.daemonId,output:s.output});
  const state={calls:[],output:'',closes:0,signals:{},consumed:null},handle=Object.freeze({});
  let manifest,signal,finish;
@@ -19,10 +19,12 @@ function fixture(t,options={}){
  const identity={database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',systemIdentifier:'123456789'};
  const technical=Object.freeze({status:'CURRENT259_TECHNICAL_SUPPLIED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:'01234567-89ab-cdef-0123-456789abcdef',containerId:'7'.repeat(64),database:identity.database,databaseIdentity:identity});
  const names=['jg_c259_outside_executor_login','jg_c259_outside_executor_owner','jg_c259_outside_issuer_login','jg_c259_outside_issuer_owner','jg_c259_upward_issuer_login','jg_c259_upward_issuer_owner','jg_c259_upward_runtime_login','jg_task01_observer','jg_task01_runtime'];
- const roles=Object.freeze({...technical,status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',roles:names.map((name,i)=>({name,oid:String(200+i)})),commitXid:'1000'});
+ const roles=Object.freeze({...technical,status:'CURRENT259_ROLES_PROVISIONED_NOT_ADMISSION',roles:names.map((name,i)=>({name,oid:String(200+i)})),commitXid:'1000',
+  ...(options.payment261?{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}:{})});
  const seven=Object.freeze({sourceSha:source.candidateSha,runId:technical.runId,installXid:'1100'});
  const acl=Object.freeze({status:'CURRENT259_PAYMENT_ACL_COMMITTED_NOT_ADMISSION',sourceSha:source.candidateSha,runId:technical.runId,installXid:'1200'});
- const scopeIdentity={runId:technical.runId,...identity,runtimeOid:'208',observerOid:'207',...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{})};
+ const scopeIdentity={runId:technical.runId,...identity,runtimeOid:'208',observerOid:'207',...(options.competition?{runtimeProfile:'CURRENT259_TWO_RUNTIME_LANES'}:{}),...(options.voucher?{voucherProfile:'CURRENT259_PAYMENT_VOUCHER_V1'}:{}),
+  ...(options.payment261?{paymentProfile:'TASK16_PAYMENT261_RUNTIME_V1'}:{})};
  const module={exports:{},filename:file};const cache={[file]:module};
  const check=()=>{assert.ok(!signal?.aborted);options.onCheck?.();};
  const view={source,runId:technical.runId,resource:{containerId:technical.containerId,databaseName:identity.database,getReceipt(){return JSON.parse(JSON.stringify(manifest));}},check,checkLifetime:check,verifyFull:check};
@@ -42,7 +44,15 @@ function fixture(t,options={}){
   },createCurrent259TechnicalMigration(h,provided){
    assert.equal(h,handle);assert.equal(provided,signal);return {async migrate(){state.calls.push('technical259');if(Object.hasOwn(options,'technicalFailure'))throw options.technicalFailure;await options.onTechnical?.(state);return technical;}};
   }},
-  './task16-current259-role-provision.cjs':{async provisionCurrent259Roles(value,h){state.calls.push('roles9');assert.equal(value,technical);assert.equal(h,handle);return roles;}},
+  './task16-current259-role-provision.cjs':{async provisionCurrent259Roles(value,h){state.calls.push('roles9');assert.equal(value,technical);assert.equal(h,handle);return roles;},
+   async provisionCurrent259Payment261Roles(value,h,permit){
+    state.calls.push('payment261-roles');assert.equal(value,technical);assert.equal(h,handle);
+    const claim=module.exports.claimCurrent259Payment261RolePermit;
+    if(options.badPayment261Permit==='copy')claim({...permit},h,value);
+    assert.equal(claim(permit,h,value),true);
+    if(options.badPayment261Permit==='replay')claim(permit,h,value);
+    return options.badPayment261Permit==='result'?{...roles,paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'}:roles;
+   }},
   './task16-current259-seven-install.cjs':{describeCurrent259SevenFailure(error){return error===options.sevenFailure?options.sevenDetail:undefined;},
   async installCurrent259SevenFragments(value,h){state.calls.push('seven');assert.equal(value,roles);assert.equal(h,handle);
    if(Object.hasOwn(options,'sevenFailure'))throw options.sevenFailure;return seven;} },
@@ -290,7 +300,9 @@ function fixture(t,options={}){
   if(!cache[resolved])cache[resolved]={exports:ports[name]??require(name),filename:resolved};
   return cache[resolved].exports;
  };rq.resolve=name=>path.resolve(__dirname,name);rq.main=options.imported?{}:module;rq.cache=cache;
- const proc={argv:['node',file,...(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once']),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
+ const launcherOptions=options.launchOption?[options.launchOption]:options.payment261?
+  [options.business?(options.default?'--business261':'--business261-once'):(options.default?'--install261':'--install261-once')]:undefined;
+ const proc={argv:['node',file,...(launcherOptions??(options.pfq?[options.default?'--pfq-composition':'--pfq-composition-once']:options.voucher?[options.default?'--voucher':'--voucher-once']:options.competition?[options.default?'--competition':'--competition-once']:options.attributionGap?[options.default?'--attribution-gap':'--attribution-gap-once']:options.business?[options.default?'--business':'--business-once']:options.default?[]:['--once'])),'--plan',options.planFile??s.output,'--expected-plan-sha256',options.selectedPlanSha??saved.sha256],execArgv:[],_preload_modules:[],env:{},getuid:process.getuid,
   stdout:{write(value,callback){state.exit=proc.exitCode;state.output+=value;callback?.();finish(JSON.parse(value));}},once(name,fn){state.signals[name]=fn;},removeListener(name){delete state.signals[name];},exit(){},exitCode:0};
  if(options.stale)s.state.stale=true;
  const launcherTimer=options.captureDeadline?((fn,ms)=>{assert.equal(ms,3600000);state.expireDeadline=fn;return Object.freeze({});}):setTimeout;
@@ -302,7 +314,7 @@ test('default verifies a fixed payment install plan without consuming an attempt
  const f=fixture(t,{default:true}),result=await f.done;
  assert.equal(result.status,'PAYMENT_INSTALL_PLAN_VERIFIED_NO_RESOURCES',JSON.stringify(result));assert.deepEqual(f.state.calls,[]);
  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit','claimCurrent259Payment261RolePermit']);
 });
 test('fresh once follows technical259→roles→seven→ACL→B7 under one handle and immutable attempt',async t=>{
  const f=fixture(t),result=await f.done;
@@ -316,7 +328,7 @@ test('fresh once follows technical259→roles→seven→ACL→B7 under one handl
 
 test('an imported module exposes claim only and cannot mint from JSON or a native flag',t=>{
  const f=fixture(t,{imported:true});
- assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit']);
+ assert.deepEqual(Object.keys(f.api),['claimCurrent259B7WritePermit','claimCurrent259PaymentBusinessPermit','assertCurrent259PaymentBusinessContinuity','claimCurrent259CompetitionRolePermit','claimCurrent259CompetitionLivePermit','claimCurrent259DisconnectLivePermit','claimCurrent259VoucherAclPermit','claimCurrent259Payment261RolePermit']);
  assert.throws(()=>f.api.claimCurrent259B7WritePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionRolePermit({native:true},f.handle,f.acl));
  assert.throws(()=>f.api.claimCurrent259CompetitionLivePermit({native:true},f.handle,f.acl));
@@ -432,6 +444,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  const write=(relative,content)=>{const target=path.join(base,relative);fs.mkdirSync(path.dirname(target),{recursive:true,mode:0o700});fs.writeFileSync(target,content,{mode:0o600});};
  write('services/api/prisma/task16-current259-payment-run-authorization.cjs',fs.readFileSync(file,'utf8'));
  write('services/api/prisma/task16-current259-payment-loopback.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-payment-loopback.cjs'),'utf8'));
+ write('services/api/prisma/task16-current259-profile.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-profile.cjs'),'utf8'));
  write('services/api/prisma/task16-current259-disconnect-failure.cjs',fs.readFileSync(path.join(__dirname,'task16-current259-disconnect-failure.cjs'),'utf8'));
  for(const [name,keys]of [
   ['task16-current259-b7-install',['installCurrent259B7']],
@@ -447,7 +460,7 @@ test('real CommonJS default CLI finishes main initialization before its plan hel
  ])write('services/api/prisma/'+name+'.cjs','module.exports=Object.freeze({'+keys.map(key=>key+':()=>{throw new Error("resource calls forbidden in default model");}').join(',')+'});');
  write('scripts/prepare-task16-current259-payment-install.cjs',`
  require('../services/api/prisma/task16-current259-payment-run-authorization.cjs');
- const plan={material:{source:{candidateSha:'${'a'.repeat(40)}'}},scope:{}};
+ const plan={material:{source:{candidateSha:'${'a'.repeat(40)}'}},scope:{migrations:259}};
  module.exports=Object.freeze({
   readCurrent259PaymentInstallPlan(){return {plan};},
   verifyCurrent259PaymentInstallPlan(){return {check(){}};}
@@ -804,4 +817,42 @@ test('main retains the fixed seven prestate reason after cleanup without raw out
  assert.deepEqual(receipt.sevenFailure,sevenDetail);
  assert.doesNotMatch(JSON.stringify(receipt),/private detail/u);
  assert.equal(receipt.resource.cleanup.status,'completed');
+});
+
+test('explicit install261 verifies offline and once claims the private ordinary role permit before B7',async t=>{
+ const offline=fixture(t,{payment261:true,default:true});
+ assert.equal((await offline.done).status,'PAYMENT261_INSTALL_PLAN_VERIFIED_NO_RESOURCES');
+ assert.deepEqual(offline.state.calls,[]);
+ assert.equal(fs.existsSync(path.join(offline.s.runRoot,'attempt.json')),false);
+ const once=fixture(t,{payment261:true}),result=await once.done;
+ assert.equal(result.status,'PAYMENT_INSTALL_AND_OWNED_CLEANUP_VERIFIED',JSON.stringify(result));
+ assert.deepEqual(once.state.calls,['start','technical259','payment261-roles','seven','acl','b7']);
+ const receipt=JSON.parse(fs.readFileSync(path.join(once.s.runRoot,'receipt.json')));
+ assert.equal(receipt.purpose,'current261-payment-technical-install-through-b7');
+ assert.equal(receipt.stages[0].stage,'technical261');
+ assert.equal(receipt.scope.migrations,261);
+ assert.equal(receipt.b7Binding.identity.paymentProfile,'TASK16_PAYMENT261_RUNTIME_V1');
+});
+for(const badPayment261Permit of ['copy','replay','result'])test('payment261 rejects '+badPayment261Permit+' before seven or B7',async t=>{
+ const f=fixture(t,{payment261:true,badPayment261Permit}),result=await f.done;
+ assert.equal(result.status,'STOPPED');
+ assert.deepEqual(f.state.calls,['start','technical259','payment261-roles']);
+ assert.equal(f.state.closes,1);
+});
+test('payment261 and historical install launcher options reject cross-use before creating an attempt',async t=>{
+ for(const [payment261,launchOption] of [[true,'--once'],[false,'--install261-once']]){
+  const f=fixture(t,{payment261,launchOption}),result=await f.done;
+  assert.equal(result.status,'STOPPED');
+  assert.deepEqual(f.state.calls,[]);
+  assert.equal(fs.existsSync(path.join(f.s.runRoot,'attempt.json')),false);
+ }
+});
+test('ordinary payment261 rejects an archive profile substituted in the exact B7 binding',async t=>{
+ const f=fixture(t,{payment261:true,beforeConsume({binding}){
+  binding.identity={...binding.identity,paymentProfile:'TASK12_ARCHIVE261_SOURCE_V1'};
+ }});
+ assert.equal((await f.done).status,'STOPPED');
+ assert.equal(f.state.consumed,null);
+ assert.deepEqual(f.state.calls,['start','technical259','payment261-roles','seven','acl','b7']);
+ assert.equal(f.state.closes,1);
 });

@@ -1,10 +1,10 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const noop=()=>{};
-function fixture(t){
+function fixture(t,options){
  const holder={exports:{}},oldFile=path.join(__dirname,'prepare-task16-current259-payment-install.test.cjs');
  new Function('require','module','__dirname',fs.readFileSync(oldFile,'utf8'))(name=>name==='node:test'?{test:noop}:require(name),holder,__dirname);
- const original=holder.exports.fixture(t),module={exports:{}},file=path.join(__dirname,'prepare-task16-current259-payment-business.cjs');
+ const original=holder.exports.fixture(t,options),module={exports:{}},file=path.join(__dirname,'prepare-task16-current259-payment-business.cjs');
  const local=name=>name==='./prepare-task16-current259-payment-install.cjs'?original.api:require(name);local.main={};
  new Function('require','module','__dirname','__filename',fs.readFileSync(file,'utf8').replace(/^#![^\n]*\n/u,''))(local,module,__dirname,file);
  return {...original,business:module.exports};
@@ -186,5 +186,25 @@ test('voucher and attribution-gap plans cannot verify each other in the combined
  const gap=f.business.prepareCurrent259PaymentAttributionGapPlan({...options,output:f.output+'.gap'});
  assert.throws(()=>f.business.verifyCurrent259PaymentVoucherPlan(gap.file,gap.sha256));
  assert.throws(()=>f.business.verifyCurrent259PaymentAttributionGapPlan(voucher.file,voucher.sha256));
+ assert.deepEqual(fs.readdirSync(f.runRoot),[]);
+});
+
+test('ordinary payment261 binds its distinct plan and installation sidecar without competition or voucher authority',t=>{
+ const f=fixture(t,{payment261:true}),options={runRoot:f.runRoot,daemonId:f.daemonId,output:f.output,paidAt:'2026-11-10',openingDate:'2026-11-09'};
+ for(const scenario of ['competition','competition-voucher','attribution-gap'])assert.throws(()=>f.business.prepareCurrent261PaymentBusinessPlan({...options,scenario}));
+ assert.equal(fs.existsSync(f.output+'.installation.json'),false);
+ const saved=f.business.prepareCurrent261PaymentBusinessPlan({...options,scenario:'normal'});
+ assert.equal(saved.status,'PAYMENT261_BUSINESS_PLAN_PREPARED_NO_RESOURCES');
+ const verified=f.business.verifyCurrent261PaymentBusinessPlan(f.output,saved.sha256);
+ assert.equal(verified.plan.purpose,'current261-payment-owned-seed-and-case');
+ assert.equal(verified.plan.scope.migrations,261);
+ assert.equal(verified.plan.scope.paymentProfile,'TASK16_PAYMENT261_RUNTIME_V1');
+ assert.equal(verified.plan.scope.archiveActivation,false);
+ assert.equal(verified.plan.scope.multiActorConcurrency,false);
+ const sidecar=f.api.readCurrent261PaymentInstallPlan(verified.plan.installation.path,verified.plan.installation.sha256);
+ assert.equal(sidecar.plan.scope.businessWrites,false);
+ for(const verify of [f.business.verifyCurrent259PaymentBusinessPlan,f.business.verifyCurrent259PaymentCompetitionPlan,
+  f.business.verifyCurrent259PaymentVoucherPlan,f.api.verifyCurrent261PaymentInstallPlan])assert.throws(()=>verify(f.output,saved.sha256));
+ assert.throws(()=>f.business.verifyCurrent261PaymentBusinessPlan(sidecar.file.path,sidecar.file.sha256));
  assert.deepEqual(fs.readdirSync(f.runRoot),[]);
 });
