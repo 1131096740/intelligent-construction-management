@@ -1,15 +1,16 @@
 const { randomUUID } = require("node:crypto");
-const { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } = require("node:fs");
+const { readdirSync, mkdtempSync, writeFileSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 
 const repositoryRoot = path.resolve(__dirname, "../../..");
 const apiRoot = path.join(repositoryRoot, "services/api");
 const migrationsRoot = path.join(__dirname, "migrations");
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const databaseName = "jgzg_fund_execution_v7";
-const databaseUser = "jgzg_v7";
+const databaseUser = "jiangkong";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -44,15 +45,12 @@ function assertLocalDockerEndpoint() {
     "v7 verifier 拒绝远程 Docker endpoint"
   );
   const inspected = command(docker, [
-    "context",
-    "inspect",
-    "--format",
-    "{{json .Endpoints.docker.Host}}"
-  ]).stdout.trim();
-  invariant(
-    inspected.includes("unix://") || inspected.includes("npipe://"),
-    "v7 verifier 只允许本机 Docker endpoint"
-  );
+    "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"
+  ], { timeout: 10_000 }).stdout.trim();
+  let endpoint;
+  try { endpoint = JSON.parse(inspected); } catch { endpoint = null; }
+  invariant(typeof endpoint === "string" && /^(unix|npipe):\/\//u.test(endpoint),
+    "v7 verifier 只允许本机 Docker endpoint");
 }
 
 function psql(containerName, sql, invoke = command) {
@@ -106,18 +104,6 @@ function migrationDirectories() {
     .sort();
 }
 
-function applyMigrations(containerName) {
-  const directories = migrationDirectories();
-  directories.forEach((directory, index) => {
-    const migrationPath = path.join(migrationsRoot, directory, "migration.sql");
-    psql(containerName, readFileSync(migrationPath, "utf8"));
-    if ((index + 1) % 25 === 0 || index + 1 === directories.length) {
-      console.log(`已重放 ${index + 1}/${directories.length} 个迁移目录`);
-    }
-  });
-  return directories;
-}
-
 function verifyCoreContractExists(containerName) {
   psql(
     containerName,
@@ -143,7 +129,7 @@ $$;
 }
 
 function hostDatabaseUrl(containerName, password) {
-  const published = command(docker, ["port", containerName, "5432/tcp"])
+  const published = command(docker, ["port", containerName, "5432/tcp"], { timeout: 10_000 })
     .stdout.trim()
     .split(/\r?\n/u)
     .find((line) => line.startsWith("127.0.0.1:"));
@@ -178,59 +164,78 @@ function runServicePostgresSpec(databaseUrl) {
   process.stderr.write(result.stderr);
 }
 
-function main() {
+async function main() {
   const suffix = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
   const containerName = `jgzg-fund-execution-v7-${suffix}`;
-  const password = randomUUID();
-  let started = false;
+  const password = randomUUID(), runId = randomUUID();
+  let containerId;
   try {
     assertLocalDockerEndpoint();
-    command(docker, ["image", "inspect", "postgres:16"]);
-    command(docker, [
+    command(docker, ["image", "inspect", "postgres:16"], { timeout: 10_000 });
+    const created = command(docker, [
       "run",
       "--detach",
       "--rm",
       "--pull=never",
       "--name",
       containerName,
+      "--label",
+      CI_DYNAMIC_MIGRATION_LABEL + "=" + runId,
       "--env",
       `POSTGRES_USER=${databaseUser}`,
       "--env",
-      `POSTGRES_PASSWORD=${password}`,
+      "POSTGRES_PASSWORD",
       "--env",
       `POSTGRES_DB=${databaseName}`,
       "--publish",
       "127.0.0.1::5432",
       "postgres:16"
-    ]);
-    started = true;
-    waitForPostgres(containerName);
-    const version = psql(containerName, "SHOW server_version_num;").stdout.trim();
+    ], { env: { ...process.env, POSTGRES_PASSWORD: password }, timeout: 60_000 });
+    const startedId = created.stdout.trim();
+    invariant(/^[a-f0-9]{64}$/u.test(startedId), "v7 verifier 无法确认本轮容器");
+    containerId = startedId;
+    waitForPostgres(containerId);
+    const version = psql(containerId, "SHOW server_version_num;").stdout.trim();
     invariant(/^16\d{4}$/u.test(version), `verifier 要求 PostgreSQL 16，实际为 ${version}`);
-    const directories = applyMigrations(containerName);
-    verifyCoreContractExists(containerName);
-    runServicePostgresSpec(hostDatabaseUrl(containerName, password));
-    console.log(
-      `Fund execution v7 verifier GREEN：PostgreSQL 16，${directories.length} migrations，FundExecutionService PG spec`
-    );
+    const databaseUrl = hostDatabaseUrl(containerId, password);
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), "jgzg-fund-staged-"));
+    try {
+      const migrationFixture = createCiDynamicMigrationFixture({
+        ciFixture: "DYNAMIC_FUND_EXECUTION_V7_V1",
+        container: { id: containerId, name: containerName, runId },
+        databaseNames: [databaseName], temporaryRoot,
+        dockerCommand: (args, { stdinText, timeoutMs, maxOutputBytes }) =>
+          command(docker, args, { input: stdinText, timeout: timeoutMs, maxBuffer: maxOutputBytes }),
+        deploy: ({ databaseUrl, runtimeEnv, schemaPath }) =>
+          command(process.execPath, [path.join(apiRoot, "node_modules/prisma/build/index.js"), "migrate", "deploy", "--schema", schemaPath],
+            { cwd: apiRoot, env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, timeout: 15 * 60 * 1000 })
+      });
+      await migrationFixture.migrate({
+        databaseUrl, runtimeEnv: { ...process.env, NODE_ENV: "test" }, schemaPath: path.join(__dirname, "schema.prisma")
+      });
+      verifyCoreContractExists(containerId);
+      runServicePostgresSpec(databaseUrl);
+    } finally {
+      rmSync(temporaryRoot, { recursive: true, force: true });
+    }
   } finally {
-    if (started) {
-      spawnSync(docker, ["rm", "--force", "--volumes", containerName], { encoding: "utf8" });
+    if (containerId) {
+      command(docker, ["rm", "--force", "--volumes", containerId], { timeout: 60_000 });
     }
   }
+  console.log(
+    `Fund execution v7 verifier GREEN：PostgreSQL 16，${migrationDirectories().length} migrations，FundExecutionService PG spec`
+  );
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
+  main().catch(error => {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
-  }
+  });
 }
 
 module.exports = {
-  applyMigrations,
   assertLocalDockerEndpoint,
   main,
   migrationDirectories,
