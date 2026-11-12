@@ -1,3 +1,11 @@
+## #382 源码修复恢复授权（2026-11-13）
+
+- [~] 用户回复“确认授权”，解除上轮首错停线，批准按已独审的完整 normal261 范围实施九项列级 INSERT 权限与同计划绑定修复、无资源本地验证、原 Draft #428 集成及常规 CI（含 GitHub 临时数据库测试）。只绑定明确的当前 261 正常付款模式；旧 259、归档模式、observer、其他 writer 与冻结清单保持。旧 `ac721/37e27daa` 单次许可已消耗，不复用；新的手动隔离迁移/实付仍须新候选、新方案及独立授权。当前尚未实施本修复。[只读范围](/private/tmp/jg-398-normal261-repair-scope-readonly-20261113.md)。
+
+## #382 单次隔离实付停止回执（2026-11-13）
+
+- [~] 用户明确授权后，准确 `ac721326` 的 [CI 43250259492](https://github.com/1131096740/intelligent-construction-management/actions/runs/43250259492) 32 项全部成功，主控据固定 `37e27daa` 方案执行正常实付 261 入口一次。约 57 分 39 秒后退出 1，`STOPPED`，停在 `seedAndSelectedCase / SEED_LOGIN`；原 stderr 显示登录写 AuditLog 返回 PostgreSQL `42501`。许可已消耗，native/financial/live admission 均为 false，不计实付通过，不重试、不修复或运行后续业务门。本轮容器与网络的准确 ID/名称/标签已独立观察不存在；控制器记录 relay 关闭及主机凭据、私钥材料擦除。#394/#398 仍 OPEN，14/45 不变。此前 #394 的 `e1dc686b` 仅本地合入未推送；本停止文档亦未提交或推送。[详细停止回执](docs/progress/2026-11-13-382-ac721-normal261-stop.md)。
+
 ## #382 目标模式接续（2026-11-12）
 
 - [~] 本轮新 CI [43248322590](https://github.com/1131096740/intelligent-construction-management/actions/runs/43248322590) 的 `b0927040` 在已审资源 helper 固定摘要处阻断；构建安全和编排失败同源。准确 `b020e782` 仅更新一处登记摘要，公开校验、篡改拒绝和独立清理安全 74 项通过。另一后端静态清理检查由 `e64bc066` 以已验证 ID 的显式变量绑定兼容，未改解析器或白名单；独立 45 项安全及 15 项 native 测试通过。旧 b092 单次正常实付方案保持 HOLD，新候选重新封存；仍未实际运行本地资源/迁移/业务。[本轮收据](docs/progress/2026-11-12-382-resume-integration.md)。
