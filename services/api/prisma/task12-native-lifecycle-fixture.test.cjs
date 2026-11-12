@@ -111,3 +111,35 @@ test('runner attempts directory cleanup after container cleanup failure without 
  assert.match(source,/return withNativeLifecycleCleanup/u);
  assert.match(source,/DIRECTORY_REMOVE/u);
 });
+
+test('the real migration constructor admits the runner-owned name without any process or SQL port',()=>{
+ const {nativeLifecycleContainerName}=require('./run-task12-contract-lifecycle-native-local.cjs');
+ const {createCiDynamicMigrationFixture}=require('./local-staged-ci-dynamic.cjs');
+ const runId='22345678-1234-4234-8234-123456789012';let commands=0;
+ const options={ciFixture:'DYNAMIC_REMAINING_V1',container:{id:'a'.repeat(64),name:nativeLifecycleContainerName(runId),runId},
+  databaseNames:[scope.database],temporaryRoot:'/private/tmp/not-opened-native-model',dockerCommand(){commands++;throw new Error('must not run');},deploy(){commands++;throw new Error('must not run');}};
+ const fixture=createCiDynamicMigrationFixture(options);assert.equal(typeof fixture.migrate,'function');assert.equal(commands,0);
+ assert.throws(()=>createCiDynamicMigrationFixture({...options,container:{...options.container,name:'jg-task12-native-'+runId}}),/LOCAL_MIGRATION_INPUT/u);
+ assert.equal(commands,0);
+});
+
+test('runner failure projection retains fixed stages and known staged codes without raw messages or getters',()=>{
+ const {describeNativeLifecycleRunnerFailure}=require('./task12-native-lifecycle-fixture.cjs');
+ assert.deepEqual(describeNativeLifecycleRunnerFailure(new Error('LOCAL_MIGRATION_INPUT'),'MIGRATION_FIXTURE'),{stage:'MIGRATION_FIXTURE',code:'LOCAL_MIGRATION_INPUT'});
+ assert.deepEqual(describeNativeLifecycleRunnerFailure(new Error('LOCAL_MIGRATION_SQL_STAGE205_READBACK'),'MIGRATION_APPLY'),{stage:'MIGRATION_APPLY',code:'LOCAL_MIGRATION_SQL_STAGE205_READBACK'});
+ for(const error of [new Error('LOCAL_MIGRATION_INPUT private password'),{message:'private SQL'},new Proxy({}, {get(){assert.fail('proxy get');},getOwnPropertyDescriptor(){assert.fail('proxy descriptor');}})])
+  assert.deepEqual(describeNativeLifecycleRunnerFailure(error,'MIGRATION_APPLY'),{stage:'MIGRATION_APPLY',code:'TASK12_NATIVE_GATE_REJECTED'});
+ const getter=Object.defineProperty({},'message',{get(){assert.fail('getter called');}});
+ assert.equal(describeNativeLifecycleRunnerFailure(getter,'PRIVATE_STAGE').stage,'INPUT');
+});
+
+test('runner diagnostics preserve the original migration stage through both later cleanup failures',async()=>{
+ const {withNativeLifecycleCleanup,createNativeLifecycleRunnerFailureRecorder}=require('./task12-native-lifecycle-fixture.cjs');
+ const evidence=createNativeLifecycleRunnerFailureRecorder(),primary=new Error('LOCAL_MIGRATION_INPUT');
+ evidence.enter('MIGRATION_FIXTURE');
+ await assert.rejects(withNativeLifecycleCleanup(async()=>{throw primary;},[
+  ['CONTAINER_REMOVE',async()=>{evidence.enter('CLEANUP_CONTAINER');throw new Error('TASK12_NATIVE_GATE_COMMAND');}],
+  ['DIRECTORY_REMOVE',async()=>{evidence.enter('CLEANUP_DIRECTORY');throw new Error('private filesystem');}]
+ ],{primary:evidence.capture,cleanup(_step,error){evidence.capture(error);}}),error=>error===primary);
+ assert.deepEqual(evidence.describe(primary),{stage:'MIGRATION_FIXTURE',code:'LOCAL_MIGRATION_INPUT'});
+});

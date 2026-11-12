@@ -120,3 +120,33 @@ async function withNativeLifecycleCleanup(operation, cleanups, evidence) {
   return value;
 }
 Object.assign(module.exports,{createNativeLifecycleDiagnostics,withNativeLifecycleCleanup});
+
+const RUNNER_STAGES=new Set(['INPUT','SOURCE','RUNTIME','DOCKER_ENDPOINT','IMAGE','PRETEST','BUILD','DIRECTORY','CONTAINER_START','PG_READY','PORT','MIGRATION_FIXTURE','MIGRATION_APPLY','ORIGINAL_APP_READ','ROLE_PROVISION','PACKET','NATIVE_SUITE','CLEANUP_CONTAINER','CLEANUP_DIRECTORY']);
+const RUNNER_CODES=new Set(['ARGUMENTS','ENVIRONMENT','SOURCE','DOCKER','CONTAINER','LOOPBACK','APP_CHANGED','APP_MISSING','CONTAINER_CLEANUP','DIRECTORY_CLEANUP','COMMAND'].map(code=>'TASK12_NATIVE_GATE_'+code));
+for(const code of ['INPUT','SOURCE','LEDGER','DATABASE_IDENTITY','PREFIX_CACHE','STOPPED','CONTAINER_IDENTITY','CONTAINER_PORT','TAIL_STDIN_PORT','READBACK','CI_RECOVERY','CURRENT259_FRESH_FULL_ONLY','PARTIAL_QUALIFICATION','PARTIAL_TAIL_QUALIFICATION','RECOVERY_CONTEXT','RECOVERY_NOT_RESOLVED','ROLE_PROVENANCE','SCHEMA','SOURCE_204_205','SOURCE_PREFIX','STAGE203','STAGE205','TAIL_PREFIX','TARGET','CONTROL','STAGE205_FRAMING','TAIL_QUALIFICATION','TAIL_READBACK','CLEANUP','COMPLETION'])RUNNER_CODES.add('LOCAL_MIGRATION_'+code);
+RUNNER_CODES.add('LOCAL_CI_DYNAMIC_MIGRATION_RESOURCE');
+for(const phase of ['PREFLIGHT','QUALIFICATION_SETUP','QUALIFICATION_CLEANUP','CLEANUP_READBACK','POST_QUALIFICATION','COMPLETE_READBACK'])RUNNER_CODES.add('LOCAL_MIGRATION_SQL_'+phase);
+for(let stage=1;stage<=261;stage++)RUNNER_CODES.add('LOCAL_MIGRATION_SQL_STAGE'+stage+'_READBACK');
+for(const stage of [213,215,218,221])for(const phase of ['BEFORE','SUPPLY','READBACK']){
+  RUNNER_CODES.add('LOCAL_MIGRATION_SQL_TAIL'+stage+'_'+phase);
+  for(const kind of ['RESOURCE_PORT','NODE_PROOF'])RUNNER_CODES.add('LOCAL_MIGRATION_TAIL'+stage+'_'+phase+'_'+kind);
+}
+function describeNativeLifecycleRunnerFailure(error,stage) {
+  const message=nativeData(error,'message');
+  const projection={stage:RUNNER_STAGES.has(stage)?stage:'INPUT',code:RUNNER_CODES.has(message)?message:'TASK12_NATIVE_GATE_REJECTED'};
+  const detail=require('./local-staged-tail-qualification.cjs').localTailFailureDiagnostic(error);
+  if(detail&&/^TAIL(?:213|215|218|221)_(?:BEFORE|SUPPLY|READBACK)$/u.test(detail.stage)&&['RESOURCE_PORT','NODE_PROOF'].includes(detail.kind)&&
+    typeof detail.reason==='string'&&/^[A-Z0-9_]{1,96}$/u.test(detail.reason))projection.migration=detail;
+  return Object.freeze(projection);
+}
+module.exports.describeNativeLifecycleRunnerFailure=describeNativeLifecycleRunnerFailure;
+
+function createNativeLifecycleRunnerFailureRecorder() {
+  let stage='INPUT',first;
+  return Object.freeze({
+    enter(value){stage=RUNNER_STAGES.has(value)?value:'INPUT';},
+    capture(error){first??=describeNativeLifecycleRunnerFailure(error,stage);},
+    describe(error){return first??describeNativeLifecycleRunnerFailure(error,stage);}
+  });
+}
+module.exports.createNativeLifecycleRunnerFailureRecorder=createNativeLifecycleRunnerFailureRecorder;
