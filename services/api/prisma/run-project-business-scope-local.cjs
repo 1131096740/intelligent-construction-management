@@ -7,6 +7,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { renderProjectBusinessScopeFileGuardGrant } = require("./contract-bank-runtime-fixture.cjs");
 const storageRoot = mkdtempSync(path.join(tmpdir(), "project-business-scope-files-"));
 
 const root = path.resolve(__dirname, "../../..");
@@ -68,11 +69,13 @@ async function verify() {
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${runtime};
     REVOKE ALL ON TABLE public."OperatingLedgerWriteSecret", public."OperatingLedgerWriteContext" FROM ${runtime};
     REVOKE INSERT, UPDATE, DELETE ON TABLE public."OperatingFact" FROM ${runtime};
+    ${renderProjectBusinessScopeFileGuardGrant()}
   `], process.env, true);
   docker(["cp", path.join(__dirname, "general-procurement-runtime-grants.sql"), `${containerId}:/tmp/procurement-grants.sql`], process.env, true);
   docker(["exec", "--env", `OPERATING_LEDGER_RUNTIME_ROLE=${runtime}`, containerId, "psql", "-v", "ON_ERROR_STOP=1", "-U", "jiangkong", "-d", "project_business_scope", "--file=/tmp/procurement-grants.sql"], process.env, true);
   const grants = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "project_business_scope", "-Atc", `SELECT has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'INSERT'), has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'DELETE');`], process.env, true);
   if (grants !== "t|f") throw new Error("新表运行权限必须可写、不可删除");
+  env.PROJECT_BUSINESS_SCOPE_FIXTURE_DATABASE_URL = env.DATABASE_URL;
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/project_business_scope`;
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/project-business-scope-http-postgres.spec.ts"], env, false, 300_000);
 }

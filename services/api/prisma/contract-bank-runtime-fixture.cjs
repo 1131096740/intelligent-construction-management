@@ -27,6 +27,10 @@ function renderGeneralProcurementFileGuardGrant() {
   return renderFixtureFileGuardGrant("general_procurement_runtime", "general_procurement", "HandwrittenSignatureVersion", "fileId");
 }
 
+function renderProjectBusinessScopeFileGuardGrant() {
+  return renderFixtureFileGuardGrant("project_business_scope_runtime", "project_business_scope", "HandwrittenSignatureVersion", "fileId");
+}
+
 function renderFixtureFileGuardGrant(role, database, table, column) {
   return `DO $contract_finance_file_guard$
 DECLARE
@@ -118,5 +122,6 @@ module.exports = {
   prepareContractBankRuntime,
   renderContractFinanceFileGuardGrant,
   renderEmployeeOnboardingFileGuardGrant,
-  renderGeneralProcurementFileGuardGrant
+  renderGeneralProcurementFileGuardGrant,
+  renderProjectBusinessScopeFileGuardGrant
 };
