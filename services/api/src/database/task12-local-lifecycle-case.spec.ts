@@ -141,3 +141,26 @@ it("rejects altered signed-original bytes and stops without any later download",
   await expect(finishTask12LocalLifecycleCase(rollback)).rejects.toThrow("_DOWNLOAD");
   await expect(finishTask12LocalLifecycleCase(rollback)).rejects.toThrow("CHECKPOINT");
 });
+it("uses the one-shot physical PDF reader once while downloading all three generated pairs",async()=>{
+  const m=networkModel();let reads=0,downloads=0;
+  const download=m.input.bridge.download;
+  m.input.bridge.download=async(actor,path)=>{downloads++;return download(actor,path);};
+  m.input.readPdfDrawnText=async()=>{if(++reads>1)throw new Error("ONE_READER_ALREADY_CONSUMED");return ["本轮隔离V2材料合同"];};
+  const token=await runTask12LocalLifecycleCase(m.input);
+  expect(claimTask12LocalLifecycleCheckpoint(token).stage).toBe("ORIGINALS");expect(reads).toBe(1);expect(downloads).toBe(6);
+  expect(m.calls.filter(call=>call.request.path.endsWith("/preview-generation")&&call.request.method==="POST")).toHaveLength(4);
+});
+it("stops the entire case when the first physical PDF reader fails",async()=>{
+  const m=networkModel();let reads=0;
+  m.input.readPdfDrawnText=async()=>{reads++;throw new Error("MODEL_FIRST_READER_FAILED");};
+  await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("MODEL_FIRST_READER_FAILED");expect(reads).toBe(1);
+  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/submission"))).toHaveLength(0);
+  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(1);
+});
+it("still rejects an unmodified Word in the second round after the sole PDF read",async()=>{
+  const m=networkModel();let reads=0,downloads=0;const download=m.input.bridge.download;
+  m.input.readPdfDrawnText=async()=>{reads++;return ["本轮隔离V2材料合同"];};
+  m.input.bridge.download=async(actor,path)=>{downloads++;return path.includes(uid(52))?{status:200,bytes:source}:download(actor,path);};
+  await expect(runTask12LocalLifecycleCase(m.input)).rejects.toThrow("_WORD");expect(reads).toBe(1);expect(downloads).toBe(4);
+  expect(m.calls.filter(call=>call.request.path.startsWith("/contract-drafts/")&&call.request.path.endsWith("/preview-generation"))).toHaveLength(2);
+});
