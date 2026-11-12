@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const api=require('./task16-current259-catalog.cjs');
 const hash=x=>crypto.createHash('sha256').update(x).digest('hex');
 const root=path.resolve(__dirname,'../../..');
-const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
+const migrations=fs.readdirSync(path.join(__dirname,'migrations')).filter(n=>/^\d{14}_/u.test(n)).sort().slice(0,259).map(n=>({path:`services/api/prisma/migrations/${n}/migration.sql`,sha256:hash(fs.readFileSync(path.join(__dirname,'migrations',n,'migration.sql')))}));
 const source={candidateSha:'a'.repeat(40),sealSha256:'b'.repeat(64),schemaSha256:hash(fs.readFileSync(path.join(__dirname,'schema.prisma'))),migrations};
 const identity={runId:'01234567-89ab-cdef-0123-456789abcdef',database:'jg_task01_0123456789abcdef0123456789abcdef',databaseOid:'16384',namespaceOid:'2200',ownerOid:'10',runtimeOid:'17000',observerOid:'17001',systemIdentifier:'123456789'};
 const request={source,identity,nonce:'c'.repeat(64),phase:'before'};
