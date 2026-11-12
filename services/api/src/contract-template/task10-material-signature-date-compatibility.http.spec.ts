@@ -9,12 +9,20 @@ const slotIds = ["be6d8bf0f1e5172844c287c65d2f53f404b033dd67611442873a02d5a37a31
 const rows = [{ clientRowKey: "date-compatibility-row", sortOrder: 0, itemName: "正文清单钢材", unit: "吨", quantity: "2", unitPrice: "3.2500", taxRatePercent: "0", customData: {} }];
 async function createDateDraft({ server, layout }: Awaited<ReturnType<typeof createReviewedMaterialFixture>>) {
   const draft = await createTask09Draft(server);
-  expect((await saveTask09Draft(server, draft, "material_purchase", layout.id)).status).toBe(200);
-  const saved = await saveBody(draft, undefined, "当前单甲方", rows); expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
+  // A request still in flight when Jest times out must not keep the fixture alive after it finishes.
+  Object.assign(draft.headers, { connection: "close" });
+  const selected = await saveTask09Draft(server, draft, "material_purchase", layout.id);
+  await selected.text();
+  expect(selected.status).toBe(200);
+  await expectSaved(await saveBody(draft, undefined, "当前单甲方", rows));
   const wb = await fetch(draft.base + "/workbench", { headers: draft.headers }).then(r => r.json());
   expect(wb.draft.documentRenderProfile).toEqual({ typographyVersion: "reviewed-material-primary-secondary-body25-v4", signatureDateVersion: dateVersion });
   expect(wb.version.amountYuan).toBe("6.5000");
   return { draft, wb };
+}
+async function expectSaved(response: Response) {
+  const result = await response.text();
+  expect(response.status === 200 ? "OK" : result).toBe("OK");
 }
 async function bodyOf(draft: Awaited<ReturnType<typeof createTask09Draft>>) {
   const response = await fetch(draft.base + "/document-body", { headers: draft.headers }); expect(response.status).toBe(200); return response.json() as Promise<Body>;
@@ -33,13 +41,13 @@ describe("task10 signature-date capability public compatibility", () => {
     const initial = await bodyOf(draft); for (const id of slotIds) expect(initial.blocks.find(block => block.id === id)).toMatchObject({ text: dateText, editable: true });
     const manual = "甲方人工签署说明保留。";
     const plan = { protocolVersion: 1, layoutTemplateVersionId: layout.id, sourceSha256: sourceSha, edits: [{ positionId: slotIds[0], text: manual }, { positionId: slotIds[1], text: "" }] };
-    const saved = await saveBody(draft, plan, "当前单甲方", rows); expect(saved.status === 200 ? "OK" : await saved.text()).toBe("OK");
+    await expectSaved(await saveBody(draft, plan, "当前单甲方", rows));
     const edited = await bodyOf(draft);
     expect(edited.blocks.find(block => block.id === slotIds[0])).toMatchObject({ text: manual, editable: true });
     expect(edited.blocks.find(block => block.id === slotIds[1])).toMatchObject({ text: "", editable: true });
     expect(edited.blocks.filter(block => block.text === dateText)).toEqual([]); expect(await bodyOf(draft)).toEqual(edited);
     const deletedPlan = { ...plan, edits: [{ positionId: slotIds[1], text: "" }], deletedPositionIds: [slotIds[0]] };
-    const deleted = await saveBody(draft, deletedPlan, "当前单甲方", rows); expect(deleted.status === 200 ? "OK" : await deleted.text()).toBe("OK");
+    await expectSaved(await saveBody(draft, deletedPlan, "当前单甲方", rows));
     const after = await bodyOf(draft); expect(after.blocks.some(block => block.id === slotIds[0])).toBe(false);
     expect(after.blocks.find(block => block.id === slotIds[1])).toMatchObject({ text: "", editable: true });
     expect(after.blocks.filter(block => block.text === dateText)).toEqual([]); expect(await bodyOf(draft)).toEqual(after);

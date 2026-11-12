@@ -767,7 +767,11 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
       const companies = new CompanyEntityService(observer as never, new CompanyEntityAccess(observer as never), new AuditService());
       const frozen = await observer.contractVersion.findUniqueOrThrow({ where: { id: fixture.contractVersionId } });
       const before = await observer.companyEntityVersion.findUniqueOrThrow({ where: { id: frozen.companyEntityVersionId! } });
-      for (const id of new Set([fixture.debtorCompanyId, fixture.executionPayerCompanyId])) await companies.updateStatus(id, fixture.actorUserId, { isActive: false });
+      for (const id of [fixture.debtorCompanyId, fixture.executionPayerCompanyId]) {
+        await expect(companies.updateStatus(id, fixture.actorUserId, { isActive: false })).resolves.toMatchObject({
+          entity: { id, isActive: false, currentVersionNo: 2 }, unchanged: false
+        });
+      }
       expect(await observer.companyEntityVersion.findUnique({ where: { id: before.id } })).toEqual(before);
     }
     const service = realService(
@@ -1428,7 +1432,8 @@ async function createEligibleServiceFixture(
     data: {
       id: companyId,
       name: "动态门付款主体",
-      unifiedSocialCreditCode: `DYN${companyId.replace(/-/g, "").slice(0, 15)}`
+      unifiedSocialCreditCode: `DYN${companyId.replace(/-/g, "").slice(0, 15)}`,
+      currentVersionNo: 1
     }
   });
   await client.companyEntityVersion.create({
@@ -1448,7 +1453,19 @@ async function createEligibleServiceFixture(
       data: {
         id: executionPayerCompanyId,
         name: "动态门实际付款主体",
-        unifiedSocialCreditCode: executionPayerCreditCode
+        unifiedSocialCreditCode: executionPayerCreditCode,
+        currentVersionNo: 1
+      }
+    });
+    await client.companyEntityVersion.create({
+      data: {
+        companyEntityId: executionPayerCompanyId,
+        versionNo: 1,
+        name: "动态门实际付款主体",
+        unifiedSocialCreditCode: executionPayerCreditCode,
+        isActive: true,
+        action: "create",
+        actorUserId
       }
     });
   }
