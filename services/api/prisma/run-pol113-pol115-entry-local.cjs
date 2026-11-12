@@ -6,6 +6,8 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
+const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
+const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const pnpm = process.env.PNPM_BIN?.trim() || "pnpm";
@@ -34,9 +36,10 @@ function localDockerEndpoint() {
   return endpoint;
 }
 
-function runDedicatedDatabase({ id, database, flags, spec }) {
+async function runDedicatedDatabase({ id, database, flags, spec }) {
   const name = `jiangkong-${id}-${Date.now()}-${process.pid}`;
   const password = randomUUID();
+  const runId = randomUUID();
   const files = mkdtempSync(path.join(tmpdir(), `${id}-files-`));
   const cache = mkdtempSync(path.join(tmpdir(), `${id}-cache-`));
   const endpoint = localDockerEndpoint();
@@ -44,15 +47,16 @@ function runDedicatedDatabase({ id, database, flags, spec }) {
   delete dockerEnv.DOCKER_CONTEXT;
   let started = false;
   try {
-    command(docker, [
+    const containerId = command(docker, [
       "--host", endpoint,
       "run", "--detach", "--rm", "--pull=never", "--name", name,
+      "--label", `${CI_DYNAMIC_MIGRATION_LABEL}=${runId}`,
       "--env", "POSTGRES_PASSWORD",
       "--env", "POSTGRES_USER=jiangkong",
       "--env", `POSTGRES_DB=${database}`,
       "--publish", "127.0.0.1::5432",
       "postgres:16"
-    ], { ...dockerEnv, POSTGRES_PASSWORD: password });
+    ], { ...dockerEnv, POSTGRES_PASSWORD: password }, true);
     started = true;
     command(docker, [
       "--host", endpoint,
@@ -80,7 +84,19 @@ function runDedicatedDatabase({ id, database, flags, spec }) {
       ...flags
     };
     delete env.DOCKER_CONTEXT;
-    command(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], env);
+    const runtime = createCommandRuntime({ defaultCwd: root });
+    const migration = createCiDynamicMigrationFixture({
+      ciFixture: "DYNAMIC_POL113_POL115_ENTRY_V1",
+      container: { id: containerId, name, runId },
+      databaseNames: [database],
+      temporaryRoot: cache,
+      dockerCommand: (args, options) => runtime.command(docker, ["--host", endpoint, ...args], { ...options, env: dockerEnv }),
+      deploy: ({ databaseUrl, runtimeEnv, schemaPath }) => runtime.command(pnpm,
+        ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy",
+          ...(schemaPath ? ["--schema", schemaPath] : [])],
+        { env: { ...runtimeEnv, DATABASE_URL: databaseUrl }, forwardOutput: true })
+    });
+    await migration.migrate({ databaseUrl: env.DATABASE_URL, runtimeEnv: env });
     command(pnpm, ["--filter", "@jiangkong/api", "test", "--", "--runInBand", spec], env);
   } finally {
     if (started) {
@@ -95,42 +111,49 @@ function runDedicatedDatabase({ id, database, flags, spec }) {
   }
 }
 
-if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
-localDockerEndpoint();
+async function main() {
+  if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
+  localDockerEndpoint();
 
-command(process.execPath, [path.join(__dirname, "run-pol113-http-local.cjs")], {
-  ...process.env,
-  PNPM_BIN: pnpm,
-  RUN_POL113_PROJECT_BROWSER: "1"
-});
-command(process.execPath, [path.join(__dirname, "run-pol115-entry-local.cjs")], {
-  ...process.env,
-  PNPM_BIN: pnpm,
-  RUN_POL115_BROWSER: "1"
-});
-runDedicatedDatabase({
-  id: "pol114-entry",
-  database: "jiangkong_pol114",
-  flags: {
-    RUN_POL114_HTTP_PG16: "1",
-    RUN_POL114_BROWSER: "1",
-    RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16: "1",
-    RUN_POL114_PAYMENT_HTTP_PG16: "1"
-  },
-  spec: "src/database/contract-business-entry-http.spec.ts"
-});
-runDedicatedDatabase({
-  id: "pol115-spot-entry",
-  database: "jiangkong_pol115_spot_entry_test",
-  flags: {
-    RUN_POL115_SPOT_ENTRY_PG16: "1",
+  command(process.execPath, [path.join(__dirname, "run-pol113-http-local.cjs")], {
+    ...process.env,
+    PNPM_BIN: pnpm,
+    RUN_POL113_PROJECT_BROWSER: "1"
+  });
+  command(process.execPath, [path.join(__dirname, "run-pol115-entry-local.cjs")], {
+    ...process.env,
+    PNPM_BIN: pnpm,
     RUN_POL115_BROWSER: "1"
-  },
-  spec: "src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"
-});
-runDedicatedDatabase({
-  id: "settlement-template-workbench",
-  database: "template_workbench",
-  flags: { RUN_TEMPLATE_WORKBENCH_PG16: "1" },
-  spec: "src/settlement/settlement-template-workbench.http.pg.spec.ts"
+  });
+  await runDedicatedDatabase({
+    id: "pol114-entry",
+    database: "jiangkong_pol114",
+    flags: {
+      RUN_POL114_HTTP_PG16: "1",
+      RUN_POL114_BROWSER: "1",
+      RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16: "1",
+      RUN_POL114_PAYMENT_HTTP_PG16: "1"
+    },
+    spec: "src/database/contract-business-entry-http.spec.ts"
+  });
+  await runDedicatedDatabase({
+    id: "pol115-spot-entry",
+    database: "jiangkong_pol115_spot_entry_test",
+    flags: {
+      RUN_POL115_SPOT_ENTRY_PG16: "1",
+      RUN_POL115_BROWSER: "1"
+    },
+    spec: "src/spot-procurement/spot-procurement-entry.http.pg.spec.ts"
+  });
+  await runDedicatedDatabase({
+    id: "settlement-template-workbench",
+    database: "template_workbench",
+    flags: { RUN_TEMPLATE_WORKBENCH_PG16: "1" },
+    spec: "src/settlement/settlement-template-workbench.http.pg.spec.ts"
+  });
+}
+
+main().catch(error => {
+  process.stderr.write(`${error.message}\n`);
+  process.exitCode = 1;
 });
